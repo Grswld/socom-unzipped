@@ -1,0 +1,80 @@
+2007 logged calls from logs/run_20260922_150258.log
+LOAD cdrom0:/RUN/IRX/USB/USBD.IRX;1 handled=1 id=7 start=0 modules=1 threads=2 servers=0
+LOAD cdrom0:/RUN/IRX/LIBSD.IRX;1 handled=1 id=9 start=0 modules=2 threads=2 servers=0
+LOAD cdrom0:/RUN/IRX/SOUND/989SND.IRX;1 handled=1 id=15 start=0 modules=3 threads=4 servers=2
+LOAD cdrom0:/RUN/IRX/SOUND/989DSTRM.IRX;1 handled=1 id=21 start=0 modules=4 threads=5 servers=2
+LOAD cdrom0:/RUN/IRX/LGAUD.IRX;1 handled=1 id=25 start=0 modules=5 threads=6 servers=3
+LOAD cdrom0:/RUN/IRX/HEADSETO.IRX;1 handled=1 id=30 start=0 modules=6 threads=7 servers=3
+  LOG Info [iop] no kernel service for sysclib #16
+  LOG Info [iop] USB Driver (Version 1.1.0)
+  LOG Info [iop] started USB_driver at 65536
+  LOG Info [iop] started Sound_Device_Library at 133120
+  LOG Info [iop] ==========================================================
+  LOG Info [iop]  989snd (c)2000-2003 Sony Computer Entertainment America
+  LOG Info [iop]  by Buzz Burrowes                               v3.0.1
+  LOG Info [iop]                         (built Sep 22 2003 at 12:10:14)
+  LOG Info [iop]                                          (pre-release 11)
+  LOG Info [iop]  NO MIDI VERSION! No MIDI, AME, or basic VAG sounds
+  LOG Info [iop]                   (banks and streams only)
+  LOG Info [iop]  (build with sce library rev 2.7.2)
+  LOG Info [iop] ==========================================================
+  LOG Info [iop]     Thread Priorities:
+  LOG Info [iop]                          Sound Tick = 9
+  LOG Info [iop]                            Main RPC = 58
+  LOG Info [iop]                         Loading RPC = 59
+  LOG Info [iop]                           Streaming = 18, 19, 20, 21
+  LOG Info [iop]    Memory Locations...
+  LOG Info [iop]        Voice Allocator Owner  : 0x42f94
+  LOG Info [iop]        Master Tick Owner List : 0x42e18
+  LOG Info [iop] ==========================================================
+  LOG Info [iop] RPC server 1193046 registered
+  LOG Info [iop] RPC server 1193047 registered
+  LOG Info [iop] started 989snd_Library at 156160
+  LOG Info [iop] =================================================================
+  LOG Info [iop] 989DSTRM.IRX v1.3
+  LOG Info [iop] =================================================================
+  LOG Info [iop] started 989_DATA_STREAMER at 91904
+  LOG Info [iop] no kernel service for modload #17
+  LOG Info [iop] no kernel service for modload #18
+  LOG Info [iop] no kernel service for sysclib #7
+  LOG Info [iop] no kernel service for thbase #9
+  LOG Info [iop] lgAud version 1.8.003. (built on Aug  5 2003 at 15:10:37) 	* thread priority 48
+  LOG Info [iop] 	* RPC server with max stream size: 65536 bytes
+  LOG Info [iop] RPC server 1346980930 registered
+  LOG Info [iop] started lgAud at 316160
+  LOG Info [iop] =================================================================
+  LOG Info [iop] HEADSET Output module v2.0 built with liblgaud 1.08 and SCE 2.8.0
+  LOG Info [iop]         RingBufferServicePriority = 22
+  LOG Info [iop]         (change on the command line with "priority=x"
+  LOG Info [iop] =================================================================
+  LOG Info [iop] started headset_streamer at 433152
+SNAP cycles=1251840 instr=22501 modules=6 threads=7 servers=3 diagnostics=0 provider=1 reads=0 sectors=0 refused=0 done=0 cdcb=0 syncs=0 breaks=0 dmaintr=0 dmacb=0 opens=0
+#37 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#40 snd_PcmStreamPosition fno=40 args=[] expected=0xa1e00 real=0x1070000 recv=['0xffffffff', '0x1070000', '0xffffffff', '0x0'] DISAGREE instr=91
+#41 snd_PcmStreamPosition fno=40 args=[] expected=0xa3c00 real=0x1070c00 recv=['0xffffffff', '0x1070c00', '0xffffffff', '0x0'] DISAGREE instr=91
+#42 snd_PcmStreamPosition fno=40 args=[] expected=0xa4b00 real=0x1071800 recv=['0xffffffff', '0x1071800', '0xffffffff', '0x0'] DISAGREE instr=91
+#43 snd_PcmStreamPosition fno=40 args=[] expected=0xa0900 real=0x1072400 recv=['0xffffffff', '0x1072400', '0xffffffff', '0x0'] DISAGREE instr=91
+#74 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#121 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+... 200/2007 calls, 0 s
+... 400/2007 calls, 0 s
+... 600/2007 calls, 0 s
+... 800/2007 calls, 0 s
+... 1000/2007 calls, 0 s
+... 1200/2007 calls, 0 s
+... 1400/2007 calls, 0 s
+... 1600/2007 calls, 0 s
+... 1800/2007 calls, 0 s
+#1913 snd_StreamSafeCdRead fno=38 args=['0x1cff3a', '0x1', '0xfba5c0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#1914 snd_StreamSafeCdRead fno=38 args=['0x1cff3b', '0x1', '0x17209b0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#1915 snd_StreamSafeCdRead fno=38 args=['0x1cff3c', '0x1', '0xfba5c0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#1916 snd_StreamSafeCdRead fno=38 args=['0x1cff3d', '0x1', '0xfba5c0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#1917 snd_StreamSafeCdRead fno=38 args=['0x1cff3d', '0x1', '0xfba5c0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#1918 snd_StreamSafeCdRead fno=38 args=['0x1cff3e', '0xc', '0x1721bc0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=293
+#1919 snd_StreamSafeCdRead fno=38 args=['0x1cff4a', '0x1', '0xfba5c0'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#1976 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#1983 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#1987 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+... 2000/2007 calls, 0 s
+wrote $SCRATCH/oracle/results_lle_150258.md
+compared 1794, disagreements 17
