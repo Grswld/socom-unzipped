@@ -382,6 +382,19 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
   2026-09-13 (Task 9a):* the HLE hazard and the Tasks 6-8 harness rules → `STATUS.md` 2026-09-13;
   Task 4c → `research/17` §5.1; Task 4b → `research/17` §6.1; Task 1's `movie_blocks.py` limits →
   `research/16` §9.1.1. Everything else in those reports is accepted as lost.
+- **HAZARD: every agent worktree's `tools/` is a junction to the main tree's, and anything that deletes a
+  worktree directory deletes the main tree's toolchain through it.** Two doors so far. 2026-09-21: `git worktree
+  remove` (why `scripts/agent_worktree.sh remove` exists and the Bash hook refuses the bare command). 2026-09-26
+  20:41Z: `gh pr merge 76 --merge --delete-branch`, run from the main tree while the branch was checked out in
+  `wt-sitting-docs` -- gh tore down that checkout to delete the branch, and `C:\Projects\socom_pc\tools` was empty a
+  second later: llvm-mingw, CMake and Ninja (back in a minute with `scripts/bootstrap_windows.sh`), PCSX2 2.8.2 with
+  its inis, patches, memcards and six savestates, and Ghidra 12.1.3 with the EE extension (two downloads under the
+  owner's word, rebuilt from the tracked templates; the savestates are gone). Not in the Recycle Bin. The rule: a
+  branch that lives in an agent worktree is removed with `bash scripts/agent_worktree.sh remove <name>` BEFORE it
+  is merged, and its remote branch deleted afterwards by `git push origin --delete`; never `gh pr merge
+  --delete-branch`, never `git branch -D` through any tool that may take the checkout with it. An off-tree copy of
+  `tools/` lives at `D:\socom_archive\tools_backup_<date>` (made the same night) so the next time costs a copy, not
+  a rebuild. The owner's sitting record: `docs/superpowers/plans/2026-09-26-owner-sitting.md`.
 
 ## build
 
