@@ -34,10 +34,16 @@ FORK = "Sinan-Karakaya/PS2Recomp"
 NUMBERS = ("832", "13,044", "17", "1,794", "12,619")
 FORBIDDEN = (
     ("an absolute Windows path", re.compile(r"(?<![A-Za-z])[A-Za-z]:[/\\]")),  # a drive letter, not https:
+    # An MSYS drive path (/c/..., /d/...): a single letter between slashes at the start of a path. The fork's own
+    # repo-relative paths (a/ps2xIOP/src/lle/..., ps2xIOP/src/lle/) have no leading slash before the letter.
+    ("an MSYS drive path", re.compile(r"(?<![A-Za-z0-9_.])/[A-Za-z]/")),
     ("an MSYS home path", re.compile(r"/c/Users", re.IGNORECASE)),
     ("a run of 24+ hex digits", re.compile(r"[0-9A-Fa-f]{24,}")),
 )
 DIFF_GIT = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
+# Every file header, git-form or a bare `diff -u` one: a hunk's target is named here whatever precedes it.
+FILE_HEADER = re.compile(r"^(---|\+\+\+) (\S+)")
+SLICE = "ps2xIOP/src/lle/"
 # The top-level directories of our own tree: a patch path starting with one of them would be ours, not the fork's.
 OUR_TOP = ("docs", "tools_py", "scripts", "ps2xRuntime", "recomp", "server", "tests", "game", "logs", "tools",
            "third_party", ".github", ".claude")
@@ -104,22 +110,48 @@ class LleOracleAssetsTest(unittest.TestCase):
                                 hits.append(f"{os.path.relpath(path, ROOT)}:{lno}: {what}")
         self.assertEqual(hits, [])
 
+    def assert_forks_slice(self, p, line):
+        self.assertTrue(p.startswith(SLICE), line)
+        self.assertNotIn(p.split("/")[0], OUR_TOP, line)
+        # Our tree vendors upstream's ps2xIOP under third_party/ps2recomp/; the fork's lle/ is in neither place.
+        for base in (ROOT, os.path.join(ROOT, "third_party", "ps2recomp")):
+            self.assertFalse(os.path.exists(os.path.join(base, p)), f"{p} is a path of our own tree")
+
     def test_patch_touches_only_the_forks_slice(self):
+        lines = read("oracle-patch.diff").splitlines()
         paths = []
-        for line in read("oracle-patch.diff").splitlines():
+        for line in lines:
             m = DIFF_GIT.match(line)
             if m:
                 self.assertEqual(m.group(1), m.group(2), line)
                 paths.append(m.group(1))
         self.assertEqual(len(paths), 5, paths)
         for p in paths:
-            self.assertTrue(p.startswith("ps2xIOP/src/lle/"), p)
-            self.assertNotIn(p.split("/")[0], OUR_TOP, p)
-            # Our tree vendors upstream's ps2xIOP under third_party/ps2recomp/; the fork's lle/ is in neither place.
-            for base in (ROOT, os.path.join(ROOT, "third_party", "ps2recomp")):
-                self.assertFalse(os.path.exists(os.path.join(base, p)), f"{p} is a path of our own tree")
-        self.assertIn("ps2xIOP/src/lle/kernel.cpp", paths)
-        self.assertIn("ps2xIOP/src/lle/spu2.cpp", paths)
+            self.assert_forks_slice(p, p)
+        self.assertIn(SLICE + "kernel.cpp", paths)
+        self.assertIn(SLICE + "spu2.cpp", paths)
+
+    def test_every_file_header_names_the_forks_slice(self):
+        # A header is a ---/+++ pair directly before a hunk; any line of that shape is read, so a bare `diff -u`
+        # section (no `diff --git` line) cannot name a path past this test.
+        lines = read("oracle-patch.diff").splitlines()
+        headers = []
+        for i, line in enumerate(lines):
+            m = FILE_HEADER.match(line)
+            if not m:
+                continue
+            nxt = lines[i + 1] if i + 1 < len(lines) else ""
+            is_old = m.group(1) == "---" and nxt.startswith("+++ ")
+            is_new = m.group(1) == "+++" and i > 0 and lines[i - 1].startswith("--- ")
+            if not (is_old or is_new):
+                continue  # a removed or added line of code, not a header
+            want = "a/" if m.group(1) == "---" else "b/"
+            self.assertTrue(m.group(2).startswith(want), f"not a git-form {want} header: {line}")
+            headers.append(m.group(2)[2:])
+            self.assert_forks_slice(m.group(2)[2:], line)
+        self.assertEqual(len(headers), 10, headers)
+        git_paths = [DIFF_GIT.match(l).group(1) for l in lines if DIFF_GIT.match(l)]
+        self.assertEqual(sorted(set(headers)), sorted(git_paths))
 
 
 if __name__ == "__main__":

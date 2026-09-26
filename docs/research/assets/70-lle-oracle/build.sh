@@ -9,7 +9,10 @@
 : "${SCRATCH:?set SCRATCH to the scratch directory outside the repository (README.md, Rebuild)}"
 REPO="${REPO:-$PWD}"
 [ -d "$REPO/tools/llvm-mingw/bin" ] || { echo "no toolchain under $REPO/tools (set REPO to the repository root)"; exit 1; }
-export PATH="$REPO/tools/llvm-mingw/bin:$REPO/tools/cmake/bin:$REPO/tools/ninja:/usr/bin:/bin:/c/Windows/System32:$PATH"
+# System32 from the environment (Git Bash's cygpath), not a drive written into the script.
+SYS32=""
+[ -n "${SYSTEMROOT:-}" ] && command -v cygpath >/dev/null && SYS32="$(cygpath -u "$SYSTEMROOT")/System32:"
+export PATH="$REPO/tools/llvm-mingw/bin:$REPO/tools/cmake/bin:$REPO/tools/ninja:/usr/bin:/bin:$SYS32$PATH"
 cd "$SCRATCH/oracle" || exit 1
 {
   echo "build start $(date -u +%FT%TZ)"

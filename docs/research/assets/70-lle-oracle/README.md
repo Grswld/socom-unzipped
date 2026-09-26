@@ -61,8 +61,10 @@ directory outside the repository (the spike used one beside it); `$REPO` is the 
 3. The patch, applied in the clone, the patched slice copied, the clone put back as shipped (the pristine target
    reads it): `git -C "$SCRATCH/fork" apply "$REPO/docs/research/assets/70-lle-oracle/oracle-patch.diff"`, then
    `cp -r "$SCRATCH/fork/ps2xIOP/src/lle" "$SCRATCH/oracle/lle"`, then
-   `git -C "$SCRATCH/fork" checkout -- ps2xIOP/src/lle`. The patched copy is identical to the spike's `oracle/lle/`
-   (checked in T1c by applying the patch to a fresh clone and comparing all 11 files).
+   `git -C "$SCRATCH/fork" checkout -- ps2xIOP/src/lle`. The patched copy matches the spike's `oracle/lle/` in
+   content, all 11 files (checked in T1c by applying the patch to a fresh clone); byte for byte only on a clone made
+   with `core.autocrlf=false` -- on an autocrlf clone the fork's files carry CRLF line endings, so the copy differs
+   from the spike's by line endings alone (`diff --strip-trailing-cr` shows no difference).
 4. The build, **under the lock only** (llvm-mingw, CMake and Ninja from the repository's `tools/`), from the
    repository's root with `SCRATCH` exported:
    `bash scripts/loop_lock.sh run <holder> --purpose "LLE oracle build" --class build -- bash "$SCRATCH/oracle/build.sh"`;
@@ -79,8 +81,8 @@ directory outside the repository (the spike used one beside it); `$REPO` is the 
 ## Licence
 
 Our glue -- `harness_lle.cpp`, `CMakeLists.txt`, `build.sh`, `replay_lle.py` and the added lines of
-`oracle-patch.diff` -- is under the repository's `LICENSE`. The patch's context lines (92) are the fork's code,
-GPL-3.0 (`Sinan-Karakaya/PS2Recomp`, its `LICENSE`); the patch as a whole is a derivative of the fork's files and
+`oracle-patch.diff` -- is under the repository's `LICENSE`. The patch carries 94 lines of the fork's code -- its 92
+context lines and the 2 lines it removes -- GPL-3.0 (`Sinan-Karakaya/PS2Recomp`, its `LICENSE`); the patch as a whole is a derivative of the fork's files and
 applies only to them.
 
 ## What it does not do
