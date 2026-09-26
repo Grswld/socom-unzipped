@@ -84,6 +84,17 @@ void register_knobs_tests()
             t.IsTrue(dev != nullptr && dev->cls == ps2x::knobs::Class::Switch, "PS2X_DEV is the switch");
         });
 
+        tc.Run("the crouch shortcut's registered default is the launcher's own, l3 (O12)", [](TestCase &t)
+        {
+            // Owner ruling O12 (2026-09-26): the registry and the launcher agreed on nothing here -- the table
+            // said off while every launcher config writes l3 (the 2026-09-25 audit, code-runtime.md F54).
+            const ps2x::knobs::Entry *crouch = ps2x::knobs::find("PS2X_PAD_CROUCH_SHORTCUT");
+            t.IsTrue(crouch != nullptr, "the knob is registered");
+            t.Equals(std::string(crouch != nullptr ? crouch->dflt : ""), std::string("l3"), "its default is l3");
+            t.Equals(std::string(crouch != nullptr ? crouch->dflt : ""), launcher::Config{}.crouchShortcut,
+                     "the same value a fresh launcher config writes");
+        });
+
         tc.Run("the flag rule: unset or empty is the default; 0, false, off are false; anything else is true", [](TestCase &t)
         {
             using ps2x::knobs::flagValue;
