@@ -79,6 +79,9 @@ namespace launcher
         std::string elf;
     };
     GameFiles gameFilesFor(const std::string &gameRevision, const std::string &defaultExe);
+    // The row whose elfName is `elfName` (a bare file name, compared ignoring ASCII case), or nullptr. The
+    // runner's "this is SOCOM II" question (its disc preflight) asks this, not one literal name (issue #69).
+    const GameRevision *gameRevisionForElfName(const std::string &elfName);
 
     struct ServerPreset
     {

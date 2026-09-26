@@ -83,6 +83,23 @@ namespace launcher
         return {rev->exeName[0] == '\0' ? defaultExe : std::string(rev->exeName), std::string(rev->elfName)};
     }
 
+    const GameRevision *gameRevisionForElfName(const std::string &elfName)
+    {
+        const auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; };
+        for (const GameRevision &rev : kGameRevisions)
+        {
+            const std::string name = rev.elfName;
+            if (name.size() != elfName.size())
+                continue;
+            bool same = true;
+            for (size_t i = 0; i < name.size() && same; ++i)
+                same = lower(name[i]) == lower(elfName[i]);
+            if (same)
+                return &rev;
+        }
+        return nullptr;
+    }
+
     bool gameRevisionAvailable(size_t index, uint32_t installed)
     {
         if (index >= kGameRevisionCount)

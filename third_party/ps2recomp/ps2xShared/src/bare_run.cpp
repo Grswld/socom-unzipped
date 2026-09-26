@@ -28,9 +28,19 @@ namespace BareRun
 
     Plan plan(const fs::path &home)
     {
+        return plan(home, "r0001");
+    }
+
+    Plan plan(const fs::path &home, const std::string &gameRevision)
+    {
+#ifdef _WIN32
+        const char *const thisBuild = "socom2.exe";
+#else
+        const char *const thisBuild = "socom2";
+#endif
         Plan p;
         p.home = home;
-        p.elf = home / "socom2_game.elf";
+        p.elf = home / launcher::gameFilesFor(gameRevision, thisBuild).elf;   // issue #69: the build's own ELF
         p.logDir = home / "logs";
 
         launcher::Config config;

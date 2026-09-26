@@ -1590,6 +1590,18 @@ void register_launcher_tests()
             t.Equals(typo.elf, std::string("socom2_game.elf"), "and r0001's ELF");
         });
 
+        // Issue #69, the runtime half: the runner decided "this is SOCOM II" (the disc preflight) on the exact
+        // name socom2_game.elf, so the launcher's r0004 pair started with no disc check. It asks the table now.
+        tc.Run("the runtime knows every revision's ELF by name, in any case (issue #69)", [](TestCase &t)
+        {
+            const launcher::GameRevision *r1 = launcher::gameRevisionForElfName("socom2_game.elf");
+            t.IsTrue(r1 != nullptr && std::string(r1->id) == "r0001", "socom2_game.elf is r0001's");
+            const launcher::GameRevision *r4 = launcher::gameRevisionForElfName("SOCOM2_GAME_R0004.ELF");
+            t.IsTrue(r4 != nullptr && std::string(r4->id) == "r0004", "SOCOM2_GAME_R0004.ELF is r0004's: the case is not the name");
+            t.IsTrue(launcher::gameRevisionForElfName("socom2.elf") == nullptr, "a name in no row is no revision");
+            t.IsTrue(launcher::gameRevisionForElfName("") == nullptr, "and neither is an empty one");
+        });
+
         tc.Run("the GAME VERSION selector offers r0004 only when its build sits beside the launcher", [](TestCase &t)
         {
             t.IsTrue(launcher::kGameRevisionCount == 2u, "two game versions are named");
