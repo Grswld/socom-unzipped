@@ -1571,6 +1571,25 @@ void register_launcher_tests()
                      "a custom address names no revision: the launcher does not know what it is");
         });
 
+        // Issue #69: the launcher started socom2.exe + socom2_game.elf whatever GAME VERSION said, so
+        // picking r0004 played r0001. startGame now asks the table which two files to spawn; the answer is
+        // pure, so it is proved here on both platforms with no process started.
+        tc.Run("startGame spawns the chosen GAME VERSION's own exe and ELF (issue #69)", [](TestCase &t)
+        {
+            const launcher::GameFiles r1 = launcher::gameFilesFor("r0001", "socom2.exe");
+            t.Equals(r1.exe, std::string("socom2.exe"), "r0001 is this build: the platform's own exe");
+            t.Equals(r1.elf, std::string("socom2_game.elf"), "and the disc's own ELF");
+            const launcher::GameFiles r4 = launcher::gameFilesFor("r0004", "socom2.exe");
+            t.Equals(r4.exe, std::string("socom2_r0004.exe"), "r0004 starts its own exe, not socom2.exe");
+            t.Equals(r4.elf, std::string("socom2_game_r0004.elf"), "with its own ELF, the name build_revision.sh packages");
+            const launcher::GameFiles empty = launcher::gameFilesFor("", "socom2");
+            t.Equals(empty.exe, std::string("socom2"), "an empty revision is r0001, with the POSIX default exe");
+            t.Equals(empty.elf, std::string("socom2_game.elf"), "and r0001's ELF");
+            const launcher::GameFiles typo = launcher::gameFilesFor("r0O04", "socom2");
+            t.Equals(typo.exe, std::string("socom2"), "a typo is r0001 too -- never a half-guessed r0004");
+            t.Equals(typo.elf, std::string("socom2_game.elf"), "and r0001's ELF");
+        });
+
         tc.Run("the GAME VERSION selector offers r0004 only when its build sits beside the launcher", [](TestCase &t)
         {
             t.IsTrue(launcher::kGameRevisionCount == 2u, "two game versions are named");
@@ -1583,6 +1602,20 @@ void register_launcher_tests()
                      "r0001 is this launcher's own game: there is no second executable to look for");
             t.Equals(std::string(launcher::kGameRevisions[1].exeName), std::string("socom2_r0004.exe"),
                      "r0004 is one beside the launcher, in dist/");
+            // Issue #69: every row names its ELF, and no two rows the same one -- two revisions sharing an
+            // ELF is the defect that issue was, one level down.
+            t.Equals(std::string(launcher::kGameRevisions[0].elfName), std::string("socom2_game.elf"), "r0001's ELF");
+            t.Equals(std::string(launcher::kGameRevisions[1].elfName), std::string("socom2_game_r0004.elf"),
+                     "r0004's ELF, the name build_revision.sh packages");
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            {
+                const std::string elf = launcher::kGameRevisions[i].elfName;
+                t.IsFalse(elf.empty(), std::string("row ") + launcher::kGameRevisions[i].id + " names its ELF");
+                for (size_t j = i + 1; j < launcher::kGameRevisionCount; ++j)
+                    t.IsFalse(elf == launcher::kGameRevisions[j].elfName,
+                              std::string("rows ") + launcher::kGameRevisions[i].id + " and " + launcher::kGameRevisions[j].id +
+                                  " name different ELFs");
+            }
             t.Equals(std::string(launcher::kRevisionMissingNote), std::string("needs the r0004 game update -- planned"),
                      "and the greyed cell says why, in the sentence the ONLINE page already used");
 

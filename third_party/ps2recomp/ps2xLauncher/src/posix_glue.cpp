@@ -230,16 +230,18 @@ namespace win32glue
     {
         out.error.clear();
         const fs::path dir(dirStr);
-        const fs::path exe = dir / "socom2";           // no .exe here
-        const fs::path elf = dir / "socom2_game.elf";
+        // Issue #69: the chosen GAME VERSION's own pair, not socom2 + socom2_game.elf whatever it said.
+        const launcher::GameFiles files = launcher::gameFilesFor(config.gameRevision, "socom2");   // no .exe here
+        const fs::path exe = dir / files.exe;
+        const fs::path elf = dir / files.elf;
         if (!fs::exists(exe))
         {
-            out.error = "socom2 is not next to the launcher (" + exe.string() + ")";
+            out.error = files.exe + " is not next to the launcher (" + exe.string() + ")";
             return false;
         }
         if (!fs::exists(elf))
         {
-            out.error = "socom2_game.elf is not next to the launcher (" + elf.string() + ")";
+            out.error = files.elf + " is not next to the launcher (" + elf.string() + ")";
             return false;
         }
         std::error_code ec;

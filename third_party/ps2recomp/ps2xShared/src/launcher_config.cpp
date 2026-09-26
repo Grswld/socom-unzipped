@@ -75,6 +75,14 @@ namespace launcher
         return findGameRevision(value) != nullptr ? value : std::string(kGameRevisions[0].id);
     }
 
+    GameFiles gameFilesFor(const std::string &gameRevision, const std::string &defaultExe)
+    {
+        const GameRevision *rev = findGameRevision(normalizeGameRevision(gameRevision));
+        if (rev == nullptr)
+            rev = &kGameRevisions[0];   // unreachable while normalize answers a row's id; kept so it cannot crash
+        return {rev->exeName[0] == '\0' ? defaultExe : std::string(rev->exeName), std::string(rev->elfName)};
+    }
+
     bool gameRevisionAvailable(size_t index, uint32_t installed)
     {
         if (index >= kGameRevisionCount)
