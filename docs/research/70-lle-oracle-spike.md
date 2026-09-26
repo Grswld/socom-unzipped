@@ -157,7 +157,8 @@ five hundred and needs a ruling; this note reads R287 as written and does not as
 
 - **The register row** ("the IOP host's audio path", research/68) moves **Untested -> Believed** in this commit: the
   oracle ran two replays; the artefacts are `C:/projects/scratch-s15-t1/oracle/results_lle_232655.md` and
-  `results_lle_150258.md` today, landing under `docs/research/assets/70-lle-oracle/` in T1c. Believed, not Proven: the oracle is the disc's driver on an emulated IOP
+  `results_lle_150258.md` today, landing under `docs/research/assets/70-lle-oracle/` in T1c (landed there as
+  `results_lle_run_20260922_232655.md` and `results_lle_run_20260922_150258.md`, T1c). Believed, not Proven: the oracle is the disc's driver on an emulated IOP
   with our provider's timing, not the console.
 - **The one line for the owner (D1, R282), as sent:** "The spike recommends using #254's LLE IOP as an out-of-tree
   oracle for the audio work -- the disc's own sound driver checks our model (832 disagreements in 13,044 answers,
