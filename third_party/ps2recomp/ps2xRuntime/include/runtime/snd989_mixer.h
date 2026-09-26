@@ -79,7 +79,9 @@ namespace snd989
         // ticks (240 a second, as 989snd's own handlers run: the game's [handle, 0, 0x168, 2] is 1.5 s and
         // [handle, 0, 0x1e0, 2] is 2 s). `ticks` <= 0 applies the target at once. `how` is the call's 4th
         // argument (the game always passes 2); its meaning is not established by any reference we can reach, so
-        // it is recorded and not acted on. setVolPan and stop cancel a ramp in flight.
+        // it is recorded and not acted on. setVolPan and stop cancel a ramp in flight. The ramp moves in the IRX's
+        // 7-bit integer steps and lands early: 360 ticks from full is 127 steps, one every 2 ticks, done at tick
+        // 254 (research/36 Q5; Sprint 15 T1b).
         void autoVol(uint32_t handle, int32_t vol, int32_t ticks, int32_t how);
         void setMasterVolume(uint32_t group, int32_t vol);           // 0..0x400; group 16 = every group
         void stopAll();
@@ -114,6 +116,9 @@ namespace snd989
         // exactly once: closing it twice is the double free glibc caught on Linux and Windows did not report,
         // and this counter is what a test can observe of the ownership on either platform.
         static uint64_t streamFileClosesForTest();
+        // The 7-bit level (0..127) an snd_AutoVol ramp holds `handle` at now, 127 when no ramp is on it: what the
+        // step-schedule test reads tick by tick (research/36 Q5; Sprint 15 T1b).
+        int32_t autoVolLevelForTest(uint32_t handle) const;
 
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
         // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie

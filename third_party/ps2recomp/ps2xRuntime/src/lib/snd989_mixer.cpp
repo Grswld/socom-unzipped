@@ -737,13 +737,21 @@ namespace snd989
         // Applying the target at once cut the cue dead ("skips and almost plays two different spliced segments").
         // A ramp is a multiplier on whatever volume play/playStream/SetSoundVolPan set for that handle, so it
         // composes with them instead of fighting over one field.
+        // Sprint 15 T1b (research/36 Q5 and item 4): the multiplier moves in the IRX's 7-bit integer steps on the
+        // IRX's schedule (`stepped`), not linearly over `ticks`; see tickVolRamps. A ramp with no volume to travel
+        // (the IRX drops those at the call) keeps the plain tick count, so a -4 on a silent handle still stops.
         struct VolRamp
         {
             uint32_t handle = 0;
-            double scale = 1.0;                       // in force now, 0..1
+            double scale = 1.0;                       // in force now, 0..1 (level / 127 on a stepped ramp)
             double from = 1.0, to = 0.0;
             uint32_t ticksTotal = 0, ticksDone = 0;
             bool stopAtEnd = false;                   // the target -4: fade out, then stop
+            bool stepped = false;                     // on the IRX's schedule below
+            bool landed = false;                      // a stepped ramp that has reached its target
+            int32_t level = 127, target = 0;          // 7-bit, 0..127
+            int32_t delta = 0;                        // fast branch: 32 * volchange / ticks; slow branch: +1 or -1
+            uint32_t every = 0, countdown = 0;        // slow branch: one step each `every` ticks; 0 = fast (every tick)
         };
         std::vector<VolRamp> volRamps;
         // Sprint 9 Q0: the output-frame clock and the event sink (see StreamEvent in the header).
@@ -844,6 +852,12 @@ namespace snd989
             return 1.0;
         }
 
+        // The ramp's level in the IRX's 7-bit units, 127 with no ramp on the handle.
+        int32_t rampLevel7(uint32_t handle) const
+        {
+            return static_cast<int32_t>(std::lround(rampScale(handle) * 127.0));
+        }
+
         void clearRamp(uint32_t handle)
         {
             volRamps.erase(std::remove_if(volRamps.begin(), volRamps.end(),
@@ -866,18 +880,53 @@ namespace snd989
             }
         }
 
+        // `v >> 5` as an arithmetic shift (floor division by 32) whatever the compiler does with a negative.
+        static int32_t floorDiv32(int32_t v)
+        {
+            return v >= 0 ? v / 32 : -((-v + 31) / 32);
+        }
+
+        // One step of a stepped ramp, the IRX's AutoVol effect handler as research/36 Q5 reads it: a +-1 step
+        // adds; a fast step is (32 * level + delta) >> 5, i.e. level + floor(delta / 32), so a fall rounds DOWN;
+        // a step that would reach or pass the target lands on it.
+        static void stepRamp(VolRamp &r)
+        {
+            int32_t next = std::abs(r.delta) < 2 ? r.level + r.delta : floorDiv32(32 * r.level + r.delta);
+            if ((r.delta > 0 && r.target < next) || (r.delta < 0 && r.target >= next))
+                next = r.target;
+            r.level = next;
+            r.scale = static_cast<double>(next) / 127.0;
+            if (next == r.target)
+                r.landed = true;
+            else if (r.every != 0)
+                r.countdown = r.every;   // re-armed after each step
+        }
+
         // One 240 Hz tick of every ramp. A ramp that has arrived STAYS at its target (that is the volume now in
-        // force); only a fade-out-and-stop ends the sound and drops its ramp.
+        // force); only a fade-out-and-stop ends the sound and drops its ramp. A stepped ramp's slow branch counts
+        // its countdown down first and steps when it reaches 0 (armed at `every`, so the first step is on tick
+        // `every`); the fast branch steps every tick.
         void tickVolRamps()
         {
             for (size_t i = 0; i < volRamps.size();)
             {
                 VolRamp &r = volRamps[i];
-                if (r.ticksDone < r.ticksTotal)
-                    ++r.ticksDone;
-                const double t = r.ticksTotal ? static_cast<double>(r.ticksDone) / static_cast<double>(r.ticksTotal) : 1.0;
-                r.scale = r.from + (r.to - r.from) * t;
-                if (r.ticksDone >= r.ticksTotal && r.stopAtEnd)
+                bool arrived = false;
+                if (r.stepped)
+                {
+                    if (!r.landed && (r.every == 0 || --r.countdown == 0))
+                        stepRamp(r);
+                    arrived = r.landed;
+                }
+                else
+                {
+                    if (r.ticksDone < r.ticksTotal)
+                        ++r.ticksDone;
+                    const double t = r.ticksTotal ? static_cast<double>(r.ticksDone) / static_cast<double>(r.ticksTotal) : 1.0;
+                    r.scale = r.from + (r.to - r.from) * t;
+                    arrived = r.ticksDone >= r.ticksTotal;
+                }
+                if (arrived && r.stopAtEnd)
                 {
                     const uint32_t handle = r.handle;
                     volRamps.erase(volRamps.begin() + static_cast<std::ptrdiff_t>(i));
@@ -1789,8 +1838,12 @@ namespace snd989
         (void)how;
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         const bool fadeOutAndStop = (vol == -4);
-        const double to = fadeOutAndStop ? 0.0 : static_cast<double>(std::clamp(vol, 0, 0x400)) / 1024.0;
+        // The IRX's target is 7-bit: (Original_Vol * vol) >> 10, capped 127 (research/36 Q5), Original_Vol being
+        // the full scale a ramp multiplies here.
+        const int32_t target = fadeOutAndStop ? 0 : std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
+        const double to = static_cast<double>(target) / 127.0;
         const double from = m_impl->rampScale(handle);   // a ramp already running continues from where it is
+        const int32_t fromLevel = m_impl->rampLevel7(handle);
         m_impl->clearRamp(handle);
         if (ticks <= 0)
         {
@@ -1813,7 +1866,36 @@ namespace snd989
         r.to = to;
         r.ticksTotal = static_cast<uint32_t>(ticks);
         r.stopAtEnd = fadeOutAndStop;
+        // research/36 Q5, the IRX's schedule: volchange = target - level. |volchange| >= ticks is the fast branch,
+        // delta = 32 * volchange / ticks (C division, toward zero), a step every tick; otherwise the slow branch, a
+        // step of +-1 every floor(ticks / |volchange|) ticks. 360 ticks from 127 to 0: -1 every 2 ticks, landing at
+        // tick 254. volchange 0 is no ramp on the IRX; here it keeps the plain tick count (see VolRamp).
+        const int32_t volchange = target - fromLevel;
+        if (volchange != 0)
+        {
+            r.stepped = true;
+            r.level = fromLevel;
+            r.target = target;
+            r.scale = static_cast<double>(fromLevel) / 127.0;
+            if (std::abs(volchange) >= ticks)
+            {
+                r.delta = 32 * volchange / ticks;
+                r.every = 0;
+            }
+            else
+            {
+                r.delta = volchange > 0 ? 1 : -1;
+                r.every = static_cast<uint32_t>(ticks / std::abs(volchange));
+                r.countdown = r.every;
+            }
+        }
         m_impl->volRamps.push_back(r);
+    }
+
+    int32_t Mixer::autoVolLevelForTest(uint32_t handle) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->rampLevel7(handle);
     }
 
     void Mixer::setMasterVolume(uint32_t group, int32_t vol)
