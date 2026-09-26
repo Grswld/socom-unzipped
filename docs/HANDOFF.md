@@ -10,11 +10,11 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 16:57Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut to value) is OPEN on
-  `sprint-15`, off `main` at `200f3287` (Sprint 14 merged as `v0.14.0`, PR #68; the release waits on the owner). Four
-  days: R1 the audio register, X1 the audio survey (#254's LLE IOP), T1 the audio trial, T2 #67 beside it, T3/T4 (#59,
-  #32) if time allows; VU1 and the rest in `docs/LATER.md`. The plan `docs/superpowers/plans/2026-09-26-sprint-15.md`
-  (its Log) is the live state; R282-R289 are its defaults. No cloud session from 2026-09-26.
+- **Where the loop is now (2026-09-26 21:20Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut to value) is OPEN on
+  `sprint-15`, off `main` at `200f3287`; `main` at `715e8149` (the sitting, PR #76) merged in. Day one: R1 and X1
+  merged; T1 ADOPTED on the owner's word (the LLE IOP as an out-of-tree oracle: 832 of 13,044) and its harness landed
+  (T1c); T2's code merged (#67, the drag; its mission run waits for a window); T1b (AutoVol steps) building. The plan
+  `docs/superpowers/plans/2026-09-26-sprint-15.md` (its Log) is the live state. No cloud session from 2026-09-26.
 - **Next free ruling number: R298** (R290-R297 are the owner's sitting of 2026-09-26, `docs/superpowers/plans/2026-09-26-owner-sitting.md`).
 
 ## 3. Your first hour (lock-free; start nothing heavy)
@@ -63,7 +63,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 17 open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 15, lock-free, in order:** R1 (the audio register, half a day), X1 (the audio survey, a day), T0 (the
-  checkpoint), T2's code (#67) may start on day one beside them.
-- **Lock-bound:** T1's and T2's chains (the merged chain at a quiet window the owner names, or at night); the WIP
-  cap's two-night watch (every exit 4 to the Log).
+- **Sprint 15, lock-free:** T1b's review and merge when its builds end; then L1 needs T2's Step 3 outcome first.
+- **Lock-bound, each a window the owner names (the sitting's last ruling):** T2's Step 3 (a mission run with a ten-second
+  drag, then a control round with one instance dragged), T3's three quiet gates, T4's builds; nothing PCSX2-side until
+  the owner restores PCSX2 and Ghidra under `tools/` (lost 2026-09-26 20:41Z through a worktree's junction).
