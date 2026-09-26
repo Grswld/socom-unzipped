@@ -2635,8 +2635,15 @@ void register_launcher_tests()
             t.IsTrue(sent.kind == br::Reply::Kind::Sent && sent.id == "BR-20260923-ABC123",
                      "201 with ok and one of our ids is a received report with a reference");
             t.Equals(br::githubLine(sent.id),
-                     std::string("Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id."),
+                     std::string("Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id"
+                                 " -- unless it is a security report: those go through SECURITY.md, never a public issue."),
                      "the success text carries the sentence, word for word");
+            // Owner ruling O4 I1 (2026-09-26): the invitation excepts security reports, which SECURITY.md
+            // keeps out of the public tracker -- the sentence must never steer an exploit into a public issue.
+            const std::string invitation = br::kGithubIssueLine;
+            t.IsTrue(invitation.find("SECURITY.md") != std::string::npos, "the line names SECURITY.md");
+            t.IsTrue(invitation.find("never a public issue") != std::string::npos,
+                     "and says a security report is never a public issue");
             t.Equals(br::githubLine(sent.id), std::string(br::kGithubIssueLine),
                      "and it is the header's single literal, so the launcher and the site cannot drift apart");
 

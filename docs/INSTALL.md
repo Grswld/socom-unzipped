@@ -191,7 +191,7 @@ socom_unzipped_launcher.exe --diagnostics diagnostics.zip
 ```
 
 **REPORT A BUG**, on the rail, is the launcher's own form — *"tell us what went wrong; nothing is sent until you
-press SEND"*. It has **TITLE**, **WHAT HAPPENED**, **CONTACT (OPTIONAL)** (*"only if you want an answer"*), and a
+press SEND"*. It has **TITLE**, **WHAT HAPPENED**, **CONTACT (OPTIONAL)**, and a
 tick box, **Attach the last run's log**, which is **off** until you turn it on. A line above the button spells out
 exactly what would be sent, and until you press **SEND REPORT** the page says *"Nothing leaves this machine until
 you press it."* On success the page prints a reference and copies it to your clipboard where it can — quote it if you
