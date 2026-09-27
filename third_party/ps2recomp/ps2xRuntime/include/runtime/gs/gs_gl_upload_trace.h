@@ -83,6 +83,25 @@ namespace GsGlUploadTrace
         // back instead of deleted and re-decoded, and what the re-hash cost.
         uint64_t revalidated = 0;
         double revalidateUs = 0.0;
+
+        // --- Sprint 16 F2: the submit= bucket split for EVERY flushBatch, and the read-back inside it ---
+        // The [gs-transfer] phases above are armed only around the flush a BeginTransfer interrupts
+        // (gs_gl_backend.cpp, the CmdType::BeginTransfer case); the mission's flushes come from
+        // executeSubmit and no line split them (research/73 section 1). These count every flush that
+        // drew, whatever command flushed it, and they count the GPU->shadow read-back
+        // (downloadRenderTargetToShadow) as WORK -- calls, rows written, pixels fetched -- as well as
+        // time, so a test can read the work without the trace knob: the read-back and rt_direct
+        // counts are kept unconditionally, only the microseconds need PS2X_GS_UPLOAD_TRACE.
+        uint64_t submitFlushes = 0;         // flushBatch calls past both early returns (they drew)
+        double submitSetupUs = 0.0;         // setupDrawState minus its refreshDirtyRows and resolveTexture halves
+        double submitRowsUs = 0.0;          // refreshDirtyRows inside setupDrawState
+        double submitResolveUs = 0.0;       // resolveTexture (the read-backs below are inside it)
+        double submitDrawUs = 0.0;          // glBufferData + glDrawArrays after setupDrawState
+        uint64_t readbacks = 0;             // downloadRenderTargetToShadow calls
+        uint64_t readbackRows = 0;          // rows of the GPU-drawn window written into the shadow
+        uint64_t readbackPixels = 0;        // pixels glReadPixels fetched (the driver's copy)
+        double readbackUs = 0.0;            // the whole call
+        uint64_t rtDirect = 0;              // resolveTexture served the target's own texture: no read-back, no decode
     };
 
     inline void noteDst(Accum &a, uint32_t texture)
@@ -158,7 +177,35 @@ namespace GsGlUploadTrace
         a.revalidateUs += us;
     }
 
+    // Sprint 16 F2: one flush that drew, split. setupUs is setupDrawState's remainder after its
+    // two timed halves; rowsUs and resolveUs are those halves; drawUs is the buffer upload + draw.
+    inline void noteSubmitFlush(Accum &a, double setupUs, double rowsUs, double resolveUs, double drawUs)
+    {
+        ++a.submitFlushes;
+        a.submitSetupUs += setupUs > 0.0 ? setupUs : 0.0;
+        a.submitRowsUs += rowsUs;
+        a.submitResolveUs += resolveUs;
+        a.submitDrawUs += drawUs;
+    }
+
+    // One GPU->shadow read-back: the rows it wrote (the GPU-drawn window), the pixels the driver
+    // copied (the whole target), and its microseconds (0 when the trace knob is off).
+    inline void noteReadback(Accum &a, uint32_t rows, uint64_t pixels, double us)
+    {
+        ++a.readbacks;
+        a.readbackRows += rows;
+        a.readbackPixels += pixels;
+        a.readbackUs += us;
+    }
+
+    inline void noteRtDirect(Accum &a) { ++a.rtDirect; }
+
     inline void reset(Accum &a) { a = Accum{}; }
+
+    // The render thread's live accumulator (defined in gs_gl_backend.cpp). For ps2x_tests, which
+    // replay on the calling thread and read the work counts after hostRenderFrame; never written
+    // through, never read from another thread.
+    const Accum &live();
 
     // One line: every count per second, every per-call figure in microseconds to one decimal.
     inline std::string format(const Accum &a, double elapsedMs)
@@ -210,6 +257,28 @@ namespace GsGlUploadTrace
                       " whole=%llu chunked=%llu identical=%llu",
                       (unsigned long long)a.uploadsWhole, (unsigned long long)a.uploadsChunked,
                       (unsigned long long)a.uploadsIdentical);
+        return std::string(buf);
+    }
+
+    // Sprint 16 F2, the third line, tagged [gs-submit]: the submit= column of [gs-gl stats] split
+    // by phase over EVERY flush that drew (the [gs-transfer] phases cover only the flush a transfer
+    // interrupted), and the GPU->shadow read-back inside resolveTexture counted as work. Phase
+    // terms are milliseconds per second like [gs-transfer]'s; readbacks=, readback_rows=,
+    // readback_px= and rt_direct= are per second. A new line, so neither older line's shape moves.
+    inline std::string formatSubmit(const Accum &a, double elapsedMs)
+    {
+        const double perSec = elapsedMs > 0.0 ? 1000.0 / elapsedMs : 0.0;
+        auto ms = [&](double us) { return us * perSec / 1000.0; };
+        char buf[512];
+        std::snprintf(buf, sizeof(buf),
+                      "[gs-submit] elapsed=%.0fms flushes=%.0f/s setup=%.1fms/s dirty_rows=%.1fms/s resolve=%.1fms/s"
+                      " draw=%.1fms/s readback=%.1fms/s readbacks=%.1f/s readback_rows=%.0f/s readback_px=%.0f/s"
+                      " rt_direct=%.1f/s",
+                      elapsedMs, static_cast<double>(a.submitFlushes) * perSec,
+                      ms(a.submitSetupUs), ms(a.submitRowsUs), ms(a.submitResolveUs), ms(a.submitDrawUs),
+                      ms(a.readbackUs), static_cast<double>(a.readbacks) * perSec,
+                      static_cast<double>(a.readbackRows) * perSec, static_cast<double>(a.readbackPixels) * perSec,
+                      static_cast<double>(a.rtDirect) * perSec);
         return std::string(buf);
     }
 }

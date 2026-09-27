@@ -57,6 +57,12 @@ namespace
     thread_local bool g_flushHadBatch = false;
     thread_local double g_flushDirtyRowsUs = 0.0;
     thread_local double g_flushDecodeUs = 0.0;
+    // Sprint 16 F2: the same two halves of setupDrawState, armed by flushBatch for EVERY flush that
+    // draws (under PS2X_GS_UPLOAD_TRACE), feeding the [gs-submit] line. Kept apart from the three
+    // above so the [gs-transfer] phases keep meaning "the flush a transfer interrupted".
+    thread_local bool g_submitPhasesArmed = false;
+    thread_local double g_submitRowsUs = 0.0;
+    thread_local double g_submitResolveUs = 0.0;
     // The game thread writes this one; the render thread's formatter drains it. Relaxed is right:
     // the line is a diagnostic, and a torn microsecond does not change a verdict.
     std::atomic<double> g_recordUsGameThread{0.0};
@@ -1576,6 +1582,12 @@ long GSGlBackend::traceSkip(const char *env) const
     return static_cast<long>(m_movieStartFrame) - v;
 }
 
+// Sprint 16 F2: the accumulator, for ps2x_tests' work counts (declared in gs_gl_upload_trace.h).
+const GsGlUploadTrace::Accum &GsGlUploadTrace::live()
+{
+    return g_uploadTrace;
+}
+
 void GSGlBackend::executeCommands(CommandBuffer &buffer)
 {
     static const bool s_stats = ps2x::knob("PS2X_GS_STATS") != nullptr;
@@ -1926,6 +1938,9 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             // Sprint 8 Goal 2b Task 1: the second line, same knob and same 60-call cadence, printed
             // before the reset so both lines describe the same interval.
             std::fprintf(stderr, "%s\n", GsGlUploadTrace::formatTransfer(g_uploadTrace, elapsed).c_str());
+            // Sprint 16 F2: the third line -- the submit= column split over every flush, and the
+            // GPU->shadow read-back inside it counted as work. Same knob, same cadence, same interval.
+            std::fprintf(stderr, "%s\n", GsGlUploadTrace::formatSubmit(g_uploadTrace, elapsed).c_str());
             GsGlUploadTrace::reset(g_uploadTrace);
         }
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
@@ -2797,6 +2812,10 @@ void GSGlBackend::resolveToMirror(RenderTarget &rt)
 // Download a render target (GPU) into the shadow VRAM so texture decoding sees the drawn pixels.
 void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
 {
+    // Sprint 16 F2: this call is the read-back the [gs-submit] line counts (readbacks=,
+    // readback_rows=, readback_px=, readback=). The counts are unconditional, the clock is not.
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    const auto tDl0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     // Native throughout: `h` is a native row count, the buffer stride and the glReadPixels rect
     // below are native pixels, and the source is nativeViewFbo() rather than rt.fbo -- which is
     // rt.fbo itself at scale 1 (research/14 section 8.1 item 1).
@@ -2861,6 +2880,9 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
     rt.shadowStale = false;
     rt.gpuRows = false;
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
+    GsGlUploadTrace::noteReadback(g_uploadTrace, yEnd > yStart ? yEnd - yStart : 0u,
+                                  static_cast<uint64_t>(rt.nativeWidth) * h,
+                                  s_uploadTrace ? std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tDl0).count() : 0.0);
 }
 
 // Download into the game thread's authoritative VRAM (guest reads GS memory).
@@ -3594,6 +3616,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                                  (unsigned long long)m_frameCounter, tex.tbp0, rt.fbp, rt.nativeWidth, rt.nativeHeight);
                 if (uploadGateOn())
                     m_uploadGate.noteTex(GsGlUploadReasons::Tex::RtDirect);
+                GsGlUploadTrace::noteRtDirect(g_uploadTrace);   // F2: served, not read back (unconditional)
                 return view;
             }
         }
@@ -3860,11 +3883,19 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
                                       std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     m_batchRt = rt;
     {
-        // Sprint 8 Goal 2b Task 1: phase 1 of the flush the transfer interrupted.
-        const auto tRows0 = g_flushPhasesArmed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        // Sprint 8 Goal 2b Task 1: phase 1 of the flush the transfer interrupted. Sprint 16 F2: the
+        // same clock feeds the [gs-submit] split for every flush (g_submitPhasesArmed).
+        const bool timed = g_flushPhasesArmed || g_submitPhasesArmed;
+        const auto tRows0 = timed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         refreshDirtyRows(*rt);
-        if (g_flushPhasesArmed)
-            g_flushDirtyRowsUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRows0).count();
+        if (timed)
+        {
+            const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRows0).count();
+            if (g_flushPhasesArmed)
+                g_flushDirtyRowsUs += us;
+            if (g_submitPhasesArmed)
+                g_submitRowsUs += us;
+        }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
     // Depth attachment keyed by ZBP.
@@ -4027,10 +4058,17 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
         // decodeTexture + glTexImage2D. (resolveTexture calls refreshDirtyRows of its own on the
         // RT-as-texture path; that time lands here rather than in dirty_rows, deliberately: it is
         // part of resolving the batch's texture.)
-        const auto tTex0 = g_flushPhasesArmed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        const bool timed = g_flushPhasesArmed || g_submitPhasesArmed;   // F2: as the rows half above
+        const auto tTex0 = timed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const uint32_t texture = resolveTexture(state, tw, th);
-        if (g_flushPhasesArmed)
-            g_flushDecodeUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tTex0).count();
+        if (timed)
+        {
+            const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tTex0).count();
+            if (g_flushPhasesArmed)
+                g_flushDecodeUs += us;
+            if (g_submitPhasesArmed)
+                g_submitResolveUs += us;
+        }
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
         const GLint filter = state.linearFilter ? GL_LINEAR : GL_NEAREST;
@@ -4059,7 +4097,16 @@ void GSGlBackend::flushBatch()
     // Sprint 8 Goal 2b Task 1: past both early returns, so this flush really drew. The two returns
     // above are the "empty" case the [gs-transfer] line counts as flush_empty.
     g_flushHadBatch = true;
+    // Sprint 16 F2: every flush that draws, split for the [gs-submit] line (research/73 section 1:
+    // the mission's flushes come from executeSubmit and the [gs-transfer] phases never see them).
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    g_submitRowsUs = 0.0;
+    g_submitResolveUs = 0.0;
+    g_submitPhasesArmed = s_uploadTrace;
+    const auto tSetup0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     setupDrawState(m_batchState);
+    const auto tSetup1 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    g_submitPhasesArmed = false;
     // PS2X_GS_GL_DEBUG_PSM=<psm>: print the first batches drawn with that texture format (state,
     // bound texture, blend and the vertices actually submitted), to compare with the CPU path.
     static const int s_debugPsm = ps2x::knob("PS2X_GS_GL_DEBUG_PSM") ? std::atoi(ps2x::knob("PS2X_GS_GL_DEBUG_PSM")) : -1;
@@ -4149,6 +4196,16 @@ void GSGlBackend::flushBatch()
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertices.size() * sizeof(GlVertex)), m_vertices.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(m_vertices.size()));
+    if (s_uploadTrace)
+    {
+        // F2: setup= is setupDrawState less its two timed halves; draw= runs from the end of
+        // setupDrawState to the draw call (the debug probes above are inside it when they are on).
+        const auto tDraw1 = std::chrono::steady_clock::now();
+        const double setupUs = std::chrono::duration<double, std::micro>(tSetup1 - tSetup0).count();
+        const double drawUs = std::chrono::duration<double, std::micro>(tDraw1 - tSetup1).count();
+        GsGlUploadTrace::noteSubmitFlush(g_uploadTrace, setupUs - g_submitRowsUs - g_submitResolveUs,
+                                         g_submitRowsUs, g_submitResolveUs, drawUs);
+    }
     if (debugThis && m_vertices.size() >= 6)
     {
         // Read back the whole quad region and count pixels the draw changed.

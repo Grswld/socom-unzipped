@@ -5,6 +5,7 @@
 #include "ps2_syscalls.h"
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/gs/gs_cpu_backend.h"
+#include "runtime/gs/gs_gl_backend.h"   // Sprint 16 F2: glUnavailableForProcess() for the planted read-back scene
 #include "runtime/ee_scheduler.h"
 #include "runtime/gs/ps2_gs_memory.h"
 #include "runtime/gs/ps2_gs_psmct32.h"
@@ -6468,6 +6469,132 @@ void register_ps2_gs_tests()
             t.IsTrue(up() == R::SameFree, "valid again after its re-upload");
             gate.decide(z, a.data(), a.size(), true, none, 6u, 1u, 1u, false, false);
             t.IsTrue(up() == R::SameRewritten, "a Z-format upload at an unaligned dbp in page 6 stamps page 7 too");
+        });
+
+        // Sprint 16 F2: the [gs-submit] line -- the submit= column of [gs-gl stats] split over EVERY
+        // flush that drew (the [gs-transfer] phases see only the flush a transfer interrupted), and
+        // the GPU->shadow read-back inside resolveTexture counted as work. Header-only arithmetic.
+        tc.Run("GsGlUploadTrace [gs-submit] reports the submit split in ms/s and the read-back as work per second", [](TestCase &t)
+        {
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 100; ++i)
+                GsGlUploadTrace::noteSubmitFlush(a, 30.0, 10.0, 200.0, 60.0);   // 300 us a flush
+            GsGlUploadTrace::noteReadback(a, 448u, 640ull * 448ull, 5000.0);
+            GsGlUploadTrace::noteReadback(a, 224u, 640ull * 224ull, 3000.0);
+            GsGlUploadTrace::noteRtDirect(a);
+            t.Equals(a.submitFlushes, 100ull, "every flush that drew is counted");
+            t.Equals(a.readbacks, 2ull, "every read-back is counted");
+            t.Equals(a.readbackRows, 672ull, "the rows the read-backs wrote add up");
+            t.Equals(a.readbackPixels, 430080ull, "the pixels the driver copied add up");
+            const std::string line = GsGlUploadTrace::formatSubmit(a, 1000.0);
+            t.IsTrue(line.rfind("[gs-submit] elapsed=1000ms flushes=100/s", 0) == 0, "the line is tagged [gs-submit] and counts flushes per second: " + line);
+            t.IsTrue(line.find(" setup=3.0ms/s dirty_rows=1.0ms/s resolve=20.0ms/s draw=6.0ms/s") != std::string::npos,
+                     "the four phases are milliseconds per second, the unit submit= is read in: " + line);
+            t.IsTrue(line.find(" readback=8.0ms/s readbacks=2.0/s readback_rows=672/s readback_px=430080/s rt_direct=1.0/s") != std::string::npos,
+                     "the read-back is time AND work, per second: " + line);
+            const std::string half = GsGlUploadTrace::formatSubmit(a, 500.0);
+            t.IsTrue(half.find(" flushes=200/s") != std::string::npos && half.find(" readbacks=4.0/s") != std::string::npos &&
+                         half.find(" resolve=40.0ms/s") != std::string::npos,
+                     "half the interval doubles every rate: " + half);
+        });
+
+        // Sprint 16 F2, the planted scene (the GL half: PS2X_CONSOLE_REPLAY_GL=1, a hidden raylib window
+        // like the console replay's, none in CI). The frame's post-process copy, planted: a flat sprite
+        // fills a 640x448 CT32 target (FBW 10, scissor to 447, so GsGlTarget::choose sizes it 640x448),
+        // then a textured sprite copies it at half size into a second target. A 640x448 buffer can only
+        // be declared TW=10 TH=9 (1024x512); the RT-as-texture fast path (PS2X_GS_RT_TEXTURE, 1c301b9b)
+        // refused that envelope once Sprint 7 Task 1c (6ea95204) shrank targets to their use, and every
+        // such draw fell back to downloadRenderTargetToShadow -- a whole-target glReadPixels behind a
+        // GPU drain, once a frame in the mission (research/73 section 1, logs/f2_design.md). Red before
+        // F2's change (readbacks 1, rt_direct 0), green after (0, 1); the copied pixel is the frame's
+        // colour either way -- the work moves, the picture does not.
+        tc.Run("F2: a 640x448 target sampled through its 1024x512 TEX0 envelope is served from the target, not read back (PS2X_CONSOLE_REPLAY_GL=1)", [](TestCase &t)
+        {
+            if (std::getenv("PS2X_CONSOLE_REPLAY_GL") == nullptr)
+            {
+                t.Skip("PS2X_CONSOLE_REPLAY_GL unset: the GL half needs a hidden raylib window (none in CI)");
+                return;
+            }
+            auto setBackend = [](const char *which)
+            {
+#ifdef _WIN32
+                _putenv_s("PS2X_GS_BACKEND", which);
+#else
+                setenv("PS2X_GS_BACKEND", which, 1);
+#endif
+            };
+            setBackend("gpu");
+            SetConfigFlags(FLAG_WINDOW_HIDDEN);
+            InitWindow(640, 448, "f2 read-back");
+            if (!IsWindowReady())
+            {
+                setBackend("cpu");
+                t.Skip("raylib could not open a hidden window on this host");
+                return;
+            }
+            constexpr uint32_t kFrameFbp = 0u, kCopyFbp = 0xa0u;   // pages: the copy target sits past the frame's 140
+            constexpr uint32_t kColor = 0x80204080u;                // RGBAQ bytes: R=0x80 G=0x40 B=0x20 A=0x80
+            uint64_t readbacks = 0u, rtDirect = 0u;
+            uint32_t copied = 0u;
+            bool glUnavailable = false;
+            {
+                std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+                GS gs;
+                gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+                auto frameReg = [](uint32_t fbp) { return static_cast<uint64_t>(fbp) | (10ull << 16) | (static_cast<uint64_t>(GS_PSM_CT32) << 24); };
+                auto scissor = [](uint32_t x1, uint32_t y1) { return (static_cast<uint64_t>(x1) << 16) | (static_cast<uint64_t>(y1) << 48); };
+                auto xyz = [](uint32_t x, uint32_t y) { return static_cast<uint64_t>(x * 16u) | (static_cast<uint64_t>(y * 16u) << 16); };
+                auto uv = [](uint32_t u, uint32_t v) { return static_cast<uint64_t>(u * 16u) | (static_cast<uint64_t>(v * 16u) << 16); };
+                // 1. The frame: a flat sprite over all of it.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kFrameFbp));
+                gs.writeRegister(GS_REG_ZBUF_1, 0x1c0ull | (1ull << 32));   // ZBP past both targets, ZMSK
+                gs.writeRegister(GS_REG_SCISSOR_1, scissor(639u, 447u));
+                gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+                gs.writeRegister(GS_REG_TEST_1, 0x30000ull);   // ZTE on, ZTST ALWAYS
+                gs.writeRegister(GS_REG_PRIM, static_cast<uint64_t>(GS_PRIM_SPRITE));
+                gs.writeRegister(GS_REG_RGBAQ, kColor);
+                gs.writeRegister(GS_REG_XYZ2, xyz(0u, 0u));
+                gs.writeRegister(GS_REG_XYZ2, xyz(640u, 448u));
+                // 2. The copy: textured from the frame (TBP0 its base, TBW 10, CT32, TW 10, TH 9, TCC, TFX decal),
+                //    clamp/clamp, nearest, FST, at half size into the second target.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kCopyFbp));
+                gs.writeRegister(GS_REG_SCISSOR_1, scissor(319u, 223u));
+                const uint64_t tex0 = static_cast<uint64_t>(kFrameFbp << 5) | (10ull << 14) | (static_cast<uint64_t>(GS_PSM_CT32) << 20) |
+                                      (10ull << 26) | (9ull << 30) | (1ull << 34) | (1ull << 35);
+                gs.writeRegister(GS_REG_TEX0_1, tex0);
+                gs.writeRegister(GS_REG_CLAMP_1, 1ull | (1ull << 2));
+                gs.writeRegister(GS_REG_TEX1_1, 0ull);
+                gs.writeRegister(GS_REG_PRIM, static_cast<uint64_t>(GS_PRIM_SPRITE) | (1ull << 4) | (1ull << 8));   // TME, FST
+                gs.writeRegister(GS_REG_UV, uv(0u, 0u));
+                gs.writeRegister(GS_REG_XYZ2, xyz(0u, 0u));
+                gs.writeRegister(GS_REG_UV, uv(640u, 448u));
+                gs.writeRegister(GS_REG_XYZ2, xyz(320u, 224u));
+                const GsGlUploadTrace::Accum before = GsGlUploadTrace::live();
+                gs.hostRenderFrame();   // this thread replays: the frame's sprite, then the copy resolves its texture
+                glUnavailable = GSGlBackend::glUnavailableForProcess();
+                const GsGlUploadTrace::Accum &after = GsGlUploadTrace::live();
+                readbacks = after.readbacks - before.readbacks;
+                rtDirect = after.rtDirect - before.rtDirect;
+                // The copied pixel, through the guest-visible read-back (Sync(DebugReadback) + SnapshotVram, as the
+                // console replay reads its frame): the picture must be the same whichever path served the texture.
+                gs.refreshDisplaySnapshot();
+                uint32_t snapSize = 0u;
+                const uint8_t *snap = gs.lockDisplaySnapshot(snapSize);
+                if (snap && snapSize >= vram.size())
+                    std::memcpy(vram.data(), snap, vram.size());
+                gs.unlockDisplaySnapshot();
+                copied = readReferencePSMCT32Pixel(vram, kCopyFbp, 10u, 160u, 112u);
+            }
+            CloseWindow();
+            setBackend("cpu");
+            if (glUnavailable)
+            {
+                t.Skip("the GL backend latched unavailable on this host (no OpenGL 3.3)");
+                return;
+            }
+            t.Equals(copied, kColor, "the copy holds the frame's colour: the same pixels whichever path served the texture");
+            t.Equals(readbacks, 0ull, "no GPU->shadow read-back: the frame is sampled from its own target");
+            t.Equals(rtDirect, 1ull, "the copy's one resolve was served from the target");
         });
 
     });
