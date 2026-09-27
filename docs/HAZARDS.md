@@ -404,6 +404,10 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
   `tools/` lives at `D:\socom_archive\tools_backup_<date>` (made the same night) so the next time costs a copy, not
   a rebuild. The owner's sitting record: `docs/superpowers/plans/2026-09-26-owner-sitting.md`. *No issue: a lesson,
   not a defect -- the D: backup and `agent_worktree.sh remove` are the fix, and the rule above is the guard.*
+  **The copy is one command since Sprint 16 X1 (2026-09-27):** `bash scripts/bootstrap_windows.sh
+  --restore-owner-tools [--dry-run]` brings PCSX2, Ghidra and the rest back from that backup, each entry verified
+  against `scripts/tools_backup_manifest.txt` before and after the copy, an entry already present left alone; the
+  toolchain itself is the same script's fetch path.
 
 ## build
 
