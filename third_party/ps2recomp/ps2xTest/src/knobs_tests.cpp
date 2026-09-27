@@ -160,29 +160,6 @@ void register_knobs_tests()
             t.IsTrue(ps2x::knobs::devMode(), "--dev (setDevMode) wins over the environment");
         });
 
-        tc.Run("forbidDevMode: a player release has no developer mode, whatever asks for it (R295)", [](TestCase &t)
-        {
-            KnobStateGuard guard;
-            ps2x::knobs::setEnforcement(true);
-            setVar("PS2X_DEV", "1");
-            setVar(kDevName, "1");
-            ps2x::knobs::resetDevModeForTests();
-            t.IsNotNull(ps2x::knob(kDevName), "before: PS2X_DEV=1 honours a Dev knob");
-            ps2x::knobs::forbidDevMode();
-            t.IsTrue(ps2x::knobs::devModeForbidden(), "forbidden");
-            t.IsFalse(ps2x::knobs::devMode(), "PS2X_DEV=1 no longer makes developer mode");
-            ps2x::knobs::setDevMode(true);
-            t.IsFalse(ps2x::knobs::devMode(), "neither does --dev (setDevMode)");
-            t.IsNull(ps2x::knob(kDevName), "so a Dev knob reads as unset");
-            const std::string line = ps2x::knobs::describe({{kDevName, "1"}}, false);
-            t.IsTrue(line.find("compiled out") != std::string::npos, "the [knobs] line says why: " + line);
-            ps2x::knobs::resetDevModeForTests();
-            t.IsFalse(ps2x::knobs::devModeForbidden(), "resetDevModeForTests lifts it");
-            t.IsTrue(ps2x::knobs::devMode(), "and PS2X_DEV decides again");
-            setVar(kDevName, nullptr);
-            setVar("PS2X_DEV", nullptr);
-        });
-
         tc.Run("consumeDevFlag: --dev is taken out of argv wherever it stands, argv[0] never", [](TestCase &t)
         {
             char a0[] = "socom2", a1[] = "--dev", a2[] = "--home", a3[] = "dir", a4[] = "--dev";

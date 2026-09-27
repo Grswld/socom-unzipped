@@ -14,7 +14,6 @@ namespace ps2x
         {
             std::atomic<int> g_dev{-1};           // -1: not decided yet, PS2X_DEV decides on first use
             std::atomic<bool> g_enforce{true};    // a process that says nothing is a stranger's (Sprint 9 Goal 3 Task 7)
-            std::atomic<bool> g_forbidden{false}; // forbidDevMode(): a player release, the probes compiled out (R295)
 
             // Path knobs whose value may lie anywhere: a file that is only read, kept where the player keeps it.
             constexpr const char *kReadAnywhere[] = {"PS2X_CD_IMAGE"};
@@ -144,8 +143,6 @@ namespace ps2x
 
         bool devMode()
         {
-            if (g_forbidden.load(std::memory_order_acquire))
-                return false;
             int v = g_dev.load(std::memory_order_acquire);
             if (v < 0)
             {
@@ -158,17 +155,7 @@ namespace ps2x
         }
 
         void setDevMode(bool on) { g_dev.store(on ? 1 : 0, std::memory_order_release); }
-        void resetDevModeForTests()
-        {
-            g_forbidden.store(false, std::memory_order_release);
-            g_dev.store(-1, std::memory_order_release);
-        }
-        void forbidDevMode()
-        {
-            g_forbidden.store(true, std::memory_order_release);
-            g_dev.store(0, std::memory_order_release);
-        }
-        bool devModeForbidden() { return g_forbidden.load(std::memory_order_acquire); }
+        void resetDevModeForTests() { g_dev.store(-1, std::memory_order_release); }
         bool enforcement() { return g_enforce.load(std::memory_order_acquire); }
         void setEnforcement(bool on) { g_enforce.store(on, std::memory_order_release); }
 
@@ -215,8 +202,7 @@ namespace ps2x
             }
             std::string out = std::string("[knobs] dev=") + (honourDev ? "1" : "0") + " set:" + (shown.empty() ? std::string(" none") : shown);
             if (!ignored.empty())
-                out += (devModeForbidden() ? " | ignored, the probes are compiled out of this build:"
-                                           : " | ignored without --dev:") + ignored;
+                out += " | ignored without --dev:" + ignored;
             if (!refused.empty())
                 out += " | refused, outside the game folder:" + refused;
             return out;

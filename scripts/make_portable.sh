@@ -15,13 +15,17 @@
 # from LDD, so tools_py/tests/test_make_portable_linux.py can drive it on the Windows host with a synthetic
 # dist-linux/ and an ldd that answers for it; a real run sets neither. The interpreter is $PYTHON like
 # everywhere else (scripts/python_env.sh) -- there was a second rule here, PYTHON3, and it disagreed.
-# Sprint 16 R3a (R295): the release is two configurations (build.sh release, PS2X_RELEASE_KIND): the PLAYER exe with
-# the debug UI and the probes compiled out in dist-release/, and the DEVELOPER exe with them in dist-release-dev/
-# (DEVDIST; dist-linux-release-dev/ and LDEVDIST on Linux). `--release` packages both from one run when both exist --
-# socom2-portable.zip from the player and socom2-developer.zip (socom2-linux.tar.gz / socom2-linux-developer.tar.gz)
-# from the developer -- each folder through its own closure, audit and leak check, one SHA256SUMS line each, and one
-# manifest naming both with a `kind` each; with no developer build it packages the player and says so. The ELF
-# ships in both for now (its removal is issue #70). Without PowerShell (a Linux host driving the Windows branch,
+# Sprint 16 R3a (R295): the release is two configurations (build.sh release, PS2X_RELEASE_KIND): the PLAYER exe
+# without the debug UI in dist-release/, and the DEVELOPER exe with it in dist-release-dev/ (DEVDIST;
+# dist-linux-release-dev/ and LDEVDIST on Linux): the player exe drops the debug UI; the probes stay in both kinds
+# because the gate reads them (R295's probe half withdrawn by the Sprint 16 controller, 2026-09-27). Each build
+# folder carries RELEASE_KIND, one word written by the build; `--release` refuses (exit 2) a folder whose marker is
+# absent or names the other kind, and the manifest's kind is the marker's. `--release` packages both from one run
+# when both exist -- socom2-portable.zip from the player and socom2-developer.zip (socom2-linux.tar.gz /
+# socom2-linux-developer.tar.gz) from the developer -- each folder through its own closure, audit and leak check,
+# one SHA256SUMS line each, and one manifest naming both with a `kind` each; with no developer build it packages the
+# player and says so, and removes only a stale developer archive (never the folder: a player's cards/ may be in it).
+# The ELF ships in both for now (its removal is issue #70). Without PowerShell (a Linux host driving the Windows branch,
 # as tools_py/tests/test_make_portable.py does) the zip is written by Python's zipfile instead of Compress-Archive.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -80,8 +84,21 @@ write_manifest() {   # <manifest> <kind> <archive> <runner exe> [<kind> <archive
   echo "manifest: $manifest"
 }
 # A --release run packages the player build and, when it exists, the developer build beside it; a plain run packages
-# the developer tree (dist/, dist-linux/: the debug UI and the probes are in it), recorded as kind "developer".
-TOPKIND="developer"; [ -n "$SUFFIX" ] && TOPKIND="player"
+# the developer tree (dist/, dist-linux/: the debug UI is in it), recorded as kind "developer".
+TOPKIND="developer"
+KIND=""
+release_kind() {   # <build dir> <the kind packaged from it> <the build script>: KIND=the marker's, or exit 2
+  local marker="$1/RELEASE_KIND" want="$2"
+  if [ ! -f "$marker" ]; then
+    echo "make_portable: $marker is missing -- rebuild the $want kind with PS2X_RELEASE_KIND=$want $3 release, which writes it" >&2
+    exit 2
+  fi
+  KIND="$(tr -d ' \r\n' < "$marker")"
+  if [ "$KIND" != "$want" ]; then
+    echo "make_portable: $marker says '$KIND' where the $want kind is packaged from -- rebuild it with PS2X_RELEASE_KIND=$want $3 release" >&2
+    exit 2
+  fi
+}
 no_developer_build() {   # <the folder that was looked for> <the build script>
   echo "make_portable: no developer build in $1 -- packaging the player archive only" \
        "(PS2X_RELEASE_KIND=developer $2 release makes it)"
@@ -214,17 +231,23 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     mkdir -p "$LDIST" "$OUT"
     rm -f "$MANIFEST" "$MANIFEST.tmp" "$OUT/SHA256SUMS"
     command -v "$LDD" >/dev/null || { echo "make_portable: ldd not found" >&2; exit 2; }
+    DEVKIND=""
+    if [ -n "$SUFFIX" ]; then   # both markers before any packaging: a refusal leaves nothing half-made
+      release_kind "$LDIST" player scripts/build_linux.sh; TOPKIND="$KIND"
+      if [ -f "$LDEVDIST/socom2" ]; then release_kind "$LDEVDIST" developer scripts/build_linux.sh; DEVKIND="$KIND"; fi
+    fi
     package_linux "$LDIST" "$OUT" socom2-linux
     ARCHIVES=("$TOPKIND" "$OUT/socom2-linux.tar.gz" "$LDIST/socom2")
     NAMES=(socom2-linux.tar.gz)
     if [ -n "$SUFFIX" ]; then
-      if [ -f "$LDEVDIST/socom2" ]; then
+      if [ -n "$DEVKIND" ]; then
         package_linux "$LDEVDIST" "$OUT" socom2-linux-developer
-        ARCHIVES+=(developer "$OUT/socom2-linux-developer.tar.gz" "$LDEVDIST/socom2")
+        ARCHIVES+=("$DEVKIND" "$OUT/socom2-linux-developer.tar.gz" "$LDEVDIST/socom2")
         NAMES+=(socom2-linux-developer.tar.gz)
       else
         no_developer_build "$LDEVDIST" "scripts/build_linux.sh"
-        rm -rf "${OUT:?}/socom2-linux-developer" "${OUT:?}/socom2-linux-developer.tar.gz"   # never a previous run's
+        # only a previous run's archive (SHA256SUMS is rewritten without it); never the folder, whose cards/ are saves
+        rm -f "${OUT:?}/socom2-linux-developer.tar.gz"
       fi
     fi
     "$PY" "$AUDIT" sha256sums "$OUT" "${NAMES[@]}" >/dev/null
@@ -238,17 +261,23 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     MANIFEST="$DIST/manifest.json"
     mkdir -p "$OUT"
     rm -f "$MANIFEST" "$MANIFEST.tmp" "$OUT/SHA256SUMS"
+    DEVKIND=""
+    if [ -n "$SUFFIX" ]; then   # both markers before any packaging: a refusal leaves nothing half-made
+      release_kind "$DIST" player ./build.sh; TOPKIND="$KIND"
+      if [ -f "$DEVDIST/socom2.exe" ]; then release_kind "$DEVDIST" developer ./build.sh; DEVKIND="$KIND"; fi
+    fi
     package_windows "$DIST" "$OUT" socom2 socom2-portable.zip
     ARCHIVES=("$TOPKIND" "$OUT/socom2-portable.zip" "$DIST/socom2.exe")
     NAMES=(socom2-portable.zip)
     if [ -n "$SUFFIX" ]; then
-      if [ -f "$DEVDIST/socom2.exe" ]; then
+      if [ -n "$DEVKIND" ]; then
         package_windows "$DEVDIST" "$OUT" socom2-developer socom2-developer.zip
-        ARCHIVES+=(developer "$OUT/socom2-developer.zip" "$DEVDIST/socom2.exe")
+        ARCHIVES+=("$DEVKIND" "$OUT/socom2-developer.zip" "$DEVDIST/socom2.exe")
         NAMES+=(socom2-developer.zip)
       else
         no_developer_build "$DEVDIST" "./build.sh"
-        rm -rf "${OUT:?}/socom2-developer" "${OUT:?}/socom2-developer.zip"   # never a previous run's beside SHA256SUMS
+        # only a previous run's zip (SHA256SUMS is rewritten without it); never the folder, whose cards/ are saves
+        rm -f "${OUT:?}/socom2-developer.zip"
       fi
     fi
     "$PY" "$AUDIT" sha256sums "$OUT" "${NAMES[@]}" >/dev/null

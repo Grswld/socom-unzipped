@@ -45,9 +45,9 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 The player's page is `docs/INSTALL.md`, and what goes wrong is `docs/FAQ.md`. For a developer: `scripts/make_portable.sh`
 builds `dist/portable/socom2/` (and a zip) from a finished build — the game, its DLLs, the launcher, a README and the
 licences, with empty `cards/` and `logs/` — which is the folder INSTALL describes. The release is two kinds (R295):
-`./build.sh release` builds the **player** exe into `dist-release/` with the debug UI and the probes compiled out
-(`-DPS2X_ENABLE_DEBUG_UI=OFF -DPS2X_ENABLE_PROBES=OFF`: developer mode, so every Dev knob, reads as off), and
-`PS2X_RELEASE_KIND=developer ./build.sh release` the **developer** exe with both in, into `dist-release-dev/`;
+`./build.sh release` builds the **player** exe into `dist-release/` with `-DPS2X_ENABLE_DEBUG_UI=OFF`, and
+`PS2X_RELEASE_KIND=developer ./build.sh release` the **developer** exe with it ON, into `dist-release-dev/`:
+the player exe drops the debug UI; the probes stay in both kinds because the gate reads them (R295's probe half withdrawn by the Sprint 16 controller, 2026-09-27). Each writes its kind beside the exe in `RELEASE_KIND`, which make_portable refuses to package without (exit 2);
 `scripts/make_portable.sh --release` then writes `socom2-portable.zip` and `socom2-developer.zip` from one run, one
 `SHA256SUMS` line and one manifest entry (with its `kind`) each. The ELF ships in both for now (issue #70).
 

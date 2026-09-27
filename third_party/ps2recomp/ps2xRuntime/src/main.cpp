@@ -201,17 +201,8 @@ int main(int argc, char *argv[])
 
     // Sprint 9 Goal 3: --dev, anywhere after argv[0], is developer mode (the same as PS2X_DEV=1): Dev-class
     // knobs are honoured. Taken out of argv here, before anything below looks at argv[1].
-#if defined(PS2X_ENABLE_PROBES) && !PS2X_ENABLE_PROBES
-    // Sprint 16 R3a (R295): the player release (PS2X_ENABLE_PROBES=OFF) has no developer mode, so no probe, trace
-    // or dump can be switched on; --dev is still taken out of argv, and said to be ignored.
-    ps2x::knobs::forbidDevMode();
-    if (ps2x::knobs::consumeDevFlag(argc, argv))
-        std::cerr << "[knobs] --dev ignored: the probes are compiled out of this build (the developer archive has them)"
-                  << std::endl;
-#else
     if (ps2x::knobs::consumeDevFlag(argc, argv))
         ps2x::knobs::setDevMode(true);
-#endif
 
     // socom2 --fail-test crash|oom: drives codes 70 and 71 for tools_py/tests/test_runner_exit_codes.py.
     if (argc > 2 && std::strcmp(argv[1], "--fail-test") == 0)
