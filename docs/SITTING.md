@@ -81,8 +81,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R316** (2026-09-27) the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a…… -- overturn by number
 - **R317** (2026-09-27) `PS2Runtime::initialize` gains a headless mode taken by an explicit argument the helper's `main` passes (not a knob), default off so `socom2.exe`'s behaviour i… -- overturn by number
 - **R318** (2026-09-27) the wiki holds human prose only; what an agent, a hook or a check reads stays in the tree. -- overturn by number
-- **R319** (2026-09-27) Discussions' Announcements stand in for patch notes and site announcements for now, human-gated: a dated draft under `docs/announcements/` from its template, a… -- overturn by number
-- **R320** (2026-09-27) revise, do not append: in the L documents a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's and the Log's. -- overturn by number
+- **R319** (2026-09-27) Discussions' Announcements stand in for patch notes for now, human-gated: a dated draft under `docs/announcements/` from its template, a `docs/HUMAN_TASKS.md`… -- overturn by number
+- **R320** (2026-09-27) revise, do not append: a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's. -- overturn by number
 - **S13-R12** (2026-09-26) the close's issue-stack read, acted on. -- overturn by number
 - **S13-R13** (2026-09-26) the frame-time pin stays informational; #59 carries with the measured reason. -- overturn by number
 - **S13-R14** (2026-09-26) the carried-twice three go to the owner, the rest carry once to the backlog. #25 (the Linux VM suites; no Sprint 13 task), #26 (the chat bound's path; O2 resta… -- overturn by number
