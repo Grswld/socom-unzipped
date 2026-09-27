@@ -791,7 +791,7 @@ function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { mes
         const parts = interpretChainParts(walkChain(entry.buffer, at.offset, chunk));
         // The cull is per visual, and a chunk is one visual: every mesh out of it takes its flag. So does
         // the `_L` light: a chunk stored as `<key>_L` is a node `hookupVisuals` marks dynamically lit
-        // (`vis_main.cpp:93-102`, note 72 line 116), and its node flags do not say so -- none of Night
+        // (`vis_main.cpp:100-109`, note 72 line 116), and its node flags do not say so -- none of Night
         // Stalker's eight `_L` chunks is on a `NODE_FLAGS_LIT` node. Every other chunk keeps `p.lit`.
         meshes.push(...parts.meshes.map((mesh) => ({ ...mesh, cull: p.cull[i] ?? true, lit: at.lit })));
         lines.push(...parts.lines);

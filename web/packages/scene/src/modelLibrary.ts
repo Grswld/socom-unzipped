@@ -107,14 +107,14 @@ export interface ResolvedChunk {
   lit: boolean;
 }
 
-/** The suffix `hookupVisuals` appends to a chunk key for a dynamically lit node (`vis_main.cpp:93-95`). */
+/** The suffix `hookupVisuals` appends to a chunk key for a dynamically lit node (`vis_main.cpp:101-102`). */
 const LIGHT_SUFFIX = '_L';
 const lookups = new WeakMap<ModelEntry, Map<string, number>>();
 
 /**
  * The chain a predicted chunk key (`chunkKey`) names in a model's buffer, or null when the buffer holds
  * it under neither name. The engine fetches `<key>_L` first and, finding it, marks the node dynamically
- * lit (`SetDynamicLight(true, false)`); only then does it fetch `<key>` (`vis_main.cpp:93-102`, `:122-131`;
+ * lit (`SetDynamicLight(true, false)`); only then does it fetch `<key>` (`vis_main.cpp:100-109`, `:129-138`;
  * note 72 line 116). 278 chunks on five maps -- MP1, MP7, MP11, MP62, MP83 -- exist only under the `_L`
  * name, and no buffer on the disc holds both forms of one key.
  */
