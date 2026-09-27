@@ -13,7 +13,7 @@ over `Uint8Array` and run under node for tests and tools; only `viewer` touches 
 **Tech Stack:** Node 24, npm workspaces, TypeScript 5 strict, vitest, Vite, three.js (r186+, `WebGPURenderer` with
 WebGL2 fallback), Playwright for rendered-frame checks. No GPL code enters `web/`.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-web-map-viewer-design.md`. Formats: `docs/research/72-mp-map-archive-anatomy.md`
+**Spec:** `docs/superpowers/specs/2026-09-20-web-map-viewer-design.md`. Formats: `web/docs/research/72-mp-map-archive-anatomy.md`
 (cited below as "36 §N"). Both must be read before any task.
 
 ## Global Constraints
@@ -813,7 +813,7 @@ describe('records', () => {
 **Files:**
 - Create: `web/packages/gs/src/decode.ts`, `web/packages/gs/src/paletteTable.ts`, `web/packages/gs/test/decode.test.ts`,
   `web/tools/dump-textures.ts`, `web/packages/gs/test/goldens/frostfire-textures.json`
-- Modify: spec section 9 (finding), `docs/research/72-mp-map-archive-anatomy.md` §5 (answer the open question)
+- Modify: spec section 9 (finding), `web/docs/research/72-mp-map-archive-anatomy.md` §5 (answer the open question)
 
 **Interfaces:**
 - Produces:
@@ -884,7 +884,7 @@ The goldens file starts as `{}`; the golden test is expected to fail until Step 
 - [ ] **Step 6: Freeze goldens**: add a `--write-goldens` flag to `dump-textures.ts` that writes
   `packages/gs/test/goldens/frostfire-textures.json` (`{name: hash16}` for all 65). Run it, then `npx vitest run packages/gs` → pass.
 
-- [ ] **Step 7: Commit** — `feat(web/gs): Frostfire's 65 textures decode -- <raster|swizzled> pixel order and the <swapped|linear> 8-bit CLUT, settled by looking, frozen as goldens (M2)` — paths: `web/packages/gs`, `web/tools/dump-textures.ts`, `web/tools/png.ts`, the spec, `docs/research/72-mp-map-archive-anatomy.md`.
+- [ ] **Step 7: Commit** — `feat(web/gs): Frostfire's 65 textures decode -- <raster|swizzled> pixel order and the <swapped|linear> 8-bit CLUT, settled by looking, frozen as goldens (M2)` — paths: `web/packages/gs`, `web/tools/dump-textures.ts`, `web/tools/png.ts`, the spec, `web/docs/research/72-mp-map-archive-anatomy.md`.
 
 ---
 
