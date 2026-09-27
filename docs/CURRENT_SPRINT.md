@@ -226,7 +226,7 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R234 | "`CONTRIBUTING.md` now says **the game build is supported**, on the evidence of one disc image on one machine" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
 | R235 | "the from-nothing run **reused the toolchain archives** already in the main tree's bootstrap cache" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | **closed** by the genuine clone-to-game run recorded in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
 | R236 | "the launcher's **default window is the game's own 640x448**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R236 block | stands -- it **overturns R92**, Sprint 7's 2x default |
-| R237 | "the prefilled login leaves the player path" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R237 block | **REWRITTEN 2026-09-23 by W10**: the persona survives a virgin-card restart, the saved password does not, so **the prefill stays** until the clean-exit launch settles which side loses the write |
+| R237 | "the prefilled login leaves the player path" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R237 block | **Superseded by R310 (Sprint 16 L1, 2026-09-27)** for a persona whose card holds the password: V6 settled that the card keeps it (`docs/KNOWN.md` §3, the W10 row) and D12's persona record lets the launcher stop typing it; before that, **REWRITTEN 2026-09-23 by W10**: the persona survives a virgin-card restart, the saved password does not, so **the prefill stays** until the clean-exit launch settles which side loses the write |
 | R238 | "a failure the player can see **must never be silent**"; `setMcCommandResultLocked` prints `[mc] command <n> FAILED …` in every build | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R238 block | stands **as corrected in place** -- the first telling (reclassing two Dev knobs to Shipping) was wrong and the correction is kept beside it |
 | R239 | "the online blop was charged to bank `0x00a00000`'s one-shots" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R239 block | **withdrawn by its own A/B** -- the bank is cleared |
 | R240 | "the join driver **presses REFRESH LIST before JOIN GAME, and takes a channel**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the playthrough block | stands; landed in `00d8348`, and R244 proves its path through the ladder |
@@ -238,7 +238,8 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 
 **Below R181, kept verbatim from the index line this table replaced** (they are Sprint 9's and earlier, and no part
 of this reconciliation): R179-R180 are Sprint 10 Goal 9's, recorded in its plan -- the password plain in
-`config.json`, and prefill-never-submit; R178 is Q0's conductor grains (child sounds, registers, markers, from the
+`config.json` (R179, superseded by R310 on 2026-09-27 for a persona whose card holds the password, Sprint 16 L1),
+and prefill-never-submit; R178 is Q0's conductor grains (child sounds, registers, markers, from the
 open reference), in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`'s "Rulings made on the owner's behalf"; R177 is Q0's mix device buffer, 20 ms x 4, measured, the same block; R176 is P4's ADVANCED section --
 what went in it and what did not; R175 is P6's -- the preset switch needs no launch and the server keeps advertising
 its IP, the same block; R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10;

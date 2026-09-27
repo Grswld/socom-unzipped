@@ -329,7 +329,15 @@ empty card, created persona `w10test` with the SAVE PASSWORD widget answered LEF
 Launch 2 booted from that same card with **nothing typed** and failed `LOBBY-FAIL login:saved-password:empty` -- rc=4,
 `logs/parity/w10_virgin_b`. **The persona survives a restart on a virgin card; the saved password does not.** The
 game's own way in therefore does not yet reach the lobby unattended, so the prefill is not redundant and is not
-removed; it stays on the player path, and the two knobs are not reclassed.
+removed; it stays on the player path, and the two knobs are not reclassed. **Superseded by R310 (Sprint 16 L1,
+2026-09-27) for a persona whose card holds the password.**
+
+> **Superseded by R310 (Sprint 16 L1, 2026-09-27):** the fork this rewrite left open was settled by Sprint 13 V6 --
+> the card keeps the password (`docs/KNOWN.md` §3, the W10 row: "the driver misread the screen") -- and Sprint 16 D12
+> makes the launcher read a persona record written by the runtime at login, so `config.json` carries a plain password
+> only while the selected persona's record says the card does not hold it, and the prefill types nothing for one whose
+> card does. The prefill itself stays for a persona with no saved password and for the drive scripts; its password
+> half ends where the record reads true. The text above is kept as the record of why it stayed on 2026-09-23.
 
 **The open question, and it is a fork with no evidence between its two arms:** either the game writes the password
 only on a clean exit, which the driver's kill skips, or our memory-card HLE (or the relaunch's read of it) loses that

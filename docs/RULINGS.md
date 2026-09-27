@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-349 rulings (310 global, 39 sprint-local): 343 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+349 rulings (310 global, 39 sprint-local): 341 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
@@ -90,7 +90,7 @@
 | R240 | -- | active | the join driver presses REFRESH LIST before JOIN GAME, and takes a channel. | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R240** |
 | R239 | -- | withdrawn | the online blop was charged to bank `0x00a00000`'s one-shots. | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R239** |
 | R238 | -- | active | a failure the player can see must never be silent, and that is not a question of knobs. (amended: see the ledger) | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R238** |
-| R237 | -- | active | REWRITTEN 2026-09-23: the prefilled login STAYS in the player path, because the experiment the ruling set itself failed. | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R237** |
+| R237 | -- | superseded | REWRITTEN 2026-09-23: the prefilled login STAYS in the player path, because the experiment the ruling set itself failed. | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R237** |
 | R236 | -- | active | the launcher's default window is the game's own 640x448 (the owner, 2026-09-22: "the default res should be the 640x448"), overturning Sprint 7 Task 1c's 2x def… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R236** |
 | R235 | -- | active | the from-nothing run reused the toolchain archives already in the main tree's bootstrap cache. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` **R235** |
 | R234 | -- | active | `CONTRIBUTING.md` now says the game build is supported, on the evidence of one disc image on one machine. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` **R234** |
@@ -148,7 +148,7 @@
 | R182 | -- | active | rulesets on `main` and `sprint-*`, as GIT_STRATEGY §6 designed them, with one deviation: no CODEOWNERS review required and no bypass. *Decided 2026-09-20.*… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R182** |
 | R181 | -- | active | secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's words. *Decided 2026-09-20.* HANDOFF §5 rule 13 ke… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R181** |
 | R180 | -- | active | prefill, never auto-submit. | `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md` **R180** |
-| R179 | -- | active | the password is stored in plain text in `config.json`, masked on screen. | `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md` **R179** |
+| R179 | -- | superseded | the password is stored in plain text in `config.json`, masked on screen; superseded by R310 (Sprint 16 L1, 2026-09-27) for a persona whose card holds the passw… | `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md` **R179** |
 | R178 | -- | active | the mixer runs the conductor grains: child sounds, registers, markers, cycles, as the open 989snd reimplementation runs them. *Decided 2026-09-20 by the contro… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R178** |
 | R177 | -- | active | the mix is rendered into a device the runtime opens itself, at 20 ms periods x 4 (80 ms in flight), not raylib's 10 ms x 3. *Decided 2026-09-20 by the controll… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R177** |
 | R176 | -- | active | ADVANCED is a per-page section, it holds one thing today, and it cannot hide a setting that is doing something. *Decided 2026-09-19 by the controller; the spec… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R176** |
