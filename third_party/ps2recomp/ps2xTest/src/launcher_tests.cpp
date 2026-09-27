@@ -86,7 +86,7 @@ namespace
 
     // Issue #74: every line the CONTROLLER page's tooltips can say, walked through the page's own focus list in every
     // shape it takes (SETUP with three pads, BUTTONS under each crouch value, each of the three dialogs), each crouch
-    // value and each pad family. `where` names the shape and the control, for a failure message.
+    // value, each pad family, and the default mapping and two custom ones. `where` names the shape and the control, for a failure message.
     struct TipSeen
     {
         std::string where;
@@ -130,18 +130,41 @@ namespace
             shapes.push_back(Shape{"a dialog", dialog, flow});
         }
 
+        // The bind and SWITCH lines name the pad button bound now, so their width depends on the mapping: the
+        // defaults, and a player's own layout with Triangle and the switch on the two longest names ("D-PAD RIGHT",
+        // "RS CLICK"), each way round.
+        struct Layout
+        {
+            const char *what;
+            int triangle;       // the host button Triangle is on; kHostNone keeps the default
+            const char *toggle; // the switch's host button name
+        };
+        const Layout layouts[] = {
+            {"default mapping", kHostNone, "guide"},
+            {"Triangle on D-PAD RIGHT, switch on RS CLICK", kHostDpadRight, "r3"},
+            {"Triangle on RS CLICK, switch on D-PAD RIGHT", kHostR3, "dpad_right"},
+        };
+
         std::vector<TipSeen> out;
-        for (const char *crouch : launcher::kCrouchShortcuts)
-            for (const ui::GlyphFamily family : {ui::GlyphFamily::Xbox, ui::GlyphFamily::PlayStation, ui::GlyphFamily::Generic})
-                for (const Shape &shape : shapes)
-                {
-                    launcher::Config c;
-                    c.crouchShortcut = crouch;
-                    const ui::TipState state{&c, family, shape.flow};
-                    for (const ui::Node &n : ui::layoutFor(ui::Page::Controller, window, shape.in))
-                        out.push_back(TipSeen{std::string(shape.what) + ", crouch " + crouch + ": " + n.id, n.id,
-                                              ui::tipFor(ui::Page::Controller, n.id, state)});
-                }
+        for (const Layout &layout : layouts)
+            for (const char *crouch : launcher::kCrouchShortcuts)
+                for (const ui::GlyphFamily family : {ui::GlyphFamily::Xbox, ui::GlyphFamily::PlayStation, ui::GlyphFamily::Generic})
+                    for (const Shape &shape : shapes)
+                    {
+                        launcher::Config c;
+                        c.crouchShortcut = crouch;
+                        c.focusToggle = layout.toggle;
+                        if (layout.triangle != kHostNone)
+                        {
+                            Mapping m = launcher::activeMapping(c);
+                            rebind(m, kPs2Triangle, layout.triangle, Resolution::Replace);
+                            launcher::setActiveMapping(c, m);
+                        }
+                        const ui::TipState state{&c, family, shape.flow};
+                        for (const ui::Node &n : ui::layoutFor(ui::Page::Controller, window, shape.in))
+                            out.push_back(TipSeen{std::string(layout.what) + ", " + shape.what + ", crouch " + crouch + ": " + n.id,
+                                                  n.id, ui::tipFor(ui::Page::Controller, n.id, state)});
+                    }
         return out;
     }
 
@@ -2257,6 +2280,19 @@ void register_launcher_tests()
                     t.IsTrue(boxText <= window.w - 56.0f, at + ": the hover box's line is whole in the window -- " + seen.where);
                 }
             }
+            // The walk reached the custom layouts: the widest names the bind and SWITCH lines can carry were measured.
+            const auto said = [&walk](const std::string &part)
+            { return std::any_of(walk.begin(), walk.end(), [&part](const TipSeen &s) { return s.line.find(part) != std::string::npos; }); };
+            t.IsTrue(said("your pad's D-PAD RIGHT sends the game's TRIANGLE"), "a bind line naming D-PAD RIGHT was measured");
+            t.IsTrue(said("SWITCH: your pad's RS CLICK swaps"), "a SWITCH line naming RS CLICK was measured");
+            t.IsTrue(said("SWITCH: your pad's D-PAD RIGHT swaps"), "a SWITCH line naming D-PAD RIGHT was measured");
+            // The bar's columns are the slot's: the prompts start kBarTipGap past its right edge and end
+            // kBarPromptsW later, at LAUNCH (main.cpp's drawBar reads the same numbers).
+            const ui::Frame f = ui::frameFor(ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f});
+            const ui::Rect slot = ui::footerTipSlot(f);
+            t.IsTrue(std::fabs(slot.right() + ui::kBarTipGap + ui::kBarPromptsW - ui::barLaunchRect(f).x) < 0.001f,
+                     "the slot ends where the prompts' column, which ends at LAUNCH, begins");
+
             // The wrap itself: greedy, word by word, trailing spaces dropped.
             const auto chars = [](const std::string &s) { return static_cast<float>(s.size()); };
             const std::vector<std::string> wrapped = ui::wrapWords("aa bb cc", 5.0f, chars);
@@ -2284,6 +2320,32 @@ void register_launcher_tests()
             t.IsTrue(tip.shows(13.5), "then it shows");
             tip.frame(true, true, "pad.bind.cross", 14.0);
             t.IsTrue(tip.shows(14.0), "a frame where the mouse moved counts as the mouse's");
+        });
+
+        // Issue #74, review round 2: a two-line tip gives the slot back to the status each time a status is SAID (App's
+        // statusSerial, bumped by setStatus -- test_launcher_wording.py holds every assignment to it), not each time
+        // the string changes, and the status keeps it until the focus next moves, with no clock. The reviewer's
+        // case: LAUNCH fails, the player presses LAUNCH again, and the same error must show again (R238).
+        tc.Run("issue #74: a status said again shows again, and holds the footer until the focus moves", [](TestCase &t)
+        {
+            ui::StatusWatch watch;
+            watch.update(0u, "bar.launch.controller");
+            t.IsFalse(watch.fresh(), "nothing said yet: the tip has the slot");
+            watch.update(1u, "bar.launch.controller");   // LAUNCH pressed; startGame failed
+            t.IsTrue(watch.fresh(), "the failure shows");
+            for (int frame = 0; frame < 600; ++frame)
+                watch.update(1u, "bar.launch.controller");
+            t.IsTrue(watch.fresh(), "and holds with no clock while the focus rests (the player was in the game window)");
+            watch.update(1u, "pad.bind.cross");
+            t.IsFalse(watch.fresh(), "the focus moves: the tip takes the slot back");
+            watch.update(1u, "bar.launch.controller");
+            t.IsFalse(watch.fresh(), "and moving back does not resurrect an old status");
+            watch.update(2u, "bar.launch.controller");   // pressed again: the SAME error string, said again
+            t.IsTrue(watch.fresh(), "the same sentence said a second time shows again");
+            watch.update(3u, "pad.bind.triangle");
+            t.IsTrue(watch.fresh(), "a status said in the frame the focus moves (a bind landing) shows");
+            watch.update(3u, "pad.bind.cross");
+            t.IsFalse(watch.fresh(), "until the next move");
         });
 
         // Issue #74: the hover half. About half a second resting on one control; the clock restarts on every change.

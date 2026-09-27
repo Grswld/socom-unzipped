@@ -54,11 +54,9 @@ namespace ui
 
     Rect footerTipSlot(const Frame &frame)
     {
-        // main.cpp's drawBottomBar: the status column starts 130 past the margin (after PROFILE), and the prompts
-        // take the 330 before LAUNCH (220 wide, one margin in from the right edge); 24 of air before the prompts.
-        const float x = metrics::margin + 130.0f;
-        const float prompts = frame.bar.right() - metrics::margin - 220.0f - 330.0f;
-        return Rect{x, frame.bar.y, prompts - x - 24.0f, frame.bar.h};
+        const float x = metrics::margin + kBarStatusInset;
+        const float prompts = barLaunchRect(frame).x - kBarPromptsW;
+        return Rect{x, frame.bar.y, prompts - x - kBarTipGap, frame.bar.h};
     }
 
     std::vector<std::string> wrapWords(const std::string &s, float maxWidth, const std::function<float(const std::string &)> &width)
@@ -90,17 +88,19 @@ namespace ui
         return lines;
     }
 
-    void StatusWatch::update(const std::string &status, double now)
+    void StatusWatch::update(unsigned statusSerial, const std::string &focusId)
     {
-        if (status == seen)
-            return;
-        seen = status;
-        since = now;
-    }
-
-    bool StatusWatch::fresh(double now) const
-    {
-        return !seen.empty() && now - since < kStatusHoldSeconds;
+        // The focus moving ends a hold; a status said in that same frame starts a new one.
+        if (focusId != focus)
+        {
+            focus = focusId;
+            holding = false;
+        }
+        if (statusSerial != serial)
+        {
+            serial = statusSerial;
+            holding = true;
+        }
     }
 
     void HoverTip::frame(bool mouseMoved, bool steered, const std::string &over, double now)

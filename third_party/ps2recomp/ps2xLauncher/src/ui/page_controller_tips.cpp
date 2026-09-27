@@ -61,9 +61,10 @@ namespace ui
         }
 
         // The crouch shortcut's cells, by value (launcher_config.h, kCrouchShortcuts). Each says what the value
-        // means; the chosen one says so. A displaced button's key is named "the keyboard's N key", the pattern
-        // test_launcher_wording.py (KeyboardSentencesAgreeWithTheMap) reads here as it does in crouchShortcutHint,
-        // and holds to mapping.cpp -- move L3 or L2 off its key there and this file fails that test.
+        // means; the chosen one says so. The displaced button's key ("the keyboard's 2 key") is typed here as a
+        // literal, not built from crouchShortcutHint or the key map: the guard is test_launcher_wording.py
+        // (KeyboardSentencesAgreeWithTheMap), which reads "the keyboard's N key" here as it does in the hint and
+        // holds it to mapping.cpp -- move L3 or L2 off its key there and this file fails that test.
         std::string crouchLine(const std::string &id, const TipState &s)
         {
             const int i = std::atoi(id.c_str() + std::string("pad.crouch.").size());

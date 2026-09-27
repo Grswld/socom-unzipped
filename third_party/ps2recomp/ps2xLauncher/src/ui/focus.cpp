@@ -104,6 +104,8 @@ namespace ui
 
     std::string barLaunchId(Page page) { return "bar.launch." + pageSlug(page); }
 
+    Rect barLaunchRect(const Frame &f) { return Rect{f.bar.right() - metrics::margin - 220.0f, f.bar.y + 10.0f, 220.0f, 36.0f}; }
+
     Frame frameFor(Rect window)
     {
         using namespace metrics;
@@ -299,7 +301,7 @@ namespace ui
         // The bottom bar's LAUNCH belongs to every page but PLAY, which has its own large one: there the bar
         // carries the run's state instead of the same button twice.
         if (page != Page::Play)
-            add(out, page, barLaunchId(page), Rect{f.bar.right() - metrics::margin - 220.0f, f.bar.y + 10.0f, 220.0f, 36.0f});
+            add(out, page, barLaunchId(page), barLaunchRect(f));
         return out;
     }
 

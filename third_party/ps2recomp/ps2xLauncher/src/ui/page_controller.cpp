@@ -299,7 +299,7 @@ namespace ui
                         launcher::setActiveMapping(c, m);
                         c.focusToggle = hostButtonName(app.bind.lastHost);
                         app.dirty = true;
-                        app.status = std::string("the window switch is now ") + hostLabel(family, app.bind.lastHost).text;
+                        app.setStatus(std::string("the window switch is now ") + hostLabel(family, app.bind.lastHost).text);
                     }
                     app.nav.focus = kSwitchCellId;
                 }
@@ -311,7 +311,7 @@ namespace ui
                     {
                         launcher::setActiveMapping(c, m);
                         app.dirty = true;
-                        app.status = std::string(ps2Label(bound).text) + " is now " + hostLabel(family, hostOf(m, bound)).text;
+                        app.setStatus(std::string(ps2Label(bound).text) + " is now " + hostLabel(family, hostOf(m, bound)).text);
                     }
                     app.nav.focus = "pad.bind." + std::string(ps2ButtonName(bound));
                 }
@@ -322,7 +322,7 @@ namespace ui
                     {
                         launcher::setActiveMapping(c, m);
                         app.dirty = true;
-                        app.status = "every button back to the defaults";
+                        app.setStatus("every button back to the defaults");
                     }
                     app.nav.focus = "pad.restore";
                 }
@@ -344,7 +344,7 @@ namespace ui
             if (bindCell(ctx, rectOf(nodes, id), id, button, hostLabel(family, host), custom, mine, countdown) && !listening)
             {
                 if (!app.pad.present)
-                    app.status = "connect a controller to bind its buttons";
+                    app.setStatus("connect a controller to bind its buttons");
                 else
                     app.requestBind = static_cast<int>(button);   // main.cpp starts the session, with the pad's state
             }
@@ -360,7 +360,7 @@ namespace ui
                          switchHost != kHostGuide, mine, countdown) && !listening)
             {
                 if (!app.pad.present)
-                    app.status = "connect a controller to bind the window switch";
+                    app.setStatus("connect a controller to bind the window switch");
                 else
                     app.requestBind = static_cast<int>(kSwitchTarget);
             }
@@ -368,7 +368,7 @@ namespace ui
             {
                 c.focusToggle = "none";
                 app.dirty = true;
-                app.status = "the window switch is off";
+                app.setStatus("the window switch is off");
             }
         }
 

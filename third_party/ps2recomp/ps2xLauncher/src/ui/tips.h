@@ -63,22 +63,32 @@ namespace ui
     // launcher_tests.cpp measures every CONTROLLER line in the embedded Rajdhani at those sizes against it.
     constexpr float kFooterTipSize = 15.0f;
     constexpr std::size_t kFooterTipLines = 2;
+    // The bar's columns, which main.cpp's drawBar draws from and footerTipSlot measures from -- one set of numbers,
+    // so widening the prompts narrows the slot the test measures: the status and tip column starts
+    // kBarStatusInset past the margin (after PROFILE), the prompts take the kBarPromptsW before LAUNCH
+    // (barLaunchRect, focus.h), and kBarTipGap of air separates the two.
+    constexpr float kBarStatusInset = 130.0f;
+    constexpr float kBarPromptsW = 330.0f;
+    constexpr float kBarTipGap = 24.0f;
     Rect footerTipSlot(const Frame &frame);
 
     // Greedy word wrap at `maxWidth`, measured by `width` (widgets.cpp's textWidth in the launcher, the font's own
     // advances in the test -- the same breaks either way). A word carries its trailing space, as wrapText's does.
     std::vector<std::string> wrapWords(const std::string &s, float maxWidth, const std::function<float(const std::string &)> &width);
 
-    // A two-line tip fills the bar's slot, so the status line steps aside for it -- except for kStatusHoldSeconds
-    // after the status changes ("CROSS is now A", "binding cancelled"): then the status shows and the tip waits.
-    constexpr double kStatusHoldSeconds = 3.0;
+    // A two-line tip fills the bar's slot, so the status line steps aside for it -- except after something is SAID
+    // ("CROSS is now A", a launch that failed): from that assignment until the focus next moves, the status keeps
+    // the slot and the tip waits. Fresh is per assignment (App::statusSerial), not per string, so the same failure
+    // twice shows twice (R238: a failure the player can see is never silent), and it holds with no clock -- a
+    // sentence set while the game window was in front is still there when the player looks back.
     struct StatusWatch
     {
-        std::string seen;
-        double since = -1.0e9;
+        unsigned serial = 0;
+        std::string focus;
+        bool holding = false;
 
-        void update(const std::string &status, double now);
-        bool fresh(double now) const;
+        void update(unsigned statusSerial, const std::string &focusId);
+        bool fresh() const { return holding; }
     };
 
     // "About half a second" over one control before the box appears.

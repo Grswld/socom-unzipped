@@ -227,5 +227,28 @@ class RenderScaleComment(unittest.TestCase):
                 self.assertIn(f"{n} {word}", comment, f"the comment does not name {n}x as {label!r}")
 
 
+class StatusIsSaidThroughOneSetter(unittest.TestCase):
+    """Issue #74, review round 2: the bottom bar's status gets the slot back from a two-line tip each time it is SAID,
+    counted by App::statusSerial, so every assignment goes through App::setStatus -- one written straight into
+    `.status` would never be counted, and a failure said that way could stay hidden (R238)."""
+
+    def test_no_launcher_source_assigns_the_status_directly(self):
+        src = os.path.join(PS2R, "ps2xLauncher", "src")
+        found = []
+        for dirpath, _dirs, files in os.walk(src):
+            for name in files:
+                if name.endswith((".cpp", ".h")):
+                    for n, line in enumerate(read(dirpath, name).splitlines(), 1):
+                        if re.search(r"\bapp\.status\s*=(?!=)", line):
+                            found.append(f"{os.path.relpath(os.path.join(dirpath, name), src)}:{n}")
+        self.assertEqual(found, [], "assign the bar's status with app.setStatus(...), which counts it")
+
+    def test_the_setter_counts(self):
+        pages = read(LAUNCHER_UI, "pages.h")
+        body = re.search(r"void setStatus\([^)]*\)\s*\{(.*?)\}", pages, re.S)
+        self.assertIsNotNone(body, "App has setStatus")
+        self.assertIn("++statusSerial", body.group(1), "and it bumps statusSerial on every call")
+
+
 if __name__ == "__main__":
     unittest.main()

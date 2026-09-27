@@ -58,6 +58,8 @@ namespace ui
         Rect window, header, rail, content, band, body, bar;
     };
     Frame frameFor(Rect window);
+    // The bottom bar's LAUNCH: its node on every page but PLAY, and on PLAY the place its run state is drawn.
+    Rect barLaunchRect(const Frame &f);
 
     // What the layout cannot know on its own: how many pads and capture devices the list offers, and whether
     // the server address is the player's to type (a preset owns it otherwise).
