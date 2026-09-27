@@ -124,6 +124,9 @@ namespace ui
     int personaIndexOf(const std::string &id, int records);
     // The scroll that shows `index` (unchanged when it already shows), clamped to the list.
     int personaScrollToShow(int index, int scroll, int total);
+    // The scroll a (re)read of the ledgers leaves (main.cpp's readPersonas): the selected row in view, and with it the
+    // password field beside it -- a password is never sent from a field the player cannot see.
+    int personaScrollOnRead(const LayoutInputs &in, int scroll);
     // Up and down inside the list are the list's own moves, so a hidden row is reachable: true with `to` and the
     // `scroll` that shows it; false off either end, where the layout's geometry takes over (ADDRESS, ADVANCED).
     bool personaMove(const LayoutInputs &in, const std::string &from, Dir dir, std::string &to, int &scroll);

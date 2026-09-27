@@ -1612,6 +1612,29 @@ void register_launcher_tests()
             t.Equals(ui::personaScrollToShow(0, 2, 5), 0, "and the first back to the top");
         });
 
+        tc.Run("readPersonas' scroll (RED first): a selected row at index 3 or later starts in view, its password field with it", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.personaRows = 6;
+            in.personaSelected = 4;
+            in.personaPasswordShown = true;
+            in.personaScroll = ui::personaScrollOnRead(in, 0);
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(nodes, "online.persona.4"), "the selected row is visible");
+            t.IsTrue(ui::hasNode(nodes, "online.persona.password"), "and the password it will send is on screen");
+            if (ui::hasNode(nodes, "online.persona.password"))
+                t.IsTrue(ui::rectOf(nodes, "online.persona.password").y == ui::rectOf(nodes, "online.persona.4").y, "beside it");
+            t.Equals(ui::personaScrollOnRead(in, 3), 3, "a scroll already showing it is kept");
+            in.personaSelected = 6;   // NEW PERSONA, last
+            t.Equals(ui::personaScrollOnRead(in, 0), 4, "NEW PERSONA scrolls to the list's end");
+            in.personaSelected = 0;
+            t.Equals(ui::personaScrollOnRead(in, 4), 0, "the first row back to the top");
+            in.personaRows = 1;
+            in.personaSelected = 1;
+            t.Equals(ui::personaScrollOnRead(in, 5), 0, "a list that shrank under the scroll is clamped");
+        });
+
         tc.Run("the password field shows for NEW PERSONA and a record without a saved password on this server, never beside a hidden row", [](TestCase &t)
         {
             const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};

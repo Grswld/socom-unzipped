@@ -1007,6 +1007,14 @@ namespace
         app.personas = launcher::personas::readCards((home / "cards").string());
         for (const std::string &note : app.personas.notes)
             std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+        // The selected row starts in view, and with it the password field beside it: a password is never sent from a
+        // field scrolled out of sight (the per-frame scroll below only clamps).
+        {
+            ui::LayoutInputs in;
+            in.personaRows = static_cast<int>(app.personas.rows.size());
+            in.personaSelected = static_cast<int>(launcher::personas::selectedRow(app.personas.rows, app.config));
+            app.personaScroll = ui::personaScrollOnRead(in, app.personaScroll);
+        }
         // The migration (the design note, section 3): the selected persona's card now holds its password, so the plain
         // copy in config.json goes -- the key stays, empty.
         if (!app.fake && launcher::personas::dropSavedPassword(app.config, app.personas.rows))
