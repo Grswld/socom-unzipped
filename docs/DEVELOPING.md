@@ -294,7 +294,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `gate.py` | The three-stage gate (title, transition, mission): PASS/FAIL, stamps under `logs/parity/gate/` |
 | `pins.py` | What a measurement was computed against, and the refusal when it drifted |
 | `frame_time.py` | The mission stage's `FRAME` line: VBlank pacing (host ms per guest VBlank, a lower bound on the time between presents) over the scripted walk, from the `[pc-sampler]` rows (informational, S13-R3). Run it on saved stamps as: `python -m tools_py.parity.frame_time <stamp dir> ...` |
-| `window_drag.py` | Issue #67: a scripted title-bar drag of the game window, and the readout of what the guest clock (`[pc-sampler]` `t=`/`vsync=`) and the `[audio-trace]` counters did through it -- FROZEN / SLOWED / ADVANCING. Run it as: `python -m tools_py.parity.window_drag drag --log <game log> --seconds 10 --stamps <file>`, then `python -m tools_py.parity.window_drag readout <game log> --stamps <file>` |
+| `window_drag.py` | Issue #67 (closed): a scripted title-bar drag of the game window, and the readout of what the guest clock (`[pc-sampler]` `t=`/`vsync=`) and the `[audio-trace]` counters did through it -- FROZEN / SLOWED / ADVANCING. Run it as: `python -m tools_py.parity.window_drag drag --log <game log> --seconds 10 --stamps <file>`, then `python -m tools_py.parity.window_drag readout <game log> --stamps <file>` |
 | `compare.py` | Score screens against the golden set and write `docs/parity/REPORT.md` |
 | `guest_probe.py` | The gate's guest-value probe against console numbers on disk |
 | `guest_addresses.py` | One home for the guest addresses the instruments read, and the per-revision rule |
