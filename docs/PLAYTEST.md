@@ -13,10 +13,10 @@ questions already answered.)*
 
 <!-- build:begin -->
 ```
-build:    2026-09-27T11:04:16Z   commit 39bff922eb93 (sprint-16)
+build:    2026-09-27T14:25:29Z   commit 6d78365c77bb (sprint-16)
 archive:  socom2-portable.zip   [player]   (dist-release/portable/socom2-portable.zip)
-          sha256: d843b00da3e8aade91e154675ecf8b16d057cfce5808af5e0cd725ad7f5c2c2b
-exe:      socom2.exe sha256: 70fe262439ac0144820bba271acc033cdf71442b59b8da9954eeda0b29924ab1
+          sha256: 58f9c87b65c24224b05073c28d45fe52a06c0e6c6efcde063533c0b203235a2e
+exe:      socom2.exe sha256: a706d8b821ef750c4b71049f8619f9543c95d6efa058133fb729d4c01be9745f
 ```
 
 Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_portable.sh` wrote with this archive (the chain's last step); play that archive, unzipped to a new folder.
