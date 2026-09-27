@@ -2,28 +2,43 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-178 merges (37 on the first-parent line, 141 from the branches they merged) in 11 sections: 10 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+186 merges (38 on the first-parent line, 148 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
-## Since v0.14.0
+## Since v0.15.0
 
-16 merges.
+7 merges.
 
-- 2026-09-27 `8ae047c5` merge(sprint-15): the close's section 5 review fixes [branch not named]
-- 2026-09-27 `510ba0ee` merge(sprint-15): origin/main at ef199808 [branch not named]
-  - 2026-09-27 `ef199808` Merge pull request #79 from Scotho/agent/private-inputs [agent/private-inputs]
-- 2026-09-27 `68eb6c25` merge(sprint-15): origin/main at b534bd3f [branch not named]
-  - 2026-09-27 `b534bd3f` Merge pull request #78 from Scotho/agent/known-69 [agent/known-69]
-- 2026-09-26 `892f3cf5` merge(sprint-15): origin/main at 48dae28f [branch not named]
-  - 2026-09-26 `48dae28f` Merge pull request #77 from Scotho/agent/hazard-entry [agent/hazard-entry]
-- 2026-09-26 `297e43da` merge(sprint-15): T1c the LLE-oracle harness landed under docs/research/assets/70-lle-oracle (the owner's word) [branch not named]
-- 2026-09-26 `94a9cb84` merge(sprint-15): T1 the LLE IOP as an oracle [branch not named]
-- 2026-09-26 `87d9796b` merge(sprint-15): origin/main at 715e8149 [branch not named]
-  - 2026-09-26 `715e8149` Merge pull request #76 from Scotho/agent/sitting-docs [agent/sitting-docs]
-  - 2026-09-26 `24ffe56f` Merge pull request #9 from Scotho/dependabot/github_actions/actions/upload-artifact-7.0.1 [dependabot/github_actions/actions/upload-artifact-7.0.1]
-  - 2026-09-26 `c1ea15d2` Merge pull request #8 from Scotho/dependabot/github_actions/actions/setup-python-7.0.0 [dependabot/github_actions/actions/setup-python-7.0.0]
-- 2026-09-26 `f84f4f66` merge(sprint-15): T2 #67 the drag freeze [branch not named]
-- 2026-09-26 `6d5f53cc` merge(sprint-15): X1 the audio survey [branch not named]
-- 2026-09-26 `39d5c0ab` merge(sprint-15): R1 the audio confidence register [branch not named]
+- 2026-09-27 `8865602f` tools/ restored by one flag from the D: backup, verified by a manifest (Sprint 16 X1) [agent/s16-x1]
+- 2026-09-27 `45cb1b93` merge(sprint-16): origin/main at ac173beb [branch not named]
+  - 2026-09-27 `ac173beb` Merge pull request #84 from Scotho/agent/docs-review [agent/docs-review]
+  - 2026-09-27 `82324b19` Merge remote-tracking branch 'origin/main' into agent/docs-review [origin/main, main merged in]
+- 2026-09-27 `ac61f1a4` merge(sprint-16): origin/main at fbc905b2 [branch not named]
+  - 2026-09-27 `fbc905b2` Merge pull request #83 from Scotho/agent/hook-delete-branch [agent/hook-delete-branch]
+- 2026-09-27 `d84ffbde` Merge pull request #10 from Scotho/dependabot/github_actions/actions/cache-6.1.0 [dependabot/github_actions/actions/cache-6.1.0]
+
+## v0.15.0
+
+Tagged 2026-09-27 on `10650369`.
+
+17 merges.
+
+- 2026-09-27 `10650369` Sprint 15: borrowed confidence, re-cut (#81) [sprint-15]
+  - 2026-09-27 `8ae047c5` merge(sprint-15): the close's section 5 review fixes [branch not named]
+  - 2026-09-27 `510ba0ee` merge(sprint-15): origin/main at ef199808 [branch not named]
+  - 2026-09-27 `68eb6c25` merge(sprint-15): origin/main at b534bd3f [branch not named]
+  - 2026-09-26 `892f3cf5` merge(sprint-15): origin/main at 48dae28f [branch not named]
+  - 2026-09-26 `297e43da` merge(sprint-15): T1c the LLE-oracle harness landed under docs/research/assets/70-lle-oracle (the owner's word) [branch not named]
+  - 2026-09-26 `94a9cb84` merge(sprint-15): T1 the LLE IOP as an oracle [branch not named]
+  - 2026-09-26 `87d9796b` merge(sprint-15): origin/main at 715e8149 [branch not named]
+  - 2026-09-26 `f84f4f66` merge(sprint-15): T2 #67 the drag freeze [branch not named]
+  - 2026-09-26 `6d5f53cc` merge(sprint-15): X1 the audio survey [branch not named]
+  - 2026-09-26 `39d5c0ab` merge(sprint-15): R1 the audio confidence register [branch not named]
+- 2026-09-27 `ef199808` Merge pull request #79 from Scotho/agent/private-inputs [agent/private-inputs]
+- 2026-09-27 `b534bd3f` Merge pull request #78 from Scotho/agent/known-69 [agent/known-69]
+- 2026-09-26 `48dae28f` Merge pull request #77 from Scotho/agent/hazard-entry [agent/hazard-entry]
+- 2026-09-26 `715e8149` Merge pull request #76 from Scotho/agent/sitting-docs [agent/sitting-docs]
+- 2026-09-26 `24ffe56f` Merge pull request #9 from Scotho/dependabot/github_actions/actions/upload-artifact-7.0.1 [dependabot/github_actions/actions/upload-artifact-7.0.1]
+- 2026-09-26 `c1ea15d2` Merge pull request #8 from Scotho/dependabot/github_actions/actions/setup-python-7.0.0 [dependabot/github_actions/actions/setup-python-7.0.0]
 
 ## v0.14.0
 
