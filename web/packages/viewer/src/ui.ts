@@ -1,5 +1,6 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
+import { viewerRevision } from './revision';
 import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
@@ -192,6 +193,16 @@ export class Ui {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * The build's revision and stamp: on the About line's badge, so it is readable without unfolding
+   * anything, and again as the last line of the About text. Returns the label for the debug hook.
+   */
+  showRevision(label = viewerRevision()): string {
+    find<HTMLElement>('revision').textContent = label;
+    find<HTMLElement>('revision-line').textContent = label;
+    return label;
   }
 
   /** Whether the panel is folded, for the debug hook. */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
@@ -88,5 +89,32 @@ describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_A
       expect(Number.isFinite(g.order)).toBe(true);
     }
     expect(groups.some((g) => g.textureName !== null)).toBe(true);
+  });
+});
+
+/**
+ * Night Stalker (MP7) stores its tent and table chunks under `<key>_L` only, the name `hookupVisuals`
+ * gives a dynamically lit node (`vis_main.cpp:93-102`). None of the three committed fixtures has such a
+ * key, so this reads the served copy `npm run extract-maps` writes to the git-ignored `public/maps`, and
+ * skips where it is absent (CI). `resolveChunk`'s own test covers the rule without a disc.
+ */
+const MAPS = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public/maps');
+const noMp7 = !existsSync(resolve(MAPS, 'RUN/MP7.ZDB'));
+
+describe.skipIf(noMp7)(`the _L chunks out of loadMap${noMp7 ? ' (public/maps absent: run npm run extract-maps)' : ''}`, () => {
+  it.skipIf(noMp7)('Night Stalker draws its tent_seals and seal_table chunks, lit, and reports no missing chain', async () => {
+    const map = await loadMap(new FsAssetSource(MAPS), 'RUN/MP7.ZDB');
+    expect(map.diagnostics.filter((d) => d.includes('no such chain'))).toEqual([]);
+    // The `_L` chunks: tent_seals N001 and N011 (one context), seal_table N000 in both of its contexts,
+    // N003 and N005 in the first, N004 in the second -- the suffix is per context, so a lit context is a
+    // prop group of its own. Each lit group was drawn from no chain or an unlit one before; every part
+    // of it is lit now, and the plain groups are not.
+    for (const [name, litNodes] of [['tent_seals', 2], ['seal_table', 4]] as const) {
+      const groups = map.props.filter((p) => p.modelName === name);
+      const lit = groups.filter((p) => p.parts.some((m) => m.lit));
+      expect(lit.length).toBe(litNodes);
+      for (const p of lit) expect(p.parts.every((m) => m.lit)).toBe(true);
+      expect(groups.length).toBeGreaterThan(litNodes);
+    }
   });
 });

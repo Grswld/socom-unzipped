@@ -1,7 +1,27 @@
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
+const webRoot = fileURLToPath(new URL('../..', import.meta.url));
+
+/**
+ * The revision the build came from, for the panel's About (`src/revision.ts`): the short hash, with
+ * `-dirty` when anything under `web/` differs from it, and `unknown` when git is not there to ask.
+ */
+function gitRevision(): string {
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: webRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  try {
+    const hash = git('rev-parse', '--short', 'HEAD');
+    return git('status', '--porcelain', '--', '.') ? `${hash}-dirty` : hash;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** When the build ran, UTC, `YYYY-MM-DD HH:MM:SS` -- the s2u site's footer stamp. */
+const buildStamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 /**
  * The viewer is its own Vite root inside the workspace. `publicDir` points at `web/public`, so the
@@ -28,4 +48,5 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   build: { outDir: fileURLToPath(new URL('../../dist/viewer', import.meta.url)), emptyOutDir: true, copyPublicDir: false },
   worker: { format: 'es' },
+  define: { __VIEWER_REV__: JSON.stringify(gitRevision()), __BUILD_STAMP__: JSON.stringify(buildStamp) },
 });
