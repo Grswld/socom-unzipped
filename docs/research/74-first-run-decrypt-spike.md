@@ -208,6 +208,21 @@ set", and "the key tables that follow them"; two of the four are closure-only co
 set, `FUN_004ef348`'s table does not follow it, and three run-past functions were missing.) No real R5900
 instruction was unhandled.
 
+> Superseded 2026-09-27 09:58Z by R1b's real re-run (socom-pc-42, `agent/s16-r1b`: `helper.elf` built from the
+> loader and the decrypted DNAS image, the derived pair with the six boundary rows, `ps2_recomp.exe helper.toml`
+> 3.7 s, rc 0, "Functions processed: 3042, recompiled: 1478, stubs: 205, skipped: 1359"): the boundary rows do NOT
+> remove the past-row sites. The after-log names the same 160 addresses, still attributed to the kept functions and
+> now lying inside the rows' extents (the tool: "past-row + bounded: 160 -> 160 (DID NOT FALL)"). The mechanism is
+> not a linear run-past a next row stops but the recompiler's indirect-jump fallback promotion ("Indirect fallback
+> promotions: 544 (189524 fallback entries)"), which promotes candidate targets past any row and has no config knob.
+> So the throw sites raised by the kept functions are 31 in-row + 160 promoted = 191 distinct addresses, all inside
+> the kept functions' own files (`sub_00539D50`'s carries 29 `runtime_error` throws), each a resume entry real
+> control flow never takes -- which the real-disc run proves or disproves (a reached throw fails the run and the
+> digests). The pin is the 191; the six rows stay derived (harmless, 14-line files); marking the words as data in
+> `fix_ghidra_csv` is LATER row 36. The recompiler also un-skips the callees it reaches statically from the kept set
+> (`ps2_recompiler.cpp:488`, `:998`), so 1,478 functions are recompiled, not 340; a `--missing-callees` check
+> (declared names without a file) guards the build.
+
 The compile of the executed set's files against the runtime's headers (`compile.sh`, §7 C7; the flags of
 `build-clang/compile_commands.json`'s Unity entry for the runner, no PCH) **did not run**: queued on the loop lock
 behind two builds at 07:24Z with `--wait 30`, the wait expired at 07:54Z with the lock still held (§7 C7 has the
@@ -451,6 +466,8 @@ developer's chain and the oracle's producer.
   remove the 160 past-row errors is R1b's re-run to show (§2.3). The alternative -- rows that mark the key/flag
   words as data so the recompiler skips them -- is `fix_ghidra_csv.py` work the game would also want
   (`recomp/output` has the same 131 blocks in zsealetc's image) and belongs to LATER. *Review:* agreed, with 31.
+  *Superseded 2026-09-27 09:58Z (§2.3's blockquote): the rows do not remove the 160 promoted sites; the pin is the
+  191 distinct throw addresses, the data-marking is LATER row 36.*
 - **Q7 the card path.** Default: not built. `decrypt_apache.py:15-18`'s card path (only `0x534848` and `0x535018`)
   is for a package that came off a memory card; the served r0004 package is the disc-path form (KNOWN §1
   2026-09-27), so #71 needs nothing the disc path does not. *Review:* agreed.
