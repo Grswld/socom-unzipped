@@ -26,8 +26,10 @@ Known limits, each accepted (nobody writes these by accident, and the hook is a 
   pathspec);
 - git configuration passed through the environment (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`/`_KEY_n`) is not
   read, so a hooksPath set there is not seen;
-- the shell's fast path matches the substrings `git`, `loop_lock` and `logs/` (or `logs` and a backslash) in the JSON, so a
-  spelling that hides them (`gi''t`) never reaches Python.
+- the shell's fast path matches the substrings `git`, `gh pr`, `loop_lock` and `logs/` (or `logs` and a backslash) in
+  the JSON (`gh pr` and `gh.exe pr` with one space), so a spelling that hides them (`gi''t`, `gh  pr`) never
+  reaches Python;
+- `gh pr merge` is found by the word `pr` after `gh` and `merge` right after it; a gh alias hiding them is not seen.
 
 Sprint 14 G2 adds the editing tools (Edit, Write, MultiEdit, NotebookEdit; the path from `tool_input.file_path`,
 `notebook_path`, or defensively `path`/`filePath`), judged on `bash scripts/loop_lock.sh check` (asked only for such a
@@ -511,9 +513,68 @@ def rule_lock_script_commit(seg, wt, slow_tests_ran=False, **ctx):
             % SLOW_MARKER, LOCK_ROLLOUT)
 
 
+# `gh pr merge`'s options that take a value (pflag: `-b x`, `-bx`, `--body x`, `--body=x`); its short ones as letters
+_GH_MERGE_WITH_VALUE = {"--body", "--body-file", "--subject", "--author-email", "--match-head-commit", "--repo"}
+_GH_MERGE_SHORT_WITH_VALUE = set("bFtAR")
+_GH_FALSE = ("false", "0", "f", "no")
+
+
+def _gh_merge_args(seg):
+    """The arguments after `gh ... pr merge`, or None when the segment is not a `gh pr merge`."""
+    seg = _strip_env(seg)
+    if not seg or os.path.basename(seg[0]).lower() not in ("gh", "gh.exe"):
+        return None
+    try:
+        i = seg.index("pr", 1)
+    except ValueError:
+        return None
+    if i + 1 >= len(seg) or seg[i + 1] != "merge":        # `gh pr create -t merge -d` is no merge
+        return None
+    return seg[i + 2:]
+
+
+def rule_gh_merge_delete_branch(seg, wt, **ctx):
+    """2026-09-26 20:41Z: `gh pr merge 76 --merge --delete-branch`, with the branch checked out in an agent
+    worktree, removed that worktree, and git deleted through its tools/ junction: the main tree's toolchain went
+    with it. Refused: `--delete-branch` (bar `=false`), a bare `-d`, and `d` in a short cluster (`-md`) before any
+    value-taking letter; a value (`--body -d`, `-t -d`) is skipped. `--help` passes (it only prints)."""
+    args = _gh_merge_args(seg)
+    if args is None:
+        return None
+    hit, skip = False, False
+    for a in args:
+        if skip:
+            skip = False
+            continue
+        if a == "--":
+            break
+        if a in ("--help", "-h"):
+            return None
+        if a.startswith("--"):
+            name, eq, val = a.partition("=")
+            if name == "--delete-branch" and not (eq and val.lower() in _GH_FALSE):
+                hit = True
+            elif name in _GH_MERGE_WITH_VALUE and not eq:
+                skip = True
+        elif a.startswith("-") and len(a) > 1:
+            for k, ch in enumerate(a[1:]):
+                if ch in _GH_MERGE_SHORT_WITH_VALUE:
+                    skip = k == len(a) - 2                # `-t x`: the next word; `-tx`: the rest of this one
+                    break
+                if ch == "d":
+                    hit = True
+    if not hit:
+        return None
+    return ("gh pr merge --delete-branch", "never gh pr merge --delete-branch: it removes the worktree that holds the "
+            "branch and the tools/ junction takes the main tree's toolchain; remove the worktree with "
+            "scripts/agent_worktree.sh remove first, then merge, then git push origin --delete", HAZARDS_GIT)
+
+
+HAZARDS_GIT = "docs/HAZARDS.md git"
+
 RULES = [rule_bulk_add, rule_commit_all, rule_no_verify, rule_commit_names_paths, rule_push_from_worktree,
          rule_force_push_shared, rule_config_in_worktree, rule_worktree_lifecycle, rule_lock_direct,
-         rule_lock_script_commit]
+         rule_lock_script_commit, rule_gh_merge_delete_branch]
 
 
 # ---------------------------------------------------------------------------------------------- the policy
