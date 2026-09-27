@@ -23,6 +23,14 @@ namespace socom2_persona
             return std::string(p, n);
         }
 
+        // The MessageID both sides are matched on: its first 20 bytes up to a NUL. The server echoes it through
+        // BinaryWriterExt.Write(str, 21), which cuts a string of 21 or more characters to 20 and a NUL, so a 21st byte
+        // the game sent never comes back.
+        std::string messageIdKey(const uint8_t *data)
+        {
+            return field(data, kMessageIdOffset, kMessageIdBytes - 1);
+        }
+
         // What a message being put together on one state can still become: false once its class and type say it is
         // not the one this direction listens for, or it has grown past what that message can be.
         bool stillWanted(const std::vector<uint8_t> &m, uint8_t type, std::size_t most)
@@ -71,7 +79,7 @@ namespace socom2_persona
     {
         if (data == nullptr || len != kLoginRequestBytes || data[0] != kClassLobby || data[1] != kTypeAccountLogin)
             return false;
-        out.messageId = field(data, kMessageIdOffset, kMessageIdBytes);
+        out.messageId = messageIdKey(data);
         out.username = field(data, kUsernameOffset, kFieldBytes);
         out.password = field(data, kPasswordOffset, kFieldBytes);
         return true;
@@ -81,7 +89,7 @@ namespace socom2_persona
     {
         if (data == nullptr || len < kLoginResponseMinBytes || data[0] != kClassLobby || data[1] != kTypeAccountLoginResponse)
             return false;
-        out.messageId = field(data, kMessageIdOffset, kMessageIdBytes);
+        out.messageId = messageIdKey(data);
         const uint8_t *s = data + kStatusOffset;
         out.status = static_cast<int32_t>(static_cast<uint32_t>(s[0]) | (static_cast<uint32_t>(s[1]) << 8) |
                                           (static_cast<uint32_t>(s[2]) << 16) | (static_cast<uint32_t>(s[3]) << 24));

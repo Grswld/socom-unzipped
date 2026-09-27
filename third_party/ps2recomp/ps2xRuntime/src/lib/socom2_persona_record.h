@@ -48,7 +48,7 @@ namespace socom2_persona
 
     struct LoginRequest
     {
-        std::string messageId;   // the 21-byte field up to its NUL: the server reads a C string and pads with zeros
+        std::string messageId;   // the field's first 20 bytes to a NUL: all the server echoes (a C string)
         std::string username;    // the field's bytes up to its terminator, never normalised
         std::string password;
     };

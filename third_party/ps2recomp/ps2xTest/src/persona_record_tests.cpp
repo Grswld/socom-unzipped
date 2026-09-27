@@ -45,7 +45,9 @@ namespace
         std::vector<uint8_t> m(64, 0u);   // MessageID, pad, StatusCode, then AccountID and the rest
         m[0] = 0x01;
         m[1] = type;
-        std::memcpy(m.data() + 2, messageId.data(), messageId.size() < 21 ? messageId.size() : 21);
+        // What the server writes (BinaryWriterExt.Write(str, 21)): a string of 21 or more characters is cut to 20 and
+        // a NUL, so the echo never carries all 21 bytes.
+        std::memcpy(m.data() + 2, messageId.data(), messageId.size() < 20 ? messageId.size() : 20);
         std::memcpy(m.data() + 26, &status, 4);
         return m;
     }
@@ -213,6 +215,21 @@ void register_persona_record_tests()
             f.send(loginRequest("msgid-0003", "alpha", "hunter2"));
             f.receive(loginResponse("msgid-00031", 0));
             t.IsTrue(f.rec.pending().has_value() && f.rec.commits() == 1, "a longer MessageID is another message's");
+        });
+
+        tc.Run("a MessageID filling all 21 bytes (RED first): the server's echo keeps 20 and a NUL, and it still commits", [](TestCase &t)
+        {
+            Fixture f;
+            const std::string full(21, 'x');
+            f.send(loginRequest(full, "alpha", "hunter2"));   // all 21 bytes significant, no NUL in the field
+            t.IsTrue(f.rec.pending().has_value(), "the request is held pending");
+            const std::vector<uint8_t> echo = loginResponse(full, 0);
+            t.Equals(std::string(reinterpret_cast<const char *>(echo.data() + 2), 21), std::string(20, 'x') + '\0',
+                     "the answer carries 20 'x' and a NUL, as the server writes it");
+            f.receive(echo);
+            t.Equals(f.rec.commits(), 1, "the 20-byte echo matches the 21-byte request and commits");
+            t.IsFalse(f.rec.pending().has_value(), "answered");
+            t.Equals(ledgerAt(f.ledger).size(), size_t(1), "one record");
         });
 
         tc.Run("savedPassword (RED first): false, never true, while the keyboard observer is not live (no wrap, half a wrap)", [](TestCase &t)
