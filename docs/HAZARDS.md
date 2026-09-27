@@ -394,7 +394,8 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
   is merged, and its remote branch deleted afterwards by `git push origin --delete`; never `gh pr merge
   --delete-branch`, never `git branch -D` through any tool that may take the checkout with it. An off-tree copy of
   `tools/` lives at `D:\socom_archive\tools_backup_<date>` (made the same night) so the next time costs a copy, not
-  a rebuild. The owner's sitting record: `docs/superpowers/plans/2026-09-26-owner-sitting.md`.
+  a rebuild. The owner's sitting record: `docs/superpowers/plans/2026-09-26-owner-sitting.md`. *No issue: a lesson,
+  not a defect -- the D: backup and `agent_worktree.sh remove` are the fix, and the rule above is the guard.*
 
 ## build
 

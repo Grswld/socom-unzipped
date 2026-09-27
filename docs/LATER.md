@@ -16,7 +16,7 @@ of the owner's order (2026-09-26) -- *the controller's read, the owner may strik
 | # | Item | Value | Size | Confidence today | Trigger | Source |
 |---|---|---|---|---|---|---|
 | 1 | The audio pair: #42 (50 ms holes) and #28 (music degrades in a mission) | high: heard in every mission | M | Believed: KNOWN §2 rows #42 (one of three candidates eliminated) and #28 (cause unknown) | Sprint 15 T0 writes the audio trial (its D7) | issues; Sprint 15 spec §1.4 |
-| 2 | #67 the window drag freezes the game | high: any player who moves the window | S | Proven mechanism (KNOWN §1 row, the modal move loop); fix untried | the next render slot; the issue's bar | issue |
+| 2 | #67 the window drag freezes the game | high: any player who moves the window | S | Proven mechanism (KNOWN §1 row, the modal move loop); the fix merged (`f84f4f66`, Sprint 15 T2); its mission-drag proof waits for an owner-named window | the next render slot; the issue's bar | issue |
 | 3 | #59 a bar for the mission frame rate | medium: a fence on frame pacing | S | Believed: KNOWN §2, a 30 % spread over three gates on one exe (host not quiet) | three quiet-host gates agree (S13-R3) | issue |
 | 4 | #32 the menu atlas re-upload | medium: menu smoothness | S-M | Believed: KNOWN §2, the V2 skip moved `upload=` about 4 %; batching untried | the per-upload breakdown the issue asks for | issue |
 | 5 | VU1: four programs on the interpreter, the stalls the native path skips, no oracle for the interpreter | medium, to the owner (named second); no visible defect | L | Believed: native checked against the interpreter by `vu1_replay`; interpreter against hardware unknown | Sprint 15 R2's replay coverage and X2/X3 put it on the shortlist; or a flicker on one model family | Sprint 15 spec §1.4 |
