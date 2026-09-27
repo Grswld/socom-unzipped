@@ -50,8 +50,8 @@ to uninstall.**
 Keep every file in it together. The folder holds the game (`socom2.exe`), the game's program image
 (`socom2_game.elf`), the launcher (`socom_unzipped_launcher.exe`), the libraries those two import, `LICENSES/`, a
 short `README.txt`, and empty `cards/` and `logs/` folders. Move or lose `socom2_game.elf` and the game refuses to
-start with exit code 68: *"socom2_game.elf is missing or damaged. Unpack the download again and keep every file
-together."*
+start with exit code 68: *"The game's program image (.elf) is missing or damaged. Unpack the download again and keep
+every file together."*
 
 ## 4. Run the launcher
 

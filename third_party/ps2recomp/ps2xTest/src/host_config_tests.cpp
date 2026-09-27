@@ -87,6 +87,9 @@ void register_host_config_tests()
                      "the project's ELF (which the game database does not know) gets the game's name");
             t.Equals(title("SOCOM-B", nullptr, "socom2_game.elf"), std::string("SOCOM-B | SOCOM II U.S. Navy SEALs -- SOCOM Unzipped"),
                      "PS2X_WINDOW_TITLE goes in front: the online harness finds instance B by its tag");
+            // Issue #69: every revision's ELF is the game -- the r0004 build's window is titled the same way.
+            t.Equals(title(nullptr, nullptr, "socom2_game_r0004.elf"), std::string("SOCOM II U.S. Navy SEALs -- SOCOM Unzipped"),
+                     "the r0004 ELF gets the game's name too");
             t.Equals(title("", "Some Game", "SLUS_123.45"), std::string("Some Game -- SOCOM Unzipped"), "a database name, an empty tag");
             t.Equals(title(nullptr, nullptr, "SLUS_123.45"), std::string("SLUS_123.45 -- SOCOM Unzipped"), "no name at all: the file's");
             const std::string key = kTitleSuffix;

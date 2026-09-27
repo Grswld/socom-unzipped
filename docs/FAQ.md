@@ -59,9 +59,10 @@ launcher. Since the same day every entry here says where its code can be met.)*
 
 ### 68 — ELF missing
 
-> socom2_game.elf is missing or damaged. Unpack the download again and keep every file together.
+> The game's program image (.elf) is missing or damaged. Unpack the download again and keep every file together.
 
-`socom2_game.elf` is the game's own program image and it has to sit beside `socom2.exe`. This is usually an
+The program image is `socom2_game.elf`, and it has to sit beside `socom2.exe` (the r0004 build's is
+`socom2_game_r0004.elf`, beside `socom2_r0004.exe`). This is usually an
 antivirus quarantine or a half-finished unzip. Unpack the archive again into a clean folder, and check it against
 the `SHA256SUMS` that ships beside it.
 

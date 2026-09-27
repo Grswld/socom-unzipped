@@ -28,7 +28,7 @@
     X(NoUsableGl, 65, "no-usable-gl", "Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer.") \
     X(DiscNotFound, 66, "disc-not-found", "The disc image was not found. Open the DISC page and choose your SOCOM II ISO again.") \
     X(DiscNotR0001, 67, "disc-not-r0001", "That disc image is not SOCOM II NTSC r0001 (SCUS-97275). This build plays only that disc.") \
-    X(ElfMissing, 68, "elf-missing", "socom2_game.elf is missing or damaged. Unpack the download again and keep every file together.") \
+    X(ElfMissing, 68, "elf-missing", "The game's program image (.elf) is missing or damaged. Unpack the download again and keep every file together.") \
     X(ConfigUnreadable, 69, "config-unreadable", "config.json could not be read. Delete it and start the launcher, which writes a new one.") \
     X(Crashed, 70, "crashed", "The game crashed. Press SAVE DIAGNOSTICS and send the zip; it holds the crash record.") \
     X(OutOfMemory, 71, "out-of-memory", "The game ran out of memory. Close other programs, or lower the render scale on the VIDEO page.") \
