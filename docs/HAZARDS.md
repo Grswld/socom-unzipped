@@ -380,6 +380,15 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
 
 ## git
 
+- **A run log's `raw=0x........` words are the disc's bytes, and the leak check's 12-hex grep cannot see them.**
+  2026-09-27 (Sprint 16 R1b's batch review): a test fixture carried three 8-hex words copied from the spike's
+  `recomp_run.log` — two of them key words of the DNAS image's self-decrypt blocks — in a commit on a local,
+  unpushed branch; caught by the reviewer reading the fixture against the log, not by any guard. A tool that never
+  reads the field takes a synthetic word (`test_recomp_census.py:45` is the pattern); a commit that held real ones
+  is rewritten out of the branch before it reaches `sprint-16` or `main` (the repository is public), never fixed by
+  a later commit that leaves the words in history. Grep a branch's diff for `raw=0x[0-9a-f]{8}` and for any
+  8-hex word beside a guest address before merging it.
+
 *The index, the worktrees and what lives outside the tree.*
 
 - **`git add X && git commit` commits the whole index, not X.** With several agents sharing one
