@@ -1,0 +1,14 @@
+The LLE oracle's build 2 (Sprint 15 T1, research/70 §5 and C6), the one that linked.
+Fork: Sinan-Karakaya/PS2Recomp at e42efbe (GPL-3.0), ps2xIOP/src/lle/ with oracle-patch.diff applied.
+Toolchain: llvm-mingw clang 23.1.0, CMake and Ninja from the repository's tools/; under scripts/loop_lock.sh run.
+Its log's first line and its last six lines, verbatim (the clang version line and CMake's configure lines between
+them are left out: they carry the compiler's commit hash and the build machine's scratch path):
+
+build start 2026-09-26T20:25:10Z
+...
+PRISTINE skipped (build 1: fails on the two missing includes)
+[1/3] Building CXX object CMakeFiles/harness_lle.dir/lle/spu2.cpp.obj
+[2/3] Building CXX object CMakeFiles/harness_lle.dir/lle/kernel.cpp.obj
+[3/3] Linking CXX executable harness_lle.exe
+HARNESS EXIT 0
+build end 2026-09-26T20:25:19Z

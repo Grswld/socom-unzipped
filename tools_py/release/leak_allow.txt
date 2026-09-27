@@ -103,3 +103,7 @@ tracked-private-ip  docs/research/22-kill-readout.md                            
 tracked-private-ip  docs/story/timeline.json                                                             # commit subjects quoted verbatim from the history
 tracked-private-ip  docs/archive/STATUS-log-to-2026-09-26.md                                             # STATUS's archived log, verbatim (Sprint 14 S1): its dated sections record the LAN bring-up of 2026-09-08..09-15 as it happened
 tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "server 3.143.65.100; lan"   # planted: the scrubber redacts every IPv4 but the hosted box's, and this LAN-range control stands for the category H6 found leaking -- it tests nothing more
+
+# -- a git SSH remote in a documented command (feat/web-map-viewer, a5ab2280): the e-mail rule reads `git@github.com`
+#    as an address; it is a hostname in a URL, and the whole line is public by nature.
+email  web/README.md  git@github.com   # `git subtree push ... git@github.com:Scotho/...` -- a remote, not an address

@@ -1,6 +1,6 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-26 (Sprint 14 close; §5 by a read-only agent's table, 31 findings fixed across nineteen files and two blocks archived; §7 by a read-only agent's table, the audit clean, one evidence note, four labels, the milestone closed).** Next: at the next sprint's close, by its controller.
+**Last full review: 2026-09-27 (Sprint 15 close; §5 by a read-only agent's table, 23 findings fixed and Sprint 13's block archived; §7 by a read-only agent's table, the audit clean after main's #69 row, four issues commented, the backlog regenerated).** Next: at the next sprint's close, by its controller.
 
 > **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
 > OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
@@ -98,7 +98,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
 | `docs/HAZARDS.md` | **L** | every task | The standing hazards by the area each bites -- KNOWN's section 4 until 2026-09-26 (R270, Sprint 14 I5). A hazard is a trap, not a claim; retired in place, never deleted; KNOWN wins on any disagreement |
 | `docs/CURRENT_SPRINT.md` | **L** | controller | The live queue and the road to the next tag |
-| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. **Transient since 2026-09-26** (Sprint 14 I3): in flight, owed, the first hour, the rules one line each; rewritten at every handoff under a 6,000-byte whole-file ceiling (check 7). Holds the **ruling counter**, checked mechanically |
+| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. **Transient since 2026-09-26** (Sprint 14 I3): in flight, owed, the first hour, the rules one line each; rewritten at every handoff under its whole-file `CEILINGS` number (6,000 bytes at Sprint 14 I3, ratcheted since: 5,900 at 2026-09-27; check 7). Holds the **ruling counter**, checked mechanically |
 | `docs/HUMAN_TASKS.md` | **L** | controller | The owner's queue |
 | `docs/UPSTREAM.md` | **L** | controller | The register of bugs to report upstream, by vendor (owner, 2026-09-26): only a defect located at `path:line` on the vendor's `main`, with its draft and patch in `docs/research/assets/63-upstream-drafts/`, its local status checked against the tree, its confidence, and "not filed" until the owner files it (`docs/HUMAN_TASKS.md` O10). Feedback that is not a bug and the research on open PRs live beside the drafts (`NOT-UPSTREAM.md`, `OPEN-PRS.md`); a vendor's `main` moving or a patch entering the tree changes a row |
 | `docs/DEVELOPING.md` | **L** | controller | **Owns the suite counts.** No other registered document may state them |
@@ -106,7 +106,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/FAQ.md` | **L** | controller | The player's failure page. Every exit-code sentence is quoted from `ps2x/exit_codes.h`; a change to that table changes this file |
 | `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
 | `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
-| `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
+| `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person. The scheduled ladder is retired (R294, R296: its Task Scheduler entry stays disabled), so rows come from hand-started runs only |
 | `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
 | `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
 | `docs/LATER.md` | **L** | controller | The candidates nobody has committed to (the owner, 2026-09-26): one table by value, size and confidence, each row with the trigger that promotes it, then the dismissals the owner confirms or strikes. One home per item: an issue lives in `docs/BACKLOG.md` and a task in its plan, and LATER points at an issue by number. The loop adds a row when a plan, a review or a note names future work; a row leaves when it becomes an issue or a task; the sprint close re-sorts it |
@@ -135,6 +135,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/KNOWN-section-4-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task I5, R270): KNOWN's section 4, the 104 standing hazards, verbatim as they stood at the split. Every "KNOWN §4" written before that day resolves to `docs/HAZARDS.md` by headline, or to this file as it was |
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` | **A** | — | Cut 2026-09-26 (the Sprint 14 close, §5 step 5): the Sprint 12 and Sprint 11 CLOSED blocks with Sprint 11's rulings ledger R245-R263 and the `S12-Rn` table, verbatim. The ruling counter and check 10 read it |
+| `docs/archive/CURRENT_SPRINT-closed-sprint-13.md` | **A** | — | Cut 2026-09-27 (the Sprint 15 close, §5 step 5): the Sprint 13 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
@@ -165,7 +166,7 @@ Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
 7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
-   `docs/HANDOFF.md` and the whole of it (6,000 bytes, Sprint 14 I3: the file is transient), the "## Current state"
+   `docs/HANDOFF.md` and the whole of it (its `CEILINGS` number: 6,000 bytes at Sprint 14 I3, ratcheted since, 5,900 at 2026-09-27; the file is transient), the "## Current state"
    block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
    ceiling (`CEILINGS` in `tools_py/docmaint.py`, counted with LF line ends; the failure prints the measured size). A
    measured heading that has gone fires too, so renaming it cannot switch the ceiling off. *Catches the stack nobody
@@ -349,8 +350,9 @@ acts on it.
    forms, or the audit will not ask about it.
 4. **Every issue closed this sprint** (`gh issue list --state closed --label known-issue --search "closed:>=<open
    date>"`): its closing comment names an artefact, and the KNOWN row says the same thing. A close with no artefact is
-   reopened -- **unless the owner closed it.** An owner's close stands (`docs/HANDOFF.md` rule 13: the loop does not
-   undo the owner), and the row records their words in place of an artefact, struck and led with the verdict, as
+   reopened -- **unless the owner closed it.** An owner's close stands (the owner can overturn the loop, never the
+   reverse: `CLAUDE.md`'s opening lines -- no `docs/HANDOFF.md` §4 rule states it; rule 13 is the owner-only
+   actions), and the row records their words in place of an artefact, struck and led with the verdict, as
    `docs/KNOWN.md`'s dropped rows are. The audit notes every completed close whose last comment is not the tool's
    "Closing bar met" line, so the reviewer sees the case instead of acting on it blind.
 5. **The carry.** What is still open in the closing sprint's milestone either moves to the next sprint's milestone

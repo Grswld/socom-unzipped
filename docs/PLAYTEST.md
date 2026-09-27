@@ -111,12 +111,13 @@ Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_p
     resolve the name. Tell me if you had to, because nothing on screen says that is what went wrong. Host a game,
     start the round, walk around. Lag? (The box is in Ohio.) Listen on the screen just after signing in, in CREATE
     GAME and in the lobby: that is where the stray sound was. Also: does the game remember your password after you
-    quit and start again? It is not expected to yet (issue #27) -- say what you see.
+    quit and start again? ~~It is not expected to yet (issue #27) -- say what you see.~~ (retracted: #27 closed
+    2026-09-25, the password survives)
     ~~*Answered 2026-09-22:* a stray sound on the online screens ("a short and ramping deviation from the note");
     the prefilled login is "the wrong design".~~ The sound was charged to a sound bank and the charge withdrawn by
     measurement (R239: the bank's one-shots are inaudible under the song); what you heard is not yet found, so say
-    if you still hear it. The prefill stays, because the game's own saved password does not survive a restart
-    (R237 as rewritten 2026-09-23).
+    if you still hear it. ~~The prefill stays, because the game's own saved password does not survive a restart
+    (R237 as rewritten 2026-09-23).~~ (retracted: #27 closed 2026-09-25, the password survives)
 12. **If a friend on another network is around** *(the first two-machine match -- carried since Sprint 7)*. They unzip
     the same archive, need their own r0001 ISO, pick the same preset, and join you; then swap who hosts. Did you SEE
     their soldier move? Afterwards, from each machine's `logs/` take the newest `run_*.log` and run
@@ -133,7 +134,7 @@ Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_p
 ## Decisions worth making while it is fresh
 - **Who else gets this archive?** For you alone, nothing to decide. For anyone else, decision D2 comes first: the
   archive contains code recompiled from the game, and the game's decrypted ELF (`docs/HUMAN_TASKS.md`, row O1 of its
-  table -- its default is "no public download until answered").
+  table) (answered 2026-09-26, R290: the exe ships, the ELF never).
 - **A profile viewer** in the launcher -- wanted?
 - **Should the download drop the built-in debugger and the dump/trace probes** to get smaller? You will get a number
   (megabytes saved) before you have to answer.

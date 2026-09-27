@@ -275,6 +275,7 @@ add_library(ps2_runtime STATIC
     # cannot share one).
     src/lib/host_window_chrome.cpp
     src/lib/host_window_chrome_win32.cpp
+    src/lib/host_move_loop_win32.cpp   # issue #67: the modal move loop's two edges (windows.h, like the chrome's half)
     src/lib/gs/ps2_gs_memory.cpp
     src/lib/gs/gs_frontend.cpp
     src/lib/gs/gs_cpu_backend.cpp

@@ -30,7 +30,7 @@ suggestions, stop rules and the owner-only list are not.
    pattern: handoff notes, global constraints, tasks with RED/GREEN steps and exact commands, rulings).
 3. **Work in bounded steps:** one hypothesis -> a failing test -> the change -> one build -> one run -> read the
    evidence. Builds and runs go through the lock (the `run-gate` skill; `docs/HANDOFF.md` §4 rule 6),
-   `scripts/check_quiet_gate.sh` first.
+   `scripts/check_quiet_gate.sh` first, and each is announced as a window before it starts (`run-gate` step 0, R297).
    While one is running, do lock-free work rather than waiting: pure scorers and their tests, reading the decompilation,
    analysis of logs already on disk, documents, the filler list in the sprint file. Never return control to wait on a
    detached run -- poll its marker.

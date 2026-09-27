@@ -443,14 +443,9 @@ def render(doc, timeline, repo, img_base, logo, ui_css_inline=None, base=""):
             out.append(html_e)
             idx += 1
     out.append("</ol>")
-    for c in closing:
-        out.append('<section class="closing" id="%s"><h2>%s</h2>' % (slug(c["title"]), inline(c["title"])))
-        for b in c["blocks"]:
-            if b.startswith("python -m"):
-                out.append("<p><code>%s</code></p>" % html.escape(b))
-            else:
-                out.append("<p>%s</p>" % inline(b))
-        out.append("</section>")
+    # The closing sections of STORY.md (the night's summary, how the document is checked) stay in the repository
+    # copy only: the site page ends on the timeline (owner, 2026-09-26).
+    del closing
     out.append("</div></main>")
     fine = ("generated %s from docs/STORY.md at %s &middot; %d entries, %d commit citations &middot; checked by tools_py/story/cite.py "
             "&middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;" % (generated, head_sha, len(entries), n_commits))

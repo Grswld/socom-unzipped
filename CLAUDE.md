@@ -33,6 +33,7 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
   tree's copy -- enforced by: the hook's Edit/Write entry; home the `scripts/loop_lock.sh` header. Bash edits unseen.
 - A commit naming `loop_lock.sh` without a slow-suite marker newer than the script -- enforced by: the Bash entry
   (`rule_lock_script_commit`); home the `scripts/loop_lock.sh` header.
+- `gh pr merge --delete-branch` (and `-d`) -- enforced by: the Bash hook; home `docs/HAZARDS.md` git.
 - Orphaned watchers (`tail`, `grep`, `sleep`) killed at every Stop and SessionEnd -- enforced by: the reaper
   `tools_py/hooks/reap.py`, test `tools_py/tests/test_reap.py`; home DEVELOPING "Guards", the Sprint 14 plan's G3.
 - `build.sh` refuses (exit 3) while another holder has the lock, unless run as its child; the `tools` step is exempt
@@ -54,5 +55,6 @@ its header is the reference.
 
 KNOWN wins on any disagreement: when a document contradicts `docs/KNOWN.md`, the document is wrong.
 Nothing that is the owner's is performed -- no publishing, no money, no permissions or tokens, no change to the site,
-no connection to a server that is not ours; add a line to the owner's row in `docs/HUMAN_TASKS.md` instead.
+no connection to a server that is not ours (a PSRewired one only by the owner's hand, named and permitted each time:
+R293); add a line to the owner's row in `docs/HUMAN_TASKS.md` instead.
 Everything else -- building, running, testing, the tools and the conventions -- is in `docs/DEVELOPING.md`.

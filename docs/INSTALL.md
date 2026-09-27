@@ -1,15 +1,14 @@
 # Installing SOCOM Unzipped
 
 SOCOM II: U.S. Navy SEALs, statically recompiled into a native PC program. **It plays from your own disc.** No game
-code and no game data is distributed with it, so nothing on this page works without your own ISO of the US retail
-release.
+data, and nothing from your disc, will be distributed with the public download (#70); tester archives carry the ELF
+by the owner's hand. Nothing on this page works without your own ISO of the US
+retail release.
 
 This page is for players. Building it yourself is `DEVELOPING.md`; what is proven and what is still open is
 `KNOWN.md`; what to do when something specific goes wrong is `FAQ.md`.
 
-> **Multiplayer has not been audited for security.** The game's original network code is recompiled as-is, with its
-> known vulnerabilities, and here it runs as a native program on your PC. Play online only with people you trust, on
-> a server you trust. Read `../SECURITY.md` before you go online.
+> **Multiplayer has not been audited for security** — read `../SECURITY.md` before you go online.
 
 ---
 
@@ -32,9 +31,8 @@ Nothing else is installed and nothing is written outside the game's own folder.
 
 ## 2. Get the archive
 
-**There is no public download yet.** Builds are handed to testers by hand. How a player build is distributed without
-shipping any of the game's own data is a decision the owner has not made yet, and nothing is published until it is
-made. When there is a download, it will be announced at <https://s2u.scotho.com>, which also carries the setup guide
+**There is no public download yet.** Builds are handed to testers by hand. The download will be the program; the game's
+image is built from your own disc on first run (#70). When there is a download, it will be announced at <https://s2u.scotho.com>, which also carries the setup guide
 and the server's live status.
 
 Every archive ships with a `SHA256SUMS` file beside it. Check the archive against it before you unzip.
@@ -48,7 +46,7 @@ Put it wherever you like. There is no installer, no registry entry and no admini
 to uninstall.**
 
 Keep every file in it together. The folder holds the game (`socom2.exe`), the game's program image
-(`socom2_game.elf`), the launcher (`socom_unzipped_launcher.exe`), the libraries those two import, `LICENSES/`, a
+(`socom2_game.elf` — the tester archive today; the public download builds it from your disc, #70), the launcher (`socom_unzipped_launcher.exe`), the libraries those two import, `LICENSES/`, a
 short `README.txt`, and empty `cards/` and `logs/` folders. Move or lose `socom2_game.elf` and the game refuses to
 start with exit code 68: *"The game's program image (.elf) is missing or damaged. Unpack the download again and keep
 every file together."*
@@ -113,12 +111,8 @@ The PLAY page is four rows — DISC, VIDEO, CONTROLLER, ONLINE — each showing 
 a **CHANGE** button that jumps to the page that owns it. Under them is **GAME VERSION**, which says which build
 LAUNCH starts. Then **LAUNCH**.
 
-**GAME VERSION** has two cells: **r0001 (your disc)**, the one you play, and **r0004 (community update)**, the
-revision the community servers run. The download does not include an r0004 build, so that cell is drawn greyed with
-*"needs the r0004 game update -- planned"* beside it and cannot be picked: it is there so you know the version
-exists and why it is not on offer. The same row appears on the ONLINE page. If the version and the server you picked
-disagree, a warning line says so — *"the community server runs r0004; this is the r0001 build"* or *"the r0001
-servers run r0001; this is the r0004 build"*.
+**GAME VERSION** has two cells, **r0001 (your disc)**, the one you play, and **r0004 (community update)**, greyed
+for now — `FAQ.md`'s *"What is GAME VERSION, and why is "r0004 (community update)" greyed out?"* says why.
 
 *(Until 2026-09-25 this page did not mention the GAME VERSION row, so its greyed cell went unexplained.)*
 
@@ -156,10 +150,7 @@ Two things to expect on your first round:
 
 - **Your first login on any server is a create-persona login** — the name keyboard comes first. The game keeps saved
   personas per server, so a persona made on one server is not there on another.
-- **The game's own SAVE PASSWORD does not survive a restart yet.** Found by a driven two-launch test on 2026-09-23
-  (runs `w10_virgin_a` / `w10_virgin_b`; the record is the Sprint 10 close entry in `STATUS.md`): the persona name
-  comes back from the memory card, the password does not. Until that is fixed, fill in the launcher's PLAYER NAME
-  and PASSWORD fields and let them do the remembering.
+- **The game's own SAVE PASSWORD works**; the launcher's PASSWORD field is only for the prefilled login.
 
 ## 9. Where your saves, settings and logs live
 

@@ -53,6 +53,13 @@ GsFrameBackpressure::WaitResult GsFrameBackpressure::frameRecorded()
     { return m_released || m_maxPendingFrames == 0u || m_recorded - m_replayed <= m_maxPendingFrames; };
     if (withinBound())
         return WaitResult::NotNeeded;
+    // #67: the consumer's thread is in the host's modal move loop; it cannot replay until the loop ends, so the
+    // frame does not wait for it (and no latch is taken: this is not a stall, it has a known end).
+    if (m_suspended)
+    {
+        ++m_stats.skipped;
+        return WaitResult::Skipped;
+    }
     uint64_t lastProgress = m_progress.load(std::memory_order_relaxed);
     if (m_consumerStalled)
     {
@@ -75,8 +82,12 @@ GsFrameBackpressure::WaitResult GsFrameBackpressure::frameRecorded()
     WaitResult result = WaitResult::Waited;
     for (;;)
     {
-        if (m_cv.wait_for(lock, slice, withinBound))
+        if (m_cv.wait_for(lock, slice, [&] { return withinBound() || m_suspended; }))
+        {
+            if (!withinBound())
+                result = WaitResult::Skipped; // #67: woken by the move loop, not by the consumer
             break;
+        }
         const auto now = std::chrono::steady_clock::now();
         const uint64_t progress = m_progress.load(std::memory_order_relaxed);
         if (progress != lastProgress)
@@ -98,6 +109,11 @@ GsFrameBackpressure::WaitResult GsFrameBackpressure::frameRecorded()
     if (result == WaitResult::Waited)
     {
         ++m_stats.waits;
+        return result;
+    }
+    if (result == WaitResult::Skipped)
+    {
+        ++m_stats.skipped;
         return result;
     }
     m_consumerStalled = true;
@@ -137,6 +153,22 @@ void GsFrameBackpressure::release()
     m_cv.notify_all();
 }
 
+void GsFrameBackpressure::setConsumerSuspended(bool suspended)
+{
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_suspended = suspended;
+    }
+    // A producer already inside the wait re-checks its predicate now, not at the next slice.
+    m_cv.notify_all();
+}
+
+bool GsFrameBackpressure::consumerSuspended() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_suspended;
+}
+
 uint32_t GsFrameBackpressure::waiters() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -160,7 +192,7 @@ GsFrameBackpressure::Stats GsFrameBackpressure::takeStats()
 bool GsFrameBackpressure::latched() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return m_consumerStalled;
+    return m_consumerStalled || m_suspended; // #67: a consumer in the move loop is stalled for the byte cap's purposes
 }
 
 // ---------------------------------------------------------------------------------------------
