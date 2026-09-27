@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-214 merges (54 on the first-parent line, 160 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+215 merges (55 on the first-parent line, 160 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.15.0
 
-35 merges.
+36 merges.
 
+- 2026-09-27 `3c76db21` the [gs-submit] split and the render target served as a texture through any envelope (Sprint 16 F2) [agent/s16-f2]
 - 2026-09-27 `60e37e53` merge(sprint-16): the owner's servers ruling and story commits (c6450bcd) into the controller branch [branch not named]
 - 2026-09-27 `9f8bf567` merge(sprint-16): the main tree's web-session commits (3bb6e986) into the controller branch [branch not named]
   - 2026-09-27 `06b7c3f1` the canvas stays opaque, so the page never shows through the fog (Sprint 16, web) [agent/web-alpha]
