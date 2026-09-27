@@ -141,7 +141,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_SOCOM2_INPUT_FILE` | Path | unset | Pad-state injection file polled by a sampler thread; how the harness presses buttons. |
 | `PS2X_SOCOM2_INPUT_SCRIPT` | Spec | unset | t:BTN[+BTN][:hold],...: press buttons at those seconds. |
 | `PS2X_SOCOM2_INPUT_TRACE` | Presence | unset | Log every change of the pad state the game will read. |
-| `PS2X_SOCOM2_LOGIN_TRACE` | Presence | unset | Log each RC4 call's state, byte counter, class, type and length, and each rekey; never a field. |
+| `PS2X_SOCOM2_LOGIN_TRACE` | Presence | unset | Log RC4 calls, rekeys, TCP chunks, RT frame heads and the persona record's pending/answered; never a field. |
 | `PS2X_SOCOM2_MUSIC_TRACE` | Presence | unset | Log the music manager and every cue push with the mixer frame clock (music round four). |
 | `PS2X_SOCOM2_NET_STATS` | Flag | `1` | sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement. |
 | `PS2X_SOCOM2_NET_TRACE` | Presence | unset | Verbose libnetb: every RPC, socket and datagram header. |

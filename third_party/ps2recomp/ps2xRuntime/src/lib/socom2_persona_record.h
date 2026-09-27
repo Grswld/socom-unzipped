@@ -7,8 +7,9 @@
 // 0x07 (AccountLogin), MessageID 21 bytes, SessionKey 17, Username 32 at payload offset 40, Password 32 at 72 -- 104
 // bytes. The record is held PENDING with its MessageID and committed by the first type-0x08 response
 // (MediusAccountLoginResponse.cs: MessageID, 3 pad bytes, StatusCode at 26) carrying that MessageID with StatusCode >= 0,
-// which comes back plain after rc4DecryptFn; a refused login (a wrong password, a refused create) is dropped, so the
-// ledger never holds a phantom row.
+// read after rc4DecryptFn when the server encrypts it and at the socket when it does not (socketState below; Horizon's
+// MAS and MLS send it plain -- logs/l1b_seam_reading.md); a refused login (a wrong password, a refused create) is
+// dropped, so the ledger never holds a phantom row.
 //
 // Whether the seams carry whole messages is inferred (PS2X_SOCOM2_LOGIN_TRACE is the check), so the recorder
 // reassembles AT the seams: a concatenation keyed on the RC4 state's guest address, a message opened by a call that
@@ -69,17 +70,30 @@ namespace socom2_persona
         return !passwordKeyboardOpened && !password.empty();
     }
 
+    // The login response Horizon's MAS and MLS send PLAIN (EnableEncryption false) never crosses rc4DecryptFn; socom2_hostnet
+    // walks the RT frames (socom2_rt_frames.h) and hands a plain RT_MSG_SERVER_APP body to decrypt() at counter 0 under
+    // this key, one state per descriptor. A guest RC4 state is an address masked to EE RAM (PS2_RAM_MASK, under
+    // 0x02000000; the .cpp asserts it), so a key with the top bit set never names one, and nothing meets the other's.
+    constexpr uint32_t kSocketStateBit = 0x80000000u;
+    inline uint32_t socketState(int fd) { return kSocketStateBit | static_cast<uint32_t>(fd); }
+
     struct Context
     {
         std::string ledgerPath;   // launcher::personas::ledgerPathFor(the card root)
         std::string server;       // PS2X_SOCOM2_SERVER, the address the game is pointed at
         bool second = false;      // PS2X_SOCOM2_RSA_KEY selects key b: the second instance
+        // The Dev lines (PS2X_SOCOM2_LOGIN_TRACE; empty = silent): pending, answered with its status, unanswered --
+        // counts and statuses, never a name, a password or a MessageID.
+        std::function<void(const std::string &)> trace;
     };
 
     class Recorder
     {
     public:
         explicit Recorder(Context context, std::function<std::time_t()> clock = [] { return std::time(nullptr); });
+        ~Recorder();   // says so when a request is still pending: never answered
+        // A state torn down (socom2_hostnet closed its descriptor): its half message goes, and a pending request says so.
+        void closeState(uint32_t state);
 
         // The OSK wrapper saw the login's password keyboard open (socom2_osk::Field::Password).
         void passwordKeyboardOpened() { m_keyboardOpened = true; }
@@ -108,6 +122,11 @@ namespace socom2_persona
         void onRequest(const std::vector<uint8_t> &message);
         void onResponse(const std::vector<uint8_t> &message);
         void commit();
+        void say(const std::string &line) const
+        {
+            if (m_context.trace)
+                m_context.trace(line);
+        }
 
         Context m_context;
         std::function<std::time_t()> m_clock;
@@ -123,6 +142,9 @@ namespace socom2_persona
     // seams in socom2_crypto.cpp and the keyboard wrapper in game_overrides_socom2.cpp call these.
     void onRc4Encrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len);
     void onRc4Decrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len);
+    // socom2_hostnet: a plain RT_MSG_SERVER_APP body read on descriptor fd (outside hostnet's lock), and fd closed.
+    void onServerApp(int fd, const uint8_t *body, std::size_t len);
+    void onSocketClosed(int fd);
     void onPasswordKeyboardOpened();
     // installOskPrefill's count: how many of the keyboard's entries it wrapped, of how many.
     void onKeyboardObserverWraps(int wrapped, int entries);
