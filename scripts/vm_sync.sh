@@ -26,7 +26,9 @@ case "${1:-tree}" in
     tar --exclude=./third_party/ps2recomp/build-clang --exclude=./third_party/ps2recomp/build-tools \
         --exclude=./vm --exclude=./logs --exclude=./dist --exclude=./dist-linux --exclude=./recomp/output \
         --exclude=./dist-release --exclude=./dist-linux-release \
+        --exclude=./dist-release-dev --exclude=./dist-linux-release-dev \
         --exclude=./third_party/ps2recomp/build-linux --exclude=./third_party/ps2recomp/build-linux-release \
+        --exclude=./third_party/ps2recomp/build-linux-release-dev \
         --exclude=./tools/llvm-mingw --exclude=./tools/cmake --exclude=./tools/ninja --exclude=./tools/pcsx2 \
         --exclude=./server/config/simulated.db --exclude='./server/*/bin' --exclude='./server/*/obj' \
         --exclude=./research --exclude=./node_modules --exclude='*.wav' --exclude='*.iso' \
