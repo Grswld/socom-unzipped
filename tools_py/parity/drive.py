@@ -430,6 +430,10 @@ def main():
     steps = parse(open(a.script).read())
     proc = launch(a.target, a.seconds)
     t0 = time.time()
+    # Every step line's t= is measured from this t0, which falls after the process checks and the launch -- 1.3-1.5 s
+    # after a caller's own "drive started" stamp. The epoch lets an audio capture lay its WAV against the steps
+    # (tools_py/parity/capture_offset.py, LATER row 37); no reader of this stdout takes it for a step.
+    print(f"drive_t0_epoch={t0:.3f}", flush=True)
     hwnd = None
     while hwnd is None and time.time() - t0 < 60:
         hwnd = winshot.find_window(keys.WINDOW_TITLES[a.target])
