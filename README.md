@@ -53,8 +53,7 @@ your disc on first run, the launcher installing the community's r0004 update its
 playing on a community server (the launcher's community preset stays greyed until the update installs), the console's
 full frame rate in missions (about 27 ms a frame on a quiet machine against the console's 16.7), a finished Linux
 client (it boots in a virtual machine, never yet on a real GPU), and any disc other than the NTSC r0001 release. The
-mission's ambient sound bed plays about 11 dB too quiet and the music still drops out in the menus. The game does not
-send your voice yet.
+mission's ambient sound bed plays about 11 dB too quiet and the music still drops out in the menus. The game does not send your voice yet.
 
 The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`.
 
