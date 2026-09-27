@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 10 open O rows (11 answered or struck); 50 active rulings since 2026-09-26 (50 dated, 0 placed by number or home, 200 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
+The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 10 open O rows (11 answered or struck); 51 active rulings since 2026-09-26 (51 dated, 0 placed by number or home, 200 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
@@ -39,7 +39,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-50 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 50 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+51 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 51 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R269** (2026-09-26) an infrastructure sprint ahead of visible defects, in the order G, I, W, D, S, E, M. -- overturn by number
 - **R270** (2026-09-26) KNOWN §4's standing hazards move to their own file (`docs/HAZARDS.md`, class L, headed by the area each bites), KNOWN keeping §1–§3. -- overturn by number
@@ -87,7 +87,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R312** (2026-09-27) cloud sessions on the owner's credit (the owner's word of 05:57Z: "any cloud session model/task combination that would be relevant and expedient to the sprint"… -- overturn by number
 - **R313** (2026-09-27) the owner's word of 05:57Z ("proceed to tackle open tasks or issues in the order you see fit"): lock-free tasks started on topic branches off `main` before… -- overturn by number
 - **R315** (2026-09-27) the player exe drops the debug UI only (`PS2X_ENABLE_DEBUG_UI=OFF`); the runtime's probes stay in both kinds, because the gate reads them (… -- overturn by number
-- **R316** (2026-09-27) the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a… -- overturn by number
+- **R316** (2026-09-27) the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a…… -- overturn by number
+- **R317** (2026-09-27) `PS2Runtime::initialize` gains a headless mode taken by an explicit argument the helper's `main` passes (not a knob), default off so `socom2.exe`'s behaviour i… -- overturn by number
 - **S13-R12** (2026-09-26) the close's issue-stack read, acted on. -- overturn by number
 - **S13-R13** (2026-09-26) the frame-time pin stays informational; #59 carries with the measured reason. -- overturn by number
 - **S13-R14** (2026-09-26) the carried-twice three go to the owner, the rest carry once to the backlog. #25 (the Linux VM suites; no Sprint 13 task), #26 (the chat bound's path; O2 resta… -- overturn by number
