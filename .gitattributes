@@ -6,3 +6,4 @@ tools_py/release/leak_allow.txt text eol=lf
 server/ops/*.sh text eol=lf
 server/ops/backup.cron text eol=lf
 server/ops/ops.env.example text eol=lf
+web/** text eol=lf

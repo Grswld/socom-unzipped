@@ -116,6 +116,7 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 | `server/` | Horizon Private Server sources and the SOCOM II configuration |
 | `docs/` | `HANDOFF.md` (start here), `KNOWN.md`, `STATUS.md`, `CURRENT_SPRINT.md`, `HUMAN_TASKS.md`, the research notes under `docs/research/`, and each sprint's spec and plan under `docs/superpowers/` |
 | `tests/` | Fixtures for the C++ suite |
+| `web/` | The experimental browser map viewer, a separate project that lives here: its own npm workspace, tests, README, docs and CI (`web.yml`). It decodes the disc's map archives and needs nothing from the recompilation, which needs nothing from it. Working on the recomp? Skip it. |
 
 ### How it was built
 

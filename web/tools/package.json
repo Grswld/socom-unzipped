@@ -1,0 +1,10 @@
+{
+  "name": "@s2u/tools",
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@s2u/archive": "*",
+    "@s2u/gs": "*",
+    "@s2u/mesh": "*"
+  }
+}
