@@ -1,7 +1,7 @@
 # Web map viewer — the browser recreation's first milestone (design)
 
 Written 2026-09-20 by the browser project's overseer, working autonomously through the milestones. The scope
-as set: the scoping note (`docs/research/71-browser-recreation-scoping.md`) and the code-diet spike, the map order
+as set: the scoping note (`web/docs/research/71-browser-recreation-scoping.md`) and the code-diet spike, the map order
 Frostfire, Desert Glory, Crossroads, two asset sources behind one interface (section 1), and a 30 s first-load
 budget. The review gate this process normally puts on a spec before implementation was waived for that night;
 the file was reviewed afterwards.
@@ -10,7 +10,7 @@ the file was reviewed afterwards.
 
 A browser application that loads a SOCOM II multiplayer map from the game's own archives and renders it in 3D with a
 free camera, textured world geometry, placed props, and overlays for collision and the known spawn positions. It is
-the first milestone of the browser recreation (`docs/research/71`): the replay viewer for live matches builds on it
+the first milestone of the browser recreation (`web/docs/research/71`): the replay viewer for live matches builds on it
 (it needs a map to draw actors in), and the eventual match client reuses its archive and asset layers.
 
 It is a **viewer**, not the game. It does not emulate VU1 or the GS. Geometry and textures are decoded exactly from
@@ -22,7 +22,7 @@ this viewer does not pretend to that.
 The full-game route (recompiled game as wasm, GS as WebGPU compute) is the only route to mechanically identical
 gameplay and stays the target. It is gated on the code-size measurement now running, and even a good number makes it
 a months-scale port with no shipped precedent. The viewer route is weeks-scale, every one of its formats is now
-specified (`docs/research/72-mp-map-archive-anatomy.md`), and its archive, texture and mesh layers are needed by the
+specified (`web/docs/research/72-mp-map-archive-anatomy.md`), and its archive, texture and mesh layers are needed by the
 replay viewer whichever way the game itself goes. The spike's verdict is recorded in section 9 when it lands.
 
 ## 2. Goals and non-goals
@@ -101,7 +101,7 @@ Dependency direction is strictly downward: `viewer -> scene -> mesh, gs -> archi
   the `TEX0` quadword is decoded for `PSM`, `CBP`, `CPSM`, `TW`, `TH`.
 - `PaletteRecord` from `par` + `buf`: `gsaddr`, format (CT16 or CT32), 256 entries.
 - `decodeTexture(tex, palettes) -> RGBA8 ImageData` for PSMT8 with either palette format, PSMCT16 and PSMCT32
-  direct. PS2 alpha (0..0x80) is scaled to 0..255. The two open questions from `docs/research/72` (raster versus
+  direct. PS2 alpha (0..0x80) is scaled to 0..255. The two open questions from `web/docs/research/72` (raster versus
   swizzled pixel order; the 32-entry CLUT interleave for 8-bit palettes) are settled empirically in milestone 2 by
   decoding known textures and looking, with the runtime's `ps2_gs_psmt8.h` and `ps2_gs_psmct32.h` as the reference
   for the swizzle if the raster reading is wrong. The decision and its evidence go into this spec's section 9.
@@ -199,7 +199,7 @@ M0 to M3 are tonight's target; M4 if time allows. Each milestone is a commit or 
 - No game data committed. `.gitignore` gains `web/node_modules/`, `web/dist/`, `web/public/maps/`,
   `web/test-fixtures/`, `web/**/playwright-report/`.
 - TypeScript strict; no `any` in the decoders; every binary layout is a documented `DataView` reader with the byte
-  offsets in comments citing `docs/research/72`.
+  offsets in comments citing `web/docs/research/72`.
 - Third-party: three.js (MIT), Vite, vitest, Playwright. Nothing GPL enters `web/` (the runtime is GPL-3.0 and
   stays a reference, not a dependency, for this milestone).
 
@@ -342,7 +342,7 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   `placeInstances` never reaches them; reading the archive adds 110 instances and 1,601 triangles of
   rock and grass that were missing from the ground before.
 
-- 2026-09-21, the code-diet spike's verdict (docs/research/71 §1.7): the whole recompiled game is 180.27 MB of
+- 2026-09-21, the code-diet spike's verdict (web/docs/research/71 §1.7): the whole recompiled game is 180.27 MB of
   wasm, 13.7 MB brotli on the wire, and Chromium compiles it in 0.2 s lazily; the size gate on the full-game route
   is open. The viewer route's archive, texture, mesh and scene layers stand as the asset side of that route and of
   the replay viewer. The next design decision is the runtime port (Emscripten: scheduler, GS, VU1, disc delivery),
