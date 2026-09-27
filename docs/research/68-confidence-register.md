@@ -15,6 +15,16 @@ number differently from a KNOWN row, §3 says so with the evidence and KNOWN is 
 >   -- per minute `2 2 0 0 2 0 0 0 0 0 0 0 0 0 0 0` (16 endpoint minutes; the game's own callbacks cover 735 s).
 >   KNOWN §2's #42 row said 6: confirmed, not replaced. A trial's capture must be clean and read at or below 6 in
 >   total and 2 in a minute.
+> - **2026-09-27 12:20Z (Sprint 16 V0 leg 3, the tree `39bff922`, the chain's exe `83a79563…`): the parity bar on a
+>   fresh capture reads 12/48**, not 31/48 — every mission window s32–s47 fails on rms alone, the ambient bed at
+>   -51.2 dBFS against the console's -35..-41, a level regression that dates from 2026-09-20's square-law group
+>   stage (`554972e6`) and predates T1b by days (KNOWN §2, issue #91; the capture `logs/parity/s16_v0_t1b`); the
+>   31/48 below was the Sprint 9 build's number and was never re-captured. T1b's own bar: the parity script fires
+>   no `snd_AutoVol` (0 calls in the run log), so parity cannot judge the step schedule — inert, not failed; the dip
+>   bar was NOT measured (the capture exported no `AUDIO_DUMP`, so no DEVICE verdict exists — an endpoint-only run
+>   of `audio_dips` says "DEVICE 0" vacuously) and is re-captured with the dump; the callback trace read 19,364
+>   callbacks over 387 s, 0 late, 0 dry, max gap 21.2 ms. The reference's boot windows s00 and s02–s05 are unwinnable
+>   on this pin (PCSX2's boot waits desynchronised them).
 > - **Audio parity: 31/48** windows, re-scored today from the saved run by
 >   `python -m tools_py.parity.audio_parity compare scripts/parity/refs/audio_launch_to_mission_xl.pcsx2.json D:/socom_archive/parity/s9_q1_parity_ours2/audio_scores.json`
 >   (the run KNOWN §1 L40 cites as `s9_q1_parity_ours2`, archived from `logs/parity/`).
