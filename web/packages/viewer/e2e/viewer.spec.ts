@@ -167,3 +167,49 @@ test('all three extracted maps render from the served archives', async ({ page }
 
   expect(problems).toEqual([]);
 });
+
+/**
+ * The canvas is opaque. On night maps the Modern look showed bluish shutters, windows, fences and a
+ * horizon band through the fog: the world's draws wrote their alpha into the canvas, and the browser
+ * composited it over the page's `--bg`, which no fog touches (PS2's black page happened to match the
+ * night fog). With the page painted magenta any pixel the canvas lets through is plain to see.
+ */
+test('the page never shows through the canvas: Requiem at night, magenta page', async ({ page }) => {
+  mkdirSync(SCREENS, { recursive: true });
+  await page.goto('/');
+  await page.addStyleTag({ content: 'html, body { background: #ff00ff !important }' });
+  const status = page.locator('#status');
+  await expect(status).toContainText('triangles');
+  await page.locator('#maps').selectOption('RUN/MP83.ZDB');
+  await expect(status).toContainText('REQUIEM (MP83)');
+  await expect(status).toContainText('triangles');
+  await setToggle(page, 'ps2look', false);
+  // The pose the owner's report was reproduced at: the shutters and the horizon band in one frame.
+  await page.evaluate(() => window.__viewer.setCamera({ x: 1928, y: 400, z: 2591, yaw: 34.8, pitch: -12 }));
+  for (let i = 0; i < 4; i++) await settle(page);
+
+  const canvas = page.locator('#view');
+  const png = await canvas.screenshot({ path: join(SCREENS, 'requiem-magenta-page.png') });
+  const leaks = await page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d')!;
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    let n = 0;
+    let sampled = 0;
+    for (let p = 0; p < c.width * c.height; p += 8) {
+      const r = data[p * 4]!, g = data[p * 4 + 1]!, b = data[p * 4 + 2]!;
+      sampled++;
+      if (r > 150 && b > 150 && g < 60) n++;
+    }
+    return { n, sampled };
+  }, png.toString('base64'));
+  console.log(`requiem magenta leak: ${leaks.n} of ${leaks.sampled} sampled pixels`);
+  expect(leaks.sampled).toBeGreaterThan(1000);
+  expect(leaks.n).toBe(0);
+});
