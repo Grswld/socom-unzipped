@@ -1074,7 +1074,7 @@ and every ticket carries a class, `build` or `run` (`--class` overrides).
 
 Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
 wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
-home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `loop_lock` and `logs/`
+home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `gh pr`, `loop_lock` and `logs/`
 exits 0 in the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
 `|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
 `timeout`, `nice`, `nohup`, `stdbuf`, `ionice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
@@ -1114,6 +1114,8 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
   `git worktree remove --force ...`; home `scripts/agent_worktree.sh`.
 - **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
   test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
+- **gh merge deleting the branch** -- `gh pr merge` with `--delete-branch` or `-d` (`-md` too); test `GH_MERGE_CASES`
+  (`test_gh_pr_merge_delete_branch_is_refused`); home `docs/HAZARDS.md` git (the worktree junction, 2026-09-26).
 
 The same script also runs before every Edit, Write, MultiEdit and NotebookEdit call (a second PreToolUse entry,
 Sprint 14 G2; the path from `tool_input.file_path`, or `notebook_path`). It judges the path relative to the root of
