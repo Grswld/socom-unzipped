@@ -2,16 +2,19 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-350 rulings (311 global, 39 sprint-local): 342 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+353 rulings (314 global, 39 sprint-local): 345 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-311 rulings.
+314 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R320 | 2026-09-27 | active | revise, do not append: a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R320** |
+| R319 | 2026-09-27 | active | Discussions' Announcements stand in for patch notes for now, human-gated: a dated draft under `docs/announcements/` from its template, a `docs/HUMAN_TASKS.md`… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R319** |
+| R318 | 2026-09-27 | active | the wiki holds human prose only; what an agent, a hook or a check reads stays in the tree. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R318** |
 | R317 | 2026-09-27 | active | `PS2Runtime::initialize` gains a headless mode taken by an explicit argument the helper's `main` passes (not a knob), default off so `socom2.exe`'s behaviour i… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R317** |
 | R316 | 2026-09-27 | active | the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a… (amended: see the ledger) | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R316** |
 | R315 | 2026-09-27 | active | the player exe drops the debug UI only (`PS2X_ENABLE_DEBUG_UI=OFF`); the runtime's probes stay in both kinds, because the gate reads them (… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R315** |
