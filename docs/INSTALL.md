@@ -139,18 +139,27 @@ not supported — see `FAQ.md`.
 
 **GAME VERSION** is the same row as on the PLAY page (§7).
 
-**PROFILE** is a name, not a path, and it picks your memory card: *"picks cards/&lt;profile&gt; for the memory card"*.
+**PERSONAS** lists every persona your memory cards have logged in with through this build, newest first: its name,
+the server it was made on and when it last played. Pick one, press **LAUNCH**, then pick the same persona in the
+game's own list. The last row, **NEW PERSONA**, is for one you have not made yet: *"the game asks for a name on its
+own keyboard"*, keeps it on the memory card, and it joins the list after its first login. The cards live in
+`cards/<profile>/` (`cards/player/` unless you name another `profile` in `config.json` by hand).
 
-**PLAYER NAME** and **PASSWORD** are your persona on the server. Leave them empty and the game asks on its own
-on-screen keyboard, as it always did (*"the persona; empty = the game asks"*); fill them in and that keyboard opens
-already typed. The password is masked on screen but is stored in plain text in `config.json` beside the exe, which
-the launcher also says: *"kept in config.json, plain; masked here"*. Hand that file to nobody.
+Beside the selected row sits a masked **PASSWORD** field, shown only while the card does not hold that persona's
+password: for NEW PERSONA, for a persona made on another server, and for one whose card has no password saved. A
+password typed there opens the game's password keyboard already typed, and it is kept in plain text in `config.json`
+beside the exe, only until the game remembers it. Every login that goes through writes a record beside the card
+(`cards/<profile>.personas.json`: the name, the server, when, and whether the card holds the password -- never the
+password itself); once a login goes through with nothing typed, the card holds the password, the launcher empties
+that key and the field goes. Until then, hand `config.json` to nobody.
 
 Two things to expect on your first round:
 
 - **Your first login on any server is a create-persona login** — the name keyboard comes first. The game keeps saved
-  personas per server, so a persona made on one server is not there on another.
-- **The game's own SAVE PASSWORD works**; the launcher's PASSWORD field is only for the prefilled login.
+  personas per server, so a persona made on one server is not there on another; the list's heading says so when you
+  pick it (*"made on ...; on this server the game makes a new persona"*).
+- **The game's own SAVE PASSWORD works**; tick it and the next login goes through with nothing typed, which is what
+  empties the launcher's PASSWORD field.
 
 ## 9. Where your saves, settings and logs live
 
@@ -160,7 +169,8 @@ Everything is inside the game's folder, beside the executables:
 |---|---|
 | `cards/<profile>/` | Your simulated memory card — every in-game save. A second instance uses `cards/<profile>_b/`. |
 | `logs/run_<stamp>.log` | One log per run of the game. The newest is the one to send with a report. |
-| `config.json` | Every launcher setting: the ISO path, video, pad, server, profile — and the password if you typed one, in plain text. |
+| `config.json` | Every launcher setting: the ISO path, video, pad, server, profile — and a password typed on the ONLINE page, in plain text, until the card holds it. |
+| `cards/<profile>.personas.json` | The PERSONAS list's record, beside the card, written on each login that goes through: name, server, when, and whether the card holds the password (never the password). |
 | `diagnostics/` | The zips SAVE DIAGNOSTICS writes (created when you first press it). |
 
 The launcher's **ABOUT** page shows the real paths for the first two, with an **OPEN LOGS** button, and repeats the

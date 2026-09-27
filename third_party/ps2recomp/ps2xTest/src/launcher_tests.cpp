@@ -5,6 +5,7 @@
 #include "ps2x/exit_codes.h"   // the selftest lists one line per row of that table
 #include "launcher/launcher_config.h"
 #include "launcher/launcher_layout.h"
+#include "launcher/personas.h"   // Sprint 16 L1b (#73): the persona ledgers beside the cards
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 // Sprint 8 Goal 9: the redesigned launcher's pure halves -- the layout and the focus model, the pad's
@@ -35,6 +36,9 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <chrono>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -177,6 +181,62 @@ namespace
             std::memcpy(dst, img.data() + offset, size);
             return true;
         };
+    }
+    // Sprint 16 L1b (#73): a cards/ directory under the temp folder, built by hand -- empty save files, synthetic
+    // ledgers, never a real card (the portable pattern of preflight_tests.cpp's makeHome/removeHome).
+    std::filesystem::path makeCardsDir()
+    {
+        static int counter = 0;
+        const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+        const std::filesystem::path root = std::filesystem::temp_directory_path() /
+                                           ("ps2x_personas_" + std::to_string(ticks) + "_" + std::to_string(counter++));
+        std::error_code ec;
+        std::filesystem::create_directories(root / "cards", ec);
+        return root / "cards";
+    }
+
+    void removeCardsDir(const std::filesystem::path &cards)
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(cards.parent_path(), ec);
+    }
+
+    void writeFileText(const std::filesystem::path &p, const std::string &text)
+    {
+        std::ofstream out(p, std::ios::binary | std::ios::trunc);
+        out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    }
+
+    std::string readFileText(const std::filesystem::path &p)
+    {
+        std::ifstream in(p, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+
+    // cards/<leaf>/BASCUS-97275SOCOMII/, with an empty SaveGame0 when asked (no disc bytes, only a name).
+    void makeCard(const std::filesystem::path &cards, const std::string &leaf, bool withSaveGame = false)
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(cards / leaf / launcher::personas::kSaveFolder, ec);
+        if (withSaveGame)
+            writeFileText(cards / leaf / launcher::personas::kSaveFolder / "SaveGame0", "");
+    }
+
+    std::string ledgerText(const std::vector<launcher::personas::Persona> &records)
+    {
+        return launcher::personas::toJson(records);
+    }
+
+    launcher::personas::Persona persona(const std::string &name, const std::string &server, std::time_t lastLogin,
+                                        bool savedPassword = false, bool second = false)
+    {
+        launcher::personas::Persona p;
+        p.name = name;
+        p.server = server;
+        p.lastLogin = lastLogin;
+        p.savedPassword = savedPassword;
+        p.second = second;
+        return p;
     }
 }
 
@@ -1266,7 +1326,7 @@ void register_launcher_tests()
 
             t.IsFalse(ui::drawable(ui::rectOf(nodes, "online.no.such.control")),
                       "an id the list does not hold answers a rect nothing may draw from");
-            t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.profile")), "an id it does hold answers a real one");
+            t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.persona.new")), "an id it does hold answers a real one");
         });
 
         // Sprint 10 (owner, 2026-09-20): "text from a selected tab displays inline around the top left before
@@ -1406,7 +1466,7 @@ void register_launcher_tests()
             const ui::Rect second = ui::rectOf(open, "online.second");
             t.IsTrue(ui::drawable(disclosure) && ui::drawable(second), "both are real rects");
             t.IsTrue(second.y > disclosure.y, "the toggle sits below the disclosure that reveals it");
-            t.IsTrue(second.y > ui::rectOf(open, "online.profile").y,
+            t.IsTrue(second.y > ui::rectOf(open, "online.persona.new").y,
                      "and the whole section is below the settings a stranger does need");
 
             // The focus order: ADVANCED is the last thing on the page before the bottom bar's LAUNCH, so
@@ -1418,7 +1478,7 @@ void register_launcher_tests()
             for (size_t i = 0; i < ids.size(); ++i)
             {
                 if (ids[i] == "online.advanced") advancedAt = i;
-                if (ids[i] == "online.profile") profileAt = i;
+                if (ids[i] == "online.persona.new") profileAt = i;   // Sprint 16 L1b: the viewer's last row
             }
             t.IsTrue(advancedAt < ids.size() && profileAt < ids.size(), "both are in the graph");
             t.IsTrue(advancedAt > profileAt, "ADVANCED comes after the ordinary settings, not before them");
@@ -1442,42 +1502,180 @@ void register_launcher_tests()
                      "the toggle a player switched on is always on the page they switched it on");
         });
 
-        // Sprint 10 Goal 9: the persona and its password, under PROFILE and above ADVANCED -- a stranger's first-run
-        // settings, in reading order, and still inside the body with the second-instance caption at the small size.
-        tc.Run("the ONLINE page holds a name and a masked password under PROFILE, above ADVANCED, clear of each other", [](TestCase &t)
+        // Sprint 16 L1b (#73, R295): the PERSONAS list replaces Sprint 10 Goal 9's PROFILE, PLAYER NAME and PASSWORD fields
+        // in the same 142 units under the address: three visible rows at the presets' pitch, NEW PERSONA last, the masked
+        // password beside the selected row, ADVANCED where it was -- still inside the body at the design size.
+        tc.Run("the ONLINE page holds the PERSONAS rows and a masked password under the address, above ADVANCED, clear of each other", [](TestCase &t)
         {
             for (const ui::Rect window : {ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f}, ui::Rect{0.0f, 0.0f, 800.0f, 520.0f}})
             {
                 ui::LayoutInputs in;
                 in.advancedOpen = true;
                 in.customServer = true;   // the tallest form: the address field is on the page too
+                in.personaRows = 2;       // two records, NEW PERSONA third: the three visible rows full
+                in.personaSelected = 0;
+                in.personaPasswordShown = true;
                 const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
-                const ui::Rect profile = ui::rectOf(nodes, "online.profile");
-                const ui::Rect name = ui::rectOf(nodes, "online.name");
-                const ui::Rect password = ui::rectOf(nodes, "online.password");
+                for (const char *gone : {"online.profile", "online.name", "online.password"})
+                    t.IsFalse(ui::hasNode(nodes, gone), std::string("the old field is gone: ") + gone);
+                const ui::Rect address = ui::rectOf(nodes, "online.server");
+                const ui::Rect row0 = ui::rectOf(nodes, "online.persona.0");
+                const ui::Rect row1 = ui::rectOf(nodes, "online.persona.1");
+                const ui::Rect fresh = ui::rectOf(nodes, "online.persona.new");
+                const ui::Rect password = ui::rectOf(nodes, "online.persona.password");
                 const ui::Rect advanced = ui::rectOf(nodes, "online.advanced");
                 const ui::Rect second = ui::rectOf(nodes, "online.second");
-                t.IsTrue(ui::drawable(name) && ui::drawable(password), "both fields are laid out");
-                t.IsTrue(name.y >= profile.bottom() && password.y >= name.bottom(), "in reading order under PROFILE");
-                t.IsTrue(advanced.y >= password.bottom(), "ADVANCED is below them");
+                t.IsTrue(ui::drawable(row0) && ui::drawable(row1) && ui::drawable(fresh) && ui::drawable(password), "every row and the field are laid out");
+                t.IsTrue(address.y == ui::onlineAddressRow(window).y, "ADDRESS sits on its own shared row");
+                t.IsTrue(row0.y >= address.bottom() + 26.0f, "the rows start below the address with room for the PERSONAS heading");
+                t.IsTrue(row1.y >= row0.bottom() && fresh.y >= row1.bottom(), "in reading order, NEW PERSONA last");
+                t.IsTrue(advanced.y >= fresh.bottom() + 8.0f, "ADVANCED is below the three rows, 8 clear");
+                t.IsTrue(password.y == row0.y && password.x >= row0.right(), "the password sits beside the selected row, which narrows for it");
+                t.IsTrue(std::fabs(row1.right() - password.right()) < 0.01f, "an unselected row spans what the two share");
                 t.IsTrue(second.y >= advanced.bottom(), "and the second-instance toggle below that");
                 const ui::Frame f = ui::frameFor(window);
                 if (window.w >= 1100.0f)   // the small window scrolls its body; the design size must not need to
                     t.IsTrue(second.bottom() + 40.0f <= f.body.bottom(), "with its caption still inside the body");
-                // The focus order follows the reading order: profile, name, password, then ADVANCED.
                 const std::vector<std::string> ids = ui::FocusGraph::build(window, in).idsOn(ui::Page::Online);
-                size_t profileAt = ids.size(), nameAt = ids.size(), passwordAt = ids.size(), advancedAt = ids.size();
+                size_t addressAt = ids.size(), row0At = ids.size(), freshAt = ids.size(), advancedAt = ids.size();
                 for (size_t i = 0; i < ids.size(); ++i)
                 {
-                    if (ids[i] == "online.profile") profileAt = i;
-                    if (ids[i] == "online.name") nameAt = i;
-                    if (ids[i] == "online.password") passwordAt = i;
+                    if (ids[i] == "online.server") addressAt = i;
+                    if (ids[i] == "online.persona.0") row0At = i;
+                    if (ids[i] == "online.persona.new") freshAt = i;
                     if (ids[i] == "online.advanced") advancedAt = i;
                 }
-                t.IsTrue(profileAt < nameAt && nameAt < passwordAt && passwordAt < advancedAt, "focus walks profile, name, password, ADVANCED");
+                t.IsTrue(addressAt < row0At && row0At < freshAt && freshAt < advancedAt, "focus walks address, the rows, NEW PERSONA, ADVANCED");
             }
-            t.IsFalse(ui::helpFor("online.name").empty() || ui::helpFor("online.password").empty(), "both fields have help");
-            t.IsTrue(ui::helpFor("online.password").find("config.json") != std::string::npos, "and the password's says where it is kept (R179)");
+            t.IsFalse(ui::helpFor("online.persona.new").empty() || ui::helpFor("online.persona.password").empty(), "the new nodes have help");
+            t.IsFalse(ui::helpFor("online.persona.0").empty(), "and so does a row, by its prefix");
+            t.IsTrue(ui::helpFor("online.persona.password").find("config.json") != std::string::npos, "the password's says where it is kept");
+        });
+
+        tc.Run("the empty viewer: NEW PERSONA and its masked field, and none of the old three fields", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            const ui::LayoutInputs in;   // no records: NEW PERSONA is the list and the selected row
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(nodes, "online.persona.new"), "the NEW PERSONA row");
+            t.IsTrue(ui::hasNode(nodes, "online.persona.password"), "and its password field");
+            t.IsFalse(ui::hasNode(nodes, "online.persona.0"), "no record row");
+            for (const char *gone : {"online.profile", "online.name", "online.password"})
+                t.IsFalse(ui::hasNode(nodes, gone), std::string("no ") + gone);
+            t.IsTrue(ui::rectOf(nodes, "online.persona.new").y == ui::onlinePersonaRow(window, 0, 0).y, "in the first slot");
+        });
+
+        tc.Run("readCards (k): four records -> three rows visible; a focus move onto the fourth scrolls by one and no other node moves", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.customServer = true;
+            in.personaRows = 4;
+            in.personaSelected = 4;   // NEW PERSONA
+            in.personaPasswordShown = true;
+            const std::vector<ui::Node> top = ui::layoutFor(ui::Page::Online, window, in);
+            int visible = 0;
+            for (const ui::Node &n : top)
+                if (n.id.rfind("online.persona.", 0) == 0 && n.id != "online.persona.password")
+                    ++visible;
+            t.Equals(visible, ui::kPersonaVisibleRows, "three rows of five");
+            t.IsTrue(ui::hasNode(top, "online.persona.2") && !ui::hasNode(top, "online.persona.3"), "the fourth is below the fold");
+            t.IsFalse(ui::hasNode(top, "online.persona.password"), "the selected row (NEW PERSONA) is not visible, nor its field");
+            std::string to;
+            int scroll = 0;
+            t.IsTrue(ui::personaMove(in, "online.persona.2", ui::Dir::Down, to, scroll), "down from the last visible row is the list's own move");
+            t.Equals(to, std::string("online.persona.3"), "onto the fourth");
+            t.Equals(scroll, 1, "scrolled by one");
+            in.personaScroll = scroll;
+            const std::vector<ui::Node> down = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(down, "online.persona.3") && !ui::hasNode(down, "online.persona.0"), "the list moved inside itself");
+            t.IsTrue(ui::rectOf(down, "online.persona.3").y == ui::rectOf(top, "online.persona.2").y, "the fourth takes the last slot");
+            for (const ui::Node &n : top)
+            {
+                if (n.id.rfind("online.persona.", 0) == 0)
+                    continue;
+                const ui::Rect after = ui::rectOf(down, n.id);
+                t.IsTrue(after.x == n.r.x && after.y == n.r.y && after.w == n.r.w && after.h == n.r.h, "no other node moves: " + n.id);
+            }
+            t.IsTrue(ui::personaMove(in, "online.persona.2", ui::Dir::Down, to, scroll) && to == "online.persona.3" && scroll == 1,
+                     "a move to a row already showing keeps the scroll");
+            scroll = 0;
+            t.IsFalse(ui::personaMove(in, "online.persona.0", ui::Dir::Up, to, scroll), "up from the first row the layout takes over (ADDRESS)");
+            scroll = 1;
+            t.IsTrue(ui::personaMove(in, "online.persona.1", ui::Dir::Up, to, scroll) && to == "online.persona.0" && scroll == 0,
+                     "up from the first visible row scrolls back");
+            in.personaScroll = 2;
+            scroll = 2;
+            t.IsTrue(ui::personaMove(in, "online.persona.3", ui::Dir::Down, to, scroll) && to == "online.persona.new" && scroll == 2,
+                     "NEW PERSONA is the last row");
+            t.IsFalse(ui::personaMove(in, "online.persona.new", ui::Dir::Down, to, scroll), "and below it the layout takes over (ADVANCED)");
+            t.Equals(ui::personaScrollToShow(4, 0, 5), 2, "showing the last row scrolls to its page");
+            t.Equals(ui::personaScrollToShow(0, 2, 5), 0, "and the first back to the top");
+        });
+
+        tc.Run("readPersonas' scroll (RED first): a selected row at index 3 or later starts in view, its password field with it", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.personaRows = 6;
+            in.personaSelected = 4;
+            in.personaPasswordShown = true;
+            in.personaScroll = ui::personaScrollOnRead(in, 0);
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(nodes, "online.persona.4"), "the selected row is visible");
+            t.IsTrue(ui::hasNode(nodes, "online.persona.password"), "and the password it will send is on screen");
+            if (ui::hasNode(nodes, "online.persona.password"))
+                t.IsTrue(ui::rectOf(nodes, "online.persona.password").y == ui::rectOf(nodes, "online.persona.4").y, "beside it");
+            t.Equals(ui::personaScrollOnRead(in, 3), 3, "a scroll already showing it is kept");
+            in.personaSelected = 6;   // NEW PERSONA, last
+            t.Equals(ui::personaScrollOnRead(in, 0), 4, "NEW PERSONA scrolls to the list's end");
+            in.personaSelected = 0;
+            t.Equals(ui::personaScrollOnRead(in, 4), 0, "the first row back to the top");
+            in.personaRows = 1;
+            in.personaSelected = 1;
+            t.Equals(ui::personaScrollOnRead(in, 5), 0, "a list that shrank under the scroll is clamped");
+        });
+
+        tc.Run("the per-frame scroll (RED first): a selection that moves without a reread brings its row and password into view", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.personaRows = 3;   // three records: NEW PERSONA is the fourth row, hidden at scroll 0
+            in.personaSelected = 0;
+            in.personaPasswordShown = false;
+            in.personaScroll = ui::personaScrollPerFrame(in, 0, 0);
+            t.Equals(in.personaScroll, 0, "the selection unchanged: the scroll is kept");
+            in.personaSelected = 3;   // 'Second instance' toggled: no _b record, so NEW PERSONA is selected
+            in.personaPasswordShown = true;
+            in.personaScroll = ui::personaScrollPerFrame(in, 0, in.personaScroll);
+            t.Equals(in.personaScroll, 1, "the moved selection scrolls into view");
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(nodes, "online.persona.new"), "NEW PERSONA is visible");
+            t.IsTrue(ui::hasNode(nodes, "online.persona.password"), "and the password it will send is on screen");
+            if (ui::hasNode(nodes, "online.persona.password") && ui::hasNode(nodes, "online.persona.new"))
+                t.IsTrue(ui::rectOf(nodes, "online.persona.password").y == ui::rectOf(nodes, "online.persona.new").y, "beside it");
+            t.Equals(ui::personaScrollPerFrame(in, 3, 0), 0, "a list scrolled by hand, the selection unchanged, stays");
+            in.personaSelected = 0;
+            t.Equals(ui::personaScrollPerFrame(in, 3, 1), 0, "back to the first row: back to the top");
+            in.personaRows = 1;
+            t.Equals(ui::personaScrollPerFrame(in, 0, 5), 0, "clamped to a list that shrank");
+        });
+
+        tc.Run("the password field shows for NEW PERSONA and a record without a saved password on this server, never beside a hidden row", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.personaRows = 2;
+            in.personaSelected = 1;
+            in.personaPasswordShown = false;   // the record says the card holds it
+            const std::vector<ui::Node> held = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsFalse(ui::hasNode(held, "online.persona.password"), "no field when the card holds the password");
+            t.IsTrue(std::fabs(ui::rectOf(held, "online.persona.1").w - ui::onlinePersonaRow(window, 1, 0).w) < 0.01f, "and the row spans the body");
+            in.personaPasswordShown = true;
+            const std::vector<ui::Node> typed = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(typed, "online.persona.password"), "the field for a record without one");
+            t.IsTrue(ui::rectOf(typed, "online.persona.password").y == ui::rectOf(typed, "online.persona.1").y, "beside that row");
+            t.IsTrue(ui::rectOf(typed, "online.persona.1").w < ui::onlinePersonaRow(window, 1, 0).w, "which narrows");
         });
 
         // Sprint 9 P4 (owner, 2026-09-20): "tooltips where the launcher is unclear, 'what is a profile?'
@@ -1489,8 +1687,9 @@ void register_launcher_tests()
             t.IsTrue(ui::helpFor("no.such.control").empty(), "an id with no help answers nothing, not a placeholder");
             t.IsTrue(ui::helpFor("").empty(), "and neither does an empty id");
 
-            // The owner's first ask, by name: a profile is the card directory AND the persona.
-            const std::string profile = ui::helpFor("online.profile");
+            // The owner's first ask, by name: a profile is the card directory AND the persona. Sprint 16 L1b: the answer
+            // moved with the fields it explained, to the PERSONAS list's NEW PERSONA row.
+            const std::string profile = ui::helpFor("online.persona.new");
             t.IsFalse(profile.empty(), "'what is a profile?' is answered");
             t.IsTrue(profile.find("cards/") != std::string::npos, "it says where the profile puts the memory card");
             t.IsTrue(profile.find("persona") != std::string::npos, "and that it is the name the server sees");
@@ -1793,8 +1992,8 @@ void register_launcher_tests()
                     // Sprint 11 review, Minor 8: hold the re-tuned ONLINE rhythm -- the row belongs above
                     // the fields, not among them, whatever a later edit does to the pitch.
                     if (page == ui::Page::Online)
-                        t.IsTrue(ui::revisionCell(window, page, 0).bottom() <= ui::rectOf(nodes, "online.profile").y,
-                                 "the GAME VERSION row sits above PROFILE in the same column");
+                        t.IsTrue(ui::revisionCell(window, page, 0).bottom() <= ui::onlineAddressRow(window).y,
+                                 "the GAME VERSION row sits above ADDRESS in the same column");
                 }
             }
         });
@@ -2940,6 +3139,344 @@ void register_launcher_tests()
             t.Equals(br::githubLine(anonymous.id), std::string(), "no reference on screen means no invitation to quote one");
             t.IsTrue(sent.text.find("github") == std::string::npos,
                      "the reply's own line stays the site's words; the invitation is the page's second line");
+        });
+    });
+
+    // Sprint 16 L1b (#73, R295): the persona ledgers beside the cards -- the reader over cards/, the JSON both ends
+    // share and the atomic write. Every case builds its own cards/ under the temp folder (the design note, section 4).
+    MiniTest::Case("Personas", [](TestCase &tc)
+    {
+        namespace ps = launcher::personas;
+        namespace fs = std::filesystem;
+
+        tc.Run("the ledger sits BESIDE the card: a trailing separator is stripped before the suffix", [](TestCase &t)
+        {
+            t.Equals(ps::ledgerPathFor("cards/player/"), std::string("cards/player.personas.json"), "not inside cards/player/");
+            t.Equals(ps::ledgerPathFor("cards/player"), std::string("cards/player.personas.json"), "the plain root");
+            t.Equals(ps::ledgerPathFor("cards/player_b"), std::string("cards/player_b.personas.json"), "the second instance's card");
+            t.Equals(ps::ledgerPathFor("C:\\games\\cards\\player\\"), std::string("C:\\games\\cards\\player.personas.json"), "a Windows separator too");
+            t.Equals(ps::ledgerPathFor("/x/mc0//"), std::string("/x/mc0.personas.json"), "every trailing separator");
+        });
+
+        tc.Run("readCards (a): no cards/, no ledger, a 0-byte ledger and [] all read as no rows and the plain sentence", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            ps::Cards none = ps::readCards((cards / "absent").string());
+            t.IsTrue(none.rows.empty() && none.notes.empty(), "no cards/ at all: nothing, and nothing to say");
+            t.Equals(std::string(ps::emptySentence(none)), std::string(ps::kEmptySentence), "the one sentence");
+            makeCard(cards, "player");
+            t.IsTrue(ps::readCards(cards.string()).rows.empty(), "a card and no ledger");
+            writeFileText(cards / "player.personas.json", "");
+            ps::Cards zero = ps::readCards(cards.string());
+            t.IsTrue(zero.rows.empty() && zero.notes.empty(), "a 0-byte ledger is an empty one, not a corrupt one");
+            writeFileText(cards / "player.personas.json", "[]");
+            ps::Cards empty = ps::readCards(cards.string());
+            t.IsTrue(empty.rows.empty() && empty.notes.empty(), "[] is no records");
+            t.Equals(std::string(ps::emptySentence(empty)), std::string(ps::kEmptySentence), "and the plain sentence");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (b, c): one record is one row; two are two rows, newest login first, carrying their card", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "player");
+            writeFileText(cards / "player.personas.json", ledgerText({persona("alpha", "socom.scotho.com", 1000)}));
+            ps::Cards one = ps::readCards(cards.string());
+            t.Equals(one.rows.size(), size_t(1), "one row");
+            if (one.rows.size() == 1)
+            {
+                t.Equals(one.rows[0].name, std::string("alpha"), "its name");
+                t.Equals(one.rows[0].server, std::string("socom.scotho.com"), "its server");
+                t.Equals(one.rows[0].card, std::string("player"), "its card, from the ledger's file name");
+                t.Equals(static_cast<long long>(one.rows[0].lastLogin), 1000LL, "its last login");
+            }
+            t.Equals(std::string(ps::emptySentence(one)), std::string(), "no sentence over a row");
+            writeFileText(cards / "player.personas.json",
+                          ledgerText({persona("older", "socom.scotho.com", 1000), persona("newer", "socom.scotho.com", 5000)}));
+            makeCard(cards, "sgt");
+            writeFileText(cards / "sgt.personas.json", ledgerText({persona("middle", "192.0.2.20", 3000)}));
+            ps::Cards three = ps::readCards(cards.string());
+            t.Equals(three.rows.size(), size_t(3), "every ledger's records");
+            if (three.rows.size() == 3)
+            {
+                t.Equals(three.rows[0].name, std::string("newer"), "newest first");
+                t.Equals(three.rows[1].name, std::string("middle"), "across ledgers");
+                t.Equals(three.rows[2].name, std::string("older"), "oldest last");
+                t.Equals(three.rows[1].card, std::string("sgt"), "each row names its own card");
+            }
+            removeCardsDir(cards);
+        });
+
+        tc.Run("one record per (name, server): two servers are two rows, a second login updates its record", [](TestCase &t)
+        {
+            std::vector<ps::Persona> records;
+            ps::upsert(records, persona("alpha", "socom.scotho.com", 100, false));
+            ps::upsert(records, persona("alpha", "192.0.2.20", 200, false));
+            t.Equals(records.size(), size_t(2), "one name on two servers is two records");
+            ps::upsert(records, persona("alpha", "socom.scotho.com", 300, true));
+            t.Equals(records.size(), size_t(2), "the same pair again is an update");
+            if (records.size() == 2)
+            {
+                t.IsTrue(records[0].lastLogin == 300 && records[0].savedPassword, "carrying the new login and its answer");
+                t.IsTrue(records[1].lastLogin == 200 && !records[1].savedPassword, "and the other server's record untouched");
+            }
+        });
+
+        tc.Run("readCards (e): every keyboard character and an accented name round-trip toJson/fromJson byte for byte", [](TestCase &t)
+        {
+            std::string keyboard;
+            for (int ch = 0x21; ch <= 0x7E; ++ch)
+                if (ch != '"')
+                    keyboard.push_back(static_cast<char>(ch));
+            const std::string latin1 = std::string("xmf") + static_cast<char>(0xFB);            // the game's byte for u-circumflex
+            const std::string utf8 = std::string("xmf") + static_cast<char>(0xC3) + static_cast<char>(0xBB);
+            const std::vector<ps::Persona> in = {persona(keyboard, "a\\b\"c{d}:e,f", 1, true, false),
+                                                 persona(latin1, "socom.scotho.com", 2), persona(utf8, "socom.scotho.com", 3)};
+            const std::string json = ps::toJson(in);
+            t.IsTrue(json.find("\\u00fb") != std::string::npos, "a byte past ASCII is written \\u00XX");
+            std::vector<ps::Persona> back;
+            t.IsTrue(ps::fromJson(json, back), "the ledger parses");
+            t.Equals(back.size(), size_t(3), "all three records");
+            if (back.size() == 3)
+            {
+                t.Equals(back[0].name, keyboard, "the backslash, braces, colon and comma survive");
+                t.Equals(back[0].server, in[0].server, "and in the server");
+                t.Equals(back[1].name, latin1, "the accented byte comes back itself, not '?' (json_reader.h's \\u branch)");
+                t.Equals(back[2].name, utf8, "and a two-byte sequence as its two bytes");
+                t.IsTrue(back[0].savedPassword && !back[1].savedPassword, "savedPassword is kept");
+            }
+            t.Equals(ps::displayName(latin1), std::string("xmf?"), "shown with what the glyph set has, never refused");
+            t.Equals(ps::displayName(keyboard), keyboard, "printable ASCII is shown as is");
+        });
+
+        tc.Run("readCards (f): a truncated ledger, a record with no name or no server, a ledger with no card -- skipped with a note", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "good");
+            writeFileText(cards / "good.personas.json", ledgerText({persona("kept", "socom.scotho.com", 10)}));
+            makeCard(cards, "trunc");
+            const std::string whole = ledgerText({persona("lost", "socom.scotho.com", 10)});
+            writeFileText(cards / "trunc.personas.json", whole.substr(0, whole.size() / 2));
+            makeCard(cards, "noname");
+            writeFileText(cards / "noname.personas.json", "[{\"server\": \"socom.scotho.com\", \"lastLogin\": 1}]");
+            makeCard(cards, "noserver");
+            writeFileText(cards / "noserver.personas.json", "[{\"name\": \"x\", \"lastLogin\": 1}]");
+            writeFileText(cards / "old.personas.json", ledgerText({persona("orphan", "socom.scotho.com", 10)}));   // no cards/old/
+            ps::Cards read;
+            bool threw = false;
+            try { read = ps::readCards(cards.string()); } catch (...) { threw = true; }
+            t.IsFalse(threw, "never a throw");
+            t.Equals(read.rows.size(), size_t(1), "only the good ledger's record");
+            if (!read.rows.empty())
+                t.Equals(read.rows[0].name, std::string("kept"), "that one");
+            t.Equals(read.notes.size(), size_t(4), "one line per skipped ledger");
+            bool namesOld = false;
+            for (const std::string &n : read.notes)
+                namesOld = namesOld || n.find("old.personas.json") != std::string::npos;
+            t.IsTrue(namesOld, "the note names the ledger whose card is gone");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (f2, RED first): a ledger nested 200,000 deep and one over 1 MiB are refused with a note, never a crash", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "deep");
+            const std::string deep = "[{\"name\": \"x\", \"server\": \"s\", \"junk\": " + std::string(200000, '[') + std::string(200000, ']') + "}]";
+            writeFileText(cards / "deep.personas.json", deep);
+            std::vector<ps::Persona> out;
+            std::string note;
+            t.IsFalse(ps::readLedger((cards / "deep.personas.json").string(), out, note), "the deep ledger is refused");
+            t.IsTrue(out.empty() && note.find("deep.personas.json") != std::string::npos, "with a note naming it");
+            const std::string nested = "[{\"name\": \"x\", \"server\": \"s\", \"later\": " + std::string(20, '[') + std::string(20, ']') + "}]";
+            t.IsTrue(ps::fromJson(nested, out) && out.size() == 1, "a field a later writer nests 20 deep is still skipped whole");
+            makeCard(cards, "huge");
+            std::string huge = ledgerText({persona("big", "socom.scotho.com", 10)});
+            huge += std::string(static_cast<size_t>(ps::kLedgerMostBytes) + 1 - huge.size(), ' ');
+            writeFileText(cards / "huge.personas.json", huge);
+            note.clear();
+            t.IsTrue(ps::fromJson(huge, out) && out.size() == 1, "the text itself is a ledger");
+            t.IsFalse(ps::readLedger((cards / "huge.personas.json").string(), out, note), "but a file over 1 MiB is refused unread");
+            t.IsTrue(note.find("huge.personas.json") != std::string::npos && note.find("MiB") != std::string::npos, "one line saying why");
+            huge.resize(static_cast<size_t>(ps::kLedgerMostBytes));
+            writeFileText(cards / "huge.personas.json", huge);
+            t.IsTrue(ps::readLedger((cards / "huge.personas.json").string(), out, note) && out.size() == 1, "at the cap it is read");
+            const ps::Cards read = ps::readCards(cards.string());
+            t.Equals(read.rows.size(), size_t(1), "readCards keeps the rest");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (g): a save folder with a SaveGame file and no ledger is the 'again' sentence; the folder alone is the plain one", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "player", false);
+            ps::Cards plain = ps::readCards(cards.string());
+            t.IsFalse(plain.savesWithoutLedger, "every booted card has the folder, persona or not");
+            t.Equals(std::string(ps::emptySentence(plain)), std::string(ps::kEmptySentence), "the plain sentence");
+            makeCard(cards, "player", true);
+            ps::Cards again = ps::readCards(cards.string());
+            t.IsTrue(again.savesWithoutLedger, "a SaveGame file and no ledger");
+            t.Equals(std::string(ps::emptySentence(again)), std::string(ps::kEmptyAgainSentence), "the 'again' sentence");
+            t.IsTrue(std::string(ps::kEmptyAgainSentence).find("again") != std::string::npos, "which says so");
+            writeFileText(cards / "player.personas.json", "[]");
+            t.IsFalse(ps::readCards(cards.string()).savesWithoutLedger, "a ledger beside it answers for that card");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (h): the record's `second` is read from the record, never from the _b suffix", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "player_b");
+            writeFileText(cards / "player_b.personas.json", ledgerText({persona("bravo", "socom.scotho.com", 10, false, true)}));
+            makeCard(cards, "sgt_b");
+            writeFileText(cards / "sgt_b.personas.json", ledgerText({persona("sierra", "socom.scotho.com", 5, false, false)}));
+            ps::Cards read = ps::readCards(cards.string());
+            t.Equals(read.rows.size(), size_t(2), "both ledgers");
+            if (read.rows.size() == 2)
+            {
+                t.IsTrue(read.rows[0].second && read.rows[0].card == "player_b", "the second instance's record says so");
+                t.IsTrue(!read.rows[1].second && read.rows[1].card == "sgt_b", "a hand-made sgt_b card is a card like any other");
+            }
+            removeCardsDir(cards);
+        });
+
+        tc.Run("selection (c, h, i, j): a row is selected by its card and name; picking sets the launch and clears the password", [](TestCase &t)
+        {
+            launcher::Config c;   // profile "player", the project's server
+            const std::string server = launcher::effectiveServer(c);
+            std::vector<ps::Persona> rows = {persona("alpha", server, 20), persona("bravo", server, 10)};
+            rows[0].card = "player";
+            rows[1].card = "player";
+            t.Equals(ps::selectedRow(rows, c), rows.size(), "an empty name matches no record: NEW PERSONA is selected");
+            t.IsTrue(ps::passwordShown(rows, c), "and the field shows");
+            c.loginPassword = "old1";   // a config from before this build: its plain password
+            c.loginName = "zulu";
+            t.Equals(ps::selectedRow(rows, c), rows.size(), "a name the ledger never held selects NEW PERSONA too");
+            ps::pick(c, rows[0]);
+            t.IsTrue(c.profile == "player" && c.loginName == "alpha" && c.loginPassword.empty(), "(c) picking sets the card and the name, clears the password");
+            t.Equals(ps::selectedRow(rows, c), size_t(0), "and the row is the selected one");
+            c.loginPassword = "typed";   // typed for alpha
+            ps::pick(c, rows[1]);
+            t.IsTrue(c.loginName == "bravo" && c.loginPassword.empty(), "(i) B picked after A never launches with A's password");
+            t.Equals(ps::selectedRow(rows, c), size_t(1), "B is selected");
+
+            ps::Persona accented = persona(std::string("xmf") + static_cast<char>(0xFB), server, 5);
+            accented.card = "player";
+            c.loginPassword = "x";
+            ps::pick(c, accented);
+            t.IsTrue(c.loginName.empty(), "(j) a name normalizeLoginName would change leaves loginName EMPTY, never 'xmf'");
+            bool sendsName = false;
+            for (const std::string &e : launcher::environmentFor(c))
+                sendsName = sendsName || e.rfind("PS2X_SOCOM2_LOGIN_NAME=", 0) == 0;
+            t.IsFalse(sendsName, "so no PS2X_SOCOM2_LOGIN_NAME is sent");
+
+            ps::Persona b = persona("bravo", server, 30, false, true);
+            b.card = "player_b";
+            ps::pick(c, b);
+            t.IsTrue(c.profile == "player" && c.secondInstance, "(h) second: true in player_b -> profile player, the toggle on");
+            std::vector<ps::Persona> withB = rows;
+            withB.push_back(b);
+            t.Equals(ps::selectedRow(withB, c), size_t(2), "and the _b row is the selected one after its pick");
+            bool cardB = false;
+            for (const std::string &e : launcher::environmentFor(c))
+                cardB = cardB || e == "PS2X_MC_DIR=cards/player_b";
+            t.IsTrue(cardB, "environmentFor appends _b itself");
+            ps::Persona sgt = persona("sierra", server, 1, false, false);
+            sgt.card = "sgt_b";
+            ps::pick(c, sgt);
+            t.IsTrue(c.profile == "sgt_b" && !c.secondInstance, "second: false in sgt_b -> sgt_b, the toggle off");
+
+            c.loginPassword = "keep";
+            ps::pickNewPersona(c);
+            t.IsTrue(c.loginName.empty() && c.loginPassword.empty() && c.profile == "sgt_b", "NEW PERSONA clears the name and password and keeps the card");
+        });
+
+        tc.Run("a record counts only on effectiveServer: the field and the saved password follow the server", [](TestCase &t)
+        {
+            launcher::Config c;
+            const std::string here = launcher::effectiveServer(c);
+            std::vector<ps::Persona> rows = {persona("alpha", "192.0.2.10", 50, true), persona("alpha", here, 40, true), persona("bravo", here, 30, false)};
+            for (ps::Persona &r : rows)
+                r.card = "player";
+            c.loginName = "alpha";
+            t.Equals(ps::selectedRow(rows, c), size_t(1), "one name on two servers: the one on effectiveServer wins");
+            t.IsFalse(ps::passwordShown(rows, c), "its card holds the password: no field");
+            t.IsTrue(ps::counts(rows[1], c) && !ps::counts(rows[0], c), "a record counts only on the server the game is pointed at");
+            std::vector<ps::Persona> elsewhere = {rows[0]};
+            t.Equals(ps::selectedRow(elsewhere, c), size_t(0), "alone, the other server's record is still the selected row (else the first)");
+            t.IsTrue(ps::passwordShown(elsewhere, c), "but it is 'no record' there: the field shows");
+            c.loginName = "bravo";
+            t.IsTrue(ps::passwordShown(rows, c), "a record without a saved password: the field shows");
+        });
+
+        tc.Run("readCards (d), the config write rule: a true record on effectiveServer -> \"loginPassword\": \"\"; false, absent or elsewhere -> kept", [](TestCase &t)
+        {
+            launcher::Config c;
+            const std::string here = launcher::effectiveServer(c);
+            auto sendsPass = [](const std::vector<std::string> &env) {
+                for (const std::string &e : env)
+                    if (e.rfind("PS2X_SOCOM2_LOGIN_PASS=", 0) == 0)
+                        return true;
+                return false;
+            };
+            std::vector<ps::Persona> rows = {persona("alpha", here, 10, true)};
+            rows[0].card = "player";
+            c.loginName = "alpha";
+            c.loginPassword = "hunter2";
+            t.IsTrue(ps::cardHoldsPassword(rows, c), "the selected record on this server says the card holds it");
+            t.IsTrue(launcher::toJson(c, rows).find("\"loginPassword\": \"\"") != std::string::npos, "config.json keeps the key, empty");
+            t.IsFalse(sendsPass(launcher::environmentFor(c, rows)), "and no PS2X_SOCOM2_LOGIN_PASS: the game fills its own form from the card");
+            t.IsTrue(ps::dropSavedPassword(c, rows) && c.loginPassword.empty(), "the migration clears the plain copy at the read");
+            t.IsFalse(ps::dropSavedPassword(c, rows), "once");
+
+            c.loginPassword = "hunter2";
+            rows[0].savedPassword = false;
+            t.IsTrue(launcher::toJson(c, rows).find("\"loginPassword\": \"hunter2\"") != std::string::npos, "a false record: the typed value is kept");
+            t.IsTrue(sendsPass(launcher::environmentFor(c, rows)), "and sent");
+            t.IsFalse(ps::dropSavedPassword(c, rows), "and never dropped");
+            rows[0].savedPassword = true;
+            rows[0].server = "192.0.2.10";
+            t.IsTrue(launcher::toJson(c, rows).find("\"loginPassword\": \"hunter2\"") != std::string::npos,
+                     "a true record on ANOTHER server is no record here: kept (a server switch never drops the plain password)");
+            t.IsTrue(sendsPass(launcher::environmentFor(c, rows)), "and sent");
+            t.IsFalse(ps::dropSavedPassword(c, rows), "and not dropped");
+            const std::vector<ps::Persona> none;
+            t.IsTrue(launcher::toJson(c, none).find("\"loginPassword\": \"hunter2\"") != std::string::npos, "no record at all: kept");
+            t.Equals(launcher::toJson(c, none), launcher::toJson(c), "and the file is what it always was");
+        });
+
+        tc.Run("a row's server is shown by its preset's label, matched by address; any other address as it is", [](TestCase &t)
+        {
+            const launcher::ServerPreset *unzipped = launcher::findServerPresetByAddress("socom.scotho.com");
+            t.IsTrue(unzipped != nullptr && std::string(unzipped->id) == "unzipped", "the project server's address is its preset");
+            t.IsTrue(launcher::findServerPresetByAddress("192.0.2.10") == nullptr, "a typed address is no preset");
+            t.IsTrue(launcher::findServerPresetByAddress("") == nullptr, "and Custom's empty address matches nothing");
+            t.Equals(ps::serverCaption("socom.scotho.com"), std::string(unzipped != nullptr ? unzipped->label : "?"), "the label");
+            t.Equals(ps::serverCaption("192.0.2.10"), std::string("192.0.2.10"), "else the address");
+        });
+
+        tc.Run("the row's captions: the age of the last login", [](TestCase &t)
+        {
+            t.Equals(ps::ageCaption(1000, 1000 + 3600), std::string("last played today"), "the same day");
+            t.Equals(ps::ageCaption(1000, 1000 + 86400), std::string("last played 1 day ago"), "one day");
+            t.Equals(ps::ageCaption(1000, 1000 + 5 * 86400 + 7), std::string("last played 5 days ago"), "five");
+        });
+
+        tc.Run("the atomic write: the ledger is unchanged until the rename, and nothing is left behind", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            const std::string path = (cards / "player.personas.json").string();
+            const std::string before = ledgerText({persona("old", "socom.scotho.com", 1)});
+            const std::string after = ledgerText({persona("old", "socom.scotho.com", 1), persona("new", "socom.scotho.com", 2)});
+            t.IsTrue(ps::writeAtomic(path, before), "the first write");
+            t.Equals(readFileText(path), before, "lands whole");
+            t.IsTrue(ps::writeTemp(path, after), "the second one's text is written aside");
+            t.Equals(readFileText(path), before, "and the ledger is still the old one");
+            t.IsTrue(fs::exists(ps::tempPathFor(path)), "the temp file is beside it");
+            t.IsTrue(ps::commitTemp(path), "the rename");
+            t.Equals(readFileText(path), after, "replaces it whole");
+            t.IsFalse(fs::exists(ps::tempPathFor(path)), "and leaves no temp file");
+            t.IsFalse(ps::writeAtomic((cards / "no_such_dir" / "x.personas.json").string(), after), "a write that cannot land says so");
+            removeCardsDir(cards);
         });
     });
 }

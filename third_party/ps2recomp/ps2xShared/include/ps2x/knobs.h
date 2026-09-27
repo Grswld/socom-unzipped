@@ -162,7 +162,8 @@
     X("PS2X_SOCOM2_INPUT_SCRIPT", Dev, Spec, "", "t:BTN[+BTN][:hold],...: press buttons at those seconds.") \
     X("PS2X_SOCOM2_INPUT_TRACE", Dev, Presence, "", "Log every change of the pad state the game will read.") \
     X("PS2X_SOCOM2_LOGIN_NAME", Shipping, Text, "", "The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
-    X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
+    X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with: in config.json until the card holds it; blanked from reports.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
+    X("PS2X_SOCOM2_LOGIN_TRACE", Dev, Presence, "", "Log each RC4 call's state, byte counter, class, type and length, and each rekey; never a field.") \
     X("PS2X_SOCOM2_MUSIC_TRACE", Dev, Presence, "", "Log the music manager and every cue push with the mixer frame clock (music round four).") \
     X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement.") /* read: ps2xRuntime/src/lib/socom2_libnetb.cpp:netStatsEnabled */ \
     X("PS2X_SOCOM2_NET_TRACE", Dev, Presence, "", "Verbose libnetb: every RPC, socket and datagram header.") \
@@ -170,8 +171,8 @@
     X("PS2X_SOCOM2_NET_TRACE_PEERS", Dev, Int, "16", "With NET_TRACE: peer packets to hex-dump in each direction.") \
     X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.") /* read: ps2xRuntime/src/lib/socom2_pad2_hle.cpp:socom2PadEnabled */ \
     X("PS2X_SOCOM2_PAD_TRACE", Dev, Presence, "", "Log the scePad2 socket lifecycle and reads.") \
-    X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b (or B, 1) selects the second precomputed RSA pair (a second instance on one host).") /* read: ps2xRuntime/src/lib/socom2_crypto.cpp:socom2_RsaGenerateKeyPair */ \
-    X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") /* read: ps2xRuntime/src/lib/socom2_hostnet.cpp:loadHosts */ \
+    X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b (or B, 1) selects the second precomputed RSA pair (a second instance on one host).") /* read: ps2xRuntime/src/lib/socom2_crypto.cpp:socom2_RsaGenerateKeyPair ps2xRuntime/src/lib/socom2_persona_record.cpp:recorder */ \
+    X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") /* read: ps2xRuntime/src/lib/socom2_hostnet.cpp:loadHosts ps2xRuntime/src/lib/socom2_persona_record.cpp:recorder */ \
     X("PS2X_SOCOM2_UDP_SHIFT", Shipping, Int, "0", "Shift the fixed UDP ports 3658.. by n, in the host bind and the port rt_net advertises (a second instance).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2UdpShift ps2xRuntime/src/lib/socom2_libnetb.cpp:doCreate */ \
     X("PS2X_TEST_SKIP", Test, Text, "", "ps2x_tests: skip tests whose name contains one of these substrings.") \
     X("PS2X_TEST_SUITE", Test, Text, "", "ps2x_tests: run only suites whose name contains this.") \

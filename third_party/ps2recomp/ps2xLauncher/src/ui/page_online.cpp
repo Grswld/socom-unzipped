@@ -1,8 +1,20 @@
-// Sprint 8 Goal 9, the ONLINE page: which server, whose profile, and the second instance for testing.
+// Sprint 8 Goal 9, the ONLINE page: which server, whose persona, and the second instance for testing.
 #include "pages.h"
+
+#include <ctime>
+#include <string>
 
 namespace ui
 {
+    namespace
+    {
+        // A record's server as its row says it: the preset's label for a preset's address, else the address.
+        std::string serverText(const std::string &address)
+        {
+            return launcher::personas::serverCaption(address);
+        }
+    }
+
     void drawOnlinePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes)
     {
         launcher::Config &c = app.config;
@@ -74,9 +86,8 @@ namespace ui
         const launcher::ServerPreset *preset = launcher::findServerPreset(c.serverPreset);
         const bool ownAddress = preset == nullptr || preset->address[0] == '\0';
 
-        const Rect profile = rectOf(nodes, "online.profile");
-        const Rect address = ownAddress ? rectOf(nodes, "online.server")
-                                        : Rect{profile.x, profile.y - kOnlineRowPitch, 420.0f, 40.0f};
+        // Sprint 16 L1b (#73, R295): ADDRESS on its own shared row (it was anchored on PROFILE's rect, now gone).
+        const Rect address = ownAddress ? rectOf(nodes, "online.server") : onlineAddressRow(app.frame.window);
         rowLabel(ctx, address, "ADDRESS");
         bool changed = false;
         if (ownAddress)
@@ -89,23 +100,94 @@ namespace ui
             textField(ctx, address, shown, "online.server", changed, false);
         }
 
-        rowLabel(ctx, profile, "PROFILE");
-        textField(ctx, profile, c.profile, "online.profile", changed);
-        caption(ctx, Vec2{profile.right() + 18.0f, profile.y + 12.0f}, "picks cards/<profile> for the memory card");
-
-        // Sprint 10 Goal 9: the persona and its password, capped where the game's own keyboards cap them
-        // (research/38), the password masked (R179: plain in config.json, never on screen). Empty = the game
-        // asks on its keyboard, as it always did; filled = the keyboard opens already typed (R180).
-        const Rect name = rectOf(nodes, "online.name");
-        rowLabel(ctx, name, "PLAYER NAME");
-        textField(ctx, name, c.loginName, "online.name", changed, true, launcher::kLoginNameCap, false,
-                  [](char ch) { return launcher::keyboardAccepts(ch, false); });
-        caption(ctx, Vec2{name.right() + 18.0f, name.y + 12.0f}, "the persona; empty = the game asks");
-        const Rect password = rectOf(nodes, "online.password");
-        rowLabel(ctx, password, "PASSWORD");
-        textField(ctx, password, c.loginPassword, "online.password", changed, true, launcher::kLoginPasswordCap, true,
-                  [](char ch) { return launcher::keyboardAccepts(ch, true); });
-        caption(ctx, Vec2{password.right() + 18.0f, password.y + 12.0f}, "kept in config.json, plain; masked here");
+        // Sprint 16 L1b (#73, R295; the L1 design note, section 2): the PERSONAS list replaces the PROFILE, PLAYER NAME
+        // and PASSWORD fields -- one row per record the cards' ledgers hold, newest first, NEW PERSONA last, three
+        // visible and the rest scrolled to; the masked password beside the selected row when the card does not hold it.
+        namespace ps = launcher::personas;
+        const std::vector<ps::Persona> &rows = app.personas.rows;
+        const int records = static_cast<int>(rows.size());
+        const int scroll = app.layout.personaScroll;
+        const int selected = static_cast<int>(ps::selectedRow(rows, c));
+        const Rect first = onlinePersonaRow(app.frame.window, scroll, scroll);
+        text(ctx, "PERSONAS", Vec2{first.x, first.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+        {
+            // The heading line's right end: what the selected row means for the launch. A row made on another
+            // server warns and does not block -- there the game's first login makes a persona by its own rule.
+            std::string note;
+            Rgba ink = theme::caption;
+            if (selected < records)
+            {
+                const ps::Persona &r = rows[static_cast<size_t>(selected)];
+                if (!ps::counts(r, c))
+                {
+                    note = "made on " + serverText(r.server) + "; on this server the game makes a new persona";
+                    ink = theme::warn;
+                }
+                else
+                    note = "LAUNCH, then pick " + ps::displayName(r.name) + " in the game's list";
+            }
+            else if (records + 1 > kPersonaVisibleRows)
+                note = std::to_string(records + 1) + " rows -- up and down scroll the list";
+            if (!note.empty())
+            {
+                const float size = metrics::captionSize;
+                const float w = textWidth(ctx, note.c_str(), size);
+                text(ctx, note.c_str(), Vec2{app.frame.body.right() - w, first.y - 26.0f}, size, ink);
+            }
+        }
+        for (int i = scroll; i <= records && i < scroll + kPersonaVisibleRows; ++i)
+        {
+            const std::string id = personaRowId(i, records);
+            if (!hasNode(nodes, id))
+                continue;
+            const Rect r = rectOf(nodes, id);
+            const Rect captionBox{r.x, r.y, r.w - 12.0f, r.h};
+            const Rgba captionInk = i == selected ? theme::caption : theme::mix(theme::caption, theme::ground, 0.3f);
+            if (i < records)
+            {
+                const ps::Persona &row = rows[static_cast<size_t>(i)];
+                if (listRow(ctx, r, ps::displayName(row.name), id, i == selected) && i != selected)
+                {
+                    ps::pick(c, row);
+                    app.dirty = true;
+                    if (app.activeField == "online.persona.password")
+                        app.activeField.clear();
+                }
+                const std::string line = serverText(row.server) + " -- " +
+                                         ps::ageCaption(static_cast<std::time_t>(row.lastLogin), static_cast<std::time_t>(app.personasNow)) +
+                                         (row.second ? " -- second instance" : "");
+                textRightIn(ctx, line.c_str(), captionBox, metrics::captionSize - 1.0f, captionInk);
+            }
+            else
+            {
+                if (listRow(ctx, r, "NEW PERSONA", id, i == selected) && i != selected)
+                {
+                    ps::pickNewPersona(c);
+                    app.dirty = true;
+                }
+                textRightIn(ctx, "the game asks for a name on its own keyboard", captionBox, metrics::captionSize - 1.0f, captionInk);
+            }
+        }
+        // The empty viewer's one sentence, under NEW PERSONA where the rows would be.
+        const char *sentence = ps::emptySentence(app.personas);
+        if (sentence[0] != '\0')
+        {
+            const Rect slot = onlinePersonaRow(app.frame.window, 1, 0);
+            float y = slot.y + 4.0f;
+            for (const std::string &line : wrapText(ctx, sentence, slot.w - 24.0f, metrics::captionSize))
+            {
+                text(ctx, line.c_str(), Vec2{slot.x + 12.0f, y}, metrics::captionSize, theme::caption);
+                y += metrics::captionSize * 1.3f;
+            }
+        }
+        // The password (R179: plain in config.json only until the game remembers it; masked here), capped and
+        // filtered as the game's own keyboard caps it (research/38).
+        if (hasNode(nodes, "online.persona.password"))
+        {
+            const Rect password = rectOf(nodes, "online.persona.password");
+            textField(ctx, password, c.loginPassword, "online.persona.password", changed, true, launcher::kLoginPasswordCap, true,
+                      [](char ch) { return launcher::keyboardAccepts(ch, true); });
+        }
 
         // Sprint 9 P4: everything above is a stranger's first run; everything below the rule is not. The
         // second instance is a testing tool -- it starts a whole second copy of the game -- so it lives

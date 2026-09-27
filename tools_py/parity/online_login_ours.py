@@ -399,6 +399,7 @@ CLASS_CONNECT_FOCUS = "login:connect-focus"  # CONNECT never read lit after the 
 CLASS_CONNECT_PRESS = "login:connect-press"  # the form stayed up with CONNECT lit after the CROSS and its re-sends
 CLASS_OSK_ENTER = "login:keyboard-enter"     # the keyboard stayed up after ENTER and OSK_ENTER_RETRIES re-presses
 CLASS_PERSONA = "login:persona"              # + ":list" / ":password-keyboard" / ":name-keyboard": that CROSS never registered
+CLASS_NEW_PERSONA = "login:persona:new-persona"  # --new-persona: the pick after the DOWNs opened no "Enter Player Name" keyboard
 CLASS_OSK_PREFILL = "login:prefill-missing"  # --prefilled: the keyboard opened holding a different count than the string's
 # Fix wave W8 (R240, 2026-09-22). Two things the join path could not say before.
 #
@@ -1765,9 +1766,11 @@ def press_online(sh):
 
 
 @staged("login")
-def login(sh, name, password, existing, prefilled=False, save_password=False, saved_password=False):
+def login(sh, name, password, existing, prefilled=False, save_password=False, saved_password=False, new_persona=None):
     """LOGIN -> universe -> persona -> password -> CONNECT -> prompts -> EULA -> lobby (news closed).
     `prefilled` (--prefilled): the game was launched with the two variables, so each keyboard is ENTERed, not typed.
+    `new_persona` (--new-persona N, Sprint 16 L1b): the card already holds N personas on this server; the game's persona
+    list is walked to <New Persona> (press_new_persona) and `name` created there, whatever the form arrived with.
     `save_password` (--save-password, W10): after the password, tick SAVE PASSWORD = YES before CONNECT.
     `saved_password` (--saved-password, W10): the relaunch half of the proof -- the form must arrive with the
     persona AND its password from the card; nothing is typed, and an empty field is the failure, classified."""
@@ -1781,6 +1784,22 @@ def login(sh, name, password, existing, prefilled=False, save_password=False, sa
     # this one timeout stays a log line. Every other screen's timeout occurred only in failed launches.
     sh.wait_for("persona", 60, required=False)
     sh.shot("02_persona")
+    if new_persona is not None:
+        # The form arrives with the card's first persona in PLAYER NAME, which persona_form_mode reads as "saved":
+        # the mode is "create" by the option, never by the read.
+        sh.log(f"[login] persona: --new-persona {new_persona} -> creating {name} past the card's saved persona(s)")
+        press_new_persona(sh, new_persona)
+        create_persona(sh, name, prefilled=prefilled, keyboard_open=True)
+        sh.type(password, prefilled=prefilled)
+        sh.shot("05_password")
+        if save_password:
+            set_save_password(sh)
+            press_connect(sh, downs=LOGIN_CONNECT_DOWNS - 1)
+        else:
+            press_connect(sh)
+        login_prompts(sh)
+        login_to_lobby(sh)
+        return
     mode, listed = persona_form_mode(sh, existing)
     if saved_password:
         # Sprint 13 V6 (#27): the form is read AS IT ARRIVED, before any press. W10's relaunch (w10_virgin_b) arrived with the persona, "*****",
@@ -1910,7 +1929,7 @@ def persona_form_mode(sh, existing):
     return ("saved" if existing else "create"), True
 
 
-def create_persona(sh, name, listed=False, prefilled=False):
+def create_persona(sh, name, listed=False, prefilled=False, keyboard_open=False):
     """The first login on a server that keeps no persona for this card: PLAYER NAME is empty and focused and
     the header reads "Choose a different persona or create a new one." (s8_hosted_control A_02_persona).
 
@@ -1919,8 +1938,11 @@ def create_persona(sh, name, listed=False, prefilled=False):
     keyboard's own text row can only say what it holds, not that ENTER committed it to the field. A DOWN
     verified on the PASSWORD row's fill and a CROSS verified on the keyboard leave the caller exactly where
     the saved-persona path leaves it: the password keyboard open. `prefilled`: the name keyboard opens holding
-    the name (Sprint 10 Goal 9) and is ENTERed, not typed; the form read-back after it is the same."""
-    press_persona(sh, False, listed)                             # -> the name keyboard
+    the name (Sprint 10 Goal 9) and is ENTERed, not typed; the form read-back after it is the same.
+    `keyboard_open` (Sprint 16 L1b, --new-persona): press_new_persona already opened and verified the name keyboard
+    through the game's persona list, so the two persona CROSSes are not sent again."""
+    if not keyboard_open:
+        press_persona(sh, False, listed)                         # -> the name keyboard
     gray = lobby_gray(sh)
     edge = osk_title_edge(gray)
     sh.log(f"[login] persona: keyboard title edge {edge} -> "
@@ -1952,6 +1974,33 @@ def press_persona_list(sh):
         return d > PERSONA_CHANGED_MIN_DIFF
 
     press_verified(sh, f"{CLASS_PERSONA}:list", "cross", PERSONA_CROSS_WAIT_S, changed, "a changed screen")
+
+
+NEW_PERSONA_DOWN_S = 0.8   # between the list's DOWNs: the list moves one row per press (the menus' pace)
+
+
+def press_new_persona(sh, personas):
+    """Sprint 16 L1b (#73; the L1 design note, section 2): walk the game's persona list to <New Persona> on a card that
+    already holds `personas` personas on this server. The persona-list CROSS first (press_persona_list: that CROSS
+    is what opens the list -- a DOWN before it moves the form's cursor from PLAYER NAME to PASSWORD), then DOWN once
+    per saved persona, then the pick CROSS, verified by a keyboard opening; the keyboard must be "Enter Player Name"
+    (osk_title_is_name). Anything else -- the password keyboard of a saved persona the pick landed on, or no keyboard
+    at all -- is login:persona:new-persona: typing the new persona's password there would log in as the old one."""
+    if personas < 1:
+        raise ValueError("--new-persona N counts the personas already on the card: 1 or more")
+    press_persona_list(sh)
+    for _ in range(personas):
+        sh.press("down", NEW_PERSONA_DOWN_S)
+    press_verified(sh, CLASS_NEW_PERSONA, "cross", PERSONA_CROSS_WAIT_S, osk_open_of, "a keyboard")
+    gray = lobby_gray(sh)
+    edge = osk_title_edge(gray)
+    named = osk_title_is_name(gray)
+    sh.log(f"[login] new persona: {personas} DOWN(s) past the saved personas, keyboard title edge {edge} -> "
+           f"{'Enter Player Name' if named else 'NOT Enter Player Name'}")
+    if not named:
+        raise lobby_fail(sh, CLASS_NEW_PERSONA,
+                         f"after {personas} DOWN(s) the pick opened a keyboard whose title ends at {edge}, not "
+                         f"'Enter Player Name': the pick was not <New Persona>")
 
 
 def press_persona(sh, existing, listed=False):
@@ -2672,7 +2721,8 @@ def ready(sh):
     sh.shot("19_ready")
 
 
-def main():
+def parse_args(argv=None):
+    """The command line (a function so the option checks are tested, Sprint 16 L1b)."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default="socomc")
     ap.add_argument("--password", default="socom")
@@ -2711,15 +2761,29 @@ def main():
     ap.add_argument("--clean-exit", action="store_true",
                     help="after the hold, close the game's window and wait for it to leave (CLEAN-EXIT rc=<n>); "
                          "the kill runs only if it has not")
-    a = ap.parse_args()
+    # Sprint 16 L1b (#73): a second (third, ...) persona on a card that already holds N on this server.
+    ap.add_argument("--new-persona", type=int, default=None, metavar="N",
+                    help="walk the game's persona list past the card's N saved personas to <New Persona> and create "
+                         "--name there (fails as login:persona:new-persona when the pick is not the name keyboard)")
+    a = ap.parse_args(argv)
     if a.save_password and a.saved_password:
         ap.error("--save-password and --saved-password are the two launches of one proof, not one launch")
-    prefill = None
+    if a.new_persona is not None and a.new_persona < 1:
+        ap.error("--new-persona N counts the personas already on the card: 1 or more")
+    if a.new_persona is not None and a.saved_password:
+        ap.error("--new-persona creates a persona; --saved-password logs in with one the card holds")
+    a.prefill = None
     if a.prefilled:
         try:
-            prefill = prefill_env(a.name, a.password)
+            a.prefill = prefill_env(a.name, a.password)
         except ValueError as e:
             ap.error(f"--prefilled: {e}")                        # before any game starts: the runtime would cut it
+    return a
+
+
+def main():
+    a = parse_args()
+    prefill = a.prefill
     os.makedirs(a.out, exist_ok=True)
     if not a.instance and hostplatform.process_running("socom2"):
         raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
@@ -2732,7 +2796,8 @@ def main():
         sh = attach(proc, title, a.out)
         boot_to_online(sh)
         login(sh, a.name, a.password, a.existing, a.prefilled,
-              **{k: True for k, v in (("save_password", a.save_password), ("saved_password", a.saved_password)) if v})
+              **{k: True for k, v in (("save_password", a.save_password), ("saved_password", a.saved_password)) if v},
+              **({"new_persona": a.new_persona} if a.new_persona is not None else {}))
         if a.host:
             to_briefing_room(sh, a.channel)
             host_game(sh)

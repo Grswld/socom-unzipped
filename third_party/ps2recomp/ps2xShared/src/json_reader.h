@@ -68,10 +68,13 @@ namespace launcher::detail
                             return false;
                         const unsigned code = static_cast<unsigned>(std::strtoul(s.substr(i, 4).c_str(), nullptr, 16));
                         i += 4;
-                        if (code < 0x80)
+                        // Sprint 16 L1b (#73): 0x80-0xFF is the byte itself -- the persona ledger writes every byte
+                        // of a name outside printable ASCII as \u00XX (personas.cpp), and a name is bytes, so an
+                        // accented one must come back as it went in. Past 0xFF there is no one byte to give: '?'.
+                        if (code <= 0xFF)
                             out.push_back(static_cast<char>(code));
                         else
-                            out.push_back('?');   // the config never carries these
+                            out.push_back('?');
                         break;
                     }
                     default: return false;
@@ -82,11 +85,14 @@ namespace launcher::detail
             }
             return false;
         }
-        // Skips any JSON value (used for unknown keys). Returns false on malformed input.
-        bool skipValue()
+        // Skips any JSON value (used for unknown keys). Returns false on malformed input, and on nesting deeper than
+        // kMostDepth: each level is a call, and a file nested tens of thousands deep would otherwise overflow the
+        // stack of whatever reads it (Sprint 16 L1b: the persona ledgers are read at launcher startup).
+        static constexpr int kMostDepth = 64;
+        bool skipValue(int depth = 0)
         {
             ws();
-            if (i >= s.size())
+            if (i >= s.size() || depth > kMostDepth)
                 return false;
             const char c = s[i];
             if (c == '"')
@@ -109,7 +115,7 @@ namespace launcher::detail
                         if (!string(key) || !take(':'))
                             return false;
                     }
-                    if (!skipValue())
+                    if (!skipValue(depth + 1))
                         return false;
                     if (take(','))
                         continue;

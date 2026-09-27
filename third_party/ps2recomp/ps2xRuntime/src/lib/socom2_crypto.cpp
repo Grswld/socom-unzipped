@@ -19,6 +19,7 @@
 
 #include "ps2_stubs.h"
 #include "ps2x/knobs.h"
+#include "socom2_persona_record.h"   // Sprint 16 L1b (#73): the login's record, read at these seams
 #include "socom2_rsa_key.h"
 
 namespace socom2_crypto
@@ -291,9 +292,36 @@ namespace socom2_crypto
         }
     }
 
+    namespace
+    {
+        // Sprint 16 L1b (#73; the L1 design note, section 1): whether the RC4 seams carry whole messages is inferred,
+        // not observed, so this Dev trace logs what each call sees -- the state's guest address, its byte counter
+        // (word 0: zeroed by rc4Init, advanced by every call) and, for a call opening a message (the counter at 0),
+        // the class and type bytes and the length. Never a field: no name, no password, no key.
+        bool loginTraceOn()
+        {
+            static const bool on = ps2x::knob("PS2X_SOCOM2_LOGIN_TRACE") != nullptr;
+            return on;
+        }
+
+        void traceRc4(const char *what, uint32_t stateAddr, uint32_t counter, const uint8_t *plain, uint32_t len)
+        {
+            std::cout << "[login-trace] " << what << " state=0x" << std::hex << stateAddr << std::dec << " counter=" << counter
+                      << " len=" << len;
+            if (counter == 0 && len >= 2)
+                std::cout << " class=0x" << std::hex << static_cast<unsigned>(plain[0]) << " type=0x" << static_cast<unsigned>(plain[1])
+                          << std::dec;
+            else
+                std::cout << " (continues)";
+            std::cout << std::endl;
+        }
+    }
+
     void rc4SetKeyHash(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)    // FUN_0062a638(state, key, hash)
     {
         Rc4 st{rdram + (GPR_U32(ctx, 4) & PS2_RAM_MASK)};
+        if (loginTraceOn())
+            std::cout << "[login-trace] rc4SetKeyHash state=0x" << std::hex << (GPR_U32(ctx, 4) & PS2_RAM_MASK) << std::dec << std::endl;
         const uint32_t hashWord = GPR_U32(ctx, 6);
         uint8_t hash[4];
         std::memcpy(hash, &hashWord, 4);
@@ -304,21 +332,36 @@ namespace socom2_crypto
     void rc4SetKey(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)        // FUN_0062a5a8(state, key)
     {
         Rc4 st{rdram + (GPR_U32(ctx, 4) & PS2_RAM_MASK)};
+        if (loginTraceOn())
+            std::cout << "[login-trace] rc4SetKey state=0x" << std::hex << (GPR_U32(ctx, 4) & PS2_RAM_MASK) << std::dec << std::endl;
         rc4Init(st, rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK), nullptr);
         ctx->pc = GPR_U32(ctx, 31);
     }
 
     void rc4EncryptFn(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)     // FUN_0062a720(state, data, len)
     {
-        Rc4 st{rdram + (GPR_U32(ctx, 4) & PS2_RAM_MASK)};
-        rc4Encrypt(st, rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK), GPR_U32(ctx, 6));
+        const uint32_t stateAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
+        Rc4 st{rdram + stateAddr};
+        uint8_t *data = rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK);
+        const uint32_t len = GPR_U32(ctx, 6);
+        if (loginTraceOn())
+            traceRc4("encrypt", stateAddr, st.word(0), data, len);   // the plain bytes, before the cipher
+        socom2_persona::onRc4Encrypt(stateAddr, st.word(0), data, len);   // the login request is plain only here
+        rc4Encrypt(st, data, len);
         ctx->pc = GPR_U32(ctx, 31);
     }
 
     void rc4DecryptFn(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)     // FUN_0062a7c8(state, data, len)
     {
-        Rc4 st{rdram + (GPR_U32(ctx, 4) & PS2_RAM_MASK)};
-        rc4Decrypt(st, rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK), GPR_U32(ctx, 6));
+        const uint32_t stateAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
+        Rc4 st{rdram + stateAddr};
+        uint8_t *data = rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK);
+        const uint32_t len = GPR_U32(ctx, 6);
+        const uint32_t counter = st.word(0);
+        rc4Decrypt(st, data, len);
+        if (loginTraceOn())
+            traceRc4("decrypt", stateAddr, counter, data, len);   // the plain bytes, after the cipher
+        socom2_persona::onRc4Decrypt(stateAddr, counter, data, len);   // the login response commits the record
         ctx->pc = GPR_U32(ctx, 31);
     }
 

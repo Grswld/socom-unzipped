@@ -1190,9 +1190,12 @@ verified by hashing `SCUS_972.75` out of the image against the r0001 digest -- L
 VIDEO: DETAIL (`PS2X_GS_SCALE`: NATIVE, SHARP 2x, SHARPER 3x, SHARPEST 4x), FILTER (`PS2X_PRESENT_FILTER`), WINDOW
 (640x448, 1280x896, fullscreen, or MATCH the display) and the frame-rate OVERLAY. CONTROLLER: the pad the launcher
 sees, drawn live, the dead zone, and BUTTONS (per-profile rebinding, `PS2X_INPUT_MAPPING`, and the crouch shortcut).
-ONLINE: the server preset (`PS2X_SOCOM2_SERVER`), PROFILE (a name, not a path: `cards/<profile>/` becomes
-`PS2X_MC_DIR`), PLAYER NAME and PASSWORD (prefilled into the game's keyboards), GAME VERSION (which executable LAUNCH
-starts, r0001 or `socom2_r0004.exe` when it is beside the launcher), and under ADVANCED the second-instance box (UDP
+ONLINE: the server preset (`PS2X_SOCOM2_SERVER`), PERSONAS (one row per record in the cards' ledgers,
+`cards/<profile>.personas.json`, which the runtime writes on a login the server accepts; a pick sets the profile --
+`cards/<profile>/` becomes `PS2X_MC_DIR` -- and the name, `PS2X_SOCOM2_LOGIN_NAME`; NEW PERSONA last; a new card only
+by hand in `config.json`), the masked PASSWORD beside the selected row only while the card does not hold the password
+(`PS2X_SOCOM2_LOGIN_PASS`, plain in `config.json` until a login records the card holds it), GAME VERSION (which
+executable LAUNCH starts, r0001 or `socom2_r0004.exe` when it is beside the launcher), and under ADVANCED the second-instance box (UDP
 shift 2, key b, `cards/<profile>_b`). LAUNCH writes `logs/run_<stamp>.log`; SAVE DIAGNOSTICS writes a zip into
 `diagnostics/` (the last log clipped, the settings through an allowlist, the GL report, the crash record, the
 versions, the home directory scrubbed). `--diagnostics <out.zip>` writes the same zip with no window; `--selftest`
