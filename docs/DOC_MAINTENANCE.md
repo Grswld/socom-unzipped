@@ -106,7 +106,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/FAQ.md` | **L** | controller | The player's failure page. Every exit-code sentence is quoted from `ps2x/exit_codes.h`; a change to that table changes this file |
 | `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
 | `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
-| `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
+| `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person. The scheduled ladder is retired (R294, R296: its Task Scheduler entry stays disabled), so rows come from hand-started runs only |
 | `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
 | `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
 | `docs/LATER.md` | **L** | controller | The candidates nobody has committed to (the owner, 2026-09-26): one table by value, size and confidence, each row with the trigger that promotes it, then the dismissals the owner confirms or strikes. One home per item: an issue lives in `docs/BACKLOG.md` and a task in its plan, and LATER points at an issue by number. The loop adds a row when a plan, a review or a note names future work; a row leaves when it becomes an issue or a task; the sprint close re-sorts it |
@@ -349,8 +349,9 @@ acts on it.
    forms, or the audit will not ask about it.
 4. **Every issue closed this sprint** (`gh issue list --state closed --label known-issue --search "closed:>=<open
    date>"`): its closing comment names an artefact, and the KNOWN row says the same thing. A close with no artefact is
-   reopened -- **unless the owner closed it.** An owner's close stands (`docs/HANDOFF.md` rule 13: the loop does not
-   undo the owner), and the row records their words in place of an artefact, struck and led with the verdict, as
+   reopened -- **unless the owner closed it.** An owner's close stands (the owner can overturn the loop, never the
+   reverse: `CLAUDE.md`'s opening lines -- no `docs/HANDOFF.md` §4 rule states it; rule 13 is the owner-only
+   actions), and the row records their words in place of an artefact, struck and led with the verdict, as
    `docs/KNOWN.md`'s dropped rows are. The audit notes every completed close whose last comment is not the tool's
    "Closing bar met" line, so the reviewer sees the case instead of acting on it blind.
 5. **The carry.** What is still open in the closing sprint's milestone either moves to the next sprint's milestone

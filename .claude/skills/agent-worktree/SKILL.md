@@ -41,12 +41,18 @@ the toolchain THROUGH a surviving junction twice. The script makes both impossib
    `git merge --no-ff agent/<name> -m "merge agent/<name>: <what> (Sprint N <task>)"`. A conflict is resolved in the
    main tree; the commit during a merge may omit `-- <paths>` (the hook allows it mid-merge).
    Then `python -m tools_py.changelog`, and `docs/CHANGELOG.md` goes in the merge's follow-up commit (R272).
-5. **The suite on the merged tree** before the push: `python -m unittest discover -s tools_py/tests -t .` --
+5. **Or the PR to `main`** (R294, `docs/GIT_STRATEGY.md` section 2), when the branch goes to `main` by pull
+   request instead of through the sprint branch, in this order: `bash scripts/agent_worktree.sh remove <name>`
+   FIRST, then `gh pr merge <n> --merge` WITHOUT `--delete-branch`, then `git push origin --delete agent/<name>`
+   and `git branch -D agent/<name>`. *Why:* `--delete-branch` on a branch checked out in a worktree tears down that
+   checkout, and through its `tools/` junction the main tree's toolchain with it (2026-09-26 20:41Z,
+   `docs/HAZARDS.md` git).
+6. **The suite on the merged tree** before the push: `python -m unittest discover -s tools_py/tests -t .` --
    `OK` with no failures is the bar (a long run goes under `nohup` to a `logs/` file; read its last line, never a
    `tail` that masks the exit code), plus the gate by the `run-gate` skill if the task touched the runtime,
    `recomp/`, `tools_py/parity/`, `scripts/parity/` or `build.sh`. Then `git push origin <sprint branch>` and
    `gh run list --commit <sha>`.
-6. **Remove**: `bash scripts/agent_worktree.sh remove <name>` -- it deletes every junction first through
+7. **Remove**: `bash scripts/agent_worktree.sh remove <name>` -- it deletes every junction first through
    PowerShell's `Delete()` and verifies both sides before `git worktree remove`; it stops if the main tree's
    `tools/` is damaged. Never `rmdir` a junction and never `git worktree remove` by hand.
-7. **Delete the branch** once merged: `git branch -D agent/<name>` (the script keeps it on purpose).
+8. **Delete the branch** once merged: `git branch -D agent/<name>` (the script keeps it on purpose).

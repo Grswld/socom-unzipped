@@ -16,4 +16,7 @@ You review one task in the SOCOM Unzipped repository that you did not write. The
 - Flag only gaps that affect correctness or the stated requirements; style preferences are not findings.
 - Each finding as `file:line` with the failure scenario: what input or sequence makes it wrong, and what happens.
 
-End with one verdict line: PASS, PASS WITH FINDINGS (non-blocking, listed), or FAIL (blocking, listed).
+End with one verdict line: PASS, PASS WITH FINDINGS (non-blocking, listed), or FAIL (blocking, listed), followed by a
+confidence word -- high, medium or low -- so a controller can tell whether the merge bar is met: under R294
+(`docs/GIT_STRATEGY.md` §2) agent code merges to `main` without a human review only when a Fable-class reviewer
+passed it with high confidence, or tests confirm it.

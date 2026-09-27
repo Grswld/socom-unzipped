@@ -8,7 +8,8 @@ waits. Rewritten 2026-09-25 (Sprint 13 Task R4) from the project audit's owner s
 
 **The rule.** The loop adds a row only when it reaches a step it cannot verify or a decision that is not its to make;
 it writes the default it proceeds on beside it and moves on. Anything the loop can do itself (a window on this machine,
-a capture, a VM run, a draft, a document) is a sprint task or a backlog row, never a row here.
+a capture, a VM run, a draft, a document) is a sprint task or a backlog row, never a row here -- except the window
+itself: a game run's window is the owner's (O20, R297).
 
 **Numbers.** `O<n>` is a row of this table. A Sprint 13 task in milestone O is written "S13 O1". The old decision
 numbers are named by their sprint — "Sprint 11 D2", "naming D1–D7" (Sprint 12), "r0004 D1" — because the list this

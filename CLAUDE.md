@@ -54,5 +54,6 @@ its header is the reference.
 
 KNOWN wins on any disagreement: when a document contradicts `docs/KNOWN.md`, the document is wrong.
 Nothing that is the owner's is performed -- no publishing, no money, no permissions or tokens, no change to the site,
-no connection to a server that is not ours; add a line to the owner's row in `docs/HUMAN_TASKS.md` instead.
+no connection to a server that is not ours (a PSRewired one only by the owner's hand, named and permitted each time:
+R293); add a line to the owner's row in `docs/HUMAN_TASKS.md` instead.
 Everything else -- building, running, testing, the tools and the conventions -- is in `docs/DEVELOPING.md`.
