@@ -1716,6 +1716,79 @@ void register_socom2_audio_tests()
             }
             t.IsTrue(playing253, "still playing at tick 253, one step from silence");
             t.IsTrue(!playing254, "stopped at tick 254, where the fade lands");
+
+            // A -4 on a handle already at 0 (volchange 0) has no step to take: the IRX drops the effect and the handle
+            // plays on; ours keeps the -4 as a timer that stops the handle when its `ticks` run out (the one AutoVol
+            // deviation kept on purpose, research/68 row 2). A stream played at vol 0 sits at 7-bit 0 already.
+            snd989::Mixer timer;
+            const uint32_t ht = 0x04010061u;
+            t.IsTrue(timer.playStream(ht, path, 0u, 0, -1, 1u), "a cue played at vol 0");
+            t.Equals(timer.autoVolLevelForTest(ht), 0, "at 7-bit 0 already: nothing to step");
+            timer.autoVol(ht, -4, 0x168, 2);
+            bool playing359 = false, playing360 = true;
+            for (int tick = 1; tick <= 360; ++tick)
+            {
+                timer.pumpStreams();
+                timer.render(buf.data(), 200);
+                if (tick == 359)
+                    playing359 = timer.isPlaying(ht);
+                if (tick == 360)
+                    playing360 = timer.isPlaying(ht);
+            }
+            t.IsTrue(playing359, "the -4 timer: still playing at tick 359");
+            t.IsTrue(!playing360, "the -4 timer: stopped at tick 360, when its 360 ticks run out");
+            std::remove(path.c_str());
+        });
+
+        // T1b review round 3, finding 1 (research/36 lines 241-242): a stream's Original_Vol (+0xc) is its PLAY-TIME
+        // 7-bit volume -- the IRX's play (FUN_0000f7e0) writes param_5 * 0x7f >> 10 into both +0xc and +0x10 -- not
+        // the full 127, so snd_AutoVol's target, (Original_Vol * vol) >> 10 (autovol.c:28-31), scales what the stream
+        // was played at. Played at 0x300 it sits at (127 * 0x300) >> 10 = 95; autoVol(h, 0x200, 360, 2) aims at
+        // (95 * 0x200) >> 10 = 47 (the full 127 gave (127 * 0x200) >> 10 = 63): -48 is the slow branch, -1 every
+        // floor(360 / 48) = 7 ticks, landing at tick 48 x 7 = 336. autoVol(h, 0x400, 360, 2) then aims at
+        // (95 * 0x400) >> 10 = 95: +48 on the same schedule, back to the play volume and never above it.
+        tc.Run("Mixer: snd_AutoVol scales a stream's play-time volume -- played at 0x300 (95), vol 0x200 lands at (95 * 0x200) >> 10 = 47, not 63; vol 0x400 returns to 95, never 127", [](TestCase &t)
+        {
+            const std::string path = tmpPath("socom2_audio_autovol_original.vpk");
+            t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade");
+            std::vector<int16_t> buf(2 * 200);   // 200 frames = one 240 Hz tick at 48 kHz
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000023u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x300, -1, 1u), "the stream plays at 0x300");
+            t.Equals(mixer.autoVolLevelForTest(h), 95, "at its 7-bit play volume, (127 * 0x300) >> 10 = 95");
+            // Renders `ticks` ticks: the tick of the last level change and the highest level seen.
+            int last = -1;
+            int32_t highest = -1;
+            auto run = [&](int ticks) {
+                int32_t prev = mixer.autoVolLevelForTest(h);
+                last = -1;
+                highest = prev;
+                for (int tick = 1; tick <= ticks; ++tick)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 200);
+                    const int32_t lvl = mixer.autoVolLevelForTest(h);
+                    if (lvl != prev)
+                    {
+                        last = tick;
+                        prev = lvl;
+                    }
+                    highest = std::max(highest, lvl);
+                }
+            };
+            mixer.autoVol(h, 0x200, 0x168, 2);
+            run(400);
+            const int32_t down = mixer.autoVolLevelForTest(h);
+            t.Equals(down, 47, "vol 0x200 lands at (95 * 0x200) >> 10 = 47, not (127 * 0x200) >> 10 = 63 (" + std::to_string(down) + ")");
+            t.Equals(last, 336, "48 steps of -1, one every floor(360 / 48) = 7 ticks: the last at tick 336 (" + std::to_string(last) + ")");
+            mixer.autoVol(h, 0x400, 0x168, 2);
+            run(400);
+            const int32_t back = mixer.autoVolLevelForTest(h);
+            t.Equals(back, 95, "vol 0x400 returns to the play volume, (95 * 0x400) >> 10 = 95 (" + std::to_string(back) + ")");
+            t.Equals(highest, 95, "and never passes it on the way: no step toward 127 (" + std::to_string(highest) + ")");
+            t.Equals(last, 336, "+48 on the same schedule, the last step at tick 336 (" + std::to_string(last) + ")");
+            t.IsTrue(mixer.isPlaying(h), "a fade to a level is not a stop: the stream plays on");
+            mixer.stopAllStreams();
             std::remove(path.c_str());
         });
 
