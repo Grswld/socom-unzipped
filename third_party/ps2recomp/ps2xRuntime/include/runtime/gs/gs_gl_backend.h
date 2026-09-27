@@ -62,6 +62,8 @@ public:
     // EE executor: bound the frames recorded but not yet replayed (PS2X_GS_MAX_PENDING_FRAMES).
     bool GuestFrameBoundary() override;
     void ReleaseHostBackpressure() override;
+    // #67: suspends the frame back-pressure (GsFrameBackpressure::setConsumerSuspended) and the token waits.
+    void SetHostMoveLoop(bool inLoop) override;
     uint64_t PendingGuestFrames() const override { return m_backpressure.pendingFrames(); }
     uint32_t BackpressureWaiters() const override { return m_backpressure.waiters(); }
     uint64_t BackpressureWaitNs() const override { return m_backpressure.waitNsTotal(); }

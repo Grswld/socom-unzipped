@@ -1,0 +1,249 @@
+diff --git a/ps2xIOP/src/lle/iop.h b/ps2xIOP/src/lle/iop.h
+--- a/ps2xIOP/src/lle/iop.h
++++ b/ps2xIOP/src/lle/iop.h
+@@ -17,6 +17,8 @@
+ 
+ namespace ps2x::iop::lle
+ {
++    class Iop; // ORACLE PATCH
++
+     // What the emulated IOP needs from the EE side.
+     class EeLink
+     {
+@@ -27,6 +29,11 @@
+         // An RPC server the EE has registered, for IOP modules that bind back.
+         virtual bool eeServer(uint32_t sid) = 0;
+         virtual void log(const std::string &message) = 0;
++        // ORACLE PATCH: a library the kernel does not bind (cdvdman, ioman, sifman #32) may be served by
++        // the host. Claim it here; hostImport then runs for every call through one of its stubs.
++        virtual bool claimsImport(const std::string &library, uint16_t ordinal) { (void)library; (void)ordinal; return false; }
++        virtual void hostImport(Iop &iop, const std::string &library, uint16_t ordinal, CpuContext &c)
++        { (void)iop; (void)library; (void)ordinal; c.gpr[2] = 0; }
+     };
+ 
+     // An IOP running original IRX modules on an R3000A interpreter with a
+@@ -71,6 +78,18 @@
+         // Advance time by one output sample and produce it.
+         void step(int16_t &left, int16_t &right);
+ 
++        // ORACLE PATCH: what a host import provider needs.
++        uint32_t argument(CpuContext &c, unsigned index) { return arg(c, index); }
++        // Run a guest function (a completion callback) the way an interrupt handler runs; the result is ignored.
++        void callGuest(uint32_t function, uint32_t argument, uint32_t gp) { call(function, {argument}, nullptr, gp); reschedule(); }
++        // Run host work at an IOP cycle (a disc read or a SIF DMA completing).
++        void defer(uint64_t delay, std::function<void()> work) { m_deferred.push_back({m_cycle + delay, std::move(work)}); }
++        uint64_t cycle() const { return m_cycle; }
++        uint64_t work() const { return m_work; }
++        size_t threadCount() const { return m_threads.size(); }
++        size_t serverCount() const { return m_servers.size(); }
++        size_t moduleCount() const { return m_modules.size(); }
++
+         // IoDevice
+         uint32_t ioRead(uint32_t physical, unsigned bytes) override;
+         void ioWrite(uint32_t physical, uint32_t value, unsigned bytes) override;
+@@ -224,5 +243,15 @@
+         int32_t m_loaderThread = 0;
+         uint32_t m_loaderResult = 0;
+         uint32_t m_sifDmaId = 0;
++        // ORACLE PATCH
++        struct Deferred
++        {
++            uint64_t cycle = 0;
++            std::function<void()> work;
++        };
++        std::vector<Deferred> m_deferred;
++        std::map<uint32_t, IrxImport> m_hostStubs; // stub address -> the import a host serves
++        uint32_t m_trapPc = 0;                      // the SYSCALL that trapped last
++        uint64_t m_work = 0;                        // cycles run, on the clock and off it
+     };
+ }
+diff --git a/ps2xIOP/src/lle/iop.cpp b/ps2xIOP/src/lle/iop.cpp
+--- a/ps2xIOP/src/lle/iop.cpp
++++ b/ps2xIOP/src/lle/iop.cpp
+@@ -1,6 +1,7 @@
+ #include "iop.h"
+ 
+ #include <algorithm>
++#include <cstddef>
+ #include <cstring>
+ 
+ namespace ps2x::iop::lle
+@@ -222,7 +223,9 @@
+         const uint64_t limit = 4'000'000u;
+         for (;;)
+         {
++            const uint64_t before = spent; // ORACLE PATCH
+             const StopReason reason = m_cpu.run(context, spent, limit);
++            m_work += spent - before;
+             if (reason != StopReason::Syscall)
+             {
+                 m_ee.log("[iop] handler at " + std::to_string(function) + " did not return");
+@@ -231,6 +234,7 @@
+             const uint32_t code = m_cpu.syscallCode();
+             if (code < m_handlers.size() && m_handlers[code] == &Iop::functionReturn)
+                 break;
++            m_trapPc = context.pc - 4u; // ORACLE PATCH
+             context.pc = context.gpr[31];
+             if (code < m_handlers.size())
+                 (this->*m_handlers[code])(context);
+@@ -262,6 +266,20 @@
+ 
+     void Iop::serviceEvents()
+     {
++        // ORACLE PATCH: host work due now (a disc read or a SIF DMA completing).
++        for (size_t index = 0; index < m_deferred.size();)
++        {
++            if (m_deferred[index].cycle > m_cycle)
++            {
++                ++index;
++                continue;
++            }
++            std::function<void()> work = std::move(m_deferred[index].work);
++            m_deferred.erase(m_deferred.begin() + static_cast<std::ptrdiff_t>(index));
++            work();
++            reschedule();
++        }
++
+         // Threads sleeping in DelayThread.
+         for (auto &[id, thread] : m_threads)
+             if (thread.wait == Wait::Delay && thread.wakeCycle <= m_cycle)
+@@ -356,7 +374,9 @@
+             ran = true;
+             while (!m_reschedule && clock < end)
+             {
++                const uint64_t before = clock; // ORACLE PATCH
+                 const StopReason reason = m_cpu.run(thread->context, clock, end);
++                m_work += clock - before;
+                 if (reason == StopReason::Budget)
+                     break;
+                 if (reason == StopReason::Fault)
+@@ -367,6 +387,7 @@
+                     break;
+                 }
+                 const uint32_t code = m_cpu.syscallCode();
++                m_trapPc = thread->context.pc - 4u; // ORACLE PATCH
+                 thread->context.pc = thread->context.gpr[31];
+                 if (code < m_handlers.size())
+                     (this->*m_handlers[code])(thread->context);
+@@ -481,6 +502,18 @@
+             if (exported != m_exports.end() && import.ordinal < exported->second.size() &&
+                 exported->second[import.ordinal] != 0u)
+                 word = 0x08000000u | ((exported->second[import.ordinal] >> 2) & 0x03FFFFFFu); // j target
++            else if (m_ee.claimsImport(import.library, import.ordinal)) // ORACLE PATCH
++            {
++                static const uint32_t hostIndex = [] {
++                    uint32_t index = 0;
++#define PS2X_IOP_HANDLER(name) if (std::string(#name) != "hostImportHandler") ++index; else return index;
++#include "kernel_handlers.inc"
++#undef PS2X_IOP_HANDLER
++                    return index;
++                }();
++                word = syscallWord(hostIndex);
++                m_hostStubs[import.stubAddress] = import;
++            }
+             else
+                 word = syscallWord(handlerFor(import.library, import.ordinal));
+             m_bus.write32(import.stubAddress, word);
+diff --git a/ps2xIOP/src/lle/kernel.cpp b/ps2xIOP/src/lle/kernel.cpp
+--- a/ps2xIOP/src/lle/kernel.cpp
++++ b/ps2xIOP/src/lle/kernel.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include <algorithm>
+ #include <cstdio>
++#include <cstdlib> // ORACLE PATCH: std::strtol, std::abs (missing in #254)
+ #include <cstring>
+ 
+ namespace ps2x::iop::lle
+@@ -154,8 +155,50 @@
+ 
+     void Iop::kprintf(CpuContext &c)
+     {
+-        // Only the format string; enough to follow what the drivers report.
+-        std::string text = readString(arg(c, 0));
++        // ORACLE PATCH: render %d %i %u %x %X %c %s %p (flags and width skipped) from the o32 arguments, so
++        // "989snd Error: cause N" says which N.
++        const std::string format = readString(arg(c, 0));
++        std::string text;
++        unsigned next = 1;
++        for (size_t i = 0; i < format.size(); ++i)
++        {
++            if (format[i] != '%' || i + 1 >= format.size())
++            {
++                text.push_back(format[i]);
++                continue;
++            }
++            size_t j = i + 1;
++            while (j < format.size() && std::strchr("-+ #0123456789.lh", format[j]))
++                ++j;
++            if (j >= format.size())
++                break;
++            const char conv = format[j];
++            char buffer[32];
++            if (conv == '%')
++                text.push_back('%');
++            else if (conv == 's')
++                text += readString(arg(c, next++));
++            else if (conv == 'c')
++                text.push_back(static_cast<char>(arg(c, next++)));
++            else if (conv == 'd' || conv == 'i')
++            {
++                std::snprintf(buffer, sizeof buffer, "%d", static_cast<int32_t>(arg(c, next++)));
++                text += buffer;
++            }
++            else if (conv == 'u')
++            {
++                std::snprintf(buffer, sizeof buffer, "%u", arg(c, next++));
++                text += buffer;
++            }
++            else if (conv == 'x' || conv == 'X' || conv == 'p')
++            {
++                std::snprintf(buffer, sizeof buffer, "%x", arg(c, next++));
++                text += buffer;
++            }
++            else
++                text += format.substr(i, j - i + 1);
++            i = j;
++        }
+         while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
+             text.pop_back();
+         if (!text.empty())
+@@ -1010,4 +1053,19 @@
+                                                                std::max<uint32_t>(m_timers[index].prescale, 1u))
+                                        : 0u);
+     }
++
++    // ---------------------------------------------------------------- ORACLE PATCH: host imports
++
++    void Iop::hostImportHandler(CpuContext &c)
++    {
++        const auto found = m_hostStubs.find(m_trapPc);
++        if (found == m_hostStubs.end())
++        {
++            m_ee.log("[iop] host import from an unknown stub");
++            ret(c, 0);
++            return;
++        }
++        const IrxImport import = found->second;
++        m_ee.hostImport(*this, import.library, import.ordinal, c);
++    }
+ }
+diff --git a/ps2xIOP/src/lle/kernel_handlers.inc b/ps2xIOP/src/lle/kernel_handlers.inc
+--- a/ps2xIOP/src/lle/kernel_handlers.inc
++++ b/ps2xIOP/src/lle/kernel_handlers.inc
+@@ -82,3 +82,4 @@
+ PS2X_IOP_HANDLER(startHardTimer)
+ PS2X_IOP_HANDLER(stopHardTimer)
+ PS2X_IOP_HANDLER(getTimerCounter)
++PS2X_IOP_HANDLER(hostImportHandler)
+diff --git a/ps2xIOP/src/lle/spu2.cpp b/ps2xIOP/src/lle/spu2.cpp
+--- a/ps2xIOP/src/lle/spu2.cpp
++++ b/ps2xIOP/src/lle/spu2.cpp
+@@ -1,6 +1,7 @@
+ #include "spu2.h"
+ 
+ #include <algorithm>
++#include <cstdlib> // ORACLE PATCH: std::strtol, std::abs (missing in #254)
+ #include <cstring>
+ 
+ namespace ps2x::iop::lle

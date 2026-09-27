@@ -1029,8 +1029,10 @@ void GSGlBackend::waitForToken(uint64_t token)
     if (!m_glReady.load(std::memory_order_acquire))
         return; // no GL yet (early boot): nothing to wait for
     std::unique_lock<std::mutex> lock(m_queueMutex);
+    // #67: nor while the main thread is in the window's move loop (SetHostMoveLoop): nothing replays until it ends.
     m_queueCv.wait_for(lock, std::chrono::seconds(2), [&]
-                       { return m_executedToken.load(std::memory_order_acquire) >= token; });
+                       { return m_executedToken.load(std::memory_order_acquire) >= token ||
+                                m_backpressure.consumerSuspended(); });
 }
 
 bool GSGlBackend::pagesMayBeGpuDirty(uint32_t page, uint32_t pageCount) const
@@ -1410,6 +1412,21 @@ bool GSGlBackend::GuestFrameBoundary()
 void GSGlBackend::ReleaseHostBackpressure()
 {
     m_backpressure.release();
+}
+
+// Issue #67: the main thread is in the window's modal move loop (a title-bar drag), where it cannot replay. The frame
+// back-pressure stands aside (and reads latched, so the pending cap bounds the queue in bytes and the coalescer
+// re-anchors once the loop ends, Q6), and a game thread waiting on a token -- a blocking Readback or a Reset, each a
+// 2 s timeout otherwise, which kept the guest clock crawling after the frame wait had latched -- goes on without it,
+// as it would at that timeout. The queue mutex is taken so a waiter between its predicate and its sleep cannot miss
+// the wake.
+void GSGlBackend::SetHostMoveLoop(bool inLoop)
+{
+    m_backpressure.setConsumerSuspended(inLoop);
+    {
+        std::lock_guard<std::mutex> lock(m_queueMutex);
+    }
+    m_queueCv.notify_all();
 }
 
 bool GSGlBackend::HostRenderFrame()

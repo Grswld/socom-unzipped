@@ -3,10 +3,10 @@
 Started 2026-09-26 at the owner's direction: order the candidates by value and time, aim at the highest value, and
 dismiss outright what we are confident about. **One home per item.** This file holds *candidates* -- work nobody has
 committed to. `docs/BACKLOG.md` (generated) holds the open issues and the rows ruled not an issue; the plans under
-`docs/superpowers/plans/` hold committed tasks (the open plan, and a proposed one such as Sprint 15's). An item is in
+`docs/superpowers/plans/` hold committed tasks (the open plan -- Sprint 15's since 2026-09-26 -- and a proposed one such as Sprint 16's). An item is in
 exactly one of the three: a row here points at an issue by number and adds only its value, size and confidence --
 the bar is the issue's. The owner's own rows (decisions and hands) are `docs/HUMAN_TASKS.md` and are not candidates.
-Research/67 section 5's watch rows are Sprint 15 X1's input and are not repeated. KNOWN wins on any disagreement.
+Research/67 section 5's watch rows were Sprint 15 X1's input (X1 done 2026-09-26: research/69) and are not repeated. KNOWN wins on any disagreement.
 
 **Columns.** Value: to a player or to the owner. Size: S under a loop day, M one to three, L more. Confidence today:
 Proven / Believed / unknown, from `docs/KNOWN.md` (§1 Proven, §2 Believed) or the gap. Trigger: what promotes the row
@@ -15,18 +15,18 @@ of the owner's order (2026-09-26) -- *the controller's read, the owner may strik
 
 | # | Item | Value | Size | Confidence today | Trigger | Source |
 |---|---|---|---|---|---|---|
-| 1 | The audio pair: #42 (50 ms holes) and #28 (music degrades in a mission) | high: heard in every mission | M | Believed: KNOWN §2 rows #42 (one of three candidates eliminated) and #28 (cause unknown) | Sprint 15 T0 writes the audio trial (its D7) | issues; Sprint 15 spec §1.4 |
-| 2 | #67 the window drag freezes the game | high: any player who moves the window | S | Proven mechanism (KNOWN §1 row, the modal move loop); fix untried | the next render slot; the issue's bar | issue |
-| 3 | #59 a bar for the mission frame rate | medium: a fence on frame pacing | S | Believed: KNOWN §2, a 30 % spread over three gates on one exe (host not quiet) | three quiet-host gates agree (S13-R3) | issue |
-| 4 | #32 the menu atlas re-upload | medium: menu smoothness | S-M | Believed: KNOWN §2, the V2 skip moved `upload=` about 4 %; batching untried | the per-upload breakdown the issue asks for | issue |
-| 5 | VU1: four programs on the interpreter, the stalls the native path skips, no oracle for the interpreter | medium, to the owner (named second); no visible defect | L | Believed: native checked against the interpreter by `vu1_replay`; interpreter against hardware unknown | Sprint 15 R2's replay coverage and X2/X3 put it on the shortlist; or a flicker on one model family | Sprint 15 spec §1.4 |
+| 1 | ~~The audio pair: #42 (50 ms holes) and #28 (music degrades in a mission)~~ | high: heard in every mission | M | Believed: KNOWN §2 rows #42 (one of three candidates eliminated) and #28 (cause unknown) | ~~Sprint 15 T0 writes the audio trial (its D7)~~ fired, struck 2026-09-27: → Sprint 15 T1b (merging) | issues; Sprint 15 spec §1.4 |
+| 2 | ~~#67 the window drag freezes the game~~ | high: any player who moves the window | S | Proven mechanism (KNOWN §1 row, the modal move loop); the fix merged (`f84f4f66`, Sprint 15 T2); its mission-drag proof waits for an owner-named window | ~~the next render slot; the issue's bar~~ fired, struck 2026-09-27: → Sprint 15 T2 (merged `f84f4f66`; the proof run owed) | issue |
+| 3 | #59 a bar for the mission frame rate | medium: a fence on frame pacing | S | Believed: KNOWN §2, a 30 % spread over three gates on one exe (host not quiet) | ~~three quiet-host gates agree (S13-R3)~~ Sprint 16's F milestone (its spec names #59); Sprint 15 T3 not started (the close rules the carry) | issue |
+| 4 | #32 the menu atlas re-upload | medium: menu smoothness | S-M | Believed: KNOWN §2, the V2 skip moved `upload=` about 4 %; batching untried | ~~the per-upload breakdown the issue asks for~~ a window for the batching's A/B; Sprint 15 T4 not started (the close rules the carry) | issue |
+| 5 | VU1: four programs on the interpreter, the stalls the native path skips, no oracle for the interpreter | medium, to the owner (named second); no visible defect | L | Believed: native checked against the interpreter by `vu1_replay`; interpreter against hardware unknown | ~~Sprint 15 R2's replay coverage and X2/X3 put it on the shortlist~~ (the re-cut has no R2, X2 or X3; VU1 deferred by D8, R289) a sprint plan names it; or a flicker on one model family | Sprint 15 spec §1.4 |
 | 6 | #34 the online freeze with a paused console peer | medium: mixed-match players | S | Believed: KNOWN §2; the V7 bound untested against a pause | a mixed-match window at a quiet hour | issue |
 | 7 | #26 where the received chat line really enters the client | medium, to the owner | M | Believed: KNOWN §2, the wrap never fired in two rounds | carried twice: `docs/HUMAN_TASKS.md` O16 | issue |
-| 8 | The 989snd HLE model and the inferred streamer | low apart from the audio pair | M | Believed: the real IRX agrees on 1,775 of 1,794 calls (R245); 989DSTRM not decompiled | the audio trial lands on the model | Sprint 15 spec §1.2 |
-| 9 | SIF/RPC and the IOP host | low: online and audio run through it every gate | M | unknown past `ps2_sif_rpc_tests.cpp`; no oracle | Sprint 15 X2's read of #254's LLE IOP | Sprint 15 spec §1.1 |
+| 8 | The 989snd HLE model and the inferred streamer | low apart from the audio pair | M | Believed: ~~the real IRX agrees on 1,775 of 1,794 calls (R245)~~ on the LLE oracle (research/70) the real IRX disagrees on 17 of 1,794 menu calls and 832 of 13,044 in a mission, 815 of them the replay's clock; 989DSTRM not decompiled | the audio trial lands on the model (Sprint 15 T1b) | Sprint 15 spec §1.2 |
+| 9 | SIF/RPC and the IOP host | low: online and audio run through it every gate | M | Believed (was: unknown past `ps2_sif_rpc_tests.cpp`; no oracle): X1 answered, T1 adopted #254's LLE IOP as the oracle, research/68 row 4 | ~~Sprint 15 X2's read of #254's LLE IOP~~ fired 2026-09-26; next, the frame-stamped replay (research/70 §9.4) | Sprint 15 spec §1.1 |
 | 10 | The EE scheduler and timers | low: no defect beyond #59 and #67 | M | unknown: no console timing oracle; interrupt unit tests only | #59's bar fires on a regression | Sprint 15 spec §1.1 |
 | 11 | The FPU translator: plain IEEE, no PS2 clamping | low: no defect seen | M | unknown: no oracle | a numeric defect that points at it (R265's bar) | Sprint 15 spec §1.1 |
-| 12 | VU0 macro path: the FTOI NaN rule; #47 the flag latency | low: no defect seen | M | Believed: KNOWN §2 FTOI row (the fork's rule); #47 open | Sprint 15 X3 finds PCSX2's rule differs | issue #47; spec §1.4 |
+| 12 | VU0 macro path: the FTOI NaN rule; #47 the flag latency | low: no defect seen | M | Believed: KNOWN §2 FTOI row (the fork's rule); #47 open | ~~Sprint 15 X3 finds PCSX2's rule differs~~ (the re-cut has no X3) a register row's gap needs PCSX2's rule as a reference | issue #47; spec §1.4 |
 | 13 | VIF1, the GIF arbiter, the DMAC | low: no defect seen | M | unknown against a console: the gate runs them every frame, pinned to our own captures | a render defect bisected to a transfer | Sprint 15 spec §1.1 |
 | 14 | #60 a stub's table slot holds another owner's resume entry | low: no effect seen | M | Believed: the issue's reading of `register_functions.cpp` | a login or SIF defect at the three addresses | issue |
 | 15 | Jump-table recovery in the recompiler | low: every gate green | M | unknown: no census of tables found against missed | a crash in a switch the scan split | Sprint 15 spec §1.1 |
@@ -47,6 +47,7 @@ of the owner's order (2026-09-26) -- *the controller's read, the owner may strik
 | 30 | Ghidra 12.1.4 | low | S | unknown | an EE-extension release for it | research/63 §2 |
 | 31 | Horizon PR #35 | low | S | unknown | the DEV9 error 107 seen in a run | research/63 §2 |
 | 32 | Upstream's paraLLEl-GS default (`feature/performance-patch-1`) | unknown | L | unknown | the branch merges to upstream `main` | research/67 §6 item 2 |
+| 33 | Rebuild the canonical r0004 image from PSRewired's served package with `build_revision` (a real `disc_r0004` tree holding the served ZDB, not the junctioned one -- the #56 trap), retiring the `0x1E70CC` pnach remnant and the overlay repair for that image | high to the owner: the r0004 path becomes fetch → decrypt → merge with no console identity (KNOWN §1, #71) | M | Proven inputs (the served file decrypts with the r0001 disc decrypt; one code word differs) | the launcher's r0004 fetch (#71) lands, or a Sprint 16 plan names it | the r0004 session, 2026-09-27 |
 
 ## Dismissed outright
 

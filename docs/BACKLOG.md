@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-16 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+23 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -24,6 +24,13 @@
 | #59 | The mission frame rate has no bar: three gates on three exes read 21.9-32.4 ms per guest VBlank over the scripted walk | render | backlog | 1 | A refusal rule in `scripts/parity/pins.json` once three runs agree (S13-R3). |
 | #60 | A stub's function-table slot holds the preceding owner's resume entry at three addresses (RSAGenerateKeyPair, fwrite, _sceSifCmdIntrHdlr) | recomp | backlog | 0 | `FunctionTableEmitter::emit` registers stubs, syscalls and library functions before resume-entry targets, so the stub's name wins at its own address; a ps2x_tests case with a colliding owner shows the slot holds the stub's wrapper; `TailCallStubTargets` drops its resume-target exclusion; the re-recompiled r0001 and r0004 `register_functions.cpp` show the three addresses bound to their stubs; the gate 3/3 PINS MATCH on that exe, plus a login round (RSA) and a run that exercises SIF commands (`_sceSifCmdIntrHdlr`) and file writes (`fwrite`). |
 | #67 | The client freezes for the length of a title-bar drag: the window's modal move loop stops the presents the guest waits on | render | backlog | 0 | A scripted title-bar drag (a synthetic mouse-down on the caption, a move of a few hundred pixels over about three seconds, mouse-up; `tools_py/parity/resize_window.py` shows how the window is found) during the title screen with `PS2X_PC_SAMPLER=0.25`, on the current exe: (1) a capture of the stall as it is today, the `[pc-sampler]` `t=`/`vsync=` lines standing still and `bp_wait_ms` growing through the drag, kept as the before; then (2) the fix, after which the same drag shows `t=`/`vsync=` advancing at the normal rate through the drag and the audio callback count not dropping (the `[audio]` late/dry counters unchanged), the gate 3/3 on the fixed exe, and a control round in which one instance is dragged for ten seconds mid-round and neither side parks or alarms. |
+| #69 | The launcher starts socom2.exe whatever GAME VERSION says: picking r0004 runs the r0001 build | launcher | backlog | 0 | One launcher-started r0004 run whose log reads `revision guard: executable r0004, image r0004` with the IOP modules loaded (`[ps2xIOP]` lines for 989snd, lgaud and eznetcnf), and the pure tests: `gameFilesFor` per revision, `gameRevisionForElfName` for both names, `BareRun::plan(home, "r0004")`, the IOP profile for the r0004 name. |
+| #70 | D2: the launcher builds socom2_game.elf from the player's own disc on first run; the ELF leaves the download | launcher, packaging | backlog | 0 | -- |
+| #71 | The launcher fetches the r0004 package as a console does, decrypts it with its own identity and builds the r0004 ELF locally | online, launcher | backlog | 0 | -- |
+| #72 | Two rooms on our Horizon: an r0001 universe and an r0004 universe, and the four messages the r0004 client sends that the server does not model | online, server | backlog | 0 | -- |
+| #73 | A profile viewer on the launcher's ONLINE page replaces the PROFILE / NAME / PASSWORD text fields | launcher | backlog | 0 | -- |
+| #74 | CONTROLLER page: a hover tooltip on every button says what it does | launcher | backlog | 0 | -- |
+| #75 | Retire the private-inputs location: the fetch script, its tests and the docs that point at it | packaging, docs | backlog | 0 | -- |
 
 ## 2. Ruled not an issue
 

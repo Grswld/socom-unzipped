@@ -2,6 +2,7 @@
 #include "runtime/fps_overlay.h"
 #include "runtime/host_mic.h"
 #include "runtime/host_window_chrome.h"   // Sprint 10 Q4
+#include "runtime/host_move_loop.h"       // issue #67
 #include "socom2_host_input.h"
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
@@ -65,6 +66,27 @@ namespace ps2_stubs
 namespace
 {
     std::atomic<int> g_ps2ProcessExitCode{0};
+
+    // Issue #67: the window procedure's report of the modal move loop (runtime/host_move_loop.h), on the main thread.
+    // The two lines are what tools_py/parity/window_drag.py reads a drag's window from when the driver's stamps are
+    // absent; std::cout with endl, like the [pc-sampler] rows they sit between, so their order in the log holds.
+    void onHostMoveLoop(bool entering, void *user)
+    {
+        static std::chrono::steady_clock::time_point s_entered{};
+        auto *runtime = static_cast<PS2Runtime *>(user);
+        runtime->gs().setHostMoveLoop(entering);
+        if (entering)
+        {
+            s_entered = std::chrono::steady_clock::now();
+            std::cout << "[window] move loop entered (WM_ENTERSIZEMOVE): the GS back-pressure is released until it ends"
+                      << std::endl;
+        }
+        else
+        {
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s_entered).count();
+            std::cout << "[window] move loop left after " << ms << " ms (WM_EXITSIZEMOVE)" << std::endl;
+        }
+    }
 }
 
 int ps2ProcessExitCode()
@@ -794,6 +816,11 @@ bool PS2Runtime::initialize(const char *title)
         // launcher's palette on it (host_window_chrome.cpp; the measurement is in ps2x/host_window.h). Nothing
         // here touches the client area the gate captures.
         ps2x_host::applyHostWindowChrome();
+        // Issue #67: a title-bar drag holds this thread in the modal move loop, where nothing replays; the hook
+        // tells the GS back-pressure to stand aside until it ends, so the guest (and its audio) runs on unpresented.
+        // Windows only; nothing here runs unless the window is dragged or resized by its edge.
+        if (ps2x_host::installMoveLoopHook(GetWindowHandle(), &onHostMoveLoop, this))
+            std::cout << "[window] move-loop hook installed (issue #67)" << std::endl;
         if (windowSize.borderless)
             SetWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
         if (windowSize.set)
