@@ -1182,7 +1182,7 @@ home the Sprint 14 plan, Task G3 (213 orphans on 2026-09-25; no `docs/KNOWN.md` 
 ## The launcher
 
 `dist/socom_unzipped_launcher.exe` (`socom_unzipped_launcher` on Linux), built by `./build.sh runtime` next to
-`socom2.exe`: one window that owns `config.json` beside it and starts `socom2.exe socom2_game.elf` with the `PS2X_*`
+`socom2.exe`: one window that owns `config.json` beside it and starts the chosen GAME VERSION's pair — `socom2.exe socom2_game.elf` for r0001, `socom2_r0004.exe socom2_game_r0004.elf` for r0004 (`gameFilesFor`, PR #86) — with the `PS2X_*`
 environment `launcher::environmentFor` writes (`ps2xShared/src/launcher_config.cpp`), so nobody sets a variable by
 hand. Its pages are on a rail -- PLAY, DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, REPORT A BUG, ABOUT
 (`docs/INSTALL.md` walks them in a player's order and quotes their sentences). DISC: the ISO path (BROWSE...),
