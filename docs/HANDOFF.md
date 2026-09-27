@@ -3,7 +3,7 @@
 ## 1. What this file is
 
 The transient handoff: what is in flight, what is owed, what to do first. Read it once at pick-up and rewrite it at
-every handoff, under 6,000 bytes (`tools_py/docmaint.py` `CEILINGS`). The durable material lives elsewhere: `CLAUDE.md`
+every handoff, under its `CEILINGS` number (`tools_py/docmaint.py`). The durable material lives elsewhere: `CLAUDE.md`
 for the map and the guards; the four skills in `.claude/skills/` for the procedures; `docs/HAZARDS.md` for the traps;
 `docs/DEVELOPING.md` for the instruments and the developer reference; `docs/KNOWN.md` for what is true; the history,
 and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF section cited before that day means it).
@@ -54,18 +54,18 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   `C:/projects/wt-s15-<task>`, one branch `agent/s15-<task>` each, made and removed by `scripts/agent_worktree.sh`.
 - **The Sprint 16 controller** (its own worktree under `.claude/worktrees/`, the owner's word 2026-09-27) drafts Sprint 16's
   plan and starts once Sprint 15 is merged: `sprint-16` off `main`; the main tree moves there after the tag.
-- **The Sprint 13 controller** is done with its fillers (#51 as PR #65 `123dd1c5`, #57 as PR #66 `b3dae300`, the row
-  open for the r0004 leg); no worktree of its remains; it stands by for the owner's sitting.
+- **The Sprint 13 controller** is done (the sitting held, R290-R297). **Other sessions' trees:** `wt-launch-rev`,
+  `wt-pad-focus`, `wt-private-inputs`, `wt-web-viewer` (the HUMAN_TASKS and r0004 sessions'); never edit them.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
   an orphan directory, not a worktree; leave it until someone identifies it.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
 
 ## 6. What is owed
 
-- **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
+- **The owner's rows:** the 8 open rows `docs/SITTING.md` lists (`docs/HUMAN_TASKS.md`). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
-  sitting without answers all 17 open rows would close together (`docs/SITTING.md` marks them).
+  sitting without answers the open rows would close together (`docs/SITTING.md` marks them).
 - **Sprint 15, lock-free:** T1b's review and merge when its builds end; then L1 needs T2's Step 3 outcome first.
 - **Lock-bound, each a window the owner names (the sitting's last ruling):** T2's Step 3 (a mission run with a ten-second
-  drag, then a control round with one instance dragged), T3's three quiet gates, T4's builds; nothing PCSX2-side until
-  the owner restores PCSX2 and Ghidra under `tools/` (lost 2026-09-26 20:41Z through a worktree's junction).
+  drag, then a control round with one instance dragged), T3's three quiet gates, T4's builds. PCSX2 and Ghidra are back
+  under `tools/` (boot-tested 2026-09-26 ~21:55Z); `tools/rbuild` and the reference trees (lost 20:41Z) are not.

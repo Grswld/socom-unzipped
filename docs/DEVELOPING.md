@@ -822,6 +822,11 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   compared to the console's pinned scores (`scripts/parity/refs/audio_<script>.pcsx2.json`) with tolerances --
   PASS/FAIL per window. `audio_corr.py` (correlation, `--repeat`) still exists for the title path. The old driven
   dump alone (`PS2X_AUDIO_DUMP`) cannot see the device path; record the endpoint beside it.
+- **The LLE oracle (Sprint 15 T1c, 2026-09-26):** `docs/research/assets/70-lle-oracle/README.md` -- an adopted
+  out-of-tree oracle, never the product: #254's LLE IOP runs the disc's own `989SND.IRX` and the replay driver compares
+  its RPC answers with our HLE's from a run log. The README holds the build (from a scratch clone, under the lock) and
+  the replay steps; `tools_py/tests/test_lle_oracle_assets.py` (9) pins what landed: the files, the README's fork commit and numbers,
+  no machine path and no disc bytes.
 - **Run recipes, the env-gated diagnostics list, landmarks and gotchas from the first two weeks:**
   `docs/archive/HANDOFF-reference-to-2026-09-13.md` ("The run you will repeat", "Diagnostics", "Gotchas",
   "Landmarks"). Every recipe there that sets a `PS2X_*` probe works through `./run.sh` unchanged; a runner started
