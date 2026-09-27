@@ -16,8 +16,9 @@ asset is committed: you supply the disc.
 
 ## Try it
 
-- **Just look:** [socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/). Fly camera on a desktop
-  (WASD and the mouse; the controls are listed in `web/README.md`), touch controls on a phone.
+- **Just look:** [socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/), where it ran on 2026-09-27.
+  The owner has said the viewer moves to an address of its own; when it does, this line carries the new one. Fly
+  camera on a desktop (WASD and the mouse; the controls are listed in `web/README.md`), touch controls on a phone.
 - **Build it yourself:** Node 24 or newer, a US retail SOCOM II disc (SCUS-97275) mounted or extracted, then in
   `web/`: `npm install`, `npm run extract-maps -- <your disc tree>`, `npm run dev`. The extractor reads only the 22
   map archives, about 224 MB. The full steps are `web/README.md` "Build".
@@ -39,7 +40,8 @@ toolchain and no emulator.
   matches as the next ambition, the matches themselves further out.
 - 2026-09-26 -- the polish design: the panel, the chrome and the site's design language.
 - 2026-09-27 -- the viewer moves from the site's repository into this one under `web/` as a separate project with
-  its own tests and CI (`web.yml`), and stays live at `/map-viewer/` on the newly named socomunzipped.com.
+  its own tests and CI (`web.yml`); the site is renamed socomunzipped.com the same day, and an address of the
+  viewer's own is decided (`0acceed7`), not yet named.
 
 ## Rough goals next
 
