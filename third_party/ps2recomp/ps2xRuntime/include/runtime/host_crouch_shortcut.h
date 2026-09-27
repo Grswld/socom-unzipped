@@ -15,7 +15,8 @@
 // keyboard (2 and 1), which is always read, and the launcher says so under the option. "touchpad" gives up
 // nothing: the runtime maps that control to nothing today. A full Triangle from any source (Y, the keyboard's V,
 // a script, the harness's injected file) wins over the light one, so prone is always still reachable.
-// Off is the default and is byte-identical to the runtime before this option.
+// Off is byte-identical to the runtime before this option. Since O12 (2026-09-26) it is not the default: the
+// variable unset is the knob table's registered l3 (ps2x::knobOrDefault), and off has to be sent as "off".
 //
 // Pure: no raylib, no environment read. socom2_host_input.cpp reads PS2X_PAD_CROUCH_SHORTCUT and the pad.
 #include <cstdint>
@@ -38,7 +39,8 @@ constexpr uint16_t kCrouchBitL3 = 1u << 1;
 constexpr uint16_t kCrouchBitL2 = 1u << 8;
 constexpr uint16_t kCrouchBitTriangle = 1u << 12;
 
-// PS2X_PAD_CROUCH_SHORTCUT: "l3" | "touchpad" | "l2"; unset, empty, "off" and anything else are Off.
+// PS2X_PAD_CROUCH_SHORTCUT's value: "l3" | "touchpad" | "l2"; null, empty, "off" and anything else are Off.
+// The caller resolves an unset variable to the registered default (knobOrDefault) before asking.
 inline CrouchShortcut crouchShortcutFromEnv(const char *value)
 {
     if (value == nullptr)

@@ -2105,6 +2105,10 @@ namespace
 }
 
 PS2_REGISTER_GAME_OVERRIDE("socom2-us", "socom2_game.elf", 0x00180008u, 0u, applySocom2)
+// Issue #69: r0004's ELF (launcher::kGameRevisions' elfName, the name build_revision.sh packages) is SOCOM II
+// too. The same apply: its addresses come from the per-revision table, and the revision guard in it still
+// refuses an image that is not this build's revision, so neither exe runs the other's ELF.
+PS2_REGISTER_GAME_OVERRIDE("socom2-us-r0004", "socom2_game_r0004.elf", 0x00180008u, 0u, applySocom2)
 
 #if defined(__linux__) && defined(__x86_64__)
 namespace

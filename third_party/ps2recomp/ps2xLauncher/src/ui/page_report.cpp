@@ -55,7 +55,8 @@ namespace ui
         const Rect contact = rectOf(nodes, "report.contact");
         fieldLabel(ctx, contact, br::kLabelContact);
         textField(ctx, contact, rep.form.contact, "report.contact", changed, !sending, br::kContactMax);
-        caption(ctx, Vec2{contact.right() + 18.0f, contact.y + 12.0f}, "only if you want an answer");
+        // Owner ruling O4 I2 (2026-09-26): no caption here. It said "only if you want an answer", a reply the
+        // triage policy (G7: no replies) never sends; the label's own "(OPTIONAL)" says all that is true.
 
         const Rect attach = rectOf(nodes, "report.attach");
         bool attachLog = rep.form.attachLog;
@@ -103,9 +104,24 @@ namespace ui
             // Sprint 11 Goal 7: the second line, only once there is a reference to quote (br::githubLine).
             // It is an invitation, not a transfer -- the report itself stays in the private inbox, and this
             // page still sends nothing on its own.
+            // O4 I1 made the sentence two lines long at the page's width (it now excepts security reports), so
+            // it is wrapped, a size under the line above, and held to two lines: were a third ever needed, the
+            // rest joins the second and is ellipsized there rather than running off the panel.
             if (const std::string github = br::githubLine(rep.id); !github.empty())
-                text(ctx, ellipsizeEnd(ctx, github, app.frame.body.right() - send.x, metrics::captionSize).c_str(),
-                     Vec2{send.x, send.bottom() + 32.0f}, metrics::captionSize, theme::caption);
+            {
+                const float gw = app.frame.body.right() - send.x;
+                const float gs = metrics::captionSize - 1.0f;
+                const std::vector<std::string> lines = wrapText(ctx, github, gw, gs);
+                float gy = send.bottom() + 30.0f;
+                for (size_t i = 0; i < lines.size() && i < 2; ++i)
+                {
+                    std::string line = lines[i];
+                    for (size_t j = 2; i == 1 && j < lines.size(); ++j)
+                        line += lines[j];   // wrapText's lines keep their trailing space
+                    text(ctx, ellipsizeEnd(ctx, line, gw, gs).c_str(), Vec2{send.x, gy}, gs, theme::caption);
+                    gy += gs * 1.15f;
+                }
+            }
             break;
         }
         case ReportUi::State::FieldError:

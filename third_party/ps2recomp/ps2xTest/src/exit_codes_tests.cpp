@@ -90,6 +90,17 @@ void register_exit_codes_tests()
             t.Equals(launcher::exitMessage(71), ExitCodes::describe(71), "exitMessage is describe");
         });
 
+        // Issue #69: 68 is met by every revision's build, and the r0004 build's image is socom2_game_r0004.elf,
+        // so the sentence names no one revision's file -- it said "socom2_game.elf" to an r0004 player.
+        tc.Run("68's sentence names the game's image, not one revision's file (issue #69)", [](TestCase &t)
+        {
+            const std::string s = ExitCodes::describe(68);
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+                t.IsTrue(s.find(launcher::kGameRevisions[i].elfName) == std::string::npos,
+                         std::string("the sentence does not name ") + launcher::kGameRevisions[i].elfName);
+            t.IsTrue(s.find("missing or damaged") != std::string::npos, "and still says what is wrong");
+        });
+
         tc.Run("notices: a non-fatal report is a log line the launcher can read back", [](TestCase &t)
         {
             const std::string line = ExitCodes::noticeLine(ExitCodes::kNoAudioDevice);

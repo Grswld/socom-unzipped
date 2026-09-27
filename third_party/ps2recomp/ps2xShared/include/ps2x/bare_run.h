@@ -18,12 +18,17 @@ namespace BareRun
         int code = ExitCodes::kOk;            // kConfigUnreadable when config.json is there and cannot be read
         std::string detail;
         std::filesystem::path home;           // the folder the game lives in
-        std::filesystem::path elf;            // home/socom2_game.elf
+        std::filesystem::path elf;            // home/<the revision's ELF>: socom2_game.elf for r0001
         std::filesystem::path logDir;         // home/logs
         bool configFound = false;             // false: no config.json, the defaults were used
         std::vector<std::string> environment; // KEY=VALUE, PS2X_MC_DIR absolute
     };
 
+    // `gameRevision` is the BUILD's own revision (the runner passes PS2X_GAME_REVISION): an r0004 executable
+    // double-clicked loads socom2_game_r0004.elf, not r0001's ELF beside it (issue #69). The ELF's name is
+    // launcher::gameFilesFor's -- the launcher's table -- and an unknown revision is r0001.
+    Plan plan(const std::filesystem::path &home, const std::string &gameRevision);
+    // r0001's plan: plan(home, "r0001").
     Plan plan(const std::filesystem::path &home);
 
     // Sets each KEY=VALUE only when KEY is not already set; returns how many were set. An entry with

@@ -62,8 +62,8 @@ APACHE = os.path.join("RUN", "RAW", "APACHE00.ZDB")
 
 # Exit codes. The shared taxonomy (third_party/ps2recomp/ps2xShared/include/ps2x/exit_codes.h, read
 # by tools_py/exit_codes.py so no number is copied) covers three of the five ways this can refuse:
-# 66 "the disc image was not found", 67 "that image is not r0001", 68 "socom2_game.elf is missing or
-# damaged". The other two have no row there and are given the generic ones with a sentence of their
+# 66 "the disc image was not found", 67 "that image is not r0001", 68 "the game's program image (.elf) is
+# missing or damaged". The other two have no row there and are given the generic ones with a sentence of their
 # own: 2 for "your machine is missing something" (the shape build.sh uses for a missing toolchain)
 # and 1 for "a step's output is not what the disc should produce".
 EXIT_OK = 0

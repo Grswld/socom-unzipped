@@ -219,10 +219,9 @@ void register_launcher_tests()
         });
 
         // Owner request 2026-09-19, R139: the crouch shortcut.
-        tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is silent, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
+        tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is sent as =off, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
         {
             auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
-            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
 
             launcher::Config c;
             t.Equals(c.crouchShortcut, std::string("l3"), "the left stick click by default: without it a pad cannot crouch at all (owner 2026-09-20)");
@@ -230,7 +229,8 @@ void register_launcher_tests()
             launcher::Config offConfig;
             offConfig.crouchShortcut = "off";
             const std::vector<std::string> before = launcher::environmentFor(offConfig);
-            t.IsTrue(!hasKey(before, "PS2X_PAD_CROUCH_SHORTCUT"), "off sends nothing: the game's environment is what it was before the option");
+            // O12: the runtime's unset is l3 now, so OFF has to be said -- sending nothing would crouch on L3.
+            t.IsTrue(has(before, "PS2X_PAD_CROUCH_SHORTCUT=off"), "off is sent as off: an unset variable means l3 to the game");
 
             const char *values[3] = {"l3", "touchpad", "l2"};
             for (const char *v : values)
@@ -238,7 +238,7 @@ void register_launcher_tests()
                 c.crouchShortcut = v;
                 const std::vector<std::string> env = launcher::environmentFor(c);
                 t.IsTrue(has(env, std::string("PS2X_PAD_CROUCH_SHORTCUT=") + v), std::string("reaches the environment: ") + v);
-                t.Equals(env.size(), before.size() + 1, "and is the only thing it adds");
+                t.Equals(env.size(), before.size(), "and replaces off's line: nothing else changes");
                 launcher::Config back;
                 t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
                 t.Equals(back.crouchShortcut, std::string(v), std::string("survives the round trip: ") + v);
@@ -252,7 +252,8 @@ void register_launcher_tests()
             t.IsTrue(launcher::fromJson("{\"crouchShortcut\": \"banana\"}", junk), "a config with a value from nowhere still parses");
             t.Equals(junk.crouchShortcut, std::string("off"), "and the value is off, not kept and not guessed");
             junk.crouchShortcut = "banana";   // set in memory by a bug, not by the file
-            t.IsTrue(!hasKey(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT"), "junk never reaches the game either");
+            t.IsTrue(has(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT=off") && !has(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT=banana"),
+                     "junk never reaches the game: it is sent as off");
             launcher::Config partial;
             t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", partial), "an older config.json parses");
             t.Equals(partial.crouchShortcut, std::string("l3"), "a config written before the option gets the default, like a new one");
@@ -1657,6 +1658,37 @@ void register_launcher_tests()
                      "a custom address names no revision: the launcher does not know what it is");
         });
 
+        // Issue #69: the launcher started socom2.exe + socom2_game.elf whatever GAME VERSION said, so
+        // picking r0004 played r0001. startGame now asks the table which two files to spawn; the answer is
+        // pure, so it is proved here on both platforms with no process started.
+        tc.Run("startGame spawns the chosen GAME VERSION's own exe and ELF (issue #69)", [](TestCase &t)
+        {
+            const launcher::GameFiles r1 = launcher::gameFilesFor("r0001", "socom2.exe");
+            t.Equals(r1.exe, std::string("socom2.exe"), "r0001 is this build: the platform's own exe");
+            t.Equals(r1.elf, std::string("socom2_game.elf"), "and the disc's own ELF");
+            const launcher::GameFiles r4 = launcher::gameFilesFor("r0004", "socom2.exe");
+            t.Equals(r4.exe, std::string("socom2_r0004.exe"), "r0004 starts its own exe, not socom2.exe");
+            t.Equals(r4.elf, std::string("socom2_game_r0004.elf"), "with its own ELF, the name build_revision.sh packages");
+            const launcher::GameFiles empty = launcher::gameFilesFor("", "socom2");
+            t.Equals(empty.exe, std::string("socom2"), "an empty revision is r0001, with the POSIX default exe");
+            t.Equals(empty.elf, std::string("socom2_game.elf"), "and r0001's ELF");
+            const launcher::GameFiles typo = launcher::gameFilesFor("r0O04", "socom2");
+            t.Equals(typo.exe, std::string("socom2"), "a typo is r0001 too -- never a half-guessed r0004");
+            t.Equals(typo.elf, std::string("socom2_game.elf"), "and r0001's ELF");
+        });
+
+        // Issue #69, the runtime half: the runner decided "this is SOCOM II" (the disc preflight) on the exact
+        // name socom2_game.elf, so the launcher's r0004 pair started with no disc check. It asks the table now.
+        tc.Run("the runtime knows every revision's ELF by name, in any case (issue #69)", [](TestCase &t)
+        {
+            const launcher::GameRevision *r1 = launcher::gameRevisionForElfName("socom2_game.elf");
+            t.IsTrue(r1 != nullptr && std::string(r1->id) == "r0001", "socom2_game.elf is r0001's");
+            const launcher::GameRevision *r4 = launcher::gameRevisionForElfName("SOCOM2_GAME_R0004.ELF");
+            t.IsTrue(r4 != nullptr && std::string(r4->id) == "r0004", "SOCOM2_GAME_R0004.ELF is r0004's: the case is not the name");
+            t.IsTrue(launcher::gameRevisionForElfName("socom2.elf") == nullptr, "a name in no row is no revision");
+            t.IsTrue(launcher::gameRevisionForElfName("") == nullptr, "and neither is an empty one");
+        });
+
         tc.Run("the GAME VERSION selector offers r0004 only when its build sits beside the launcher", [](TestCase &t)
         {
             t.IsTrue(launcher::kGameRevisionCount == 2u, "two game versions are named");
@@ -1669,6 +1701,20 @@ void register_launcher_tests()
                      "r0001 is this launcher's own game: there is no second executable to look for");
             t.Equals(std::string(launcher::kGameRevisions[1].exeName), std::string("socom2_r0004.exe"),
                      "r0004 is one beside the launcher, in dist/");
+            // Issue #69: every row names its ELF, and no two rows the same one -- two revisions sharing an
+            // ELF is the defect that issue was, one level down.
+            t.Equals(std::string(launcher::kGameRevisions[0].elfName), std::string("socom2_game.elf"), "r0001's ELF");
+            t.Equals(std::string(launcher::kGameRevisions[1].elfName), std::string("socom2_game_r0004.elf"),
+                     "r0004's ELF, the name build_revision.sh packages");
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            {
+                const std::string elf = launcher::kGameRevisions[i].elfName;
+                t.IsFalse(elf.empty(), std::string("row ") + launcher::kGameRevisions[i].id + " names its ELF");
+                for (size_t j = i + 1; j < launcher::kGameRevisionCount; ++j)
+                    t.IsFalse(elf == launcher::kGameRevisions[j].elfName,
+                              std::string("rows ") + launcher::kGameRevisions[i].id + " and " + launcher::kGameRevisions[j].id +
+                                  " name different ELFs");
+            }
             t.Equals(std::string(launcher::kRevisionMissingNote), std::string("needs the r0004 game update -- planned"),
                      "and the greyed cell says why, in the sentence the ONLINE page already used");
 
@@ -2860,8 +2906,15 @@ void register_launcher_tests()
             t.IsTrue(sent.kind == br::Reply::Kind::Sent && sent.id == "BR-20260923-ABC123",
                      "201 with ok and one of our ids is a received report with a reference");
             t.Equals(br::githubLine(sent.id),
-                     std::string("Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id."),
+                     std::string("Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id"
+                                 " -- unless it is a security report: those go through SECURITY.md, never a public issue."),
                      "the success text carries the sentence, word for word");
+            // Owner ruling O4 I1 (2026-09-26): the invitation excepts security reports, which SECURITY.md
+            // keeps out of the public tracker -- the sentence must never steer an exploit into a public issue.
+            const std::string invitation = br::kGithubIssueLine;
+            t.IsTrue(invitation.find("SECURITY.md") != std::string::npos, "the line names SECURITY.md");
+            t.IsTrue(invitation.find("never a public issue") != std::string::npos,
+                     "and says a security report is never a public issue");
             t.Equals(br::githubLine(sent.id), std::string(br::kGithubIssueLine),
                      "and it is the header's single literal, so the launcher and the site cannot drift apart");
 

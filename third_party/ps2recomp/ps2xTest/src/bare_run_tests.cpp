@@ -76,6 +76,20 @@ void register_bare_run_tests()
             fs::remove_all(home, ec);
         });
 
+        // Issue #69: a double-clicked socom2_r0004.exe loaded r0001's socom2_game.elf beside it. The plan now
+        // takes the build's own revision (PS2X_GAME_REVISION) and asks the launcher's table for its ELF.
+        tc.Run("the bare run plans the build's own revision's ELF (issue #69)", [](TestCase &t)
+        {
+            const fs::path home = makeHome();
+            t.Equals(BareRun::plan(home, "r0004").elf, home / "socom2_game_r0004.elf",
+                     "an r0004 build loads r0004's ELF, the name build_revision.sh packages");
+            t.Equals(BareRun::plan(home, "r0001").elf, home / "socom2_game.elf", "an r0001 build loads the disc's own");
+            t.Equals(BareRun::plan(home).elf, home / "socom2_game.elf", "and plan(home) is r0001's plan");
+            t.Equals(BareRun::plan(home, "r0O04").elf, home / "socom2_game.elf", "an unknown revision is r0001, as everywhere");
+            std::error_code ec;
+            fs::remove_all(home, ec);
+        });
+
         tc.Run("no config.json is the defaults, not an error", [](TestCase &t)
         {
             const fs::path home = makeHome();
