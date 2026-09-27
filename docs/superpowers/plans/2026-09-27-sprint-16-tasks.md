@@ -341,8 +341,11 @@ branch `agent/s16-l1-design`), this file (the D12 ruling and L1b's steps sharpen
 **The shape (D12; the authority is L1a's note after its fix round, `docs/superpowers/plans/2026-09-27-sprint-16-l1-profile-viewer-design.md` <!-- docmaint: future -->):**
 the **runtime** holds a record from the login request (the `rc4EncryptFn` seam, `socom2_crypto.cpp:311`; class 0x01,
 type 0x07, Username at payload offset 40, Password at 72 — `server/horizon-server/RT.Models/Lobby/MediusAccountLoginRequest.cs`,
-read-only; the fallback seam is the hostnet `recv`, `socom2_hostnet.cpp:587`, a TCP stream needing RT-header
-reassembly) and **commits it on the success response** (type 0x08, StatusCode at offset 26, `rc4DecryptFn`
+read-only; the fallback seams are the hostnet `send`/`recv` pair, `socom2_hostnet.cpp:577/:587`, a TCP stream
+carrying the WIRE form — the RT header (id|0x80, a 2-byte length, a 4-byte hash) then RC4 ciphertext — so a fallback
+reassembles by RT header AND decrypts with the session key and the header's hash (`rc4SetKeyHash`,
+`socom2_crypto.cpp:294-302`) before it can read class 0x01 type 0x07; the RC4 seams, which see the clear text, are
+the first choice) and **commits it on the success response** (type 0x08, StatusCode at offset 26, `rc4DecryptFn`
 `:318–323`, matched by MessageID) to `cards/<profile>.personas.json` **beside the card** (a trailing separator on
 `PS2X_MC_DIR` stripped first, else the ledger lands inside the card and the game lists it), atomically, through
 `ps2x_shared`'s `personas.cpp`; **one record per (name, server)** (the game keeps personas per server, KNOWN §1) with
@@ -359,21 +362,27 @@ PASSWORD (`online.persona.password`) beside the selected row when its record say
 there is no record**, and for NEW PERSONA; `config.json` writes `loginPassword` only then and otherwise keeps the key
 empty (`diagnostics_tests.cpp:109` requires the key). **Step 0 [L]:** a driven two-persona card (`online_login_ours.py`,
 V0's window or the next) records which persona the game's list gives the form, and lists the card's files before and
-after the first create (is `SaveGame*` a persona?); then the runtime steers the list or a ruling re-words the bar's
-"logs in as it" (the row says "pick <name> in the game's list"). Rule 11 in this task: `RULINGS.md`'s and
-`CURRENT_SPRINT.md`'s R237 rows open "superseded by R310"; `knobs.h:164`'s "plain in the player's config.json" (then
-`python -m tools_py.knobs write`); `docs/INSTALL.md` and `docs/PLAYTEST.md` were corrected by PR #84 already.
+after the first create (is `SaveGame*` a persona?); the driver as it is cannot make the second persona —
+`persona_form_mode` reads a filled PLAYER NAME as "saved" (`:914-920`, `:1882-1910`) and nothing walks the list to
+`<New Persona>`, so a second create-persona login on the same card and server logs in as A typing B's password —
+so Step 0 first adds a new-persona path through the game's list (an option, the presses, the assertion that the
+form opens empty), or is recorded as a hand-driven step; then the runtime steers the list or a ruling re-words the
+bar's "logs in as it" (the row says "pick <name> in the game's list"). Rule 11 in this task: `knobs.h:164`'s "plain
+in the player's config.json" (then `python -m tools_py.knobs write`); the R237/R179 rows already read "superseded
+by R310" (merge `7b2e76bc`, 08:29Z); `docs/INSTALL.md` and `docs/PLAYTEST.md` were corrected by PR #84 already.
 
 **Files:** `third_party/ps2recomp/ps2xLauncher/src/ui/page_online.cpp` (:77–108 the three fields, the rows),
 `src/ui/focus.cpp` (:251–278 the ONLINE nodes: `online.persona.N`, `online.persona.new`, `online.persona.password`;
 the help rows at :308–363), `src/ui/focus.h` (`LayoutInputs`: the row count, the scroll, the selected index, the
 password-shown flag), `third_party/ps2recomp/ps2xShared/include/launcher/personas.h` and `src/personas.cpp` (new, in
-`ps2x_shared`: `readCard`, `readCards`, `toJson`, `fromJson`, the atomic write), `ps2xRuntime/src/lib/socom2_persona_record.cpp`
+`ps2x_shared`: `readLedger`, `readLedgers`, `toJson`, `fromJson`, the atomic write), `ps2xRuntime/src/lib/socom2_persona_record.cpp`
 (new: the request parsed at the seam, the record committed on the success response), `ps2xShared/src/launcher_config.cpp`
-(:154–155 the conditional write, the key kept; :549–554 the env from the selection; :39–45 the preset match by
-address), `ps2xShared/src/json_reader.h` (:71–74 the `\u` branch), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp`
-(the cases; the portable disk-fixture pattern of `preflight_tests.cpp:24`, never a real card),
-`tools_py/parity/online_login_ours.py` (unchanged: `--saved-password` proves a card-held password logs in untyped),
+(:154–155 the conditional write, the key kept; :549–554 the env from the selection; `findServerPreset` at
+`launcher_config.cpp:39–45`, declared `.h:262`, made a match by address), `ps2xShared/src/json_reader.h` (:71–74 the
+`\u` branch, pinned by the personas writer's round trip — the config writer's `quote` writes 0x80+ raw, so a config
+round trip can never be RED), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp` (the cases; the portable
+disk-fixture pattern of `preflight_tests.cpp:24`, never a real card), `tools_py/parity/online_login_ours.py` (Step
+0's new-persona path; `--saved-password` proves a card-held password logs in untyped),
 `docs/KNOBS.md` (regenerated for `knobs.h:164`), `docs/FAQ.md`'s login answer.
 
 - [ ] **Step 1 (RED):** `launcher_tests.cpp` cases from fixtures under a temp folder (the portable pattern of
