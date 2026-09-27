@@ -141,7 +141,7 @@
     X("PS2X_MIC_GAMEREAD_DUMP", Dev, Path, "", "WAV of what lgaud 0x08 served the game.") \
     X("PS2X_MPEG_TRACE", Dev, Presence, "", "Log the sceMpeg HLE lifecycle and the IOP stream opens.") \
     X("PS2X_PACK_TRACE", Dev, Path, "", "Trace the terrain pack function 0x25a5d0 to this file (research/31 s17).") \
-    X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "off", "l3 | touchpad | l2: the host control that sends a light Triangle (R139).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:socom2HostInputPoll */ \
+    X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "l3", "l3 | touchpad | l2 | off (unset is l3, O12): the host control that sends a light Triangle (R139).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:socom2HostInputPoll */ \
     X("PS2X_PAD_DEADZONE", Shipping, Float, "0.15", "Stick dead zone 0-0.5 on all three pad paths.") /* read: ps2xRuntime/include/runtime/host_gamepad_select.h:hostPadDeadZone */ \
     X("PS2X_PC_SAMPLER", Dev, Float, "", "Seconds between [pc-sampler] rows (guest pc/ra per thread); PEEK rides on it.") \
     X("PS2X_PEEK", Dev, Spec, "", "0xADDR[:words][,...] with * dereferences: guest words printed with each sampler row.") \
@@ -212,6 +212,11 @@ namespace ps2x
     // The one flag rule on top of knob(): dflt when knob() is nullptr (or empty); false for "0", "false", "off";
     // true for anything else.
     bool knobOn(const char *name, bool dflt = false);
+
+    // knob(name), or the table's registered default when knob() gives nothing (unset, empty, hidden); nullptr
+    // for a name not in the table, or a registered default that is empty. For a knob whose default must APPLY
+    // rather than only be documented -- O12: an unset PS2X_PAD_CROUCH_SHORTCUT is l3, and off must be said.
+    const char *knobOrDefault(const char *name);
 
     namespace knobs
     {

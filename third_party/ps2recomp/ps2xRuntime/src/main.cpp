@@ -24,6 +24,15 @@
 #include "ps2x/knobs.h"
 #include "ps2x/preflight.h"
 #include "ps2x/process_fatal.h"
+#include "launcher/launcher_config.h"   // issue #69: the revision table names every SOCOM II ELF
+
+// The revision this build's generated code was recompiled from (CMake's PS2X_GAME_REVISION, PUBLIC on
+// ps2_runtime; runtime/socom2_revision_guard.h documents it). A bare run loads that revision's ELF.
+#if defined(PS2X_GAME_REVISION)
+static constexpr const char *kBuildGameRevision = PS2X_GAME_REVISION;
+#else
+static constexpr const char *kBuildGameRevision = "r0001";
+#endif
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -230,7 +239,7 @@ int main(int argc, char *argv[])
                 if (!homeEc && !pinned.empty())
                     home = pinned;
             }
-            const BareRun::Plan plan = BareRun::plan(home);
+            const BareRun::Plan plan = BareRun::plan(home, kBuildGameRevision);   // issue #69: this build's ELF
             BareRun::redirectOutput(plan.logDir);
             if (!homeArg)
                 BareRun::detachOwnConsole();
@@ -267,7 +276,9 @@ int main(int argc, char *argv[])
             pre.cardDir = (mc != nullptr && *mc != '\0')
                               ? std::filesystem::absolute(std::filesystem::path(mc), absEc)
                               : std::filesystem::absolute(pathObj, absEc).parent_path() / "mc0";
-            pre.checkDisc = pathObj.filename() == "socom2_game.elf";   // the override's own key (PS2_REGISTER_GAME_OVERRIDE, game_overrides_socom2.cpp)
+            // Any revision's ELF name is SOCOM II (issue #69): the overrides' own keys (PS2_REGISTER_GAME_OVERRIDE,
+            // game_overrides_socom2.cpp), both named in the launcher's revision table.
+            pre.checkDisc = launcher::gameRevisionForElfName(pathObj.filename().string()) != nullptr;
             const Preflight::Result checked = Preflight::run(pre);
             if (checked.code != ExitCodes::kOk)
                 leaveWith(checked.code, checked.detail);

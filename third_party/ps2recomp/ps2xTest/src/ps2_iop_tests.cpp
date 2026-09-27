@@ -1,6 +1,7 @@
 #include "MiniTest.h"
 #include "ps2x/iop/iop_subsystem.h"
 #include "iop_service.h"   // Sprint 13 Task C7: the built-in profile table, read directly
+#include "launcher/launcher_config.h"   // issue #69: one profile row per revision table row
 
 #include <algorithm>
 #include <array>
@@ -416,13 +417,34 @@ void register_ps2_iop_tests()
             // weight (Resident Evil CV, LotR and Fatal Frame once were). A new row needs a reason in the audit's sense.
             const std::vector<ps2x::iop::detail::ProfileDefinition> profiles =
                 ps2x::iop::detail::createBuiltinProfiles();
-            t.Equals(profiles.size(), size_t{1}, "exactly one built-in profile");
-            if (profiles.size() != 1u)
+            // Issue #69 is the reason for the second row: SOCOM II r0004's image is socom2_game_r0004.elf, and the
+            // IOP matches by file name, so r0004 needs its own row -- one per launcher::kGameRevisions row, no more.
+            t.Equals(profiles.size(), launcher::kGameRevisionCount, "one built-in profile per SOCOM II revision");
+            if (profiles.size() != launcher::kGameRevisionCount)
             {
                 return;
             }
-            t.Equals(profiles[0].id, std::string("socom2-us"), "the one profile is SOCOM II's");
+            t.Equals(profiles[0].id, std::string("socom2-us"), "the first profile is SOCOM II r0001's");
             t.Equals(profiles[0].matcher.elfName, std::string("socom2_game.elf"), "it matches the SOCOM II ELF");
+            for (size_t i = 0; i < profiles.size(); ++i)
+                t.Equals(profiles[i].matcher.elfName, std::string(launcher::kGameRevisions[i].elfName),
+                         std::string("row ") + std::to_string(i) + " matches revision " + launcher::kGameRevisions[i].id + "'s ELF");
+        });
+
+        // Issue #69: the r0004 ELF matched no profile, so configure fell back to the core services alone -- no
+        // 989snd, no lgaud, no eznetcnf, and nothing said so.
+        tc.Run("the r0004 ELF selects SOCOM II's services too (issue #69)", [](TestCase &t)
+        {
+            FakeIopHost host;
+            ps2x::iop::IopSubsystem subsystem(host);
+            std::string error;
+            t.IsTrue(subsystem.configure({"socom2_game_r0004.elf", 0u, 0u}, &error), "the r0004 ELF configures");
+            const ps2x::iop::DebugSnapshot snapshot = subsystem.debugSnapshot();
+            t.IsFalse(snapshot.activeProfile.empty(), "and activates a profile");
+            t.IsNotNull(findService(snapshot, "989snd"), "989snd");
+            t.IsNotNull(findService(snapshot, "lgaud"), "lgaud");
+            t.IsNotNull(findService(snapshot, "eznetcnf"), "eznetcnf");
+            t.IsNotNull(findService(snapshot, "libsd"), "and the core services");
         });
 
         // Sprint 13 Task C7 review round 1: the two lifecycle checks the LotR services carried, on SOCOM II's own

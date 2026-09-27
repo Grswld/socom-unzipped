@@ -75,6 +75,31 @@ namespace launcher
         return findGameRevision(value) != nullptr ? value : std::string(kGameRevisions[0].id);
     }
 
+    GameFiles gameFilesFor(const std::string &gameRevision, const std::string &defaultExe)
+    {
+        const GameRevision *rev = findGameRevision(normalizeGameRevision(gameRevision));
+        if (rev == nullptr)
+            rev = &kGameRevisions[0];   // unreachable while normalize answers a row's id; kept so it cannot crash
+        return {rev->exeName[0] == '\0' ? defaultExe : std::string(rev->exeName), std::string(rev->elfName)};
+    }
+
+    const GameRevision *gameRevisionForElfName(const std::string &elfName)
+    {
+        const auto lower = [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; };
+        for (const GameRevision &rev : kGameRevisions)
+        {
+            const std::string name = rev.elfName;
+            if (name.size() != elfName.size())
+                continue;
+            bool same = true;
+            for (size_t i = 0; i < name.size() && same; ++i)
+                same = lower(name[i]) == lower(elfName[i]);
+            if (same)
+                return &rev;
+        }
+        return nullptr;
+    }
+
     bool gameRevisionAvailable(size_t index, uint32_t installed)
     {
         if (index >= kGameRevisionCount)
@@ -559,10 +584,9 @@ namespace launcher
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone < 0.0 ? 0.0 : (c.padDeadZone > 0.5 ? 0.5 : c.padDeadZone));
         env.push_back(std::string("PS2X_PAD_DEADZONE=") + dz);
-        // R139: only when a shortcut is on -- "off" sends nothing, so the default environment is what it was.
-        const std::string crouch = normalizeCrouchShortcut(c.crouchShortcut);
-        if (crouch != "off")
-            env.push_back("PS2X_PAD_CROUCH_SHORTCUT=" + crouch);
+        // R139, O12: always sent. The runtime's unset is the registered l3 (knobOrDefault), so "off" has to be
+        // said -- sending nothing for OFF would crouch on L3.
+        env.push_back("PS2X_PAD_CROUCH_SHORTCUT=" + normalizeCrouchShortcut(c.crouchShortcut));
         // Sprint 10 Goal 8 (R174): the profile's input mapping, only when it is not the default -- the default
         // environment is byte for byte what it was, and the runtime's defaults ARE this table (launcher/mapping.h).
         const mapping::Mapping active = activeMapping(c);

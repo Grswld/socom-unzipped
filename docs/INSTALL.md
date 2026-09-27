@@ -48,8 +48,8 @@ to uninstall.**
 Keep every file in it together. The folder holds the game (`socom2.exe`), the game's program image
 (`socom2_game.elf` — the tester archive today; the public download builds it from your disc, #70), the launcher (`socom_unzipped_launcher.exe`), the libraries those two import, `LICENSES/`, a
 short `README.txt`, and empty `cards/` and `logs/` folders. Move or lose `socom2_game.elf` and the game refuses to
-start with exit code 68: *"socom2_game.elf is missing or damaged. Unpack the download again and keep every file
-together."*
+start with exit code 68: *"The game's program image (.elf) is missing or damaged. Unpack the download again and keep
+every file together."*
 
 ## 4. Run the launcher
 
@@ -182,7 +182,7 @@ socom_unzipped_launcher.exe --diagnostics diagnostics.zip
 ```
 
 **REPORT A BUG**, on the rail, is the launcher's own form — *"tell us what went wrong; nothing is sent until you
-press SEND"*. It has **TITLE**, **WHAT HAPPENED**, **CONTACT (OPTIONAL)** (*"only if you want an answer"*), and a
+press SEND"*. It has **TITLE**, **WHAT HAPPENED**, **CONTACT (OPTIONAL)**, and a
 tick box, **Attach the last run's log**, which is **off** until you turn it on. A line above the button spells out
 exactly what would be sent, and until you press **SEND REPORT** the page says *"Nothing leaves this machine until
 you press it."* On success the page prints a reference and copies it to your clipboard where it can — quote it if you

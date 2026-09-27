@@ -124,8 +124,12 @@ namespace launcher::bugreport
     // this one sentence, shown under SEND after a report is received, inviting the person who filed it to
     // open the issue themselves and quote the reference. (The site's own form is asked to say the same
     // thing -- that request belongs to the site session, sites/s2u; this is the launcher's half.)
+    // Owner ruling O4 I1 (2026-09-26): the invitation excepts security reports -- SECURITY.md keeps those out
+    // of the public tracker, and this line must never steer an exploit into a public issue. Longer than one
+    // line at the page's width: page_report.cpp wraps it over two.
     constexpr const char *kGithubIssueLine =
-        "Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id.";
+        "Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id"
+        " -- unless it is a security report: those go through SECURITY.md, never a public issue.";
     // kGithubIssueLine for a reply's reference, "" when there is none: a rate-limited, refused or undelivered
     // SEND has no reference, and neither has a report the service received under an id that is not one of
     // ours (parseReply leaves `id` empty there). With no reference on the screen there is nothing to quote,

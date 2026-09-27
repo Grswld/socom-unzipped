@@ -40,10 +40,13 @@ namespace launcher
         const char *id;
         const char *label;
         const char *exeName;   // "" = this launcher's own game; otherwise a file beside the launcher
+        // Issue #69: the program image that executable is started with, beside the launcher. Never empty: every
+        // row's ELF has a name (build_revision.sh packages r0004's as socom2_game_<rev>.elf).
+        const char *elfName;
     };
     constexpr GameRevision kGameRevisions[] = {
-        {"r0001", "r0001 (your disc)",         ""},
-        {"r0004", "r0004 (community update)",  "socom2_r0004.exe"},
+        {"r0001", "r0001 (your disc)",         "",                 "socom2_game.elf"},
+        {"r0004", "r0004 (community update)",  "socom2_r0004.exe", "socom2_game_r0004.elf"},
     };
     constexpr size_t kGameRevisionCount = sizeof(kGameRevisions) / sizeof(kGameRevisions[0]);
     static_assert(kGameRevisionCount <= 32, "the installed-revision mask is a uint32_t: one bit per table row");
@@ -65,6 +68,20 @@ namespace launcher
     // kGameRevisions[1] by name, and every executable-bearing row was then reported installed whenever
     // that one was. Each row is now gated by its own bit and by no other's, so a third row needs no code.
     bool gameRevisionAvailable(size_t index, uint32_t installed);
+
+    // Issue #69: the two files `startGame` spawns for `gameRevision`, relative to the launcher's folder. Until
+    // this, both glues named socom2.exe + socom2_game.elf outright, so picking r0004 ran r0001. `defaultExe`
+    // is the platform's own name for "this build" ("socom2.exe" on Windows, "socom2" on POSIX) -- the row
+    // whose exeName is "" -- and an unknown id (a typo, empty) is r0001, as normalizeGameRevision says.
+    struct GameFiles
+    {
+        std::string exe;
+        std::string elf;
+    };
+    GameFiles gameFilesFor(const std::string &gameRevision, const std::string &defaultExe);
+    // The row whose elfName is `elfName` (a bare file name, compared ignoring ASCII case), or nullptr. The
+    // runner's "this is SOCOM II" question (its disc preflight) asks this, not one literal name (issue #69).
+    const GameRevision *gameRevisionForElfName(const std::string &elfName);
 
     struct ServerPreset
     {
@@ -142,7 +159,7 @@ namespace launcher
         int gamepadIndex = -1;
         double padDeadZone = 0.15;
         // Owner request 2026-09-19, R139: the host control that crouches -- "off" | "l3" | "touchpad" | "l2".
-        // The default is "l3" (owner 2026-09-20: with no shortcut a pad cannot crouch at all). "off" sends no variable and is the runtime exactly as it was before the option.
+        // The default is "l3" (owner 2026-09-20: with no shortcut a pad cannot crouch at all). "off" is sent as PS2X_PAD_CROUCH_SHORTCUT=off (O12, 2026-09-27: an unset variable resolves to the registered l3, so off must be said).
         std::string crouchShortcut = "l3";   // owner 2026-09-20: without a shortcut a pad cannot crouch at all
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
         std::string micDevice;
