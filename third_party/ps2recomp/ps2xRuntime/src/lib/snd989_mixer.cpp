@@ -429,6 +429,11 @@ namespace snd989
             VolPair base{};
             int32_t playVol = 127;   // Sprint 9 Q0: the 0..127 volume and the pan in force, so snd_SetSoundParams
             int32_t playPan = 0;     // can change one and keep the other, as it does for bank sounds
+            // The play-time 7-bit volume, the IRX's Original_Vol (+0xc): the IRX's play (FUN_0000f7e0) writes
+            // param_5 * 0x7f >> 10 into +0xc and +0x10 alike (research/36 lines 241-242), and an AutoVol target
+            // scales it. The play is the only write to +0xc research/36 records, so setVolPan and the AutoVol steps
+            // move playVol (+0x10) alone.
+            int32_t origVol = 127;
             ChunkPair pcm;                           // per channel: the chunk pair being played
             double pos = 0.0;                        // sample position inside the current chunk
             double step = 1.0;                       // file rate / output rate
@@ -843,14 +848,18 @@ namespace snd989
             return -1;
         }
 
-        // The volume an AutoVol target scales (the IRX's Original_Vol): a bank sound's own Vol; for a stream, the
-        // full 127 its play volume is computed against (playStream: (127 * vol) >> 10).
+        // The volume an AutoVol target scales (the IRX's Original_Vol): a stream's play-time 7-bit volume (origVol,
+        // (127 * vol) >> 10 at the play), a bank sound's own Vol; 0 when nothing carries the handle (autoVol has
+        // returned before it asks).
         int32_t handleOriginal7(uint32_t handle) const
         {
+            for (const std::shared_ptr<Stream> &st : streams)
+                if (st->handle == handle)
+                    return st->origVol;
             for (const Handler &h : handlers)
                 if (h.handle == handle)
                     return h.origVolume;
-            return 127;
+            return 0;
         }
 
         // Puts a 7-bit volume on the handle, the IRX's per-step snd_SetSoundVolPan(handle, -level, -2) with the pan
@@ -858,7 +867,10 @@ namespace snd989
         // curVolume is written directly too: the target is already in the sound's own scale, and whether the SOCOM
         // IRX's block setter rescales the level by the sound's Vol is unread (research/68 row 2) -- the direct
         // write is the conservative model. appVolume is set to the smallest value that re-derives `level`, so a
-        // later pan-only setVolPan keeps it. The handler's children are not touched.
+        // later pan-only setVolPan keeps it. The handler's children are not touched, a departure from the IRX: v3.01's
+        // snd_SetSFXVolPan (blocksnd.c:1232-1236) sets every child to App_Vol * Original_Vol / 127 on each step, while
+        // ours leaves them alone until a later setVolPan pushes the stepped appVolume to them in one jump
+        // (research/68 row 2).
         void setHandleLevel7(uint32_t handle, int32_t level)
         {
             if (Stream *st = findStream(handle))
@@ -977,7 +989,7 @@ namespace snd989
         // (0x7ffe), a QUARTER at half amplitude. It sits under every voice (blocksnd.c:1267-1268) and every stream
         // (IRX FUN_00016898), so the MUSIC/SOUND sliders at 50 % are -12 dB on the console, a stem played at vol
         // 0x200 likewise, and a linear 7-bit fade is a quadratic loudness curve. `vol14` is 0..0x7ffe (makeVolume),
-        // `modifier` 0..0x400 (group x master x ramp); the product's square fits an int32 (0x7ffe^2 < 2^30).
+        // `modifier` 0..0x400 (group x master); the product's square fits an int32 (0x7ffe^2 < 2^30).
         static int32_t adjustVolToGroup(int32_t vol14, int32_t modifier)
         {
             const int32_t v = (std::min(vol14, 0x7ffe) * modifier) / 0x400;
@@ -2232,6 +2244,7 @@ namespace snd989
         const int32_t playPan = (pan == kPanReset || pan == kPanDontChange) ? 0 : pan;
         st.base = streamBase(st.channels, playVol, playPan);
         st.playVol = playVol;
+        st.origVol = playVol;   // the IRX's Original_Vol, the play-time volume an AutoVol target scales
         st.playPan = playPan;
         // Sprint 9 Q0 (the owner's second listen): the worker fills the ring on its own 10 ms cadence, so the
         // first render after a push found it empty -- one device period of silence at the start of EVERY stream
