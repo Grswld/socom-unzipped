@@ -9,7 +9,7 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-15 -- OPEN 2026-09-26 16:57Z off main at 200f3287 (the Sprint 14 merge, PR #68, tagged v0.14.0;
+branch:       sprint-15 -- CLOSED 2026-09-27 06:27Z (the PR to main and the tag v0.15.0 follow; opened 2026-09-26 off main at 200f3287 (the Sprint 14 merge, PR #68, tagged v0.14.0;
               Sprint 13 merged as v0.13.0 at 6a82caaa, PR #61). This machine's checkout is on sprint-15 (the same
               controller session); agents work in worktrees on agent/s15-* branches. See "Sprint 15 -- OPEN" below,
               then the Sprint 14 CLOSED block. (The Sprint 14 line read: opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
@@ -50,12 +50,27 @@ baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Bu
 ```
 
 Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money or decision; **[B: x]** blocked on x.
-"Lock-bound" means it needs a build or a launch (the loop lock, `scripts/check_quiet_gate.sh` first -- the owner feels
-long builds); "lock-free" can run at any time.
+"Lock-bound" means it needs a build or a launch: the loop lock, and a window -- announced by the session for a build,
+named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "lock-free" can run at any time.
 
 ---
 
-## Sprint 15 — OPEN 2026-09-26 16:57Z (plan `docs/superpowers/plans/2026-09-26-sprint-15.md`, "borrowed confidence", re-cut to value)
+## Sprint 15 — CLOSED 2026-09-27 (the PR `sprint-15` -> `main` and the tag `v0.15.0` on its merge commit follow this close-out; closed without its play test on the owner's word; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-26 16:57Z, closed 2026-09-27 06:27Z: one loop day, every task reviewed by a fresh
+agent. Adopted #254's LLE IOP as an out-of-tree audio oracle on the owner's word (the disc's own 989SND.IRX with our provider
+disagrees with our HLE on 832 of 13,044 mission answers against 12,643 on the old oracle; the harness under
+`docs/research/assets/70-lle-oracle/`); the audio register (five rows, the bar 6 dips) and the survey (#254 cannot load a bank
+as it stands); merged #67's fix (the back-pressure stands aside for the window's move loop) and the AutoVol integer step
+schedule; R280 (stable held-out stamps), R281 (an orphaned working-copy change stashed around chains), R298 (superseded by the
+owner's correction). Issues since the open at 16:57Z: opened 6 (#70-#75, none on the stack), closed 0, carried 0; the highest
+is #75. The §5 review fixed 23 stale claims (the header's `plans:` line the blocking one) and archived Sprint 13's block; the
+§7 read found the audit clean, commented #67 and the three carried-twice issues, regenerated the backlog. The play test (the
+close chain, T2's drag proof, T1b's capture) is carried to Sprint 16 on the owner's word of 06:16Z; T3 and T4 unstarted. The
+Outcome in the plan has the bar row by row and the carried legs with their bars.
+
+**As it stood while open:**
+
 
 Opened by the Sprint 14 controller off `main` at `200f3287` (the Sprint 14 merge, `v0.14.0`) on the owner's word of
 2026-09-26: the first proposal ("a week of planned work") was cut to what a player runs into and what the owner named --

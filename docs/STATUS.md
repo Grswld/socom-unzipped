@@ -1,7 +1,7 @@
 # Project status — "Current state" below is kept current; the dated log that stood under it is archived
 
 ## Current state (keep it short; update when it changes)
-- **2026-09-26 16:57Z -- Sprint 15 ("borrowed confidence", re-cut to value) is OPEN on `sprint-15` off `main` at `200f3287`, where Sprint 14 merged as `v0.14.0` (PR #68; the release waits on the owner).** Live state: the plan's Log (`docs/superpowers/plans/2026-09-26-sprint-15.md`); the block: `docs/CURRENT_SPRINT.md` "Sprint 15 -- OPEN". Four days: audio first, #67, then #59/#32 if time allows (R282-R289). Owner rows: O1-O8, O10-O16, O18, O19; the LATER dismissals to confirm.
+- **2026-09-27 06:27Z -- Sprint 15 ("borrowed confidence", re-cut) is CLOSED on `sprint-15` without its play test, on the owner's word; the PR to `main` and the tag `v0.15.0` follow (the release waits).** Adopted: #254's LLE IOP as an out-of-tree audio oracle (832 of 13,044). Merged code: #67's fix, the AutoVol step schedule. Carried to Sprint 16: the chain (gate, fourth leg, parity, dips), T2's drag proof, T3, T4. Live state: `docs/CURRENT_SPRINT.md` "Sprint 15 -- CLOSED"; next: Sprint 16 "ten minutes to the server" (its controller session).
 - Older state bullets: the twenty that stood under the one above (2026-09-19 to 2026-09-25 early) became dated
   entries of the log on 2026-09-25, verbatim (Sprint 13 Task R1, R268); that log is
   `docs/archive/STATUS-log-to-2026-09-26.md` since 2026-09-26 (R272). This block has a byte ceiling

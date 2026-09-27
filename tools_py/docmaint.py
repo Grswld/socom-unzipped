@@ -109,10 +109,10 @@ CEILINGS = (
     ("docs/HANDOFF.md", "## 2.", 800),           # 3,022
     ("docs/HANDOFF.md", None, 5900),              # Sprint 14 I3: the whole file, transient (was 36,232)
     ("docs/STATUS.md", "## Current state", 2100),  # 2,309
-    ("docs/HUMAN_TASKS.md", None, 12230),         # 9,786 after the R4 cut (was 104,000 over 82,968)
+    ("docs/HUMAN_TASKS.md", None, 9300),         # 9,786 after the R4 cut (was 104,000 over 82,968)
     ("docs/LOOP_PROMPT.md", None, 1100),          # Sprint 14 S3: a pointer since I2 (995)
     ("CLAUDE.md", None, 4900),                    # Sprint 14 S3: 4,453 plus ten percent (the sixty-line twin)
-    (OPEN_PLAN, None, 92000),                     # Sprint 14 S3: the Sprint 14 plan, 83,025 plus ten percent
+    (OPEN_PLAN, None, 59100),                     # Sprint 14 S3: the Sprint 14 plan, 83,025 plus ten percent
 )
 
 # R268 too: "merged to `main` as `vX.Y.Z`" is a claim about origin. On 2026-09-25 four live documents

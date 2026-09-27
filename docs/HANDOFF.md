@@ -10,11 +10,10 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 21:20Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut to value) is OPEN on
-  `sprint-15`, off `main` at `200f3287`; `main` at `715e8149` (the sitting, PR #76) merged in. Day one: R1 and X1
-  merged; T1 ADOPTED on the owner's word (the LLE IOP as an out-of-tree oracle: 832 of 13,044) and its harness landed
-  (T1c); T2's code merged (#67, the drag; its mission run waits for a window); T1b (AutoVol steps) building. The plan
-  `docs/superpowers/plans/2026-09-26-sprint-15.md` (its Log) is the live state. No cloud session from 2026-09-26.
+- **Where the loop is now (2026-09-27 06:27Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut) is CLOSED on `sprint-15`
+  without its play test (the owner's word); the PR to `main` and the tag `v0.15.0` follow. Next: Sprint 16 "ten minutes to
+  the server", opened by its own controller session on `sprint-16` off `main`; it also runs Sprint 15's carried legs as one
+  chain (the Sprint 15 plan's Outcome lists them with their bars). No cloud session from this machine's loop.
 - **Next free ruling number: R299** (R290-R297 the owner's sitting, `docs/superpowers/plans/2026-09-26-owner-sitting.md`; R298 the close's window, the Sprint 15 plan).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
@@ -65,7 +64,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** the 8 open rows `docs/SITTING.md` lists (`docs/HUMAN_TASKS.md`). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers the open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 15, lock-free:** T1b's review and merge when its builds end; then L1 needs T2's Step 3 outcome first.
-- **Lock-bound, each a window the owner names (the sitting's last ruling):** T2's Step 3 (a mission run with a ten-second
-  drag, then a control round with one instance dragged), T3's three quiet gates, T4's builds. PCSX2 and Ghidra are back
-  under `tools/` (boot-tested 2026-09-26 ~21:55Z); `tools/rbuild` and the reference trees (lost 20:41Z) are not.
+- **Nothing lock-free is owed by Sprint 15;** Sprint 16's Task 0 lifts the Outcome's carried legs.
+- **Lock-bound (Sprint 16's, one chain at the end of its controller's block):** the gate, the fourth leg, parity and dips,
+  T2's drag proof, T1b's capture; then T3's quiet gates and T4's builds in windows the owner names.
