@@ -95,6 +95,24 @@ void register_knobs_tests()
                      "the same value a fresh launcher config writes");
         });
 
+        // O12, the behaviour half: the table's default is what APPLIES when the variable is absent, so a runner
+        // started with no launcher and no config crouches on L3 too; "off" has to be said to be off.
+        tc.Run("knobOrDefault: the variable when set, the registered default when unset (O12: crouch is l3)", [](TestCase &t)
+        {
+            KnobStateGuard guard;
+            ps2x::knobs::setEnforcement(true);
+            ps2x::knobs::setDevMode(false);
+            const char *crouch = "PS2X_PAD_CROUCH_SHORTCUT";
+            setVar(crouch, nullptr);
+            const char *unset = ps2x::knobOrDefault(crouch);
+            t.Equals(std::string(unset != nullptr ? unset : "<null>"), std::string("l3"), "unset resolves to the registered l3");
+            setVar(crouch, "off");
+            const char *off = ps2x::knobOrDefault(crouch);
+            t.Equals(std::string(off != nullptr ? off : "<null>"), std::string("off"), "a value that is set wins: off stays off");
+            setVar(crouch, nullptr);
+            t.IsNull(ps2x::knobOrDefault("PS2X_NO_SUCH_KNOB"), "a name the registry does not hold has no default");
+        });
+
         tc.Run("the flag rule: unset or empty is the default; 0, false, off are false; anything else is true", [](TestCase &t)
         {
             using ps2x::knobs::flagValue;

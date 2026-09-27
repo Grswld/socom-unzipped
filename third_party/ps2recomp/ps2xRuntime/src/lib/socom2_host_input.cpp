@@ -427,9 +427,9 @@ namespace ps2_stubs
                           static_cast<int>(GAMEPAD_BUTTON_UNKNOWN) == static_cast<int>(launcher::mapping::kHostNone),
                           "launcher/mapping.h's host ids are raylib's GamepadButton values");
             // R139: the pad's buttons are gathered into a mask and passed through the crouch shortcut, which is the
-            // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the script
-            // and the harness's injected file never go through it.
-            static const CrouchShortcut s_crouch = crouchShortcutFromEnv(ps2x::knob("PS2X_PAD_CROUCH_SHORTCUT"));
+            // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT=off; unset is the registered l3, O12).
+            // The keyboard, the script and the harness's injected file never go through it.
+            static const CrouchShortcut s_crouch = crouchShortcutFromEnv(ps2x::knobOrDefault("PS2X_PAD_CROUCH_SHORTCUT"));
             uint16_t hostMask = 0;
             for (const launcher::mapping::PadBinding &entry : g_config.mapping.pad)
             {

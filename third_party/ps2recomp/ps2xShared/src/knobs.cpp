@@ -242,4 +242,12 @@ namespace ps2x
     {
         return knobs::flagValue(knob(name), dflt);
     }
+
+    const char *knobOrDefault(const char *name)
+    {
+        if (const char *v = knob(name); v != nullptr && *v != '\0')
+            return v;
+        const knobs::Entry *e = knobs::find(name);
+        return (e != nullptr && e->dflt != nullptr && *e->dflt != '\0') ? e->dflt : nullptr;
+    }
 }

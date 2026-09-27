@@ -18,7 +18,7 @@ Player-facing. Each is a field of `config.json` that the launcher (and a bare ru
 | `PS2X_INPUT_MAPPING` | Spec | unset | The profile pad and key tables (launcher/mapping.h toEnv); unset or unreadable = the default mapping (R174). | `ps2xRuntime/src/lib/socom2_host_input.cpp` `resolveMapping` |
 | `PS2X_MC_DIR` | Path | unset | Memory-card folder for slot 0; unset = mc0 beside the ELF. | `ps2xRuntime/src/main.cpp` `main`<br>`ps2xRuntime/src/lib/ps2_runtime.cpp` `setIoPaths`<br>`ps2xRuntime/src/lib/ps2_runtime.cpp` `configureIoPathsFromElf` |
 | `PS2X_MIC_DEVICE` | Text | unset | Capture device name for the headset; unset = no microphone. | `ps2xRuntime/src/lib/host_mic.cpp` `startHostMicFromEnvironment` |
-| `PS2X_PAD_CROUCH_SHORTCUT` | Text | `l3` | l3 \| touchpad \| l2: the host control that sends a light Triangle (R139). | `ps2xRuntime/src/lib/socom2_host_input.cpp` `socom2HostInputPoll` |
+| `PS2X_PAD_CROUCH_SHORTCUT` | Text | `l3` | l3 \| touchpad \| l2 \| off (unset is l3, O12): the host control that sends a light Triangle (R139). | `ps2xRuntime/src/lib/socom2_host_input.cpp` `socom2HostInputPoll` |
 | `PS2X_PAD_DEADZONE` | Float | `0.15` | Stick dead zone 0-0.5 on all three pad paths. | `ps2xRuntime/include/runtime/host_gamepad_select.h` `hostPadDeadZone` |
 | `PS2X_PRESENT_FILTER` | Text | `linear` | linear \| integer \| point: how the frame is scaled into the window. | `ps2xRuntime/src/lib/ps2_runtime.cpp` `run` |
 | `PS2X_SOCOM2_LOGIN_NAME` | Text | unset | The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty. | `ps2xRuntime/src/lib/game_overrides_socom2.cpp` `socom2_OskOpenPrefill`<br>`ps2xRuntime/src/lib/game_overrides_socom2.cpp` `installOskPrefill` |

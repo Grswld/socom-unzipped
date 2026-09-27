@@ -136,7 +136,6 @@ void register_launcher_tests()
         tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is silent, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
         {
             auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
-            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
 
             launcher::Config c;
             t.Equals(c.crouchShortcut, std::string("l3"), "the left stick click by default: without it a pad cannot crouch at all (owner 2026-09-20)");
@@ -144,7 +143,8 @@ void register_launcher_tests()
             launcher::Config offConfig;
             offConfig.crouchShortcut = "off";
             const std::vector<std::string> before = launcher::environmentFor(offConfig);
-            t.IsTrue(!hasKey(before, "PS2X_PAD_CROUCH_SHORTCUT"), "off sends nothing: the game's environment is what it was before the option");
+            // O12: the runtime's unset is l3 now, so OFF has to be said -- sending nothing would crouch on L3.
+            t.IsTrue(has(before, "PS2X_PAD_CROUCH_SHORTCUT=off"), "off is sent as off: an unset variable means l3 to the game");
 
             const char *values[3] = {"l3", "touchpad", "l2"};
             for (const char *v : values)
@@ -152,7 +152,7 @@ void register_launcher_tests()
                 c.crouchShortcut = v;
                 const std::vector<std::string> env = launcher::environmentFor(c);
                 t.IsTrue(has(env, std::string("PS2X_PAD_CROUCH_SHORTCUT=") + v), std::string("reaches the environment: ") + v);
-                t.Equals(env.size(), before.size() + 1, "and is the only thing it adds");
+                t.Equals(env.size(), before.size(), "and replaces off's line: nothing else changes");
                 launcher::Config back;
                 t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
                 t.Equals(back.crouchShortcut, std::string(v), std::string("survives the round trip: ") + v);
@@ -166,7 +166,8 @@ void register_launcher_tests()
             t.IsTrue(launcher::fromJson("{\"crouchShortcut\": \"banana\"}", junk), "a config with a value from nowhere still parses");
             t.Equals(junk.crouchShortcut, std::string("off"), "and the value is off, not kept and not guessed");
             junk.crouchShortcut = "banana";   // set in memory by a bug, not by the file
-            t.IsTrue(!hasKey(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT"), "junk never reaches the game either");
+            t.IsTrue(has(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT=off") && !has(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT=banana"),
+                     "junk never reaches the game: it is sent as off");
             launcher::Config partial;
             t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", partial), "an older config.json parses");
             t.Equals(partial.crouchShortcut, std::string("l3"), "a config written before the option gets the default, like a new one");

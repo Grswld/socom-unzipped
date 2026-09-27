@@ -674,7 +674,8 @@ void register_pad_input_tests()
     {
         tc.Run("PS2X_PAD_CROUCH_SHORTCUT parses its three values and treats everything else as off", [](TestCase &t)
         {
-            t.IsTrue(crouchShortcutFromEnv(nullptr) == CrouchShortcut::Off, "unset is off");
+            // The parse alone: the runtime asks it about knobOrDefault's value, which is l3 when unset (O12).
+            t.IsTrue(crouchShortcutFromEnv(nullptr) == CrouchShortcut::Off, "a null value parses as off");
             t.IsTrue(crouchShortcutFromEnv("") == CrouchShortcut::Off, "empty is off");
             t.IsTrue(crouchShortcutFromEnv("off") == CrouchShortcut::Off, "off is off");
             t.IsTrue(crouchShortcutFromEnv("l3") == CrouchShortcut::L3, "l3");
