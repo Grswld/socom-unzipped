@@ -1,14 +1,14 @@
 import {
   Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, CustomBlending, DataTexture, DoubleSide, DstColorFactor,
   FrontSide, Group, type Object3D, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, LineSegments, Matrix4, Mesh,
-  NearestFilter, NoBlending, NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, RepeatWrapping, SrcAlphaFactor,
+  NearestFilter, NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, RepeatWrapping, SrcAlphaFactor,
   Texture, Vector2, Vector3, ZeroFactor,
 } from 'three';
-import type { Camera } from 'three';
+import type { Blending, BlendingDstFactor, BlendingSrcFactor, Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
 import { materialReference, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
 import { lodVisible } from '@s2u/scene';
-import { drawState, materialSpec, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
+import { drawState, materialSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
 import type { Rgba } from '@s2u/gs';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
 import type { LoadedMap, LoadedMesh } from './loadMap';
@@ -152,6 +152,33 @@ const FACTOR = {
   zero: ZeroFactor, one: OneFactor, srcAlpha: SrcAlphaFactor, oneMinusSrcAlpha: OneMinusSrcAlphaFactor, dstColor: DstColorFactor,
 } as const satisfies Record<Factor, number>;
 
+/** The blend a world material is given, colour and alpha, from its draw state's factors. */
+export interface BlendFactors {
+  blending: Blending;
+  blendSrc: BlendingSrcFactor;
+  blendDst: BlendingDstFactor;
+  blendSrcAlpha: BlendingSrcFactor | null;
+  blendDstAlpha: BlendingDstFactor | null;
+}
+
+/**
+ * Pure, so the blend every world draw gets is pinned without a GPU (`test/blend.test.ts`).
+ *
+ * The colour is the draw state's blend, or a plain copy (One, Zero) for an unblended draw; the alpha is
+ * always Zero, One. The GS's alpha never reached the television, and the canvas must stay opaque or the
+ * page background shows through every cutout edge, alpha ramp and blended edge, unfogged (bluish in the
+ * Modern look from `--bg`, black in PS2's) -- so no draw writes alpha, and the clear colour's 1 stays.
+ */
+export function blendFactorsFor(factors: DrawState['factors']): BlendFactors {
+  return {
+    blending: CustomBlending,
+    blendSrc: factors ? FACTOR[factors.src] : OneFactor,
+    blendDst: factors ? FACTOR[factors.dst] : ZeroFactor,
+    blendSrcAlpha: ZeroFactor,
+    blendDstAlpha: OneFactor,
+  };
+}
+
 /**
  * Builds the scene objects for one decoded map: one `Mesh` per texture run for the world, whose vertices
  * `loadMap` has already placed, and one `InstancedMesh` per prop model-node -- a prop model is drawn in
@@ -241,15 +268,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       : b.scrollNode ?? (b.textured ? SHADED : SHADED_PLAIN);
     material.transparent = state.transparent;
     material.depthWrite = state.depthWrite;
-    if (state.factors) {
-      material.blending = CustomBlending;
-      material.blendSrc = FACTOR[state.factors.src];
-      material.blendDst = FACTOR[state.factors.dst];
-      material.blendSrcAlpha = null;
-      material.blendDstAlpha = null;
-    } else {
-      material.blending = NoBlending;
-    }
+    Object.assign(material, blendFactorsFor(state.factors));
     material.alphaTest = spec.alphaTest;
     // A shadow decal has no back to cull: its quad carries the cull flag like the prop it belongs to,
     // and culled by its winding it vanished from above, which is the only place it is ever seen from.
