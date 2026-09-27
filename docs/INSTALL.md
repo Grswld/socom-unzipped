@@ -156,8 +156,8 @@ that key and the field goes. Until then, hand `config.json` to nobody.
 Two things to expect on your first round:
 
 - **Your first login on any server is a create-persona login** — the name keyboard comes first. The game keeps saved
-  personas per server, so a persona made on one server is not there on another; its row says so (*"made on ...; on
-  this server the game makes a new persona"*).
+  personas per server, so a persona made on one server is not there on another; the list's heading says so when you
+  pick it (*"made on ...; on this server the game makes a new persona"*).
 - **The game's own SAVE PASSWORD works**; tick it and the next login goes through with nothing typed, which is what
   empties the launcher's PASSWORD field.
 

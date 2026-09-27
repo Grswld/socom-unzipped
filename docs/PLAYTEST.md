@@ -137,7 +137,8 @@ Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_p
 - **Who else gets this archive?** For you alone, nothing to decide. For anyone else, decision D2 comes first: the
   archive contains code recompiled from the game, and the game's decrypted ELF (`docs/HUMAN_TASKS.md`, row O1 of its
   table) (answered 2026-09-26, R290: the exe ships, the ELF never).
-- **A profile viewer** in the launcher -- wanted?
+- ~~**A profile viewer** in the launcher -- wanted?~~ *Answered (R295):* wanted, issue #73 -- the ONLINE page's
+  PERSONAS list (Sprint 16 L1b).
 - **Should the download drop the built-in debugger and the dump/trace probes** to get smaller? You will get a number
   (megabytes saved) before you have to answer.
 - ~~**The keyboard.** Players lose the gameplay keys, the test harness keeps them behind developer mode -- or the
