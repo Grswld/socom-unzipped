@@ -1024,7 +1024,7 @@ class ClaudeMdTest(unittest.TestCase):
     PATH = os.path.join(docmaint.ROOT, "CLAUDE.md")
     MAX_LINES = 60
     NAMES = ("docs/CURRENT_SPRINT.md", "docs/KNOWN.md", "docs/HUMAN_TASKS.md",
-             "loop-iteration", "agent-worktree", "run-gate", "sprint-close")
+             "loop-iteration", "agent-worktree", "run-gate", "sprint-close", "doc-maintenance")
 
     def text(self):
         self.assertTrue(os.path.isfile(self.PATH), "CLAUDE.md is missing at the repository root")
@@ -1059,7 +1059,7 @@ class SkillsTest(unittest.TestCase):
     with a frontmatter `name:` equal to its directory and a `description:`; docs/LOOP_PROMPT.md is a pointer
     under 2,000 bytes that names the loop's skill; CLAUDE.md's procedure lines point at the SKILL.md files."""
 
-    NAMES = ("loop-iteration", "agent-worktree", "run-gate", "sprint-close")
+    NAMES = ("loop-iteration", "agent-worktree", "run-gate", "sprint-close", "doc-maintenance")
     LOOP_PROMPT = os.path.join(docmaint.ROOT, "docs", "LOOP_PROMPT.md")
     POINTER_MAX_BYTES = 2000
 
@@ -1099,6 +1099,54 @@ class SkillsTest(unittest.TestCase):
             text = f.read()
         missing = [n for n in self.NAMES if ".claude/skills/%s/SKILL.md" % n not in text]
         self.assertEqual(missing, [], "CLAUDE.md does not point at .claude/skills/<name>/SKILL.md for: %s" % missing)
+
+
+class AnnouncementsTest(unittest.TestCase):
+    """R319 (2026-09-27): an announcement is drafted in the tree and posted by the owner's hand only. Every
+    file under docs/announcements/ is dated in its filename (class S by location, DOC_MAINTENANCE section 2)
+    and carries the gate line '**Publish:** the owner'; a draft that lost either has lost its class or its
+    gate. The template carries the same line, so a copy starts gated."""
+
+    FOLDER = os.path.join(docmaint.ROOT, "docs", "announcements")
+    TEMPLATE = os.path.join(docmaint.ROOT, "docs", "templates", "announcement.md")
+    DATED = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*\.md$")
+    GATE = re.compile(r"^\*\*Publish:\*\* the owner\b", re.M)
+
+    @classmethod
+    def problems(cls, folder):
+        """(name, reason) for every draft in `folder` that is undated or ungated."""
+        out = []
+        if not os.path.isdir(folder):
+            return out
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".md"):
+                continue
+            if not cls.DATED.match(name):
+                out.append((name, "the filename must be <YYYY-MM-DD>-<slug>.md"))
+            with open(os.path.join(folder, name), encoding="utf-8") as f:
+                if not cls.GATE.search(f.read()):
+                    out.append((name, "no '**Publish:** the owner' line (R319)"))
+        return out
+
+    def test_every_draft_is_dated_and_gated(self):
+        self.assertEqual(self.problems(self.FOLDER), [])
+
+    def test_the_template_starts_gated(self):
+        self.assertTrue(os.path.isfile(self.TEMPLATE), "docs/templates/announcement.md is missing")
+        with open(self.TEMPLATE, encoding="utf-8") as f:
+            self.assertRegex(f.read(), self.GATE)
+
+    def test_planted_defects_fire(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "2026-09-27-good.md"), "w", encoding="utf-8") as f:
+                f.write("# x\n\n**Status:** DRAFT\n**Publish:** the owner, by hand.\n")
+            with open(os.path.join(d, "undated.md"), "w", encoding="utf-8") as f:
+                f.write("# x\n\n**Publish:** the owner, by hand.\n")
+            with open(os.path.join(d, "2026-09-27-ungated.md"), "w", encoding="utf-8") as f:
+                f.write("# x\n\n**Status:** POSTED\n")
+            names = sorted(n for n, _ in self.problems(d))
+            self.assertEqual(names, ["2026-09-27-ungated.md", "undated.md"])
 
 
 class OneHomeTest(unittest.TestCase):

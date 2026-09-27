@@ -2,13 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 10 open O rows (11 answered or struck); 51 active rulings since 2026-09-26 (51 dated, 0 placed by number or home, 200 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
+The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 11 open O rows (1 answered or struck); 54 active rulings since 2026-09-26 (54 dated, 0 placed by number or home, 200 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-10 open, 11 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
+11 open, 1 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
@@ -22,24 +22,15 @@ The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 10 open 
 | O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 1 |
 | O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 0 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 0 |
+| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 0 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
-- O1: The legal position on shipping `socom2.exe` and the decrypted `socom2_game.elf` -- Answered 2026-09-26 (R290): the exe ships in release archives only, never in the repository; the ELF never ships; the native first-run decrypt from the player'…
-- O3: What the public tree holds and under which terms -- Answered 2026-09-26 (R291): the audio fixtures regenerated from the disc and dropped from HEAD, the rest stays, no rewrite, GPL-3.0 for everything of ours, uns…
-- O6: The machine's windows and a second machine -- Answered 2026-09-26 (R294): no nightly ladder, the entry stays disabled and the online tests run when a task needs them; the second machine not yet. The full r…
-- O11: The naming programme's owner rows -- Answered 2026-09-26 (R296): the defaults stand; the hand read, the 148 and the matcher over the Aug 28 2003 beta (in hand, `game/beta_scus_973_66/`) are one fu…
-- O12: The crouch default -- Answered 2026-09-26 (R296): `l3` in the knob too (the #69 worktree's fourth commit, `ead36796`; merged to `main` as PR #86, `a159a19d`, 2026-09-27); tooltips o…
-- O13: Repository settings and history -- Answered 2026-09-26 (R294): approvals stay 0 and reviewed agent code merges to `main` until stability; Dependabot #8 and #9 merged; homepage and topics set; SE…
-- O14: The merged-branch sweep -- Done 2026-09-26 (R296): the `sprint-*` ruleset lifted, 16 merged remote branches deleted (`fix/gl-depth-precision`, `fix/gs-block-pointer`, `sprint-1` to…
-- O16: Three issues carried twice -- Answered 2026-09-26 (R296): #25, #26 and #42 stay on the backlog; the next plan that names one takes it. The full row is in the archive.
-- O18: The private-inputs location -- Answered 2026-09-26 (R296): retired -- the loop's half is #75, the site's half in its TODO. The full row is in the archive.
-- O19: `tools_py/story/site.py`, modified and uncommitted in the main tree -- Answered 2026-09-26 (R296): committed as the owner's, `83c62d75`. The full row is in the archive.
 - O17: Merge PR #61 (Sprint 13 -> main) -- Done 2026-09-26: you granted the scope; merged `6a82caaa`, tagged `v0.13.0`. The full row is in the archive.
 
 ## 2. The rulings since the last sitting
 
-51 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 51 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+54 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 54 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R269** (2026-09-26) an infrastructure sprint ahead of visible defects, in the order G, I, W, D, S, E, M. -- overturn by number
 - **R270** (2026-09-26) KNOWN §4's standing hazards move to their own file (`docs/HAZARDS.md`, class L, headed by the area each bites), KNOWN keeping §1–§3. -- overturn by number
@@ -89,6 +80,9 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R315** (2026-09-27) the player exe drops the debug UI only (`PS2X_ENABLE_DEBUG_UI=OFF`); the runtime's probes stay in both kinds, because the gate reads them (… -- overturn by number
 - **R316** (2026-09-27) the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a…… -- overturn by number
 - **R317** (2026-09-27) `PS2Runtime::initialize` gains a headless mode taken by an explicit argument the helper's `main` passes (not a knob), default off so `socom2.exe`'s behaviour i… -- overturn by number
+- **R318** (2026-09-27) the wiki holds human prose only; what an agent, a hook or a check reads stays in the tree. -- overturn by number
+- **R319** (2026-09-27) Discussions' Announcements stand in for patch notes for now, human-gated: a dated draft under `docs/announcements/` from its template, a `docs/HUMAN_TASKS.md`… -- overturn by number
+- **R320** (2026-09-27) revise, do not append: a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's. -- overturn by number
 - **S13-R12** (2026-09-26) the close's issue-stack read, acted on. -- overturn by number
 - **S13-R13** (2026-09-26) the frame-time pin stays informational; #59 carries with the measured reason. -- overturn by number
 - **S13-R14** (2026-09-26) the carried-twice three go to the owner, the rest carry once to the backlog. #25 (the Linux VM suites; no Sprint 13 task), #26 (the chat bound's path; O2 resta… -- overturn by number
