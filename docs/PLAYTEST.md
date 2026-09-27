@@ -55,8 +55,10 @@ Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_p
    cancels~~ -- the rebinding flow became hold-a-button-to-remap in fix wave A, `668c7f5`, W9, so follow the page); AUDIO > LAUNCHER: the menu sounds and their toggle. At **step 7**, press the
    pad's XBOX/guide button while the game runs -- the launcher should come forward, and again send you back (if
    nothing happens, bind SWITCH to another button on the BUTTONS page and say so; on a Sony pad on Sony's own driver
-   the PS button is the one measurement the machine could not make). At **step 11**, type your persona name and
-   password into ONLINE first: both game keyboards should open already filled and you only press ENTER. Say which of
+   the PS button is the one measurement the machine could not make). At **step 11**, pick your persona in ONLINE's
+   PERSONAS list (NEW PERSONA if it is not there yet) and, if the PASSWORD field shows beside it, type the password:
+   the game's password keyboard should open already filled and you only press ENTER; after that login the persona is
+   listed, and once a login goes through with nothing typed the field is gone. Say which of
    these did not happen.
 
 1. **The download is whole** *(the release download, c)*. `certutil -hashfile socom2-portable.zip SHA256`
@@ -95,8 +97,8 @@ Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_p
    must not move. When you quit the game, the launcher must respond again. "RUNNING" should sit level with its lamp.
 8. **Crouch** *(R139)*. In that mission: L-stick click toggles stand/crouch (it acts on release); Y still goes prone
    and back. If you have a Sony pad: CROUCH SHORTCUT = TOUCHPAD, and the touchpad click crouches.
-9. **The save** *(the save prompt)*. Start from a card the game has never used (a new PROFILE on the ONLINE page
-   gives you one). Pick the difficulty that asks to save, YES, slot 1. Quit the game, start it again: it should not
+9. **The save** *(the save prompt)*. Start from a card the game has never used (set a new `"profile"` in `config.json` by
+   hand -- the ONLINE page has no card field since the PERSONAS list). Pick the difficulty that asks to save, YES, slot 1. Quit the game, start it again: it should not
    ask again, and your progress should be there.
    ~~*Answered 2026-09-22:* the first save on a brand-new card failed at the control-type prompt and worked on the
    second launch.~~ Fixed in `152579a` (a trailing `..` on a fresh card now resolves to the card root, with a
@@ -135,7 +137,8 @@ Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_p
 - **Who else gets this archive?** For you alone, nothing to decide. For anyone else, decision D2 comes first: the
   archive contains code recompiled from the game, and the game's decrypted ELF (`docs/HUMAN_TASKS.md`, row O1 of its
   table) (answered 2026-09-26, R290: the exe ships, the ELF never).
-- **A profile viewer** in the launcher -- wanted?
+- ~~**A profile viewer** in the launcher -- wanted?~~ *Answered (R295):* wanted, issue #73 -- the ONLINE page's
+  PERSONAS list (Sprint 16 L1b).
 - **Should the download drop the built-in debugger and the dump/trace probes** to get smaller? You will get a number
   (megabytes saved) before you have to answer.
 - ~~**The keyboard.** Players lose the gameplay keys, the test harness keeps them behind developer mode -- or the

@@ -15,6 +15,7 @@ add_library(ps2x_shared STATIC
     src/bug_report.cpp
     src/patch_fetch.cpp   # Sprint 16 R2a (#71): the r0004 package's URL and its check
     src/mapping.cpp
+    src/personas.cpp      # Sprint 16 L1b (#73): the persona ledger beside the card, read by the launcher, written by the runner
     src/knobs.cpp
     src/host_window.cpp   # Sprint 10 Q4: the game window's title and the launcher's palette on its chrome
 )

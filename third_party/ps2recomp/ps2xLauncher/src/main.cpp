@@ -25,6 +25,7 @@
 #include "launcher/menu_sounds.h"
 #include "launcher/mic_devices.h"
 #include "launcher/patch_fetch.h"
+#include "launcher/personas.h"   // Sprint 16 L1b (#73): the ledgers beside the cards
 #include "launcher/sha256.h"
 #include "ps2x/app_icon_embedded.h"   // Sprint 10 Q4: the window icon both executables wear
 #include "ps2x/exe_dir.h"
@@ -941,6 +942,22 @@ namespace
         app.micDb = -18.0f;
         app.micDbValid = true;
         app.micStatus = "listening";
+        // Sprint 16 L1b (#73): two invented personas on the fixed server, as a player's list shows them after two
+        // logins (the walk never reads a card or a ledger).
+        {
+            launcher::personas::Persona a, b;
+            a.name = "socomc";
+            a.card = "player";
+            a.server = launcher::effectiveServer(app.config);
+            a.lastLogin = 1790000000 - 86400;
+            a.savedPassword = true;
+            b.name = "rookie";
+            b.card = "player";
+            b.server = a.server;
+            b.lastLogin = 1790000000 - 6 * 86400;
+            app.personas.rows = {a, b};
+            app.personasNow = 1790000000;
+        }
         app.configPath = "C:\\games\\socom2\\config.json";
         app.logsPath = "C:\\games\\socom2\\logs";
         app.version = "SOCOM Unzipped -- sprint 8 build";
@@ -983,6 +1000,27 @@ namespace
     };
 
     // (Re)loads the cues from the cache, building it from the ISO when it is not there. Sets the page's line.
+    // Sprint 16 L1b (#73, R295): every card's persona ledger (cards/<profile>.personas.json, beside the card), read at
+    // start and after each run -- a login in the run may have added a record. A ledger skipped is one line here.
+    void readPersonas(ui::App &app, const fs::path &home)
+    {
+        app.personas = launcher::personas::readCards((home / "cards").string());
+        for (const std::string &note : app.personas.notes)
+            std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+        // The selected row starts in view, and with it the password field beside it: a password is never sent from a
+        // field scrolled out of sight (the frame loop does the same when the selection moves).
+        {
+            ui::LayoutInputs in;
+            in.personaRows = static_cast<int>(app.personas.rows.size());
+            in.personaSelected = static_cast<int>(launcher::personas::selectedRow(app.personas.rows, app.config));
+            app.personaScroll = ui::personaScrollOnRead(in, app.personaScroll);
+        }
+        // The migration (the design note, section 3): the selected persona's card now holds its password, so the plain
+        // copy in config.json goes -- the key stays, empty.
+        if (!app.fake && launcher::personas::dropSavedPassword(app.config, app.personas.rows))
+            writeText(fs::path(app.configPath), launcher::toJson(app.config, app.personas.rows));
+    }
+
     void refreshMenuSounds(MenuSounds &menu, ui::App &app, const fs::path &home)
     {
         namespace ms = launcher::menusounds;
@@ -1236,6 +1274,7 @@ int main(int argc, char **argv)
         meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
         app.meterOn = meterOn;
         refreshMenuSounds(menu, app, dir);
+        readPersonas(app, dir);
     }
 
     // Sprint 9 Goal 8: the two requests this window ever makes, each on its own worker.
@@ -1340,6 +1379,9 @@ int main(int argc, char **argv)
     // page the same way, so a PNG can see what a player sees.
     int shotPendingPage = -1;
     std::string shotPendingFocus;
+    // Sprint 16 L1b: the PERSONAS row selected last frame -- a selection that moves without a reread (the 'Second
+    // instance' toggle) is scrolled into view with its password field, as a read does.
+    int personaSelectedBefore = -1;
 
     while (!WindowShouldClose() && !quitRequested)
     {
@@ -1380,6 +1422,7 @@ int main(int argc, char **argv)
                 game.close();
                 app.exitLine = launcher::lastRunLine(lastExitRaw, readHead(lastLog, 256u * 1024u));
                 app.setStatus(app.exitLine);
+                readPersonas(app, dir);   // Sprint 16 L1b: a login in that run may have added or updated a record
                 // Review F8: the meter gives the capture device back to the game while it runs; take it now.
                 meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
             }
@@ -1387,6 +1430,7 @@ int main(int argc, char **argv)
             const float db = meterOn ? mic->levelDb() : -INFINITY;
             app.micDbValid = std::isfinite(db);
             app.micDb = app.micDbValid ? db : -60.0f;
+            app.personasNow = static_cast<long long>(std::time(nullptr));
             app.monitorSize = launcher::monitorSizeOrEmpty(GetMonitorWidth(GetCurrentMonitor()),
                                                            GetMonitorHeight(GetCurrentMonitor()));
             app.layout.padChoices = static_cast<int>(app.padLabels.size());
@@ -1404,8 +1448,20 @@ int main(int argc, char **argv)
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
         app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
+        // Sprint 16 L1b (#73): the PERSONAS list -- its rows, the selected one, whether its password field shows, and
+        // the scroll, kept on the list (a pick or a reread can shorten it under the scroll) and moved to the selection
+        // when that changed since the last frame: a password is never sent from a field out of sight.
+        {
+            const std::vector<launcher::personas::Persona> &rows = app.personas.rows;
+            app.layout.personaRows = static_cast<int>(rows.size());
+            app.layout.personaSelected = static_cast<int>(launcher::personas::selectedRow(rows, app.config));
+            app.layout.personaPasswordShown = launcher::personas::passwordShown(rows, app.config);
+            app.personaScroll = ui::personaScrollPerFrame(app.layout, personaSelectedBefore, app.personaScroll);
+            personaSelectedBefore = app.layout.personaSelected;
+            app.layout.personaScroll = app.personaScroll;
+        }
 
-        const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
+        ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         // A page the last frame's draw asked for (a rail click, a PLAY row's CHANGE) lands here, before
         // the frame's list is built, so the list and the page never disagree (focus.h, Nav::request).
         nav.applyRequest(graph);
@@ -1700,7 +1756,20 @@ int main(int argc, char **argv)
                     nav.move(graph, ui::Dir::Left);
                 else if (dx > 0)
                     nav.move(graph, ui::Dir::Right);
-                if (dy < 0)
+                // Sprint 16 L1b: up and down inside the PERSONAS list are the list's own, so a row past the third
+                // is reached by scrolling it into view; the graph and this frame's list follow the new scroll.
+                std::string listTo;
+                int listScroll = app.personaScroll;
+                if (dy != 0 && nav.page == ui::Page::Online &&
+                    ui::personaMove(app.layout, nav.focus, dy < 0 ? ui::Dir::Up : ui::Dir::Down, listTo, listScroll))
+                {
+                    app.personaScroll = listScroll;
+                    app.layout.personaScroll = listScroll;
+                    graph = ui::FocusGraph::build(window, app.layout);
+                    nodes = ui::layoutFor(nav.page, window, app.layout);
+                    nav.focus = listTo;
+                }
+                else if (dy < 0)
                     nav.move(graph, ui::Dir::Up);
                 else if (dy > 0)
                     nav.move(graph, ui::Dir::Down);
@@ -1868,7 +1937,7 @@ int main(int argc, char **argv)
             }
             if (app.requestSave)
             {
-                writeText(configPath, launcher::toJson(app.config));
+                writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
                 app.setStatus("settings saved");
             }
@@ -1983,11 +2052,16 @@ int main(int argc, char **argv)
             }
             if (app.requestLaunch && !app.running && app.discOk)
             {
-                writeText(configPath, launcher::toJson(app.config));
+                writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
                 mic->stopMeter();   // Review F8: two processes must not hold the same microphone
                 meterOn = false;
-                if (win32glue::startGame(dir.string(), app.config, game))
+                // Sprint 16 L1b (#73): the environment from the selection -- no PS2X_SOCOM2_LOGIN_PASS for a persona
+                // whose card holds its password (launcher::environmentFor(config, rows) is the same rule, tested).
+                launcher::Config launched = app.config;
+                if (launcher::personas::cardHoldsPassword(app.personas.rows, launched))
+                    launched.loginPassword.clear();
+                if (win32glue::startGame(dir.string(), launched, game))
                 {
                     lastLog = game.logPath;
                     app.setStatus("started; log " + fs::path(game.logPath).filename().string());
@@ -2174,13 +2248,14 @@ int main(int argc, char **argv)
                 }
                 app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
                 if (std::strcmp(shot.suffix, "_help") == 0)
-                    shotPendingFocus = "online.profile";
-                // Sprint 10 Goal 9: the fake persona and password (invented values; the file is never written).
+                    shotPendingFocus = "online.persona.new";   // Sprint 16 L1b: "what is a profile?" moved here
+                // Sprint 10 Goal 9, Sprint 16 L1b: the fake persona without a saved password, picked, and a typed
+                // password beside it (invented values; the file is never written).
                 const bool credentialsShot = std::strcmp(shot.suffix, "_credentials") == 0;
-                app.config.loginName = credentialsShot ? "socomc" : "";
+                app.config.loginName = credentialsShot ? "rookie" : "";
                 app.config.loginPassword = credentialsShot ? "hunter2" : "";
                 if (credentialsShot)
-                    shotPendingFocus = "online.password";
+                    shotPendingFocus = "online.persona.password";
                 // Task 11: "_r0004" installs the community build and picks it, against the project server
                 // that runs r0001 -- the reverse mismatch warning. Set on EVERY shot, not only that one:
                 // the walk reuses a single App, so a version left behind by one capture would otherwise
@@ -2216,7 +2291,7 @@ int main(int argc, char **argv)
     }
 
     if (!app.fake)
-        writeText(configPath, launcher::toJson(app.config));
+        writeText(configPath, launcher::toJson(app.config, app.personas.rows));
     if (mic)
         mic->stopMeter();
     game.close();

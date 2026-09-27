@@ -91,6 +91,7 @@ add_library(ps2_test_lib STATIC
     src/socom2_pad2_hle_tests.cpp       # Sprint 13 Task C8 (audit F8)
     src/socom2_msifrpc_tests.cpp        # Sprint 13 Task C8 (audit F8)
     src/socom2_crypto_tests.cpp         # Sprint 13 Task C8 (audit F9)
+    src/persona_record_tests.cpp        # Sprint 16 L1b (#73): the runtime's persona record
     src/runtime_seams_tests.cpp         # Sprint 13 Task C8 (audit F22)
 )
 
@@ -151,6 +152,7 @@ target_sources(ps2x_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_pad2_hle.cpp
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_msifrpc.cpp
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_crypto.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_persona_record.cpp   # Sprint 16 L1b (#73): the seams' record, tested
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_lum_pixel.cpp
 )
 # The libnetb HLE and its host socket table are runner-only sources too; the 0x200 stats test
