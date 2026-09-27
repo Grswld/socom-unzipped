@@ -33,6 +33,7 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
   tree's copy -- enforced by: the hook's Edit/Write entry; home the `scripts/loop_lock.sh` header. Bash edits unseen.
 - A commit naming `loop_lock.sh` without a slow-suite marker newer than the script -- enforced by: the Bash entry
   (`rule_lock_script_commit`); home the `scripts/loop_lock.sh` header.
+- `gh pr merge --delete-branch` (and `-d`) -- enforced by: the Bash hook; home `docs/HAZARDS.md` git.
 - Orphaned watchers (`tail`, `grep`, `sleep`) killed at every Stop and SessionEnd -- enforced by: the reaper
   `tools_py/hooks/reap.py`, test `tools_py/tests/test_reap.py`; home DEVELOPING "Guards", the Sprint 14 plan's G3.
 - `build.sh` refuses (exit 3) while another holder has the lock, unless run as its child; the `tools` step is exempt

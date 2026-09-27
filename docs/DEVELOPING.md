@@ -136,7 +136,7 @@ a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no f
 ## The `tools_py/` map
 
 Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
-2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
+2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close, 178 on 2026-09-26 with Sprint 15 T2's `window_drag.py` (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
 `__init__.py` files: hooks, parity, r0004, release, story). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
 module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
 says otherwise.
@@ -289,6 +289,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `gate.py` | The three-stage gate (title, transition, mission): PASS/FAIL, stamps under `logs/parity/gate/` |
 | `pins.py` | What a measurement was computed against, and the refusal when it drifted |
 | `frame_time.py` | The mission stage's `FRAME` line: VBlank pacing (host ms per guest VBlank, a lower bound on the time between presents) over the scripted walk, from the `[pc-sampler]` rows (informational, S13-R3). Run it on saved stamps as: `python -m tools_py.parity.frame_time <stamp dir> ...` |
+| `window_drag.py` | Issue #67: a scripted title-bar drag of the game window, and the readout of what the guest clock (`[pc-sampler]` `t=`/`vsync=`) and the `[audio-trace]` counters did through it -- FROZEN / SLOWED / ADVANCING. Run it as: `python -m tools_py.parity.window_drag drag --log <game log> --seconds 10 --stamps <file>`, then `python -m tools_py.parity.window_drag readout <game log> --stamps <file>` |
 | `compare.py` | Score screens against the golden set and write `docs/parity/REPORT.md` |
 | `guest_probe.py` | The gate's guest-value probe against console numbers on disk |
 | `guest_addresses.py` | One home for the guest addresses the instruments read, and the per-revision rule |
@@ -821,6 +822,11 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   compared to the console's pinned scores (`scripts/parity/refs/audio_<script>.pcsx2.json`) with tolerances --
   PASS/FAIL per window. `audio_corr.py` (correlation, `--repeat`) still exists for the title path. The old driven
   dump alone (`PS2X_AUDIO_DUMP`) cannot see the device path; record the endpoint beside it.
+- **The LLE oracle (Sprint 15 T1c, 2026-09-26):** `docs/research/assets/70-lle-oracle/README.md` -- an adopted
+  out-of-tree oracle, never the product: #254's LLE IOP runs the disc's own `989SND.IRX` and the replay driver compares
+  its RPC answers with our HLE's from a run log. The README holds the build (from a scratch clone, under the lock) and
+  the replay steps; `tools_py/tests/test_lle_oracle_assets.py` (9) pins what landed: the files, the README's fork commit and numbers,
+  no machine path and no disc bytes.
 - **Run recipes, the env-gated diagnostics list, landmarks and gotchas from the first two weeks:**
   `docs/archive/HANDOFF-reference-to-2026-09-13.md` ("The run you will repeat", "Diagnostics", "Gotchas",
   "Landmarks"). Every recipe there that sets a `PS2X_*` probe works through `./run.sh` unchanged; a runner started
@@ -1077,7 +1083,7 @@ and every ticket carries a class, `build` or `run` (`--class` overrides).
 
 Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
 wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
-home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `loop_lock` and `logs/`
+home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `gh pr`, `loop_lock` and `logs/`
 exits 0 in the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
 `|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
 `timeout`, `nice`, `nohup`, `stdbuf`, `ionice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
@@ -1117,6 +1123,8 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
   `git worktree remove --force ...`; home `scripts/agent_worktree.sh`.
 - **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
   test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
+- **gh merge deleting the branch** -- `gh pr merge` with `--delete-branch` or `-d` (`-md` too); test `GH_MERGE_CASES`
+  (`test_gh_pr_merge_delete_branch_is_refused`); home `docs/HAZARDS.md` git (the worktree junction, 2026-09-26).
 
 The same script also runs before every Edit, Write, MultiEdit and NotebookEdit call (a second PreToolUse entry,
 Sprint 14 G2; the path from `tool_input.file_path`, or `notebook_path`). It judges the path relative to the root of

@@ -9,26 +9,30 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-14 -- CLOSED 2026-09-26 16:28Z (the PR to main and the tag v0.14.0 follow; opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
+branch:       sprint-15 -- CLOSED 2026-09-27 06:27Z (the PR to main and the tag v0.15.0 follow; opened 2026-09-26 off main at 200f3287 (the Sprint 14 merge, PR #68, tagged v0.14.0;
+              Sprint 13 merged as v0.13.0 at 6a82caaa, PR #61). This machine's checkout is on sprint-15 (the same
+              controller session); agents work in worktrees on agent/s15-* branches. See "Sprint 15 -- OPEN" below,
+              then the Sprint 14 CLOSED block. (The Sprint 14 line read: opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
               Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
               machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
               agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
               CLOSED block (12's and 11's are archived, see plans). No cloud session runs from 2026-09-26.
-spec:         docs/superpowers/specs/2026-09-26-sprint-14-guards-not-sentences-design.md (seven milestones G, I, W, D,
-              S, E, M with a bar each, the filler X1; the acceptance bar is its section 4; section 1.5 says what the
-              loss of the cloud changed). The Sprint 13, 12 and 11 specs closed with v0.13.0, v0.12.0 and v0.11.0.
-plans:        docs/superpowers/plans/2026-09-26-sprint-14.md (the task table, the Log newest first, the rulings
-              R269-R281 from the global counter -- no sprint-local names from this sprint on, R273); it came from
-              docs/audits/2026-09-26-autonomy-structure-review.md (nine findings, options A-I, six notes beside it).
-              The Sprint 13 plan (its rulings S13-R1..R14), the Sprint 12 plan (S12-R1..R25) and the Sprint 11 plan
-              are closed; Sprint 13 is listed in its block below, Sprints 12 and 11 in
-              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older are in
+spec:         docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md, re-cut 2026-09-26 on the owner's
+              word (audio first, #67, the two measurements if time allows; its acceptance bar is its section 4; the walk
+              list's other rows live in docs/LATER.md). The Sprint 14, 13, 12 and 11 specs closed with v0.14.0, v0.13.0,
+              v0.12.0 and v0.11.0.
+plans:        docs/superpowers/plans/2026-09-26-sprint-15.md (the task table, the Log newest first, the rulings R282-R289
+              from the global counter; the owner's sitting of 2026-09-26 holds R290-R297 in
+              docs/superpowers/plans/2026-09-26-owner-sitting.md). The Sprint 14 plan (R269-R281) is closed, listed in its
+              block below; the Sprint 13 plan (S13-R1..R14) too, its block in
+              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 are in
+              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 15 "borrowed confidence" (R276): docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md
-              and docs/superpowers/plans/2026-09-26-sprint-15.md, PROPOSED, opened from the confidence register at
-              this sprint's close; the standing "visible defects first" order resumes inside it. Its origin, the
-              cloud handoff of 2026-09-25, never ran and is kept under a NEVER RUN banner
-              (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
+next sprint:  Sprint 16 "ten minutes to the server": docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md
+              (the owner's, PROPOSED, 6f57eb1e); its plan is drafted by the Sprint 16 controller session in its own worktree
+              and it opens on sprint-16 off main once this sprint is closed and merged (its D10 carries what this sprint
+              leaves short of an outcome). Sprint 15's origin, the cloud handoff of 2026-09-25, never ran and is kept
+              under a NEVER RUN banner (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
@@ -37,20 +41,49 @@ rulings:      indexed in docs/RULINGS.md (generated: every ruling with its statu
 baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gates (Sprint 13,
-              2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gate: the Sprint 14
+              close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
+              Sprint 14 plan's Log, 16:20Z); before it (Sprint 13, 2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
               same exe (23:51Z), `s13_proof3_gate` 3/3 (r0001, 20:54Z), `s13_names_r0004_gate` 3/3 PINS MATCH (r0004,
               d027546d...); the plan's Log has each; audio parity
               `s9_q1_parity_ours2` 31/48 (2026-09-20, unchanged since)
 ```
 
 Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money or decision; **[B: x]** blocked on x.
-"Lock-bound" means it needs a build or a launch (the loop lock, `scripts/check_quiet_gate.sh` first -- the owner feels
-long builds); "lock-free" can run at any time.
+"Lock-bound" means it needs a build or a launch: the loop lock, and a window -- announced by the session for a build,
+named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "lock-free" can run at any time.
 
 ---
 
-## Sprint 14 — CLOSED 2026-09-26 (the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow this close-out; the release waits on the owner's word; the record of the sprint is the block below)
+## Sprint 15 — CLOSED 2026-09-27 (the PR `sprint-15` -> `main` and the tag `v0.15.0` on its merge commit follow this close-out; closed without its play test on the owner's word; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-26 16:57Z, closed 2026-09-27 06:27Z: one loop day, every task reviewed by a fresh
+agent. Adopted #254's LLE IOP as an out-of-tree audio oracle on the owner's word (the disc's own 989SND.IRX with our provider
+disagrees with our HLE on 832 of 13,044 mission answers against 12,643 on the old oracle; the harness under
+`docs/research/assets/70-lle-oracle/`); the audio register (five rows, the bar 6 dips) and the survey (#254 cannot load a bank
+as it stands); merged #67's fix (the back-pressure stands aside for the window's move loop) and the AutoVol integer step
+schedule; R280 (stable held-out stamps), R281 (an orphaned working-copy change stashed around chains), R298 (superseded by the
+owner's correction). Issues since the open at 16:57Z: opened 6 (#70-#75, none on the stack), closed 0, carried 0; the highest
+is #75. The §5 review fixed 23 stale claims (the header's `plans:` line the blocking one) and archived Sprint 13's block; the
+§7 read found the audit clean, commented #67 and the three carried-twice issues, regenerated the backlog. The play test (the
+close chain, T2's drag proof, T1b's capture) is carried to Sprint 16 on the owner's word of 06:16Z; T3 and T4 unstarted. The
+Outcome in the plan has the bar row by row and the carried legs with their bars.
+
+**As it stood while open:**
+
+
+Opened by the Sprint 14 controller off `main` at `200f3287` (the Sprint 14 merge, `v0.14.0`) on the owner's word of
+2026-09-26: the first proposal ("a week of planned work") was cut to what a player runs into and what the owner named --
+**audio first** (the register and the survey for the audio rows only; the LLE IOP of upstream PR #254 answered as a candidate;
+one trial on #42/#28 with the dip count as its measurement and a stop rule), **#67 the drag freeze beside it** (the modal move
+loop on the presenting thread; the bar is the issue's), then **#59 a frame-rate bar and #32 the atlas re-upload if time
+allows**. VU1 and every other replaced subsystem wait in `docs/LATER.md` with a confidence and a trigger, or a dismissal the
+owner confirms. Four days (R286). The defaults D1-D8 are ruled R282-R289 in the plan; the bar is the spec's §4 as re-cut: the
+audio rows with numbers, #254 answered, T1 to a recorded outcome, T2 to its bar, no regression (the gate 3/3, the fourth leg
+green, audio parity not below 31/48, the dip count not above the register's number), LATER complete, the ceilings held. The
+plan's Log is the live state; this block gains its table at the close.
+
+## Sprint 14 — CLOSED 2026-09-26 (merged to `main` as `v0.14.0` at `200f3287`, PR #68, 16:55Z; the release waits on the owner's word; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-26 05:17Z, closed 2026-09-26 16:28Z: 231 commits, 46 merges (26 agent branches, five
 of `main`, the close's three), every task reviewed by a fresh agent. No feature work (R269). Landed: the guards (a Bash and an
@@ -93,38 +126,7 @@ against a planted violation before it counts as done.** The bar is the spec's se
 their rulings R269-R277 are the plan's "Owner decisions" and "Rulings" sections. The plan's Log is the live state;
 this block gains its table at the close.
 
-## Sprint 13 — CLOSED 2026-09-26 (merged to `main` as `v0.13.0` at `6a82caaa`, PR #61, 2026-09-26 ~05:00Z after the owner granted the gh token the workflow scope; the record of the sprint is the block below)
-
-**Close-out (the PR body).** Opened 2026-09-25 08:40Z, closed 2026-09-26 04:17Z: 285 commits, 43 agent merges, every task
-reviewed by a fresh agent. Closed #27, #30, #31, #33, #35, #36, #37, #38, #39, #40, #45, #46, #48; opened #45–#48, #51–#60;
-carried #28, #32, #34, #59 once to the backlog and #25, #26, #42 to the owner (S13-R14, HUMAN_TASKS O16). The gate
-`s13_merged_gate` 3/3 on the final exe `0633c484`; proofs 1–4 green on r0001 and r0004; CI green. Found unplanned: a
-server-to-client memory write refused on the client (U6, SECURITY); the Sprint 11 chat bound is not on the game-lobby
-path (O2, SECURITY 'partly fixed', #26 restated); a stub's table slot can hold an owner's resume entry (#60); the
-loop lock's queue proven by a night hand-off and a first-time scheduled ladder. Not done on purpose: V5's audio steps
-(the client muted), O1's console-peer leg (the owner's hands). Rulings S13-R1..R14. The DOC_MAINTENANCE §5 review
-fixed 24 stale claims across nine documents and three KNOWN rows; the §7 stack read found the audit clean, relabelled
-two issues, rewrote two bars, and placed three evidence notes. The Outcome in the plan has the bar row by row.
-
-**As it stood while open:**
-
-Opened by the local controller on the owner's instruction of the same night ("audit the entire structure of the
-project, compile a master list, clean up docs as you go, and start your own sprint 13"). The audit is
-`docs/audits/2026-09-25-project-audit.md` with six reports beside it; the spec is
-`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`. Eight milestones in the order the owner
-meets them — **V** the player's first ten minutes (#30, #32, #31, a frame-time line, the music #42/#28, #27, #34, the
-launcher's wording), **R** the record made true and small (the archive split and R268's ceilings, DEVELOPING as
-current truth, the ruling record, HUMAN_TASKS reduced to the owner's sitting, KNOWN in full, one home for the carry),
-**H** the harness pays its debts (the lock's queue #36/#35/#37, #45, #38, #46, #41, the per-revision literals, the fast
-subset), **C** the code's hygiene and supply chain (CI compiles the overrides, the throwing stubs, the after-return
-trap, FFmpeg with a hash, the dead configuration), **U** upstream and outside (research/63's picks, path containment,
-#253's emitter change, a server-to-client record refused), **S** the stranger, **N** the naming follow-ups, **O**
-online and the box. The bar: nothing leaves the sprint carried twice without a ruling; CI green with the overrides
-compiled; the record under its ceilings; the first ten minutes measured; the gate 3/3 plus one ladder run and one
-mixed leg on the sprint's final exe. The plan's Log is the live state; this block gains its table at the close.
-
-**Owner decisions:** `docs/HUMAN_TASKS.md` carries them, O1–O15 (reduced by Task R4, `4adbf2bc`, `1ed975a4`), with
-the plan's D1–D2; each has the default the loop is on.
+*Sprint 13's CLOSED block moved verbatim on 2026-09-27 (the Sprint 15 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprint-13.md`.*
 
 *Sprint 12's and Sprint 11's CLOSED blocks -- with Sprint 11's rulings ledger R245-R263 and the table of Sprint 12's `S12-Rn` rulings that touch Sprint 11 -- moved verbatim on 2026-09-26 (the Sprint 14 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`.*
 
@@ -246,4 +248,4 @@ and R237's premise was reversed by W10 on 2026-09-23. **Collisions: none. Missin
 what was then `docs/HANDOFF.md` §5, the one home of the rules (since 2026-09-26 the rules are HANDOFF §4, one
 line each, and their reasons `docs/archive/HANDOFF-to-2026-09-26.md` §5), and still said to push to `sprint-9` (the 2026-09-25 audit, D21).*
 
-*Sprints 12 and 11's CLOSED blocks: `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`. Sprints 9 to 11: `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`. Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in either is an instruction).*
+*Sprint 13's CLOSED block: `docs/archive/CURRENT_SPRINT-closed-sprint-13.md`. Sprints 12 and 11's CLOSED blocks: `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`. Sprints 9 to 11: `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`. Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in either is an instruction).*

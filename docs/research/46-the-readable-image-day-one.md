@@ -137,8 +137,8 @@ A second copy of the four ELFs and their `SHA256SUMS` is served from a password-
 on the project's site, behind an unguessable path segment and HTTP basic auth, with no listing, no caching and a
 `noindex` header; the files and the password file live on that box outside the site's deploy tree. It exists
 for Claude cloud sessions, whose sandbox reaches the network only through an HTTPS proxy with a domain
-allowlist (no FTP, no SSH). `scripts/fetch_private_inputs.sh` pulls the four into their `game/` paths and
-verifies each against the served digests; the URL and credential are environment variables and appear in no
+allowlist (no FTP, no SSH). `scripts/fetch_private_inputs.sh` pulled the four into their `game/` paths and
+verified each against the served digests *(retired 2026-09-27, issue #75, owner ruling O18/R296: no cloud session since 2026-09-26, the script deleted, the location removed by the site session)*; the URL and credential are environment variables and appear in no
 tracked file (the owner's git-ignored `vm/` note holds them). Probed after the deploy: 401 without the
 credential, 404 on a wrong path, 403 on the directory, 200 with the credential; the full fetch takes 33 s.
 

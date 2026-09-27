@@ -1,7 +1,7 @@
 # Sprint 15 design — "borrowed confidence": what we replaced in PS2Recomp without the evidence, who else solved it, and the trials that settle each one
 
 > **Re-cut 2026-09-26 (the owner's word): value first** — audio registered and tried, the drag freeze fixed, two
-> small measurements if time allows, about three loop days; every other subsystem deferred to `docs/LATER.md` <!-- docmaint: future -->
+> small measurements if time allows, about three loop days; every other subsystem deferred to `docs/LATER.md`
 > with a trigger. The first proposal's shape is summarised at the end ("What the first proposal had and why it was cut").
 
 Date: 2026-09-26 (host clock), proposed while Sprint 14 is open. **Opens at Sprint 14's close** (Sprint 14 decision
@@ -29,7 +29,7 @@ validates those commits today is the three-stage gate against our own earlier ca
 for the native VU1 programs, the CPU rasteriser as the oracle for the GL backend, and unit tests that in many
 subsystems have no oracle at all — "a regression fence against ourselves" (the 2026-09-26 structure review, F3, F9).
 That stays true of every subsystem; what changes is that only audio's rows are written and tried now. Every other
-subsystem gets its row in `docs/LATER.md` with a confidence and a trigger — the event that would bring it back — or <!-- docmaint: future -->
+subsystem gets its row in `docs/LATER.md` with a confidence and a trigger — the event that would bring it back — or
 a dismissal with its reason (D8).
 
 A task could fix one issue. A sprint is needed because the audio register decides which borrowed answer is tried,
@@ -57,7 +57,7 @@ recompiler's function-boundary and jump-table handling.
 dump), the 989snd model (`ps2xIOP/src/modules/snd989.cpp` at the RPC boundary, `snd989_mixer.cpp`), `lgaud`
 (`ps2xIOP/src/modules/lgaud.cpp`), the IOP host's audio path (`ps2_iop_host.cpp`, SIF/RPC as far as the sound
 servers use it), and the SPU2 model (the ADPCM decode, the envelopes and the voices in `snd989_mixer.cpp` and
-`ps2_audio_vag.cpp`). Every other entry of the walk list is a row in `docs/LATER.md`. <!-- docmaint: future -->
+`ps2_audio_vag.cpp`). Every other entry of the walk list is a row in `docs/LATER.md`.
 
 ### 1.2 The validation that exists
 
@@ -109,7 +109,7 @@ gates on one exe spread 30 % on a host that was not quiet (KNOWN §2). Measure f
 about 4 %; the cost is in the `changed` and `same_rewritten` tiles; tile batching is the untested fix (KNOWN §2).
 
 **VU1, deferred.** Four programs on the interpreter, the FTOI NaN rule a fork's rule under a unit test, #47's flag
-latency open — and no visible defect on it but #47. Its row goes to `docs/LATER.md` with its experiment written: <!-- docmaint: future -->
+latency open — and no visible defect on it but #47. Its row goes to `docs/LATER.md` with its experiment written:
 `vu1_replay` over the recorded dumps (the inputs never carried), one PCSX2 trace or cited source for FTOI on NaN, and
 #47's MiniTest against a PCSX2 trace; its trigger is a visible defect on a VU1-drawn model family or #47's trace
 arriving.
@@ -245,7 +245,7 @@ rule is recorded and stopped, not extended.
 D9, X1); `docs/research/67-external-sweep.md` (§3, PR #254); `docs/research/40-upstream-divergence.md`,
 `41-cucumber-fork.md`, `42-upstream-cherry-picks.md`, `63-upstream-triage-2026-09-25.md`; research/32 and 36;
 `docs/audits/2026-09-26-autonomy-structure-review.md` (F3, F9); `docs/BACKLOG.md` (#28, #32, #42, #47, #59, #67);
-`docs/KNOWN.md`; `docs/HAZARDS.md`; the deferred rows' home, drafted on `agent/s14-c3`: `docs/LATER.md`. <!-- docmaint: future -->
+`docs/KNOWN.md`; `docs/HAZARDS.md`; the deferred rows' home, drafted on `agent/s14-c3`: `docs/LATER.md`.
 
 ## What the first proposal had and why it was cut
 

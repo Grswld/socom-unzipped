@@ -159,6 +159,9 @@ public:
     // Returns true when the backend actually waited.
     bool guestFrameBoundary() { return m_backend && m_backend->GuestFrameBoundary(); }
     void releaseHostBackpressure() { if (m_backend) m_backend->ReleaseHostBackpressure(); }
+    // Issue #67, main thread (the window procedure): see GSRasterBackend::SetHostMoveLoop. No lifetime lock, for
+    // hostRenderFrame's reason: the backend is only ever swapped on this same thread.
+    void setHostMoveLoop(bool inLoop) { if (m_backend) m_backend->SetHostMoveLoop(inLoop); }
     // Sampler-side reads of the GPU backend's back-pressure; 0 for a backend that has none.
     uint64_t pendingGuestFrames() const { return m_backend ? m_backend->PendingGuestFrames() : 0ull; }
     uint32_t backpressureWaiters() const { return m_backend ? m_backend->BackpressureWaiters() : 0u; }

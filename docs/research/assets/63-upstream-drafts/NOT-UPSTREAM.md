@@ -58,6 +58,13 @@ All three merged into `sprint-13` at `ab6d7ff3` (Sprint 13 U7), an ancestor of `
 | #223 (GTTeancum) | a data-less END tag completes the chain; the PR's hunks placed on our walker | `f5028386` | high: RED/GREEN on GIF and VIF1 | no draft | not sent |
 | #224 (GTTeancum) | the MADR/TADR bit-31 half only; its tag half was ours already (`51529462`) | `c7414c2b` | medium: RED/GREEN, but latent for SOCOM II (no bit-31 start address in its DMA trace, research/63 #224) | no draft | not sent |
 
+### 1.3 A note to #254's author (no draft yet; Sprint 15 X1, research/69)
+
+Feedback, not a bug: the draft PR's LLE kernel binds the libsd side of a 989snd-style driver but returns zero for the
+`cdvdman`, `ioman` and one `sifman` import such a driver makes (research/69 §2, counts by command, no ordinals), so a game
+whose sound runs through 989SND.IRX cannot load a bank from the disc on it as the PR stands; a `cdvdman` provider (read, sync,
+the callback form) would be the missing piece. Status: not sent (R284; the owner's row O10). `OPEN-PRS.md`'s #254 row points here.
+
 ## 2. A draft where upstream is right: the export-table walk
 
 | item | what it is | draft / patch | local status | confidence | recommendation | status |

@@ -3,19 +3,18 @@
 ## 1. What this file is
 
 The transient handoff: what is in flight, what is owed, what to do first. Read it once at pick-up and rewrite it at
-every handoff, under 6,000 bytes (`tools_py/docmaint.py` `CEILINGS`). The durable material lives elsewhere: `CLAUDE.md`
+every handoff, under its `CEILINGS` number (`tools_py/docmaint.py`). The durable material lives elsewhere: `CLAUDE.md`
 for the map and the guards; the four skills in `.claude/skills/` for the procedures; `docs/HAZARDS.md` for the traps;
 `docs/DEVELOPING.md` for the instruments and the developer reference; `docs/KNOWN.md` for what is true; the history,
 and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF section cited before that day means it).
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 16:28Z, LATEST) -- Sprint 14 ("guards, not sentences") is CLOSED on `sprint-14`, off
-  `main` at `6a82caaa`; the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow the close-out
-  commit (the release waits on the owner). Two merged chains ALL GREEN today, the fourth leg 12/12. Next: Sprint 15
-  "borrowed confidence", re-cut to value on the owner's word (audio first, #67, two measurements; the walk list in
-  `docs/LATER.md`); it opens on `sprint-15` off `main` at the Sprint 14 merge. No cloud session from 2026-09-26.
-- **Next free ruling number: R298** (R290-R297 are the owner's sitting of 2026-09-26, `docs/superpowers/plans/2026-09-26-owner-sitting.md`).
+- **Where the loop is now (2026-09-27 06:27Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut) is CLOSED on `sprint-15`
+  without its play test (the owner's word); the PR to `main` and the tag `v0.15.0` follow. Next: Sprint 16 "ten minutes to
+  the server", opened by its own controller session on `sprint-16` off `main`; it also runs Sprint 15's carried legs as one
+  chain (the Sprint 15 plan's Outcome lists them with their bars). No cloud session from this machine's loop.
+- **Next free ruling number: R299** (R290-R297 the owner's sitting, `docs/superpowers/plans/2026-09-26-owner-sitting.md`; R298 the close's window, the Sprint 15 plan).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -54,19 +53,21 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 14 controller** in the main tree on `sprint-14`; no agent worktree open (all `wt-s14-*` removed, their
-  branches deleted); the next ones come from `scripts/agent_worktree.sh create`.
-- **The Sprint 13 controller** is done with its fillers (#51 as PR #65 `123dd1c5`, #57 as PR #66 `b3dae300`, the row
-  open for the r0004 leg); no worktree of its remains; it stands by for the owner's sitting.
+- **The Sprint 15 controller** (the same session that ran Sprint 14) in the main tree on `sprint-15`; its agents in
+  `C:/projects/wt-s15-<task>`, one branch `agent/s15-<task>` each, made and removed by `scripts/agent_worktree.sh`.
+- **The Sprint 16 controller** (its own worktree under `.claude/worktrees/`, the owner's word 2026-09-27) drafts Sprint 16's
+  plan and starts once Sprint 15 is merged: `sprint-16` off `main`; the main tree moves there after the tag.
+- **The Sprint 13 controller** is done (the sitting held, R290-R297). **Other sessions' trees:** `wt-launch-rev`,
+  `wt-pad-focus`, `wt-private-inputs`, `wt-web-viewer` (the HUMAN_TASKS and r0004 sessions'); never edit them.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
   an orphan directory, not a worktree; leave it until someone identifies it.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
 
 ## 6. What is owed
 
-- **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
+- **The owner's rows:** the 8 open rows `docs/SITTING.md` lists (`docs/HUMAN_TASKS.md`). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
-  sitting without answers all 17 open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 15's open** (the `loop-iteration` skill, its plan's Task 0): the branch, the milestone (open on GitHub already,
-  #5), the sprint file's header, the rulings for its defaults from the counter.
-- **Lock-bound:** nothing until Sprint 15's first trial; the WIP cap's two-night watch continues (every exit 4 to the Log).
+  sitting without answers the open rows would close together (`docs/SITTING.md` marks them).
+- **Nothing lock-free is owed by Sprint 15;** Sprint 16's Task 0 lifts the Outcome's carried legs.
+- **Lock-bound (Sprint 16's, one chain at the end of its controller's block):** the gate, the fourth leg, parity and dips,
+  T2's drag proof, T1b's capture; then T3's quiet gates and T4's builds in windows the owner names.

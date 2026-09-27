@@ -370,6 +370,71 @@ void register_gs_frame_backpressure_tests()
             t.IsTrue(msSince(t0) < 50, "after release frameRecorded returns at once");
         });
 
+        tc.Run("#67: a consumer held in a host move loop longer than the cap does not hold the producer", [msSince](TestCase &t)
+        {
+            // A title-bar drag parks the GL thread in the modal move loop: no replay, no heartbeat. Before #67 the
+            // first over-bound frame waited out a whole cap (2 s in the game) and every blocking wait after it
+            // stalled again, so the guest clock stood still for the drag. Suspended, nothing waits at all.
+            GsFrameBackpressure bp(3u, ms(300));
+            for (int i = 0; i < 3; ++i)
+                bp.frameRecorded();
+            bp.setConsumerSuspended(true);
+            t.IsTrue(bp.consumerSuspended(), "the suspension reads back");
+            t.IsTrue(bp.latched(), "a suspended consumer reads latched, so the byte cap (GsPendingCap) engages");
+            // The simulated drag: 60 guest frames (a second at 60 Hz) with the consumer silent, three caps long in
+            // wall time if any frame waited out the cap.
+            const auto t0 = clock::now();
+            uint64_t timedOut = 0u, waited = 0u;
+            for (int i = 0; i < 60; ++i)
+            {
+                const auto r = bp.frameRecorded();
+                if (r == GsFrameBackpressure::WaitResult::TimedOut)
+                    ++timedOut;
+                if (r == GsFrameBackpressure::WaitResult::Waited)
+                    ++waited;
+            }
+            const long long took = msSince(t0);
+            t.Equals(timedOut, uint64_t{0}, "no frame waits out the cap while the host is in its move loop");
+            t.Equals(waited, uint64_t{0}, "no frame waits at all while the host is in its move loop");
+            t.IsTrue(took < 150, "60 frames through a suspended consumer return at once (under half the 300 ms cap), took " + std::to_string(took) + " ms");
+            t.Equals(bp.pendingFrames(), uint64_t{63}, "the frames stay counted as pending: the replay catches up after the drag");
+            bp.consumerProgress();
+            t.IsTrue(bp.frameRecorded() == GsFrameBackpressure::WaitResult::Skipped, "a stray heartbeat does not end the suspension");
+            bp.framesReplayed(bp.recordedFrames());
+            t.IsTrue(bp.latched(), "nor does a replay: only the host's WM_EXITSIZEMOVE does");
+            bp.setConsumerSuspended(false);
+            t.IsTrue(!bp.consumerSuspended() && !bp.latched(), "resumed with the queue drained: live again");
+            bp.frameRecorded();
+            bp.frameRecorded();
+            bp.frameRecorded();
+            const auto t1 = clock::now();
+            t.IsTrue(bp.frameRecorded() == GsFrameBackpressure::WaitResult::TimedOut, "after the drag an over-bound frame waits for the consumer again");
+            t.IsTrue(msSince(t1) >= 250, "and honours the cap again, took " + std::to_string(msSince(t1)) + " ms");
+        });
+
+        tc.Run("#67: entering the move loop wakes a producer already waiting on the consumer", [msSince](TestCase &t)
+        {
+            GsFrameBackpressure bp(1u, ms(3000));
+            bp.frameRecorded();
+            GsFrameBackpressure::WaitResult result = GsFrameBackpressure::WaitResult::NotNeeded;
+            long long elapsed = 0;
+            std::thread producer([&]
+            {
+                const auto t0 = clock::now();
+                result = bp.frameRecorded();
+                elapsed = msSince(t0);
+            });
+            const auto pollStart = clock::now();
+            while (bp.waiters() == 0u && msSince(pollStart) < 5000)
+                std::this_thread::yield();
+            t.Equals(bp.waiters(), uint32_t{1}, "the producer must be inside the wait before the drag starts");
+            bp.setConsumerSuspended(true);
+            producer.join();
+            t.IsTrue(elapsed < 1000, "the waiting producer woke when the move loop began (not at the 3 s cap), took " + std::to_string(elapsed) + " ms");
+            t.IsTrue(result == GsFrameBackpressure::WaitResult::Skipped, "a wait ended by the move loop reports Skipped, not TimedOut or Waited");
+            t.Equals(bp.takeStats().timeouts, uint64_t{0}, "no latch was taken: the suspension is not a stall");
+        });
+
         tc.Run("R41/R54: reanchorVBlankDeadline drops deadline debt but never moves a future deadline", [](TestCase &t)
         {
             const auto now = clock::now();

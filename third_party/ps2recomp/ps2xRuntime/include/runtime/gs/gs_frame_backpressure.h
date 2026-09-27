@@ -69,8 +69,17 @@ public:
     // Shutdown: wake any waiter; no frame waits again.
     void release();
 
+    // Issue #67 (Sprint 15 T2): the consumer's thread is inside the host's modal move/size loop (a title-bar
+    // drag: WM_ENTERSIZEMOVE to WM_EXITSIZEMOVE on Windows), so it cannot replay or present until the mouse is
+    // released. While suspended no frame waits: an over-bound frame returns Skipped at once, a producer already
+    // waiting is woken, and latched() reads true so GsPendingCap bounds the queue in bytes exactly as for a
+    // latched stall. Resuming only clears the flag: a latch taken before it clears on progress as ever (R40).
+    void setConsumerSuspended(bool suspended);
+    bool consumerSuspended() const;
+
     uint64_t pendingFrames() const;
-    // Consumer latched stalled (Sprint 7 Task 1b reads it to bound the pending BYTES too).
+    // Consumer latched stalled, or suspended in the host's move loop (#67) (Sprint 7 Task 1b reads it to bound the
+    // pending BYTES too).
     bool latched() const;
     uint32_t waiters() const; // producers currently inside the wait (tests)
     Stats takeStats(); // returns and clears the counters
@@ -92,6 +101,7 @@ private:
     std::atomic<uint64_t> m_progress{0};
     std::atomic<uint64_t> m_waitNsTotal{0};
     bool m_released = false;
+    bool m_suspended = false; // #67: the consumer's thread is inside the host's modal move loop
     Stats m_stats{};
 };
 

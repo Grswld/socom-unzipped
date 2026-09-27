@@ -1,0 +1,972 @@
+16607 logged calls from logs/run_20260922_232655.log
+LOAD cdrom0:/RUN/IRX/USB/USBD.IRX;1 handled=1 id=7 start=0 modules=1 threads=2 servers=0
+LOAD cdrom0:/RUN/IRX/LIBSD.IRX;1 handled=1 id=9 start=0 modules=2 threads=2 servers=0
+LOAD cdrom0:/RUN/IRX/SOUND/989SND.IRX;1 handled=1 id=15 start=0 modules=3 threads=4 servers=2
+LOAD cdrom0:/RUN/IRX/SOUND/989DSTRM.IRX;1 handled=1 id=21 start=0 modules=4 threads=5 servers=2
+LOAD cdrom0:/RUN/IRX/LGAUD.IRX;1 handled=1 id=25 start=0 modules=5 threads=6 servers=3
+LOAD cdrom0:/RUN/IRX/HEADSETO.IRX;1 handled=1 id=30 start=0 modules=6 threads=7 servers=3
+  LOG Info [iop] no kernel service for sysclib #16
+  LOG Info [iop] USB Driver (Version 1.1.0)
+  LOG Info [iop] started USB_driver at 65536
+  LOG Info [iop] started Sound_Device_Library at 133120
+  LOG Info [iop] ==========================================================
+  LOG Info [iop]  989snd (c)2000-2003 Sony Computer Entertainment America
+  LOG Info [iop]  by Buzz Burrowes                               v3.0.1
+  LOG Info [iop]                         (built Sep 22 2003 at 12:10:14)
+  LOG Info [iop]                                          (pre-release 11)
+  LOG Info [iop]  NO MIDI VERSION! No MIDI, AME, or basic VAG sounds
+  LOG Info [iop]                   (banks and streams only)
+  LOG Info [iop]  (build with sce library rev 2.7.2)
+  LOG Info [iop] ==========================================================
+  LOG Info [iop]     Thread Priorities:
+  LOG Info [iop]                          Sound Tick = 9
+  LOG Info [iop]                            Main RPC = 58
+  LOG Info [iop]                         Loading RPC = 59
+  LOG Info [iop]                           Streaming = 18, 19, 20, 21
+  LOG Info [iop]    Memory Locations...
+  LOG Info [iop]        Voice Allocator Owner  : 0x42f94
+  LOG Info [iop]        Master Tick Owner List : 0x42e18
+  LOG Info [iop] ==========================================================
+  LOG Info [iop] RPC server 1193046 registered
+  LOG Info [iop] RPC server 1193047 registered
+  LOG Info [iop] started 989snd_Library at 156160
+  LOG Info [iop] =================================================================
+  LOG Info [iop] 989DSTRM.IRX v1.3
+  LOG Info [iop] =================================================================
+  LOG Info [iop] started 989_DATA_STREAMER at 91904
+  LOG Info [iop] no kernel service for modload #17
+  LOG Info [iop] no kernel service for modload #18
+  LOG Info [iop] no kernel service for sysclib #7
+  LOG Info [iop] no kernel service for thbase #9
+  LOG Info [iop] lgAud version 1.8.003. (built on Aug  5 2003 at 15:10:37) 	* thread priority 48
+  LOG Info [iop] 	* RPC server with max stream size: 65536 bytes
+  LOG Info [iop] RPC server 1346980930 registered
+  LOG Info [iop] started lgAud at 316160
+  LOG Info [iop] =================================================================
+  LOG Info [iop] HEADSET Output module v2.0 built with liblgaud 1.08 and SCE 2.8.0
+  LOG Info [iop]         RingBufferServicePriority = 22
+  LOG Info [iop]         (change on the command line with "priority=x"
+  LOG Info [iop] =================================================================
+  LOG Info [iop] started headset_streamer at 433152
+SNAP cycles=1251840 instr=22501 modules=6 threads=7 servers=3 diagnostics=0 provider=1 reads=0 sectors=0 refused=0 done=0 cdcb=0 syncs=0 breaks=0 dmaintr=0 dmacb=0 opens=0
+#36 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#39 snd_PcmStreamPosition fno=40 args=[] expected=0xa0f00 real=0x1070000 recv=['0xffffffff', '0x1070000', '0xffffffff', '0x0'] DISAGREE instr=91
+#40 snd_PcmStreamPosition fno=40 args=[] expected=0xa2d00 real=0x1070c00 recv=['0xffffffff', '0x1070c00', '0xffffffff', '0x0'] DISAGREE instr=91
+#41 snd_PcmStreamPosition fno=40 args=[] expected=0xa4b00 real=0x1071800 recv=['0xffffffff', '0x1071800', '0xffffffff', '0x0'] DISAGREE instr=91
+#42 snd_PcmStreamPosition fno=40 args=[] expected=0xa5a00 real=0x1072400 recv=['0xffffffff', '0x1072400', '0xffffffff', '0x0'] DISAGREE instr=91
+#70 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#87 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#92 snd_StreamSafeCdRead fno=38 args=['0x1f2e0b', '0x1', '0xfab640'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=175
+#93 snd_StreamSafeCdRead fno=38 args=['0x1f2e0c', '0x2', '0x1795380'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=252
+    LOG Info [iop] 989snd Error: cause 59 -> 0, 0, 0, 0
+#94 snd_StreamSafeCdRead fno=38 args=['0x1f2e0e', '0x1', '0xfab640'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=252
+    LOG Info [iop] 989snd Error: cause 59 -> 0, 0, 0, 0
+#95 snd_StreamSafeCdRead fno=38 args=['0x1f2e0f', '0x1', '0xfab640'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#96 snd_StreamSafeCdRead fno=38 args=['0x1f2e0f', '0x1', '0xfab640'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=292
+#97 snd_StreamSafeCdRead fno=38 args=['0x1f2e10', '0x1a', '0x1a04c60'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=293
+#98 snd_StreamSafeCdRead fno=38 args=['0x1f2e2a', '0x1', '0xfab640'] expected=0x1 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=252
+    LOG Info [iop] 989snd Error: cause 59 -> 0, 0, 0, 0
+... 200/16607 calls, 0 s
+... 400/16607 calls, 0 s
+... 600/16607 calls, 0 s
+... 800/16607 calls, 0 s
+... 1000/16607 calls, 0 s
+... 1200/16607 calls, 0 s
+... 1400/16607 calls, 0 s
+... 1600/16607 calls, 0 s
+... 1800/16607 calls, 0 s
+... 2000/16607 calls, 0 s
+... 2200/16607 calls, 0 s
+... 2400/16607 calls, 0 s
+... 2600/16607 calls, 1 s
+#2795 snd_SoundIsStillPlaying fno=19 args=['0x84000002'] expected=0x0 real=0x84000002 recv=['0xffffffff', '0x84000002', '0xffffffff', '0x0'] DISAGREE instr=95
+... 2800/16607 calls, 1 s
+#2860 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2862 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2863 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2864 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2866 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2867 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2869 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2870 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2872 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2873 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2874 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2876 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2877 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2879 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2881 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2882 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2884 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2885 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2887 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2888 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2890 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2891 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2893 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2895 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2896 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2898 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2899 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2901 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2902 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2903 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2905 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2907 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2908 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2909 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2911 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2912 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2914 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2915 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2917 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2918 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2920 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2921 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2922 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2924 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2925 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2927 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2929 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2930 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2931 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2933 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2934 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2936 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2937 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2939 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2940 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2942 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2943 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2945 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2946 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2947 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2948 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2949 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2950 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2951 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2952 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2953 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2954 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2955 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2956 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2957 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2958 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2959 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2960 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2961 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2962 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2963 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2964 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2965 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2966 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2967 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2968 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2969 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2970 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2971 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2972 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2973 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2974 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2975 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2976 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2977 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2978 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2979 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2980 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2981 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2982 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2984 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2985 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2987 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2988 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2990 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2991 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2992 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2994 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2996 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2997 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#2998 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3000 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 3000/16607 calls, 1 s
+#3002 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3003 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3004 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3006 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3008 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3009 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3011 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3013 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3014 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3016 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3017 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3019 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3020 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3022 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3023 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3025 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3027 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3028 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3029 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3031 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3032 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3034 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3035 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3037 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3038 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3040 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3042 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3043 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3044 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3046 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3048 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3049 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3051 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3052 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3054 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3055 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3057 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3058 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3060 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3061 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3063 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3064 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3066 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3067 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3069 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3071 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3072 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3074 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=412
+#3075 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=412
+#3076 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3078 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3080 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3081 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3082 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3084 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3085 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3087 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3088 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3090 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3091 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3093 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3094 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3096 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3097 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3099 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3101 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3102 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3104 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3105 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3107 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3108 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3109 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3111 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3113 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3114 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3115 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3117 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3118 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3119 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3121 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3122 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3124 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3125 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3127 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3128 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3129 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3130 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3132 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3134 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3135 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3137 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3138 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3140 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3142 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3143 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3145 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3146 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3148 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3149 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3151 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3152 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3153 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3155 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3157 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3159 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3160 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3161 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3163 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3164 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3166 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3167 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3169 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3170 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3172 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3173 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3175 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3176 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3178 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3179 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3181 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3183 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3184 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3185 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3187 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3188 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3190 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3192 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3193 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3195 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3197 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3198 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3200 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 3200/16607 calls, 1 s
+#3202 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3203 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3204 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3206 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3207 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3209 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3210 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3212 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3213 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3215 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3216 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3218 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3220 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3221 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3222 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3224 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3225 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3227 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3228 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3230 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3231 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3233 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3235 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3236 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3238 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3239 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3241 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3242 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3243 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3245 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3247 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3248 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3250 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3251 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3252 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3254 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3256 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3257 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3258 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3260 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3261 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3263 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3265 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3266 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3267 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3268 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3270 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3272 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3273 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3275 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3276 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3278 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3280 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3281 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3283 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3284 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3286 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3288 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3289 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3290 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3292 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3294 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3295 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3297 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3298 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3300 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3301 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3303 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3304 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3306 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3308 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3309 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3311 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3312 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3313 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3315 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3317 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3318 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3320 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3322 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3323 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3325 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3326 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3327 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3329 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=350
+#3330 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3332 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3333 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3334 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3336 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3337 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3339 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3340 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3342 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3343 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3345 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3346 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3348 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3349 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3351 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3352 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3353 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3355 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3357 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3358 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3359 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3361 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3363 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3364 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3366 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3368 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3369 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3371 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3372 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3373 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3375 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3377 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3378 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3380 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3381 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3383 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3384 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3386 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3387 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3389 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3390 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3391 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3392 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3393 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3394 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3395 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3396 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3397 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3398 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3399 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3400 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 3400/16607 calls, 1 s
+#3401 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3402 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3403 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3404 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3405 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3406 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3407 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3408 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3409 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3410 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3411 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3412 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3413 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3414 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3415 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3416 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3417 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3418 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3419 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3420 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3421 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3422 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3423 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3424 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3425 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3426 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3428 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3429 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3430 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3432 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3433 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3434 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3436 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3438 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3440 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3441 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3443 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3444 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3446 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3448 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3449 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3450 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3452 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3454 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3455 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3456 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3458 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3459 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3461 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3462 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3464 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3465 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3467 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3468 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3470 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3472 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3474 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3476 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3477 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3478 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3480 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3481 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3483 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3485 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3486 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3487 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3489 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3490 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3492 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3494 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3496 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3497 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3499 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3500 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3502 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3503 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3505 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3506 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3508 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3509 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3510 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3512 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3513 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3514 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3516 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3517 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3519 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3520 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3522 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3523 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3525 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3527 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3528 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3529 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3531 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3532 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3534 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3535 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3537 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3539 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3540 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3542 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3543 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3545 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3547 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3548 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3549 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3551 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3552 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3554 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3555 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3557 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3558 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3559 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3561 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3562 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3564 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3565 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3567 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3568 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3570 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3571 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3572 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3574 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3575 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3577 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3579 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3580 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3582 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3583 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3585 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=393
+#3586 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3587 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3588 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3590 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3591 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3593 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3595 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3596 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3597 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3599 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 3600/16607 calls, 1 s
+#3601 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3602 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3604 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3606 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3607 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3609 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3610 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3611 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3613 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x401000d real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#3745 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#3752 snd_CallExtension fno=4c args=['0x12c4e67a', '0x6', '0x0', '0x0', '0x0', '0x0', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=116
+#3774 snd_CallExtension fno=4c args=['0x12c4e67a', '0x0', '0xf000', '0x400', '0x5622', '0x10', '0x0'] expected=0x1 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=364
+    LOG Info [iop] HEADSETO.IRX: Error opening headset output (22050, 0, 16)-> -2147483644!
+... 3800/16607 calls, 1 s
+... 4000/16607 calls, 1 s
+... 4200/16607 calls, 1 s
+... 4400/16607 calls, 1 s
+... 4600/16607 calls, 1 s
+... 4800/16607 calls, 1 s
+... 5000/16607 calls, 1 s
+#5044 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5059 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5074 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5089 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5104 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5119 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5134 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5149 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5164 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5179 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5194 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 5200/16607 calls, 1 s
+#5209 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5224 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5239 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5254 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5269 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5286 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5308 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5318 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=2310
+#5328 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5338 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5348 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5358 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5368 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5378 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5388 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5398 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 5400/16607 calls, 1 s
+#5408 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5418 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x148', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5428 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x149', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5438 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x149', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5448 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x149', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5459 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5474 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5491 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#5506 snd_SetSoundParams fno=21 args=['0x84000004', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000354 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 5600/16607 calls, 1 s
+... 5800/16607 calls, 1 s
+... 6000/16607 calls, 1 s
+#6193 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 6200/16607 calls, 1 s
+#6208 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6223 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6238 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6253 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6268 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6283 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6298 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6313 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6328 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6343 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=5096
+#6358 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6373 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6388 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6397 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 6400/16607 calls, 2 s
+#6406 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6415 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6424 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6433 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6442 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6451 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6460 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6469 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#6478 snd_SoundIsStillPlaying fno=19 args=['0x84000006'] expected=0x4000357 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 6600/16607 calls, 2 s
+... 6800/16607 calls, 2 s
+... 7000/16607 calls, 2 s
+... 7200/16607 calls, 2 s
+#7270 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7279 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7289 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7298 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7308 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7318 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7328 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7338 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7348 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7358 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7368 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=4390
+#7378 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7388 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7398 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 7400/16607 calls, 2 s
+#7408 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7418 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7419 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7428 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7429 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7438 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7439 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7448 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7449 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7458 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7459 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7468 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7469 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7478 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7479 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7488 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7489 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7498 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7499 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7508 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7509 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7518 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7519 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7528 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7529 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7538 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7539 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7548 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7549 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7558 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7559 snd_SetSoundParams fno=21 args=['0x84000008', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4020359 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#7568 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7578 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7587 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7596 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 7600/16607 calls, 2 s
+#7605 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7614 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7623 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=1047
+#7632 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7641 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7650 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7659 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7668 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7677 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7686 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7695 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7704 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7713 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7722 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#7731 snd_SoundIsStillPlaying fno=19 args=['0x84000007'] expected=0x4000358 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 7800/16607 calls, 2 s
+... 8000/16607 calls, 2 s
+... 8200/16607 calls, 2 s
+#8226 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8235 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8244 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8253 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8262 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8271 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8280 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8289 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8298 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8307 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8316 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8325 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8334 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8343 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8352 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8361 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8370 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8379 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8388 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8397 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 8400/16607 calls, 2 s
+#8405 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8406 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8414 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8415 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8423 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8424 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8432 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8433 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8441 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8442 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8450 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8451 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8459 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8460 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8468 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8469 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8477 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8478 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8486 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8487 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8495 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8496 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8504 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8505 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8513 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8514 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8522 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8523 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8531 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8532 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8540 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8541 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8549 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8550 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8558 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8559 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8567 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8568 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8576 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8577 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8585 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8586 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8594 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8595 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 8600/16607 calls, 2 s
+#8603 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8604 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8612 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8613 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8621 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8622 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8630 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8631 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8639 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8640 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8648 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=230
+#8649 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8657 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8658 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8666 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8667 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8675 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8676 snd_SoundIsStillPlaying fno=19 args=['0x84000009'] expected=0x400035a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8684 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8693 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8707 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8721 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8735 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8749 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8763 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8777 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8791 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 8800/16607 calls, 2 s
+#8805 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8819 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8833 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#8847 snd_SoundIsStillPlaying fno=19 args=['0x84010002'] expected=0x4010355 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 9000/16607 calls, 2 s
+... 9200/16607 calls, 2 s
+... 9400/16607 calls, 2 s
+... 9600/16607 calls, 3 s
+... 9800/16607 calls, 3 s
+... 10000/16607 calls, 3 s
+#10149 snd_SetSoundParams fno=21 args=['0x85020005', '0x5', '0x0', '0x139', '0x0', '0x0'] expected=0x0 real=0x85020005 recv=['0xffffffff', '0x85020005', '0xffffffff', '0x0'] DISAGREE instr=526
+... 10200/16607 calls, 3 s
+... 10400/16607 calls, 3 s
+#10483 snd_SoundIsStillPlaying fno=19 args=['0x8400000a'] expected=0x0 real=0x8400000a recv=['0xffffffff', '0x8400000a', '0xffffffff', '0x0'] DISAGREE instr=95
+... 10600/16607 calls, 3 s
+... 10800/16607 calls, 3 s
+... 11000/16607 calls, 3 s
+#11078 snd_SetSoundParams fno=21 args=['0x8400000b', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400035e real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11085 snd_SetSoundParams fno=21 args=['0x8400000b', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400035e real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11092 snd_SetSoundParams fno=21 args=['0x8400000b', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400035e real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11100 snd_SetSoundParams fno=21 args=['0x8400000b', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400035e real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 11200/16607 calls, 3 s
+... 11400/16607 calls, 3 s
+#11476 snd_SoundIsStillPlaying fno=19 args=['0x8400000c'] expected=0x0 real=0x8400000c recv=['0xffffffff', '0x8400000c', '0xffffffff', '0x0'] DISAGREE instr=95
+... 11600/16607 calls, 3 s
+... 11800/16607 calls, 3 s
+#11920 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11928 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11936 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11944 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11952 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11960 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11968 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#11976 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=4464
+#11984 snd_SetSoundParams fno=21 args=['0x8400000d', '0x5', '0x0', '0x141', '0x0', '0x0'] expected=0x4000362 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 12000/16607 calls, 3 s
+#12058 snd_SetSoundParams fno=21 args=['0x84010003', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x0 real=0x84010003 recv=['0xffffffff', '0x84010003', '0xffffffff', '0x0'] DISAGREE instr=1431
+... 12200/16607 calls, 3 s
+#12317 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#12324 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#12331 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#12338 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#12345 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#12352 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#12359 snd_SetSoundParams fno=21 args=['0x8400000e', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x4000366 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 12400/16607 calls, 3 s
+... 12600/16607 calls, 3 s
+#12760 snd_SoundIsStillPlaying fno=19 args=['0x8400000f'] expected=0x0 real=0x8400000f recv=['0xffffffff', '0x8400000f', '0xffffffff', '0x0'] DISAGREE instr=95
+... 12800/16607 calls, 4 s
+... 13000/16607 calls, 4 s
+... 13200/16607 calls, 4 s
+... 13400/16607 calls, 4 s
+#13472 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#13480 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#13488 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#13496 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#13504 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#13512 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=5100
+#13520 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#13528 snd_SetSoundParams fno=21 args=['0x84000010', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x400036a real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 13600/16607 calls, 4 s
+#13712 snd_SoundIsStillPlaying fno=19 args=['0x84010004'] expected=0x0 real=0x84010004 recv=['0xffffffff', '0x84010004', '0xffffffff', '0x0'] DISAGREE instr=95
+... 13800/16607 calls, 4 s
+... 14000/16607 calls, 4 s
+... 14200/16607 calls, 4 s
+... 14400/16607 calls, 4 s
+#14552 snd_SetSoundParams fno=21 args=['0x84010005', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x401036f real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#14560 snd_SetSoundParams fno=21 args=['0x84010005', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x401036f real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#14568 snd_SetSoundParams fno=21 args=['0x84010005', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x401036f real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#14576 snd_SetSoundParams fno=21 args=['0x84010005', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x401036f real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#14584 snd_SetSoundParams fno=21 args=['0x84010005', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x401036f real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#14592 snd_SetSoundParams fno=21 args=['0x84010005', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x401036f real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 14600/16607 calls, 4 s
+#14670 snd_SoundIsStillPlaying fno=19 args=['0x84000011'] expected=0x0 real=0x84000011 recv=['0xffffffff', '0x84000011', '0xffffffff', '0x0'] DISAGREE instr=95
+#14790 snd_SetSoundParams fno=21 args=['0x84010006', '0x5', '0x0', '0x9', '0x0', '0x0'] expected=0x0 real=0x84010006 recv=['0xffffffff', '0x84010006', '0xffffffff', '0x0'] DISAGREE instr=3585
+... 14800/16607 calls, 4 s
+#14894 snd_SoundIsStillPlaying fno=19 args=['0x84020002'] expected=0x4000373 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#14902 snd_SoundIsStillPlaying fno=19 args=['0x84020002'] expected=0x4000373 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#14910 snd_SoundIsStillPlaying fno=19 args=['0x84020002'] expected=0x4000373 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#14918 snd_SoundIsStillPlaying fno=19 args=['0x84020002'] expected=0x4000373 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#14926 snd_SoundIsStillPlaying fno=19 args=['0x84020002'] expected=0x4000373 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+#14934 snd_SoundIsStillPlaying fno=19 args=['0x84020002'] expected=0x4000373 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=97
+... 15000/16607 calls, 4 s
+#15153 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15160 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15167 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15174 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15181 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15188 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15195 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 15200/16607 calls, 4 s
+#15202 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15209 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15216 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15223 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15230 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15237 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15244 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15251 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15258 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15265 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15272 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15279 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+#15286 snd_SetSoundParams fno=21 args=['0x84000012', '0x5', '0x0', '0x122', '0x0', '0x0'] expected=0x4010374 real=0x0 recv=['0xffffffff', '0x0', '0xffffffff', '0x0'] DISAGREE instr=113
+... 15400/16607 calls, 4 s
+... 15600/16607 calls, 4 s
+#15705 snd_SoundIsStillPlaying fno=19 args=['0x84000013'] expected=0x0 real=0x84000013 recv=['0xffffffff', '0x84000013', '0xffffffff', '0x0'] DISAGREE instr=95
+#15800 snd_SetSoundParams fno=21 args=['0x84010007', '0x5', '0x0', '0x151', '0x0', '0x0'] expected=0x0 real=0x84010007 recv=['0xffffffff', '0x84010007', '0xffffffff', '0x0'] DISAGREE instr=1431
+... 15800/16607 calls, 4 s
+... 16000/16607 calls, 5 s
+... 16200/16607 calls, 5 s
+... 16400/16607 calls, 5 s
+... 16600/16607 calls, 5 s
+wrote $SCRATCH/oracle/results_lle_232655.md
+compared 13044, disagreements 832
