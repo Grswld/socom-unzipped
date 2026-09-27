@@ -735,14 +735,17 @@ namespace snd989
         // snd_AutoVol (fno 0x22): the game fades a music cue with a TIMED ramp -- [handle, 0, 0x168, 2] and
         // [handle, 0, 0x1e0, 2] in the owner's 2026-09-18 mission, 360 and 480 of the 240 Hz ticks, 1.5 s and 2 s.
         // Applying the target at once cut the cue dead ("skips and almost plays two different spliced segments").
-        // A ramp is a multiplier on whatever volume play/playStream/SetSoundVolPan set for that handle, so it
-        // composes with them instead of fighting over one field.
+        // Sprint 15 T1b (research/36 Q5 and item 4): a ramp moves the HANDLE's own 7-bit volume -- a stream's
+        // playVol, a bank sound's curVolume, the IRX's Current_Vol -- in integer steps on the IRX's schedule, and
+        // lands early (360 ticks from 127 is done at tick 254). It used to be a 0..1 multiplier interpolated in
+        // doubles over `ticks`. A landed ramp is dropped; the volume it left is the handle's own from then on.
         struct VolRamp
         {
             uint32_t handle = 0;
-            double scale = 1.0;                       // in force now, 0..1
-            double from = 1.0, to = 0.0;
-            uint32_t ticksTotal = 0, ticksDone = 0;
+            int32_t target = 0;                       // 7-bit, 0..127
+            int32_t delta = 0;                        // fast: 32 * volchange / ticks; slow: +1 or -1; 0: a timer only
+            uint32_t every = 0;                       // slow: one step each `every` ticks; 0 = fast (every tick)
+            uint32_t countdown = 0;                   // ticks to the next slow step, or to a timer's end
             bool stopAtEnd = false;                   // the target -4: fade out, then stop
         };
         std::vector<VolRamp> volRamps;
@@ -827,21 +830,50 @@ namespace snd989
             }
         }
 
-        // 0..0x400; a handle with no ramp is at full scale, which multiplies out to exactly the old gain.
-        int32_t volScale(uint32_t handle) const
+        // The handle's 7-bit volume in force (the IRX's Current_Vol): a stream's playVol, a bank sound's
+        // curVolume; -1 when nothing carries the handle.
+        int32_t handleLevel7(uint32_t handle) const
         {
-            for (const VolRamp &r : volRamps)
-                if (r.handle == handle)
-                    return static_cast<int32_t>(std::lround(std::clamp(r.scale, 0.0, 1.0) * 1024.0));
-            return 0x400;
+            for (const std::shared_ptr<Stream> &st : streams)
+                if (st->handle == handle)
+                    return st->playVol;
+            for (const Handler &h : handlers)
+                if (h.handle == handle)
+                    return h.curVolume;
+            return -1;
         }
 
-        double rampScale(uint32_t handle) const
+        // The volume an AutoVol target scales (the IRX's Original_Vol): a bank sound's own Vol; for a stream, the
+        // full 127 its play volume is computed against (playStream: (127 * vol) >> 10).
+        int32_t handleOriginal7(uint32_t handle) const
         {
-            for (const VolRamp &r : volRamps)
-                if (r.handle == handle)
-                    return std::clamp(r.scale, 0.0, 1.0);
-            return 1.0;
+            for (const Handler &h : handlers)
+                if (h.handle == handle)
+                    return h.origVolume;
+            return 127;
+        }
+
+        // Puts a 7-bit volume on the handle, the IRX's per-step snd_SetSoundVolPan(handle, -level, -2) with the pan
+        // unchanged. A stream takes it as is (snd_FixVol: a negative is the absolute 7-bit value). A bank sound's
+        // curVolume is written directly too: the target is already in the sound's own scale, and whether the SOCOM
+        // IRX's block setter rescales the level by the sound's Vol is unread (research/68 row 2) -- the direct
+        // write is the conservative model. appVolume is set to the smallest value that re-derives `level`, so a
+        // later pan-only setVolPan keeps it. The handler's children are not touched.
+        void setHandleLevel7(uint32_t handle, int32_t level)
+        {
+            if (Stream *st = findStream(handle))
+            {
+                st->playVol = level;
+                st->base = streamBase(st->channels, st->playVol, st->playPan);
+                return;
+            }
+            if (Handler *h = find(handle))
+            {
+                h->curVolume = level;
+                if (h->origVolume > 0)
+                    h->appVolume = (level * 1024 + h->origVolume - 1) / h->origVolume;
+                updateHandlerVoices(*h);
+            }
         }
 
         void clearRamp(uint32_t handle)
@@ -866,22 +898,52 @@ namespace snd989
             }
         }
 
-        // One 240 Hz tick of every ramp. A ramp that has arrived STAYS at its target (that is the volume now in
-        // force); only a fade-out-and-stop ends the sound and drops its ramp.
+        // Floor division by 32 for either sign (C++ `/` truncates toward zero).
+        static int32_t floorDiv32(int32_t v)
+        {
+            return v >= 0 ? v / 32 : -((31 - v) / 32);
+        }
+
+        // The level a ramp moves the handle to from `level` (research/36 Q5): the slow branch one unit toward the
+        // target; the fast branch floor(delta / 32) units, so a fall rounds down. Never past the target.
+        static int32_t nextLevel(const VolRamp &r, int32_t level)
+        {
+            const int32_t moved = level + (r.every != 0 ? r.delta : floorDiv32(r.delta));
+            return r.delta > 0 ? std::min(moved, r.target) : std::max(moved, r.target);
+        }
+
+        // One 240 Hz tick of every ramp. A fast ramp steps every tick; a slow one counts its countdown down and
+        // steps when it reaches 0, then re-arms (armed at `every`, so the first step falls on tick `every`). The
+        // step that lands on the target ends the ramp; a -4 ramp then stops the handle. A timer-only ramp (delta
+        // 0, see autoVol) just counts down.
         void tickVolRamps()
         {
             for (size_t i = 0; i < volRamps.size();)
             {
                 VolRamp &r = volRamps[i];
-                if (r.ticksDone < r.ticksTotal)
-                    ++r.ticksDone;
-                const double t = r.ticksTotal ? static_cast<double>(r.ticksDone) / static_cast<double>(r.ticksTotal) : 1.0;
-                r.scale = r.from + (r.to - r.from) * t;
-                if (r.ticksDone >= r.ticksTotal && r.stopAtEnd)
+                bool ended = false;
+                if (r.delta == 0)
+                    ended = r.countdown == 0 || --r.countdown == 0;
+                else if (r.every == 0 || --r.countdown == 0)
+                {
+                    const int32_t level = handleLevel7(r.handle);
+                    if (level < 0)
+                    {
+                        volRamps.erase(volRamps.begin() + static_cast<std::ptrdiff_t>(i));   // nothing to fade
+                        continue;
+                    }
+                    const int32_t next = nextLevel(r, level);
+                    setHandleLevel7(r.handle, next);
+                    ended = next == r.target;
+                    r.countdown = r.every;
+                }
+                if (ended)
                 {
                     const uint32_t handle = r.handle;
+                    const bool stop = r.stopAtEnd;
                     volRamps.erase(volRamps.begin() + static_cast<std::ptrdiff_t>(i));
-                    stopHandle(handle);   // the fade has reached silence: only now does the handle stop playing
+                    if (stop)
+                        stopHandle(handle);   // the fade has reached silence: only now does the handle stop playing
                     continue;
                 }
                 ++i;
@@ -924,8 +986,8 @@ namespace snd989
 
         void applyVoiceVolume(Voice &v, int32_t &left, int32_t &right) const
         {
-            // The AutoVol ramp rides on top of the group modifier: no ramp is 0x400, i.e. the gain unchanged.
-            const int32_t modifier = groupModifier(v.group) * volScale(v.handler) / 0x400;
+            // An AutoVol ramp moves the handler's own curVolume (tickVolRamps), which v.base already carries.
+            const int32_t modifier = groupModifier(v.group);
             // The SPU voice takes (left >> 1, right >> 1): full volume is half of full scale (StartTone, research/32 section 3).
             left = adjustVolToGroup(v.base.left, modifier) >> 1;
             right = adjustVolToGroup(v.base.right, modifier) >> 1;
@@ -1788,32 +1850,57 @@ namespace snd989
     {
         (void)how;
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        const int32_t current = m_impl->handleLevel7(handle);
+        if (current < 0)
+            return;   // nothing carries the handle: nothing to fade (the IRX returns for a handler no longer active)
         const bool fadeOutAndStop = (vol == -4);
-        const double to = fadeOutAndStop ? 0.0 : static_cast<double>(std::clamp(vol, 0, 0x400)) / 1024.0;
-        const double from = m_impl->rampScale(handle);   // a ramp already running continues from where it is
-        m_impl->clearRamp(handle);
+        // The target is 7-bit and scales the handle's Original_Vol: (Original_Vol * vol) >> 10, capped 127.
+        const int32_t target = fadeOutAndStop ? 0 : std::min(127, (m_impl->handleOriginal7(handle) * std::clamp(vol, 0, 0x400)) >> 10);
+        m_impl->clearRamp(handle);   // a new call replaces a ramp in flight (`how` 2: the new timing, from here)
         if (ticks <= 0)
         {
-            // No time to ramp over: the target at once, which is what this call used to do for every length.
+            // No time to ramp over: the target at once.
             if (fadeOutAndStop)
             {
                 m_impl->stopHandle(handle);
                 m_impl->dropDoneStreams();
                 return;
             }
-            Impl::VolRamp now;
-            now.handle = handle;
-            now.scale = now.from = now.to = to;
-            m_impl->volRamps.push_back(now);
+            m_impl->setHandleLevel7(handle, target);
             return;
         }
         Impl::VolRamp r;
         r.handle = handle;
-        r.scale = r.from = from;
-        r.to = to;
-        r.ticksTotal = static_cast<uint32_t>(ticks);
+        r.target = target;
         r.stopAtEnd = fadeOutAndStop;
+        // research/36 Q5, the schedule: volchange = target - current. |volchange| >= ticks is the fast branch,
+        // delta = 32 * volchange / ticks (C division, toward zero), a step every tick; otherwise the slow branch,
+        // one unit every floor(ticks / |volchange|) ticks. 360 ticks from 127 to 0: -1 every 2 ticks, landing at
+        // tick 254; from 95 (a stream played at 0x300), -1 every 3, landing at 285.
+        const int32_t volchange = target - current;
+        if (volchange == 0)
+        {
+            // The IRX drops the effect here and the handle plays on. Ours keeps one deviation: a -4 still stops the
+            // handle when its `ticks` run out (a timer ramp), so a fade-out of a handle already silent still ends it.
+            if (!fadeOutAndStop)
+                return;
+            r.countdown = static_cast<uint32_t>(ticks);
+        }
+        else if (std::abs(volchange) >= ticks)
+            r.delta = 32 * volchange / ticks;
+        else
+        {
+            r.delta = volchange > 0 ? 1 : -1;
+            r.every = static_cast<uint32_t>(ticks / std::abs(volchange));
+            r.countdown = r.every;
+        }
         m_impl->volRamps.push_back(r);
+    }
+
+    int32_t Mixer::autoVolLevelForTest(uint32_t handle) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->handleLevel7(handle);
     }
 
     void Mixer::setMasterVolume(uint32_t group, int32_t vol)
@@ -1903,7 +1990,7 @@ namespace snd989
                 cur->underrunThisCall = false;
                 int32_t left = 0, right = 0;
                 auto takeGains = [&]() {
-                    const int32_t modifier = m_impl->groupModifier(cur->group) * m_impl->volScale(cur->handle) / 0x400;
+                    const int32_t modifier = m_impl->groupModifier(cur->group);   // an AutoVol ramp moves playVol itself
                     // The square law of the group stage (adjustVolToGroup), then the SPU's half scale, as for the voices.
                     left = Impl::adjustVolToGroup(cur->base.left, modifier) >> 1;
                     right = Impl::adjustVolToGroup(cur->base.right, modifier) >> 1;

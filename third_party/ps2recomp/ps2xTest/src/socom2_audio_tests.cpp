@@ -1452,8 +1452,10 @@ void register_socom2_audio_tests()
         // handler applied the target at once (and stopped at once for the -4 target), cutting a cue dead mid
         // phrase. 240 Hz is the rate 989snd's own handlers run at, which the open reimplementation confirms
         // (open-goal/jak-project game/sound/989snd/player.cpp: "The handlers expect to tick at 240hz",
-        // "48000/240 = 200") -- it does not implement snd_AutoVol itself, so the ramp's shape here is the plain
-        // reading: linear, from the volume in force, to the target, over `ticks` ticks.
+        // "48000/240 = 200") -- it does not implement snd_AutoVol itself, so the ramp's shape here was the plain
+        // reading: linear, from the volume in force, to the target, over `ticks` ticks. Sprint 15 T1b replaced that
+        // with the IRX's integer schedule (research/36 Q5; the case after the -4 one): 240 ticks from 127 is a -1
+        // step every floor(240 / 127) = 1 tick, landing at tick 127.
         tc.Run("Mixer: snd_AutoVol fades over its ticks instead of applying the target at once; the fade lands on the target", [](TestCase &t)
         {
             const std::string path = tmpPath("socom2_audio_autovol_stream.vpk");
@@ -1484,11 +1486,12 @@ void register_socom2_audio_tests()
             mixer.autoVol(0x04000019u, 0, 240, 2);            // the game's fade, one second of it
             const double justAfter = renderLevel(1);          // ticks 0..12 of 240
             t.IsTrue(justAfter > 0.8 * full, "the call itself does not cut the cue (" + std::to_string(justAfter) + " of " + std::to_string(full) + ")");
-            const double half = renderLevel(9);               // through tick 120: the middle of the ramp
-            // The ramp's scale is 0.5 here, and the group stage SQUARES it (vol.c:434-455, research/36 Q6 item 1):
+            const double half = renderLevel(5);               // through tick 72: about the middle of the 127-tick ramp
+            // The ramp's scale is about 0.5 here (levels 67 down to 56 of 127 over the slice), and the group stage
+            // SQUARES it (vol.c:434-455, research/36 Q6 item 1):
             // a linear fade is a quadratic loudness curve on the console -- a quarter of the amplitude, not half.
             t.IsTrue(half > 0.15 * full && half < 0.35 * full, "half way through it is a QUARTER as loud, the square law (" + std::to_string(half) + " of " + std::to_string(full) + ")");
-            const double landed = renderLevel(11);            // past tick 240
+            const double landed = renderLevel(11);            // through tick 204: past the landing at 127
             t.IsTrue(landed < 1e-9, "the fade lands on silence (" + std::to_string(landed) + ")");
             t.IsTrue(mixer.isPlaying(0x04000019u), "a fade to 0 does not end the cue -- only the -4 target does");
             mixer.stop(0x04000019u);
@@ -1531,10 +1534,10 @@ void register_socom2_audio_tests()
             render(1);
             mixer.autoVol(0x0401005Cu, -4, 240, 2);            // fade out and stop
             t.IsTrue(mixer.isPlaying(0x0401005Cu), "still playing at the call: the stop is at the END of the fade");
-            render(10);                                        // through tick 120: half way
-            t.IsTrue(mixer.isPlaying(0x0401005Cu), "still playing half way through the fade");
+            render(10);                                        // through tick 120: 7 steps short of the landing at 127
+            t.IsTrue(mixer.isPlaying(0x0401005Cu), "still playing late in the fade");
             t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "and the stream is still there");
-            render(11);                                        // past tick 240
+            render(11);                                        // past tick 127 (and 240)
             t.IsTrue(!mixer.isPlaying(0x0401005Cu), "stopped once the fade landed");
             t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "the stream is gone");
             // ticks <= 0 has no ramp to run: the target applies at once, which is what -4 used to do for every length.
@@ -1542,6 +1545,177 @@ void register_socom2_audio_tests()
             mixer.pumpStreams();
             mixer.autoVol(0x0401005Du, -4, 0, 2);
             t.IsTrue(!mixer.isPlaying(0x0401005Du), "a zero-tick -4 stops at once");
+            std::remove(path.c_str());
+        });
+
+        // Sprint 15 T1b (research/36 Q5 and item 4, research/69 entry 2): the IRX's snd_AutoVol does not interpolate
+        // over `ticks`; it moves the handle's 7-bit volume in INTEGER steps on a schedule of its own, and lands early.
+        // The game's 1.5 s fade, [handle, 0, 0x168, 2], takes a full cue (127) to 0 over 360 ticks. The schedule:
+        //   volchange = target - current = -127. |volchange| < ticks, so the SLOW branch: a step of exactly -1 every
+        //   floor(360 / 127) = 2 ticks (integer division). The effect's counter is armed at 2, counts down once per
+        //   240 Hz tick and fires the step when it reaches 0, then re-arms at 2 -- so step k lands on tick 2k, and the
+        //   127th (1 -> 0) on tick 127 x 2 = 254 = 1.06 s, where the ramp is removed with the volume held at 0.
+        //   The 2 s fade (0x1e0 = 480 ticks) runs 127 x floor(480 / 127) = 127 x 3 = 381 ticks.
+        //   |volchange| >= ticks is the FAST branch: delta = 32 * volchange / ticks (C division, toward zero), and each
+        //   tick the level becomes (32 * level + delta) >> 5 -- an arithmetic shift, so a fall rounds DOWN -- clamped
+        //   at the target. A 30-tick fade from 127: delta = -4064 / 30 = -135, a step of floor(-135 / 32) = -5 a tick,
+        //   2 left after 25 ticks and 0 (clamped) at tick 26.
+        // Ours interpolated in doubles and moved the level every tick until tick 360. The first step's timing (tick d,
+        // not tick 1) is the effect counter's reading: armed at d, decremented before the zero test.
+        // The level stepped is the HANDLE's own 7-bit volume (Current_Vol), not a 0..127 multiplier over it, and the
+        // target is (Original_Vol * vol) >> 10 (T1b review finding 1):
+        //   a stream played at 0x300 sits at (127 * 0x300) >> 10 = 95: -95 is -1 every floor(360 / 95) = 3 ticks,
+        //   landing at tick 95 x 3 = 285, through whole-number volumes;
+        //   a bank sound's Current_Vol is its handler's curVolume, and each step writes the level straight into it:
+        //   a sound whose own Vol is 100 played at 0x300 sits at (100 * 0x300) >> 10 = 75, and -75 over 360 is -1
+        //   every floor(360 / 75) = 4 ticks, landing at tick 75 x 4 = 300. (Whether the SOCOM IRX's block setter
+        //   rescales each step by the sound's Vol -- research/36's blocksnd.c reading, which would compound the
+        //   steps -- is unread; the direct write is the controller's ruling of 2026-09-26, research/68 row 2.)
+        tc.Run("Mixer: snd_AutoVol steps in 7-bit integers on the IRX's schedule -- 360 ticks from 127 is 127 steps of -1, one every 2 ticks, landing at tick 254", [](TestCase &t)
+        {
+            const std::string path = tmpPath("socom2_audio_autovol_steps.vpk");
+            t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade");
+            std::vector<int16_t> buf(2 * 200);   // 200 frames = one 240 Hz tick at 48 kHz
+            struct Trace { int changes = 0, nonUnit = 0, offSchedule = 0, lastChange = -1; int32_t start = -1, at253 = -1, final = -1; };
+            // Fades a fresh cue played at `playVol` with autoVol(h, vol, ticks) and reads the 7-bit level after every tick.
+            auto fade = [&](uint32_t h, int32_t vol, int32_t ticks, int every, int32_t playVol = 0x400) {
+                snd989::Mixer mixer;
+                Trace tr;
+                if (!mixer.playStream(h, path, 0u, playVol, -1, 1u))
+                    return tr;
+                mixer.autoVol(h, vol, ticks, 2);
+                int32_t prev = mixer.autoVolLevelForTest(h);
+                tr.start = prev;
+                for (int tick = 1; tick <= 500; ++tick)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 200);
+                    const int32_t lvl = mixer.autoVolLevelForTest(h);
+                    if (lvl != prev)
+                    {
+                        ++tr.changes;
+                        if (prev - lvl != 1)
+                            ++tr.nonUnit;
+                        if (tick != every * tr.changes)
+                            ++tr.offSchedule;
+                        tr.lastChange = tick;
+                        prev = lvl;
+                    }
+                    if (tick == 253)
+                        tr.at253 = lvl;
+                }
+                tr.final = prev;
+                return tr;
+            };
+            const Trace a = fade(0x0400001Eu, 0, 0x168, 2);
+            t.Equals(a.changes, 127, "the 1.5 s fade moves the level 127 times (" + std::to_string(a.changes) + ")");
+            t.Equals(a.nonUnit, 0, "every move is one 7-bit step (" + std::to_string(a.nonUnit) + " were not)");
+            t.Equals(a.offSchedule, 0, "step k lands on tick 2k (" + std::to_string(a.offSchedule) + " did not)");
+            t.Equals(a.at253, 1, "one step left at tick 253 (" + std::to_string(a.at253) + ")");
+            t.Equals(a.lastChange, 254, "and it lands at tick 254 = 127 x floor(360 / 127), not 360 (" + std::to_string(a.lastChange) + ")");
+            t.Equals(a.final, 0, "on silence, where it stays");
+
+            const Trace b = fade(0x0400001Fu, 0, 0x1e0, 3);
+            t.Equals(b.changes, 127, "the 2 s fade: 127 steps too (" + std::to_string(b.changes) + ")");
+            t.Equals(b.offSchedule, 0, "one every 3 ticks (" + std::to_string(b.offSchedule) + " off)");
+            t.Equals(b.lastChange, 381, "landing at tick 381 = 127 x 3, not 480 (" + std::to_string(b.lastChange) + ")");
+
+            // A stream played below full fades from ITS volume: 95 at 0x300, a step every 3 ticks, landing at 285.
+            const Trace c = fade(0x04000021u, 0, 0x168, 3, 0x300);
+            t.Equals(c.start, 95, "the stream played at 0x300 starts the fade at 95, its own 7-bit volume (" + std::to_string(c.start) + ")");
+            t.Equals(c.changes, 95, "95 steps (" + std::to_string(c.changes) + ")");
+            t.Equals(c.nonUnit, 0, "each one 7-bit unit (" + std::to_string(c.nonUnit) + " were not)");
+            t.Equals(c.offSchedule, 0, "one every floor(360 / 95) = 3 ticks (" + std::to_string(c.offSchedule) + " off)");
+            t.Equals(c.lastChange, 285, "landing at tick 95 x 3 = 285 (" + std::to_string(c.lastChange) + ")");
+            t.Equals(c.final, 0, "on silence");
+
+            // A bank sound at a curVolume below full: the conductor of the hand-built COND bank (its own Vol 100),
+            // idling alive with global 2 at 0, played at 0x300 -> curVolume (100 * 0x300) >> 10 = 75.
+            {
+                const std::vector<uint8_t> hud = readFixture("hudui_block.bin");
+                const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+                socom2_bank::Bank hudui;
+                socom2_bank::Tone click;
+                t.IsTrue(socom2_bank::parse(hud.data(), hud.size(), hudui) && hudui.sounds.size() > 8u &&
+                             hudui.tone(hudui.sounds[8].grains[0], click), "HUDUI's click tone for the COND bank");
+                const std::vector<uint8_t> blk = conductorBlock(click);
+                snd989::Mixer bank;
+                t.IsTrue(bank.loadBank(0x00a30000u, blk.data(), blk.size(), vag.data(), vag.size()), "COND loads");
+                bank.setGlobalReg(2u, 0);
+                const uint32_t hb = bank.play(0x00a30000u, 0u, 0x300, -1, 0, 0);
+                t.IsTrue(hb != 0u && bank.isPlaying(hb), "the conductor plays");
+                t.Equals(bank.autoVolLevelForTest(hb), 75, "at curVolume 75");
+                bank.autoVol(hb, 0, 0x168, 2);
+                int32_t at3 = -1, at4 = -1, at299 = -1, at300 = -1, last = -1;
+                int steps = 0, nonUnit = 0, offSchedule = 0;
+                int32_t prev = bank.autoVolLevelForTest(hb);
+                for (int tick = 1; tick <= 400; ++tick)
+                {
+                    bank.render(buf.data(), 200);
+                    const int32_t lvl = bank.autoVolLevelForTest(hb);
+                    if (lvl != prev)
+                    {
+                        ++steps;
+                        if (prev - lvl != 1)
+                            ++nonUnit;
+                        if (tick != 4 * steps)
+                            ++offSchedule;
+                        last = tick;
+                        prev = lvl;
+                    }
+                    if (tick == 3) at3 = lvl;
+                    if (tick == 4) at4 = lvl;
+                    if (tick == 299) at299 = lvl;
+                    if (tick == 300) at300 = lvl;
+                }
+                t.Equals(at3, 75, "no step before tick floor(360 / 75) = 4 (" + std::to_string(at3) + ")");
+                t.Equals(at4, 74, "the first step, at tick 4: 74 (" + std::to_string(at4) + ")");
+                t.Equals(steps, 75, "75 steps (" + std::to_string(steps) + ")");
+                t.Equals(nonUnit, 0, "each one 7-bit unit, no rescaling by the sound's Vol (" + std::to_string(nonUnit) + " were not)");
+                t.Equals(offSchedule, 0, "one every 4 ticks (" + std::to_string(offSchedule) + " off)");
+                t.Equals(at299, 1, "1 at tick 299 (" + std::to_string(at299) + ")");
+                t.Equals(at300, 0, "and 0 at tick 300 = 75 x 4 (" + std::to_string(at300) + ")");
+                t.Equals(last, 300, "the last step on tick 300 (" + std::to_string(last) + ")");
+                t.IsTrue(bank.isPlaying(hb), "a fade to 0 does not stop the sound");
+                bank.stopAll();
+            }
+
+            // The fast branch: 30 ticks for 127 steps of volume.
+            snd989::Mixer fast;
+            t.IsTrue(fast.playStream(0x04000020u, path, 0u, 0x400, -1, 1u), "a cue for the fast fade");
+            fast.autoVol(0x04000020u, 0, 30, 2);
+            int32_t level25 = -1, landed = -1;
+            for (int tick = 1; tick <= 40; ++tick)
+            {
+                fast.pumpStreams();
+                fast.render(buf.data(), 200);
+                if (tick == 1)
+                    t.Equals(fast.autoVolLevelForTest(0x04000020u), 122, "the fast fade's first tick: 127 + floor(-135 / 32) = 122");
+                if (tick == 25)
+                    level25 = fast.autoVolLevelForTest(0x04000020u);
+                if (tick == 26)
+                    landed = fast.autoVolLevelForTest(0x04000020u);
+            }
+            t.Equals(level25, 2, "2 left after 25 steps of -5 (" + std::to_string(level25) + ")");
+            t.Equals(landed, 0, "clamped onto the target at tick 26, not 30 (" + std::to_string(landed) + ")");
+
+            // The -4 target stops the handle on the landing tick: 254, not 360.
+            snd989::Mixer stopper;
+            const uint32_t hs = 0x04010060u;
+            t.IsTrue(stopper.playStream(hs, path, 0u, 0x400, -1, 1u), "a cue to fade out and stop");
+            stopper.autoVol(hs, -4, 0x168, 2);
+            bool playing253 = false, playing254 = true;
+            for (int tick = 1; tick <= 254; ++tick)
+            {
+                stopper.pumpStreams();
+                stopper.render(buf.data(), 200);
+                if (tick == 253)
+                    playing253 = stopper.isPlaying(hs);
+                if (tick == 254)
+                    playing254 = stopper.isPlaying(hs);
+            }
+            t.IsTrue(playing253, "still playing at tick 253, one step from silence");
+            t.IsTrue(!playing254, "stopped at tick 254, where the fade lands");
             std::remove(path.c_str());
         });
 
