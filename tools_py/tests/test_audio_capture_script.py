@@ -8,8 +8,8 @@ MEAN, held by tests rather than by a reading of the script (audio-out fix round 
     pid -- otherwise the recorder's own session (whose loopback stream reads the endpoint's whole mix) reads as
     a contaminant and the owner throws away a good capture, or worse, trusts a word that was never earned;
   * the tools root may contain a space;
-  * the capture's offset is on the recorder's first-packet clock (tools_py/parity/capture_offset.py), not the
-    moment the script started the recorder, and capture.txt says which clock it was (LATER row 37);
+  * the capture's offset runs from the WAV's frame 0 (the recorder's first packet) to the drive's own t0 (the step
+    clock), through tools_py/parity/capture_offset.py, and capture.txt says which clocks it was on (LATER row 37);
   * the wrapper the owner is asked to run is tracked, not left in an ignored logs/ inside a worktree the merge
     will remove.
 
@@ -123,8 +123,9 @@ class ToolsRootTest(unittest.TestCase):
 class CaptureOffsetClockTest(unittest.TestCase):
     def test_the_offset_comes_from_the_capture_offset_module_and_capture_txt_names_its_clock(self):
         """LATER row 37: `offset=` was `.drive_started - .capture_started`, but the WAV's frame 0 is the recorder's
-        first packet -- 1.93 s used where 1.58 s was true on s16_v0_t1b_dump, 5.23 s for 4.41 s on s16_v0_t1b.
-        The script's line must be the module's, and that very line, run against those stamps, must yield both."""
+        first packet and the step times run from drive.py's own t0 (`drive_t0_epoch=` in drive.stdout); the two
+        script stamps are only what older captures have. The script's line must be the module's, and that very
+        line, run against s16_v0_t1b_dump's stamps with and without a drive t0, must yield offset and source."""
         with open(SCRIPT, encoding="utf-8") as fh:
             text = fh.read()
         self.assertFalse(".capture_started').read()" in text, "the inline two-stamp subtraction is gone")
@@ -139,11 +140,15 @@ class CaptureOffsetClockTest(unittest.TestCase):
         out = tempfile.mkdtemp(prefix="audio_offset_")
         for name, body in ((".capture_started", "1790513721.176546000\n"),
                            (".drive_started", "1790513723.110032500\n"),
-                           ("loopback.log", "start_epoch=1790513721.474\npid=51000\nfirst_packet_epoch=1790513721.526\n")):
+                           ("loopback.log",
+                            "start_epoch=1790513721.474\npid=51000\nfirst_packet_epoch=1790513721.526\n")):
             with open(os.path.join(out, name), "w", encoding="utf-8") as fh:
                 fh.write(body)
-        got = sh('OUT="%s"; %s; printf "%%s|%%s\\n" "$offset" "$offset_from"' % (out.replace("\\", "/"), lines[0]))
-        self.assertEqual(got.strip(), "1.584|first_packet", "the line as the script runs it, not as it reads")
+        run = 'OUT="%s"; %s; printf "%%s|%%s\\n" "$offset" "$offset_from"' % (out.replace("\\", "/"), lines[0])
+        self.assertEqual(sh(run).strip(), "1.584|first_packet", "the line as the script runs it, not as it reads")
+        with open(os.path.join(out, "drive.stdout"), "w", encoding="utf-8") as fh:
+            fh.write("drive_t0_epoch=1790513724.540\ns00_CROSS                t=   9.0s stable=True waited=6.4s\n")
+        self.assertEqual(sh(run).strip(), "3.014|drive_t0", "a capture whose drive printed its t0 is on that clock")
 
 
 class DumpCapTest(unittest.TestCase):

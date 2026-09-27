@@ -1,10 +1,12 @@
-"""tools_py/parity/capture_offset.py: the seconds by which an audio capture's WAV began before the drive (LATER
-row 37).
+"""tools_py/parity/capture_offset.py: the seconds from an audio capture's WAV frame 0 to the zero of the drive's
+step clock (LATER row 37).
 
-The capture's t=0 is the loopback recorder's first packet (`first_packet_epoch=` in loopback.log), not the moment
-audio_parity.sh started the recorder (`.capture_started`): the stamps below are the real ones of
-logs/parity/s16_v0_t1b_dump, where the script used 1.93 s and the true offset is 1.58 s. A capture whose log has
-no first-packet line still scores, on the old clock, and says so. Pure files in a temp dir: no bash, no device.
+The WAV's frame 0 is the loopback recorder's first packet (`first_packet_epoch=` in loopback.log); the step times
+in drive.stdout are measured from drive.py's own t0, which it prints as `drive_t0_epoch=`. `.capture_started` and
+`.drive_started` are only what older captures have: the stamps below are the real ones of
+logs/parity/s16_v0_t1b_dump, taken before drive.py printed its t0, so their offset is on `.drive_started` -- which
+the review of c6b763dd put 1.31-1.50 s BEFORE drive.py's t0 on that capture (the step PNGs' file times), so 1.584
+is not the true offset, only the one that capture's stamps allow. Pure files in a temp dir: no bash, no device.
 """
 import contextlib
 import io
@@ -12,6 +14,7 @@ import os
 import tempfile
 import unittest
 
+from tools_py.parity import audio_parity
 from tools_py.parity import capture_offset as co
 
 # logs/parity/s16_v0_t1b_dump, verbatim
@@ -23,21 +26,26 @@ LOOPBACK_LOG = ("recording 620s from 'Haut-parleurs (HyperX QuadCast S) [Loopbac
                 "pid=51000\r\n"
                 "first_packet_epoch=1790513721.526\r\n"
                 "wrote 29760512 frames (620.0s) at 48000 Hz\r\n")
+NO_FIRST_PACKET = LOOPBACK_LOG.replace("first_packet_epoch=1790513721.526\r\n", "")
+# A drive.stdout as drive.py now writes it. The t0 is a FIXTURE, not a measurement: .drive_started + 1.430 s,
+# the median of the review's PNG-time estimate on that capture.
+DRIVE_STDOUT = ("drive_t0_epoch=1790513724.540\r\n"
+                "s00_CROSS                t=   9.0s stable=True waited=6.4s\r\n"
+                "s01_CROSS                t=  20.6s stable=True waited=10.4s\r\n")
+DRIVE_STDOUT_OLD = DRIVE_STDOUT.split("\r\n", 1)[1]   # what every capture before this change has
 
 
 class CaptureOffsetTest(unittest.TestCase):
-    def capture_dir(self, loopback_log=LOOPBACK_LOG, drive_started=DRIVE_STARTED):
+    def capture_dir(self, loopback_log=LOOPBACK_LOG, drive_started=DRIVE_STARTED, drive_stdout=None):
         tmp = tempfile.TemporaryDirectory(prefix="capture_offset_")
         self.addCleanup(tmp.cleanup)
         out = tmp.name
-        with open(os.path.join(out, ".capture_started"), "w", encoding="utf-8") as fh:
-            fh.write(CAPTURE_STARTED)
-        if drive_started is not None:
-            with open(os.path.join(out, ".drive_started"), "w", encoding="utf-8") as fh:
-                fh.write(drive_started)
-        if loopback_log is not None:
-            with open(os.path.join(out, "loopback.log"), "w", encoding="utf-8", newline="") as fh:
-                fh.write(loopback_log)
+        files = {".capture_started": CAPTURE_STARTED, ".drive_started": drive_started,
+                 "loopback.log": loopback_log, "drive.stdout": drive_stdout}
+        for name, body in files.items():
+            if body is not None:
+                with open(os.path.join(out, name), "w", encoding="utf-8", newline="") as fh:
+                    fh.write(body)
         return out
 
     def cli(self, out_dir):
@@ -46,19 +54,34 @@ class CaptureOffsetTest(unittest.TestCase):
             rc = co.main(["capture_offset", out_dir])
         return rc, stdout.getvalue(), stderr.getvalue()
 
-    def test_the_offset_is_on_the_recorders_first_packet_clock(self):
-        """(a) 1723.110 - 1721.526, not 1723.110 - 1721.177: the WAV's frame 0 is the first packet."""
-        out = self.capture_dir()
-        self.assertEqual(co.capture_offset(out), (1.584, "first_packet"))
-        rc, stdout, stderr = self.cli(out)
-        self.assertEqual((rc, stdout, stderr), (0, "offset=1.584 from=first_packet\n", ""),
-                         "audio_parity.sh parses exactly this one line")
+    def test_the_offset_runs_from_the_first_packet_to_the_drives_own_t0(self):
+        """The two clocks the scorer actually lays against each other: 1724.540 - 1721.526. `.drive_started`
+        is not needed once the drive has printed its t0."""
+        for label, drive_started in (("with .drive_started", DRIVE_STARTED), ("without it", None)):
+            with self.subTest(label):
+                out = self.capture_dir(drive_started=drive_started, drive_stdout=DRIVE_STDOUT)
+                self.assertEqual(co.capture_offset(out), (3.014, "drive_t0"))
+                self.assertEqual(self.cli(out), (0, "offset=3.014 from=drive_t0\n", ""),
+                                 "audio_parity.sh parses exactly this one line")
+
+    def test_the_drives_t0_without_a_first_packet_is_laid_against_capture_started(self):
+        out = self.capture_dir(loopback_log=NO_FIRST_PACKET, drive_stdout=DRIVE_STDOUT)
+        self.assertEqual(co.capture_offset(out), (3.363, "drive_t0/capture_started"))
+        self.assertEqual(self.cli(out)[:2], (0, "offset=3.363 from=drive_t0/capture_started\n"))
+
+    def test_an_older_capture_is_on_drive_started_and_the_first_packet(self):
+        """(a) s16_v0_t1b_dump as it is: no drive_t0 line (a drive.stdout from before it, or none), so the step
+        clock's zero falls back to `.drive_started` -- 1723.110 - 1721.526, the source naming the first packet."""
+        for label, stdout in (("no drive.stdout", None), ("drive.stdout without the line", DRIVE_STDOUT_OLD)):
+            with self.subTest(label):
+                out = self.capture_dir(drive_stdout=stdout)
+                self.assertEqual(co.capture_offset(out), (1.584, "first_packet"))
+                self.assertEqual(self.cli(out), (0, "offset=1.584 from=first_packet\n", ""))
 
     def test_without_the_first_packet_line_the_offset_falls_back_to_capture_started(self):
-        """(b) today's clock, so an older capture (or a recorder that died before its first packet) still scores
-        -- and the source says which clock it was."""
-        no_line = LOOPBACK_LOG.replace("first_packet_epoch=1790513721.526\r\n", "")
-        for label, log in (("no loopback.log", None), ("no first_packet_epoch line", no_line)):
+        """(b) the oldest clock pair, so a capture from before the recorder printed its first packet (or one whose
+        recorder never got a packet) still scores -- and the source says which clock it was."""
+        for label, log in (("no loopback.log", None), ("no first_packet_epoch line", NO_FIRST_PACKET)):
             with self.subTest(label):
                 out = self.capture_dir(loopback_log=log)
                 self.assertEqual(co.capture_offset(out), (1.933, "capture_started"))
@@ -66,8 +89,9 @@ class CaptureOffsetTest(unittest.TestCase):
                 self.assertEqual((rc, stdout), (0, "offset=1.933 from=capture_started\n"))
 
     def test_a_missing_drive_stamp_is_a_failure_the_cli_exits_2_on(self):
-        """(c) no .drive_started: no offset at all -- one line on stderr, nothing on stdout, exit 2."""
-        out = self.capture_dir(drive_started=None)
+        """(c) no drive_t0 line and no .drive_started: no step-clock zero at all -- one line on stderr, nothing
+        on stdout, exit 2."""
+        out = self.capture_dir(drive_started=None, drive_stdout=DRIVE_STDOUT_OLD)
         with self.assertRaises(co.MissingStamp):
             co.capture_offset(out)
         rc, stdout, stderr = self.cli(out)
@@ -75,6 +99,14 @@ class CaptureOffsetTest(unittest.TestCase):
         self.assertEqual(stdout, "", "the shell's read must get nothing rather than a half line")
         self.assertEqual(len(stderr.splitlines()), 1, stderr)
         self.assertIn(".drive_started", stderr)
+
+
+class StepWindowsTest(unittest.TestCase):
+    def test_the_drive_t0_line_is_not_a_step(self):
+        """The scorer's reader of drive.stdout sees the same windows with the new first line as without it."""
+        self.assertEqual(audio_parity.step_windows(DRIVE_STDOUT, 3.014),
+                         audio_parity.step_windows(DRIVE_STDOUT_OLD, 3.014))
+        self.assertEqual([w.label for w in audio_parity.step_windows(DRIVE_STDOUT)], ["s00", "s01"])
 
 
 if __name__ == "__main__":

@@ -17,8 +17,8 @@
 # (three arguments or fewer) behaves exactly as before. AUDIO_DUMP=<path> in the environment is exported to the
 # launched game as PS2X_AUDIO_DUMP, so a capture can have the mixer's own pre-device WAV beside the endpoint
 # recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
-# The window offset is on the recorder's first-packet clock (loopback.log's first_packet_epoch, the WAV's frame 0),
-# not .capture_started, the recorder's launch a Python start earlier: that cost 0.82 s on s16_v0_t1b (LATER row 37).
+# The window offset runs from the WAV's frame 0 (the recorder's first packet) to the steps' zero (drive.py's own t0,
+# drive_t0_epoch); .capture_started and .drive_started are only what older captures have (LATER row 37).
 set -u
 # Two roots (audio-out fix round 1, I3). The game, its data and the capture directories live in the DATA root
 # (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (the agent-worktree skill). The
