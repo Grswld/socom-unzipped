@@ -171,6 +171,39 @@ at a recorded outcome with its gate number; F3 and F5 at theirs; the exe-only re
 #59's ceiling in `pins.json`. Task 0 of the plan checks each and carries what did not land into this plan's table
 under the milestone it serves (F2/F3 → F, F5 → the fence).
 
+### 1.8 What the backlog already holds on these four fronts, and what this sprint absorbs (reviewed 2026-09-27 22:40Z)
+
+Read: the 23 open issues and their bodies, `docs/BACKLOG.md` §2 (the 38 rows ruled not an issue),
+`docs/LATER.md`, `docs/HUMAN_TASKS.md`, `docs/HANDOFF.md` §6, the Sprint 8 review findings filed for later
+(KNOWN §2, 161), the Sprint 10 Q7 residuals (`docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` §3),
+research/67 §5's watch rows, `docs/PLAYTEST.md` steps 10–13, and the testers' inbox (one report, a test submission of
+2026-09-20; nothing to take).
+
+| Item | Where it sits today | Absorbed as |
+|---|---|---|
+| **#59** the frame-rate bar | open, carried once; Sprint 16 F5 pins it | F6 re-cuts the pin; #59 closes when D1's bar is met, or stays open with D9's trigger |
+| **#32** identical tiles re-uploaded (`same_rewritten` 79 %) | open, carried once; Sprint 16 F3 fired on it | Task 0 carries F3's outcome; if short, the upload skip is F1's fourth attempt |
+| **The hash fold and the read-back PBO ring** — ruled "no issue" as `q7-render-performance` (BACKLOG §2; Q7 residuals §3: decode microseconds before and after the fold; a PBO ring for the exposure read-back, `glMapBufferRange` a frame later) and KNOWN §2 161 (a) "three walks of the texture source" | parked since 2026-09-21 with their measurements written | F1's first attempt (the fold) and F2 (the ring) **are these rows**; Task 0 strikes the ruled-out row in `docs/backlog_ruled_out.txt` with the citation, since a row with a task is not a "no issue" |
+| **#67** the window drag (T2): its Step 3 proof, a drag in a mission with the before-capture on the `v0.14.0` exe | code merged; the run waits for an owner window (O20; HANDOFF §6) | rides on F0 (c)'s window: the same mission run takes the drag readout after its player-condition minute; the before-capture is one more launch in that window |
+| **KNOWN §2, 23**: the game's own online frame rate was 19–21 `syncv/s` under two instances (Sprint 5, stale) while VBlanks ran 59.7/s | never re-measured (no `[vu1-stats]` in the 14 ladder logs) | F0 (b) also sets `PS2X_VU_STATS=1` in the ladder template so the next online run reads `syncv/s`; the owner's "in matches" is measured, not assumed |
+| **#41** the menu-frame console-replay fixture (Sprint 16 X4) | open; not started | F6's guard: F1–F4 change the GL backend and the pixel fence today is one gameplay frame plus the gate; if X4 did not land, it is F6's first step (one PCSX2 run) |
+| **LATER row 10** the EE scheduler and timers ("#59's bar fires on a regression"); **KNOWN §2 159** the back-pressure tests flaky under load | confidence rows, no task | F4's third candidate (the re-anchor rule) makes row 10 live; its design names the `GsFrameBackpressure` cases it must keep honest |
+| **The exit-code suite and the launcher's exit-74 sentence** (`exit_codes_tests.cpp:55`, `launcher_tests.cpp:572`) | tests of today's behaviour | Q2 rewrites both: 74 stays for the genuine fatal path; the re-exec has no exit |
+| **The stray sound on the online screens** — the owner's 2026-09-22 report, the sound-bank charge withdrawn (R239), "not yet found" (PLAYTEST step 11) | unresolved, no issue | A1's lobby recording is its instrument: the score looks for a short ramping deviation on the sign-in, CREATE GAME and lobby screens, on both sides |
+| **#42, #28, #91**; **T1b**'s GREEN build, review and capture (HANDOFF §6) | open; owed | A3, A2, A4; A3 lands T1b |
+| **`audio-level-residuals`** ruled "no issue" (BACKLOG §2: the mission bed 7–12 dB under, the title ring −4 to −6.5 dB, the movie audio ~18 dB low at the source) | the mission-bed clause is now **#91** | Task 0 rewrites the row to the two remaining clauses; A4 owns the bed |
+| **#26** the received chat line (bar: the client function a lobby line uses; Sprint 13 O2 ruled out the libmedius callback) | open, carried twice; R296: the next plan that names it takes it | H's chat row names it; the first assertion of that row is #26's bar. **Named, not taken:** building it is H's condition (D7) |
+| **The voice rows** ruled "no issue": `voice-hear-the-other-player` (the Sprint 8 voice plan's Task 5, the audible half), `voice-record-gain-and-dme` (lgaud 0x0e SetRecordGain; the DME framing around the 32-byte payload), `voice-research-35` | parked | H's microphone row lists them as its precondition, in that order; nothing built |
+| **O7, O8** the owner's listen and PLAYTEST sitting | open owner rows | A0 |
+| **paraLLEl-GS** (LATER row 32; research/67 §5, upstream's `feature/performance-patch-1` pinned at `3a66c19`) | watch row | F4 names it as the far option, gated on the owner's word (D2) |
+
+Left where they are, with the reason: **#34** (a paused console peer; a mixed-match window, no visible defect
+today), **#72** (two rooms; needs a second person), **#60**, **#47**, **#52**, **#54**, **#55**, **#57**, **#58**, **#25**
+(no player-visible defect on these fronts); the audio residual rows `cue4-held-silent`, `emitters-at-volume-zero`,
+`concurrency-cap` (R172), `unmodelled-grains` (R178), `q7-audio-residuals` (they fire only if A0's listen names their
+shape); `gs-local-host-readback` (its stub was replaced by research/31 §11-13's readback; Task 0 checks the row is
+stale and retires it); `window-policy-fullscreen` (the owner's playtest list).
+
 ## 2. Goals — four milestones in the owner's order, each with a bar
 
 Markers: **[A]** autonomous; **[L]** lock-bound (a build, a run or a chain: a window the session announces or the
@@ -189,21 +222,25 @@ ranked residual and the next lever, in KNOWN — not a silent carry.
   25, 33, 50, 100 ms) and the longest gap; kept without the knob so a test can read it, printed with
   `PS2X_GS_STATS`. (b) `PS2X_VU_STATS=1` set by the gate's mission stage so `syncv/s` lands beside `FRAME` in every
   summary. (c) One plain mission run **without** `PS2X_HOST_SCREENSHOT_LATEST`, the same scene, the same knobs as
-  F0 of Sprint 16: the player's number. Bar: the three readings in a KNOWN row with their commands; the histogram
-  case red on a planted slow present.
+  F0 of Sprint 16: the player's number; the same window takes #67's drag readout after that minute, and the
+  `v0.14.0` before-capture as one more launch (§1.8). (d) `PS2X_VU_STATS=1` in the ladder template too, so the next
+  online run reads `syncv/s` beside its 60 VBlanks (KNOWN §2, 23). Bar: the readings in a KNOWN row with their
+  commands; the histogram case red on a planted slow present.
 - **F1 the draw path, attempt by attempt.** M, Fable designs, Opus builds each attempt; one build and one gate per
   attempt; at most four attempts, each with its measurement named from the `[gs-submit]` split before its branch
   exists and a stop rule (under a 25 % drop of its phase after one design: TRIED, NOT ADOPTED with the number).
   Ranked from §1.1 and re-ranked from F2's post-fix split when it lands: the hash revalidation (fold the hash into
-  the decode walk, or hash only the rows the page generation moved — KNOWN §2's Sprint 8 review finding (a));
-  the unconditional `snprintf` and string searches in `setupDrawState` (behind `s_stats`); the double swizzle (one
-  `WriteSpan` per upload, the recorder's shadow the replay reads); the decode's cache misses. Bar per attempt: the
-  phase halved; the milestone's bar above.
+  the decode walk, or hash only the rows the page generation moved — KNOWN §2's Sprint 8 review finding (a) and the
+  Q7 residuals' §3 measurement: decode microseconds per texture before and after); the unconditional `snprintf` and
+  string searches in `setupDrawState` (behind `s_stats`); the double swizzle (one `WriteSpan` per upload, the
+  recorder's shadow the replay reads); the identical-bytes upload skip if Sprint 16's F3 landed short (#32); the
+  decode's cache misses. Bar per attempt: the phase halved; the milestone's bar above.
 - **F2 the read-backs off the frame.** M, Fable. The auto-exposure's `executeReadback` (a `glReadPixels` per GPU-dirty
   target and a `GSCpuBackend` lock per pixel, `gs_gl_backend.cpp:2867-2915`): one lock per row or per target, and
   the read moved to a pixel-buffer object fenced one frame later (the guest reads a 1×4 column 100 ms apart;
-  research/31 §11-13 says which pixels). Bar: `readback=` under 5 ms/s with the luminance the guest reads unchanged
-  (a unit case on the readback's bytes; the gate's pins).
+  research/31 §11-13 says which pixels) — the "readback PBO ring" of the Q7 residuals §3, with its measurement
+  (readbacks per frame, the 99th-percentile frame time over a 60 s hold). Bar: `readback=` under 5 ms/s with the
+  luminance the guest reads unchanged (a unit case on the readback's bytes; the gate's pins).
 - **F3 the unaccounted 145 ms/s.** S, Opus. Instrument the loop remainder: time under `m_stateMutex` in
   `latchHostPresentationFrame`, under `m_queueMutex` in `HostRenderFrame`'s swap, the swap and the poll; one
   `[gs-loop]` line. Then the one change the numbers name (a lock held shorter, a copy avoided). Bar: the remainder
@@ -214,16 +251,19 @@ ranked residual and the next lever, in KNOWN — not a silent carry.
   the older frames' draws are replayed for state only (state-correct, fewer GL draws); the texture decode and hash
   moved to a worker thread ahead of the replay (the decode reads the shadow VRAM the recorder wrote; the replay
   waits on a ready flag); `PS2X_GS_MAX_PENDING_FRAMES` and the re-anchor rule revisited with the histogram in hand
-  (a repaid frame is not a lost one). A wholesale take of paraLLEl-GS (LATER row 32) stays out unless the owner says
-  the word. Each candidate gets a design paragraph in the Log, one attempt, a stop rule, the fence.
+  (a repaid frame is not a lost one; the `GsFrameBackpressure` and `PS2RuntimeInterrupt` cases KNOWN §2 159 names
+  as load-flaky must stay honest, not be loosened). A wholesale take of paraLLEl-GS (LATER row 32) stays out unless
+  the owner says the word. Each candidate gets a design paragraph in the Log, one attempt, a stop rule, the fence.
 - **F5 3x render scale — the second goal.** S–M, Opus, after the 1x bar or in the last two days: a gate stamp for
   `S=3` (title, mission, transition, both draw paths — the `S=2` recipe), F2's direct render-target path checked at
   `S=3` against the CPU backend's mirror, the memory in KNOWN, and the **adjusted frame rate**: the same three-gate
   `FRAME`/`syncv` reading at `S=3`, recorded beside 1x (D6: recorded, not fenced). The launcher's VIDEO DETAIL row
   already exposes the knob; its wording says what the number costs.
-- **F6 the fence re-cut.** S, the controller, in the close chain: #59's ceiling in `pins.json` re-pinned from the
-  three quiet gates on the sprint's final exe, the screenshot cadence named in the pin (Sprint 16 F5's caveat), the
-  `syncv` reading pinned beside it; before and after in one table.
+- **F6 the fence re-cut, and the menu pixel guard.** S, the controller, in the close chain: #59's ceiling in
+  `pins.json` re-pinned from the three quiet gates on the sprint's final exe, the screenshot cadence named in the pin
+  (Sprint 16 F5's caveat), the `syncv` reading pinned beside it; before and after in one table. Its first step, if
+  Sprint 16's X4 did not land: **#41**'s menu-frame fixture from one PCSX2 dump (research/31's recipe), so the
+  console-replay case guards a menu frame as well as a gameplay frame while F1–F4 change the backend.
 
 ### Milestone Q — the way back from SOCOM Online **[L] for its runs** — second, from day two
 
@@ -263,8 +303,10 @@ The bar of the milestone: a player who leaves SOCOM Online lands on the main men
   N minutes with `PS2X_AUDIO_DUMP` (the mixer's output) and the endpoint capture (`capture_audio_out.sh`'s
   recipe), `PS2X_AUDIO_TRACE=1`, `PS2X_AUDIO_CB_TRACE=1`; the console — PCSX2 logged into the same server, its
   endpoint captured the same N minutes. Scored with `audio_dips.py` (device against dump) and `audio_parity.py`
-  windows over the lobby's music. Bar: the two recordings and the two scores in KNOWN as the lobby's first audio
-  row; a dip count and a level delta with their commands.
+  windows over the lobby's music; the drive holds the sign-in, CREATE GAME and lobby screens where the owner heard the
+  stray "short and ramping deviation" of 2026-09-22 (PLAYTEST step 11; the bank charge withdrawn, R239), and the
+  score looks for it on both sides. Bar: the two recordings and the two scores in KNOWN as the lobby's first audio
+  row; a dip count, a level delta and the stray sound's verdict, with their commands.
 - **A2 #28's capture, at last.** S, one run of 10+ minutes in a mission with the dump exported, scored against the
   PCSX2 reference of the same mission (the issue's bar as written). Fires on A0's word or on A1's count.
 - **A3 #42 on a quiet host.** S, one run: the leg-3b capture repeated with nothing else on the machine; then the
@@ -283,7 +325,9 @@ lobby's rooms and the swapping between them (announcement, briefing rooms, clan 
 lobby, chatting both ways across the line (#26's bound is the first assertion), and the microphone across the line.
 The microphone row states its precondition plainly: the voice path of research/56 §6 (the talk action, the send
 callback, the audible receive) does not exist under our runtime, so the test is written and marked **cannot pass yet**
-until a sprint builds Q5. Built only if time remains after F, Q and A; otherwise the note is the deliverable and the
+until a sprint builds Q5 — whose parts are already on record as the ruled-out rows `voice-hear-the-other-player`
+(the Sprint 8 voice plan's Task 5), `voice-record-gain-and-dme` and `voice-research-35` (§1.8). The chat row's first
+assertion is #26's bar as written. Built only if time remains after F, Q and A; otherwise the note is the deliverable and the
 first row goes to LATER with its trigger.
 
 ### Order, time boxes and the windows budget (D8)
@@ -323,8 +367,10 @@ names (R297).
    for it; #42 re-measured on a quiet host; #91 at a recorded outcome.
 4. **No regression:** Sprint 16 §1.4's list holds on the final exe.
 5. **The harness scoped:** the note exists with every row of §2 H, or the reason it does not.
-6. **The record:** every Believed row a task touched moved with its artefact; LATER re-sorted; the ceilings hold; the
-   owner's rows updated with what was asked and when.
+6. **The record:** every Believed row a task touched moved with its artefact; LATER re-sorted; the two ruled-out rows
+   §1.8 names rewritten (`q7-render-performance` struck as a task, `audio-level-residuals` cut to its two remaining
+   clauses) and the stale `gs-local-host-readback` row checked; the ceilings hold; the owner's rows updated with what
+   was asked and when.
 
 ## 5. What this does not do
 
