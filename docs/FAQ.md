@@ -168,10 +168,10 @@ exit code 75; ruling S13-R9 made it a notice, so it no longer hides a 65 or a 72
 
 ### Why isn't the ISO included? Where do I get the game?
 
-Because it is not ours to give. SOCOM II is still the property of its rights holders, and this project distributes
-**none** of it: no game executable, no recompiled C++, no textures, audio, movies or saves. That holds for the
-repository as much as the download — a pull request containing any of it is closed unread (`../CONTRIBUTING.md`).
-What the project distributes is the machinery that runs *your* copy.
+Because it is not ours to give. SOCOM II is still the property of its rights holders. The **repository** holds none
+of it: no game code, no recompiled C++, no assets — a pull request containing any of it is closed unread
+(`../CONTRIBUTING.md`). The **download** holds the recompiled program (`socom2.exe`) and never the disc's code or
+data: your disc supplies those, and the program image is built from it on your machine (issue #70).
 
 So you need your own disc, and your own dump of it. This page will not tell you where to download one.
 
@@ -294,15 +294,8 @@ answer — press **SAVE DIAGNOSTICS** and send the zip.
 
 ### The game won't remember my online password
 
-It does not yet, and this is the current state rather than a mystery. Found by a driven two-launch test on
-2026-09-23 (runs `w10_virgin_a` / `w10_virgin_b`; the record is the Sprint 10 close entry in `STATUS.md`): launch
-one created a persona on an empty card with the game's own SAVE PASSWORD ticked and reached the lobby; launch two,
-from that same card, got the **persona name** back and an **empty password field**. Whether the game only writes the
-saved password on a clean exit, or our memory-card code drops it, is the open question — `KNOWN.md` §2 carries it.
-
-Until that is fixed, use the launcher's ONLINE page: type your PLAYER NAME and PASSWORD there and the game's
-keyboards open already filled. Be aware of what the launcher itself tells you on that page — the password is stored
-in plain text in `config.json` next to the exe, so do not hand that file to anyone.
+It does. Tick **SAVE PASSWORD = YES** before **CONNECT**, and the persona and password come back from the memory
+card on the next start (`KNOWN.md` §3, issue #27).
 
 ### The music cuts out, wobbles, or comes and goes
 
