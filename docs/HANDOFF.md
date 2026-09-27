@@ -15,7 +15,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   (research/73), X1, X3, X5. In flight: R1b (the callee closure's regeneration chain; round 4 for the fixpoint), F2
   (reviewed; its C++ proof build queued; then a batch-4 chain and the A/B). The batch-3 archive is the owner's
   PLAYTEST build. Next: R1b's GREEN and merge, F2's merge, R3b, R2. The plan's Log is the live state.
-- **Next free ruling number: R318** (R299-R317 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
+- **Next free ruling number: R321** (R299-R320 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
