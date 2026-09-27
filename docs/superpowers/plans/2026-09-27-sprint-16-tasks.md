@@ -521,7 +521,13 @@ real package.
 (`win32_glue.cpp:553, 601`; POSIX spawns curl) — the 1,605,944-byte file needs a stream-to-file GET in both glues; the
 loopback seam pattern is `bug_report.h:32`. KNOWN §1's #71 row: `GET /s2/r0004/APACHE00.ZDB` on `patch.psrewired.com`
 (User-Agent `sceHTTPLib-1.2.42`); the served file decrypts on the r0001 disc path with no identity and merges to a
-5,016,064-byte image one code word (`0x1E70CC`) from the PCSX2-sourced ELF; its sha is recorded nowhere.
+5,016,064-byte image one code word (`0x1E70CC`) from the PCSX2-sourced ELF; its sha is recorded nowhere. **R2a
+landed (PR #88, `17b8d719`):** `win32glue::httpDownload` in both glues, `patchfetch::installPackage` (staged at
+`<dest>.new`, verified, then renamed), redirects refused with one sentence, the headless `--fetch-patch` mode
+refusing any base but the loopback seam, the Dev knob `PS2X_LAUNCHER_PATCH_BASE`. Its review's three notes are
+R2's to carry: a killed run leaves `<dest>.new.part` on Windows until the next 200 (remove it beside `main.cpp:450`);
+no fsync before the rename and two launchers could race between the check and the rename — R2 re-checks the sha
+whenever it reads the package (1.6 MB, cheap); `patch_fetch_tests.cpp:110/114` leaves an `ifstream` open at cleanup.
 `scripts/build_revision.sh` builds a revision's image and exe; `overlay_repair.py` is an identity for a served image.
 #71's point 1 is restated by its comment 1: fetch → the r0001 disc decrypt → merge.
 
