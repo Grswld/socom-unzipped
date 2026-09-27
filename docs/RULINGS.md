@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-354 rulings (315 global, 39 sprint-local): 346 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+355 rulings (316 global, 39 sprint-local): 347 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-315 rulings.
+316 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R321 | 2026-09-27 | active | O2, O4, O5, O7, O8, O10 and O15 stood through the sittings of 2026-09-26 and 2026-09-27 without an answer; each closes by default on the default it carried (O8… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R321** |
 | R320 | 2026-09-27 | active | revise, do not append: a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R320** |
 | R319 | 2026-09-27 | active | Discussions' Announcements stand in for patch notes for now, human-gated: a dated draft under `docs/announcements/` from its template, a `docs/HUMAN_TASKS.md`… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R319** |
 | R318 | 2026-09-27 | active | the wiki holds human prose only; what an agent, a hook or a check reads stays in the tree. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R318** |
