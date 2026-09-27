@@ -11,6 +11,7 @@
 #include "widgets.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ui
@@ -55,7 +56,15 @@ namespace ui
 
         // the game
         bool running = false;
-        std::string status;     // the last thing that happened, in the bottom bar
+        // the last thing that happened, in the bottom bar. Set it only through setStatus: statusSerial counts the
+        // assignments, so the same sentence said twice (a second launch failing the same way) is news again (#74).
+        std::string status;
+        unsigned statusSerial = 0;
+        void setStatus(std::string line)
+        {
+            status = std::move(line);
+            ++statusSerial;
+        }
         std::string exitLine;   // the last run's exit message, on PLAY
 
         // the pads

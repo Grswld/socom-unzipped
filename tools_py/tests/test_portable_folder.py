@@ -14,8 +14,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FOLDERS = [
     ("Windows", os.path.join(ROOT, "dist", "portable", "socom2")),
     ("Windows", os.path.join(ROOT, "dist-release", "portable", "socom2")),
+    ("Windows", os.path.join(ROOT, "dist-release", "portable", "socom2-developer")),
     ("Linux", os.path.join(ROOT, "dist-linux", "portable", "socom2-linux")),
     ("Linux", os.path.join(ROOT, "dist-linux-release", "portable", "socom2-linux")),
+    ("Linux", os.path.join(ROOT, "dist-linux-release", "portable", "socom2-linux-developer")),
 ]
 
 

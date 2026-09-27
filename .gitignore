@@ -100,3 +100,12 @@ id_dsa*
 # the owner's local Horizon checkouts beside the server tree: never submodules (no .gitmodules), never tracked
 /server/horizon-docker/
 /server/horizon-server-database-middleware/
+
+# web (browser map viewer): dependencies, builds, and game data extracted from the owner's disc
+/web/node_modules/
+/web/**/node_modules/
+/web/**/dist/
+/web/public/maps/
+/web/test-fixtures/
+/web/**/playwright-report/
+/web/**/test-results/

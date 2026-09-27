@@ -1,0 +1,13 @@
+{
+  // Type checking only, and part of `npm run typecheck`. `composite` and `incremental` are off so that
+  // `tsc --noEmit -p tools` leaves no `.tsbuildinfo` beside the sources.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false, "incremental": false, "declaration": false,
+    "noEmit": true, "types": ["node"]
+  },
+  // `zz-*.ts` are throwaway probes: written to answer one question, never committed, and often left
+  // half-typed while the answer is being read off them. They must not be able to redden the gate.
+  "include": ["*.ts"],
+  "exclude": ["zz-*.ts"]
+}

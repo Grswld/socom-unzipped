@@ -44,7 +44,12 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ## Run it (players)
 The player's page is `docs/INSTALL.md`, and what goes wrong is `docs/FAQ.md`. For a developer: `scripts/make_portable.sh`
 builds `dist/portable/socom2/` (and a zip) from a finished build — the game, its DLLs, the launcher, a README and the
-licences, with empty `cards/` and `logs/` — which is the folder INSTALL describes.
+licences, with empty `cards/` and `logs/` — which is the folder INSTALL describes. The release is two kinds (R295):
+`./build.sh release` builds the **player** exe into `dist-release/` with `-DPS2X_ENABLE_DEBUG_UI=OFF`, and
+`PS2X_RELEASE_KIND=developer ./build.sh release` the **developer** exe with it ON, into `dist-release-dev/`:
+the player exe drops the debug UI; the probes stay in both kinds because the gate reads them (R295's probe half withdrawn by the Sprint 16 controller, 2026-09-27). Each writes its kind beside the exe in `RELEASE_KIND`, which make_portable refuses to package without (exit 2);
+`scripts/make_portable.sh --release` then writes `socom2-portable.zip` and `socom2-developer.zip` from one run, one
+`SHA256SUMS` line and one manifest entry (with its `kind`) each. The ELF ships in both for now (issue #70).
 
 ## Publishing anything: the leak check
 
@@ -673,7 +678,7 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 |---|---|---|
 | 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1871 display names from socom2_names.csv` (2026-09-25, after Sprint 13 N1; r0004's reads `Loaded 1736`; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 940` / `Passed: 940` / `Failed: 0` (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run; the Linux runner runs one platform-guarded case fewer, so its count one below is not a regression), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
+| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 966` / `Passed: 966` / `Failed: 0` (2026-09-27, the `build-windows` run 36303145546 on issue #74's fix-round commit `9bb8511`; that commit's Linux count was 968 — the Linux build runs two platform-guarded cases more, so a Linux count two above this is not a mismatch. Issue #74's second fix round adds one case: `build_linux.sh test --no-runner` printed 969 on it, so Windows should print 967 there. Before: 964 on `6168f2e` (run 36300160191); 940 on 2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
 | 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3530 tests, `OK` with 93 skipped (2026-09-26 12:40Z, this machine, the tree at `3bdf80e8`, Sprint 14 with every lock-free part merged; 3164 with 134 skipped at `2eca9389` on 2026-09-25). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (15 to 17 minutes: three gates on 2026-09-25 took about 15, 17 and 16 — `s12_names_gate`, `s11_close_gate`, `s12_names_r0004_gate`, from the first file each wrote under `logs/parity/gate/<stamp>/` to its `summary.txt`; the game window opens and closes three times; do not touch the keyboard) |
 
@@ -793,8 +798,9 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 
 - **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
   Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
-  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Packaging: `scripts/make_portable.sh
-  [--release]`, `scripts/make_server_zip.sh`.
+  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Release kind: `PS2X_RELEASE_KIND=player`
+  (default; `dist-release/`) or `developer` (`dist-release-dev/`; `dist-linux-release[-dev]/` on Linux). Packaging:
+  `scripts/make_portable.sh [--release]` (both kinds' archives when both are built), `scripts/make_server_zip.sh`.
 - **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score
   without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
   The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources

@@ -8,7 +8,9 @@ is published until the owner clicks Publish, and the checklist below is what has
       recompiled code comes from the owner's disc and is not in the repository.
 - [ ] The three-stage gate passed 3/3 on the exe INSIDE the archive (`python -m tools_py.parity.gate --stamp <name>`);
       the stamp is named here: `________`.
-- [ ] `socom2-portable.zip`, `socom2-linux.tar.gz` and `SHA256SUMS` are attached to this draft.
+- [ ] `socom2-portable.zip` (the player), `socom2-developer.zip` (the developer: the debug UI in),
+      `socom2-linux.tar.gz` and `socom2-linux-developer.tar.gz` (the same two kinds on Linux) and `SHA256SUMS` are
+      attached to this draft.
 - [ ] The `release-draft` workflow was run by hand with this tag and appended **Verified** below (SHA256SUMS, the
       import audit and the leak check on each archive, THIRD_PARTY_NOTICES.md and LICENSES/ present).
 - [ ] The legal position on distributing recompiled code (Sprint 11 decision D2) stands as decided.
