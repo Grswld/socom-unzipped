@@ -34,8 +34,11 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 | `2026-09-25-the-sprint-11-close-frame.png` | 2026-09-25 — Sprint 11 closes, and the borrowed fixes stay | 393,090 | `logs/parity/gate/s11_close_gate/mission/final.png` | our program's window, gate s11_close_gate (the close proof on exe b74a6132) |
 | `2026-09-25-the-renamed-r0004-menu.png` | 2026-09-25 — The names come home, and both editions still pass | 289,045 | `logs/parity/gate/s12_names_r0004_gate/title/s04_none.png` | our program's window running the renamed r0004 build, gate s12_names_r0004_gate |
 | `2026-09-25-the-relaunch-form-with-the-password-kept.png` | 2026-09-25 — The debts, paid in one day | 161,437 | `logs/parity/v6_20260925_160634/b/02_persona.png` | our program's window on the relaunch of run v6_20260925_160634 (launch b, nothing typed); frame inspected, carries the test persona only |
+| `2026-09-27-the-first-sprint-16-chain-frame.png` | 2026-09-27 — Version 0.15.0 without its play test, and a sprint called "ten minutes to the server" | 392,142 | `logs/parity/gate/s16_v0/mission/w46_001.png` | our program's window, gate s16_v0 (the first Sprint 16 chain, the tree at 39bff922), mission stage step 46 |
+| `2026-09-27-the-form-the-ledger-was-written-from.png` | 2026-09-27 — The game remembers who you are, and the update has an address | 161,125 | `logs/parity/s16_l1b_step0b/launch3/02_persona.png` | our program's window on the relaunch of run s16_l1b_step0b (launch 3, nothing typed); frame inspected, carries the test persona only |
+| `2026-09-27-the-design-system-gallery.png` | 2026-09-27 — The site gets its name, the map viewer comes home, and the look is written down | 94,497 | a Playwright screenshot of `http://localhost:5181/ds/` (the scotho repository's dev server, branch s2u-design-system at 3487276), 1280x900, not full page | the site's own design-system gallery, not a frame of the game and nothing from the disc; the one picture here that is not the program's window (the owner's ask, 2026-09-27) |
 
-Total: 24 pictures and 1 video with its poster, 16,206,778 bytes.
+Total: 27 pictures and 1 video with its poster, 16,854,542 bytes.
 
 *(2026-09-25: `2026-09-14-grey-hill-before.png` was an **orphan row** — a row for a picture `docs/STORY.md` no
 longer showed, which `tools_py/story/cite.py` cannot catch because it only checks the other direction. It is the
