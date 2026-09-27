@@ -105,7 +105,11 @@ Five run logs on the build machine carry the same sequence, 19 times in all (`gr
 
 So: **the game leaves SOCOM Online by re-executing itself with arguments the loader's `main()` parses** (the SDK
 wrapper is entered before the fault), our kernel model faults inside that wrapper's prologue, and the error path then
-asks for the reboot we cannot perform. Two things are unknown and decide the fix: the **argv the game's own quit path
+asks for the reboot we cannot perform. **The owner's word, 2026-09-27 22:50Z: the same exit happens offline —
+leaving a mission after reaching its briefing page closes the game.** No log on the machine records that route (all
+five carry the online teardown, `DeleteSocket` included), so the re-exec reads as the game's general "back to the main
+menu" mechanism, not an online one; the offline route is the cheaper reproduction (no server, one instance) and Q0
+takes it first. Two things are unknown and decide the fix: the **argv the game's own quit path
 passes** (hidden behind the fault; only the error path's argv was ever logged), and whether `InitExecPS2` completes
 once the kernel search answers. The runtime today passes **no arguments to the guest at boot** (`main.cpp:162-181`
 takes only the ELF path), and nothing in it can reset and reload a guest in-process.
@@ -267,15 +271,17 @@ ranked residual and the next lever, in KNOWN — not a silent carry.
 
 ### Milestone Q — the way back from SOCOM Online **[L] for its runs** — second, from day two
 
-The bar of the milestone: a player who leaves SOCOM Online lands on the main menu, as on the console; the exit code
-74 is reached only by the game's genuine fatal path.
+The bar of the milestone: a player who leaves SOCOM Online, or leaves a mission from its briefing page, lands on the
+main menu, as on the console; the exit code 74 is reached only by the game's genuine fatal path.
 
-- **Q0 the spike.** S, Fable, one run: drive `launch_to_online_ours.txt` to the lobby and back out through the
-  game's own QUIT with `PS2X_SCHED_TRACE=1` and a peek on the SDK wrapper's argument block; log the argv **before**
-  `InitExecPS2` runs (a trace line at the wrapper's entry, or the syscall-entry peek), and the exact kernel search
-  that returns −1 (`FindAddress`'s trace already prints its window). Output: a class-S research note, "how SOCOM II
-  leaves online": the argv, the search, whether the console re-execs here (research/05 §"FTSCore" says the loader's
-  `main()` parses `--menu_state`), and the two fix routes costed.
+- **Q0 the spike.** S, Fable, two runs: first the **offline route** (the owner's report: `launch_to_mission.txt` to
+  the briefing, then the game's own exit back toward the main menu — one instance, no server), then the online one
+  (`launch_to_online_ours.txt` to the lobby and out through QUIT), both with `PS2X_SCHED_TRACE=1` and a peek on the
+  SDK wrapper's argument block; log the argv **before** `InitExecPS2` runs (a trace line at the wrapper's entry, or
+  the syscall-entry peek), and the exact kernel search that returns −1 (`FindAddress`'s trace already prints its
+  window). Output: a class-S research note, "how SOCOM II goes back to the main menu": the argv of each route, the
+  search, whether the console re-execs here (research/05 §"FTSCore" says the loader's `main()` parses
+  `--menu_state`), and the two fix routes costed.
 - **Q1 the kernel-patch prologue completes.** S, Opus, test-first: `FindAddress`/`GetSystemCallEntry` answer for the
   window `InitExecPS2` searches (a modelled table entry, or the wrapper's `kCopy` made a no-op when the destination
   is −1), so the wrapper reaches our syscall with the game's argv. Bar: the `ps2x_tests` case red on today's answer;
@@ -285,9 +291,9 @@ The bar of the milestone: a player who leaves SOCOM Online lands on the main men
   where the crt0 reads them (the kernel's argument block; the SDK's `SetArg@0x001ACCF8` shows the layout), the game
   thread restarted; the window, the GL context and the launcher's process untouched. The fallback if the reset
   proves wider than the box: the exe exits with a **new code and the argv in a sidecar file**, and the launcher
-  relaunches it with those arguments (the window blinks once). Bar: the Q0 drive ends on the main menu with a
-  reference match (`ref_main_menu_ours.png`); the harness step `quit_online` green on three launches; the exit-code
-  suite updated; the FAQ's sentence about leaving online, if one exists, corrected.
+  relaunches it with those arguments (the window blinks once). Bar: both Q0 drives end on the main menu with a
+  reference match (`ref_main_menu_ours.png`); the harness steps `quit_mission` and `quit_online` green on three
+  launches each; the exit-code suite updated; the FAQ's sentence about leaving online, if one exists, corrected.
 - **Q3 the announcement scroller.** S, Opus, one run each side (D4): a 1,000-character body in the **local**
   Horizon stack's `db.config.json`; a drive that reaches the ANNOUNCEMENT page and holds it 30 s with captures at
   1 s; the same on PCSX2 against the same local server (`pcsx2_shell login`); the two capture rows compared (does
@@ -360,8 +366,8 @@ names (R297).
    the number reached with the ranked residual and the next lever in KNOWN; every attempt at a recorded outcome
    (ADOPTED with its phase halved, or TRIED, NOT ADOPTED with the number); no moved pixel; `S=3` stamped with its
    frame rate recorded.
-2. **The way back:** leaving SOCOM Online lands on the main menu on three driven launches; the argv and the mechanism
-   in a research note; the announcement's behaviour with a 1,000-character body recorded against the console, fixed
+2. **The way back:** leaving SOCOM Online and leaving a mission from its briefing each land on the main menu on three
+   driven launches; the argv and the mechanism of both routes in a research note; the announcement's behaviour with a 1,000-character body recorded against the console, fixed
    if it differed.
 3. **The lobby's sound has a record:** both sides' recordings and scores in KNOWN; #28's capture run if A0 or A1 asked
    for it; #42 re-measured on a quiet host; #91 at a recorded outcome.
