@@ -51,16 +51,29 @@ for arg in "$@"; do
     *) echo "bootstrap: unknown argument $arg (the header lists the three forms)" >&2; exit 2 ;;
   esac
 done
-# An unknown argument used to fall through to the fetch path: a typo would start a 190 MB download. It refuses now.
+# An unknown argument used to fall through to the fetch path: a typo would start a 190 MB download. It refuses now,
+# and so does a flag that belongs to another form: --dry-run alone would have fetched, --check with the restore
+# would have restored.
+if [ "$dry_run" = 1 ] && [ "$restore" = 0 ]; then
+  echo "bootstrap: --dry-run goes with --restore-owner-tools; nothing was fetched" >&2; exit 2
+fi
+if [ "$check_only" = 1 ] && [ "$restore" = 1 ]; then
+  echo "bootstrap: --check and --restore-owner-tools are two different runs; nothing was done" >&2; exit 2
+fi
 
 # --restore-owner-tools: everything under tools/ that is NOT the pinned toolchain is the owner's (PCSX2, Ghidra,
-# the reference trees), and nothing re-fetches it. On 2026-09-26 the whole of tools/ was deleted through a
+# whatever else the owner keeps there), and nothing re-fetches it. On 2026-09-26 the whole of tools/ was deleted through a
 # worktree's junction (docs/HAZARDS.md, git); the toolchain came back with this script in a minute, the rest by hand
 # from the off-tree backup. This flag makes that one command: the manifest names each entry with its file count and
 # one probe file's size and sha256; every entry is verified in the backup BEFORE anything is copied (a failed
 # manifest copies nothing), copied where tools/<name> is absent (an entry already there is left alone -- it may be
-# newer than the backup), and verified again after the copy. The backup is only ever read. --dry-run prints the
-# plan and copies nothing. The toolchain itself is the fetch path's: run without the flag for that.
+# newer than the backup; PCSX2 rewrites its ini and card as it runs, so a present entry is never re-checked against
+# the manifest), and verified again after the copy. A copy in flight is marked by tools/<name>/.restore-incomplete,
+# written before the first byte and removed only after the post-copy check passes, so an interrupted copy reads as
+# absent next time and is replaced, never as "present". A destination that is a link, a junction or a file is
+# refused before anything is copied (an agent worktree's tools/ is a junction -- the very trap this flag answers).
+# The backup is only ever read. --dry-run prints the plan and copies nothing. The toolchain itself is the fetch
+# path's: run without the flag for that.
 if [ "$restore" = 1 ]; then
   BACKUP="${SOCOM_TOOLS_BACKUP:-D:/socom_archive/tools_backup_2026-09-26}"
   MANIFEST="${SOCOM_TOOLS_MANIFEST:-$ROOT/scripts/tools_backup_manifest.txt}"
@@ -83,8 +96,17 @@ def rows():
                 raise SystemExit("restore: refusing manifest row %r -- nothing was copied" % line)
             yield name, int(files), probe, int(size), sha
 
+MARKER = ".restore-incomplete"
+
 def count_files(root):
-    return sum(len(fs) for _, _, fs in os.walk(root))
+    return sum(len([f for f in fs if f != MARKER]) for _, _, fs in os.walk(root))
+
+def is_reparse(path):
+    """A symlink or a Windows junction (a reparse point), by lstat -- os.path.islink misses junctions."""
+    if os.path.islink(path) or getattr(os.path, "isjunction", lambda p: False)(path):
+        return True
+    attrs = getattr(os.lstat(path), "st_file_attributes", 0)
+    return bool(attrs & 0x400)            # FILE_ATTRIBUTE_REPARSE_POINT
 
 def check(name, root, files, probe, size, sha, where):
     """The entry under root against its manifest row; the reason it fails, or None."""
@@ -105,6 +127,10 @@ def check(name, root, files, probe, size, sha, where):
         return "%s: probe %s sha256 %s in %s, the manifest says %s" % (name, probe, digest, where, sha)
     return None
 
+fwd = lambda p: p.replace("\\", "/")
+
+# Plan first, copy second: every refusal -- a bad backup entry, a destination that is a link, a junction or a
+# file -- happens here, before the first byte moves, in the dry run and the real run alike.
 entries = list(rows())
 plan = []
 for name, files, probe, size, sha in entries:
@@ -113,23 +139,42 @@ for name, files, probe, size, sha in entries:
     if why:
         raise SystemExit("restore: %s -- nothing was copied" % why)
     print("restore: %s ok (%d files; %s %d bytes)" % (name, files, probe, size))
-    plan.append((name, files, probe, size, sha, src, os.path.join(tools, name)))
+    dst = os.path.join(tools, name)
+    if os.path.lexists(dst) and (is_reparse(dst) or not os.path.isdir(dst)):
+        raise SystemExit("restore: %s: tools/%s is a link, a junction or not a directory -- nothing was copied"
+                         % (name, name))
+    if os.path.isdir(dst) and os.path.exists(os.path.join(dst, MARKER)):
+        action = "replace"                # an earlier copy died half-way: absent, not present
+    elif os.path.isdir(dst) and os.listdir(dst):
+        action = "skip"
+    else:
+        action = "copy"
+    plan.append((name, files, probe, size, sha, src, dst, action))
 
-fwd = lambda p: p.replace("\\", "/")
-for name, files, probe, size, sha, src, dst in plan:
-    if os.path.isdir(dst) and os.listdir(dst):
+for name, files, probe, size, sha, src, dst, action in plan:
+    if action == "skip":
         print("restore: %s present in tools/, left alone (%s)" % (name, fwd(dst)))
         continue
     if dry_run:
-        print("restore: would copy %s -> %s (%d files)" % (fwd(src), fwd(dst), files))
+        if action == "replace":
+            print("restore: %s: would replace the incomplete copy %s -> %s (%d files)" % (name, fwd(src), fwd(dst), files))
+        else:
+            print("restore: would copy %s -> %s (%d files)" % (fwd(src), fwd(dst), files))
         continue
-    if os.path.isdir(dst):
+    if action == "replace":
+        print("restore: %s incomplete from an earlier run, replaced" % name)
+        shutil.rmtree(dst)
+    elif os.path.isdir(dst):
         os.rmdir(dst)                     # empty: the planted case
-    os.makedirs(tools, exist_ok=True)
-    shutil.copytree(src, dst)
+    os.makedirs(dst)
+    with open(os.path.join(dst, MARKER), "w") as fh:
+        fh.write("a restore of %s from %s is in flight; if this file is here, the copy did not finish\n"
+                 % (name, fwd(src)))
+    shutil.copytree(src, dst, dirs_exist_ok=True)
     why = check(name, dst, files, probe, size, sha, "tools/")
     if why:
-        raise SystemExit("restore: after the copy, %s -- remove tools/%s and run again" % (why, name))
+        raise SystemExit("restore: after the copy, %s -- the entry keeps its %s marker; run again" % (why, MARKER))
+    os.remove(os.path.join(dst, MARKER))
     print("restore: %s restored (%d files)" % (name, files))
 print("restore: done; the toolchain is the fetch path's own -- run this script without the flag to fetch or --check it")
 PY

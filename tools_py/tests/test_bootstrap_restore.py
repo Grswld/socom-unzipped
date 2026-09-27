@@ -157,13 +157,84 @@ class RestoreTest(unittest.TestCase):
         self.assertIn("nothing was copied", out)
         self.assertEqual(os.listdir(self.tools), [], "an entry was copied although the manifest failed")
 
-    def test_a_changed_probe_is_refused_and_named(self):
-        with open(os.path.join(self.backup, "ghidra", "ghidraRun.bat"), "ab") as fh:
-            fh.write(b"tampered\r\n")
-        code, out = self.restore("--dry-run")
+    def test_a_changed_probe_of_the_same_length_is_refused_on_its_sha256_and_nothing_is_copied(self):
+        # The same byte count, different bytes: only the digest can tell -- and this is the real run, not the
+        # dry one, so the refusal has to come before the copy loop.
+        p = os.path.join(self.backup, "ghidra", "ghidraRun.bat")
+        with open(p, "rb") as fh:
+            original = fh.read()
+        with open(p, "wb") as fh:
+            fh.write(bytes(b ^ 0x5A for b in original))
+        code, out = self.restore()
         self.assertEqual(code, 1, out)
-        self.assertIn("restore: ghidra: probe ghidraRun.bat", out)
+        self.assertIn("restore: ghidra: probe ghidraRun.bat sha256", out)
         self.assertIn("nothing was copied", out)
+        self.assertEqual(os.listdir(self.tools), [], "the good entry was copied although the manifest failed")
+
+    def test_a_copy_that_died_half_way_reads_as_absent_and_is_replaced(self):
+        # The marker is written before the first byte and removed after the post-copy check; a directory that
+        # still carries it is an interrupted copy, whatever else is in it.
+        partial = os.path.join(self.tools, "pcsx2")
+        os.makedirs(os.path.join(partial, "inis"))
+        with open(os.path.join(partial, ".restore-incomplete"), "w") as fh:
+            fh.write("in flight\n")
+        with open(os.path.join(partial, "inis", "PCSX2.ini"), "wb") as fh:
+            fh.write(b"[Pad1]\n")
+        code, out = self.restore("--dry-run")
+        self.assertEqual(code, 0, out)
+        self.assertIn("restore: pcsx2: would replace the incomplete copy", out)
+        self.assertTrue(os.path.isfile(os.path.join(partial, ".restore-incomplete")), "a dry run touched the entry")
+        code, out = self.restore()
+        self.assertEqual(code, 0, out)
+        self.assertIn("restore: pcsx2 incomplete from an earlier run, replaced", out)
+        self.assertIn("restore: pcsx2 restored (2 files)", out)
+        self.assertFalse(os.path.exists(os.path.join(partial, ".restore-incomplete")), "the marker outlived the copy")
+        self.assertTrue(os.path.isfile(os.path.join(partial, "pcsx2-qt.exe")))
+
+    def test_a_destination_that_is_a_link_or_a_junction_is_refused_before_any_copy(self):
+        target = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(target)
+        dst = os.path.join(self.tools, "pcsx2")
+        try:
+            os.symlink(target, dst, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            done = subprocess.run(["cmd", "/c", "mklink", "/J", dst, target], capture_output=True, text=True)
+            if done.returncode != 0:
+                self.skipTest("neither a symlink nor a junction can be made here")
+        for extra in (["--dry-run"], []):
+            code, out = self.restore(*extra)
+            self.assertEqual(code, 1, out)
+            self.assertIn("restore: pcsx2: tools/pcsx2 is a link, a junction or not a directory", out)
+            self.assertIn("nothing was copied", out)
+            self.assertEqual(sorted(os.listdir(self.tools)), ["pcsx2"], "another entry was copied")
+            self.assertEqual(os.listdir(target), [], "the copy went through the link")
+        self.assertTrue(os.path.lexists(dst), "the link was removed")
+
+    def test_a_destination_that_is_a_file_is_refused_before_any_copy(self):
+        with open(os.path.join(self.tools, "ghidra"), "wb") as fh:
+            fh.write(b"not a directory\n")
+        code, out = self.restore()
+        self.assertEqual(code, 1, out)
+        self.assertIn("restore: ghidra: tools/ghidra is a link, a junction or not a directory", out)
+        self.assertEqual(sorted(os.listdir(self.tools)), ["ghidra"])
+
+    def test_dry_run_without_the_restore_flag_is_refused_and_fetches_nothing(self):
+        code, out = run_script(["--dry-run"], {"SOCOM_TOOLS_DIR": self.tools})
+        self.assertEqual(code, 2, out)
+        self.assertIn("--dry-run goes with --restore-owner-tools", out)
+        self.assertEqual(os.listdir(self.tools), [], "the fetch path ran")
+
+    def test_check_with_the_restore_flag_is_refused_and_does_neither(self):
+        code, out = run_script(["--check", "--restore-owner-tools"], self.env())
+        self.assertEqual(code, 2, out)
+        self.assertIn("two different runs", out)
+        self.assertEqual(os.listdir(self.tools), [])
+
+    def test_an_unknown_argument_is_refused_and_fetches_nothing(self):
+        code, out = run_script(["--bogus"], {"SOCOM_TOOLS_DIR": self.tools})
+        self.assertEqual(code, 2, out)
+        self.assertIn("unknown argument --bogus", out)
+        self.assertEqual(os.listdir(self.tools), [])
 
     def test_a_wrong_file_count_is_refused_and_named(self):
         with open(os.path.join(self.backup, "pcsx2", "extra.txt"), "wb") as fh:
