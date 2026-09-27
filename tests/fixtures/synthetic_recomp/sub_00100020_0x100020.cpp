@@ -1,8 +1,6 @@
 #include <stdexcept>
 #include "ps2_runtime_macros.h"
 #include "ps2_runtime.h"
-#include "ps2_recompiled_functions.h"
-#include "ps2_recompiled_stubs.h"
 
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"

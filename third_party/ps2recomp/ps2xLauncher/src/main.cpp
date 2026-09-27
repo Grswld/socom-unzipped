@@ -13,6 +13,8 @@
 //   socom_unzipped_launcher.exe --report-bug <form.json> [dir]   send one bug report for <dir>, print the reply, no window
 //                                                                (a PROOF unless the form says "test": false)
 //   socom_unzipped_launcher.exe --server-status                  print the hosted server's status line, no window
+//   socom_unzipped_launcher.exe --fetch-patch <dest> <bytes> <sha256>   download the r0004 package and check it,
+//                                                                no window (loopback tests only until R2: R293)
 //
 // This file is setup, the loop and the page dispatch. Everything drawn lives in src/ui/.
 #include "launcher/bug_report.h"
@@ -22,6 +24,7 @@
 #include "launcher/launcher_layout.h"
 #include "launcher/menu_sounds.h"
 #include "launcher/mic_devices.h"
+#include "launcher/patch_fetch.h"
 #include "launcher/sha256.h"
 #include "ps2x/app_icon_embedded.h"   // Sprint 10 Q4: the window icon both executables wear
 #include "ps2x/exe_dir.h"
@@ -414,6 +417,49 @@ namespace
         if (!outcome.savedPath.empty())
             std::printf("%s\n", br::savedLocallyLine(outcome.savedPath).c_str());
         return exitCodeFor(outcome.reply);
+    }
+
+    // --fetch-patch <dest> <bytes> <sha256>: Sprint 16 R2a (#71), the r0004 package download and its check, for
+    // tools_py/tests/test_patch_fetch.py. Until R2 lands a player-facing path this mode serves the loopback tests
+    // ONLY: a base that is not the loopback seam is refused before any request, because the first live fetch
+    // from PSRewired is the owner's hand (R293).
+    int fetchPatchHeadless(const fs::path &dest, const char *bytesArg, const std::string &sha256Hex)
+    {
+        namespace pf = launcher::patchfetch;
+        const std::string base = pf::patchBase(ps2x::knob(pf::kPatchBaseEnv));
+        if (base == pf::kDefaultPatchBase)
+        {
+            std::printf("NOT FETCHED. The first live fetch from PSRewired is the owner's (R293); set %s to a "
+                        "loopback test server in developer mode.\n", pf::kPatchBaseEnv);
+            return 3;
+        }
+        char *end = nullptr;
+        const unsigned long long expected = std::strtoull(bytesArg, &end, 10);
+        if (end == bytesArg || *end != '\0' || sha256Hex.size() != 64)
+        {
+            std::printf("usage: --fetch-patch <dest> <bytes> <sha256 hex>\n");
+            return 5;
+        }
+        // The body lands under the staging name and is checked there; only a package that passes is renamed onto
+        // <dest>, so a refusal leaves whatever <dest> already held byte-identical (#88 review).
+        const fs::path staged = pf::stagingPath(dest);
+        const win32glue::DownloadResult got =
+            win32glue::httpDownload(pf::patchUrl(base), staged, pf::kPatchUserAgent, 120000, nullptr);
+        if (!got.error.empty())
+        {
+            std::error_code ec;
+            fs::remove(staged, ec);
+            std::printf("NOT FETCHED. %s\n", got.error.c_str());
+            return 1;
+        }
+        const pf::Verdict verdict = pf::installPackage(staged, dest, expected, sha256Hex);
+        if (!verdict.ok)
+        {
+            std::printf("REFUSED. %s\n", verdict.reason.c_str());
+            return 2;
+        }
+        std::printf("FETCHED %llu bytes, sha256 %s\n", static_cast<unsigned long long>(got.bytes), verdict.sha256.c_str());
+        return 0;
     }
 
     // ---- the chrome around the pages ----------------------------------------------------------------------
@@ -1000,6 +1046,8 @@ int main(int argc, char **argv)
 
     if (argc > 2 && std::strcmp(argv[1], "--report-bug") == 0)
         return reportBugHeadless(fs::path(argv[2]), argc > 3 ? fs::path(argv[3]) : dir);
+    if (argc > 4 && std::strcmp(argv[1], "--fetch-patch") == 0)
+        return fetchPatchHeadless(fs::path(argv[2]), argv[3], argv[4]);
     if (argc > 1 && std::strcmp(argv[1], "--server-status") == 0)
     {
         const std::string line = br::statusLine(fetchStats());
