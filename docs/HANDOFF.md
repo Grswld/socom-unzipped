@@ -52,6 +52,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 - **The Sprint 15 controller** (the same session that ran Sprint 14) in the main tree on `sprint-15`; its agents in
   `C:/projects/wt-s15-<task>`, one branch `agent/s15-<task>` each, made and removed by `scripts/agent_worktree.sh`.
+- **The Sprint 16 controller** (its own worktree under `.claude/worktrees/`, the owner's word 2026-09-27) drafts Sprint 16's
+  plan and starts once Sprint 15 is merged: `sprint-16` off `main`; the main tree moves there after the tag.
 - **The Sprint 13 controller** is done with its fillers (#51 as PR #65 `123dd1c5`, #57 as PR #66 `b3dae300`, the row
   open for the r0004 leg); no worktree of its remains; it stands by for the owner's sitting.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
