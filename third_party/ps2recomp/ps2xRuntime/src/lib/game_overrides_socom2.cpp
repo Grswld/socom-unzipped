@@ -1312,6 +1312,7 @@ namespace
         {
             std::cout << "[socom2] no function at 0x" << std::hex << addr.oskOpen << std::dec
                       << "; the keyboards open empty (PS2X_SOCOM2_LOGIN_NAME/_PASS ignored)" << std::endl;
+            socom2_persona::onKeyboardObserverWraps(0, 2);   // unwatched: the persona record never infers a saved password
             return;
         }
         // The original is the handler itself; the wrap sits on the handler AND on the thunk the action table
@@ -1330,6 +1331,8 @@ namespace
         }
         std::cout << "[socom2] on-screen keyboard prefill wraps " << installed << " of "
                   << (sizeof(entries) / sizeof(entries[0])) << " entries" << std::endl;
+        // Sprint 16 L1b (#73): the persona record trusts "no password keyboard opened" only with every entry wrapped.
+        socom2_persona::onKeyboardObserverWraps(installed, static_cast<int>(sizeof(entries) / sizeof(entries[0])));
         if (!g_oskPrefillArmed)
         {
             std::cout << "[socom2] on-screen keyboard prefill not armed (neither variable set); the wrap only observes" << std::endl;

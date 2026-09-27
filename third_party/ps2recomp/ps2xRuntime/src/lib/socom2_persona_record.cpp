@@ -39,15 +39,23 @@ namespace socom2_persona
         constexpr std::size_t kResponseMostBytes = 4096;
 
         // The seam's reassembly: a call at counter 0 opens a message on that state (a half one there is dropped);
-        // a later call continues the message open on that state, if any.
+        // a later call continues the message open on that state, if any. A first chunk whose class or type byte is
+        // already not the one this direction listens for, or longer than that message can be, opens nothing: it is
+        // judged in place, before any copy (every message of the session passes here).
         std::vector<uint8_t> *assemble(std::map<uint32_t, std::vector<uint8_t>> &open, uint32_t state, uint32_t counter,
-                                       const uint8_t *data, std::size_t len)
+                                       const uint8_t *data, std::size_t len, uint8_t type, std::size_t most)
         {
             auto it = open.find(state);
             if (counter == 0)
             {
                 // Every rekey zeroes the counter (rc4Init), so this is a message's first chunk: whatever was being
                 // put together on the state is a half message that will never finish.
+                if (data[0] != kClassLobby || (len >= 2 && data[1] != type) || len > most)
+                {
+                    if (it != open.end())
+                        open.erase(it);
+                    return nullptr;
+                }
                 std::vector<uint8_t> &m = open[state];
                 m.assign(data, data + len);
                 return &m;
@@ -63,7 +71,7 @@ namespace socom2_persona
     {
         if (data == nullptr || len != kLoginRequestBytes || data[0] != kClassLobby || data[1] != kTypeAccountLogin)
             return false;
-        out.messageId.assign(reinterpret_cast<const char *>(data + kMessageIdOffset), kMessageIdBytes);
+        out.messageId = field(data, kMessageIdOffset, kMessageIdBytes);
         out.username = field(data, kUsernameOffset, kFieldBytes);
         out.password = field(data, kPasswordOffset, kFieldBytes);
         return true;
@@ -73,7 +81,7 @@ namespace socom2_persona
     {
         if (data == nullptr || len < kLoginResponseMinBytes || data[0] != kClassLobby || data[1] != kTypeAccountLoginResponse)
             return false;
-        out.messageId.assign(reinterpret_cast<const char *>(data + kMessageIdOffset), kMessageIdBytes);
+        out.messageId = field(data, kMessageIdOffset, kMessageIdBytes);
         const uint8_t *s = data + kStatusOffset;
         out.status = static_cast<int32_t>(static_cast<uint32_t>(s[0]) | (static_cast<uint32_t>(s[1]) << 8) |
                                           (static_cast<uint32_t>(s[2]) << 16) | (static_cast<uint32_t>(s[3]) << 24));
@@ -89,9 +97,10 @@ namespace socom2_persona
     {
         if (data == nullptr || len == 0)
             return;
-        std::vector<uint8_t> *m = assemble(m_out, state, counter, data, len);
+        std::vector<uint8_t> *m = assemble(m_out, state, counter, data, len, kTypeAccountLogin, kLoginRequestBytes);
         if (m == nullptr)
             return;
+        m_buffered += len;
         if (!stillWanted(*m, kTypeAccountLogin, kLoginRequestBytes))
         {
             m_out.erase(state);
@@ -109,9 +118,10 @@ namespace socom2_persona
     {
         if (data == nullptr || len == 0)
             return;
-        std::vector<uint8_t> *m = assemble(m_in, state, counter, data, len);
+        std::vector<uint8_t> *m = assemble(m_in, state, counter, data, len, kTypeAccountLoginResponse, kResponseMostBytes);
         if (m == nullptr)
             return;
+        m_buffered += len;
         if (!stillWanted(*m, kTypeAccountLoginResponse, kResponseMostBytes))
         {
             m_in.erase(state);
@@ -135,7 +145,9 @@ namespace socom2_persona
         p.record.name = req.username;
         p.record.server = m_context.server;
         p.record.second = m_context.second;
-        p.record.savedPassword = savedPasswordFor(m_keyboardOpened, req.password);
+        // No observer, no inference: with the keyboard unwatched a typed login looks untyped, and true would drop
+        // a plain password the card does not hold.
+        p.record.savedPassword = m_observerLive && savedPasswordFor(m_keyboardOpened, req.password);
         m_pending = p;   // a retry replaces the one before it: the newest request is the one the server answers
     }
 
@@ -168,10 +180,12 @@ namespace socom2_persona
     namespace
     {
         std::mutex g_mutex;
+        std::unique_ptr<Recorder> g_recorder;
+        int g_wrapped = 0, g_entries = 0;   // the wrap site's count, kept for a recorder made after it reports
 
         Recorder &recorder()
         {
-            static std::unique_ptr<Recorder> r;
+            std::unique_ptr<Recorder> &r = g_recorder;
             if (!r)
             {
                 Context c;
@@ -181,6 +195,7 @@ namespace socom2_persona
                 const char *key = ps2x::knob("PS2X_SOCOM2_RSA_KEY");   // the same test socom2_RsaGenerateKeyPair makes
                 c.second = key != nullptr && (*key == 'b' || *key == 'B' || *key == '1');
                 r = std::make_unique<Recorder>(c);
+                r->keyboardObserverWraps(g_wrapped, g_entries);
             }
             return *r;
         }
@@ -200,6 +215,15 @@ namespace socom2_persona
         if (recorder().commits() != before)
             std::cout << "[socom2] persona record: a login committed to " << PS2Runtime::getIoPaths().mcRoot.filename().string()
                       << "'s ledger" << std::endl;   // never the name or the password
+    }
+
+    void onKeyboardObserverWraps(int wrapped, int entries)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_wrapped = wrapped;
+        g_entries = entries;
+        if (g_recorder)   // never made here: the card root may not be known yet at install time
+            g_recorder->keyboardObserverWraps(wrapped, entries);
     }
 
     void onPasswordKeyboardOpened()

@@ -79,6 +79,7 @@ namespace
         fs::path root = makeCardRoot();
         std::string ledger = launcher::personas::ledgerPathFor((root / "cards" / "player").string() + "/");
         pr::Recorder rec{pr::Context{ledger, "socom.scotho.com", false}, [] { return std::time_t(1790000000); }};
+        Fixture() { rec.keyboardObserverWraps(2, 2); }   // the runner's case: both keyboard entries wrapped
         ~Fixture() { removeCardRoot(root); }
 
         void send(const std::vector<uint8_t> &m, uint32_t counter = 0) { rec.encrypt(kState, counter, m.data(), m.size()); }
@@ -97,8 +98,7 @@ void register_persona_record_tests()
             t.IsTrue(pr::parseLoginRequest(m.data(), m.size(), r), "a login request");
             t.Equals(r.username, std::string("alpha"), "the Username field, to its terminator");
             t.Equals(r.password, std::string("hunter2"), "the Password field");
-            t.Equals(r.messageId.substr(0, 10), std::string("msgid-0001"), "the MessageID");
-            t.Equals(r.messageId.size(), size_t(21), "all 21 bytes of it");
+            t.Equals(r.messageId, std::string("msgid-0001"), "the MessageID, to its terminator (the server reads a C string)");
             const std::string full(32, 'n');
             const std::vector<uint8_t> wide = loginRequest("m", full, "p");
             t.IsTrue(pr::parseLoginRequest(wide.data(), wide.size(), r) && r.username == full, "a name filling its 32 bytes");
@@ -118,7 +118,7 @@ void register_persona_record_tests()
             pr::LoginResponse r;
             t.IsTrue(pr::parseLoginResponse(ok.data(), ok.size(), r), "a login response");
             t.Equals(r.status, int32_t(0), "success");
-            t.Equals(r.messageId.substr(0, 10), std::string("msgid-0001"), "its MessageID");
+            t.Equals(r.messageId, std::string("msgid-0001"), "its MessageID, to its terminator");
             const std::vector<uint8_t> refused = loginResponse("msgid-0001", -1003);
             t.IsTrue(pr::parseLoginResponse(refused.data(), refused.size(), r) && r.status == -1003, "a refusal's status");
             const std::vector<uint8_t> other = loginResponse("msgid-0001", 0, 0x0A);
@@ -194,6 +194,78 @@ void register_persona_record_tests()
             t.IsTrue(again.size() == 1 && again[0].savedPassword, "then true: the card holds it");
             f.send(loginRequest("msgid-0004", "alpha", ""));   // CONNECT with an empty password reaches the wire
             t.IsTrue(f.rec.pending().has_value() && !f.rec.pending()->record.savedPassword, "an empty password is false");
+        });
+
+        tc.Run("the MessageID is a C string (RED first): garbage after the request's NUL still commits on the server's zero-padded answer", [](TestCase &t)
+        {
+            // MessageId.Deserialize reads to the NUL and Serialize pads with zeros, so the answer never echoes what
+            // the game left after its terminator.
+            Fixture f;
+            f.send(loginRequest(std::string("msgid-0001\0\xAA\xBB\x5A\x01\xFF", 16), "alpha", "hunter2"));
+            t.IsTrue(f.rec.pending().has_value(), "the request is held pending");
+            f.receive(loginResponse("msgid-0001", 0));
+            t.Equals(f.rec.commits(), 1, "the zero-padded answer matches it and commits");
+            t.Equals(ledgerAt(f.ledger).size(), size_t(1), "one record");
+            f.send(loginRequest("msgid-0002", "alpha", "hunter2"));
+            f.receive(loginResponse(std::string("msgid-0002\0\x33", 12), -1003));
+            t.Equals(f.rec.commits(), 1, "bytes after the answer's NUL are ignored too: this refusal is matched and drops it");
+            t.IsFalse(f.rec.pending().has_value(), "dropped");
+            f.send(loginRequest("msgid-0003", "alpha", "hunter2"));
+            f.receive(loginResponse("msgid-00031", 0));
+            t.IsTrue(f.rec.pending().has_value() && f.rec.commits() == 1, "a longer MessageID is another message's");
+        });
+
+        tc.Run("savedPassword (RED first): false, never true, while the keyboard observer is not live (no wrap, half a wrap)", [](TestCase &t)
+        {
+            Fixture f;
+            pr::Recorder cold{pr::Context{f.ledger, "socom.scotho.com", false}, [] { return std::time_t(1790000000); }};
+            const std::vector<uint8_t> req = loginRequest("msgid-0001", "alpha", "hunter2");
+            cold.encrypt(kState, 0, req.data(), req.size());
+            t.IsFalse(cold.observerLive(), "never told: not live");
+            t.IsTrue(cold.pending().has_value() && !cold.pending()->record.savedPassword, "no observer: false, though nothing was seen typed");
+            cold.keyboardObserverWraps(0, 2);   // oskOpen is not a function
+            cold.encrypt(kState, 0, req.data(), req.size());
+            t.IsTrue(cold.pending().has_value() && !cold.pending()->record.savedPassword, "no entry wrapped: false");
+            cold.keyboardObserverWraps(1, 2);   // the handler alone: the thunk the action table calls is unwatched
+            cold.encrypt(kState, 0, req.data(), req.size());
+            t.IsFalse(cold.observerLive(), "one of two is not live");
+            t.IsTrue(cold.pending().has_value() && !cold.pending()->record.savedPassword, "half a wrap: false");
+            const std::vector<uint8_t> res = loginResponse("msgid-0001", 0);
+            cold.decrypt(kState, 0, res.data(), res.size());
+            const auto rows = ledgerAt(f.ledger);
+            t.IsTrue(rows.size() == 1 && !rows[0].savedPassword, "committed false: the launcher keeps the plain password");
+            cold.keyboardObserverWraps(2, 2);
+            t.IsTrue(cold.observerLive(), "both entries: live");
+            cold.encrypt(kState, 0, req.data(), req.size());
+            t.IsTrue(cold.pending().has_value() && cold.pending()->record.savedPassword, "and only then the inference runs");
+        });
+
+        tc.Run("reassembly (RED first): a counter-0 message that is not the lobby login copies nothing, either direction", [](TestCase &t)
+        {
+            Fixture f;
+            std::vector<uint8_t> other(600, 0x5Au);
+            other[0] = 0x02;   // another class
+            f.rec.encrypt(kState, 0, other.data(), other.size());
+            f.rec.decrypt(kState + 0x200u, 0, other.data(), other.size());
+            other[0] = 0x01;
+            other[1] = 0x0A;   // the lobby class, another type
+            f.rec.encrypt(kState, 0, other.data(), other.size());
+            f.rec.decrypt(kState + 0x200u, 0, other.data(), other.size());
+            t.Equals(f.rec.bufferedBytes(), size_t(0), "the class and type bytes are read before any copy");
+            other[1] = 0x07;   // the login's class and type, but longer than a login can be
+            f.rec.encrypt(kState, 0, other.data(), other.size());
+            t.Equals(f.rec.bufferedBytes(), size_t(0), "nor a first chunk past the message's size");
+            const std::vector<uint8_t> m = loginRequest("msgid-0001", "alpha", "hunter2");
+            f.rec.encrypt(kState, 0, m.data(), 1);   // one byte: the type is still to come
+            f.rec.encrypt(kState, 1, m.data() + 1, 103);
+            t.Equals(f.rec.bufferedBytes(), size_t(104), "the login itself is put together");
+            t.IsTrue(f.rec.pending().has_value(), "and held");
+            const std::vector<uint8_t> m2 = loginRequest("msgid-0002", "alpha", "hunter2");
+            f.rec.encrypt(kState, 0, m2.data(), 50);
+            f.rec.encrypt(kState, 0, other.data(), other.size());   // a stranger opens on that state
+            f.rec.encrypt(kState, 50, m2.data() + 50, 54);
+            t.IsTrue(f.rec.pending().has_value() && f.rec.pending()->messageId == "msgid-0001" && f.rec.bufferedBytes() == 154,
+                     "the stranger still drops the half message open there");
         });
 
         tc.Run("reassembly (RED first): 50 + 54 bytes on one RC4 state after a rekey are one pending record", [](TestCase &t)
