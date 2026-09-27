@@ -8,6 +8,8 @@ MEAN, held by tests rather than by a reading of the script (audio-out fix round 
     pid -- otherwise the recorder's own session (whose loopback stream reads the endpoint's whole mix) reads as
     a contaminant and the owner throws away a good capture, or worse, trusts a word that was never earned;
   * the tools root may contain a space;
+  * the capture's offset is on the recorder's first-packet clock (tools_py/parity/capture_offset.py), not the
+    moment the script started the recorder, and capture.txt says which clock it was (LATER row 37);
   * the wrapper the owner is asked to run is tracked, not left in an ignored logs/ inside a worktree the merge
     will remove.
 
@@ -116,6 +118,32 @@ class ToolsRootTest(unittest.TestCase):
             with open(os.path.join(ROOT, "scripts", "parity", name), encoding="utf-8") as fh:
                 self.assertEqual(fh.read().count("$PYA"), 0,
                                  "%s: the unquoted PYA variable is gone; the pya function replaces it" % name)
+
+
+class CaptureOffsetClockTest(unittest.TestCase):
+    def test_the_offset_comes_from_the_capture_offset_module_and_capture_txt_names_its_clock(self):
+        """LATER row 37: `offset=` was `.drive_started - .capture_started`, but the WAV's frame 0 is the recorder's
+        first packet -- 1.93 s used where 1.58 s was true on s16_v0_t1b_dump, 5.23 s for 4.41 s on s16_v0_t1b.
+        The script's line must be the module's, and that very line, run against those stamps, must yield both."""
+        with open(SCRIPT, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertFalse(".capture_started').read()" in text, "the inline two-stamp subtraction is gone")
+        lines = [l.strip() for l in text.splitlines() if "tools_py.parity.capture_offset" in l]
+        self.assertEqual(len(lines), 1, "one line computes the offset: %r" % lines)
+        self.assertTrue(lines[0].startswith("read -r offset offset_from "), lines[0])
+        self.assertIn('"$OUT"', lines[0])
+        written = [l for l in text.splitlines() if '> "$OUT/capture.txt"' in l]
+        self.assertEqual(len(written), 1)
+        self.assertIn("offset=${offset}s offset_from=$offset_from ", written[0],
+                      "capture.txt says which clock the offset is on, right after it")
+        out = tempfile.mkdtemp(prefix="audio_offset_")
+        for name, body in ((".capture_started", "1790513721.176546000\n"),
+                           (".drive_started", "1790513723.110032500\n"),
+                           ("loopback.log", "start_epoch=1790513721.474\npid=51000\nfirst_packet_epoch=1790513721.526\n")):
+            with open(os.path.join(out, name), "w", encoding="utf-8") as fh:
+                fh.write(body)
+        got = sh('OUT="%s"; %s; printf "%%s|%%s\\n" "$offset" "$offset_from"' % (out.replace("\\", "/"), lines[0]))
+        self.assertEqual(got.strip(), "1.584|first_packet", "the line as the script runs it, not as it reads")
 
 
 class DumpCapTest(unittest.TestCase):
