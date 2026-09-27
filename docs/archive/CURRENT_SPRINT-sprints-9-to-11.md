@@ -100,7 +100,7 @@ result:
 | # | Run | Verdict |
 |---|---|---|
 | 1 | the endpoint A/B, first attempt | **rc=5, refused to score** -- the per-app routing fix was not in yet, so the capture was still on the JBL and `endpoint_ab.sh` did what it was built to do rather than score an un-rerouted run |
-| 2 | W10 launch 1 (virgin card, persona created) | **rc=0** -- persona `w10test` created on an empty card, SAVE PASSWORD answered LEFT and read back yes, `LOBBY class=ok`, the card left holding `BASCUS-97275SOCOMII/SaveGame0-6` |
+| 2 | W10 launch 1 (virgin card, persona created) | **rc=0** -- persona `w10test` created on an empty card, SAVE PASSWORD answered LEFT and read back yes, `LOBBY class=ok`, the card left holding `BASCUS-97275SOCOMII/SaveGame0-6`  *(superseded 2026-09-27: the persona was created as `w2-test`, not `w10test` -- the keyboard walk's digit row, `OSK_ROW_ORIGIN`)* |
 | 3 | W10 launch 2 (nothing typed) | **rc=4, `LOBBY-FAIL login:saved-password:empty`** -- the persona survived the restart, the saved password did not |
 | 4 | W7, the walking mission capture | **rc=0** -- 47 DEVICE dips over 21 minutes at the JBL (peak 31 in one minute), absent from the mixer's dump: the same lead, superseded hours later by the A/B |
 | 5 | W6, the revalidate A/B | **rc=0, NOT REPRODUCED** -- ten identical, clean popups across both twelve-minute walks, the owner's "Headquarters has provided you with some HELP" among them |
@@ -325,6 +325,7 @@ click away on the VIDEO page. Done: `launcher_config.h`, three launcher tests, t
 **R237, REWRITTEN 2026-09-23: the prefilled login STAYS in the player path, because the experiment the ruling set
 itself failed.** W10 ran overnight (chain 1, 01:43Z and 01:44Z) and split the question in two. Launch 1 booted from an
 empty card, created persona `w10test` with the SAVE PASSWORD widget answered LEFT (read back as yes), reached
+  > Superseded 2026-09-27 15:58Z (the Sprint 16 L1b driver review): the persona was created as `w2-test`, not `w10test` -- the driver's on-screen-keyboard walk landed one key right on the digit row (`OSK_ROW_ORIGIN`, merged 2026-09-27); the frame `logs/parity/w10_virgin_a/03_name.png` shows it.
 `LOBBY class=ok` and left the card holding `BASCUS-97275SOCOMII/SaveGame0-6` -- rc=0, `logs/parity/w10_virgin_a`.
 Launch 2 booted from that same card with **nothing typed** and failed `LOBBY-FAIL login:saved-password:empty` -- rc=4,
 `logs/parity/w10_virgin_b`. **The persona survives a restart on a virgin card; the saved password does not.** The
