@@ -24,7 +24,8 @@ spec:         docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-de
 plans:        docs/superpowers/plans/2026-09-26-sprint-15.md (the task table, the Log newest first, the rulings R282-R289
               from the global counter; the owner's sitting of 2026-09-26 holds R290-R297 in
               docs/superpowers/plans/2026-09-26-owner-sitting.md). The Sprint 14 plan (R269-R281) is closed, listed in its
-              block below; the Sprint 13 plan (S13-R1..R14) too; Sprints 12 and 11 are in
+              block below; the Sprint 13 plan (S13-R1..R14) too, its block in
+              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 are in
               docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
 next sprint:  Sprint 16 "ten minutes to the server": docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md
@@ -40,8 +41,9 @@ rulings:      indexed in docs/RULINGS.md (generated: every ruling with its statu
 baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gates (Sprint 13,
-              2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gate: the Sprint 14
+              close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
+              Sprint 14 plan's Log, 16:20Z); before it (Sprint 13, 2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
               same exe (23:51Z), `s13_proof3_gate` 3/3 (r0001, 20:54Z), `s13_names_r0004_gate` 3/3 PINS MATCH (r0004,
               d027546d...); the plan's Log has each; audio parity
               `s9_q1_parity_ours2` 31/48 (2026-09-20, unchanged since)
@@ -109,38 +111,7 @@ against a planted violation before it counts as done.** The bar is the spec's se
 their rulings R269-R277 are the plan's "Owner decisions" and "Rulings" sections. The plan's Log is the live state;
 this block gains its table at the close.
 
-## Sprint 13 — CLOSED 2026-09-26 (merged to `main` as `v0.13.0` at `6a82caaa`, PR #61, 2026-09-26 ~05:00Z after the owner granted the gh token the workflow scope; the record of the sprint is the block below)
-
-**Close-out (the PR body).** Opened 2026-09-25 08:40Z, closed 2026-09-26 04:17Z: 285 commits, 43 agent merges, every task
-reviewed by a fresh agent. Closed #27, #30, #31, #33, #35, #36, #37, #38, #39, #40, #45, #46, #48; opened #45–#48, #51–#60;
-carried #28, #32, #34, #59 once to the backlog and #25, #26, #42 to the owner (S13-R14, HUMAN_TASKS O16). The gate
-`s13_merged_gate` 3/3 on the final exe `0633c484`; proofs 1–4 green on r0001 and r0004; CI green. Found unplanned: a
-server-to-client memory write refused on the client (U6, SECURITY); the Sprint 11 chat bound is not on the game-lobby
-path (O2, SECURITY 'partly fixed', #26 restated); a stub's table slot can hold an owner's resume entry (#60); the
-loop lock's queue proven by a night hand-off and a first-time scheduled ladder. Not done on purpose: V5's audio steps
-(the client muted), O1's console-peer leg (the owner's hands). Rulings S13-R1..R14. The DOC_MAINTENANCE §5 review
-fixed 24 stale claims across nine documents and three KNOWN rows; the §7 stack read found the audit clean, relabelled
-two issues, rewrote two bars, and placed three evidence notes. The Outcome in the plan has the bar row by row.
-
-**As it stood while open:**
-
-Opened by the local controller on the owner's instruction of the same night ("audit the entire structure of the
-project, compile a master list, clean up docs as you go, and start your own sprint 13"). The audit is
-`docs/audits/2026-09-25-project-audit.md` with six reports beside it; the spec is
-`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`. Eight milestones in the order the owner
-meets them — **V** the player's first ten minutes (#30, #32, #31, a frame-time line, the music #42/#28, #27, #34, the
-launcher's wording), **R** the record made true and small (the archive split and R268's ceilings, DEVELOPING as
-current truth, the ruling record, HUMAN_TASKS reduced to the owner's sitting, KNOWN in full, one home for the carry),
-**H** the harness pays its debts (the lock's queue #36/#35/#37, #45, #38, #46, #41, the per-revision literals, the fast
-subset), **C** the code's hygiene and supply chain (CI compiles the overrides, the throwing stubs, the after-return
-trap, FFmpeg with a hash, the dead configuration), **U** upstream and outside (research/63's picks, path containment,
-#253's emitter change, a server-to-client record refused), **S** the stranger, **N** the naming follow-ups, **O**
-online and the box. The bar: nothing leaves the sprint carried twice without a ruling; CI green with the overrides
-compiled; the record under its ceilings; the first ten minutes measured; the gate 3/3 plus one ladder run and one
-mixed leg on the sprint's final exe. The plan's Log is the live state; this block gains its table at the close.
-
-**Owner decisions:** `docs/HUMAN_TASKS.md` carries them, O1–O15 (reduced by Task R4, `4adbf2bc`, `1ed975a4`), with
-the plan's D1–D2; each has the default the loop is on.
+*Sprint 13's CLOSED block moved verbatim on 2026-09-27 (the Sprint 15 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprint-13.md`.*
 
 *Sprint 12's and Sprint 11's CLOSED blocks -- with Sprint 11's rulings ledger R245-R263 and the table of Sprint 12's `S12-Rn` rulings that touch Sprint 11 -- moved verbatim on 2026-09-26 (the Sprint 14 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`.*
 
@@ -262,4 +233,4 @@ and R237's premise was reversed by W10 on 2026-09-23. **Collisions: none. Missin
 what was then `docs/HANDOFF.md` §5, the one home of the rules (since 2026-09-26 the rules are HANDOFF §4, one
 line each, and their reasons `docs/archive/HANDOFF-to-2026-09-26.md` §5), and still said to push to `sprint-9` (the 2026-09-25 audit, D21).*
 
-*Sprints 12 and 11's CLOSED blocks: `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`. Sprints 9 to 11: `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`. Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in either is an instruction).*
+*Sprint 13's CLOSED block: `docs/archive/CURRENT_SPRINT-closed-sprint-13.md`. Sprints 12 and 11's CLOSED blocks: `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`. Sprints 9 to 11: `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`. Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in either is an instruction).*
