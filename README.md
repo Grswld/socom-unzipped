@@ -1,7 +1,6 @@
 # SOCOM Unzipped
 
-**SOCOM II: U.S. Navy SEALs, statically recompiled from your own disc into a native PC program, with online play on a
-hosted server.**
+**SOCOM II: U.S. Navy SEALs, statically recompiled from your own disc into a native PC program, with online play.**
 
 [![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
 [![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
@@ -14,13 +13,14 @@ itself is checked on the maintainer's machine, with a disc.
 >
 > Online play is at your own risk. The game's network code is twenty years old, recompiled as it was, and it runs as
 > a native program on your PC. Some known problems have been addressed and others have not; what is known, and what
-> to do if you find something, is in `SECURITY.md`. Play only with people you trust, on the project's server or one
-> you run yourself, never with a build you did not compile or verify, and never against a community server.
+> to do if you find something, is in `SECURITY.md`. Play only with people you trust, on the project's test server or
+> one you run yourself, never with a build you did not compile or verify, and not yet against a community server: the
+> launcher does not offer one until it can install the r0004 update (see [Status](#status)).
 
 > **Early stage.** This is a working prototype, not a finished port. It boots, plays the menus and the missions, and
-> two copies of the game have finished online rounds against each other on the hosted server, driven by the project's
-> own test harness on one machine. No two people have played each other yet, audio and some maps still have rough
-> edges, and things break between builds. Read [Status](#status) before you expect anything.
+> two copies of the game have finished online rounds against each other on the project's test server, driven by the
+> project's own test harness on one machine. No two people have played each other yet, audio still has rough edges,
+> and things break between builds. Read [Status](#status) before you expect anything.
 
 ## What it is, and what it is not
 
@@ -33,20 +33,28 @@ itself is checked on the maintainer's machine, with a disc.
   not the executable, not the recompiled C++, not textures, audio, movies or saves -- the recompiled program is built
   by each developer from their own disc. A contribution that adds any of it is closed unread (`CONTRIBUTING.md`); the
   release will carry the program, never the disc's own files (#70).
-- **Online play on a server we host.** The game's original network (DNAS / Medius) is gone; this project runs a
-  [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server) configured for SOCOM II and points
-  the game at it. The launcher's default server is `socom.scotho.com`.
+- **Online play, headed for the community's servers.** The game's original network (DNAS / Medius) is gone. The
+  community runs its own servers on the game's later r0004 revision, and that is where players will play once the
+  launcher can install that update on your machine (#71). Until then the project runs a
+  [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server) of its own as a test box, so
+  builds are checked against something known; the launcher points at it by default (`socom.scotho.com`).
 - **Not affiliated** with Sony Interactive Entertainment, Zipper Interactive, or the SOCOM community servers. SOCOM is
   their trademark; this is a fan project for people who own the disc.
 
 ## Status
 
-As of 2026-09-26 the game boots from your own disc to the title, through the menus and into the missions, with a pad
-(the keyboard walks the menus), and renders through OpenGL at up to four times the console's resolution. Online login, the lobby and
-full rounds work on the hosted server, so far only between copies of the game driven by the test harness on one
-machine; a build of the community's r0004 revision plays a round too. Not yet: the console's full frame rate in
-missions, a finished Linux client, and any disc other than the NTSC r0001 release.
-The game does not send your voice yet.
+As of 2026-09-27 the game boots from your own disc to the title, through the menus and into the missions, with a pad
+(the keyboard walks the menus), and renders through OpenGL at up to four times the console's resolution. Online login,
+the lobby and full rounds work on the project's test server, so far only between copies of the game driven by the test
+harness on one machine; a build of the community's r0004 revision passes the same checks and plays a round there too.
+The launcher lists the personas your card has made, from a record the game itself writes on each login. Version
+0.15.0 is the latest; the open sprint is working towards a program-only download that builds the game's image from
+your disc on first run, the launcher installing the community's r0004 update itself, and a frame-rate bar. Not yet:
+playing on a community server (the launcher's community preset stays greyed until the update installs), the console's
+full frame rate in missions (about 27 ms a frame on a quiet machine against the console's 16.7), a finished Linux
+client (it boots in a virtual machine, never yet on a real GPU), and any disc other than the NTSC r0001 release. The
+mission's ambient sound bed plays about 11 dB too quiet and the music still drops out in the menus. The game does not
+send your voice yet.
 
 The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`.
 

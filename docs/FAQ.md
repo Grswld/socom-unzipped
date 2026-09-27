@@ -257,23 +257,23 @@ shifts the second copy's ports (to 3660/3661) and gives it its own card director
 
 ### Can I play on PSRewired or another community server?
 
-**No, and please do not try.**
-
-Two separate reasons, and each is enough on its own:
+**Not yet, and please do not try by hand.** That is where play is headed: the community's servers are where players
+will play, and the project's own server is a test box for checking builds. But two things stand in the way today,
+and each is enough on its own:
 
 1. **It would not work.** The community servers run SOCOM II **r0004** — a different code package from the r0001
    disc this client is built from. That is why the launcher draws the community preset but refuses to select it,
    with the line *"needs the r0004 game update -- planned"*. The launcher will fetch the community package itself
-   (#71); until then, please do not point the game at a server that is not yours or the project's. Note also
-   that r0001 and r0004 clients **cannot join each other's games**: the client's own token filter bounces the join
-   silently.
+   and build the r0004 program on your machine (#71); until that lands, please do not point the game at a server
+   that is not yours or the project's. Note also that r0001 and r0004 clients **cannot join each other's games**:
+   the client's own token filter bounces the join silently.
 2. **This client's network code has not been audited** — see `../SECURITY.md`.
 
 SOCOM Unzipped is **not affiliated with, endorsed by, or connected to** the SOCOM community servers or their
 operators. The preset row exists because a player would otherwise wonder; it is not an arrangement with anybody.
 
-The project runs its own Horizon server and the launcher already points at it. That is the supported way to play
-online.
+Until then the project's own Horizon server, which the launcher already points at, is the only server to play on
+with this build.
 
 ---
 
