@@ -174,7 +174,7 @@ exit code 75; ruling S13-R9 made it a notice, so it no longer hides a 65 or a 72
 Because it is not ours to give. SOCOM II is still the property of its rights holders. The **repository** holds none
 of it: no game code, no recompiled C++, no assets — a pull request containing any of it is closed unread
 (`../CONTRIBUTING.md`). The **download** will hold the program (`socom2.exe`) and never the disc's own files: your
-disc supplies those. Once issue #70 lands, the program image is built from your disc on first run (today's tester
+disc supplies those. Once #70 lands, the program image is built from your disc on first run (today's tester
 archive still carries it).
 
 So you need your own disc, and your own dump of it. This page will not tell you where to download one.
@@ -297,7 +297,7 @@ answer — press **SAVE DIAGNOSTICS** and send the zip.
 ### The game won't remember my online password
 
 It does. Tick **SAVE PASSWORD = YES** before **CONNECT**, and the persona and password come back from the memory
-card on the next start (`KNOWN.md` §3, issue #27).
+card on the next start (`KNOWN.md` §3, issue #27 (closed)).
 
 ### The music cuts out, wobbles, or comes and goes
 
