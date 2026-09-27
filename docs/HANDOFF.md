@@ -10,11 +10,11 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-27 13:55Z, LATEST) -- Sprint 16 is OPEN on `sprint-16` at `5f6a104e`, `main` at
-  `a3e1c5db` (PRs #82, #85–#90). V0, R1a, R2a, R3a, R5, L1a, L1b (code), L2, X1, X3, X5 done. In flight: R1b
-  (socom-pc-42, the helper's link fix owed), the batch-2 chain on the main tree (`logs/s16_b2_chain.marker`; no
-  fast-forward until it ends), LATER row 37 in `wt-s16-l37`. Next on the chain's exe: L1b Step 0, F0, R1b's chain, X2.
-  The plan `docs/superpowers/plans/2026-09-27-sprint-16.md` (its Log) is the live state.
+- **Where the loop is now (2026-09-27 20:15Z, LATEST) -- Sprint 16 is OPEN on `sprint-16`; `main` at `a3e1c5db`. Done:
+  V0, R1a, R2a, R3a (the player kind), R5, L1a, L1b (#73 closed: the ledger written on a real login), L2, F0
+  (research/73), X1, X3, X5. In flight: R1b (the callee closure's regeneration chain; round 4 for the fixpoint), F2
+  (reviewed; its C++ proof build queued; then a batch-4 chain and the A/B). The batch-3 archive is the owner's
+  PLAYTEST build. Next: R1b's GREEN and merge, F2's merge, R3b, R2. The plan's Log is the live state.
 - **Next free ruling number: R318** (R299-R317 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)

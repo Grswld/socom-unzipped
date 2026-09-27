@@ -177,3 +177,11 @@ eleven in the order they matter. Nothing was dropped.
   Sprint 15 legs, one chain at the end of this block, the desk idle), then R1a's spike and F0's window; L2 (#74) is PR
   #82 in a fix round, L1a's note in one, R3a and X1 in flight. Cloud sessions are allowed for lock-free work (R312).
   The plan `docs/superpowers/plans/2026-09-27-sprint-16.md` (its Log) is the live state.
+
+## Moved 2026-09-27 20:15Z by the Sprint 16 controller (HANDOFF §2's one "now" bullet, verbatim)
+
+- **Where the loop is now (2026-09-27 13:55Z, LATEST) -- Sprint 16 is OPEN on `sprint-16` at `5f6a104e`, `main` at
+  `a3e1c5db` (PRs #82, #85–#90). V0, R1a, R2a, R3a, R5, L1a, L1b (code), L2, X1, X3, X5 done. In flight: R1b
+  (socom-pc-42, the helper's link fix owed), the batch-2 chain on the main tree (`logs/s16_b2_chain.marker`; no
+  fast-forward until it ends), LATER row 37 in `wt-s16-l37`. Next on the chain's exe: L1b Step 0, F0, R1b's chain, X2.
+  The plan `docs/superpowers/plans/2026-09-27-sprint-16.md` (its Log) is the live state.

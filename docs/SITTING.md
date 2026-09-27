@@ -106,8 +106,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 The build `docs/PLAYTEST.md` names, to play and to check against:
 
 ```
-build:    2026-09-27T14:25:29Z   commit 6d78365c77bb (sprint-16)
+build:    2026-09-27T19:56:34Z   commit aa030d1aad6e (sprint-16)
 archive:  socom2-portable.zip   [player]   (dist-release/portable/socom2-portable.zip)
-sha256: 58f9c87b65c24224b05073c28d45fe52a06c0e6c6efcde063533c0b203235a2e
-exe:      socom2.exe sha256: a706d8b821ef750c4b71049f8619f9543c95d6efa058133fb729d4c01be9745f
+sha256: 655d984f35b05e2152219fb28934dab452c8b17df259598f820473fb32e70323
+exe:      socom2.exe sha256: cf29784c7cf24ed73e962fd055a86631c8a3c96dac385e199aea78fcc82280cc
 ```
