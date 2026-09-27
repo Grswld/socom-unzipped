@@ -16,6 +16,7 @@ add_library(ps2x_launcher_core STATIC
     # Issue #74: the tooltips -- the mechanism (tips.cpp) and each page's own table, pure so a test walks a page's
     # focus list and holds every control to a line.
     src/ui/tips.cpp
+    src/ui/page_controller_tips.cpp
     # Sprint 10 Q4: the menu cues out of the player's own disc -- the HUDUI bank read through iso9660::Reader,
     # rendered by the runtime's 989snd mixer (ps2x_snd989), cached as WAV. Pure; main.cpp plays the files.
     src/menu_sounds.cpp

@@ -38,6 +38,7 @@
 #include "ui/pad_render.h"
 #include "ui/pages.h"
 #include "ui/theme.h"
+#include "ui/tips.h"
 #include "ui/widgets.h"
 
 #include "raylib.h"
@@ -640,10 +641,20 @@ namespace
                                    : rectOf(nodes, barLaunchId(app.nav.page));
         const float statusX = metrics::margin + 130.0f;
         const float promptsX = launch.x - 330.0f;
+        // Issue #74: the focused control's one-line tooltip -- the same line the hover box shows, here so a
+        // keyboard or a pad gets it too. It takes the slot's top line and the status steps under it; not on the
+        // rail, not while typing, not while the pad is being listened to (the prompts are the whole story then).
+        const bool quiet = app.nav.onRail() || !app.activeField.empty() || app.bind.state == BindFlow::State::Listening;
+        const std::string tip =
+            quiet ? std::string() : tipFor(app.nav.page, app.nav.focus, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
+        const float room = promptsX - statusX - 24.0f;
+        if (!tip.empty())
+            text(ctx, ellipsizeEnd(ctx, tip, room, 15.0f).c_str(), Vec2{statusX, bar.y + 9.0f}, 15.0f, theme::text);
         if (!app.status.empty())
         {
-            const std::string shown = ellipsizeEnd(ctx, app.status, promptsX - statusX - 24.0f, 16.0f);
-            text(ctx, shown.c_str(), Vec2{statusX, bar.y + 20.0f}, 16.0f, theme::dim);
+            const float size = tip.empty() ? 16.0f : 14.0f;
+            const std::string shown = ellipsizeEnd(ctx, app.status, room, size);
+            text(ctx, shown.c_str(), Vec2{statusX, bar.y + (tip.empty() ? 20.0f : 30.0f)}, size, theme::dim);
         }
         drawPrompts(ctx, app, promptsX, bar.y + 12.0f, 26.0f);
 
@@ -662,6 +673,26 @@ namespace
         }
         else if (button(ctx, launch, app.running ? "RUNNING" : "LAUNCH", barLaunchId(app.nav.page), blocked.empty(), true))
             app.requestLaunch = true;
+    }
+
+    // Issue #74: the hover box -- the control's one line, beside it, once the mouse has rested there for
+    // kTipDelaySeconds. Drawn last in the frame, over the focus ring, with the page's own panel and gold rule.
+    void drawHoverTip(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes, const ui::HoverTip &hover)
+    {
+        using namespace ui;
+        if (!hover.shows(ctx.time))
+            return;
+        const std::string line = tipFor(app.nav.page, hover.id, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
+        const Rect control = rectOf(nodes, hover.id);
+        if (line.empty() || !drawable(control))
+            return;
+        const float size = metrics::captionSize - 1.0f;
+        const float maxW = app.frame.window.w - 32.0f;
+        const std::string shown = ellipsizeEnd(ctx, line, maxW - 24.0f, size);
+        const Rect box = tipBox(control, textWidth(ctx, shown.c_str(), size) + 24.0f, size * 1.12f + 14.0f, app.frame.window);
+        fillRect(ctx, box, theme::alpha(theme::panelHi, 245));
+        strokeRect(ctx, box, theme::gold, 1.5f);
+        text(ctx, shown.c_str(), Vec2{box.x + 12.0f, box.y + 7.0f}, size, theme::text);
     }
 
     // The content panel and its title strip: the page's name, then either the page's one-line subtitle or --
@@ -1150,6 +1181,7 @@ int main(int argc, char **argv)
     nav.focus = ui::railId(ui::Page::Play);
 
     ui::FocusRing ring;
+    ui::HoverTip hoverTip;   // issue #74: which control the mouse rests on, and since when
     float lastScale = -1.0f;
     bool quitRequested = false;
     bool dragging = false;
@@ -1692,6 +1724,13 @@ int main(int argc, char **argv)
         ring.update(graph, nav.focus, GetFrameTime());
         if (ring.visible)
             ui::focusRing(ctx, ring.shown);
+        // Issue #74: only a mouse that has moved hovers (ctx.mouseMoved is sticky, as hovered() reads it), never
+        // under --screenshot, and not while the pad is being listened to.
+        hoverTip.update(!app.fake && ctx.mouseMoved && app.bind.state != ui::BindFlow::State::Listening
+                            ? ui::nodeAt(nodes, ctx.mouse)
+                            : std::string(),
+                        ctx.time);
+        drawHoverTip(ctx, app, nodes, hoverTip);
         EndDrawing();
 
         // ---- Sprint 10 Q4: the cues, from what the frame did. One per frame, in this order: a refused LAUNCH

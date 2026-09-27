@@ -26,17 +26,28 @@ namespace ui
         }
     }
 
+    // One table per page. CONTROLLER's is page_controller_tips.cpp; the other pages have none yet (issue #74 asked
+    // for CONTROLLER first), and an empty table is the whole of what a page without lines costs.
     TipTable tipTable(Page page)
     {
-        (void)page;
-        return TipTable{};
+        switch (page)
+        {
+        case Page::Controller: return controllerTips();
+        default: return TipTable{};
+        }
     }
 
     std::string tipFor(Page page, const std::string &id, const TipState &state)
     {
         if (id.empty())
             return std::string();
-        return lookUp(tipTable(page), id, state);
+        const std::string line = lookUp(tipTable(page), id, state);
+        if (!line.empty())
+            return line;
+        // The bottom bar's LAUNCH is on every page but PLAY; main.cpp draws it, so its line is the bar's own.
+        if (id.rfind("bar.launch.", 0) == 0)
+            return "LAUNCH: starts the game with these settings. Greyed until your disc image is verified.";
+        return std::string();
     }
 
     void HoverTip::update(const std::string &over, double now)
