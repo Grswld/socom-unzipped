@@ -6606,6 +6606,17 @@ void register_ps2_gs_tests()
                     readbacksMidPage = after.readbacks - beforeMid.readbacks;
                     rtDirectMidPage = after.rtDirect - beforeMid.rtDirect;
                 }
+                // 4. The frame drawn once more, the same two sprites. The third draw's read-back put the frame into the
+                //    SHADOW and cleared its GPU-row window (downloadRenderTargetToShadow, `rt.gpuRows = false`), and the
+                //    guest-visible read-back below copies only that window into the game's VRAM
+                //    (downloadRenderTargetToCpu: yEnd = gpuRows ? ... : 0) -- read then, the frame's own pixels were 0
+                //    (the F2 review's C++ proof, 21:52Z). Re-drawing re-arms the window over the whole frame; the
+                //    picture is unchanged.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kFrameFbp, 10u));
+                gs.writeRegister(GS_REG_SCISSOR_1, scissor(639u, 447u));
+                flatSprite(kB, 0u, 0u, 640u, 448u);
+                flatSprite(kA, 320u, 224u, 640u, 448u);
+                gs.hostRenderFrame();
                 // The pictures, through the guest-visible read-back (Sync(DebugReadback) + SnapshotVram, as the console
                 // replay reads its frame). fbp is a PAGE here: the Frame helper converts it to the block the layout wants.
                 gs.refreshDisplaySnapshot();
@@ -6629,6 +6640,13 @@ void register_ps2_gs_tests()
                 t.Skip("the GL backend latched unavailable on this host (no OpenGL 3.3)");
                 return;
             }
+            // The reads and the counts, always (the F2 review asked for the coordinates and values on a failure).
+            std::printf("f2 planted scene: frame(400,300)=%08x frame(100,100)=%08x copy(200,150)=%08x copy(50,50)=%08x"
+                        " page-as-block(0x%x,bw5,200,150)=%08x [A=%08x B=%08x] copy: readbacks=%llu rt_direct=%llu"
+                        " mid-page TBP0: readbacks=%llu rt_direct=%llu\n",
+                        frameBottomRight, frameTopLeft, copiedBottomRight, copiedTopLeft, kCopyFbp, pageAsBlock, kA, kB,
+                        (unsigned long long)readbacks, (unsigned long long)rtDirect,
+                        (unsigned long long)readbacksMidPage, (unsigned long long)rtDirectMidPage);
             t.Equals(frameBottomRight, kA, "the frame's bottom-right quadrant is A");
             t.Equals(frameTopLeft, kB, "the rest of the frame is B");
             t.Equals(copiedBottomRight, kA, "the copy's bottom-right quadrant is the frame's: A, whichever path served the texture");
