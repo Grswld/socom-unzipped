@@ -1562,20 +1562,30 @@ void register_socom2_audio_tests()
         //   2 left after 25 ticks and 0 (clamped) at tick 26.
         // Ours interpolated in doubles and moved the level every tick until tick 360. The first step's timing (tick d,
         // not tick 1) is the effect counter's reading: armed at d, decremented before the zero test.
+        // The level stepped is the HANDLE's own 7-bit volume (Current_Vol), not a 0..127 multiplier over it, and the
+        // target is (Original_Vol * vol) >> 10 (T1b review finding 1):
+        //   a stream played at 0x300 sits at (127 * 0x300) >> 10 = 95: -95 is -1 every floor(360 / 95) = 3 ticks,
+        //   landing at tick 95 x 3 = 285, through whole-number volumes;
+        //   a bank sound's Current_Vol is its handler's curVolume, and each step writes the level straight into it:
+        //   a sound whose own Vol is 100 played at 0x300 sits at (100 * 0x300) >> 10 = 75, and -75 over 360 is -1
+        //   every floor(360 / 75) = 4 ticks, landing at tick 75 x 4 = 300. (Whether the SOCOM IRX's block setter
+        //   rescales each step by the sound's Vol -- research/36's blocksnd.c reading, which would compound the
+        //   steps -- is unread; the direct write is the controller's ruling of 2026-09-26, research/68 row 2.)
         tc.Run("Mixer: snd_AutoVol steps in 7-bit integers on the IRX's schedule -- 360 ticks from 127 is 127 steps of -1, one every 2 ticks, landing at tick 254", [](TestCase &t)
         {
             const std::string path = tmpPath("socom2_audio_autovol_steps.vpk");
             t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade");
             std::vector<int16_t> buf(2 * 200);   // 200 frames = one 240 Hz tick at 48 kHz
-            struct Trace { int changes = 0, nonUnit = 0, offSchedule = 0, lastChange = -1; int32_t at253 = -1, final = -1; };
-            // Fades a fresh cue from full with autoVol(h, vol, ticks) and reads the 7-bit level after every tick.
-            auto fade = [&](uint32_t h, int32_t vol, int32_t ticks, int every) {
+            struct Trace { int changes = 0, nonUnit = 0, offSchedule = 0, lastChange = -1; int32_t start = -1, at253 = -1, final = -1; };
+            // Fades a fresh cue played at `playVol` with autoVol(h, vol, ticks) and reads the 7-bit level after every tick.
+            auto fade = [&](uint32_t h, int32_t vol, int32_t ticks, int every, int32_t playVol = 0x400) {
                 snd989::Mixer mixer;
                 Trace tr;
-                if (!mixer.playStream(h, path, 0u, 0x400, -1, 1u))
+                if (!mixer.playStream(h, path, 0u, playVol, -1, 1u))
                     return tr;
                 mixer.autoVol(h, vol, ticks, 2);
                 int32_t prev = mixer.autoVolLevelForTest(h);
+                tr.start = prev;
                 for (int tick = 1; tick <= 500; ++tick)
                 {
                     mixer.pumpStreams();
@@ -1609,6 +1619,66 @@ void register_socom2_audio_tests()
             t.Equals(b.changes, 127, "the 2 s fade: 127 steps too (" + std::to_string(b.changes) + ")");
             t.Equals(b.offSchedule, 0, "one every 3 ticks (" + std::to_string(b.offSchedule) + " off)");
             t.Equals(b.lastChange, 381, "landing at tick 381 = 127 x 3, not 480 (" + std::to_string(b.lastChange) + ")");
+
+            // A stream played below full fades from ITS volume: 95 at 0x300, a step every 3 ticks, landing at 285.
+            const Trace c = fade(0x04000021u, 0, 0x168, 3, 0x300);
+            t.Equals(c.start, 95, "the stream played at 0x300 starts the fade at 95, its own 7-bit volume (" + std::to_string(c.start) + ")");
+            t.Equals(c.changes, 95, "95 steps (" + std::to_string(c.changes) + ")");
+            t.Equals(c.nonUnit, 0, "each one 7-bit unit (" + std::to_string(c.nonUnit) + " were not)");
+            t.Equals(c.offSchedule, 0, "one every floor(360 / 95) = 3 ticks (" + std::to_string(c.offSchedule) + " off)");
+            t.Equals(c.lastChange, 285, "landing at tick 95 x 3 = 285 (" + std::to_string(c.lastChange) + ")");
+            t.Equals(c.final, 0, "on silence");
+
+            // A bank sound at a curVolume below full: the conductor of the hand-built COND bank (its own Vol 100),
+            // idling alive with global 2 at 0, played at 0x300 -> curVolume (100 * 0x300) >> 10 = 75.
+            {
+                const std::vector<uint8_t> hud = readFixture("hudui_block.bin");
+                const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+                socom2_bank::Bank hudui;
+                socom2_bank::Tone click;
+                t.IsTrue(socom2_bank::parse(hud.data(), hud.size(), hudui) && hudui.sounds.size() > 8u &&
+                             hudui.tone(hudui.sounds[8].grains[0], click), "HUDUI's click tone for the COND bank");
+                const std::vector<uint8_t> blk = conductorBlock(click);
+                snd989::Mixer bank;
+                t.IsTrue(bank.loadBank(0x00a30000u, blk.data(), blk.size(), vag.data(), vag.size()), "COND loads");
+                bank.setGlobalReg(2u, 0);
+                const uint32_t hb = bank.play(0x00a30000u, 0u, 0x300, -1, 0, 0);
+                t.IsTrue(hb != 0u && bank.isPlaying(hb), "the conductor plays");
+                t.Equals(bank.autoVolLevelForTest(hb), 75, "at curVolume 75");
+                bank.autoVol(hb, 0, 0x168, 2);
+                int32_t at3 = -1, at4 = -1, at299 = -1, at300 = -1, last = -1;
+                int steps = 0, nonUnit = 0, offSchedule = 0;
+                int32_t prev = bank.autoVolLevelForTest(hb);
+                for (int tick = 1; tick <= 400; ++tick)
+                {
+                    bank.render(buf.data(), 200);
+                    const int32_t lvl = bank.autoVolLevelForTest(hb);
+                    if (lvl != prev)
+                    {
+                        ++steps;
+                        if (prev - lvl != 1)
+                            ++nonUnit;
+                        if (tick != 4 * steps)
+                            ++offSchedule;
+                        last = tick;
+                        prev = lvl;
+                    }
+                    if (tick == 3) at3 = lvl;
+                    if (tick == 4) at4 = lvl;
+                    if (tick == 299) at299 = lvl;
+                    if (tick == 300) at300 = lvl;
+                }
+                t.Equals(at3, 75, "no step before tick floor(360 / 75) = 4 (" + std::to_string(at3) + ")");
+                t.Equals(at4, 74, "the first step, at tick 4: 74 (" + std::to_string(at4) + ")");
+                t.Equals(steps, 75, "75 steps (" + std::to_string(steps) + ")");
+                t.Equals(nonUnit, 0, "each one 7-bit unit, no rescaling by the sound's Vol (" + std::to_string(nonUnit) + " were not)");
+                t.Equals(offSchedule, 0, "one every 4 ticks (" + std::to_string(offSchedule) + " off)");
+                t.Equals(at299, 1, "1 at tick 299 (" + std::to_string(at299) + ")");
+                t.Equals(at300, 0, "and 0 at tick 300 = 75 x 4 (" + std::to_string(at300) + ")");
+                t.Equals(last, 300, "the last step on tick 300 (" + std::to_string(last) + ")");
+                t.IsTrue(bank.isPlaying(hb), "a fade to 0 does not stop the sound");
+                bank.stopAll();
+            }
 
             // The fast branch: 30 ticks for 127 steps of volume.
             snd989::Mixer fast;
