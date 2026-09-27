@@ -219,9 +219,16 @@ instruction was unhandled.
 > the kept functions' own files (`sub_00539D50`'s carries 29 `runtime_error` throws), each a resume entry real
 > control flow never takes -- which the real-disc run proves or disproves (a reached throw fails the run and the
 > digests). The pin is the 191; the six rows stay derived (harmless, 14-line files); marking the words as data in
-> `fix_ghidra_csv` is LATER row 36. The recompiler also un-skips the callees it reaches statically from the kept set
-> (`ps2_recompiler.cpp:488`, `:998`), so 1,478 functions are recompiled, not 340; a `--missing-callees` check
-> (declared names without a file) guards the build.
+> `fix_ghidra_csv` is LATER row 36. (The first of those re-runs reported 1,478 functions recompiled: a naming
+> defect in the tool -- bare skip names matched against the names `ps2_recomp` gives functions, `FUN_00539d50`
+> becoming `sub_00539D50`, so most skips missed; with `name@0x<start>` skip selectors the run reads "processed 3042,
+> recompiled 320, stubs 205, skipped 2517", promotions 112 with 28,660 entries, and the pin is the same 191 across
+> the runs without rows, with rows and with the selectors.) The compile budget from the real run: 274,587 generated
+> lines in 3,043 files, 219,541 of them in the 340 kept functions' files (the estimate above was 198,940 for 329),
+> 55,046 in thunks and skipped-function stubs; `--missing-callees recomp/output_helper` finds 0 declared callees
+> without a file. The selector counts per array, real: `stubs` 214 -> 205 (the array `ps2_recomp` reads: the seven
+> drops and two overlay selectors), `untracked_stubs` 433 -> 416; the two runs' kept-function error lines are the
+> fixtures `tests/fixtures/first_run/recomp_errors_{before,after}.txt` (addresses only).
 
 The compile of the executed set's files against the runtime's headers (`compile.sh`, §7 C7; the flags of
 `build-clang/compile_commands.json`'s Unity entry for the runner, no PCH) **did not run**: queued on the loop lock
