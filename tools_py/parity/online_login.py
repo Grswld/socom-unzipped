@@ -26,6 +26,13 @@ OSK_ROWS = [
     ["ACCENT", "TEAM", "{", "}", ":", "\"", "<", ">", "?", "|", "LEGEND"],
 ]
 OSK_START = (5, 0)  # the keyboard opens with the accent key highlighted
+# The column each row's index 0 sits in, for UP and DOWN: the cursor keeps its COLUMN between rows, not its index.
+# Sprint 16 L1b Step 0 typed `s16pa` as `s27pa`: the game's panel (tools_py/tests/fixtures/lobby/osk_panel_kbd_lad7.png)
+# draws the symbol row over the digit row key for key (~ over `), but the letter block starts one key further right --
+# CAPS LOCK is wide, 'q' sits under '2', 'w' under '3' -- and UP from 'w' lands on '3', the key above it. Between the
+# letter rows (half a key apart on the panel) the index model stands: every letter walk typed so far proves it.
+# tools_py/tests/test_online_login_osk_digits.py measures this off the panel.
+OSK_ROW_ORIGIN = (0, 0, 1, 1, 1, 1)
 
 
 def osk_pos(label):
@@ -36,7 +43,8 @@ def osk_pos(label):
 
 
 def osk_moves(cur, dst):
-    """Return the d-pad presses that move the cursor from cur to dst (row/index model).
+    """Return the d-pad presses that move the cursor from cur to dst (row/index model; a vertical move keeps the
+    cursor's column, OSK_ROW_ORIGIN, clamped to the row it lands in).
     Rows 2 and 3 share the CAPS key: moving down out of index 0 of row 2 lands on SHIFT, so
     vertical moves are done at a nonzero index whenever the target is not index 0."""
     moves = []
@@ -47,8 +55,9 @@ def osk_moves(cur, dst):
         moves.append("right"); i = 1
     while r != tr:
         moves.append("down" if tr > r else "up")
+        col = i + OSK_ROW_ORIGIN[r]
         r += 1 if tr > r else -1
-        i = min(i, len(OSK_ROWS[r]) - 1)
+        i = max(0, min(col - OSK_ROW_ORIGIN[r], len(OSK_ROWS[r]) - 1))
     while i != ti:
         moves.append("right" if ti > i else "left")
         i += 1 if ti > i else -1
