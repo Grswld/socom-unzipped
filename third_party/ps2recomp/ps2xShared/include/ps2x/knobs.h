@@ -163,6 +163,7 @@
     X("PS2X_SOCOM2_INPUT_TRACE", Dev, Presence, "", "Log every change of the pad state the game will read.") \
     X("PS2X_SOCOM2_LOGIN_NAME", Shipping, Text, "", "The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
     X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
+    X("PS2X_SOCOM2_LOGIN_TRACE", Dev, Presence, "", "Log each RC4 call's state, byte counter, class, type and length, and each rekey; never a field.") \
     X("PS2X_SOCOM2_MUSIC_TRACE", Dev, Presence, "", "Log the music manager and every cue push with the mixer frame clock (music round four).") \
     X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement.") /* read: ps2xRuntime/src/lib/socom2_libnetb.cpp:netStatsEnabled */ \
     X("PS2X_SOCOM2_NET_TRACE", Dev, Presence, "", "Verbose libnetb: every RPC, socket and datagram header.") \
