@@ -341,11 +341,12 @@ branch `agent/s16-l1-design`), this file (the D12 ruling and L1b's steps sharpen
 **The shape (D12; the authority is L1a's note after its fix round, `docs/superpowers/plans/2026-09-27-sprint-16-l1-profile-viewer-design.md` <!-- docmaint: future -->):**
 the **runtime** holds a record from the login request (the `rc4EncryptFn` seam, `socom2_crypto.cpp:311`; class 0x01,
 type 0x07, Username at payload offset 40, Password at 72 — `server/horizon-server/RT.Models/Lobby/MediusAccountLoginRequest.cs`,
-read-only; the fallback seams are the hostnet `send`/`recv` pair, `socom2_hostnet.cpp:577/:587`, a TCP stream
-carrying the WIRE form — the RT header (id|0x80, a 2-byte length, a 4-byte hash) then RC4 ciphertext — so a fallback
-reassembles by RT header AND decrypts with the session key and the header's hash (`rc4SetKeyHash`,
-`socom2_crypto.cpp:294-302`) before it can read class 0x01 type 0x07; the RC4 seams, which see the clear text, are
-the first choice) and **commits it on the success response** (type 0x08, StatusCode at offset 26, `rc4DecryptFn`
+read-only; L1b's FIRST step is a Dev knob `PS2X_SOCOM2_LOGIN_TRACE` logging class, type and length at both RC4
+seams and each `rc4SetKeyHash` (`socom2_crypto.cpp:294-302`), never a field: if the seams carry partial messages
+the commit reassembles AT THE RC4 SEAMS (consecutive calls on one RC4 state, a message opened by its
+`rc4SetKeyHash`); the hostnet `send`/`recv` pair, `socom2_hostnet.cpp:577/:587`, carries the WIRE form — the RT
+header (id|0x80, a 2-byte length, a 4-byte hash) then RC4 ciphertext — so it is the last resort only, decrypting a
+copy with the session key and that message's header hash) and **commits it on the success response** (type 0x08, StatusCode at offset 26, `rc4DecryptFn`
 `:318–323`, matched by MessageID) to `cards/<profile>.personas.json` **beside the card** (a trailing separator on
 `PS2X_MC_DIR` stripped first, else the ledger lands inside the card and the game lists it), atomically, through
 `ps2x_shared`'s `personas.cpp`; **one record per (name, server)** (the game keeps personas per server, KNOWN §1) with
