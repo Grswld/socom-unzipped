@@ -595,7 +595,10 @@ player exe carries no debug UI (a `--diagnostics` or `strings` check named in th
 ## Task R3b: the ELF leaves the player archive; the words
 
 **With R1b (D4).** **Files:** `scripts/make_portable.sh:146–151` and `:77–79, 84` (the ELF required and copied only
-for the developer kind), `build.sh:196` (unchanged: the developer folder keeps the ELF), `tools_py/tests/test_make_portable.py:52`
+for the developer kind), `build.sh:196` (unchanged: the developer folder keeps the ELF), `scripts/build_linux.sh:120-140`
+(PR #85's review F1: the `RELEASE_KIND` marker is written even when `--no-runner` or a missing `recomp/output` left
+the game exe unbuilt, so a stale debug-UI exe ships labelled player — write it only when `socom2` is in `built`,
+else say so and write nothing, so `make_portable` refuses; one `ReleaseKindTest` line), `tools_py/tests/test_make_portable.py:52`
 (the player archive has no ELF, the developer's has), `docs/FAQ.md:172` ("no game executable" → the R290 position:
 the exe ships, the program image is built on your machine from your disc on the first run) and `:60–66` (exit 68's
 new sentence), `docs/INSTALL.md:50-54` (the file list without the ELF; the first-run step: the DISC page builds it,
