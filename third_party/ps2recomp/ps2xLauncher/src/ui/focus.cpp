@@ -488,6 +488,14 @@ namespace ui
         return personaScrollToShow(selected, scroll, records + 1);
     }
 
+    int personaScrollPerFrame(const LayoutInputs &in, int selectedBefore, int scroll)
+    {
+        if (in.personaSelected != selectedBefore)
+            return personaScrollOnRead(in, scroll);
+        const int records = in.personaRows < 0 ? 0 : in.personaRows;
+        return personaScrollToShow(scroll, scroll, records + 1);
+    }
+
     bool personaMove(const LayoutInputs &in, const std::string &from, Dir dir, std::string &to, int &scroll)
     {
         if (dir != Dir::Up && dir != Dir::Down)

@@ -1008,7 +1008,7 @@ namespace
         for (const std::string &note : app.personas.notes)
             std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
         // The selected row starts in view, and with it the password field beside it: a password is never sent from a
-        // field scrolled out of sight (the per-frame scroll below only clamps).
+        // field scrolled out of sight (the frame loop does the same when the selection moves).
         {
             ui::LayoutInputs in;
             in.personaRows = static_cast<int>(app.personas.rows.size());
@@ -1379,6 +1379,9 @@ int main(int argc, char **argv)
     // page the same way, so a PNG can see what a player sees.
     int shotPendingPage = -1;
     std::string shotPendingFocus;
+    // Sprint 16 L1b: the PERSONAS row selected last frame -- a selection that moves without a reread (the 'Second
+    // instance' toggle) is scrolled into view with its password field, as a read does.
+    int personaSelectedBefore = -1;
 
     while (!WindowShouldClose() && !quitRequested)
     {
@@ -1446,13 +1449,15 @@ int main(int argc, char **argv)
         app.layout.padButtons = app.padSection == 1;
         app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
         // Sprint 16 L1b (#73): the PERSONAS list -- its rows, the selected one, whether its password field shows, and
-        // the scroll, kept on the list (a pick or a reread can shorten it under the scroll).
+        // the scroll, kept on the list (a pick or a reread can shorten it under the scroll) and moved to the selection
+        // when that changed since the last frame: a password is never sent from a field out of sight.
         {
             const std::vector<launcher::personas::Persona> &rows = app.personas.rows;
             app.layout.personaRows = static_cast<int>(rows.size());
             app.layout.personaSelected = static_cast<int>(launcher::personas::selectedRow(rows, app.config));
             app.layout.personaPasswordShown = launcher::personas::passwordShown(rows, app.config);
-            app.personaScroll = ui::personaScrollToShow(app.personaScroll, app.personaScroll, app.layout.personaRows + 1);
+            app.personaScroll = ui::personaScrollPerFrame(app.layout, personaSelectedBefore, app.personaScroll);
+            personaSelectedBefore = app.layout.personaSelected;
             app.layout.personaScroll = app.personaScroll;
         }
 

@@ -127,6 +127,10 @@ namespace ui
     // The scroll a (re)read of the ledgers leaves (main.cpp's readPersonas): the selected row in view, and with it the
     // password field beside it -- a password is never sent from a field the player cannot see.
     int personaScrollOnRead(const LayoutInputs &in, int scroll);
+    // The scroll each frame leaves (main.cpp's frame loop): when the selected row changed since the last frame
+    // without a reread (the 'Second instance' toggle picks another ledger's row), the scroll a read would leave;
+    // otherwise clamped only, so a list scrolled by hand away from the selection stays where it is.
+    int personaScrollPerFrame(const LayoutInputs &in, int selectedBefore, int scroll);
     // Up and down inside the list are the list's own moves, so a hidden row is reachable: true with `to` and the
     // `scroll` that shows it; false off either end, where the layout's geometry takes over (ADDRESS, ADVANCED).
     bool personaMove(const LayoutInputs &in, const std::string &from, Dir dir, std::string &to, int &scroll);

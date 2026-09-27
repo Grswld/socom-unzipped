@@ -1635,6 +1635,31 @@ void register_launcher_tests()
             t.Equals(ui::personaScrollOnRead(in, 5), 0, "a list that shrank under the scroll is clamped");
         });
 
+        tc.Run("the per-frame scroll (RED first): a selection that moves without a reread brings its row and password into view", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.personaRows = 3;   // three records: NEW PERSONA is the fourth row, hidden at scroll 0
+            in.personaSelected = 0;
+            in.personaPasswordShown = false;
+            in.personaScroll = ui::personaScrollPerFrame(in, 0, 0);
+            t.Equals(in.personaScroll, 0, "the selection unchanged: the scroll is kept");
+            in.personaSelected = 3;   // 'Second instance' toggled: no _b record, so NEW PERSONA is selected
+            in.personaPasswordShown = true;
+            in.personaScroll = ui::personaScrollPerFrame(in, 0, in.personaScroll);
+            t.Equals(in.personaScroll, 1, "the moved selection scrolls into view");
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(nodes, "online.persona.new"), "NEW PERSONA is visible");
+            t.IsTrue(ui::hasNode(nodes, "online.persona.password"), "and the password it will send is on screen");
+            if (ui::hasNode(nodes, "online.persona.password") && ui::hasNode(nodes, "online.persona.new"))
+                t.IsTrue(ui::rectOf(nodes, "online.persona.password").y == ui::rectOf(nodes, "online.persona.new").y, "beside it");
+            t.Equals(ui::personaScrollPerFrame(in, 3, 0), 0, "a list scrolled by hand, the selection unchanged, stays");
+            in.personaSelected = 0;
+            t.Equals(ui::personaScrollPerFrame(in, 3, 1), 0, "back to the first row: back to the top");
+            in.personaRows = 1;
+            t.Equals(ui::personaScrollPerFrame(in, 0, 5), 0, "clamped to a list that shrank");
+        });
+
         tc.Run("the password field shows for NEW PERSONA and a record without a saved password on this server, never beside a hidden row", [](TestCase &t)
         {
             const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
