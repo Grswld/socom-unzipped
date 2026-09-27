@@ -2,12 +2,16 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-189 merges (41 on the first-parent line, 148 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+193 merges (42 on the first-parent line, 151 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.15.0
 
-10 merges.
+14 merges.
 
+- 2026-09-27 `10f7cd3e` merge(sprint-16): origin/main at 039fc569 [branch not named]
+  - 2026-09-27 `039fc569` Merge pull request #85 from Scotho/agent/s16-r3a-archives [agent/s16-r3a-archives]
+  - 2026-09-27 `bb675dbd` Merge pull request #82 from Scotho/agent/s16-l2-tooltips [agent/s16-l2-tooltips]
+  - 2026-09-27 `1d78ce01` Merge pull request #80 from Scotho/agent/web-viewer [agent/web-viewer]
 - 2026-09-27 `7b2e76bc` R179 and R237 superseded by R310 [agent/s16-l1-r237]
 - 2026-09-27 `ad5fdaef` snd_AutoVol steps in 7-bit integers on the IRX's schedule (Sprint 15 T1b, reviewed PASS 08:13Z) [agent/s15-t1b]
 - 2026-09-27 `2e7b0bfa` #32's bar restated, the issues audit exits 0 again (Sprint 16 F3 Step 0, socom-pc-42) [agent/s16-f3-words]

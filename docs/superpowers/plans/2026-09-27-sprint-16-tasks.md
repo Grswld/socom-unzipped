@@ -433,7 +433,8 @@ non-empty line in the page's table; the `helpedIds` ≥ 25-character rule kept f
 
 - [ ] **Step 1:** the cloud session's PR (`agent/s16-l2-tooltips` → `main`) with RED and GREEN pasted from
   `scripts/build_linux.sh test --no-runner`.
-- [ ] **Step 2:** review by a fresh local agent against the hazards above (the band, not the bar; `ctx.fake`; the
+- [ ] **Step 2:** review by a fresh local agent against the hazards above (the bottom bar, as #74's "footer" says —
+  this line's "the band, not the bar" was wrong, corrected 2026-09-27 09:08Z on the round-2 review; `ctx.fake`; the
   wording test; the 25-character floor; the crouch cell's line says what the current value means, e.g. "L3: press the
   left stick to crouch; the game's own crouch key stays"); fix rounds in the cloud or locally; then the Windows build
   and `./build.sh test` under the lock before the merge (the cloud proved Linux only).
