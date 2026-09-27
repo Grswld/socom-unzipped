@@ -6630,7 +6630,7 @@ void register_ps2_gs_tests()
                 copiedBottomRight = readReferenceFramePSMCT32Pixel(vram, kCopyFbp, 5u, 200u, 150u);   // samples frame (401, 301)
                 copiedTopLeft = readReferenceFramePSMCT32Pixel(vram, kCopyFbp, 5u, 50u, 50u);          // samples frame (101, 101)
                 // The read the review caught: the page handed to the block-pointer helper. Block 0x150 is page 10 +
-                // block 16, so (200,150) at bw 5 resolves to page 33 block 25 -- frame pixels (224..231, 112..119), B.
+                // block 16, so (200,150) at bw 5 resolves to page 33 block 25 -- frame pixels (232..239, 112..119), B.
                 pageAsBlock = readReferencePSMCT32Pixel(vram, kCopyFbp, 5u, 200u, 150u);
             }
             CloseWindow();
