@@ -132,6 +132,9 @@ case "$STOP" in elf|toml|recomp|runtime) ;; *) die2 "--stop-after must be one of
 # ---- where everything is ------------------------------------------------------------------------------------
 PS2R="$ROOT/third_party/ps2recomp"
 TOOLBUILD="$PS2R/build-tools"
+# The recompiler step 4 runs. BR_PS2_RECOMP names another one -- a test seam (tools_py/tests/test_build_revision.py
+# drives step 4 twice with a stand-in that writes like ps2_recomp); a build never sets it.
+PS2_RECOMP="${BR_PS2_RECOMP:-$TOOLBUILD/ps2xRecomp/ps2_recomp.exe}"
 if [ -n "$OUT" ]; then
   OUT="$(mkdir -p "$OUT" && cd "$OUT" && pwd)"
   OVERLAYS="$OUT/overlays_$REV"; RECOMP_DIR="$OUT/recomp_$REV"; GEN="$RECOMP_DIR/output"
@@ -465,8 +468,12 @@ else
   cmake -S "$PS2R" -B "$TOOLBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
   cmake --build "$TOOLBUILD" --target ps2_recomp ps2_analyzer -j "$(nproc)"
-  rm -rf "$GEN"
-  (cd "$RECOMP_DIR" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" "socom2_$REV.toml" > "recomp_run_$REV.log" 2>&1) \
+  # The output directory is NOT deleted first (issue #57, as build.sh's recomp()): ps2_recomp rewrites a file only
+  # when its bytes change and removes the function files an earlier run left that this one did not produce, so an
+  # unchanged file keeps its timestamp and step 5 after a rename recompiles only what the rename touched. The one
+  # thing that must go first is the mark: a --force run that fails here must not leave the last run's .complete.
+  rm -f "$GEN/.complete"
+  (cd "$RECOMP_DIR" && "$PS2_RECOMP" "socom2_$REV.toml" > "recomp_run_$REV.log" 2>&1) \
       || { tail -20 "$RECOMP_DIR/recomp_run_$REV.log" >&2; echo "build_revision: recomp failed (the log above)" >&2; exit 1; }
   # unmapped= : continuation pcs no recompiled row owns (build.sh has the same field and why)
   say "recomp: $(ls "$GEN" | wc -l) files in $(rel "$GEN"), unhandled=$(grep -c unhandled-instruction "$RECOMP_DIR/recomp_run_$REV.log" || true), unmapped=$(grep -c unmapped-continuation "$RECOMP_DIR/recomp_run_$REV.log" || true)"
