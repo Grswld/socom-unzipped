@@ -99,3 +99,30 @@ function chunkOffsets(zar: Zar, key: ZarKey): { name: string; offset: number }[]
   if (strays.length > 0) throw new Error(`children ${strays.map((s) => s.name).join(', ')} are not chunk keys`);
   return nodes;
 }
+
+/** Where one chunk's chain starts in its model's buffer, and whether the engine lights it dynamically. */
+export interface ResolvedChunk {
+  offset: number;
+  /** The buffer stores the chunk under `<key>_L`: `hookupVisuals` then calls `SetDynamicLight` on its node. */
+  lit: boolean;
+}
+
+/** The suffix `hookupVisuals` appends to a chunk key for a dynamically lit node (`vis_main.cpp:93-95`). */
+const LIGHT_SUFFIX = '_L';
+const lookups = new WeakMap<ModelEntry, Map<string, number>>();
+
+/**
+ * The chain a predicted chunk key (`chunkKey`) names in a model's buffer, or null when the buffer holds
+ * it under neither name. The engine fetches `<key>_L` first and, finding it, marks the node dynamically
+ * lit (`SetDynamicLight(true, false)`); only then does it fetch `<key>` (`vis_main.cpp:93-102`, `:122-131`;
+ * note 72 line 116). 278 chunks on five maps -- MP1, MP7, MP11, MP62, MP83 -- exist only under the `_L`
+ * name, and no buffer on the disc holds both forms of one key.
+ */
+export function resolveChunk(entry: ModelEntry, key: string): ResolvedChunk | null {
+  let where = lookups.get(entry);
+  if (!where) lookups.set(entry, where = new Map(entry.nodes.map((n) => [n.name, n.offset])));
+  const lit = where.get(key + LIGHT_SUFFIX);
+  if (lit !== undefined) return { offset: lit, lit: true };
+  const plain = where.get(key);
+  return plain === undefined ? null : { offset: plain, lit: false };
+}
