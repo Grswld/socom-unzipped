@@ -47,6 +47,7 @@ of the owner's order (2026-09-26) -- *the controller's read, the owner may strik
 | 30 | Ghidra 12.1.4 | low | S | unknown | an EE-extension release for it | research/63 §2 |
 | 31 | Horizon PR #35 | low | S | unknown | the DEV9 error 107 seen in a run | research/63 §2 |
 | 32 | Upstream's paraLLEl-GS default (`feature/performance-patch-1`) | unknown | L | unknown | the branch merges to upstream `main` | research/67 §6 item 2 |
+| 33 | Rebuild the canonical r0004 image from PSRewired's served package with `build_revision` (a real `disc_r0004` tree holding the served ZDB, not the junctioned one -- the #56 trap), retiring the `0x1E70CC` pnach remnant and the overlay repair for that image | high to the owner: the r0004 path becomes fetch → decrypt → merge with no console identity (KNOWN §1, #71) | M | Proven inputs (the served file decrypts with the r0001 disc decrypt; one code word differs) | the launcher's r0004 fetch (#71) lands, or a Sprint 16 plan names it | the r0004 session, 2026-09-27 |
 
 ## Dismissed outright
 
