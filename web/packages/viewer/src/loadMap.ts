@@ -8,7 +8,7 @@ import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshD
 import {
   collisionLines, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter, parseGlobalLighting,
   parseSceneGraph, parseWorldRoot, placeClutter, type LodBand,
-  placeInstances, transformPoint, worldCollision,
+  placeInstances, resolveChunk, transformPoint, worldCollision,
   type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
   type SceneNode,
 } from '@s2u/scene';
@@ -191,7 +191,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const scroll = placement.scroll(p);
     meshes.forEach((mesh, i) => {
       const order = orderOf(p, i);
-      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll });
+      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit || mesh.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll });
     });
     for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0));
   }
@@ -211,7 +211,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     }
     const alternate = placement.alternate(first);
     const geometry: LoadedMesh[] = decoded.meshes.map((mesh, i) => ({
-      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit,
+      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit || mesh.lit,
       order: orderOf(first, i), orderEnd: orderOf(first, i), cull: mesh.cull, alternate, scroll: placement.scroll(first),
     }));
     if (geometry.length === 0) continue;
@@ -590,7 +590,13 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
     for (const p of [...placed, ...clutter(models, bytes, toc, notes)]) {
       ranks.set(p, ranks.size);
       if (p.modelName === WORLD_MODEL) continue;
-      const key = `${p.modelName}#${p.nodeIndex}`;
+      // A group draws its first member's chunks at every member's matrix, so it must not mix instance
+      // contexts the engine lights differently: the `_L` suffix is per context, not per node --
+      // Death Trap's `access_topgate` is `N000_I000_V00` beside `N000_I001_V00_L`, Requiem's
+      // `door_pointy` `_L` in nine contexts of eleven. The lit contexts draw from their own chains.
+      const entry = library.get(p.modelName);
+      const lit = entry !== undefined && p.chunks.some((c) => resolveChunk(entry, c)?.lit === true);
+      const key = `${p.modelName}#${p.nodeIndex}${lit ? '#L' : ''}`;
       const group = groups.get(key);
       if (group) group.push(p);
       else groups.set(key, [p]);
@@ -766,28 +772,28 @@ export interface LoadedLineGroup {
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
-function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: (MeshData & { cull: boolean })[]; lines: LineStrip[] } {
-  const offsets = new Map<string, Map<string, number>>();
+function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: (MeshData & { cull: boolean; lit: boolean })[]; lines: LineStrip[] } {
   return (p) => {
     const entry = library.get(p.modelName);
     if (!entry) {
       notes.add(`model ${p.modelName}: in the scene graph but not in any MDL archive`);
       return { meshes: [], lines: [] };
     }
-    let where = offsets.get(p.modelName);
-    if (!where) offsets.set(p.modelName, where = new Map(entry.nodes.map((n) => [n.name, n.offset])));
-    const meshes: (MeshData & { cull: boolean })[] = [];
+    const meshes: (MeshData & { cull: boolean; lit: boolean })[] = [];
     const lines: LineStrip[] = [];
     for (const [i, chunk] of p.chunks.entries()) {
-      const at = where.get(chunk);
-      if (at === undefined) {
+      const at = resolveChunk(entry, chunk);
+      if (at === null) {
         notes.add(`chunk ${p.modelName}/${chunk}: no such chain in the model buffer`);
         continue;
       }
       try {
-        const parts = interpretChainParts(walkChain(entry.buffer, at, chunk));
-        // The cull is per visual, and a chunk is one visual: every mesh out of it takes its flag.
-        meshes.push(...parts.meshes.map((mesh) => ({ ...mesh, cull: p.cull[i] ?? true })));
+        const parts = interpretChainParts(walkChain(entry.buffer, at.offset, chunk));
+        // The cull is per visual, and a chunk is one visual: every mesh out of it takes its flag. So does
+        // the `_L` light: a chunk stored as `<key>_L` is a node `hookupVisuals` marks dynamically lit
+        // (`vis_main.cpp:93-102`, note 72 line 116), and its node flags do not say so -- none of Night
+        // Stalker's eight `_L` chunks is on a `NODE_FLAGS_LIT` node. Every other chunk keeps `p.lit`.
+        meshes.push(...parts.meshes.map((mesh) => ({ ...mesh, cull: p.cull[i] ?? true, lit: at.lit })));
         lines.push(...parts.lines);
       } catch (e) {
         notes.add(`chunk ${p.modelName}/${chunk}: ${say(e)}`);
