@@ -390,6 +390,11 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
   8-hex word beside a guest address before merging it.
 
 *The index, the worktrees and what lives outside the tree.*
+- **A changelog rendered while a merge is pending is a stale render of its own history.** 2026-09-27 21:06Z (F2's
+  build): `python -m tools_py.changelog` ran while MERGE_HEAD stood (a merge whose subject the hook had refused), so
+  the page committed at `9cc87bb2` listed the history without that merge; every branch cut from that commit then
+  fails `test_changelog`'s tree test inside `build.sh test`, and the C++ half never runs. Render the page only after
+  the merge commit exists (R272's follow-up commit), and check `git status` for a standing MERGE_HEAD first.
 
 - **`git add X && git commit` commits the whole index, not X.** With several agents sharing one
   working tree, that sweeps another agent's staged files under your message — it happened to
