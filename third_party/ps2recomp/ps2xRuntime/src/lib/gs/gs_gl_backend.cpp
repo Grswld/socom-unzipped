@@ -3598,8 +3598,17 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                     continue;
                 if (rt.fbp == state.context.frame.fbp)
                     continue;
-                if (width > rt.nativeWidth || height > rt.nativeHeight)
-                    continue;
+                // Sprint 16 F2: no envelope guard. This loop used to refuse a TEX0 whose 2^TW x 2^TH
+                // exceeded the target (`width > rt.nativeWidth || height > rt.nativeHeight`), a check
+                // written against the flat 1024x1024 targets of 1c301b9b, where it could never fail.
+                // Since Sprint 7 Task 1c sized targets from use (6ea95204: 640x448 for the frame) it
+                // refused every full read of the frame -- a 640x448 buffer can only be declared
+                // 1024x512 -- and the post-process copy went back to downloadRenderTargetToShadow, a
+                // whole-frame glReadPixels behind a GPU drain, every frame (research/73 section 1;
+                // logs/f2_design.md). The envelope does not enter the mapping: the draw's texel
+                // coordinates are native and uTexSize below is the target's native extent. Texels
+                // past the target's extent edge-clamp here where the shadow path would read the VRAM
+                // bytes beyond it; PS2X_GS_RT_TEXTURE=0 is the A/B.
                 refreshDirtyRows(rt);
                 // The draw samples this target with the same native texel coordinates it would use
                 // for a decoded texture, so it must be handed a native-sized view -- rt.color
