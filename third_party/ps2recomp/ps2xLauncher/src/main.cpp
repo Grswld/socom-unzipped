@@ -38,6 +38,7 @@
 #include "ui/pad_render.h"
 #include "ui/pages.h"
 #include "ui/theme.h"
+#include "ui/tips.h"
 #include "ui/widgets.h"
 
 #include "raylib.h"
@@ -636,14 +637,45 @@ namespace
         text(ctx, profile.c_str(), Vec2{metrics::margin, bar.y + 26.0f}, 19.0f, theme::text, Face::Bold);
 
         const bool onPlay = app.nav.page == Page::Play;
-        const Rect launch = onPlay ? Rect{bar.right() - metrics::margin - 220.0f, bar.y + 10.0f, 220.0f, 36.0f}
-                                   : rectOf(nodes, barLaunchId(app.nav.page));
-        const float statusX = metrics::margin + 130.0f;
-        const float promptsX = launch.x - 330.0f;
-        if (!app.status.empty())
+        const Rect launch = onPlay ? barLaunchRect(app.frame) : rectOf(nodes, barLaunchId(app.nav.page));
+        // Issue #74: the focused control's tooltip -- the same line the hover box shows, here so a keyboard or a
+        // pad gets it too. Whole, never cut: wrapped into the slot (footerTipSlot, tips.h), one line or two; the
+        // test measures every CONTROLLER line in the real face against it. One line: the status steps under it.
+        // Two lines fill the slot, so the status gives way -- but from each time it is said until the focus next
+        // moves (StatusWatch), when it shows alone and the tip waits. Not on the rail, not while typing, not while
+        // the pad is being listened to (the prompts are the whole story then).
+        const bool quiet = app.nav.onRail() || !app.activeField.empty() || app.bind.state == BindFlow::State::Listening;
+        const std::string tip =
+            quiet ? std::string() : tipFor(app.nav.page, app.nav.focus, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
+        // The columns come from the slot, so the slot the test measures is the one drawn (tips.h, kBar*).
+        const Rect slot = footerTipSlot(app.frame);
+        const float statusX = slot.x;
+        const float promptsX = slot.right() + kBarTipGap;
+        std::vector<std::string> lines;
+        if (!tip.empty())
+            lines = wrapWords(tip, slot.w, [&ctx](const std::string &s) { return textWidth(ctx, s.c_str(), kFooterTipSize); });
+        static StatusWatch statusWatch;
+        statusWatch.update(app.statusSerial, app.nav.focus);
+        if (lines.size() > 1u && !app.status.empty() && !ctx.fake && statusWatch.fresh())
+            lines.clear();
+        if (lines.size() > kFooterTipLines)
         {
-            const std::string shown = ellipsizeEnd(ctx, app.status, promptsX - statusX - 24.0f, 16.0f);
-            text(ctx, shown.c_str(), Vec2{statusX, bar.y + 20.0f}, 16.0f, theme::dim);
+            // Only a line the test has not seen (another page's, one day): the rest of it is still better than a
+            // third line through the bar's edge.
+            lines.resize(kFooterTipLines);
+            lines.back() = ellipsizeEnd(ctx, lines.back() + " ...", slot.w, kFooterTipSize);
+        }
+        // The type never drops under 13 real pixels, so at the minimum window a line is taller than its size says.
+        const float drawn = std::max(kFooterTipSize, static_cast<float>(metrics::minTextPx) / (ctx.scale * ctx.dpi));
+        const float lineH = drawn * 1.12f;
+        const float top = lines.size() > 1u ? bar.y + (bar.h - lineH * static_cast<float>(lines.size())) * 0.5f : bar.y + 9.0f;
+        for (size_t i = 0; i < lines.size(); ++i)
+            text(ctx, lines[i].c_str(), Vec2{slot.x, top + lineH * static_cast<float>(i)}, kFooterTipSize, theme::text);
+        if (!app.status.empty() && lines.size() < 2u)
+        {
+            const float size = lines.empty() ? 16.0f : 14.0f;
+            const std::string shown = ellipsizeEnd(ctx, app.status, slot.w, size);
+            text(ctx, shown.c_str(), Vec2{statusX, bar.y + (lines.empty() ? 20.0f : 30.0f)}, size, theme::dim);
         }
         drawPrompts(ctx, app, promptsX, bar.y + 12.0f, 26.0f);
 
@@ -662,6 +694,26 @@ namespace
         }
         else if (button(ctx, launch, app.running ? "RUNNING" : "LAUNCH", barLaunchId(app.nav.page), blocked.empty(), true))
             app.requestLaunch = true;
+    }
+
+    // Issue #74: the hover box -- the control's one line, beside it, once the mouse has rested there for
+    // kTipDelaySeconds. Drawn last in the frame, over the focus ring, with the page's own panel and gold rule.
+    void drawHoverTip(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes, const ui::HoverTip &hover)
+    {
+        using namespace ui;
+        if (!hover.shows(ctx.time))
+            return;
+        const std::string line = tipFor(app.nav.page, hover.id, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
+        const Rect control = rectOf(nodes, hover.id);
+        if (line.empty() || !drawable(control))
+            return;
+        const float size = metrics::captionSize - 1.0f;
+        const float maxW = app.frame.window.w - 32.0f;
+        const std::string shown = ellipsizeEnd(ctx, line, maxW - 24.0f, size);
+        const Rect box = tipBox(control, textWidth(ctx, shown.c_str(), size) + 24.0f, size * 1.12f + 14.0f, app.frame.window);
+        fillRect(ctx, box, theme::alpha(theme::panelHi, 245));
+        strokeRect(ctx, box, theme::gold, 1.5f);
+        text(ctx, shown.c_str(), Vec2{box.x + 12.0f, box.y + 7.0f}, size, theme::text);
     }
 
     // The content panel and its title strip: the page's name, then either the page's one-line subtitle or --
@@ -833,7 +885,7 @@ namespace
         app.discChecked = true;
         app.discOk = true;
         app.discMessage = "SOCOM II U.S. Navy SEALs NTSC r0001";
-        app.status = "ready";
+        app.setStatus("ready");
         app.exitLine = launcher::exitMessage(0);
         app.padLabels = {"first available", "[0] Xbox Wireless Controller"};
         app.padSlots = {-1, 0};
@@ -1130,7 +1182,7 @@ int main(int argc, char **argv)
         app.discChecked = st.checked;
         app.discOk = st.ok;
         app.discMessage = st.message;
-        app.status = st.ok ? "ready" : "";
+        app.setStatus(st.ok ? "ready" : "");
         mic = launcher::makeMicDevices();
         app.micLabels = launcher::micLabels(*mic);
         meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
@@ -1150,6 +1202,7 @@ int main(int argc, char **argv)
     nav.focus = ui::railId(ui::Page::Play);
 
     ui::FocusRing ring;
+    ui::HoverTip hoverTip;   // issue #74: which control the mouse rests on, and since when
     float lastScale = -1.0f;
     bool quitRequested = false;
     bool dragging = false;
@@ -1278,7 +1331,7 @@ int main(int argc, char **argv)
                 haveLastExit = true;
                 game.close();
                 app.exitLine = launcher::lastRunLine(lastExitRaw, readHead(lastLog, 256u * 1024u));
-                app.status = app.exitLine;
+                app.setStatus(app.exitLine);
                 // Review F8: the meter gives the capture device back to the game while it runs; take it now.
                 meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
             }
@@ -1325,6 +1378,7 @@ int main(int argc, char **argv)
         ctx.mouseMoved = (mouse.x != lastMouse.x || mouse.y != lastMouse.y);
         if (ctx.mouseMoved)
             lastMouse = mouse;
+        const bool mouseMovedNow = ctx.mouseMoved;   // issue #74: the hover's arming reads this frame's, not the sticky one
         static bool mouseEverMoved = false;
         mouseEverMoved = mouseEverMoved || ctx.mouseMoved;
         ctx.mouseMoved = mouseEverMoved;
@@ -1462,24 +1516,24 @@ int main(int argc, char **argv)
                     // Sprint 10 Q4: the window switch is the launcher's, not the mapping's.
                     app.config.focusToggle = launcher::mapping::hostButtonName(app.bind.lastHost);
                     app.dirty = true;
-                    app.status = std::string("the window switch is now ") + ui::hostLabel(family, app.bind.lastHost).text;
+                    app.setStatus(std::string("the window switch is now ") + ui::hostLabel(family, app.bind.lastHost).text);
                     break;
                 }
                 launcher::setActiveMapping(app.config, m);
                 app.dirty = true;
                 const int row = launcher::mapping::rowOf(bound);
                 const int host = row >= 0 ? m.pad[static_cast<size_t>(row)].host : launcher::mapping::kHostNone;
-                app.status = std::string(ui::ps2Label(bound).text) + " is now " + ui::hostLabel(family, host).text;
+                app.setStatus(std::string(ui::ps2Label(bound).text) + " is now " + ui::hostLabel(family, host).text);
                 break;
             }
             case ui::BindEvent::Conflict:
                 nav.focus = ui::dialogFocusId(app.bind);
                 break;
             case ui::BindEvent::Cancelled:
-                app.status = "binding cancelled";
+                app.setStatus("binding cancelled");
                 break;
             case ui::BindEvent::TimedOut:
-                app.status = "no button pressed; binding unchanged";
+                app.setStatus("no button pressed; binding unchanged");
                 break;
             default:
                 break;
@@ -1551,8 +1605,8 @@ int main(int argc, char **argv)
                                        : launcher::mapping::boundTo(heldMapping, holdWants.host);
                 const ui::GlyphFamily heldFamily = ui::glyphFamilyFor(app.pad.name);
                 if (target < 0)
-                    app.status = std::string(ui::hostLabel(heldFamily, holdWants.host).text) +
-                                 " drives nothing yet -- open its row below to give it a button";
+                    app.setStatus(std::string(ui::hostLabel(heldFamily, holdWants.host).text) +
+                                  " drives nothing yet -- open its row below to give it a button");
                 else
                 {
                     // BUTTONS is where the cell and any conflict dialog live; a hold begun in SETUP lands
@@ -1692,6 +1746,14 @@ int main(int argc, char **argv)
         ring.update(graph, nav.focus, GetFrameTime());
         if (ring.visible)
             ui::focusRing(ctx, ring.shown);
+        // Issue #74: the hover is armed by the mouse moving this frame and disarmed by any keyboard or pad steering
+        // (a focus the input moved, an activation, an adjust, back) until the mouse moves again, so a box never
+        // sits over the pad's focus ring. Never under --screenshot, and not while the pad is being listened to.
+        const bool steered = (nav.focus != focusBefore && !ctx.click) || ctx.activate || ctx.adjust != 0 || cueBack;
+        hoverTip.frame(mouseMovedNow, steered,
+                       !app.fake && app.bind.state != ui::BindFlow::State::Listening ? ui::nodeAt(nodes, ctx.mouse) : std::string(),
+                       ctx.time);
+        drawHoverTip(ctx, app, nodes, hoverTip);
         EndDrawing();
 
         // ---- Sprint 10 Q4: the cues, from what the frame did. One per frame, in this order: a refused LAUNCH
@@ -1740,7 +1802,7 @@ int main(int argc, char **argv)
                 app.discChecked = st.checked;
                 app.discOk = st.ok;
                 app.discMessage = st.message;
-                app.status = st.ok ? "disc verified" : st.message;
+                app.setStatus(st.ok ? "disc verified" : st.message);
                 refreshMenuSounds(menu, app, dir);   // Q4: a new disc is a new set of cues (or none)
             }
             if (app.requestMenuSounds)
@@ -1760,14 +1822,14 @@ int main(int argc, char **argv)
             {
                 writeText(configPath, launcher::toJson(app.config));
                 app.dirty = false;
-                app.status = "settings saved";
+                app.setStatus("settings saved");
             }
             if (app.requestDiagnostics)
             {
                 std::string message;
                 if (saveDiagnostics(dir, fs::path(), lastLog, haveLastExit, lastExitRaw, message))
                     win32glue::openFolder((dir / "diagnostics").string());
-                app.status = message;
+                app.setStatus(message);
             }
             if (app.requestOpenLogs)
                 win32glue::openFolder((dir / "logs").string());
@@ -1777,10 +1839,10 @@ int main(int argc, char **argv)
             {
                 std::string why;
                 if (win32glue::toggleForeground(GetWindowHandle(), game, why))
-                    app.status = "switched windows";
+                    app.setStatus("switched windows");
                 else
                 {
-                    app.status = "window switch: " + why;
+                    app.setStatus("window switch: " + why);
                     std::fprintf(stderr, "[launcher] window switch: %s\n", why.c_str());
                 }
             }
@@ -1853,7 +1915,7 @@ int main(int argc, char **argv)
                     report.form.title.clear();
                     report.form.description.clear();
                     report.changed = true;
-                    app.status = outcome.reply.text;
+                    app.setStatus(outcome.reply.text);
                     break;
                 case br::Reply::Kind::FieldError:
                 {
@@ -1880,11 +1942,11 @@ int main(int argc, char **argv)
                 if (win32glue::startGame(dir.string(), app.config, game))
                 {
                     lastLog = game.logPath;
-                    app.status = "started; log " + fs::path(game.logPath).filename().string();
+                    app.setStatus("started; log " + fs::path(game.logPath).filename().string());
                     app.exitLine.clear();
                 }
                 else
-                    app.status = game.error;
+                    app.setStatus(game.error);
             }
         }
         // Sprint 10 Goal 8: a cell asked to bind. The host buttons down right now (A, which activated the cell)
@@ -1902,7 +1964,7 @@ int main(int argc, char **argv)
                 }
             }
             ui::bindStart(app.bind, static_cast<uint8_t>(app.requestBind), ctx.time);
-            app.status = "press the button on your pad";
+            app.setStatus("press the button on your pad");
             app.requestBind = -1;
         }
         app.requestBrowse = app.requestVerify = app.requestLaunch = app.requestSave = false;
@@ -2036,8 +2098,11 @@ int main(int argc, char **argv)
                         ui::restoreAsk(app.bind);
                         shotPendingFocus = ui::dialogFocusId(app.bind.state);
                     }
+                    // Issue #74: Triangle's cell, whose tip wraps to two lines at 1100x700 -- the record that the
+                    // bottom bar draws a two-line tip whole. Not the page's longest: the chosen crouch cell's
+                    // "... (Set.)" line is; the measuring test in launcher_tests.cpp holds every line to two.
                     if (suffix == "_buttons")
-                        shotPendingFocus = ui::bindCellId(0);
+                        shotPendingFocus = ui::bindCellId(3);
                     // Q4: the switch. Every shot starts from the guide; _buttons_switch has it on VIEW with the
                     // cell focused, _buttons_switch_conflict caught VIEW while SELECT still drives it.
                     app.config.focusToggle = suffix == "_buttons_switch" ? "select" : "guide";

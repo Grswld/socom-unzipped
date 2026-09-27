@@ -181,6 +181,17 @@ class KeyboardSentencesAgreeWithTheMap(unittest.TestCase):
                 key = re.search(r"keyboard's (\S) key", hint).group(1)
                 self.assertEqual(keys.get(key), button, f"{shortcut}: the hint names {key}, which the map binds to {keys.get(key)}")
 
+    def test_the_crouch_tips_name_the_key_the_map_gives_the_displaced_button(self):
+        """Issue #74: the CONTROLLER tooltips for the L3 and L2 crouch cells repeat the hint's key; held the same way."""
+        text = read(LAUNCHER_UI, "page_controller_tips.cpp")
+        keys = default_keys()
+        for shortcut, button in {"l3": "L3", "l2": "L2"}.items():
+            with self.subTest(shortcut=shortcut):
+                tip = re.search(r'value == "' + shortcut + r'"\)\s*line = "([^"]+)";', text).group(1)
+                key = re.search(r"keyboard's (\S) key", tip)
+                self.assertIsNotNone(key, f"{shortcut}: the tip names the displaced button's key as \"the keyboard's N key\"")
+                self.assertEqual(keys.get(key.group(1)), button, f"{shortcut}: the tip names {key.group(1)}, which the map binds to {keys.get(key.group(1))}")
+
     def test_install_quotes_the_page(self):
         install = doc("docs/INSTALL.md")
         for line in self.caption_lines():
@@ -214,6 +225,29 @@ class RenderScaleComment(unittest.TestCase):
             word = label.split()[0].lower()
             with self.subTest(scale=n):
                 self.assertIn(f"{n} {word}", comment, f"the comment does not name {n}x as {label!r}")
+
+
+class StatusIsSaidThroughOneSetter(unittest.TestCase):
+    """Issue #74, review round 2: the bottom bar's status gets the slot back from a two-line tip each time it is SAID,
+    counted by App::statusSerial, so every assignment goes through App::setStatus -- one written straight into
+    `.status` would never be counted, and a failure said that way could stay hidden (R238)."""
+
+    def test_no_launcher_source_assigns_the_status_directly(self):
+        src = os.path.join(PS2R, "ps2xLauncher", "src")
+        found = []
+        for dirpath, _dirs, files in os.walk(src):
+            for name in files:
+                if name.endswith((".cpp", ".h")):
+                    for n, line in enumerate(read(dirpath, name).splitlines(), 1):
+                        if re.search(r"\bapp\.status\s*=(?!=)", line):
+                            found.append(f"{os.path.relpath(os.path.join(dirpath, name), src)}:{n}")
+        self.assertEqual(found, [], "assign the bar's status with app.setStatus(...), which counts it")
+
+    def test_the_setter_counts(self):
+        pages = read(LAUNCHER_UI, "pages.h")
+        body = re.search(r"void setStatus\([^)]*\)\s*\{(.*?)\}", pages, re.S)
+        self.assertIsNotNone(body, "App has setStatus")
+        self.assertIn("++statusSerial", body.group(1), "and it bumps statusSerial on every call")
 
 
 if __name__ == "__main__":
