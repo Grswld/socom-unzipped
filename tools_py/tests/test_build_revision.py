@@ -5,10 +5,12 @@
 These cases hold the script's argument handling, its preconditions, its dry run and the mark step 4 skips on,
 through tools_py/tests/shell.BASH (a bare `bash` resolves to WSL's on a GitHub Windows runner). They touch no
 disc and are meant to stop at a refusal, at a skip check, at `--stop-after elf` or at the dry run, before the first
-minute of Unicorn and before the first cmake. Since #56 that holds only for a revision with no products in the
-tree: a non-dry --out case on a revision whose `game/overlays_<rev>/` is current (r0004 on a working checkout)
-copies those overlays instead of decrypting, skips the step-1 refusal it meant to reach and runs on into the
-lock-bound recomp and runtime. So every non-dry case uses a throwaway revision name (r0009...).
+minute of Unicorn and before the first cmake -- except BuildRevisionRecompKeepsItsOutputTest, which runs step 4
+with BR_PS2_RECOMP naming a stand-in, and with that seam set step 4 runs no cmake at all. Since #56 that holds
+only for a revision with no products in the tree: a non-dry --out case on a revision whose `game/overlays_<rev>/`
+is current (r0004 on a working checkout) copies those overlays instead of decrypting, skips the step-1 refusal it
+meant to reach and runs on into the lock-bound recomp and runtime. So every non-dry case uses a throwaway
+revision name (r0009...).
 
 NOT covered here, because only a disc can cover it: that the pipeline reproduces r0001 byte for byte. That is the
 bar the controller runs from the main tree (`r0001check` against dist/socom2_game.elf and recomp/output); the
@@ -56,7 +58,8 @@ def touch(*parts):
 
 def fake_toolchain(tmp):
     """clang/cmake/ninja stubs for the lock-bound tail's toolchain check, so these cases run on a machine (or a
-    CI runner) with no tools/ tree. Nothing here ever invokes them: both cases stop before the first cmake."""
+    CI runner) with no tools/ tree. Nothing invokes them: the skip cases stop before step 4's cmake, and the
+    BR_PS2_RECOMP cases reach step 4 with the seam set, which skips both cmake lines."""
     binaries = os.path.join(tmp, "fakebin")
     os.makedirs(binaries)
     for name in ("clang", "cmake", "ninja"):
@@ -340,6 +343,130 @@ class BuildRevisionRecompSkipTest(unittest.TestCase):
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
             self.assertIn("skipped", p.stdout)
             self.assertIn("stop after recomp", p.stdout)
+
+
+# A stand-in for ps2_recomp with the two properties issue #57 gave the real one: a file is rewritten only when its
+# bytes change, and the function files an earlier run wrote that this one did not are removed. One function file
+# per row of step 0's fixed map ("name,hex address"), named the way the emitter names them.
+FAKE_RECOMP = r"""#!/bin/sh
+set -e
+rev="${1#socom2_}"; rev="${rev%.toml}"
+[ -z "$FAKE_RECOMP_FAIL" ] || exit 1
+mkdir -p output
+: > .produced
+while IFS=, read -r name addr; do
+  f="${name}_0x${addr}.cpp"
+  printf 'void %s(uint8_t*, R5900Context*, PS2Runtime*) {}\n' "${name}_0x${addr}" > .next
+  if cmp -s .next "output/$f"; then rm -f .next; else mv .next "output/$f"; fi
+  echo "$f" >> .produced
+done < "build/socom2_ghidra_$rev.fixed.csv"
+for f in output/*_0x*.cpp; do
+  [ -e "$f" ] || continue
+  grep -qxF "$(basename "$f")" .produced || rm -f "$f"
+done
+"""
+
+
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionRecompKeepsItsOutputTest(unittest.TestCase):
+    """#57's r0004 leg: step 4 used to `rm -rf` its output directory before ps2_recomp ran, so every file came back
+    with a new timestamp and the runtime build after a one-name change recompiled every object -- the incremental
+    rebuild the emitter's per-file declarations bought, thrown away. Every case drives the lock-bound tail (--_tail
+    with BR_*) through step 4 with the stand-in above named by BR_PS2_RECOMP, and stops after it; with the seam
+    set step 4 builds nothing (the last case holds that)."""
+    REV = "r0009keep"
+    OLD = 1_000_000_000   # a timestamp no run of the stand-in can write
+
+    def _tree(self, tmp, rows):
+        out = os.path.join(tmp, "out")
+        recomp_dir = os.path.join(out, f"recomp_{self.REV}")
+        self._map(recomp_dir, rows)
+        fake = os.path.join(tmp, "ps2_recomp")
+        with open(fake, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(FAKE_RECOMP)
+        os.chmod(fake, 0o755)
+        env = tail_env(tmp, out, rev=self.REV)
+        env["BR_PS2_RECOMP"] = sh(fake)
+        return out, os.path.join(recomp_dir, "output"), env
+
+    def _map(self, recomp_dir, rows):
+        path = os.path.join(recomp_dir, "build", f"socom2_ghidra_{self.REV}.fixed.csv")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write("".join(f"{name},{addr}\n" for name, addr in rows))
+
+    def _step4(self, env, force):
+        env = dict(env, BR_FORCE="1" if force else "0")
+        return run_bash(SCRIPT, "--_tail", env=env)
+
+    def test_a_rerun_after_one_name_changed_leaves_the_other_files_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = [("entry", "100000"), ("leaf", "100010"), ("sub_00100020", "100020")]
+            out, gen, env = self._tree(tmp, rows)
+            p = self._step4(env, force=False)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            first = sorted(n for n in os.listdir(gen) if n.endswith(".cpp"))
+            self.assertEqual(first, ["entry_0x100000.cpp", "leaf_0x100010.cpp", "sub_00100020_0x100020.cpp"])
+            for name in first:
+                os.utime(os.path.join(gen, name), (self.OLD, self.OLD))
+            self._map(os.path.dirname(gen), rows[:2] + [("renamed", "100020")])
+            p = self._step4(env, force=True)   # --force: the .complete mark would skip the step otherwise
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertEqual(sorted(n for n in os.listdir(gen) if n.endswith(".cpp")),
+                             ["entry_0x100000.cpp", "leaf_0x100010.cpp", "renamed_0x100020.cpp"])
+            for name in ("entry_0x100000.cpp", "leaf_0x100010.cpp"):
+                self.assertEqual(os.stat(os.path.join(gen, name)).st_mtime, self.OLD,
+                                 f"{name} was rewritten, so its object rebuilds: the output was deleted first")
+            self.assertTrue(os.path.isfile(os.path.join(gen, ".complete")))
+
+    def test_a_forced_rerun_that_fails_does_not_keep_the_earlier_runs_mark(self):
+        """Without the delete, the previous run's .complete sits in the directory while ps2_recomp runs again;
+        a run that fails there must not leave it, or the next build skips a half-rewritten tree."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out, gen, env = self._tree(tmp, [("entry", "100000")])
+            p = self._step4(env, force=False)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertTrue(os.path.isfile(os.path.join(gen, ".complete")))
+            p = self._step4(dict(env, FAKE_RECOMP_FAIL="1"), force=True)
+            self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+            self.assertFalse(os.path.exists(os.path.join(gen, ".complete")), "a failed recomp kept the old mark")
+            p = self._step4(env, force=False)
+            self.assertNotIn("skipped", p.stdout, "the next build trusted a tree the failed run left: " + p.stdout)
+
+    def test_with_the_seam_set_step_4_builds_no_recompiler(self):
+        """The seam names the recompiler step 4 runs; it must also stop step 4 building the real one. A case that
+        ran `cmake -S third_party/ps2recomp -B build-tools` and `cmake --build ... -j $(nproc)` configured and
+        built the recompiler outside the loop lock on every suite run where tools/ holds a toolchain -- the script
+        puts tools/ at the FRONT of PATH, ahead of any stand-in. So this case runs a copy of the script from a
+        synthetic ROOT with no tools/ and no third_party/, puts a cmake that leaves a marker and exits 1 first on
+        PATH, and asserts cmake never ran: no marker, no cmake or ninja line, no build-tools directory."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "root")
+            os.makedirs(os.path.join(root, "scripts"))
+            for name in ("build_revision.sh", "python_env.sh"):
+                with open(os.path.join(ROOT, "scripts", name), "rb") as src, \
+                        open(os.path.join(root, "scripts", name), "wb") as dst:
+                    dst.write(src.read())
+            out, gen, env = self._tree(tmp, [("entry", "100000")])
+            marker = os.path.join(tmp, "cmake-was-called")
+            trap = os.path.join(tmp, "trapbin")
+            os.makedirs(trap)
+            cmake = os.path.join(trap, "cmake")
+            with open(cmake, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(f'#!/bin/sh\necho "cmake $*" >> "{sh(marker)}"\nexit 1\n')
+            os.chmod(cmake, 0o755)
+            env["PATH"] = trap + os.pathsep + env["PATH"]
+            p = subprocess.run([BASH, os.path.join("scripts", "build_revision.sh"), "--_tail"],
+                               capture_output=True, text=True, cwd=root, env=dict(env, BR_FORCE="0"))
+            said = p.stdout + p.stderr
+            self.assertFalse(os.path.exists(marker), "step 4 ran cmake with the seam set: " + said)
+            self.assertEqual(p.returncode, 0, said)
+            for word in ("cmake", "ninja"):
+                self.assertNotIn(word, said.lower(), f"step 4 printed a {word} line with the seam set")
+            self.assertFalse(os.path.exists(os.path.join(root, "third_party", "ps2recomp", "build-tools")),
+                             "step 4 configured build-tools with the seam set")
+            self.assertEqual(sorted(n for n in os.listdir(gen) if n.endswith(".cpp")), ["entry_0x100000.cpp"])
+            self.assertTrue(os.path.isfile(os.path.join(gen, ".complete")))
 
 
 @unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")

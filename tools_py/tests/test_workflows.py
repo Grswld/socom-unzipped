@@ -246,6 +246,35 @@ class SyntheticGeneratedSetShape(unittest.TestCase):
             self.assertEqual(dict((f, a) for _, f, a in rows if int(a, 16) == start).get(fn), f"{start:x}",
                              f"{fn}'s own address is its slot")
 
+    @staticmethod
+    def _preamble(text):
+        """A generated file's lines before its first comment: the includes and the declarations the emitter writes."""
+        lines = []
+        for line in text.splitlines():
+            if line.startswith("// "):
+                break
+            lines.append(line)
+        return lines
+
+    def test_each_function_file_carries_the_preamble_the_emitter_writes_today(self):
+        # Issue #57: a function file declares only the functions it tail-calls by name, and includes neither
+        # generated header. recomp_ref/expected is the emitter's own output (the recomp-ref job diffs it on every
+        # code push); none of its function files calls by name, and neither do these two, so the preambles are equal.
+        expected = os.path.join(RECOMP_REF, "expected")
+        def read(path):
+            with open(path, encoding="utf-8") as f:
+                return f.read()
+        emitted = {tuple(self._preamble(read(os.path.join(expected, n))))
+                   for n in os.listdir(expected) if re.search(r"_0x[0-9a-f]+\.cpp$", n)}
+        self.assertEqual(len(emitted), 1, "recomp_ref's function files disagree on their preamble")
+        emitter = read(os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRecomp", "src", "lib",
+                                     "function_emitter.cpp"))
+        written = "".join(re.findall(r'file << "((?:[^"\\]|\\.)*)";', emitter)).encode().decode("unicode_escape")
+        (preamble,) = emitted
+        self.assertTrue(written.startswith("\n".join(preamble)), "the emitter's preamble moved: regenerate expected/")
+        for name in ("entry_0x100000.cpp", "sub_00100020_0x100020.cpp"):
+            self.assertEqual(self._preamble(self._read(name)), list(preamble), f"{name}: not the emitter's preamble")
+
     def test_nothing_at_the_games_addresses(self):
         # Hand-written, never copied from recomp/output: nothing at or above the game's text (0x180008 up).
         for name in os.listdir(SYNTHETIC):
