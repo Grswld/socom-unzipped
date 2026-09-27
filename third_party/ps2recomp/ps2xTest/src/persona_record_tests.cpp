@@ -4,7 +4,9 @@
 #include "MiniTest.h"
 #include "launcher/personas.h"
 #include "socom2_persona_record.h"
+#include "socom2_rt_frames.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -40,9 +42,10 @@ namespace
         return m;
     }
 
-    std::vector<uint8_t> loginResponse(const std::string &messageId, int32_t status, uint8_t type = 0x08)
+    // len 198 is the Medius 1.50 answer (the seam reading, section 2): class, type, then 196 bytes of body.
+    std::vector<uint8_t> loginResponse(const std::string &messageId, int32_t status, uint8_t type = 0x08, std::size_t len = 64)
     {
-        std::vector<uint8_t> m(64, 0u);   // MessageID, pad, StatusCode, then AccountID and the rest
+        std::vector<uint8_t> m(len, 0u);   // MessageID, pad, StatusCode, then AccountID and the rest
         m[0] = 0x01;
         m[1] = type;
         // What the server writes (BinaryWriterExt.Write(str, 21)): a string of 21 or more characters is cut to 20 and
@@ -87,6 +90,44 @@ namespace
         void send(const std::vector<uint8_t> &m, uint32_t counter = 0) { rec.encrypt(kState, counter, m.data(), m.size()); }
         void receive(const std::vector<uint8_t> &m, uint32_t counter = 0) { rec.decrypt(kState + 0x200u, counter, m.data(), m.size()); }
     };
+
+    // An RT frame as Horizon writes one (BaseScertMessage.Serialize): the id (0x80 set when encrypted), the body's length
+    // little-endian, a 4-byte hash only on an encrypted frame with a body (ScertTcpFrameDecoder), then the body.
+    std::vector<uint8_t> rtFrame(uint8_t id, const std::vector<uint8_t> &body)
+    {
+        std::vector<uint8_t> f{id, static_cast<uint8_t>(body.size()), static_cast<uint8_t>(body.size() >> 8)};
+        if ((id & 0x80u) != 0 && !body.empty())
+            f.insert(f.end(), {0xA1, 0xB2, 0xC3, 0xD4});   // a hash: any four bytes
+        f.insert(f.end(), body.begin(), body.end());
+        return f;
+    }
+
+    // One descriptor's receive side as socom2_hostnet::recv runs it, without the socket or the global recorder: the
+    // walk, and each kept (plain SERVER_APP) body handed to decrypt() under the descriptor's socket state at counter 0.
+    struct Wire
+    {
+        pr::Recorder &rec;
+        int fd = 7;
+        socom2_rt::Carry carry;
+        std::vector<socom2_rt::Frame> seen;   // their body pointers dangle after the call: id, len and kept only
+        void recv(const std::vector<uint8_t> &bytes, std::size_t from = 0, std::size_t to = SIZE_MAX)
+        {
+            to = std::min(to, bytes.size());
+            socom2_rt::splitRtFrames(carry, bytes.data() + from, to - from, true, [&](const socom2_rt::Frame &f) {
+                seen.push_back(f);
+                if (f.kept)
+                    rec.decrypt(pr::socketState(fd), 0, f.body, f.len);
+            });
+        }
+    };
+
+    std::vector<uint8_t> cat(std::initializer_list<std::vector<uint8_t>> parts)
+    {
+        std::vector<uint8_t> out;
+        for (const auto &p : parts)
+            out.insert(out.end(), p.begin(), p.end());
+        return out;
+    }
 }
 
 void register_persona_record_tests()
@@ -313,6 +354,94 @@ void register_persona_record_tests()
             const std::vector<uint8_t> other = loginRequest("msgid-0009", "bravo", "x");
             f.rec.encrypt(kState + 0x40u, 50, other.data() + 50, 54);   // a continuation on a state with nothing open
             t.IsFalse(f.rec.pending().has_value(), "a tail with no head is nothing");
+        });
+    });
+
+    // The seam reading (logs/l1b_seam_reading.md, section 4): Horizon's MAS and MLS answer PLAIN, so the login response
+    // never crosses rc4DecryptFn; socom2_hostnet walks the RT frames and hands a plain SERVER_APP body to decrypt().
+    MiniTest::Case("PersonaSocket", [](TestCase &tc)
+    {
+        tc.Run("the walk (RED first): a 23-byte accept and a 2-byte complete in one chunk are two frames, neither handed on", [](TestCase &t)
+        {
+            Fixture f;
+            Wire w{f.rec};
+            std::vector<uint8_t> accept(23, 0u);   // UNK_07 {01 08 10}, PlayerId 2, PlayerCount 2, IP 16
+            accept[0] = 0x01;
+            accept[1] = 0x08;
+            accept[2] = 0x10;
+            w.recv(cat({rtFrame(0x07, accept), rtFrame(0x1A, {0x01, 0x00})}));
+            t.Equals(w.seen.size(), size_t(2), "two frames in one chunk");
+            if (w.seen.size() == 2)
+            {
+                t.IsTrue(w.seen[0].id == 0x07 && w.seen[0].len == 23 && !w.seen[0].kept, "CONNECT_ACCEPT_TCP, 23 bytes, not an app frame");
+                t.IsTrue(w.seen[1].id == 0x1A && w.seen[1].len == 2 && !w.seen[1].kept, "CONNECT_COMPLETE, 2 bytes");
+            }
+            t.Equals(f.rec.bufferedBytes(), size_t(0), "the recorder saw neither: their 01 08 is not a login response");
+        });
+
+        tc.Run("a plain SERVER_APP login response, 3 + 198 bytes over two recv chunks, commits once the second lands (RED first)", [](TestCase &t)
+        {
+            Fixture f;
+            Wire w{f.rec};
+            f.send(loginRequest("msgid-0001", "alpha", "hunter2"));   // the request, at the RC4 seam as before
+            const std::vector<uint8_t> frame = rtFrame(0x0A, loginResponse("msgid-0001", 0, 0x08, 198));
+            t.Equals(frame.size(), size_t(201), "3 + 198");
+            w.recv(frame, 0, 120);
+            t.IsTrue(f.rec.commits() == 0 && f.rec.pending().has_value(), "the first chunk: nothing yet");
+            w.recv(frame, 120);
+            t.Equals(f.rec.commits(), 1, "the second chunk completes the frame: committed");
+            t.Equals(ledgerAt(f.ledger).size(), size_t(1), "one record beside the card");
+            f.send(loginRequest("msgid-0002", "alpha", "hunter2"));
+            const std::vector<uint8_t> again = rtFrame(0x0A, loginResponse("msgid-0002", 0, 0x08, 198));
+            w.recv(again, 0, 2);   // inside the header
+            w.recv(again, 2, 60);   // inside the body
+            t.Equals(f.rec.commits(), 1, "not before its last byte");
+            w.recv(again, 60);
+            t.Equals(f.rec.commits(), 2, "split inside the header and the body: committed");
+        });
+
+        tc.Run("a refused status (-1003) delivered whole: dropped, no commit (RED first)", [](TestCase &t)
+        {
+            Fixture f;
+            Wire w{f.rec};
+            f.send(loginRequest("msgid-0001", "alpha", "wrong"));
+            w.recv(rtFrame(0x0A, loginResponse("msgid-0001", -1003, 0x08, 198)));
+            t.IsTrue(w.seen.size() == 1 && w.seen[0].kept, "the frame was handed on");
+            t.IsFalse(f.rec.pending().has_value(), "answered: dropped");
+            t.IsTrue(f.rec.commits() == 0 && !fs::exists(f.ledger), "no commit, no ledger");
+        });
+
+        tc.Run("an encrypted 0x8A frame (its 4-byte hash outside the length) is skipped and the stream stays in step (RED first)", [](TestCase &t)
+        {
+            Fixture f;
+            Wire w{f.rec};
+            f.send(loginRequest("msgid-0001", "alpha", "hunter2"));
+            const std::size_t sent = f.rec.bufferedBytes();   // the request, put together at the RC4 seam
+            const std::vector<uint8_t> body = loginResponse("msgid-0001", 0, 0x08, 198);   // bytes that WOULD parse
+            const std::vector<uint8_t> hidden = rtFrame(0x8A, body);
+            t.Equals(hidden.size(), size_t(3 + 4 + 198), "id, length, hash, body");
+            w.recv(cat({hidden, rtFrame(0x9A, {})}));   // an encrypted frame with no body carries no hash
+            t.IsTrue(f.rec.commits() == 0 && f.rec.bufferedBytes() == sent, "left to the RC4 seam: nothing reached the recorder");
+            w.recv(rtFrame(0x0A, body));
+            t.Equals(w.seen.size(), size_t(3), "three frames, cut where the server cuts them");
+            t.Equals(f.rec.commits(), 1, "the plain frame after them is read");
+        });
+
+        tc.Run("a frame longer than the carry's cap (a plain SERVER_APP over 512) is dropped without a crash, in step (RED first)", [](TestCase &t)
+        {
+            Fixture f;
+            Wire w{f.rec};
+            f.send(loginRequest("msgid-0001", "alpha", "hunter2"));
+            const std::vector<uint8_t> big = rtFrame(0x0A, loginResponse("msgid-0001", 0, 0x08, 600));
+            w.recv(big, 0, 300);
+            w.recv(big, 300);
+            t.IsTrue(w.seen.size() == 1 && !w.seen[0].kept && f.rec.commits() == 0, "over 512: walked, never kept, never parsed");
+            const std::vector<uint8_t> huge = rtFrame(0x0A, std::vector<uint8_t>(0xFFFF, 0x01u));
+            for (std::size_t at = 0; at < huge.size(); at += 4096)
+                w.recv(huge, at, at + 4096);
+            t.IsTrue(w.seen.size() == 2 && w.carry.kept.capacity() <= socom2_rt::kAppMostBytes, "the longest length: the carry never grew past its cap");
+            w.recv(rtFrame(0x0A, loginResponse("msgid-0001", 0, 0x08, 198)));
+            t.Equals(f.rec.commits(), 1, "the frame after them is read");
         });
     });
 }

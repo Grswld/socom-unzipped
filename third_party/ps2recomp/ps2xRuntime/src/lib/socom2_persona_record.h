@@ -7,8 +7,9 @@
 // 0x07 (AccountLogin), MessageID 21 bytes, SessionKey 17, Username 32 at payload offset 40, Password 32 at 72 -- 104
 // bytes. The record is held PENDING with its MessageID and committed by the first type-0x08 response
 // (MediusAccountLoginResponse.cs: MessageID, 3 pad bytes, StatusCode at 26) carrying that MessageID with StatusCode >= 0,
-// which comes back plain after rc4DecryptFn; a refused login (a wrong password, a refused create) is dropped, so the
-// ledger never holds a phantom row.
+// read after rc4DecryptFn when the server encrypts it and at the socket when it does not (socketState below; Horizon's
+// MAS and MLS send it plain -- logs/l1b_seam_reading.md); a refused login (a wrong password, a refused create) is
+// dropped, so the ledger never holds a phantom row.
 //
 // Whether the seams carry whole messages is inferred (PS2X_SOCOM2_LOGIN_TRACE is the check), so the recorder
 // reassembles AT the seams: a concatenation keyed on the RC4 state's guest address, a message opened by a call that
@@ -69,6 +70,13 @@ namespace socom2_persona
         return !passwordKeyboardOpened && !password.empty();
     }
 
+    // The login response Horizon's MAS and MLS send PLAIN (EnableEncryption false) never crosses rc4DecryptFn; socom2_hostnet
+    // walks the RT frames (socom2_rt_frames.h) and hands a plain RT_MSG_SERVER_APP body to decrypt() at counter 0 under
+    // this key, one state per descriptor. A guest RC4 state is an address masked to EE RAM (PS2_RAM_MASK, under
+    // 0x02000000; the .cpp asserts it), so a key with the top bit set never names one, and nothing meets the other's.
+    constexpr uint32_t kSocketStateBit = 0x80000000u;
+    inline uint32_t socketState(int fd) { return kSocketStateBit | static_cast<uint32_t>(fd); }
+
     struct Context
     {
         std::string ledgerPath;   // launcher::personas::ledgerPathFor(the card root)
@@ -123,6 +131,8 @@ namespace socom2_persona
     // seams in socom2_crypto.cpp and the keyboard wrapper in game_overrides_socom2.cpp call these.
     void onRc4Encrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len);
     void onRc4Decrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len);
+    // socom2_hostnet: a plain RT_MSG_SERVER_APP body read on descriptor fd (outside hostnet's lock).
+    void onServerApp(int fd, const uint8_t *body, std::size_t len);
     void onPasswordKeyboardOpened();
     // installOskPrefill's count: how many of the keyboard's entries it wrapped, of how many.
     void onKeyboardObserverWraps(int wrapped, int entries);

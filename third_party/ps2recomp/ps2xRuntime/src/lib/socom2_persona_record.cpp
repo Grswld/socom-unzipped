@@ -3,6 +3,7 @@
 
 #include "ps2_runtime.h"
 #include "ps2x/knobs.h"
+#include "runtime/ps2_memory.h"
 
 #include <cstring>
 #include <iostream>
@@ -95,6 +96,8 @@ namespace socom2_persona
                                           (static_cast<uint32_t>(s[2]) << 16) | (static_cast<uint32_t>(s[3]) << 24));
         return true;
     }
+
+    static_assert((PS2_RAM_MASK & kSocketStateBit) == 0, "a socket state must never be a guest RC4 state's address");
 
     Recorder::Recorder(Context context, std::function<std::time_t()> clock)
         : m_context(std::move(context)), m_clock(std::move(clock))
@@ -207,6 +210,16 @@ namespace socom2_persona
             }
             return *r;
         }
+
+        // The caller holds g_mutex.
+        void decryptLocked(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len)
+        {
+            const int before = recorder().commits();
+            recorder().decrypt(state, counter, data, len);
+            if (recorder().commits() != before)
+                std::cout << "[socom2] persona record: a login committed to " << PS2Runtime::getIoPaths().mcRoot.filename().string()
+                          << "'s ledger" << std::endl;   // never the name or the password
+        }
     }
 
     void onRc4Encrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len)
@@ -218,11 +231,13 @@ namespace socom2_persona
     void onRc4Decrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len)
     {
         std::lock_guard<std::mutex> lock(g_mutex);
-        const int before = recorder().commits();
-        recorder().decrypt(state, counter, data, len);
-        if (recorder().commits() != before)
-            std::cout << "[socom2] persona record: a login committed to " << PS2Runtime::getIoPaths().mcRoot.filename().string()
-                      << "'s ledger" << std::endl;   // never the name or the password
+        decryptLocked(state, counter, data, len);
+    }
+
+    void onServerApp(int fd, const uint8_t *body, std::size_t len)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        decryptLocked(socketState(fd), 0, body, len);   // one frame, one whole message: counter 0 opens it
     }
 
     void onKeyboardObserverWraps(int wrapped, int entries)

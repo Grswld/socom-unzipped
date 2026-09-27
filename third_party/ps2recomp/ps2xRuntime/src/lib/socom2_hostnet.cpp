@@ -1,6 +1,8 @@
 #include "socom2_hostnet.h"
 #include "ps2x/exit_codes.h"
 #include "ps2x/knobs.h"
+#include "socom2_persona_record.h"   // Sprint 16 L1b (#73): a plain login response is read here
+#include "socom2_rt_frames.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -89,6 +91,7 @@ namespace socom2_hostnet
             bool used = false;
             bool connecting = false;
             bool blocking = false;
+            socom2_rt::Carry rx;   // Sprint 16 L1b: the RT frame walk of what arrives; closeSocket's reset starts it again
         };
 
         std::mutex g_mutex;
@@ -191,6 +194,18 @@ namespace socom2_hostnet
             if (fd < 0 || fd >= kMaxSockets || !g_table[fd].used)
                 return nullptr;
             return &g_table[fd];
+        }
+
+        // Sprint 16 L1b (#73; logs/l1b_seam_reading.md, section 4): Horizon's MAS and MLS send the login response PLAIN,
+        // so it never crosses the RC4 seam. Every TCP byte received is walked as RT frames (socom2_rt_frames.h) and each
+        // plain RT_MSG_SERVER_APP body is kept for socom2_persona::onServerApp, which the caller runs AFTER g_mutex is
+        // released (the ledger write must not sit under the socket table's lock); encrypted frames are the RC4 seam's.
+        void walkFrames(socom2_rt::Carry &carry, const void *bytes, std::size_t n, std::vector<std::vector<uint8_t>> *apps)
+        {
+            socom2_rt::splitRtFrames(carry, static_cast<const uint8_t *>(bytes), n, true, [&](const socom2_rt::Frame &f) {
+                if (f.kept)
+                    apps->emplace_back(f.body, f.body + f.len);
+            });
         }
 
         sockaddr_in toAddr(const Endpoint &ep)
@@ -438,7 +453,7 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         hostnetClose(e->s);
-        *e = Entry{};
+        *e = Entry{};   // the frame walk's carry goes with it
         return 0;
     }
 
@@ -586,14 +601,23 @@ namespace socom2_hostnet
 
     int recv(int fd, void *data, uint32_t size)
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        Entry *e = entry(fd);
-        if (!e)
-            return -9;
-        const IoResult n = ::recv(e->s, static_cast<RecvBuf>(data), static_cast<IoLen>(size), 0);
-        if (n > 0)
+        std::vector<std::vector<uint8_t>> apps;   // plain SERVER_APP bodies, handed on once g_mutex is released
+        IoResult n = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            Entry *e = entry(fd);
+            if (!e)
+                return -9;
+            n = ::recv(e->s, static_cast<RecvBuf>(data), static_cast<IoLen>(size), 0);
+            if (n <= 0)
+                return n == 0 ? 0 : mapError();
             g_rxBytes += static_cast<uint64_t>(n);
-        return n >= 0 ? static_cast<int>(n) : mapError();
+            if (e->proto == Proto::Tcp)
+                walkFrames(e->rx, data, static_cast<std::size_t>(n), &apps);
+        }
+        for (const std::vector<uint8_t> &body : apps)
+            socom2_persona::onServerApp(fd, body.data(), body.size());
+        return static_cast<int>(n);
     }
 
     int sendTo(int fd, const void *data, uint32_t size, const Endpoint &remote)
