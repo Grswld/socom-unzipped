@@ -3279,6 +3279,52 @@ void register_launcher_tests()
             t.IsTrue(ps::passwordShown(rows, c), "a record without a saved password: the field shows");
         });
 
+        tc.Run("readCards (d), the config write rule: a true record on effectiveServer -> \"loginPassword\": \"\"; false, absent or elsewhere -> kept", [](TestCase &t)
+        {
+            launcher::Config c;
+            const std::string here = launcher::effectiveServer(c);
+            auto sendsPass = [](const std::vector<std::string> &env) {
+                for (const std::string &e : env)
+                    if (e.rfind("PS2X_SOCOM2_LOGIN_PASS=", 0) == 0)
+                        return true;
+                return false;
+            };
+            std::vector<ps::Persona> rows = {persona("alpha", here, 10, true)};
+            rows[0].card = "player";
+            c.loginName = "alpha";
+            c.loginPassword = "hunter2";
+            t.IsTrue(ps::cardHoldsPassword(rows, c), "the selected record on this server says the card holds it");
+            t.IsTrue(launcher::toJson(c, rows).find("\"loginPassword\": \"\"") != std::string::npos, "config.json keeps the key, empty");
+            t.IsFalse(sendsPass(launcher::environmentFor(c, rows)), "and no PS2X_SOCOM2_LOGIN_PASS: the game fills its own form from the card");
+            t.IsTrue(ps::dropSavedPassword(c, rows) && c.loginPassword.empty(), "the migration clears the plain copy at the read");
+            t.IsFalse(ps::dropSavedPassword(c, rows), "once");
+
+            c.loginPassword = "hunter2";
+            rows[0].savedPassword = false;
+            t.IsTrue(launcher::toJson(c, rows).find("\"loginPassword\": \"hunter2\"") != std::string::npos, "a false record: the typed value is kept");
+            t.IsTrue(sendsPass(launcher::environmentFor(c, rows)), "and sent");
+            t.IsFalse(ps::dropSavedPassword(c, rows), "and never dropped");
+            rows[0].savedPassword = true;
+            rows[0].server = "192.0.2.10";
+            t.IsTrue(launcher::toJson(c, rows).find("\"loginPassword\": \"hunter2\"") != std::string::npos,
+                     "a true record on ANOTHER server is no record here: kept (a server switch never drops the plain password)");
+            t.IsTrue(sendsPass(launcher::environmentFor(c, rows)), "and sent");
+            t.IsFalse(ps::dropSavedPassword(c, rows), "and not dropped");
+            const std::vector<ps::Persona> none;
+            t.IsTrue(launcher::toJson(c, none).find("\"loginPassword\": \"hunter2\"") != std::string::npos, "no record at all: kept");
+            t.Equals(launcher::toJson(c, none), launcher::toJson(c), "and the file is what it always was");
+        });
+
+        tc.Run("a row's server is shown by its preset's label, matched by address; any other address as it is", [](TestCase &t)
+        {
+            const launcher::ServerPreset *unzipped = launcher::findServerPresetByAddress("socom.scotho.com");
+            t.IsTrue(unzipped != nullptr && std::string(unzipped->id) == "unzipped", "the project server's address is its preset");
+            t.IsTrue(launcher::findServerPresetByAddress("192.0.2.10") == nullptr, "a typed address is no preset");
+            t.IsTrue(launcher::findServerPresetByAddress("") == nullptr, "and Custom's empty address matches nothing");
+            t.Equals(ps::serverCaption("socom.scotho.com"), std::string(unzipped != nullptr ? unzipped->label : "?"), "the label");
+            t.Equals(ps::serverCaption("192.0.2.10"), std::string("192.0.2.10"), "else the address");
+        });
+
         tc.Run("the row's captions: the age of the last login", [](TestCase &t)
         {
             t.Equals(ps::ageCaption(1000, 1000 + 3600), std::string("last played today"), "the same day");

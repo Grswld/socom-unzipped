@@ -103,6 +103,14 @@ namespace launcher::personas
     void pick(Config &c, const Persona &row);
     // NEW PERSONA: the name and the password cleared, the card kept; the game asks for a name on its own keyboard.
     void pickNewPersona(Config &c);
+    // The config write rule (the design note, section 3): the selected row's record counts and says the card holds
+    // the password -- config.json then keeps the key empty and no PS2X_SOCOM2_LOGIN_PASS is sent
+    // (launcher::toJson / environmentFor with the rows). dropSavedPassword is the migration at a ledger read: it
+    // clears Config::loginPassword under that rule and answers whether it did (the caller rewrites the file).
+    bool cardHoldsPassword(const std::vector<Persona> &rows, const Config &c);
+    bool dropSavedPassword(Config &c, const std::vector<Persona> &rows);
+    // A record's server as a row shows it: the label of the preset with that address, else the address.
+    std::string serverCaption(const std::string &address);
     // "last played today", "last played 1 day ago", "last played <n> days ago".
     std::string ageCaption(std::time_t lastLogin, std::time_t now);
 }

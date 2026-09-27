@@ -1,4 +1,5 @@
 #include "launcher/launcher_config.h"
+#include "launcher/personas.h"   // Sprint 16 L1b (#73): the saved-password rule
 #include "ps2x/exit_codes.h"
 
 #include "json_reader.h"
@@ -40,6 +41,16 @@ namespace launcher
     {
         for (const ServerPreset &p : kServerPresets)
             if (id == p.id)
+                return &p;
+        return nullptr;
+    }
+
+    const ServerPreset *findServerPresetByAddress(const std::string &address)
+    {
+        if (address.empty())
+            return nullptr;   // Custom's address is the player's, not a preset's
+        for (const ServerPreset &p : kServerPresets)
+            if (address == p.address && presetAvailable(p))
                 return &p;
         return nullptr;
     }
@@ -150,7 +161,9 @@ namespace launcher
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
         // Sprint 10 Goal 9, R179: the password is written plain -- this is the player's own file; the
-        // diagnostics zip's copy of it blanks the field (diagnostics::sanitizedConfigJson).
+        // diagnostics zip's copy of it blanks the field (diagnostics::sanitizedConfigJson). Sprint 16 L1b: only
+        // until the game remembers it -- the launcher writes through toJson(config, rows), which keeps the key
+        // and empties it for a persona whose card holds the password.
         out += "  \"loginName\": " + quote(c.loginName) + ",\n";
         out += "  \"loginPassword\": " + quote(c.loginPassword) + ",\n";
         out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + ",\n";
@@ -170,6 +183,18 @@ namespace launcher
         out += first ? "}\n" : "\n  }\n";
         out += "}\n";
         return out;
+    }
+
+    // Sprint 16 L1b (#73, R295; the L1 design note, section 3): config.json stops storing the password once the game
+    // remembers it on the card -- the key kept, empty -- and keeps it while the selected record is absent, false, or
+    // on another server (a server switch must never drop the plain password the other server still needs).
+    std::string toJson(const Config &c, const std::vector<personas::Persona> &rows)
+    {
+        if (!personas::cardHoldsPassword(rows, c))
+            return toJson(c);
+        Config written = c;
+        written.loginPassword.clear();
+        return toJson(written);
     }
 
     std::string monitorSizeOrEmpty(int width, int height)
@@ -521,6 +546,16 @@ namespace launcher
         if (v == "l2")
             return "L2 crouches. The second weapon swap moves to the keyboard's 1 key.";
         return "Crouch is a LIGHT press of Triangle, which a PC pad cannot make: Y only goes prone. Pick a control.";
+    }
+
+    std::vector<std::string> environmentFor(const Config &c, const std::vector<personas::Persona> &rows)
+    {
+        // A row whose card holds the password sends none: the game arrives with its own ***** (docs/KNOWN.md, V6).
+        if (!personas::cardHoldsPassword(rows, c))
+            return environmentFor(c);
+        Config sent = c;
+        sent.loginPassword.clear();
+        return environmentFor(sent);
     }
 
     std::vector<std::string> environmentFor(const Config &c)

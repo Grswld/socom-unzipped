@@ -8,10 +8,10 @@ namespace ui
 {
     namespace
     {
-        // A record's server as its row says it.
+        // A record's server as its row says it: the preset's label for a preset's address, else the address.
         std::string serverText(const std::string &address)
         {
-            return address;
+            return launcher::personas::serverCaption(address);
         }
     }
 

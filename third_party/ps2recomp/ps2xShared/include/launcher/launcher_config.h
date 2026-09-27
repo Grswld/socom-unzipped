@@ -7,6 +7,11 @@
 #include <string>
 #include <vector>
 
+namespace launcher::personas
+{
+    struct Persona;   // launcher/personas.h: the ledger's records beside the cards (Sprint 16 L1b)
+}
+
 namespace launcher
 {
     // The r0001 NTSC disc's SCUS_972.75, as hashed out of the image (and the loose file) on 2026-09-17.
@@ -260,6 +265,9 @@ namespace launcher
 
     // The preset with that id, or nullptr when the id is not one of ours.
     const ServerPreset *findServerPreset(const std::string &id);
+    // Sprint 16 L1b (#73): the preset whose address this is (a persona record holds effectiveServer's address), or
+    // nullptr -- Custom's empty address and a placeholder match nothing.
+    const ServerPreset *findServerPresetByAddress(const std::string &address);
     // The address the game is actually pointed at: the preset's for community/unzipped, the typed one for custom
     // (127.0.0.1 when nothing is typed).
     std::string effectiveServer(const Config &config);
@@ -268,6 +276,10 @@ namespace launcher
     // malformed JSON (the config is then the defaults).
     std::string toJson(const Config &config);
     bool fromJson(const std::string &json, Config &out);
+    // Sprint 16 L1b (#73, R295): the file as written beside the PERSONAS list -- "loginPassword" is written only while
+    // the selected row's record is absent, false or on another server (personas::cardHoldsPassword), and is otherwise
+    // the key kept and empty (the diagnostics copy's reader expects the key either way).
+    std::string toJson(const Config &config, const std::vector<personas::Persona> &rows);
 
     // What the game's exit status means, in a sentence for the player: ExitCodes::describe (ps2x/exit_codes.h). Never empty.
     std::string exitMessage(int exitCode);
@@ -285,6 +297,8 @@ namespace launcher
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);
+    // Sprint 16 L1b: the same, with no PS2X_SOCOM2_LOGIN_PASS for a row whose card holds the password.
+    std::vector<std::string> environmentFor(const Config &config, const std::vector<personas::Persona> &rows);
 
     // Sprint 9 Goal 3 (R156): is this environment key one of ours? "PS2X_" as a prefix, either case (Windows
     // variable names are case-insensitive).

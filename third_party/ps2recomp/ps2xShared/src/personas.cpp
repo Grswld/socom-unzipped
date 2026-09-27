@@ -379,4 +379,23 @@ namespace launcher::personas
             return "last played today";
         return "last played " + std::to_string(days) + (days == 1 ? " day ago" : " days ago");
     }
+    bool cardHoldsPassword(const std::vector<Persona> &rows, const Config &c)
+    {
+        const std::size_t at = selectedRow(rows, c);
+        return at < rows.size() && counts(rows[at], c) && rows[at].savedPassword;
+    }
+
+    bool dropSavedPassword(Config &c, const std::vector<Persona> &rows)
+    {
+        if (c.loginPassword.empty() || !cardHoldsPassword(rows, c))
+            return false;
+        c.loginPassword.clear();
+        return true;
+    }
+
+    std::string serverCaption(const std::string &address)
+    {
+        const ServerPreset *preset = findServerPresetByAddress(address);
+        return preset != nullptr ? std::string(preset->label) : address;
+    }
 }

@@ -1007,6 +1007,10 @@ namespace
         app.personas = launcher::personas::readCards((home / "cards").string());
         for (const std::string &note : app.personas.notes)
             std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+        // The migration (the design note, section 3): the selected persona's card now holds its password, so the plain
+        // copy in config.json goes -- the key stays, empty.
+        if (!app.fake && launcher::personas::dropSavedPassword(app.config, app.personas.rows))
+            writeText(fs::path(app.configPath), launcher::toJson(app.config, app.personas.rows));
     }
 
     void refreshMenuSounds(MenuSounds &menu, ui::App &app, const fs::path &home)
@@ -1920,7 +1924,7 @@ int main(int argc, char **argv)
             }
             if (app.requestSave)
             {
-                writeText(configPath, launcher::toJson(app.config));
+                writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
                 app.setStatus("settings saved");
             }
@@ -2035,11 +2039,16 @@ int main(int argc, char **argv)
             }
             if (app.requestLaunch && !app.running && app.discOk)
             {
-                writeText(configPath, launcher::toJson(app.config));
+                writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
                 mic->stopMeter();   // Review F8: two processes must not hold the same microphone
                 meterOn = false;
-                if (win32glue::startGame(dir.string(), app.config, game))
+                // Sprint 16 L1b (#73): the environment from the selection -- no PS2X_SOCOM2_LOGIN_PASS for a persona
+                // whose card holds its password (launcher::environmentFor(config, rows) is the same rule, tested).
+                launcher::Config launched = app.config;
+                if (launcher::personas::cardHoldsPassword(app.personas.rows, launched))
+                    launched.loginPassword.clear();
+                if (win32glue::startGame(dir.string(), launched, game))
                 {
                     lastLog = game.logPath;
                     app.setStatus("started; log " + fs::path(game.logPath).filename().string());
@@ -2269,7 +2278,7 @@ int main(int argc, char **argv)
     }
 
     if (!app.fake)
-        writeText(configPath, launcher::toJson(app.config));
+        writeText(configPath, launcher::toJson(app.config, app.personas.rows));
     if (mic)
         mic->stopMeter();
     game.close();
