@@ -4,6 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOCOM Unzipped map viewer</title>
+    <meta name="theme-color" content="#08121a" />
+    <!-- The s2u site's faces (its chrome.md, Head): Exo 2 for display, Oswald for headings and body, Share Tech Mono. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
   <body>
@@ -37,6 +42,7 @@
         <span id="panel-chevron" aria-hidden="true">&#9662;</span>
       </button>
       <div id="panel-body">
+      <p id="panel-kicker"><span class="mark" aria-hidden="true"></span>Map viewer &middot; SOCOM II multiplayer</p>
       <div class="row">
         <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
         <button id="iso" type="button" disabled title="the browser reads your own disc image: milestone M5">
