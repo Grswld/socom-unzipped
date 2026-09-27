@@ -361,7 +361,16 @@ a row narrows while the field shows; picking a row sets `profile` and `loginName
 name that does not survive `normalizeLoginName` unchanged leaves `loginName` empty; the three fields go; a masked
 PASSWORD (`online.persona.password`) beside the selected row when its record says the card does not hold one **or
 there is no record**, and for NEW PERSONA; `config.json` writes `loginPassword` only then and otherwise keeps the key
-empty (`diagnostics_tests.cpp:109` requires the key). **Step 0 [L]:** a driven two-persona card (`online_login_ours.py`,
+empty (`diagnostics_tests.cpp:109` requires the key). **A record counts only when `record.server ==
+effectiveServer(c)`** (the note's round 5): a matching row on another server is "no record" — the field shows, the
+password is kept — because there the game runs a create-persona login and opens its keyboard empty (a server
+switch must never drop the plain password); a row is drawn selected when its ledger's leaf (the file name less the
+suffix) `== normalizeProfile(c.profile) + (c.secondInstance ? "_b" : "")` and `record.name == c.loginName` byte for
+byte, so a `second: true` row stays selected after its pick; a ledger whose card directory is gone is skipped with
+one line, never listed into a launch. The trace knob logs the RC4 state's address and its byte counter
+(`st.word(0)`, zeroed by `rc4Init`, advanced by every call), so a call with the counter at 0 opens a message and
+reassembly is a concatenation keyed on the state; RED cases: two encrypt calls of 50 + 54 bytes on one state yield
+one pending record, a second `rc4SetKeyHash` on that state discards a half message, a fourth persona scrolls. **Step 0 [L]:** a driven two-persona card (`online_login_ours.py`,
 V0's window or the next) records which persona the game's list gives the form, and lists the card's files before and
 after the first create (is `SaveGame*` a persona?); the driver as it is cannot make the second persona —
 `persona_form_mode` reads a filled PLAYER NAME as "saved" (`:914-920`, `:1882-1910`) and nothing walks the list to
