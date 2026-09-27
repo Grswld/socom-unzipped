@@ -31,6 +31,7 @@ inflate(buf[:n]) -> overlay             zlib
 > constant. (The review's per-step harness counted the SHA-1 transform 13,352 times inside 0x539d50, 13,329 inside
 > 0x535018 and 0 inside 0x539d00.) The `rt_crypt` MD5 of the network-stack paragraph above is ZSealEtc's, another
 > image, and is not judged here.
+
 Step 2 asks the IOP CDVD S-command server (SIF RPC SID 0x80000593) for `sceCdReadConsoleID` (fno 0x24) and `sceCdMV` (fno 0x26). **Any values work** (the IDs feed a hash that is not verified against the content), so the package is not console-locked.
 
 Anti-tamper: DNAS.BIN self-encrypts **131 code blocks** (0x7578 bytes). Each protected function begins `if (!flag) DECRYPT(start, size^key, key, flags)` and ends with the matching re-encrypt; four copies of the decryptor exist (0x4ee9e8, 0x52b9d0, 0x53a358, 0x5412a0). The cipher is a chain of ≤7 word-transforms (xor / rotate / byte-swap) selected by nibbles of a descriptor derived from `key`, skipping relocation words listed in a per-block table. `tools_py/dnas_selfdecrypt.py` decrypts all blocks statically by running each variant's core routine under Unicorn → `DNAS.dec.bin` (+ `DNAS.blocks.json`).

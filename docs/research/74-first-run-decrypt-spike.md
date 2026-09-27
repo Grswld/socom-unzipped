@@ -1,7 +1,8 @@
 # 74. The first-run decrypt -- recompile the loader's routines, or port them? (Sprint 16 R1a, the spike)
 
 Date: 2026-09-27 (reading 06:50Z-07:20Z; the static walk, the harness sample and the recompiler run 07:05Z-07:30Z;
-the compile under the lock queued 07:24Z; round 2 after the fresh review, 08:39Z; by `date -u`). Sprint 16 Task R1a
+the compile under the lock queued 07:24Z; round 2 after the fresh review, 08:39Z; round 3 after the second
+review, 09:43Z; by `date -u`). Sprint 16 Task R1a
 (`docs/superpowers/plans/2026-09-27-sprint-16-tasks.md` "## Task R1a"; the facts it rests on in
 `2026-09-27-sprint-16-tree-facts.md` "## Task R1a"; the spec's R1 and its Superseded blockquote). Class S, the
 shape of `docs/research/14-gs-render-target-scale-spike.md`: the decision first,
@@ -18,17 +19,20 @@ decompilations, read in place, and from a recompiler run into the agent worktree
 the project's recompiler turns exactly those routines into native code in 1.8 s with no new instruction handling:
 the graph the decrypt actually executes is **329 functions** (267 of the DNAS image, 62 of the loader), the
 recompiler emits a file for every one of them, and the only HLE the generated code asks for that the runtime does
-not already have is the cdvd S-command server's three answers (about 30 lines). What enters the tree is about 830
-lines of our own (the driver after `decrypt_apache.py:260-353` with its 131-block pass and the four table slots of
-§5.2, the answers, the ELF merge, the build glue, a headless mode of the runtime's `initialize` and its test, the
+not already have is the cdvd answers on two sids, `0x80000592` (fno 0) and the S-command server `0x80000593` (fno 1,
+`0x24`, `0x26`), about 30 lines (§3). What enters the tree is about 890-930 lines of our own (the driver after
+`decrypt_apache.py:260-353` with its 131-block pass and the four table slots of §5.2 and the scheduler invocations
+of §5.3, the answers, the ELF merge, the build glue, a headless mode of the runtime's `initialize` and its test, the
 packaging of a fourth binary, the DISC page's progress and the tests) and nothing vendored: the inflate is raylib's
 `zsinflate()`, which the runtime already links (§6 Q3); the generated code is a build product from the developer's
 disc, ignored like `recomp/output/`, so the public repository carries none of Sony's libdnas2. The port (route b)
 would carry a rewrite of 2,562 decompiled lines of Sony's self-encrypted "unique"/finalize layer (12 functions, one
 of them doing double arithmetic through the loader's soft-float library) into a public tree, on top of the library
 primitives (SHA-1, DES-EDE3, a bignum RSA public operation) it would replace: 3,500-4,500 lines whose only oracle is
-the same digests file. The recompile runs the instructions the harnesses ran, bar the few runtime stubs §3 names; the
-port is bit-exact only when the digests say so, and the digests say nothing about which line was wrong.
+the same digests file. The recompile runs the instructions the harnesses ran once its configuration keeps the
+harness's boundary -- the three SIF calls the Python hooks and the syscalls answered by the runtime, every other
+loader routine the harness ran recompiled as code (§3); the port is bit-exact only when the digests say so, and the
+digests say nothing about which line was wrong.
 
 Two things the experiment found that the plan did not expect, both handled in §5-§6: the static `jal` closure
 (127 functions) undercounts by a factor of 2.6 because the DNAS image is an OpenSSL derivative and calls its
@@ -39,18 +43,20 @@ collide with the game's (the DNAS overlay sits in zsealetc's slot at `0x4c5380`)
 `socom2_build_elf.exe`, a second small executable built from the runner's runtime library `libps2_runtime.a`
 (beside it in CMake, as `vu1_replay.exe` is), driven by the launcher as a subprocess with progress lines, and it
 needs a headless mode of `PS2Runtime::initialize`, which today opens a window, the audio device and the microphone
-on every build (§5.1; `vu1_replay.exe` never constructs a `PS2Runtime`, so it proves nothing about running without
-a window, as the first draft had it). It moves two earlier sentences, the spec's "one implementation in
+on every non-Vita build (§5.1; `vu1_replay.exe` never constructs a `PS2Runtime`, so it proves nothing about
+running without a window, as the first draft had it). It moves two earlier sentences, the spec's "one implementation in
 `ps2xShared`" and R1b's "`socom2.exe --build-elf`", and puts a fourth binary in the portable folder (§4); the
 Sprint 16 plan's ruling on D3's outcome names both moves.
 
 The D3 ruling's text for the Log: "R1's route is the recompile: the decrypt's executed set plus the static closure
 (340 functions, 329 of them measured under the harness) recompiled by `ps2_recomp` from the developer's
 `DNAS.dec.bin` into `socom2_build_elf.exe` from the runtime library; the player's run is the configuration the
-harnesses proved -- the 131 blocks decrypted by the four recompiled cores and checked against `dnas.output.sha256`,
-then the four self-decryptors neutralised through their function-table slots -- and the raw self-decryptors are an
-experiment, not the default; the cdvd S-command answers are the one new HLE; verification is the digests of
-`tools_py/disc_to_elf_expected.json` in a test that says 'skipped' where the disc is not (R222). R1b builds it."
+harnesses proved -- the three SIF calls the harness hooked stay the runtime's stubs and the fifteen loader routines
+it ran as code are recompiled, the 131 blocks decrypted by the four recompiled cores and checked against
+`dnas.output.sha256`, then the four self-decryptors neutralised through their function-table slots -- and the raw
+self-decryptors are an experiment, not the default; the cdvd answers on two sids are the one new HLE; verification
+is the digests of `tools_py/disc_to_elf_expected.json` in a test that says 'skipped' where the disc is not (R222).
+R1b builds it."
 
 ## 1. The question and the box
 
@@ -67,8 +73,8 @@ verification without disc bytes.
 What the recompiler needs and gives (`third_party/ps2recomp/ps2xRecomp/src/lib/elf_parser.cpp:1138-1143`,
 `function_emitter.cpp:89`): a MIPS ELF in, `void f(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime)` per
 function out, calls through `runtime->dispatchGuestBranch(...)` for `jal`, `jalr` and returns (§2.3),
-`runtime->handleSyscall(rdram, ctx, code)` for `syscall`, the named stubs of the toml reached through the function
-table. `ps2xShared` may not link
+`runtime->handleSyscall(rdram, ctx, code)` for `syscall`, the runtime stubs named by the toml's `stubs` list reached
+through the function table. `ps2xShared` may not link
 `PS2Runtime` (`ps2xShared/CMakeLists.txt:1-4`), which is why the helper is not there.
 
 ## 2. Route (a), the experiment
@@ -88,8 +94,9 @@ inside `.text` (`decrypt_apache.py:110`, `find_encrypted_blocks`) excluded from 
 
 The 17 HLE hits are the loader's `cmd_sem_init`, `sceCdSyncS`, `sceCdReadClock`, `memcmp`, `memcpy`, `memmove`,
 `memset`, `__muldi3`, `dpmul`, `litodp`, `dptoul`, `scePrintf`, `sceSifInitRpc`, `sceSifBindRpc`, `sceSifCallRpc`
-(all selectors in `recomp/socom2.toml`) and two of the four self-decryptors. Seven inline `syscall` sites, six
-with `v1` = `0x40 0x41 0x42 0x44 0x45 0x30` (CreateSema, DeleteSema, SignalSema, WaitSema, PollSema,
+(all names in `recomp/socom2.toml`'s `stubs` or `untracked_stubs`, where the walk stopped; which of the two lists
+decides what the recompiler makes of a name, §2.2) and two of the four self-decryptors. Seven inline `syscall`
+sites, six with `v1` = `0x40 0x41 0x42 0x44 0x45 0x30` (CreateSema, DeleteSema, SignalSema, WaitSema, PollSema,
 ReferThreadStatus) and one whose preceding `v1` load is stale.
 The 44 `jalr` sites are the reason the walk is a lower bound: the image is an OpenSSL derivative (its object-name
 table is in `game/analysis/DNAS.dec.bin.strings.txt`, read in place and quoted nowhere: an RSA public-key method's
@@ -122,16 +129,28 @@ blobs without it), 2,233,472 bytes inflated, the same head as the recorded overl
   called them a status poll), the 2 + 2 `fno 0x24` (`sceCdReadConsoleID`) and `fno 0x26` (`sceCdMV`), issued by the
   DNAS image's own RPC wrappers. Exactly what `decrypt_apache.py:226-234` answers, and "any values work"
   (research/05 §DNAS, KNOWN §1 2026-09-27).
-- The loader functions executed after init are the stubbed libc/SIF/cdvd ones above, the kernel wrappers
-  (`CreateSema@0x1a3b20` ... `FlushCache@0x1a3da0`, which the runtime maps to `ps2_syscalls::`), three unstubbed
-  soft-float helpers (`FUN_0019f8b8`, `FUN_001a0760`, `FUN_001a0838`) and `FUN_0018e878` (the S-command client's
-  bind loop). The loader's `malloc@0x194c30` never ran: the image has its own allocator.
+- **The loader's 62**: 35 carry a name in `recomp/socom2.toml`, and the list the name sits in decides what the
+  recompiler makes of it -- `ps2_recomp` reads only `stubs` (`ps2xRecomp/src/lib/config_manager.cpp:69-76`) and
+  turns each entry into a one-line call to the runtime's stub; `untracked_stubs` is informational, "PS2Recomp ignores
+  this list" (`socom2.toml:259-260`), so its entries are recompiled as code. 18 of the 35 are `stubs` entries: the
+  three SIF calls the Python hooks (`sceSifBindRpc`, `sceSifCallRpc`, `sceSifCheckStatRpc`), the four libc routines
+  and three cdvd routines (`sceCdInit`, `sceCdSyncS`, `sceCdReadClock`) it ran as the loader's code, and eight crt0
+  and SIF-initialisation routines (`InitThread`, `InitAlarm`, `sceSifInitRpc` and five SIF-command routines). 17 are
+  `untracked_stubs` entries: `cmd_sem_init`, the seven soft-float and integer helpers (`__muldi3`, `__udivdi3`,
+  `__pack_d`, `__unpack_d`, `dpmul`, `litodp`, `dptoul`), `PowerOffCB` and eight crt0 routines -- all recompiled
+  in this run (the first two drafts called three of the helpers "unstubbed" and missed that all seven are). The
+  other 27 carry no name there: the kernel wrappers (`CreateSema@0x1a3b20` ... `FlushCache@0x1a3da0`, each a
+  `syscall` the runtime's numeric dispatch answers), four SIF register and DMA wrappers (`sceSifSetDma` to
+  `sceSifGetReg`, which the recompiler stubs by their map names), crt0, and `FUN_0018e878`, the S-command client's
+  bind loop, which the DNAS image calls (§3). The loader's `malloc@0x194c30` never ran: the image has its own
+  allocator.
 
 ### 2.3 The recompiler run (`build_helper.py`, `ps2_recomp helper.toml`, §7 C3-C4)
 
 The helper ELF: `make_overlay_elf.build(out, SCUS_972.75, [DNAS.dec.bin], loader_text_end=0x1d5000)` -- three
 segments, entry `0x180008`, zero repairs. The config: `recomp/socom2.toml`'s `[general]` with the input, output and
-map replaced, its 645 loader stub selectors kept, its seven loader jump tables kept, nothing of the overlays. The map:
+map replaced, its 636 loader selectors kept (212 `stubs`, 424 `untracked_stubs`; the first drafts' 645 counted the
+nine `@0x` mentions in the toml's comments), its seven loader jump tables kept, nothing of the overlays. The map:
 every row of both images (`full.csv`, 3,036 rows), because `ps2_recomp` bounds a function by the next row and a
 sparse map of the closure alone made `FUN_001ca2a0` (232 bytes) run on to the section end (978 errors, the first
 attempt). The run: **1.8 s wall**, 3,036 functions discovered, 3,037 files, 1,854,327 lines (84 MB) for the whole
@@ -164,16 +183,25 @@ disassembly comments the syscalls and the traps (`teq`/`tge` on `$zero, $zero`) 
 carry code 7, the compiler's divide-by-zero check.
 
 Six functions of the helper's set (§6 Q2) also have errors *past* their row's end, every one in an unmapped gap of
-`full.csv` -- the recompiler's "promoted fallback entries" after an unresolved `jr`. Five run on into the gap that
-directly follows their own row: `FUN_0052af00` 77 (2,720 bytes from `0x52af30`), `FUN_00539d50` 29 (1,368 from
-`0x539e00`) and `FUN_00540938` 46 (2,192 from `0x540a10`), key tables all three, and `FUN_00536e60` 4 (348 from
+`full.csv` -- the recompiler's "promoted fallback entries" after an unresolved `jr` -- at **160 distinct
+addresses in six gaps**. (The distinct figures are R1b's tool's, `tools_py/first_run_recomp.py` on `agent/s16-r1b`
+at f3bf8231, re-derived from the same exports and this run's log; `pastrow.py` counts the log's error lines, 175,
+because the log names some addresses twice.) Five run on into the gap that directly follows their own row:
+`FUN_0052af00` 70 (77 lines; 2,720 bytes from `0x52af30`), `FUN_00539d50` 25 (29 lines; 1,368 from `0x539e00`)
+and `FUN_00540938` 42 (46 lines; 2,192 from `0x540a10`), key tables all three, and `FUN_00536e60` 4 (348 from
 `0x5375a4`) and `FUN_0053b678` 2 (84 from `0x53b7bc`). The sixth, `FUN_004ef348` 17, is past its row but not next
 to it: its row ends where `FUN_004ef420`'s begins, and the 17 sit eight rows on, in the gap `0x4efac8-0x4effb0`
-(1,256 bytes) after `FUN_004ef9a0` -- the `0x4ee9e8` variant's key table, which the candidate targets of the
-unresolved `jr` at `0x4ef3d8` point into. A boundary row right after a run-past function's row (the
-`extra_functions.txt` mechanism `fix_ghidra_csv.py` already has) ends the five adjacent runs and writes nothing
-for `FUN_004ef348`, whose table needs a row at `0x4efac8` itself (the variant's `keytab` in
-`tools_py/disc_to_elf_expected.json`) or its 17 words in the throw pin. The loader's inflate `FUN_001ca2a0` adds
+(1,256 bytes) after `FUN_004ef9a0` -- the `0x4ee9e8` variant's key table (its `keytab` in
+`tools_py/disc_to_elf_expected.json`), reached by the candidate scan of the unresolved `jr` at `0x4ef3d8`
+(`recomp_run.log:546`, 794 promoted entries). One rule covers all six: **a boundary row at the start of every gap
+a run-past's errors land in, after the gap's owner** (the `extra_functions.txt` mechanism `fix_ghidra_csv.py`
+already has) -- six rows, five right after the run-past function's own row and one after `FUN_004ef9a0` at
+`0x4efac8`. The set is derived from the recompiler's error log against the map, as `pastrow.py` does, never typed;
+R1b's tool does so, and its classification of this run's log against the new map puts all 160 addresses inside the
+six boundary rows (past-row 0): the rows cover every address. That is the same log re-read, not a re-run. Whether
+the rows remove the errors -- a candidate scan is not bounded by its function's row, as the sixth shows -- is
+proven only by re-running `ps2_recomp` over the new map and counting the throw sites: the tool's
+`--recomp-log-after` check (exit 1 unless the count fell), which R1b owes. The loader's inflate `FUN_001ca2a0` adds
 978 in the map's unmapped tail `0x1ca3cc-0x1ccf20`; only the 144-function walk holds it, and with `zsinflate()` it
 is outside the helper's set. (A correction in round 2: the first draft named four functions, "in the executed
 set", and "the key tables that follow them"; two of the four are closure-only cores, the inflate is in neither
@@ -213,16 +241,47 @@ first build is the proof, and it is a build R1b makes anyway.
   (`long`, `ulong`, sign extension at every `int` boundary) and the layer's double arithmetic through soft-float
   calls whose rounding the port would have to reproduce; the DES key parity, the 0x80 chunking, the transform chain
   selected by descriptor nibbles are each a place to be off by one bit, and the digests would say only "the
-  overlays differ". The recompile has the same oracle and far less to be off by: it runs the same instructions,
-  except where the helper toml swaps a runtime stub for loader code the harness ran for real -- `memcpy`, `memset`,
-  `memcmp`, `memmove`, `cmd_sem_init`, `sceCdSyncS`, `sceCdReadClock`, `sceCdInit` (the Python hooks only the SIF
-  calls, `decrypt_apache.py:132-166`), and that residual risk is caught only by the digests. Q5's reasoning applies
-  where it is cheap: the four libc routines touch nothing but guest memory, so their selectors are dropped from the
-  helper toml with the soft-float ones and the loader's own code runs, as it did under the harness. The four cdvd
-  and semaphore wrappers stand on the IOP boundary and keep the runtime's stubs; of them `sceCdReadClock` is the one
-  whose answer differs -- the harness's `fno 1` reply carried a zero clock, the stub writes the host's local time
-  (`Kernel/Stubs/CD.cpp:582`) -- so if the digests ever differ it is the first selector to drop (its `fno 1` answer
-  is already among §4's ~30 lines).
+  overlays differ". The recompile has the same oracle and far less to be off by, once its default configuration
+  carries the harness's boundary to the loader's selectors. `decrypt_apache.py:132-166` hooks exactly three loader
+  functions, `sceSifBindRpc@0x1a6aa8`, `sceSifCallRpc@0x1a6c78` and `sceSifCheckStatRpc@0x1a6e68`, plus the
+  syscalls; everything else ran as the loader's own code. So the helper toml keeps those three selectors and, by one
+  rule, drops the names of the fifteen executed loader functions the harness ran as code that `socom2.toml` names:
+  the four libc (`memcpy`, `memset`, `memcmp`, `memmove`), the seven soft-float and integer helpers (`dpmul`,
+  `litodp`, `dptoul`, `__muldi3`, and `socom2.toml:397,406,407`'s `__udivdi3@0x0019F8B8`, `__pack_d@0x001A0760`,
+  `__unpack_d@0x001A0838`) and the four cdvd and semaphore routines (`cmd_sem_init`, `sceCdInit`, `sceCdSyncS`,
+  `sceCdReadClock`). Seven of the fifteen change the generated code: the four libc and the three `sceCd` routines
+  are `stubs` entries (`socom2.toml:57-58,65,105-108`), which this run turned into one-line stub calls. The other
+  eight are `untracked_stubs` entries, which `ps2_recomp` does not read (§2.2), and this run already recompiled
+  them -- `FUN_0018df80`'s file is `cmd_sem_init`'s 261-line body, `dpmul`'s is 781 lines, as in the game's
+  `recomp/output` -- so their drop is the rule's guard against a derivation that ever moves them into `stubs`, not a
+  change. The guard matters for `cmd_sem_init`: it is not a name in
+  `third_party/ps2recomp/ps2xRuntime/include/ps2_call_list.h`, so as a `stubs` entry the recompiler would emit
+  `ps2_stubs::TODO_NAMED("cmd_sem_init")`, a no-op (`ps2xRecomp/src/lib/ps2_recompiler.cpp:1195-1205`), where the
+  body creates the cdvd semaphores at `DAT_001ca860/868/86c/870` (-1 in .data). The S-command wrapper
+  `FUN_0018e878` has no name in the toml, is recompiled, and is what the DNAS image calls for the console ID and the
+  MV (`func_0x0018e878(0x24)`/`(0x26)`, lines 66375, 66414, 73001 and 73040 of its decompilation): it calls
+  `cmd_sem_init`, then `PollSema(DAT_001ca86c)`, and proceeds only on that id (`SCUS_972.75.decomp.c:8278-8290`) --
+  with the no-op, `PollSema(-1)` is `KE_UNKNOWN_SEMID`, the wrapper returns 0 and the identity read returns 0 without
+  any RPC, a path no harness ran. The three `stubs` drops matter by what the stubs do: `sceCdInit`'s sets
+  `cd.initialized` only (`Kernel/Stubs/CD.cpp:463-472`) where the body sets the cdvd globals, stores
+  `uRam001d5f98 = GetThreadId()` for the wrapper's `ReferThreadStatus`, and binds and calls the N-command server;
+  `sceCdReadClock`'s writes the host's local time (`CD.cpp:582-610`) where the harness's `fno 1` reply was zeros,
+  and the DNAS image turns the clock into a time (`FUN_00507300`, decompilation lines 41840-41862), stores it in a
+  session struct (47250) and mixes it into a pool (31434) -- unproven with a 2026 clock. With those bodies
+  recompiled, the runtime's one new HLE answers what the Python answers: sid `0x80000592` fno 0 with zeros
+  (`decrypt_apache.py:160-161`) and `0x80000593` fno 1, `0x24` and `0x26` (and `0x22`, `0x0c`) with result word 1
+  and the payload. The rest is there: the binds already succeed (`Kernel/Syscalls/RPC.cpp:313-335` allocates a
+  dummy server and writes `client->server`, on which the loader's loop at `SCUS_972.75.decomp.c:8293-8305` spins),
+  the numeric dispatch has `0x2F`, `0x30`, `0x40`-`0x45` and `0x64` (`Kernel/Syscalls/Dispatcher.cpp:117-257`), and
+  an unserved sid returns `{}` (`ps2xIOP/src/iop_subsystem.cpp:282-287`). `sceSifInitRpc` and the SIF-command
+  routines keep their `stubs` entries: the runtime answers SIF at the RPC calls, the game's own path, where the
+  harness answered one level down, at the SIF register and DMA syscalls (`decrypt_apache.py:133-139`); the binds
+  and calls reach the three kept selectors either way. What stays different, and is caught only by the digests:
+  the harness registered no handler for syscall `0x30` (`tools_py/ee_unicorn.py:311-315` maps `0x23`, not `0x30`),
+  so its 30 `ReferThreadStatus` calls (29 after init) got v0 = 0 and an unwritten struct where the runtime writes a
+  real `ee_thread_status_t` (`Kernel/Syscalls/Thread.cpp:382-416`); and `WaitSema` never met a zero count under the
+  harness (no `would block` in the verbose `dyn.log`), so on the same inputs the runtime's blocking path is never
+  entered, and a block on the single invocation thread would hang rather than fail (§5.3's timeout).
 - **The public tree**: a port puts a readable rewrite of the protected layer into a public repository; the
   recompile keeps it a build product of the developer's own disc, like the game (R290's line: the exe ships, the
   ELF never does, and neither does its source).
@@ -231,7 +290,7 @@ first build is the proof, and it is a build R1b makes anyway.
 
 | route | lines that enter the tree | generated (ignored, a build product) | the HLE it needs |
 |---|---|---|---|
-| (a) recompile | **about 790 lines** of ours (about 830 with the packaging row below): the driver after `decrypt_apache.py:260-353` (~120: load the loader's segments and `DNAS.BIN` into rdram, `gp`/`sp`, init, four calls per blob, inflate, write), the 131-block pass (~60: `find_blocks`/`skip_list` after `dnas_selfdecrypt.py:66-99`, the four cores' calls, the `dnas.blocks` and `dnas.output` checks, §5.2), the four self-decryptors' table slots (~15, after `decrypt_apache.py:117-123`), the cdvd S-command answers (~30), the identity constants (3 lines, `decrypt_apache.py:175-177`), the inflate through raylib's `zsinflate()` (~10, §6 Q3), the ELF merge after `make_overlay_elf.build` (~80), the helper toml derived from `socom2.toml` by a script (~40), `build.sh`'s step (~30) and the CMake target (~40), the headless mode of `PS2Runtime::initialize` (~30 in the runtime) and its `ps2xTest` case (~30, §5.1), the DISC page's subprocess and progress (~100), the tests (~200); nothing vendored | 198,940 lines for the executed set (161,051 code), 216,108 for the executed set plus the static closure (§6 Q2), 487,575 for the upper bound, 1,854,327 for the whole image; 1.8 s to generate | **SIF**: `sceSifInitRpc`/`BindRpc`/`CallRpc`/`CheckStatRpc` are the runtime's stubs already (`ps2_call_list.h:92,533-549`), 0 new. **cdvd**: the S-command server `0x80000593` answers for `fno 1`, `0x24`, `0x26` (and `0x22`, `0x0c` as the Python has them), ~30 new lines behind `PS2IopTransport::handleRpc` -- nothing in `ps2xIOP/src/modules` answers that server today; `fno 1` is reached only if `sceCdReadClock`'s selector is dropped (§3). **kernel**: CreateSema/SignalSema/WaitSema/PollSema/ReferThreadStatus/FlushCache exist as `ps2_syscalls::` and the numeric dispatch, 0 new; libc `memcpy`/`memset`/`memcmp`/`memmove` and the four soft-float helpers are recompiled from the loader rather than stubbed (§3, §6 Q5), 0 new |
+| (a) recompile | **about 850-890 lines** of ours (about 890-930 with the packaging row below): the driver after `decrypt_apache.py:260-353` (~120: load the loader's segments and `DNAS.BIN` into rdram, `gp`/`sp`, init, four calls per blob, inflate, write), the scheduler path those calls run on (~60-100: `EeScheduler::reset` and `run()` on the helper's thread, one `HleCall` invocation per guest call with its `onComplete` and a timeout, §5.3), the 131-block pass (~60: `find_blocks`/`skip_list` after `dnas_selfdecrypt.py:66-99`, the four cores' calls, the `dnas.blocks` and `dnas.output` checks, §5.2), the four self-decryptors' table slots (~15, after `decrypt_apache.py:117-123`), the cdvd answers on two sids (~30), the identity constants (3 lines, `decrypt_apache.py:175-177`), the inflate through raylib's `zsinflate()` (~10, §6 Q3), the ELF merge after `make_overlay_elf.build` (~80), the helper toml derived from `socom2.toml` by a script, with the fifteen names of §3 dropped (~40), `build.sh`'s step (~30) and the CMake target (~40), the headless mode of `PS2Runtime::initialize` (~30 in the runtime) and its `ps2xTest` case (~30, §5.1), the DISC page's subprocess and progress (~100), the tests (~200); nothing vendored | 216,108 lines for the helper's 340 (the executed 329 plus the static closure's other 11, §6 Q2), 198,940 for the 329 alone (161,051 code), 487,575 for the upper bound, 1,854,327 for the whole image; 1.8 s to generate | **SIF**: `sceSifInitRpc`/`BindRpc`/`CallRpc`/`CheckStatRpc` are the runtime's stubs already (`ps2_call_list.h:92,533-549`), and the binds succeed (`Kernel/Syscalls/RPC.cpp:313-335`), 0 new. **cdvd**: answers on two sids, ~30 new lines behind `PS2IopTransport::handleRpc` -- the N-command server `0x80000592`'s fno 0 with zeros (`sceCdInit`'s body, recompiled) and the S-command server `0x80000593`'s `fno 1` (`sceCdReadClock`'s body), `0x24`, `0x26` (and `0x22`, `0x0c` as the Python has them) with result word 1 and the payload; nothing in `ps2xIOP/src/modules` answers either sid today, and an unserved sid returns `{}` (`ps2xIOP/src/iop_subsystem.cpp:282-287`, §3). **kernel**: CreateSema/SignalSema/WaitSema/PollSema/ReferThreadStatus/FlushCache exist as `ps2_syscalls::` and the numeric dispatch, 0 new; the fifteen loader routines the harness ran as code -- libc `memcpy`/`memset`/`memcmp`/`memmove`, the seven soft-float and integer helpers, `cmd_sem_init` and the three `sceCd` routines -- are recompiled from the loader rather than stubbed (§3, §6 Q5), 0 new |
 | (a) packaging | **about 40 lines**: `scripts/make_portable.sh:146-151` checks for and copies three binaries (`socom2.exe`, `socom2_game.elf`, the launcher) and the helper is a fourth -- the check and the copy, the import-closure audit's list of executables (`portable_audit.py closure`, line 154), `SHA256SUMS`, the Linux branch, and the tests that pin the folder (`test_make_portable*`, `test_portable_folder`) | none | none |
 | (b) port | **3,500-4,500 lines** of ours: the protected layer's 2,562 decompiled lines rewritten (~1,800 C++), SHA-1 (~200), DES-EDE3-CBC (~400), a bignum with the RSA public operation (~800, or vendored), the signed-container parse and EVP glue (~300), and the same driver, merge, DISC page and tests as (a) minus the guest memory model (~500); plus the same ~10-line `zsinflate()` call, reached through the launcher's raylib (`ps2xShared` links none) | none | none: no SIF, no cdvd and no kernel answer -- the console identity is three constants and the semaphores go away with the guest; the price is that every one of those 3,500-4,500 lines is a place to be off by one bit |
 
@@ -263,18 +322,20 @@ developer's chain and the oracle's producer.
    are free functions over `PS2Runtime`'s state (`m_libcRuntimeState`, `m_cdRuntimeState`, ...), so a fake would be
    the runtime again.
 2. **The build**: `build.sh recomp` runs `ps2_recomp` a second time over `helper.toml` (derived from `socom2.toml`
-   by `tools_py/revision_toml.py`'s pattern: the loader selectors and jump tables carried across, the input the
-   helper ELF that `make_overlay_elf.build` wraps from `game/disc/SCUS_972.75` and `game/disc/OVERLAY/REL/DNAS.dec.bin`,
-   the map `full.csv` from the two Ghidra exports with the boundary rows of §2.3 (five right after a run-past
-   function's row, and `0x4efac8` by its own rule or `FUN_004ef348`'s 17 words pinned), the `skip` list everything
-   outside the executed set plus the static closure) into `recomp/output_helper/` (ignored); the `dnas` stage of
-   `disc_to_elf.py` stays as the developer's producer of `DNAS.dec.bin` (2 s, once), so the recompiler's input
-   is the decrypted image. **The player's run is the configuration the harnesses proved**: the driver loads
-   `DNAS.BIN` raw at `0x4c5380`, decrypts its 131 blocks in guest memory by calling the four recompiled cores
-   (`0x4ef348 0x52c330 0x53acb8 0x540938`) with the parameters `find_blocks` and `skip_list` compute (ported from
-   `dnas_selfdecrypt.py:66-99`), checks the image against `dnas.blocks` and `dnas.output.sha256` (an intermediate
-   digest the player's run gains), then neutralises the four self-decryptors through their function-table slots
-   with a native no-op that writes the "decrypted" flag, as `decrypt_apache.py:117-123` does. The slot is the one
+   by `tools_py/revision_toml.py`'s pattern: the loader selectors and jump tables carried across less the fifteen
+   names of §3 -- 621 of the 636 selectors (R1b's tool prints 630, the same count with the nine comment mentions of
+   §2.3), the three SIF selectors kept -- the input the helper ELF that `make_overlay_elf.build` wraps from
+   `game/disc/SCUS_972.75` and `game/disc/OVERLAY/REL/DNAS.dec.bin`, the map `full.csv` from the two Ghidra exports
+   with the six boundary rows of §2.3 (one rule, derived from the recompiler's error log, never typed), the `skip`
+   list everything outside the helper's 340, the executed set plus the static closure) into
+   `recomp/output_helper/` (ignored); the `dnas` stage of `disc_to_elf.py` stays as the developer's producer of
+   `DNAS.dec.bin` (2 s, once), so the recompiler's input is the decrypted image. **The player's run is the
+   configuration the harnesses proved**: the driver loads `DNAS.BIN` raw at `0x4c5380`, decrypts its 131 blocks
+   in guest memory by calling the four recompiled cores (`0x4ef348 0x52c330 0x53acb8 0x540938`) with the
+   parameters `find_blocks` and `skip_list` compute (ported from `dnas_selfdecrypt.py:66-99`), checks the image
+   against `dnas.blocks` and `dnas.output.sha256` (an intermediate digest the player's run gains), then neutralises
+   the four self-decryptors through their function-table slots with a native no-op that writes the "decrypted"
+   flag, as `decrypt_apache.py:117-123` does. The slot is the one
    place to swap: a generated `jal` reaches its callee through `dispatchGuestBranch` and the table (§2.3). No
    Unicorn stage exists on the player's machine. The raw path -- `DNAS.BIN` loaded and the recompiled
    self-decryptors left to run for real over the guest copy, as the first draft had it -- is unproven, because no
@@ -295,8 +356,24 @@ developer's chain and the oracle's producer.
    `.reginfo`, `sp` at the top; `sceSifInitRpc(0)`, `sceCdInit(0)`, `0x534830()`; per ZDB entry
    (`zdb_entries`, `decrypt_apache.py:237-248`) the four calls with the same checks and sentences as
    `decrypt_blob`; inflate (`zsinflate()`, §6 Q3); the merge after `make_overlay_elf.build` with
-   `recomp/loader_text_end.txt`'s value; `socom2_game.elf` written beside the exe and its sha256 checked against
-   `elf.sha256` (exit 68 where it differs).
+   `recomp/loader_text_end.txt`'s value; `socom2_game.elf` written through R1b's `writeVerified(path, bytes, sha)`
+   (the tasks plan's "## Task R1b"): under a temporary name beside the exe, renamed to the final one only after its
+   sha256 matches `elf.sha256` (exit 68 where it differs), so every risk §3 names is caught before any file carries
+   the final name.
+   The guest calls run on the scheduler's executor, never straight from `main`: generated code unwinds at every
+   due checkpoint (`dispatchGuestBranch` returns false, `ps2_runtime.cpp:1476-1480`) to the loop that services the
+   scheduler's events and re-enters at `ctx->pc`, `EeScheduler::run()` (`Kernel/EeScheduler.cpp:174`), and
+   `WaitSema`/`SignalSema`/`PollSema` reach `EeScheduler::waitSemaphore` and its siblings, which `assertExecutor()`
+   and assert a current guest thread (`Kernel/EeScheduler.cpp:1053-1119`), so `lookupFunction(0x539d00)(rdram,
+   ctx, runtime)` from the helper's own thread is not a call that returns finished (on a scheduler nobody has reset
+   it gets past the asserts only through `bindMainContextForSyscall`'s lazy reset, lines 1703-1722, and then leaves
+   at the first due checkpoint); the helper's thread takes the executor with `EeScheduler::reset` and runs
+   `EeScheduler::run()`, as `PS2Runtime::run()` does on its game thread (`ps2_runtime.cpp:2640-2641`), each guest
+   call a `GuestInvocationKind::HleCall` invocation queued with `queueInvocation` and an `onComplete` that reads v0
+   (`include/runtime/ee_scheduler.h:84-105, 362-365`), under a timeout, because a `WaitSema` block on the single
+   invocation thread would hang rather than fail (§3); `PS2Runtime::run()` itself cannot be reused headless, since
+   it makes a raylib texture (`ps2_runtime.cpp:2600-2660`), and R317's headless `ps2xTest` case passes only through
+   this path, since the bind of `0x80000593` it asserts happens inside the recompiled `FUN_0018e878`.
    Time: the belief is seconds -- the emulated 3DES pass over 855 KB took 142 s, the native one is milliseconds;
    the run is bounded by reading 2.4 MB out of the ISO and inflating 4 MB.
 4. **How the DISC page drives it**: a subprocess, the way the launcher already starts the runner, through the
@@ -314,9 +391,10 @@ developer's chain and the oracle's producer.
    console-replay pattern (R222); the container parse (the 0x580 signed header, the ZDB entry walk), the exit codes
    and the progress states are tested from fixtures that hold no disc bytes (a synthetic ZDB, as
    `test_disc_to_elf.py` builds a synthetic ISO). The generated `throw` sites are asserted to be exactly the 31
-   known data-word addresses (§2.3; the in-row ones, the same 31 over the whole 340-function set), plus any
-   past-row words the boundary rows leave (`FUN_004ef348`'s 17 if its table gets no row), so a real unhandled
-   instruction can never hide among them; the pin covers
+   known data-word addresses (§2.3; the in-row ones, the same 31 over the whole 340-function set), and beside them
+   the map's boundary rows are asserted to be exactly the six gap addresses `0x4efac8`, `0x52af30`, `0x5375a4`,
+   `0x539e00`, `0x53b7bc` and `0x540a10` (derived by R1b's tool from the recompiler's log, pinned by the test), so a
+   real unhandled instruction can never hide among them; the pin covers
    throw sites only, not the syscall, trap and break sites that decode as valid instructions (§2.3), which the
    digests alone answer for. The r0004 served package (#71, R2) goes through the same helper and records its own
    digests.
@@ -353,19 +431,26 @@ developer's chain and the oracle's producer.
   `disc_to_elf_expected.json`'s `dnas.*` rows stay as they are, now checked on both machines. *Review:* overturned
   for the proven configuration with the checked `dnas.output` digest -- the first draft's default was no stage at
   all, `DNAS.BIN` loaded raw with the recompiled self-decryptors left to run, the path no harness has run.
-- **Q5 the soft-float helpers.** Default: `dpmul@0x1a0c18`, `litodp@0x1a1150`, `dptoul@0x1a1330` and
-  `__muldi3@0x19eb18` are dropped from the helper toml's selectors so the loader's own integer soft-float code is
-  recompiled and `FUN_00538dd0`'s doubles are computed as the PS2 computed them; the game keeps its native stubs.
-  If the digests match with the stubs in place, the stubs are exact for this input and may stay. The same reasoning
-  drops the four libc selectors (§3). *Review:* agreed -- the harness ran the loader's own
-  `dpmul`/`litodp`/`dptoul`/`__muldi3` (the Python hooks none of them), and `docs/KNOWN.md:88` records that
-  soft-double stubs were once bound with the wrong ABI.
+- **Q5 the soft-float helpers, and the rest of the loader's code.** Default: §3's rule, the harness's boundary
+  carried to the selectors -- the three SIF selectors the Python hooks (`0x1a6aa8`, `0x1a6c78`, `0x1a6e68`) stay,
+  and the fifteen loader routines it ran as code are recompiled, their names dropped from the helper toml. For the
+  seven soft-float and integer helpers (`dpmul@0x1a0c18`, `litodp@0x1a1150`, `dptoul@0x1a1330`,
+  `__muldi3@0x19eb18`, `__udivdi3`, `__pack_d`, `__unpack_d`) that is already so: they are `untracked_stubs`
+  entries, which `ps2_recomp` does not read (§2.2), so this run and the game's own `recomp/output` carry their
+  bodies (`dpmul_0x1a0c18.cpp`, 782 lines, in the game's) and `FUN_00538dd0`'s doubles are computed as the PS2
+  computed them; the drop keeps any derivation from making them stubs. The selectors the rule actually changes are
+  the seven `stubs` entries of §3, the four libc and the three `sceCd` routines. *Review:* agreed -- the harness ran
+  the loader's own `dpmul`/`litodp`/`dptoul`/`__muldi3` (the Python hooks none of them), and `docs/KNOWN.md:88`
+  records that soft-double stubs were once bound with the wrong ABI. *Round 3:* the first two drafts had the four
+  as stubbed selectors to drop, "the game keeps its native stubs" and "if the digests match with the stubs in place
+  ... may stay"; there are no such stubs, in the helper or the game.
 - **Q6 the map's data words.** Default: accept the 32 dead `throw` sites, at 31 distinct addresses, and pin the 31
-  by address in the test (§5.5; throw sites only, §2.3); the boundary rows of §2.3 for the run-past functions of
-  the helper's set -- five by the adjacent-gap rule, `FUN_004ef348`'s table by a row at `0x4efac8` or by pinning
-  its 17 words as well. The alternative -- rows that mark the key/flag words as data so the recompiler skips them -- is
-  `fix_ghidra_csv.py` work the game would also want (`recomp/output` has the same 131 blocks in zsealetc's image)
-  and belongs to LATER. *Review:* agreed, with 31.
+  by address in the test (§5.5; throw sites only, §2.3); the six boundary rows of §2.3, one rule for the six
+  run-past functions of the helper's set (a row at the start of every gap a run-past's errors land in, after the
+  gap's owner), derived from the recompiler's log and pinned by their six addresses beside the 31; that the rows
+  remove the 160 past-row errors is R1b's re-run to show (§2.3). The alternative -- rows that mark the key/flag
+  words as data so the recompiler skips them -- is `fix_ghidra_csv.py` work the game would also want
+  (`recomp/output` has the same 131 blocks in zsealetc's image) and belongs to LATER. *Review:* agreed, with 31.
 - **Q7 the card path.** Default: not built. `decrypt_apache.py:15-18`'s card path (only `0x534848` and `0x535018`)
   is for a package that came off a memory card; the served r0004 package is the disc-path form (KNOWN §1
   2026-09-27), so #71 needs nothing the disc path does not. *Review:* agreed.
@@ -389,7 +474,14 @@ developer's chain and the oracle's producer.
   closure, code-only lines) and `python recomp/build/r1a/stats3.py` (the 32 in-row words against the data ranges,
   the executed set's 130 R5900-only words); `grep -c 537544 recomp_run.log` = 2 (the 31 distinct addresses);
   round 2's `python recomp/build/r1a/pastrow.py` (the 340-function set's errors, in-row 32 at 31 distinct, and
-  each past-row error placed in the row or unmapped gap of `full.csv` that holds it: the six functions of §2.3).
+  each past-row error placed in the row or unmapped gap of `full.csv` that holds it: the six functions of §2.3;
+  it counts error lines, 175, where R1b's tool counts the 160 distinct addresses).
+- C6b round 3's stub lists, in `recomp/build/r1a/`: `wc -l output/FUN_0018df80_0x18df80.cpp
+  output/sub_001A0C18_0x1a0c18.cpp` = 261 and 781 (`cmd_sem_init` and `dpmul`, bodies); `grep -c "ps2_stubs::"
+  output/FUN_00195800_0x195800.cpp output/FUN_0018ea98_0x18ea98.cpp` = 1 each (`memcpy`, `sceCdInit`, 14-line
+  stubs); every one of the 62 executed loader functions in `dyn.json` classified against the toml's two lists: 18
+  `stubs` files are 14-line stub calls, 17 `untracked_stubs` files are bodies; the toml's `[general]` holds 647
+  `name@0x...` selectors, 636 below the loader's text end, and nine more `@0x` in its comments.
 - C7 the compile under the lock: `bash scripts/loop_lock.sh run agent-s16-r1a --purpose "build: R1a helper compile"
   --class build --wait 30 -- bash recomp/build/r1a/compile.sh > recomp/build/r1a/compile.log` (329 files, `-c`
   each in Unity batches of 48, the runner's flags without the PCH). Outcome: **did not run** -- `compile.log`:
