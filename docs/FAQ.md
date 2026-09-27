@@ -299,7 +299,7 @@ answer — press **SAVE DIAGNOSTICS** and send the zip.
 It does. Tick **SAVE PASSWORD = YES** before **CONNECT**, and the persona and password come back from the memory
 card on the next start (`KNOWN.md` §3, issue #27).
 
-The launcher's **ONLINE** page lists the personas your cards have logged in with under **PERSONAS** (issue #73): pick
+The launcher's **ONLINE** page lists the personas your cards have logged in with under **PERSONAS** (#73): pick
 one, press **LAUNCH**, then pick the same persona in the game's own list. A password typed there is kept in
 `config.json` in plain text only until the game remembers it: once a login goes through with nothing typed, the
 launcher empties that key and the game fills its own form from the card. A persona appears in the list after its
