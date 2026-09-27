@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SOCOM Unzipped map viewer</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <!--
+      Site navigation, not a viewer control, so it sits outside #panel: the backtick hides the panel
+      and this stays, and it is the first thing in the top-left corner whichever way the panel is set.
+    -->
+    <nav id="site-links">
+      <a id="home" href="https://s2u.scotho.com/">&larr; Unzipped Project</a>
+      <a id="source" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub">GitHub</a>
+    </nav>
+    <div id="fps" aria-live="off">-- fps</div>
+    <button id="fullscreen" type="button" title="fullscreen (F)" aria-label="fullscreen">&#x26F6;</button>
+    <!--
+      The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
+      rather than watching a bar it cannot see.
+    -->
+    <div id="loading" hidden aria-live="polite">
+      <p id="loading-what">loading</p>
+      <div id="loading-track"><div id="loading-bar"></div></div>
+    </div>
+    <div id="panel">
+      <!--
+        The panel's title bar, and the whole of it when the panel is folded. It is a real button so it
+        takes a tap, a click, Enter and Space without any of that being written here, and
+        `aria-expanded` tells a screen reader which way it is.
+      -->
+      <button id="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-body">
+        <span id="panel-title">Settings</span>
+        <span id="panel-chevron" aria-hidden="true">&#9662;</span>
+      </button>
+      <div id="panel-body">
+      <div class="row">
+        <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
+        <button id="iso" type="button" disabled title="the browser reads your own disc image: milestone M5">
+          ISO source: milestone M5
+        </button>
+      </div>
+      <p id="status">booting</p>
+      <!--
+        The one choice a visitor makes: the picture as a modern screen shows it, or as the console drew
+        it. It is the `ps2look` checkbox under Advanced, presented as a switch; the checkbox stays the
+        state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
+      -->
+      <div id="look" role="radiogroup" aria-label="picture">
+        <button type="button" class="look" data-look="modern" aria-pressed="true">
+          <span class="look-name">Modern</span>
+          <span class="look-what">your screen&rsquo;s size and shape</span>
+        </button>
+        <button type="button" class="look" data-look="ps2" aria-pressed="false">
+          <span class="look-name">PS2</span>
+          <span class="look-what">640&times;448 on 4:3, as the console drew it</span>
+        </button>
+      </div>
+      <details id="about">
+        <summary>Unzipped Project Map Viewer <span class="badge">dev build</span></summary>
+        <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
+          textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
+          reading of the game and a reading can be wrong.</p>
+        <p><b>Known to differ:</b> blended surfaces are sorted by the browser where the engine walked its
+          grid outward from the camera, the frame brighten is a fixed value where the game meters it, the
+          alternate states a map holds (destroyed, unlit, far LOD) are hidden rather than switched by
+          play, and there is no game &mdash; just the world.</p>
+        <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
+          <a href="https://s2u.scotho.com" target="_blank" rel="noopener noreferrer">s2u.scotho.com &rarr;</a></p>
+      </details>
+      <details id="advanced">
+        <summary>Advanced</summary>
+        <div class="row">
+          <label><input type="checkbox" id="grid" /> grid at y=100</label>
+          <label><input type="checkbox" id="collision" /> collision</label>
+          <label><input type="checkbox" id="spawns" /> spawns</label>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="wireframe" /> wireframe</label>
+          <label><input type="checkbox" id="untextured" /> highlight untextured</label>
+        </div>
+        <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
+        <div class="row">
+          <label title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> turn flares to face the camera</label>
+        </div>
+        <div class="row">
+          <label title="The GS LINE_STRIP geometry -- guy ropes, power lines, lamp brackets, light filaments -- drawn one pixel wide with the texture the packet names running along the strip, as the hardware drew them."><input type="checkbox" id="linestrips" checked /> line strips</label>
+        </div>
+        <div class="row">
+          <label title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> blend graded alpha</label>
+        </div>
+        <div class="row">
+          <label title="The drop shadows: the quads under props and the shadow patches baked onto the ground, every draw whose texture is a shadow*.tif, blended over what is under them after the world is drawn, as the engine's decal pass did."><input type="checkbox" id="shadows" checked /> prop shadows</label>
+          <label title="The states a map holds but does not open in: a destructible's remains and debris (whats_left, parts), a lamp's unlit copy (nolight), the pulsing objective ribbon (terrorist_pulse), the far level-of-detail copies named by lod.rdr. The game switches them by play and by range; drawn on top of the intact, lit, near ones they z-fight, so they are hidden unless you ask."><input type="checkbox" id="alternate" /> alternate states</label>
+        </div>
+        <div class="row">
+          <label title="Experimental. Draw every surface in scene-graph order with depth written by every draw, blended or not. The engine really walked its grid outward from the camera, with decals and shadows in passes of their own, so this is not its order either -- a glow or a shadow drawn before the wall behind it shows the sky through itself. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="discorder" /> scene-graph draw order (experimental)</label>
+        </div>
+      <details id="sliders-box">
+        <summary>lighting (unlit, as the engine draws it)</summary>
+        <p class="note">The PS2 draws a multiplayer map from the vertex colours the exporter baked: the VU1 light
+          command is only emitted for the odd node flagged dynamic (a fern, a palm, a flare), and those take the
+          map's own <code>GlobalLighting</code> rig. The game then brightens the whole frame by
+          <code>1 + FIX/128</code>, <code>FIX</code> coming from its auto-exposure; the console measured 93.</p>
+        <label class="slider" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 93 is the value read off the console; 0 is the bare frame; the game's own defaults cap it at 100."><span>brighten</span>
+          <input type="range" id="brighten" min="0" max="255" step="1" value="93" /><output id="brighten-out"></output></label>
+        <div class="row">
+          <label title="Light every node with the map's rig, whether or not the engine would. The viewer's earlier reading, kept for comparison: about five times too dark on Frostfire."><input type="checkbox" id="rigeverywhere" /> rig on every node (the old reading)</label>
+        </div>
+      </details>
+      <details id="fog-box">
+        <summary>fog (GS FOGCOL + VU1 qwords 28/29)</summary>
+        <div class="row">
+          <label><input type="checkbox" id="fog" checked /> fog</label>
+          <label class="colour">colour <input type="color" id="fogcolour" value="#646464" /></label>
+        </div>
+        <label class="slider" title="F = 255 at this distance: nothing nearer is fogged."><span>near</span>
+          <input type="range" id="fognear" min="0" max="4000" step="10" value="600" /><output id="fognear-out"></output></label>
+        <label class="slider" title="F = 0 at this distance: everything further is the fog colour outright."><span>far</span>
+          <input type="range" id="fogfar" min="10" max="6000" step="10" value="875" /><output id="fogfar-out"></output></label>
+      </details>
+        <details id="diagnostics-box">
+        <summary><span id="diagnostics-count">0</span> diagnostics</summary>
+        <ul id="diagnostics"></ul>
+      </details>
+      </details>
+      <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
+      <p class="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,
+        audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
+        Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
+        Entertainment.</p>
+      <p class="hint" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; arrows look &middot; F fullscreen &middot; wheel speed 1.0&times; &middot; ` hides this</p>
+      </div>
+    </div>
+    <!--
+      Touch movement. Hidden until `body.touch` is set, which `./src/touch.ts` does on a coarse pointer
+      or at the first touch event. The stick owns the left half so it never fights the look drag, which
+      keeps the right half.
+    -->
+    <div id="touch">
+      <div id="stick-zone"></div>
+      <div id="stick-base" hidden><div id="stick-knob"></div></div>
+      <div id="touch-lift">
+        <button id="touch-up" type="button" aria-label="up">&#9650;</button>
+        <button id="touch-down" type="button" aria-label="down">&#9660;</button>
+      </div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

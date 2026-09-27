@@ -1,0 +1,14 @@
+{
+  "name": "@s2u/scene",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@s2u/archive": "*",
+    "@s2u/mesh": "*"
+  }
+}

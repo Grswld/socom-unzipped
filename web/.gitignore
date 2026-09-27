@@ -1,0 +1,12 @@
+# Dependencies and builds
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Game data extracted from the owner's disc by `npm run extract-maps`, and everything the tools and
+# the tests write beside it. No SOCOM II asset is ever committed: the viewer decodes your own disc.
+/public/maps/
+/test-fixtures/
+/test-results/
+/playwright-report/
+*.log
