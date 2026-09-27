@@ -1,4 +1,4 @@
-Date: 2026-09-27 (round 4, the third review's nine; every claim pinned to `origin/main` `1d78ce01`, which `main` has passed; Sprint 16's plan: `sprint-16` `4cc2a684`)
+Date: 2026-09-27 (round 5, the fourth review's four; every claim pinned to `origin/main` `1d78ce01`, which `main` has passed; Sprint 16's plan: `sprint-16` `4cc2a684`)
 Spec: `docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md` (L1; on `main` since `6f57eb1e`, not on this base). <!-- docmaint: future -->
 
 # Sprint 16 L1 design note -- the profile viewer over the card's personas (issue #73, R295)
@@ -34,13 +34,15 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   `SessionKey` 17, `Username` 32, `Password` 32 (`RT.Common/Constants.cs:9-16`): a 104-byte payload, `Username` at offset 40, `Password` at 72. **The response too:**
   `MediusAccountLoginResponse.cs:11-37`, type 0x08 (`Types.cs:583`), `MessageID`, 3 pad bytes, a 4-byte `StatusCode` at offset 26, success = `StatusCode >= 0` (`:17`); it
   comes back through `rc4DecryptFn` (`socom2_crypto.cpp:318-323`), plain in place after the call. **That the RC4 seams carry whole messages is inferred, not observed**
-  (research/37:5-6): L1b's FIRST step is a Dev knob `PS2X_SOCOM2_LOGIN_TRACE` logging class, type and length at both functions and each `rc4SetKeyHash`
-  (`socom2_crypto.cpp:294-302`), never a field. **If they carry partial messages, the commit reassembles AT THOSE SEAMS**: consecutive calls on one RC4 state
-  concatenated, a message opened by the `rc4SetKeyHash` on that state (each message keyed with its own hash -- inferred, the same trace confirms it), because only
-  there are the bytes plain. **The hostnet `send`/`recv` (`socom2_hostnet.cpp:577`/`:587`) is NOT a plain fallback**: they carry the wire form, the RT header (id|0x80,
-  a 2-byte length, a 4-byte hash) then RC4 ciphertext (`server/horizon-server/RT.Models/BaseScertMessage.cs:90-98`, `:122-130`; research/37:10-11), where a parse never
-  finds class 0x01 type 0x07, commits nothing and leaves the viewer empty without an error. They serve only if the trace sees no login at the RC4 seams at all, and then
-  decrypt a copy: the RT header first, then RC4 with the session key captured at `rc4SetKeyHash` and that message's header hash.
+  (research/37:5-6): L1b's FIRST step is a Dev knob `PS2X_SOCOM2_LOGIN_TRACE` logging, at both functions, the RC4 state's address, its byte counter and the class, type
+  and length, and each `rc4SetKeyHash` (`socom2_crypto.cpp:294-302`), never a field. **The state carries its own byte counter**: `st.word(0)`, zeroed by `rc4Init`
+  (`socom2_crypto.cpp:246`) and advanced by every call (`:269`, `:290`), so a call that finds `word(0) == 0` holds a message's first chunk. **If the seams carry partial
+  messages, the commit reassembles AT THOSE SEAMS**: a concatenation keyed on the state's address, a new message begun by a call at `word(0) == 0` and any half message
+  pending on that state discarded, with no separate `rc4SetKeyHash` bookkeeping (each message keyed with its own hash, so each opens at zero -- inferred, the same trace
+  confirms it), because only there are the bytes plain. **The hostnet `send`/`recv` (`socom2_hostnet.cpp:577`/`:587`) is NOT a plain fallback**: they carry the wire form,
+  the RT header (id|0x80, a 2-byte length, a 4-byte hash) then RC4 ciphertext (`server/horizon-server/RT.Models/BaseScertMessage.cs:90-98`, `:122-130`;
+  research/37:10-11), where a parse never finds class 0x01 type 0x07, commits nothing and leaves the viewer empty without an error. They serve only if the trace sees no
+  login at the RC4 seams at all, and then decrypt a copy: the RT header first, then RC4 with the session key captured at `rc4SetKeyHash` and that message's header hash.
 
 ## 2. The viewer (the ONLINE page after the change)
 
@@ -51,17 +53,19 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   142: ADDRESS stays at `y` on its own shared rect `onlineAddressRow(window)`; the heading PERSONAS is drawn 26 above the first row as SERVER is (`page_online.cpp:13`);
   rows at the presets' 38 pitch and 32 height (`focus.cpp:415`) from `y+72`: three visible rows end at `y+180`, 8 clear of ADVANCED (26 + 3 x 38 = 140 of the 142). The
   list holds every record, NEW PERSONA LAST; past three rows it scrolls inside itself (a focus move onto a hidden row scrolls it); the other nodes never move.
-- **The rows.** One `listRow` (`ui/widgets.h:106`, the presets' widget) per record across every `cards/*.personas.json`, id `online.persona.<i>`, laid by a shared
-  `onlinePersonaRow(window, i, scroll)` as `onlinePresetRow` is (`focus.cpp:412-416`), so the drawn and focusable rects agree. Row text: the name; in caption the server
-  (the record holds `effectiveServer`'s address, `launcher_config.cpp:119-129`, shown as the `label` of the `kServerPresets` entry with that `address`,
+- **The rows.** One `listRow` (`ui/widgets.h:106`, the presets' widget) per record across every `cards/*.personas.json` whose card directory exists (a ledger with no
+  card, `cards/old.personas.json` and no `cards/old/`, is skipped with a one-line note, never listed into a launch that drops a plain password), id `online.persona.<i>`,
+  laid by a shared `onlinePersonaRow(window, i, scroll)` as `onlinePresetRow` is (`focus.cpp:412-416`), so the drawn and focusable rects agree. Row text: the name; in
+  caption the server (the record holds `effectiveServer`'s address, `launcher_config.cpp:119-129`, shown as the `label` of the `kServerPresets` entry with that `address`,
   `launcher_config.h:94-117`, else as is; `findServerPreset` is an id lookup, `launcher_config.cpp:39-45`, declared at `.h:262`, so §5 adds the by-address match beside
-  it) and "last played <n> days ago". The last row is NEW PERSONA, id
-  `online.persona.new`. The row count, the scroll, the selected index and whether the field shows are `LayoutInputs` fields like `padChoices` (`focus.h:64-69`). **The
-  password field sits beside the selected row**: a masked `textField` (cap 12, `keyboardAccepts(ch, true)`), 32 tall, id `online.persona.password`; a row spans the body
-  (`focus.cpp:415`) under a right-aligned caption (`page_online.cpp:65-67`), so the selected row narrows while the field shows and the field takes the freed right end; it
-  exists only while the selected row is NEW PERSONA (the default inputs' case, so `launcher_tests.cpp:1419-1430` finds the node, and the no-record case below) or a record
-  with `savedPassword: false` -- the issue's "a persona without one still gets a masked field"; a `true` row sends no `PS2X_SOCOM2_LOGIN_PASS`, the game fills its own
-  form from the card.
+  it) and "last played <n> days ago". The last row is NEW PERSONA, id `online.persona.new`. The row count, the scroll, the selected index and whether the field shows are
+  `LayoutInputs` fields like `padChoices` (`focus.h:64-69`). **The password field sits beside the selected row**: a masked `textField` (cap 12, `keyboardAccepts(ch,
+  true)`), 32 tall, id `online.persona.password`; a row spans the body (`focus.cpp:415`) under a right-aligned caption (`page_online.cpp:65-67`), so the selected row
+  narrows while the field shows and the field takes the freed right end; it exists only while the selected row is NEW PERSONA (the default inputs' case, so
+  `launcher_tests.cpp:1419-1430` finds the node, and the no-record case below) or a record with `savedPassword: false` -- the issue's "a persona without one still gets a
+  masked field". **For the field and §3's write rule a record counts only when `record.server == effectiveServer(c)`**: a selected row whose record is on another server
+  is "no record" (the field shows, the password is kept and sent), since there the game runs a create-persona login (`docs/KNOWN.md:64`) and opens its keyboard empty; a
+  `true` row sends no `PS2X_SOCOM2_LOGIN_PASS`, the game fills its own form from the card.
 - **The empty state's one sentence** (no `cards/` or no record): "No persona yet -- press LAUNCH, the game asks for a name on its own keyboard, and it appears here after
   your first login." A card with no ledger (every card made before this build) gets the sentence with "again" only when `BASCUS-97275SOCOMII` holds a `SaveGame*` file:
   every booted card has the folder from its first boot's controller-config save (`docs/HAZARDS.md:145`), persona or not. That a `SaveGame*` file means a persona is an
@@ -69,9 +73,10 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   L1b's Step 0 lists the card before and after the first create.
 - **Selection.** Picking a row sets `c.profile` to the row's card, `c.loginName` (`launcher_config.h:159`) to its name when it survives `normalizeLoginName` unchanged
   (`launcher_config.cpp:492-494`) and EMPTY otherwise (`xmfû` would else launch as `xmf`, `:549-551`, a name the ledger never held), and `app.dirty`; the row is drawn
-  selected when card and name match byte for byte (§4 on names). **When `profile+loginName` match no record** (every existing player's config, and the name emptied
-  just above), NEW PERSONA is the selected row, so the masked field shows and holds `c.loginPassword` as the config has it: an old plain password is still sent at
-  launch (`:552-554`), and is seen (masked) and editable there, never sent unseen. **Picking a row clears `c.loginPassword`** unless typed for that row since: one
+  selected when its ledger's leaf (the file name less `kSuffix`) `== normalizeProfile(c.profile) + (c.secondInstance ? "_b" : "")` and `record.name == c.loginName` byte
+  for byte (§4 on names), so a `second: true` row stays selected after its pick. **When `profile+loginName` match no record** (every existing player's config, and the
+  name emptied just above), NEW PERSONA is the selected row, so the masked field shows and holds `c.loginPassword` as the config has it: an old plain password is still
+  sent at launch (`:552-554`), and is seen (masked) and editable there, never sent unseen. **Picking a row clears `c.loginPassword`** unless typed for that row since: one
   `loginPassword` serves every row (`launcher_config.h:160`), and B picked after A must not launch with A's password. A row whose record says `second: true` sets
   `profile` to the card's leaf less `_b` and `secondInstance` ON (`page_online.cpp:119-126`): `environmentFor` appends `_b` itself (`launcher_config.cpp:545`). The
   record's `second` comes from `PS2X_SOCOM2_RSA_KEY == "b"` (`:575-579`), never from the suffix: a hand-made `sgt_b` (`_` allowed, `:455-456`) would otherwise read as
@@ -83,13 +88,14 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   `:1785-1824`, never chooses). Nothing in the runtime touches that list; its UI variable is not in the tree. Two resolutions: (i) the runtime steers the list -- LATER;
   (ii) for L1 the bar is re-worded, by a ruling from the counter (`docs/HANDOFF.md` §2), before (ii) counts as met: the row sets the card and its caption says "pick
   <name> in the game's list" -- the row alone does not meet "either launches as itself". **L1b drives a two-persona card FIRST** (two create-persona logins on one card,
-  then a third launch) and records which persona the form arrives with and how the list orders them; "launching with either logs in as it" is claimed from that run
-  alone. **The driver cannot make the second persona as it is**: `persona_form_mode` reads a filled PLAYER NAME as "saved" (`online_login_ours.py:914-920`,
-  `:1882-1910`) and nothing walks the list to `<New Persona>`, so a second create-persona login on that card and server logs in as A typing B's password. L1b adds
-  `--new-persona N` (N = the personas already on the card, which Step 0 knows since it made them): it skips `persona_form_mode` (the mode is "create" by the option),
-  presses DOWN N times on the persona list before `press_persona`'s CROSSes (`:1943-1975`), and asserts the "Enter Player Name" keyboard (`osk_title_is_name`) after
-  them, else fails `login:persona:new-persona`; then `create_persona`'s walk (`:1913-1940`). Until that option lands, the second create is hand-driven at the pad and
-  recorded as such (the shots, the list's order seen), never counted as a driver run.
+  then a third launch) and records which persona the form arrives with and how the list orders them; "launching with either logs in as it" is claimed from that run alone.
+  **The driver cannot make the second persona as it is**: `persona_form_mode` reads a filled PLAYER NAME as "saved" (`online_login_ours.py:914-920`, `:1882-1910`) and
+  nothing walks the list to `<New Persona>`, so a second create-persona login on that card and server logs in as A typing B's password. L1b adds `--new-persona N` (N =
+  the personas already on the card, which Step 0 knows since it made them): it skips `persona_form_mode` (the mode is "create" by the option), presses the list CROSS
+  (`press_persona_list`, `:1943-1954`: that CROSS is what opens the list; a DOWN before it moves the form's cursor from PLAYER NAME to PASSWORD), then DOWN N times, then
+  the pick CROSS, and asserts the "Enter Player Name" keyboard (`osk_title_is_name`) after it, else fails `login:persona:new-persona`; then `create_persona`'s walk
+  (`:1913-1940`). Until that option lands, the second create is hand-driven at the pad and recorded as such (the shots, the list's order seen), never counted as a driver
+  run.
 - **NEW PERSONA hands to the game's flow.** It clears `c.loginName` and `c.loginPassword` (an empty name sends no `PS2X_SOCOM2_LOGIN_NAME`, `launcher_config.cpp:549-551`,
   so the name keyboard opens empty, `ps2xShared/include/ps2x/knobs.h:163`) and keeps the selected card (`cards/player` when the viewer is empty); LAUNCH then runs a
   stranger's first run (`online_login_ours.py:1913-1940`); nothing in the launcher walks the game's screens.
@@ -101,8 +107,8 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   scrubbed from reports (`diagnostics.cpp:87`).
 - **KNOWN wins over the brief's "R237: the saved password does not survive".** That is the row as written 2026-09-23; V6 settled it 2026-09-25: launch b of
   `v6_20260925_160634` arrived with `*****`, nothing typed, `LOBBY class=ok` (`docs/KNOWN.md:203`). `docs/INSTALL.md:153` and `docs/PLAYTEST.md:119` say so since PR #84;
-  R237's own row (`docs/CURRENT_SPRINT.md:221`, echoed at `:243` and in the generated `docs/RULINGS.md:76`) still states the old finding: a false sentence to correct in
-  the same task (`docs/HANDOFF.md` §4 rule 11; §5 says how).
+  R237's own row (`docs/CURRENT_SPRINT.md:221`, echoed at `:243` and in the generated `docs/RULINGS.md:76`) stated the old finding; the correction (`docs/HANDOFF.md` §4
+  rule 11) is DONE: merge `7b2e76bc` on `sprint-16` superseded it (§5).
 - **How `savedPassword` is known -- per login, from the request alone.** The OSK override tells the login keyboards apart (`Field::Password`,
   `socom2_osk_prefill.h:50-60`). The wrapper is installed ALWAYS (today `installOskPrefill` returns with neither variable set, `game_overrides_socom2.cpp:1295-1296`,
   `:2062`; the buffer write stays gated on a variable, byte-identical) and sets a flag `passwordKeyboardOpened` on each `Field::Password` open. At each login request the
@@ -111,11 +117,13 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   password the card lacks. The environment variable plays no part: a prefilled password still opens the keyboard and records `false`. Cases: typed, prefilled, or a NEW
   PERSONA login -> `false`; a retry after a refusal -> the first answer, a login after a commit -> its own; CONNECT with an empty password (research/37:41-43: it reaches
   the wire) -> `false`; the V6 form, `*****`, nothing typed -> `true`; log out and back in the same run under NO, nothing retyped -> `true`, accepted (§6 Q5).
-- **What `config.json` stops storing, and the migration.** `loginPassword` is kept only while the selected row's record is absent or `false`; when the launcher (re)reads
-  the ledgers and the selected row reads `true`, `Config::loginPassword` is cleared and the file rewritten, the key kept and empty (`diagnostics_tests.cpp:109` asserts
-  exactly that of the zip's copy, and stays). A player with a plain password today loses nothing: launch 1 prefills the keyboard (R180), records `false`, the game saves
-  it under SAVE PASSWORD YES; launch 2 arrives with `*****` (V6), records `true`; the plain copy goes at the next read. The help (`focus.cpp:330-332`), the ABOUT line
-  (`ui/page_about.cpp:57`), `docs/INSTALL.md:144-147` and the knob's text (`knobs.h:164`, regenerating `docs/KNOBS.md:25`) say "only until the game remembers it".
+- **What `config.json` stops storing, and the migration.** `loginPassword` is kept only while the selected row's record is absent or `false`, and a record counts only
+  when `record.server == effectiveServer(c)` (a matching row on another server is "no record": the field shows, the password is kept); when the launcher (re)reads the
+  ledgers and the selected row's record on `effectiveServer(c)` reads `true`, `Config::loginPassword` is cleared and the file rewritten, the key kept and empty
+  (`diagnostics_tests.cpp:109` asserts exactly that of the zip's copy, and stays). A player with a plain password today loses nothing: launch 1 prefills the keyboard
+  (R180), records `false`, the game saves it under SAVE PASSWORD YES; launch 2 arrives with `*****` (V6), records `true`; the plain copy goes at the next read. The help
+  (`focus.cpp:330-332`), the ABOUT line (`ui/page_about.cpp:57`), `docs/INSTALL.md:144-147` and the knob's text (`knobs.h:164`, regenerating `docs/KNOBS.md:25`) say "only
+  until the game remembers it".
 - **The launch half needs no new plumbing.** `--saved-password` (`online_login_ours.py:1785-1826`, `tools_py/tests/test_saved_password.py`) proves a card-held password
   logs in untyped; `--prefilled` proves the env path (`tests/test_online_login_prefilled.py`).
 
@@ -123,22 +131,27 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
 
 - **Pattern in the tree.** `ps2xTest/src/preflight_tests.cpp:20-33` (`makeHome`/`removeHome`) builds a stamped directory under `temp_directory_path()` and removes it on
   every platform -- the pattern to copy, not `launcher_tests.cpp:2447-2454`, inside `#ifndef _WIN32` (`:2442`). `readCards` takes `cards/`: the test builds
-  `cards/<name>/BASCUS-97275SOCOMII/` (empty files, no disc bytes) and writes `cards/<name>.personas.json` beside it, which `readLedger` parses; only mtimes are read.
+  `cards/<name>/BASCUS-97275SOCOMII/` (empty files, no disc bytes) and writes `cards/<name>.personas.json` beside it; `readCards` is the one entry the viewer and every
+  case below call (it parses each ledger through `readLedger`, §5); only mtimes are read.
 - **Names are bytes, never normalised.** The request's `Username` is what the game's keyboard typed, accent mode included (`docs/HAZARDS.md:161`: the old harness typed
   `xmfû`), so a record name can hold what `normalizeLoginName` (`launcher_config.cpp:492-494`) would drop; the ledger keeps the field's bytes (`\u00XX` per non-ASCII
   byte; §5 makes the shared parser give them back, since `json_reader.h:71-74` reads any `\u` code >= 0x80 as `?` today and `xmfû` would read `xmf?` and gain a second
   record at the next login), the row shows what the glyph set can, and the match to `c.loginName` is `record.name == c.loginName` on the bytes (§2 puts only a surviving
   name there) -- of two records alike on one card (one name, two servers) the one on `effectiveServer(c)` wins, else the first (a test pins it, a KNOWN row names it).
-- **`readLedger`/`readCards` cases** (one `tc.Run` each): (a) no `cards/`, no ledger, a 0-byte ledger, one holding `[]` -> zero rows, the empty sentence; (b) one
-  record -> one row, its name, server label and age; (c) two records -> two rows, newest login first, selection follows `profile+loginName`; (d) `savedPassword: true` ->
-  `environmentFor` has no `PS2X_SOCOM2_LOGIN_PASS` and `toJson` writes `"loginPassword": ""`; (e) a name of every keyboard character (0x21-0x7E less `"`) and one holding
-  `û` round-trip `toJson`/`fromJson` byte for byte (§5's `\u` change); (f) a truncated ledger, a record with no name or no server -> the ledger is skipped with a
-  one-line note, never a throw; (g) a save folder with a `SaveGame*` file and no ledger -> the "again" sentence, the folder alone -> the plain one (the trigger as Step 0
-  settles it); (h) `second: true` in `cards/player_b.personas.json` -> `profile = player`, the toggle on; `second: false` in `cards/sgt_b.personas.json` -> `sgt_b`, off;
-  (i) picking B after A -> `loginPassword` empty; (j) a name that does not survive `normalizeLoginName` -> `loginName` empty, no `PS2X_SOCOM2_LOGIN_NAME`.
+- **`readCards` cases** (one `tc.Run` each): (a) no `cards/`, no ledger, a 0-byte ledger, one holding `[]` -> zero rows, the empty sentence; (b) one record -> one row,
+  its name, server label and age; (c) two records -> two rows, newest login first, selection follows `profile+loginName`; (d) `savedPassword: true` on
+  `effectiveServer(c)` -> `environmentFor` has no `PS2X_SOCOM2_LOGIN_PASS` and `toJson` writes `"loginPassword": ""`; the same record on another server -> the field
+  shows, `loginPassword` kept and sent; (e) a name of every keyboard character (0x21-0x7E less `"`) and one holding `û` round-trip `toJson`/`fromJson` byte for byte (§5's
+  `\u` change); (f) a truncated ledger, a record with no name or no server, a ledger whose card directory is gone -> the ledger is skipped with a one-line note, never a
+  throw; (g) a save folder with a `SaveGame*` file and no ledger -> the "again" sentence, the folder alone -> the plain one (the trigger as Step 0 settles it); (h)
+  `second: true` in `cards/player_b.personas.json` -> `profile = player`, the toggle on, and the `_b` row is the selected one after the pick; `second: false` in
+  `cards/sgt_b.personas.json` -> `sgt_b`, off; (i) picking B after A -> `loginPassword` empty; (j) a name that does not survive `normalizeLoginName` -> `loginName` empty,
+  no `PS2X_SOCOM2_LOGIN_NAME`; (k) four records -> three rows visible, a focus move onto the fourth scrolls the list by one, and no other node's rect moves.
 - **Writer cases** (`socom2_persona_record`, pure functions over bytes): the request parse (§1's layout; a wrong class, type or length -> not a login); the inference
   table above, the flag cleared at a commit and kept across a refusal; the response parse (type 0x08, `MessageID` match, `StatusCode` at 26: `>= 0` commits, `< 0` drops,
-  an unmatched `MessageID` leaves the pending record); the atomic write (the ledger unchanged until the rename); `cards/player/` -> `cards/player.personas.json`.
+  an unmatched `MessageID` leaves the pending record); RED first for the reassembly: two encrypt calls of 50 + 54 bytes on one RC4 state after a `rc4SetKeyHash` (the
+  first at `word(0) == 0`) yield one pending record, and a second `rc4SetKeyHash` on that state after the 50 discards the half message (no record); the atomic write (the
+  ledger unchanged until the rename); `cards/player/` -> `cards/player.personas.json`.
 - **Tests that change:** `launcher_tests.cpp:1360-1394` (the three fields' order and help) becomes the rows' order and the three-row budget; `:1406-1410` (the profile
   help) moves to the PERSONAS heading's help; `:1419-1430` (`helpedIds` are real nodes) gates the new ids; `:497-541` (the config round trip) keeps `loginName`, its
   `loginPassword` write becomes the conditional above; `diagnostics_tests.cpp:105-110` and `bug_report_tests.cpp:211-223` stay (the key stays, blanked).
@@ -153,8 +166,8 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   emits `\u00XX`; not by the config round trip (`launcher_tests.cpp:497-541`), whose writer's `quote` (`launcher_config.cpp:17-34`) writes 0x80+ raw and so passes
   before the change.
 - `third_party/ps2recomp/ps2xRuntime/src/lib/socom2_persona_record.cpp` (new): the pending record from `rc4EncryptFn`, the commit from `rc4DecryptFn`
-  (`socom2_crypto.cpp:311-323`; partial messages reassembled at those seams, a message opened by `rc4SetKeyHash` on its state, `:294-302`; the hostnet `send`
-  `socom2_hostnet.cpp:577` and `recv` `:587` only as §1's last resort, decrypting a copy with the captured key and each header's hash), the
+  (`socom2_crypto.cpp:311-323`; partial messages concatenated per state address, a message opened by a call finding the state's counter `word(0) == 0`, `:246`, `:269`,
+  `:290`; the hostnet `send` `socom2_hostnet.cpp:577` and `recv` `:587` only as §1's last resort, decrypting a copy with the captured key and each header's hash), the
   `passwordKeyboardOpened` flag from the prefill wrapper (`game_overrides_socom2.cpp:1261-1290`, installed unconditionally at `:1292-1296`), cleared at the commit, the
   ledger path from `getIoPaths().mcRoot` less a trailing separator + `kSuffix` (`cards/player/` keeps its slash through `lexically_normal`, `ps2_runtime.cpp:389-395`),
   `second` from the RSA-key knob; writes through the shared `toJson` (the accept-set lesson, `docs/HAZARDS.md:443`).
@@ -166,7 +179,7 @@ the sketch: one row per persona -- name, server "(the config's server at the tim
   conditional value, the key always written),
   `:549-554` (no `PS2X_SOCOM2_LOGIN_PASS` for a saved-password row); `ps2xShared/include/ps2x/knobs.h:164` (text) and the Dev knob `PS2X_SOCOM2_LOGIN_TRACE`;
   `docs/KNOBS.md` regenerated (`python -m tools_py.knobs write`, `tools_py/tests/test_knobs_registry.py:113`). No new `config.json` key.
-- Tests: `ps2xTest/src/launcher_tests.cpp` (§4's `readLedger`/`readCards` cases), a new `persona_record_tests.cpp` (the writer).
+- Tests: `ps2xTest/src/launcher_tests.cpp` (§4's `readCards` cases), a new `persona_record_tests.cpp` (the writer).
 - Docs: `docs/INSTALL.md:144-153`, `docs/PLAYTEST.md:59,119`, `docs/DEVELOPING.md:1176-1178`, `docs/FAQ.md:297-300` (the login answer). **The rule-11 correction is
   DONE, not owed by L1b**: merge `7b2e76bc` on `sprint-16` opened R237's and R179's rows with "Superseded by" + the D12 ruling's number in `docs/CURRENT_SPRINT.md`
   and the regenerated `docs/RULINGS.md` (the number is not written here: `main`'s counter, `docs/HANDOFF.md` §2, is behind `sprint-16`'s and the guard would trip).
