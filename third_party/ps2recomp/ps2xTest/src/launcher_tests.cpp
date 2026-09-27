@@ -3199,6 +3199,34 @@ void register_launcher_tests()
             removeCardsDir(cards);
         });
 
+        tc.Run("readCards (f2, RED first): a ledger nested 200,000 deep and one over 1 MiB are refused with a note, never a crash", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "deep");
+            const std::string deep = "[{\"name\": \"x\", \"server\": \"s\", \"junk\": " + std::string(200000, '[') + std::string(200000, ']') + "}]";
+            writeFileText(cards / "deep.personas.json", deep);
+            std::vector<ps::Persona> out;
+            std::string note;
+            t.IsFalse(ps::readLedger((cards / "deep.personas.json").string(), out, note), "the deep ledger is refused");
+            t.IsTrue(out.empty() && note.find("deep.personas.json") != std::string::npos, "with a note naming it");
+            const std::string nested = "[{\"name\": \"x\", \"server\": \"s\", \"later\": " + std::string(20, '[') + std::string(20, ']') + "}]";
+            t.IsTrue(ps::fromJson(nested, out) && out.size() == 1, "a field a later writer nests 20 deep is still skipped whole");
+            makeCard(cards, "huge");
+            std::string huge = ledgerText({persona("big", "socom.scotho.com", 10)});
+            huge += std::string(static_cast<size_t>(ps::kLedgerMostBytes) + 1 - huge.size(), ' ');
+            writeFileText(cards / "huge.personas.json", huge);
+            note.clear();
+            t.IsTrue(ps::fromJson(huge, out) && out.size() == 1, "the text itself is a ledger");
+            t.IsFalse(ps::readLedger((cards / "huge.personas.json").string(), out, note), "but a file over 1 MiB is refused unread");
+            t.IsTrue(note.find("huge.personas.json") != std::string::npos && note.find("MiB") != std::string::npos, "one line saying why");
+            huge.resize(static_cast<size_t>(ps::kLedgerMostBytes));
+            writeFileText(cards / "huge.personas.json", huge);
+            t.IsTrue(ps::readLedger((cards / "huge.personas.json").string(), out, note) && out.size() == 1, "at the cap it is read");
+            const ps::Cards read = ps::readCards(cards.string());
+            t.Equals(read.rows.size(), size_t(1), "readCards keeps the rest");
+            removeCardsDir(cards);
+        });
+
         tc.Run("readCards (g): a save folder with a SaveGame file and no ledger is the 'again' sentence; the folder alone is the plain one", [](TestCase &t)
         {
             const fs::path cards = makeCardsDir();

@@ -85,11 +85,14 @@ namespace launcher::detail
             }
             return false;
         }
-        // Skips any JSON value (used for unknown keys). Returns false on malformed input.
-        bool skipValue()
+        // Skips any JSON value (used for unknown keys). Returns false on malformed input, and on nesting deeper than
+        // kMostDepth: each level is a call, and a file nested tens of thousands deep would otherwise overflow the
+        // stack of whatever reads it (Sprint 16 L1b: the persona ledgers are read at launcher startup).
+        static constexpr int kMostDepth = 64;
+        bool skipValue(int depth = 0)
         {
             ws();
-            if (i >= s.size())
+            if (i >= s.size() || depth > kMostDepth)
                 return false;
             const char c = s[i];
             if (c == '"')
@@ -112,7 +115,7 @@ namespace launcher::detail
                         if (!string(key) || !take(':'))
                             return false;
                     }
-                    if (!skipValue())
+                    if (!skipValue(depth + 1))
                         return false;
                     if (take(','))
                         continue;

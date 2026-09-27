@@ -188,6 +188,13 @@ namespace launcher::personas
     {
         out.clear();
         const std::string file = fs::path(path).filename().string();
+        std::error_code ec;
+        const std::uintmax_t size = fs::file_size(fs::path(path), ec);
+        if (!ec && size > kLedgerMostBytes)
+        {
+            note = file + ": larger than 1 MiB, not a ledger this build wrote; skipped";
+            return false;
+        }
         std::string text;
         if (!readWhole(path, text))
         {

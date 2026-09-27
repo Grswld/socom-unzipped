@@ -10,6 +10,7 @@
 // hold a byte normalizeLoginName would drop. The ledger writes every byte outside printable ASCII as \u00XX and the
 // shared JSON reader gives the byte back (json_reader.h), so a name round-trips byte for byte.
 #include <cstddef>
+#include <cstdint>
 #include <ctime>
 #include <string>
 #include <vector>
@@ -51,7 +52,9 @@ namespace launcher::personas
     void upsert(std::vector<Persona> &records, const Persona &record);
 
     // Reads one ledger; each record's `card` is the file's leaf (its name less kSuffix). False, with `note` one line
-    // naming the file, when the file cannot be read or is corrupt; a missing file is false too.
+    // naming the file, when the file cannot be read or is corrupt; a missing file is false too. A file over
+    // kLedgerMostBytes is refused unread (a few hundred bytes a record: no real ledger comes near it).
+    constexpr std::uintmax_t kLedgerMostBytes = 1024u * 1024u;
     bool readLedger(const std::string &path, std::vector<Persona> &out, std::string &note);
 
     // The atomic write: the whole text to `<path>.tmp`, then renamed over the ledger, so a reader never sees half a
