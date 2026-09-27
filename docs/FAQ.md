@@ -327,5 +327,5 @@ Whatever the problem, the two things worth sending are the run log (`logs/run_<s
 (**SAVE DIAGNOSTICS** on the PLAY page). The zip is assembled with your home directory scrubbed out of every file in
 it and your ISO path cut down to its file name.
 
-Use **REPORT A BUG** in the launcher, or the same form at <https://s2u.scotho.com>. Nothing leaves your machine
+Use **REPORT A BUG** in the launcher, or the same form at <https://socomunzipped.com>. Nothing leaves your machine
 until you press SEND, and the page shows you what it would send before you do. `INSTALL.md` §10 walks through it.

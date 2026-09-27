@@ -445,7 +445,7 @@ EXTERNAL_TIMEOUT = 900
 
 EXTERNALS = (
     {"dir": "scotho", "tool": "check-secrets",
-     "target": "the published site (scotho.com, s2u.scotho.com, the bug inbox)",
+     "target": "the published site (scotho.com, socomunzipped.com, the bug inbox)",
      "script": "scripts/check-secrets.mjs", "runtime": "node", "prefix": "",
      "argv": ["scripts/check-secrets.mjs", "--json"], "json": True, "needs": ()},
     {"dir": "socom_monitor", "tool": "monitor-leakcheck",

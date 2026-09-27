@@ -76,7 +76,7 @@ namespace
     bool g_uiMaximized = false;
     bool g_nativeChrome = false;
     // Sprint 10: the SOCOM Unzipped logo at the head of the rail (owner: "use the socom unzipped logo from
-    // s2u.scotho.com"). Embedded like the type is, decoded once the window exists, and drawn scaled with
+    // socomunzipped.com"). Embedded like the type is, decoded once the window exists, and drawn scaled with
     // mipmaps so the rail's 204 units read clean at any window size. id 0 = it would not decode: the rail
     // then draws its head empty rather than crash, and stderr says so.
     Texture2D g_logo{};

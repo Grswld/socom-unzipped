@@ -1,6 +1,6 @@
 """The leak gate's sixth leg: the site's and the monitor's own scanners, called from here (Sprint 11 Task 12).
 
-Three repositories publish from this machine -- this one, `../scotho` (scotho.com and s2u.scotho.com) and
+Three repositories publish from this machine -- this one, `../scotho` (scotho.com and socomunzipped.com) and
 `../socom_monitor` (the built snapshot). Each has its own scanner, and until now each
 was run by hand, which means each was run when someone remembered. `leakcheck external` calls the other two.
 

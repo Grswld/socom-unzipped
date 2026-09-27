@@ -68,8 +68,24 @@ export function farLodModels(rdr: RdrNode): Set<string> {
  * falls); without a fade the copy switches at the middle of each ramp, which is where the two would
  * have crossed at half opacity.
  */
-export function lodVisible(band: LodBand, range: number): boolean {
+export function lodVisible(band: LodBand, range: number, last = false): boolean {
   const from = (band.nearFade[0] + band.nearFade[1]) / 2;
   const to = (band.farFade[0] + band.farFade[1]) / 2;
-  return range >= from && range < to;
+  return range >= from && (last || range < to);
+}
+
+/**
+ * Whether a copy in `band` is the last one at its spot: none of the `others` placed there fades in
+ * later. The engine culls every copy past its far fade, and on the disc that edge sits inside the
+ * fog (Frostfire's grates end at 500 units where the fog runs 200..640), so nothing is seen to go.
+ * The viewer's camera goes where the game's never does and its fog can be off, and there a culled
+ * last copy is a hole: a floor grate or a tank catwalk gone at 50 m. So the last copy is kept at
+ * every range (`lodVisible(..., last)`), and only a copy with a successor still steps aside for it.
+ */
+export function lodIsLast(band: LodBand, others: Iterable<LodBand>): boolean {
+  const from = (band.nearFade[0] + band.nearFade[1]) / 2;
+  for (const other of others) {
+    if (other !== band && (other.nearFade[0] + other.nearFade[1]) / 2 > from) return false;
+  }
+  return true;
 }

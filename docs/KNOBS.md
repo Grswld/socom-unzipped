@@ -113,7 +113,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_HOST_SCREENSHOT` | Spec | unset | <dir>[:<seconds>]: save what the window shows every n seconds (default 5). |
 | `PS2X_HOST_SCREENSHOT_LATEST` | Path | unset | Rewrite this PNG with the current frame twice a second; every harness capture reads it. |
 | `PS2X_JALR_TRACE` | Spec | unset | 0xSRC[,...]: log the resolved target of indirect calls issued from these pcs. |
-| `PS2X_LAUNCHER_API_BASE` | Text | `https://s2u.scotho.com` | Launcher tests only: a loopback base URL for the bug-report and stats calls. |
+| `PS2X_LAUNCHER_API_BASE` | Text | `https://socomunzipped.com` | Launcher tests only: a loopback base URL for the bug-report and stats calls. |
 | `PS2X_LAUNCHER_PATCH_BASE` | Text | `http://patch.psrewired.com` | Launcher tests only: a loopback base URL for the r0004 package download (#71). |
 | `PS2X_LAUNCHER_SHOT` | Path | unset | Launcher: after 120 frames save the real window to this PNG and quit. |
 | `PS2X_LOD_SCALE` | Float | `0` | Experiment: force both LOD scale floats of the camera (writes guest memory). |

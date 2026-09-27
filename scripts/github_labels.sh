@@ -33,7 +33,7 @@ done
 # GitHub defaults' family: red for a defect, blue for a request, yellow for "we cannot act yet", grey for area.
 LABELS=(
   "bug|d73a4a|Something does not work. A launcher report's BR- id may be quoted in the body."
-  "from-launcher|d73a4a|Opened from a report sent through the launcher or s2u.scotho.com; the BR- id is the reference."
+  "from-launcher|d73a4a|Opened from a report sent through the launcher or socomunzipped.com; the BR- id is the reference."
   "enhancement|a2eeef|A new behaviour or a deliberate change to an existing one."
   "needs-repro|fbca04|Not yet reproduced from our own code and harness. Not a confirmed defect until it is."
   "needs-disc-gate|fbca04|Cannot be checked without a disc: needs a run of the parity gate on real game data."

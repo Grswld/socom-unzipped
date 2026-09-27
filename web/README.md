@@ -4,7 +4,7 @@ Goal: every SOCOM II: U.S. Navy SEALs multiplayer map, read byte for byte out of
 `RUN/MP*.ZDB` archives — container, scene graph, DMA/VIF geometry, GS textures and palettes, lighting,
 fog, collision — and drawn again with three.js as close to the console's own picture as a browser
 allows, without emulating the game. Nothing is pre-baked and no asset is committed; **you supply your
-own disc**. It runs at [s2u.scotho.com/map-viewer](https://s2u.scotho.com/map-viewer/).
+own disc**. It runs at [socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/).
 
 It is a spin-off of [**SOCOM Unzipped**](../README.md), the static recompilation of the game for PC,
 and lives in that repository's `web/` directory as **a separate project**: its own npm workspace,

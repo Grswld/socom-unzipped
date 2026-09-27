@@ -1,7 +1,7 @@
 #pragma once
 
 // Sprint 9 Goal 8: the launcher's REPORT A BUG page and the ONLINE page's status line, as pure functions.
-// The service is the owner's own site (s2u.scotho.com); its client-side reference is sites/s2u/src/report.ts
+// The service is the owner's own site (socomunzipped.com); its client-side reference is sites/s2u/src/report.ts
 // (checkForm, buildPayload, replyText) and its inbox sites/s2u/api/bugs.mjs -- the field names, the limits and
 // the wording here mirror those two files. Nothing in this header opens a socket: the transport lives in the
 // launcher's glues (win32glue::httpRequest), and nothing leaves the machine until SEND is pressed.
@@ -28,7 +28,7 @@ namespace launcher::bugreport
     constexpr size_t kLogMax = 65536;
     constexpr size_t kBodyMax = 98304;            // the whole POST, 96 KB
 
-    constexpr const char *kDefaultApiBase = "https://s2u.scotho.com";
+    constexpr const char *kDefaultApiBase = "https://socomunzipped.com";
     constexpr const char *kApiBaseEnv = "PS2X_LAUNCHER_API_BASE";   // TEST-ONLY, loopback only: see apiBase()
     constexpr const char *kBugsPath = "/api/bugs";
     constexpr const char *kStatsPath = "/api/stats";
