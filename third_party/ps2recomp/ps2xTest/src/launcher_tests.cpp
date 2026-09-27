@@ -16,6 +16,7 @@
 #include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/theme.h"
+#include "ui/tips.h"   // issue #74: the tooltips
 #include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
 #include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
@@ -2116,6 +2117,107 @@ void register_launcher_tests()
                 t.Equals(ui::helpFor("pad.crouch." + std::to_string(i)), std::string(launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i])),
                          "a crouch cell's help is its trade, the line the caption used to carry");
             t.IsFalse(ui::helpFor("pad.restore").empty(), "RESTORE says what it restores");
+        });
+
+        // Issue #74 (owner, 2026-09-26): every control on the CONTROLLER page says what it does in one line -- the
+        // hover box and the bottom bar's line are both tipFor's answer. Walked through the page's own focus list in
+        // every shape it takes (SETUP with three pads, BUTTONS under each crouch value, each of the three dialogs),
+        // so a control added to the layout without a line fails here.
+        tc.Run("issue #74: every focusable control on the CONTROLLER page has a non-empty one-line tooltip", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            t.IsTrue(ui::tipTable(ui::Page::Controller).count > 0u, "the CONTROLLER page has its own table");
+
+            ui::BindFlow idle;
+            ui::BindFlow conflict;
+            conflict.state = ui::BindFlow::State::Conflict;
+            conflict.button = kPs2L1;
+            conflict.host = kHostR1;
+            conflict.takenBy = kPs2R1;
+            ui::BindFlow switchConflict = conflict;
+            switchConflict.button = ui::kSwitchTarget;
+            ui::BindFlow restore;
+            restore.state = ui::BindFlow::State::ConfirmRestore;
+
+            struct Shape
+            {
+                const char *what;
+                ui::LayoutInputs in;
+                const ui::BindFlow *flow;
+            };
+            std::vector<Shape> shapes;
+            ui::LayoutInputs setup;
+            setup.padChoices = 3;
+            shapes.push_back(Shape{"SETUP", setup, &idle});
+            ui::LayoutInputs buttons;
+            buttons.padButtons = true;
+            shapes.push_back(Shape{"BUTTONS", buttons, &idle});
+            for (const ui::BindFlow *flow : {&conflict, &switchConflict, &restore})
+            {
+                ui::LayoutInputs dialog = buttons;
+                dialog.padDialogButtons = ui::dialogButtonCount(*flow);
+                shapes.push_back(Shape{"a dialog", dialog, flow});
+            }
+
+            size_t walked = 0;
+            for (const char *crouch : launcher::kCrouchShortcuts)
+                for (const ui::GlyphFamily family : {ui::GlyphFamily::Xbox, ui::GlyphFamily::PlayStation, ui::GlyphFamily::Generic})
+                    for (const Shape &shape : shapes)
+                    {
+                        launcher::Config c;
+                        c.crouchShortcut = crouch;
+                        const ui::TipState state{&c, family, shape.flow};
+                        for (const ui::Node &n : ui::layoutFor(ui::Page::Controller, window, shape.in))
+                        {
+                            const std::string line = ui::tipFor(ui::Page::Controller, n.id, state);
+                            const std::string where = std::string(shape.what) + ", crouch " + crouch + ": " + n.id;
+                            t.IsFalse(line.empty(), ("the control has a line -- " + where).c_str());
+                            t.IsTrue(line.find('\n') == std::string::npos && line.size() <= ui::kTipMaxChars,
+                                     ("and it is one line -- " + where).c_str());
+                            ++walked;
+                        }
+                    }
+            t.IsTrue(walked > 100u, "the walk covered the page's controls");
+
+            // The bar's own example: the crouch shortcut's cell says what the value means, not just its name.
+            launcher::Config c;
+            const ui::TipState state{&c, ui::GlyphFamily::Xbox, &idle};
+            const std::string l3 = ui::tipFor(ui::Page::Controller, "pad.crouch.1", state);
+            t.IsTrue(l3.rfind("L3:", 0) == 0 && l3.find("left stick") != std::string::npos && l3.find("crouch") != std::string::npos,
+                     "the L3 crouch cell: 'L3: press the left stick to crouch ...'");
+            // A binding cell names the pad button that drives it now, in the pad's own words.
+            const std::string cross = ui::tipFor(ui::Page::Controller, "pad.bind.cross", state);
+            t.IsTrue(cross.find(" A") != std::string::npos, "an Xbox pad's CROSS cell names A, the button that sends it");
+            t.IsTrue(ui::tipFor(ui::Page::Controller, "no.such.control", state).empty(), "an id no page draws answers nothing");
+        });
+
+        // Issue #74: the hover half. About half a second resting on one control; the clock restarts on every change.
+        tc.Run("issue #74: the hover tip waits half a second on one control, and its box stays inside the window", [](TestCase &t)
+        {
+            ui::HoverTip tip;
+            tip.update("pad.restore", 10.0);
+            t.IsFalse(tip.shows(10.2), "not yet at 0.2 s");
+            t.IsTrue(tip.shows(10.0 + ui::kTipDelaySeconds), "shown at the delay");
+            tip.update("pad.restore", 11.0);
+            t.IsTrue(tip.shows(11.0), "resting on the same control keeps it shown");
+            tip.update("pad.section.0", 11.1);
+            t.IsFalse(tip.shows(11.3), "a new control starts the clock again");
+            tip.update("", 12.0);
+            t.IsFalse(tip.shows(20.0), "over nothing, nothing is shown");
+
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padButtons = true;
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Controller, window, in);
+            const ui::Rect restore = ui::rectOf(nodes, "pad.restore");
+            t.Equals(ui::nodeAt(nodes, ui::Vec2{restore.cx(), restore.cy()}), std::string("pad.restore"), "the node under the mouse");
+            t.Equals(ui::nodeAt(nodes, ui::Vec2{-5.0f, -5.0f}), std::string(), "and none off every control");
+            // RESTORE is at the body's right edge: a wide box slides left to stay in the window.
+            const ui::Rect box = ui::tipBox(restore, 600.0f, 26.0f, window);
+            t.IsTrue(box.x >= 0.0f && box.right() <= window.right() && box.y >= restore.bottom(), "under the control, inside the window");
+            const ui::Rect low{100.0f, 680.0f, 100.0f, 18.0f};
+            t.IsTrue(ui::tipBox(low, 200.0f, 26.0f, window).bottom() <= low.y, "no room below: above the control");
         });
 
         // The drawing: every host button has a place on the pad the callouts hang off, inside the pad's bounds.

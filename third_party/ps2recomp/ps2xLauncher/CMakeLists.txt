@@ -13,6 +13,9 @@ add_library(ps2x_launcher_core STATIC
     # Sprint 10 Goal 8: the press-the-button-to-bind flow, the cells' order and the pad's own button names.
     # Pure, and in the core so the tests drive a whole bind, a conflict and a restore with no window.
     src/ui/bind_flow.cpp
+    # Issue #74: the tooltips -- the mechanism (tips.cpp) and each page's own table, pure so a test walks a page's
+    # focus list and holds every control to a line.
+    src/ui/tips.cpp
     # Sprint 10 Q4: the menu cues out of the player's own disc -- the HUDUI bank read through iso9660::Reader,
     # rendered by the runtime's 989snd mixer (ps2x_snd989), cached as WAV. Pure; main.cpp plays the files.
     src/menu_sounds.cpp
