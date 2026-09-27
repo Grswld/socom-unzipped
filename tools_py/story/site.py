@@ -30,6 +30,7 @@ import re
 import sys
 
 from tools_py.story import cite
+from tools_py.story import timeline
 
 ROOT = cite.ROOT
 _IMG_RE = cite._IMG_RE
@@ -39,7 +40,10 @@ _ITAL_RE = re.compile(r"(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)")
 
 
 def slug(title):
-    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60].rstrip("-")
+    """The entry's anchor. One definition, `timeline.slug`, shared with the data file the home page reads: until
+    2026-09-27 this copy cut the slug at 60 characters and the data file's did not, so a long title gave the home
+    page's LATEST tile a link with no anchor on this page (the owner's report; the site's story_anchors test)."""
+    return timeline.slug(title)
 
 
 def inline(text):
@@ -124,6 +128,27 @@ def media_url(img_base, name):
         return "%s/%s?v=%s" % (img_base, name, hashlib.sha256(f.read()).hexdigest()[:10])
 
 
+def png_size(name):
+    """(width, height) of a PNG under docs/story/img/, read from its header; None when the file is absent (the
+    tests' fixtures) or not a PNG. The page writes them on every picture so the layout is settled before the
+    picture loads: without them a picture is zero pixels tall until its bytes arrive, and a reader who followed
+    a link to an entry was carried down the page by every picture above it as it loaded (owner, 2026-09-27; the
+    entry landed and then moved 5,000-10,000 px)."""
+    src = os.path.join(ROOT, cite.PICTURE_DIR, name)
+    if not os.path.isfile(src):
+        return None
+    with open(src, "rb") as f:
+        head = f.read(24)
+    if head[:8] != b"\x89PNG\r\n\x1a\n" or len(head) < 24:
+        return None
+    return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+
+
+def size_attrs(name):
+    size = png_size(name)
+    return ' width="%d" height="%d"' % size if size else ""
+
+
 def render_entry(e, repo, img_base, index):
     anchor = "%s-%s" % (e["date"], slug(e["title"]))
     parts = ['<li class="node" id="%s" style="--i:%d">' % (anchor, index),
@@ -164,14 +189,16 @@ def render_entry(e, repo, img_base, index):
                 # a video in the picture slot: the poster is the frame the checker required beside it, and
                 # nothing plays until the reader asks (no autoplay, sound as recorded)
                 poster = name[:-len(cite.VIDEO_EXT)] + ".png"
-                figure = ('<figure><video controls preload="metadata" playsinline poster="%s">'
+                figure = ('<figure><video controls preload="metadata" playsinline%s poster="%s">'
                           '<source src="%s" type="video/mp4">%s</video>'
                           '<figcaption>%s</figcaption></figure>'
-                          % (media_url(img_base, poster), media_url(img_base, name), html.escape(caption), inline(caption)))
+                          % (size_attrs(poster), media_url(img_base, poster), media_url(img_base, name),
+                             html.escape(caption), inline(caption)))
             else:
-                figure = ('<figure><img src="%s" alt="%s" loading="lazy">'
+                figure = ('<figure><img src="%s" alt="%s"%s loading="lazy">'
                           '<figcaption>%s</figcaption></figure>'
-                          % (media_url(img_base, name), html.escape(caption, quote=True), inline(caption)))
+                          % (media_url(img_base, name), html.escape(caption, quote=True), size_attrs(name),
+                             inline(caption)))
         else:
             body.append("<p>%s</p>" % inline(b))
     parts.extend(body)
@@ -285,19 +312,41 @@ JS = r"""
   function onScroll(){var h=document.documentElement,max=h.scrollHeight-h.clientHeight;if(pb)pb.style.width=(max>0?(h.scrollTop/max*100):0)+'%';if(bar)bar.classList.toggle('solid',scrollY>40);}
   addEventListener('scroll',onScroll,{passive:true});onScroll();
   var nodes=[].slice.call(document.querySelectorAll('.node'));
+  function hashTarget(){if(!location.hash)return null;var id=location.hash.slice(1);try{id=decodeURIComponent(id);}catch(e){}return document.getElementById(id);}
   var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(!reduce&&'IntersectionObserver' in window){
     var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{rootMargin:'0px 0px -12% 0px',threshold:0.08});
     nodes.forEach(function(n){io.observe(n);});
-    if(location.hash){var t=document.querySelector(location.hash);if(t){t.classList.add('in');}}
+    if(location.hash){var t=hashTarget();if(t){t.classList.add('in');}}
   } else { nodes.forEach(function(n){n.classList.add('in');}); }
+  // A page opened at an entry (#<date>-<slug>, the home page's LATEST tiles) settles on it once the late layout
+  // is in. Two things went wrong here until 2026-09-27: an entry's id starts with its date, and a digit cannot
+  // open a CSS id selector, so querySelector(location.hash) threw and nothing below this line ran; and the site's
+  // scroll-behavior is smooth, so the browser's own jump to the anchor is an animation whose destination is fixed
+  // when it starts, while the web fonts (and, before every picture carried its size, the pictures) arrive and
+  // move the anchor while it plays. So: the id is looked up by name, the settle is instant, and it repeats for
+  // a few seconds after every font and picture load, unless the reader has already touched the page.
+  var settleUntil=Date.now()+4000,moved=false;
+  ['wheel','touchstart','keydown','pointerdown'].forEach(function(ev){addEventListener(ev,function(){moved=true;},{passive:true});});
+  function settle(){
+    if(moved||Date.now()>settleUntil)return;
+    var t=hashTarget();if(!t)return;
+    var pad=parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)||0;
+    var y=Math.max(0,Math.round(t.getBoundingClientRect().top+scrollY-pad));
+    if(Math.abs(y-scrollY)>1){try{scrollTo({top:y,left:0,behavior:'instant'});}catch(e){scrollTo(0,y);}}
+  }
+  addEventListener('load',settle);
+  if(document.fonts){if(document.fonts.ready){document.fonts.ready.then(settle);}document.fonts.addEventListener('loadingdone',settle);}
+  [].slice.call(document.querySelectorAll('.entry img')).forEach(function(img){if(!img.complete){img.addEventListener('load',settle);}});
+  var tick=setInterval(function(){if(moved||Date.now()>settleUntil){clearInterval(tick);return;}settle();},250);
+  addEventListener('hashchange',function(){var t=hashTarget();if(t){t.classList.add('in');}});
   var links=[].slice.call(document.querySelectorAll('nav.eras a')),eras=[].slice.call(document.querySelectorAll('.era'));
   function current(){var y=scrollY+140,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+on);});}
   addEventListener('scroll',current,{passive:true});current();
 })();
 """
 
-SITE = "https://s2u.scotho.com"
+SITE = "https://socomunzipped.com"
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@400;500;600;700'
          '&family=Share+Tech+Mono&display=swap" rel="stylesheet">')

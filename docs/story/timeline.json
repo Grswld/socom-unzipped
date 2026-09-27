@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "generated": "2026-09-25",
- "head": "3804d10b",
+ "generated": "2026-09-27",
+ "head": "3bd0d8a4",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -3522,6 +3522,376 @@
    "picture": {
     "path": "docs/story/img/2026-09-25-the-relaunch-form-with-the-password-kept.png",
     "caption": "The relaunch, with nothing typed: the card had kept the name, the password and the SAVE PASSWORD answer, and the cursor was already on CONNECT. For two days the driver had been pressing that button and then reading the password off the screen after it."
+   }
+  },
+  {
+   "id": "2026-09-26-a-sprint-with-nothing-in-it-for-a-player",
+   "date": "2026-09-26",
+   "title": "A sprint with nothing in it for a player",
+   "era": "2026-09-26 .. 2026-09-27 - Guards, a sitting, and ten minutes to the server",
+   "hook": "Eleven hours, and not one change to the game: every mistake the loop kept repeating became something that refuses to run.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "f87183ae",
+     "sha": "f87183ae1bcbd535ca90a871c16f0e99b5e65bf7",
+     "date": "2026-09-26",
+     "subject": "close(sprint-14): guards, not sentences -- CLOSED 2026-09-26; reviews acted on, pages regenerated, the ratchet written"
+    },
+    {
+     "kind": "commit",
+     "ref": "200f3287",
+     "sha": "200f3287dbf1da56676b82e2cf365dce88bd19ca",
+     "date": "2026-09-26",
+     "subject": "Sprint 14: guards, not sentences (#68)"
+    },
+    {
+     "kind": "commit",
+     "ref": "dc044c3d",
+     "sha": "dc044c3dba83d680047203bed5a005b8f19a2276",
+     "date": "2026-09-26",
+     "subject": "docs(sprint-15): INCIDENT -- tools/ emptied at 20:41Z through a worktree's junction; the toolchain re-fetched"
+    },
+    {
+     "kind": "commit",
+     "ref": "c991b4ae",
+     "sha": "c991b4ae36872b8d4e4446010c38328db3be8c86",
+     "date": "2026-09-27",
+     "subject": "chore(hooks): the Bash hook refuses gh pr merge --delete-branch -- the worktree junction hazard (2026-09-26)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/audits/2026-09-26-autonomy-structure-review.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-26-sprint-14.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/CURRENT_SPRINT.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-26-the-owner-sits-down-and-the-window-stops-freezing-the-game",
+   "date": "2026-09-26",
+   "title": "The owner sits down, and the window stops freezing the game",
+   "era": "2026-09-26 .. 2026-09-27 - Guards, a sitting, and ten minutes to the server",
+   "hook": "Four hours at the desk, every question the record had been keeping for the owner answered in his own words. And dragging the window no longer stops the game.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "a5cb8961",
+     "sha": "a5cb89612fc6593ae41d1ddbb1c1098843941b41",
+     "date": "2026-09-26",
+     "subject": "docs(sitting): the owner's sitting of 2026-09-26 -- every row walked, R290-R297, the table struck and narrowed"
+    },
+    {
+     "kind": "commit",
+     "ref": "29d8173c",
+     "sha": "29d8173c62a05363e59e46407775b76b3f0fd9c0",
+     "date": "2026-09-26",
+     "subject": "open(sprint-15): borrowed confidence, re-cut to value -- OPEN 2026-09-26 off main at 200f3287; R282-R289 for D1-D8"
+    },
+    {
+     "kind": "commit",
+     "ref": "ba9e7d7b",
+     "sha": "ba9e7d7b164872469d75313ea76a4e4e0e9d5d78",
+     "date": "2026-09-26",
+     "subject": "docs(research): the LLE IOP as an oracle -- the spike (Sprint 15 T1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "028badc7",
+     "sha": "028badc7996cdd601110cb7eb1fafc54cc95f287",
+     "date": "2026-09-26",
+     "subject": "docs(sprint-15): T1's spike -- N = 832 of 13,044 on the LLE oracle; ADOPT AS ORACLE recommended, under review"
+    },
+    {
+     "kind": "commit",
+     "ref": "795c93fe",
+     "sha": "795c93fe6816a8bb15dc2838497d845836c020b7",
+     "date": "2026-09-26",
+     "subject": "fix(audio): AutoVol steps in the IRX's 7-bit integers -- a 1.5 s fade lands at tick 254, not 360 (Sprint 15 T1b)"
+    },
+    {
+     "kind": "commit",
+     "ref": "e36558f9",
+     "sha": "e36558f989b554b3f4af5a462d952105ba667787",
+     "date": "2026-09-26",
+     "subject": "fix(launcher): start the chosen GAME VERSION's own exe and ELF, not socom2.exe every time (#69)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c42ca7b8",
+     "sha": "c42ca7b8a4fca54bc0ae4c62c5f824681bd8810f",
+     "date": "2026-09-26",
+     "subject": "fix(render): a title-bar drag no longer freezes the guest -- back-pressure yields in the move loop (Sprint 15 T2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "83c62d75",
+     "sha": "83c62d7551f633846de50aa0e16093231a7bde3c",
+     "date": "2026-09-26",
+     "subject": "docs(story): the site page ends on the timeline (owner, 2026-09-26; O19)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-26-owner-sitting.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-27-version-0-15-0-without-its-play-test-and-a-sprint-called-ten-minutes-to-the-server",
+   "date": "2026-09-27",
+   "title": "Version 0.15.0 without its play test, and a sprint called \"ten minutes to the server\"",
+   "era": "2026-09-26 .. 2026-09-27 - Guards, a sitting, and ten minutes to the server",
+   "hook": "The audio sprint closed after one day, its play test carried forward on the owner's word. The next sprint is named for its bar: a stranger, ten minutes, the server.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "4df68014",
+     "sha": "4df68014e6f51ee9dcc6c0b0551d01b6101e5564",
+     "date": "2026-09-27",
+     "subject": "close(sprint-15): borrowed confidence, re-cut -- CLOSED 2026-09-27 without the play test on the owner's word"
+    },
+    {
+     "kind": "commit",
+     "ref": "10650369",
+     "sha": "106503692d2d11bac76398209d016a4e375e4fc0",
+     "date": "2026-09-27",
+     "subject": "Sprint 15: borrowed confidence, re-cut (#81)"
+    },
+    {
+     "kind": "commit",
+     "ref": "75081c33",
+     "sha": "75081c332f5b059f324828e2324b538ce1abf4de",
+     "date": "2026-09-27",
+     "subject": "open(sprint-16): 'ten minutes to the server' -- the branch, the milestone, R299-R313, the spec's six corrections"
+    },
+    {
+     "kind": "commit",
+     "ref": "05e1839f",
+     "sha": "05e1839f2b4309b84533b536877736687983883e",
+     "date": "2026-09-27",
+     "subject": "build(release): player and developer release kinds, two archives from one packaging run (R295)"
+    },
+    {
+     "kind": "commit",
+     "ref": "507286e3",
+     "sha": "507286e3c0c87b308b488baab0d7f3f01cd63027",
+     "date": "2026-09-27",
+     "subject": "docs: V0's chain all green -- the player kind's sizes into KNOWN, PLAYTEST's block carried by patch, the legs launched"
+    },
+    {
+     "kind": "commit",
+     "ref": "ab3b8e92",
+     "sha": "ab3b8e92eeabf84417bca85b6b329ad789e58497",
+     "date": "2026-09-27",
+     "subject": "docs: issue #67 closed on its bar (V0 legs 2a/2b/2c and the gate); KNOWN's drag row moved to fixed; R5's window script"
+    },
+    {
+     "kind": "commit",
+     "ref": "6d78365c",
+     "sha": "6d78365c77bb68b78d87e309b44b42fa7f741e10",
+     "date": "2026-09-27",
+     "subject": "docs: V0 leg 3b -- the dip bar red on the count (9/11 min, max 3), the nine are #42 holes, T1b inert; PR #90 merged"
+    },
+    {
+     "kind": "commit",
+     "ref": "dbf1d53e",
+     "sha": "dbf1d53e8b30dc84f56cc19b34a17d382ddc81da",
+     "date": "2026-09-27",
+     "subject": "docs: leg 3's 12/48 is issue #91 (the ambient bed 11 dB low since the square law, not T1b); KNOWN, research/68, LATER 37"
+    },
+    {
+     "kind": "commit",
+     "ref": "c4f43911",
+     "sha": "c4f43911233bbfef5a1a303556a4889a19aa5683",
+     "date": "2026-09-27",
+     "subject": "docs(research): where a mission frame's time goes -- two profiles, the flush split, three quiet gates (Sprint 16 F0)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s16_v0",
+     "path": "logs/parity/gate/s16_v0"
+    },
+    {
+     "kind": "gate",
+     "ref": "s16_f0_gate3",
+     "path": "logs/parity/gate/s16_f0_gate3"
+    },
+    {
+     "kind": "run",
+     "ref": "s16_v0_t1b_dump",
+     "path": "logs/parity/s16_v0_t1b_dump"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/73-mission-frame-time.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/CURRENT_SPRINT.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-27-the-first-sprint-16-chain-frame.png",
+    "caption": "A frame from the mission stage of the first chain of the new sprint, the morning of the 27th: the game's subtitle \"Who are you?\" over the first mission's autumn trees, four teammates FOLLOWING. The gate scored this run three of three; the drag leg was proven on the same program."
+   }
+  },
+  {
+   "id": "2026-09-27-the-game-remembers-who-you-are-and-the-update-has-an-address",
+   "date": "2026-09-27",
+   "title": "The game remembers who you are, and the update has an address",
+   "era": "2026-09-26 .. 2026-09-27 - Guards, a sitting, and ten minutes to the server",
+   "hook": "The launcher's ONLINE page now lists the personas your card has made, written by the game's own logins. And the community's update turns out to sit at one fixed address that opens with the disc's own key.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "9ed205ec",
+     "sha": "9ed205ec840b26ac9f38a517d789d327898b2f0e",
+     "date": "2026-09-27",
+     "subject": "Sprint 16 L1b (#73): the ONLINE page's PERSONAS list replaces the PROFILE, PLAYER NAME and PASSWORD fields"
+    },
+    {
+     "kind": "commit",
+     "ref": "05a0b393",
+     "sha": "05a0b3930e3a801279acfa60ba9ed944f13019a4",
+     "date": "2026-09-27",
+     "subject": "Sprint 16 L1b (#73): personas.h/.cpp in ps2x_shared -- the ledger beside the card, its reader and atomic write"
+    },
+    {
+     "kind": "commit",
+     "ref": "1596b0c1",
+     "sha": "1596b0c1e739393533896539469fa32f4024446d",
+     "date": "2026-09-27",
+     "subject": "Sprint 16 L1b (#73): config.json keeps no plain password a persona's card holds; presets matched by address"
+    },
+    {
+     "kind": "commit",
+     "ref": "f924277c",
+     "sha": "f924277cae22d99e1781759bef678ffa26a5b13c",
+     "date": "2026-09-27",
+     "subject": "Sprint 16 L1b (#73): the runtime's persona record -- the login parsed at the RC4 seam, committed on its success"
+    },
+    {
+     "kind": "commit",
+     "ref": "1e43bb48",
+     "sha": "1e43bb48da1fad404ef4ea306b1bbd9563cdaeae",
+     "date": "2026-09-27",
+     "subject": "docs: L1b Step 0 -- logins work, no ledger (the seam parses nothing the wire carries; KNOWN, #73); R1b reruns"
+    },
+    {
+     "kind": "commit",
+     "ref": "65a07f46",
+     "sha": "65a07f4621d43922cb54343a7a48537a4756cf89",
+     "date": "2026-09-27",
+     "subject": "fix(runtime): the persona record reads a plain login response at the socket -- MAS and MLS never encrypt it (#73)"
+    },
+    {
+     "kind": "commit",
+     "ref": "e27730ef",
+     "sha": "e27730ef3b0449bb7948e4c6962c596a58765c5f",
+     "date": "2026-09-27",
+     "subject": "docs: L1b DONE -- the ledger written on a real login (Step 0b), #73 closed; KNOWN settled; LATER 46; HANDOFF pick-up"
+    },
+    {
+     "kind": "commit",
+     "ref": "f1715fdb",
+     "sha": "f1715fdbd81d3e998fd6128911aae2f37a570334",
+     "date": "2026-09-27",
+     "subject": "docs(known): #71 -- PSRewired serves r0004 at one fixed path; the r0001 client's GET captured (the r0004 session)"
+    },
+    {
+     "kind": "commit",
+     "ref": "92097d4c",
+     "sha": "92097d4c16def06dcf00fadd549f4ce7c17e52fa",
+     "date": "2026-09-27",
+     "subject": "docs(known,later): #71 settled offline -- the served r0004 package decrypts with the r0001 disc decrypt"
+    },
+    {
+     "kind": "commit",
+     "ref": "7ba414dd",
+     "sha": "7ba414dd32461625b85e7f1eb356748fec96c58f",
+     "date": "2026-09-27",
+     "subject": "feat(launcher): a streaming download and the r0004 package fetch seam, loopback-tested (#71)"
+    },
+    {
+     "kind": "commit",
+     "ref": "0890bd76",
+     "sha": "0890bd760ac06eef44173fe2f8cbcf2426e8cc8a",
+     "date": "2026-09-27",
+     "subject": "docs(research): R1a the first-run decrypt spike -- the recompile, into socom2_build_elf.exe"
+    },
+    {
+     "kind": "run",
+     "ref": "s16_l1b_step0b",
+     "path": "logs/parity/s16_l1b_step0b"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/74-first-run-decrypt-spike.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-27-sprint-16.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-27-the-form-the-ledger-was-written-from.png",
+    "caption": "The relaunch of the ledger's proving run, the evening of the 27th, with nothing typed: the game's own form arrives with the first persona the card made, its password held, and SAVE PASSWORD ticked. The record beside the card was updated from this login."
+   }
+  },
+  {
+   "id": "2026-09-27-the-site-gets-its-name-the-map-viewer-comes-home-and-the-look-is-written-down",
+   "date": "2026-09-27",
+   "title": "The site gets its name, the map viewer comes home, and the look is written down",
+   "era": "2026-09-26 .. 2026-09-27 - Guards, a sitting, and ten minutes to the server",
+   "hook": "socomunzipped.com. The browser map viewer's code now lives in the game's repository. And the modern pages' look is one design system, built beside them and not yet on them.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "14b1ef61",
+     "sha": "14b1ef617b2156a95ab053de27b2128dabe3dff9",
+     "date": "2026-09-27",
+     "subject": "feat(web): the experimental browser map viewer, walled off under web/ -- SOCOM II's maps decoded from your own disc"
+    },
+    {
+     "kind": "commit",
+     "ref": "b8525708",
+     "sha": "b8525708895c1de52d465ee5ff7e20c86c06db8d",
+     "date": "2026-09-27",
+     "subject": "docs(web): research notes 71 (scoping) and 72 (map-archive anatomy) move under web/docs/research; citations follow"
+    },
+    {
+     "kind": "commit",
+     "ref": "80b48e8c",
+     "sha": "80b48e8cee9824255b5908b1a8de6badccb2f027",
+     "date": "2026-09-27",
+     "subject": "style(web/viewer): the panel and chrome take the s2u site's design language (chrome.md tokens)"
+    },
+    {
+     "kind": "path",
+     "ref": "web/README.md"
+    },
+    {
+     "kind": "path",
+     "ref": "tools_py/story/site.py"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-27-the-design-system-gallery.png",
+    "caption": "The design system's gallery, its tokens page, on a local build the afternoon of the 27th: every colour the site and the map viewer may use, and the contrast each pair holds, computed from the stylesheet on the page. Not deployed yet."
    }
   }
  ]

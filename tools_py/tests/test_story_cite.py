@@ -288,7 +288,9 @@ class TestVideos(unittest.TestCase):
         doc = site.parse_document(self.with_video())
         entry = doc["eras"][0]["entries"][0]
         page = site.render_entry(entry, "https://example.test/r", "/story/img", 1)
-        self.assertRegex(page, r'<video controls preload="metadata" playsinline poster="/story/img/2026-09-21-online-kill\.png(\?v=[0-9a-f]{10})?">')
+        # the poster's width and height are written when the poster file is beside the page (it is, here), so the
+        # layout is settled before it loads -- the story page's anchor fix of 2026-09-27
+        self.assertRegex(page, r'<video controls preload="metadata" playsinline( width="\d+" height="\d+")? poster="/story/img/2026-09-21-online-kill\.png(\?v=[0-9a-f]{10})?">')
         self.assertRegex(page, r'<source src="/story/img/2026-09-21-online-kill\.mp4(\?v=[0-9a-f]{10})?" type="video/mp4">')
         self.assertIn("<figcaption>One round, both screens.</figcaption>", page)
         self.assertNotIn("<img", page)
