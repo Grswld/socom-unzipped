@@ -68,10 +68,13 @@ namespace launcher::detail
                             return false;
                         const unsigned code = static_cast<unsigned>(std::strtoul(s.substr(i, 4).c_str(), nullptr, 16));
                         i += 4;
-                        if (code < 0x80)
+                        // Sprint 16 L1b (#73): 0x80-0xFF is the byte itself -- the persona ledger writes every byte
+                        // of a name outside printable ASCII as \u00XX (personas.cpp), and a name is bytes, so an
+                        // accented one must come back as it went in. Past 0xFF there is no one byte to give: '?'.
+                        if (code <= 0xFF)
                             out.push_back(static_cast<char>(code));
                         else
-                            out.push_back('?');   // the config never carries these
+                            out.push_back('?');
                         break;
                     }
                     default: return false;

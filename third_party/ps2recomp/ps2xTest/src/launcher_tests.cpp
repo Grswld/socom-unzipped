@@ -5,6 +5,7 @@
 #include "ps2x/exit_codes.h"   // the selftest lists one line per row of that table
 #include "launcher/launcher_config.h"
 #include "launcher/launcher_layout.h"
+#include "launcher/personas.h"   // Sprint 16 L1b (#73): the persona ledgers beside the cards
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 // Sprint 8 Goal 9: the redesigned launcher's pure halves -- the layout and the focus model, the pad's
@@ -35,6 +36,9 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <chrono>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -177,6 +181,62 @@ namespace
             std::memcpy(dst, img.data() + offset, size);
             return true;
         };
+    }
+    // Sprint 16 L1b (#73): a cards/ directory under the temp folder, built by hand -- empty save files, synthetic
+    // ledgers, never a real card (the portable pattern of preflight_tests.cpp's makeHome/removeHome).
+    std::filesystem::path makeCardsDir()
+    {
+        static int counter = 0;
+        const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+        const std::filesystem::path root = std::filesystem::temp_directory_path() /
+                                           ("ps2x_personas_" + std::to_string(ticks) + "_" + std::to_string(counter++));
+        std::error_code ec;
+        std::filesystem::create_directories(root / "cards", ec);
+        return root / "cards";
+    }
+
+    void removeCardsDir(const std::filesystem::path &cards)
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(cards.parent_path(), ec);
+    }
+
+    void writeFileText(const std::filesystem::path &p, const std::string &text)
+    {
+        std::ofstream out(p, std::ios::binary | std::ios::trunc);
+        out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    }
+
+    std::string readFileText(const std::filesystem::path &p)
+    {
+        std::ifstream in(p, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+
+    // cards/<leaf>/BASCUS-97275SOCOMII/, with an empty SaveGame0 when asked (no disc bytes, only a name).
+    void makeCard(const std::filesystem::path &cards, const std::string &leaf, bool withSaveGame = false)
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(cards / leaf / launcher::personas::kSaveFolder, ec);
+        if (withSaveGame)
+            writeFileText(cards / leaf / launcher::personas::kSaveFolder / "SaveGame0", "");
+    }
+
+    std::string ledgerText(const std::vector<launcher::personas::Persona> &records)
+    {
+        return launcher::personas::toJson(records);
+    }
+
+    launcher::personas::Persona persona(const std::string &name, const std::string &server, std::time_t lastLogin,
+                                        bool savedPassword = false, bool second = false)
+    {
+        launcher::personas::Persona p;
+        p.name = name;
+        p.server = server;
+        p.lastLogin = lastLogin;
+        p.savedPassword = savedPassword;
+        p.second = second;
+        return p;
     }
 }
 
@@ -2887,6 +2947,194 @@ void register_launcher_tests()
             t.Equals(br::githubLine(anonymous.id), std::string(), "no reference on screen means no invitation to quote one");
             t.IsTrue(sent.text.find("github") == std::string::npos,
                      "the reply's own line stays the site's words; the invitation is the page's second line");
+        });
+    });
+
+    // Sprint 16 L1b (#73, R295): the persona ledgers beside the cards -- the reader over cards/, the JSON both ends
+    // share and the atomic write. Every case builds its own cards/ under the temp folder (the design note, section 4).
+    MiniTest::Case("Personas", [](TestCase &tc)
+    {
+        namespace ps = launcher::personas;
+        namespace fs = std::filesystem;
+
+        tc.Run("the ledger sits BESIDE the card: a trailing separator is stripped before the suffix", [](TestCase &t)
+        {
+            t.Equals(ps::ledgerPathFor("cards/player/"), std::string("cards/player.personas.json"), "not inside cards/player/");
+            t.Equals(ps::ledgerPathFor("cards/player"), std::string("cards/player.personas.json"), "the plain root");
+            t.Equals(ps::ledgerPathFor("cards/player_b"), std::string("cards/player_b.personas.json"), "the second instance's card");
+            t.Equals(ps::ledgerPathFor("C:\\games\\cards\\player\\"), std::string("C:\\games\\cards\\player.personas.json"), "a Windows separator too");
+            t.Equals(ps::ledgerPathFor("/x/mc0//"), std::string("/x/mc0.personas.json"), "every trailing separator");
+        });
+
+        tc.Run("readCards (a): no cards/, no ledger, a 0-byte ledger and [] all read as no rows and the plain sentence", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            ps::Cards none = ps::readCards((cards / "absent").string());
+            t.IsTrue(none.rows.empty() && none.notes.empty(), "no cards/ at all: nothing, and nothing to say");
+            t.Equals(std::string(ps::emptySentence(none)), std::string(ps::kEmptySentence), "the one sentence");
+            makeCard(cards, "player");
+            t.IsTrue(ps::readCards(cards.string()).rows.empty(), "a card and no ledger");
+            writeFileText(cards / "player.personas.json", "");
+            ps::Cards zero = ps::readCards(cards.string());
+            t.IsTrue(zero.rows.empty() && zero.notes.empty(), "a 0-byte ledger is an empty one, not a corrupt one");
+            writeFileText(cards / "player.personas.json", "[]");
+            ps::Cards empty = ps::readCards(cards.string());
+            t.IsTrue(empty.rows.empty() && empty.notes.empty(), "[] is no records");
+            t.Equals(std::string(ps::emptySentence(empty)), std::string(ps::kEmptySentence), "and the plain sentence");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (b, c): one record is one row; two are two rows, newest login first, carrying their card", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "player");
+            writeFileText(cards / "player.personas.json", ledgerText({persona("alpha", "socom.scotho.com", 1000)}));
+            ps::Cards one = ps::readCards(cards.string());
+            t.Equals(one.rows.size(), size_t(1), "one row");
+            if (one.rows.size() == 1)
+            {
+                t.Equals(one.rows[0].name, std::string("alpha"), "its name");
+                t.Equals(one.rows[0].server, std::string("socom.scotho.com"), "its server");
+                t.Equals(one.rows[0].card, std::string("player"), "its card, from the ledger's file name");
+                t.Equals(static_cast<long long>(one.rows[0].lastLogin), 1000LL, "its last login");
+            }
+            t.Equals(std::string(ps::emptySentence(one)), std::string(), "no sentence over a row");
+            writeFileText(cards / "player.personas.json",
+                          ledgerText({persona("older", "socom.scotho.com", 1000), persona("newer", "socom.scotho.com", 5000)}));
+            makeCard(cards, "sgt");
+            writeFileText(cards / "sgt.personas.json", ledgerText({persona("middle", "192.0.2.20", 3000)}));
+            ps::Cards three = ps::readCards(cards.string());
+            t.Equals(three.rows.size(), size_t(3), "every ledger's records");
+            if (three.rows.size() == 3)
+            {
+                t.Equals(three.rows[0].name, std::string("newer"), "newest first");
+                t.Equals(three.rows[1].name, std::string("middle"), "across ledgers");
+                t.Equals(three.rows[2].name, std::string("older"), "oldest last");
+                t.Equals(three.rows[1].card, std::string("sgt"), "each row names its own card");
+            }
+            removeCardsDir(cards);
+        });
+
+        tc.Run("one record per (name, server): two servers are two rows, a second login updates its record", [](TestCase &t)
+        {
+            std::vector<ps::Persona> records;
+            ps::upsert(records, persona("alpha", "socom.scotho.com", 100, false));
+            ps::upsert(records, persona("alpha", "192.0.2.20", 200, false));
+            t.Equals(records.size(), size_t(2), "one name on two servers is two records");
+            ps::upsert(records, persona("alpha", "socom.scotho.com", 300, true));
+            t.Equals(records.size(), size_t(2), "the same pair again is an update");
+            if (records.size() == 2)
+            {
+                t.IsTrue(records[0].lastLogin == 300 && records[0].savedPassword, "carrying the new login and its answer");
+                t.IsTrue(records[1].lastLogin == 200 && !records[1].savedPassword, "and the other server's record untouched");
+            }
+        });
+
+        tc.Run("readCards (e): every keyboard character and an accented name round-trip toJson/fromJson byte for byte", [](TestCase &t)
+        {
+            std::string keyboard;
+            for (int ch = 0x21; ch <= 0x7E; ++ch)
+                if (ch != '"')
+                    keyboard.push_back(static_cast<char>(ch));
+            const std::string latin1 = std::string("xmf") + static_cast<char>(0xFB);            // the game's byte for u-circumflex
+            const std::string utf8 = std::string("xmf") + static_cast<char>(0xC3) + static_cast<char>(0xBB);
+            const std::vector<ps::Persona> in = {persona(keyboard, "a\\b\"c{d}:e,f", 1, true, false),
+                                                 persona(latin1, "socom.scotho.com", 2), persona(utf8, "socom.scotho.com", 3)};
+            const std::string json = ps::toJson(in);
+            t.IsTrue(json.find("\\u00fb") != std::string::npos, "a byte past ASCII is written \\u00XX");
+            std::vector<ps::Persona> back;
+            t.IsTrue(ps::fromJson(json, back), "the ledger parses");
+            t.Equals(back.size(), size_t(3), "all three records");
+            if (back.size() == 3)
+            {
+                t.Equals(back[0].name, keyboard, "the backslash, braces, colon and comma survive");
+                t.Equals(back[0].server, in[0].server, "and in the server");
+                t.Equals(back[1].name, latin1, "the accented byte comes back itself, not '?' (json_reader.h's \\u branch)");
+                t.Equals(back[2].name, utf8, "and a two-byte sequence as its two bytes");
+                t.IsTrue(back[0].savedPassword && !back[1].savedPassword, "savedPassword is kept");
+            }
+            t.Equals(ps::displayName(latin1), std::string("xmf?"), "shown with what the glyph set has, never refused");
+            t.Equals(ps::displayName(keyboard), keyboard, "printable ASCII is shown as is");
+        });
+
+        tc.Run("readCards (f): a truncated ledger, a record with no name or no server, a ledger with no card -- skipped with a note", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "good");
+            writeFileText(cards / "good.personas.json", ledgerText({persona("kept", "socom.scotho.com", 10)}));
+            makeCard(cards, "trunc");
+            const std::string whole = ledgerText({persona("lost", "socom.scotho.com", 10)});
+            writeFileText(cards / "trunc.personas.json", whole.substr(0, whole.size() / 2));
+            makeCard(cards, "noname");
+            writeFileText(cards / "noname.personas.json", "[{\"server\": \"socom.scotho.com\", \"lastLogin\": 1}]");
+            makeCard(cards, "noserver");
+            writeFileText(cards / "noserver.personas.json", "[{\"name\": \"x\", \"lastLogin\": 1}]");
+            writeFileText(cards / "old.personas.json", ledgerText({persona("orphan", "socom.scotho.com", 10)}));   // no cards/old/
+            ps::Cards read;
+            bool threw = false;
+            try { read = ps::readCards(cards.string()); } catch (...) { threw = true; }
+            t.IsFalse(threw, "never a throw");
+            t.Equals(read.rows.size(), size_t(1), "only the good ledger's record");
+            if (!read.rows.empty())
+                t.Equals(read.rows[0].name, std::string("kept"), "that one");
+            t.Equals(read.notes.size(), size_t(4), "one line per skipped ledger");
+            bool namesOld = false;
+            for (const std::string &n : read.notes)
+                namesOld = namesOld || n.find("old.personas.json") != std::string::npos;
+            t.IsTrue(namesOld, "the note names the ledger whose card is gone");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (g): a save folder with a SaveGame file and no ledger is the 'again' sentence; the folder alone is the plain one", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "player", false);
+            ps::Cards plain = ps::readCards(cards.string());
+            t.IsFalse(plain.savesWithoutLedger, "every booted card has the folder, persona or not");
+            t.Equals(std::string(ps::emptySentence(plain)), std::string(ps::kEmptySentence), "the plain sentence");
+            makeCard(cards, "player", true);
+            ps::Cards again = ps::readCards(cards.string());
+            t.IsTrue(again.savesWithoutLedger, "a SaveGame file and no ledger");
+            t.Equals(std::string(ps::emptySentence(again)), std::string(ps::kEmptyAgainSentence), "the 'again' sentence");
+            t.IsTrue(std::string(ps::kEmptyAgainSentence).find("again") != std::string::npos, "which says so");
+            writeFileText(cards / "player.personas.json", "[]");
+            t.IsFalse(ps::readCards(cards.string()).savesWithoutLedger, "a ledger beside it answers for that card");
+            removeCardsDir(cards);
+        });
+
+        tc.Run("readCards (h): the record's `second` is read from the record, never from the _b suffix", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            makeCard(cards, "player_b");
+            writeFileText(cards / "player_b.personas.json", ledgerText({persona("bravo", "socom.scotho.com", 10, false, true)}));
+            makeCard(cards, "sgt_b");
+            writeFileText(cards / "sgt_b.personas.json", ledgerText({persona("sierra", "socom.scotho.com", 5, false, false)}));
+            ps::Cards read = ps::readCards(cards.string());
+            t.Equals(read.rows.size(), size_t(2), "both ledgers");
+            if (read.rows.size() == 2)
+            {
+                t.IsTrue(read.rows[0].second && read.rows[0].card == "player_b", "the second instance's record says so");
+                t.IsTrue(!read.rows[1].second && read.rows[1].card == "sgt_b", "a hand-made sgt_b card is a card like any other");
+            }
+            removeCardsDir(cards);
+        });
+
+        tc.Run("the atomic write: the ledger is unchanged until the rename, and nothing is left behind", [](TestCase &t)
+        {
+            const fs::path cards = makeCardsDir();
+            const std::string path = (cards / "player.personas.json").string();
+            const std::string before = ledgerText({persona("old", "socom.scotho.com", 1)});
+            const std::string after = ledgerText({persona("old", "socom.scotho.com", 1), persona("new", "socom.scotho.com", 2)});
+            t.IsTrue(ps::writeAtomic(path, before), "the first write");
+            t.Equals(readFileText(path), before, "lands whole");
+            t.IsTrue(ps::writeTemp(path, after), "the second one's text is written aside");
+            t.Equals(readFileText(path), before, "and the ledger is still the old one");
+            t.IsTrue(fs::exists(ps::tempPathFor(path)), "the temp file is beside it");
+            t.IsTrue(ps::commitTemp(path), "the rename");
+            t.Equals(readFileText(path), after, "replaces it whole");
+            t.IsFalse(fs::exists(ps::tempPathFor(path)), "and leaves no temp file");
+            t.IsFalse(ps::writeAtomic((cards / "no_such_dir" / "x.personas.json").string(), after), "a write that cannot land says so");
+            removeCardsDir(cards);
         });
     });
 }
