@@ -159,7 +159,7 @@ namespace launcher
         int gamepadIndex = -1;
         double padDeadZone = 0.15;
         // Owner request 2026-09-19, R139: the host control that crouches -- "off" | "l3" | "touchpad" | "l2".
-        // The default is "l3" (owner 2026-09-20: with no shortcut a pad cannot crouch at all). "off" sends no variable and is the runtime exactly as it was before the option.
+        // The default is "l3" (owner 2026-09-20: with no shortcut a pad cannot crouch at all). "off" is sent as PS2X_PAD_CROUCH_SHORTCUT=off (O12, 2026-09-27: an unset variable resolves to the registered l3, so off must be said).
         std::string crouchShortcut = "l3";   // owner 2026-09-20: without a shortcut a pad cannot crouch at all
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
         std::string micDevice;

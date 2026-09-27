@@ -133,7 +133,7 @@ void register_launcher_tests()
         });
 
         // Owner request 2026-09-19, R139: the crouch shortcut.
-        tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is silent, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
+        tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is sent as =off, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
         {
             auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
 
