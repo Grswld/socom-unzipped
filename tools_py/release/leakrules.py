@@ -19,7 +19,7 @@ import sys
 
 # The one address that is public by nature: the project's Lightsail box, and its name.
 HOSTED_IPS = {"3.143.65.100"}
-HOSTED_NAMES = {"socom.scotho.com", "s2u.scotho.com"}
+HOSTED_NAMES = {"socom.scotho.com", "socomunzipped.com", "s2u.scotho.com"}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXTRA_FILE = os.path.join(HERE, "leak_extra.txt")

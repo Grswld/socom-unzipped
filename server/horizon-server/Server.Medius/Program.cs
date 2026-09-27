@@ -192,7 +192,7 @@ namespace Server.Medius
             ProxyServer.Start();
             Logger.Info($"MPS started.");
 
-            // LOCAL FIX (socom_pc): live stats JSON for s2u.scotho.com
+            // LOCAL FIX (socom_pc): live stats JSON for socomunzipped.com
             StatsServer.Start(Settings.StatsPrefix);
 
             // 

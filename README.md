@@ -64,7 +64,7 @@ The audited version of this, with the evidence for each claim, is `docs/KNOWN.md
 **[`docs/FAQ.md`](docs/FAQ.md)** answers what goes wrong — every exit code, the disc revision, SmartScreen, ports,
 saves and audio.
 
-There is no public download yet. When there is, it will be announced at <https://s2u.scotho.com>, which also carries the
+There is no public download yet. When there is, it will be announced at <https://socomunzipped.com>, which also carries the
 setup guide and the server's live status. The shape of it: unzip a folder, run `socom_unzipped_launcher.exe`, point it
 at your SOCOM II ISO, pick video and controller settings, Launch. Nothing is installed; delete the folder to uninstall.
 The launcher refuses any disc that is not r0001 and says so.

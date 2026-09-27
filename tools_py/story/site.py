@@ -8,7 +8,7 @@ no git; it is a build step, not a server.
 The shared chrome (tokens, top bar, sections, buttons, footer) is the site's `src/ui.css`, with its markup written
 down in `src/chrome.md` (both in ../scotho/apps/s2u). The site copy links `/src/ui.css` for Vite to bundle; the
 repository's own copy (docs/story/index.html, the artifact preview) inlines it and makes every chrome link absolute
-to https://s2u.scotho.com/. Only the timeline's own styles are inline in both. The timeline is a spine down the page with a node per entry and a
+to https://socomunzipped.com/. Only the timeline's own styles are inline in both. The timeline is a spine down the page with a node per entry and a
 band per era; entries reveal as they scroll into view (not at all when the viewer prefers reduced motion), and
 each has a stable anchor, `#<date>-<slug>`, which is the per-entry URL shape the spec asks the site for.
 
@@ -437,9 +437,18 @@ def render(doc, timeline, repo, img_base, logo, ui_css_inline=None, base=""):
     title = doc["title"].replace("SOCOM Unzipped: ", "").replace("SOCOM Unzipped \u2014 ", "")
     fore = doc.get("foreword")
     closing = [c for c in doc["closing"] if c is not fore]
-    out = ["<title>SOCOM Unzipped Story</title>",
+    out = ["<title>SOCOM Unzipped Story: how SOCOM II is becoming a PC game</title>",
            '<meta name="description" content="How SOCOM II is becoming a PC game: the timeline, every claim cited.">',
            '<meta name="theme-color" content="#08121a">',
+           # SEO (2026-09-27): one canonical for both copies, and the link-preview tags; the share image is the site's.
+           '<link rel="canonical" href="%s/story.html">' % SITE,
+           '<meta property="og:type" content="article">',
+           '<meta property="og:site_name" content="SOCOM II Unzipped">',
+           '<meta property="og:title" content="SOCOM Unzipped Story: how SOCOM II is becoming a PC game">',
+           '<meta property="og:description" content="How SOCOM II is becoming a PC game: the timeline, every claim cited.">',
+           '<meta property="og:url" content="%s/story.html">' % SITE,
+           '<meta property="og:image" content="%s/img/share.jpg">' % SITE,
+           '<meta name="twitter:card" content="summary_large_image">',
            FONTS]
     if ui_css_inline is None:
         out.append('<link rel="stylesheet" href="/src/ui.css">')
@@ -518,7 +527,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     # Git Bash rewrites an argument that looks like an absolute POSIX path ("/story/img") into a Windows path
     # ("C:/Program Files/Git/story/img") before Python ever sees it. That shipped once: every picture and the logo
-    # on s2u.scotho.com/story.html pointed at a path on the build machine. A URL path never carries a drive letter,
+    # on socomunzipped.com/story.html pointed at a path on the build machine. A URL path never carries a drive letter,
     # so one that does is refused here rather than rendered.
     for name, value in (("--img", args.img), ("--logo", args.logo)):
         if ":" in value.split("?")[0] and not value.startswith("https://") or "Program Files" in value:

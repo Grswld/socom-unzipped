@@ -2,7 +2,7 @@
 
 `socom_unzipped_launcher --report-bug <form.json> [home]` builds one report and POSTs it; the service's base
 URL comes from PS2X_LAUNCHER_API_BASE, which the launcher honours only for http://127.0.0.1:<port> and
-http://localhost:<port>, and only in developer mode (PS2X_DEV=1: it is a Dev knob, Sprint 9 Goal 3). The handler below plays s2u.scotho.com's /api/bugs and /api/stats (sites/s2u/api):
+http://localhost:<port>, and only in developer mode (PS2X_DEV=1: it is a Dev knob, Sprint 9 Goal 3). The handler below plays socomunzipped.com's /api/bugs and /api/stats (sites/s2u/api):
 201 with an id, 400 with a field, 429 with Retry-After, 500 -- and a closed port for "no connection".
 Runs wherever the launcher is built, CI included (no window is opened).
 """
