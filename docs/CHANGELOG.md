@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-193 merges (42 on the first-parent line, 151 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+194 merges (43 on the first-parent line, 151 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.15.0
 
-14 merges.
+15 merges.
 
+- 2026-09-27 `b00863f7` a stream's AutoVol target scales its play-time volume, the -4 timer tested (Sprint 15 T1b round 3) [agent/s15-t1b]
 - 2026-09-27 `10f7cd3e` merge(sprint-16): origin/main at 039fc569 [branch not named]
   - 2026-09-27 `039fc569` Merge pull request #85 from Scotho/agent/s16-r3a-archives [agent/s16-r3a-archives]
   - 2026-09-27 `bb675dbd` Merge pull request #82 from Scotho/agent/s16-l2-tooltips [agent/s16-l2-tooltips]
