@@ -8,7 +8,7 @@ no git; it is a build step, not a server.
 The shared chrome (tokens, top bar, sections, buttons, footer) is the site's `src/ui.css`, with its markup written
 down in `src/chrome.md` (both in ../scotho/apps/s2u). The site copy links `/src/ui.css` for Vite to bundle; the
 repository's own copy (docs/story/index.html, the artifact preview) inlines it and makes every chrome link absolute
-to https://s2u.scotho.com/. Only the timeline's own styles are inline in both. The timeline is a spine down the page with a node per entry and a
+to https://socomunzipped.com/. Only the timeline's own styles are inline in both. The timeline is a spine down the page with a node per entry and a
 band per era; entries reveal as they scroll into view (not at all when the viewer prefers reduced motion), and
 each has a stable anchor, `#<date>-<slug>`, which is the per-entry URL shape the spec asks the site for.
 
@@ -297,7 +297,7 @@ JS = r"""
 })();
 """
 
-SITE = "https://s2u.scotho.com"
+SITE = "https://socomunzipped.com"
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
          '<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@400;500;600;700'
          '&family=Share+Tech+Mono&display=swap" rel="stylesheet">')
@@ -469,7 +469,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     # Git Bash rewrites an argument that looks like an absolute POSIX path ("/story/img") into a Windows path
     # ("C:/Program Files/Git/story/img") before Python ever sees it. That shipped once: every picture and the logo
-    # on s2u.scotho.com/story.html pointed at a path on the build machine. A URL path never carries a drive letter,
+    # on socomunzipped.com/story.html pointed at a path on the build machine. A URL path never carries a drive letter,
     # so one that does is refused here rather than rendered.
     for name, value in (("--img", args.img), ("--logo", args.logo)):
         if ":" in value.split("?")[0] and not value.startswith("https://") or "Program Files" in value:

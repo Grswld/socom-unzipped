@@ -32,7 +32,7 @@ Nothing else is installed and nothing is written outside the game's own folder.
 ## 2. Get the archive
 
 **There is no public download yet.** Builds are handed to testers by hand. The download will be the program; the game's
-image is built from your own disc on first run (#70). When there is a download, it will be announced at <https://s2u.scotho.com>, which also carries the setup guide
+image is built from your own disc on first run (#70). When there is a download, it will be announced at <https://socomunzipped.com>, which also carries the setup guide
 and the server's live status.
 
 Every archive ships with a `SHA256SUMS` file beside it. Check the archive against it before you unzip.
@@ -199,4 +199,4 @@ you press it."* On success the page prints a reference and copies it to your cli
 talk to us. If the site cannot be reached, the report is saved next to your logs instead, and the page tells you
 where.
 
-Reports also go through the **REPORT A BUG** form at <https://s2u.scotho.com>.
+Reports also go through the **REPORT A BUG** form at <https://socomunzipped.com>.

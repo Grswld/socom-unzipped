@@ -8,7 +8,7 @@
     "url": "https://github.com/Scotho/socom-unzipped.git",
     "directory": "web"
   },
-  "homepage": "https://s2u.scotho.com/map-viewer/",
+  "homepage": "https://socomunzipped.com/map-viewer/",
   "private": true,
   "type": "module",
   "workspaces": [

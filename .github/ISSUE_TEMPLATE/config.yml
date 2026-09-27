@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: I am a player and something went wrong
-    url: https://s2u.scotho.com
+    url: https://socomunzipped.com
     about: Use REPORT A BUG in the launcher or on the site. It is private, can attach a scrubbed log, and gives you a BR- id you can quote here later.
   - name: Security problem
     url: https://github.com/Scotho/socom-unzipped/security/advisories/new
