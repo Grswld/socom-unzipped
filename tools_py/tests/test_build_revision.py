@@ -308,8 +308,10 @@ class BuildRevisionMatchReportTest(unittest.TestCase):
             self.assertIn("address_matcher", p.stderr)
 
     def test_the_r0001_disc_is_not_warned(self):
+        # --stop-after elf: the warning is printed before step 0, and without the stop a tree holding a current
+        # game/overlays_r0001check/ would run on into the lock-bound recomp and runtime (PR #87's review, 2026-09-27).
         with tempfile.TemporaryDirectory() as tmp:
-            p = run_bash(SCRIPT, "r0001check", EMPTY_ZDB, "--out", sh(os.path.join(tmp, "out")))
+            p = run_bash(SCRIPT, "r0001check", EMPTY_ZDB, "--out", sh(os.path.join(tmp, "out")), "--stop-after", "elf")
             self.assertNotIn("no address match report", p.stderr)
 
 
