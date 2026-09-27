@@ -15,7 +15,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   merged; T1 ADOPTED on the owner's word (the LLE IOP as an out-of-tree oracle: 832 of 13,044) and its harness landed
   (T1c); T2's code merged (#67, the drag; its mission run waits for a window); T1b (AutoVol steps) building. The plan
   `docs/superpowers/plans/2026-09-26-sprint-15.md` (its Log) is the live state. No cloud session from 2026-09-26.
-- **Next free ruling number: R298** (R290-R297 are the owner's sitting of 2026-09-26, `docs/superpowers/plans/2026-09-26-owner-sitting.md`).
+- **Next free ruling number: R299** (R290-R297 the owner's sitting, `docs/superpowers/plans/2026-09-26-owner-sitting.md`; R298 the close's window, the Sprint 15 plan).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 

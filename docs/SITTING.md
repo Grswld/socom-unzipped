@@ -2,24 +2,24 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-26, for the sitting after the one of 2026-09-26: 8 open O rows (11 answered or struck); 32 active rulings since 2026-09-26 (32 dated, 0 placed by number or home, 202 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
+The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 8 open O rows (11 answered or struck); 33 active rulings since 2026-09-26 (33 dated, 0 placed by number or home, 202 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-8 open, 11 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-26.
+8 open, 11 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
-| O2 | The release drafts | the drafts stay empty; the loop builds the archives short of the upload; publishing is always your click | 2026-09-20 | 6 |
-| O4 | The message to the PSRewired moderator | unsent; you send it in the coming days | 2026-09-20 | 6 |
-| O5 | PSRewired, what only you can ask | the preset stays `COMMUNITY_SERVER_ADDRESS_TBC`; the loop never connects on its own | 2026-09-17 | 9 |
-| O7 | Your ears and hands on the current build | the loop does not wait (the listen gate bypassed since 2026-09-20) | 2026-09-17 | 9 |
-| O8 | A PLAYTEST sitting on the current build | the loop rewrites PLAYTEST for each build it can hand over; the report's log box stays OFF | 2026-09-20 | 6 |
-| O10 | Public actions upstream | file later (owner, 2026-09-26): nothing filed; `docs/UPSTREAM.md` is the register | 2026-09-25 | 1 |
-| O15 | Linux on real hardware | not yet (owner, 2026-09-26: no such machine at hand); CI and the VM stand in; the VM half is the loop's backlog | 2026-09-18 | 8 |
-| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 0 |
+| O2 | The release drafts | the drafts stay empty; the loop builds the archives short of the upload; publishing is always your click | 2026-09-20 | 7 |
+| O4 | The message to the PSRewired moderator | unsent; you send it in the coming days | 2026-09-20 | 7 |
+| O5 | PSRewired, what only you can ask | the preset stays `COMMUNITY_SERVER_ADDRESS_TBC`; the loop never connects on its own | 2026-09-17 | 10 |
+| O7 | Your ears and hands on the current build | the loop does not wait (the listen gate bypassed since 2026-09-20) | 2026-09-17 | 10 |
+| O8 | A PLAYTEST sitting on the current build | the loop rewrites PLAYTEST for each build it can hand over; the report's log box stays OFF | 2026-09-20 | 7 |
+| O10 | Public actions upstream | file later (owner, 2026-09-26): nothing filed; `docs/UPSTREAM.md` is the register | 2026-09-25 | 2 |
+| O15 | Linux on real hardware | not yet (owner, 2026-09-26: no such machine at hand); CI and the VM stand in; the VM half is the loop's backlog | 2026-09-18 | 9 |
+| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 1 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
@@ -37,7 +37,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-32 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 32 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 202 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+33 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 33 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 202 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R269** (2026-09-26) an infrastructure sprint ahead of visible defects, in the order G, I, W, D, S, E, M. -- overturn by number
 - **R270** (2026-09-26) KNOWN §4's standing hazards move to their own file (`docs/HAZARDS.md`, class L, headed by the area each bites), KNOWN keeping §1–§3. -- overturn by number
@@ -68,6 +68,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R295** (2026-09-26) the player archive drops the debugger and the probe binaries and a developer archive keeps them; the report's log box stays off; the listens and the pad hands… -- overturn by number
 - **R296** (2026-09-26) the naming defaults D1-D7 stand as the loop judged them; the hand read of the five routines and the holding of the 148 slot-count namings become one future tas… -- overturn by number
 - **R297** (2026-09-26) lock-bound work (a build, a game run, a chain) is announced as a window by the session that runs it, to the owner and to the other controller sessions on the m… -- overturn by number
+- **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
 - **S13-R12** (2026-09-26) the close's issue-stack read, acted on. -- overturn by number
 - **S13-R13** (2026-09-26) the frame-time pin stays informational; #59 carries with the measured reason. -- overturn by number
 - **S13-R14** (2026-09-26) the carried-twice three go to the owner, the rest carry once to the backlog. #25 (the Linux VM suites; no Sprint 13 task), #26 (the chat bound's path; O2 resta… -- overturn by number

@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-331 rulings (292 global, 39 sprint-local): 325 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+332 rulings (293 global, 39 sprint-local): 326 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-292 rulings.
+293 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R298 | 2026-09-27 | active | the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R298** |
 | R297 | 2026-09-26 | active | lock-bound work (a build, a game run, a chain) is announced as a window by the session that runs it, to the owner and to the other controller sessions on the m… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R297** |
 | R296 | 2026-09-26 | active | the naming defaults D1-D7 stand as the loop judged them; the hand read of the five routines and the holding of the 148 slot-count namings become one future tas… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R296** |
 | R295 | 2026-09-26 | active | the player archive drops the debugger and the probe binaries and a developer archive keeps them; the report's log box stays off; the listens and the pad hands… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R295** |
