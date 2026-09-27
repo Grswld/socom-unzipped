@@ -97,6 +97,7 @@ namespace win32glue
     // (a shorter body is a failure). On any failure the temporary file is deleted and `dest` is left as it was.
     // Plain http:// is allowed to any host here, unlike httpRequest: the package server speaks only http, and
     // what arrives is checked by size and sha256 (launcher::patchfetch::verifyPackage) before anything reads it.
+    // A 3xx is never followed, on either platform: `error` is redirectRefusal(status) (#88 review).
     // Windows: WinHTTP. POSIX: a `curl` subprocess (--output, --fail, --max-time); no curl = `error`.
     struct DownloadResult
     {
@@ -108,6 +109,11 @@ namespace win32glue
     using DownloadProgress = std::function<void(uint64_t bytesSoFar, int64_t contentLength)>;
     DownloadResult httpDownload(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
                                 int timeoutMs, const DownloadProgress &progress);
+    // The one sentence both glues give for a 3xx: "the server answered HTTP 302: redirects are refused".
+    inline std::string redirectRefusal(int status)
+    {
+        return "the server answered HTTP " + std::to_string(status) + ": redirects are refused";
+    }
     // "<dest>.part", beside dest: the name the body is written under until it is complete.
     inline std::filesystem::path downloadTempPath(const std::filesystem::path &dest)
     {

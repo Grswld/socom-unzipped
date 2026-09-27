@@ -439,14 +439,19 @@ namespace
             std::printf("usage: --fetch-patch <dest> <bytes> <sha256 hex>\n");
             return 5;
         }
+        // The body lands under the staging name and is checked there; only a package that passes is renamed onto
+        // <dest>, so a refusal leaves whatever <dest> already held byte-identical (#88 review).
+        const fs::path staged = pf::stagingPath(dest);
         const win32glue::DownloadResult got =
-            win32glue::httpDownload(pf::patchUrl(base), dest, pf::kPatchUserAgent, 120000, nullptr);
+            win32glue::httpDownload(pf::patchUrl(base), staged, pf::kPatchUserAgent, 120000, nullptr);
         if (!got.error.empty())
         {
+            std::error_code ec;
+            fs::remove(staged, ec);
             std::printf("NOT FETCHED. %s\n", got.error.c_str());
             return 1;
         }
-        const pf::Verdict verdict = pf::verifyPackage(dest, expected, sha256Hex);
+        const pf::Verdict verdict = pf::installPackage(staged, dest, expected, sha256Hex);
         if (!verdict.ok)
         {
             std::printf("REFUSED. %s\n", verdict.reason.c_str());

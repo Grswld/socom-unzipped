@@ -621,8 +621,9 @@ namespace win32glue
 
     // ---- Sprint 16 R2a (#71): one streamed download to a file (the r0004 package) ---------------------------
     // `curl` again, started with an argv (no shell): --output to the temporary name, --fail so an HTTP error
-    // writes nothing and exits 22, and curl's own Content-Length check (a short body exits 18). No body cap: the
-    // bytes go to the file, never through this process. stdout carries only -w's status code.
+    // writes nothing and exits 22, and curl's own Content-Length check (a short body exits 18). No --location:
+    // a redirect is refused, as the WinHTTP half refuses it (#88 review). No body cap: the bytes go to the
+    // file, never through this process. stdout carries only -w's status code.
     DownloadResult httpDownload(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
                                 int timeoutMs, const DownloadProgress &progress)
     {
@@ -705,7 +706,9 @@ namespace win32glue
         if (exitCode != 0 || out.status != 200)
         {
             fs::remove(temp, ec);
-            if (out.status >= 400 || exitCode == 22)
+            if (exitCode == 0 && out.status >= 300 && out.status < 400)   // no --location: a 3xx is never followed
+                out.error = redirectRefusal(out.status);
+            else if (out.status >= 400 || exitCode == 22)
                 out.error = "the server answered HTTP " + std::to_string(out.status);
             else if (exitCode == 18)
                 out.error = "the body was shorter than its Content-Length (curl exit 18)";

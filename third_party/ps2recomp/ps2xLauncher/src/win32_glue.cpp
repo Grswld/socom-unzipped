@@ -662,6 +662,14 @@ namespace win32glue
             out.error = winHttpError("WinHttpOpenRequest");
             return out;
         }
+        // WinHTTP follows a 3xx to any host by default; curl on POSIX runs without --location. Both refuse it the
+        // same way (#88 review): with redirects disabled the 3xx surfaces as its own status, refused below.
+        DWORD noRedirects = WINHTTP_DISABLE_REDIRECTS;
+        if (!WinHttpSetOption(request.h, WINHTTP_OPTION_DISABLE_FEATURE, &noRedirects, static_cast<DWORD>(sizeof(noRedirects))))
+        {
+            out.error = winHttpError("disabling redirects");
+            return out;
+        }
         if (!WinHttpSendRequest(request.h, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
             !WinHttpReceiveResponse(request.h, nullptr))
         {
@@ -676,6 +684,11 @@ namespace win32glue
             return out;
         }
         out.status = static_cast<int>(status);
+        if (status >= 300 && status < 400)
+        {
+            out.error = redirectRefusal(out.status);
+            return out;
+        }
         if (status != 200)
         {
             out.error = "the server answered HTTP " + std::to_string(status);

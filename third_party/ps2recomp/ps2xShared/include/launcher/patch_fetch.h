@@ -33,4 +33,13 @@ namespace launcher::patchfetch
     // The downloaded file is exactly `expectedBytes` long and hashes to `expectedSha256Hex` (either case).
     // Anything else is a refusal that DELETES the file: a wrong package is never left where R2 would read it.
     Verdict verifyPackage(const std::filesystem::path &path, uint64_t expectedBytes, const std::string &expectedSha256Hex);
+
+    // "<dest>.new": the name a downloaded package waits under until installPackage has checked it. Distinct from
+    // the download's own "<dest>.part" (win32glue::downloadTempPath), which it becomes once the body is complete.
+    std::filesystem::path stagingPath(const std::filesystem::path &dest);
+    // verifyPackage on the STAGED file, and only when it passes, the rename onto `dest`. Any refusal (the check,
+    // or the rename) deletes the staged file and leaves `dest` exactly as it was: unchecked bytes never sit at
+    // the final name, and a wrong body never overwrites or deletes a good package already there (#88 review).
+    Verdict installPackage(const std::filesystem::path &staged, const std::filesystem::path &dest, uint64_t expectedBytes,
+                           const std::string &expectedSha256Hex);
 }

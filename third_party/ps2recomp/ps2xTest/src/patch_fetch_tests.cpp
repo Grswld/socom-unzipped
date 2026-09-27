@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <system_error>
 
@@ -89,6 +90,41 @@ void register_patch_fetch_tests()
             t.IsTrue(!v.ok, "refused");
             t.IsTrue(v.reason.find("sha256") != std::string::npos, "the reason names the digest: " + v.reason);
             t.IsTrue(!fs::exists(p), "and the file is gone");
+        });
+
+        tc.Run("stagingPath: <dest>.new, apart from the download's own .part", [](TestCase &t)
+        {
+            const fs::path dest = fs::path("r0004") / "APACHE00.ZDB";
+            t.Equals(pf::stagingPath(dest), fs::path("r0004") / "APACHE00.ZDB.new", "the staged name");
+            t.IsTrue(pf::stagingPath(dest) != fs::path("r0004") / "APACHE00.ZDB.part", "not the .part name");
+        });
+
+        tc.Run("installPackage: a refused staged body leaves the existing package byte-identical", [](TestCase &t)
+        {
+            const std::string previous = "the previous copy";
+            const fs::path dest = scratchFile("installed.zdb", previous);
+            const fs::path staged = scratchFile("installed.zdb.new", std::string(70000, 'T'));
+            const pf::Verdict v = pf::installPackage(staged, dest, 70000, digest(std::string(70000, 'S')));
+            t.IsTrue(!v.ok, "refused");
+            t.IsTrue(!fs::exists(staged), "the staged body is gone");
+            std::ifstream in(dest, std::ios::binary);
+            const std::string kept((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            t.Equals(kept, previous, "the package at dest is untouched");
+            std::error_code ec;
+            fs::remove(dest, ec);
+        });
+
+        tc.Run("installPackage: a verified staged body replaces the package", [](TestCase &t)
+        {
+            const std::string body(70000, 'S');
+            const fs::path dest = scratchFile("replaced.zdb", "the previous copy");
+            const fs::path staged = scratchFile("replaced.zdb.new", body);
+            const pf::Verdict v = pf::installPackage(staged, dest, body.size(), digest(body));
+            t.IsTrue(v.ok, "installed: " + v.reason);
+            t.IsTrue(!fs::exists(staged), "the staged name is gone");
+            t.Equals(static_cast<uint64_t>(fs::file_size(dest)), static_cast<uint64_t>(body.size()), "dest holds the new body");
+            std::error_code ec;
+            fs::remove(dest, ec);
         });
 
         tc.Run("verifyPackage: no file is a refusal", [](TestCase &t)

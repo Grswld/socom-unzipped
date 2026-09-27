@@ -23,6 +23,7 @@ LAUNCHER = os.path.join(ROOT, os.path.dirname(hostplatform.runtime_exe()),
                         hostplatform.exe_name("socom_unzipped_launcher"))
 
 PATH = "/s2/r0004/APACHE00.ZDB"
+MOVED = "/moved/r0004/APACHE00.ZDB"   # where the "redirect" mode points: a follower would be served the whole body
 USER_AGENT = "sceHTTPLib-1.2.42"
 # 1.7 MB: above the old 1 MiB cap on httpRequest's body, so a capped path cannot pass.
 BODY = random.Random(71).randbytes(1_700_000)
@@ -34,7 +35,7 @@ class PackageServer(http.server.ThreadingHTTPServer):
 
     def __init__(self):
         super().__init__(("127.0.0.1", 0), Handler)
-        self.mode = "ok"            # ok | 404 | short
+        self.mode = "ok"            # ok | 404 | short | close | redirect
         self.requests = []
 
     @property
@@ -49,7 +50,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.server.requests.append({"path": self.path, "agent": self.headers.get("User-Agent")})
         mode = self.server.mode
-        if self.path != PATH or mode == "404":
+        if mode == "redirect" and self.path == PATH:
+            self.send_response(302)
+            self.send_header("Location", self.server.base + MOVED)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path not in (PATH, MOVED) or mode == "404":
             body = b"not here"
             self.send_response(404)
             self.send_header("Content-Length", str(len(body)))
@@ -58,10 +65,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Length", str(len(BODY)))
+        if mode != "close":
+            self.send_header("Content-Length", str(len(BODY)))
         self.end_headers()
-        # "short": the header promises the whole body, the connection closes after half of it.
-        self.wfile.write(BODY if mode == "ok" else BODY[:len(BODY) // 2])
+        # "short": the header promises the whole body, the connection closes after half of it. "close": no
+        # Content-Length, so the body ends where the connection does -- after half of it, and the transport
+        # cannot tell; only the size check can.
+        self.wfile.write(BODY if mode in ("ok", "redirect") else BODY[:len(BODY) // 2])
         self.wfile.flush()
         self.close_connection = True
 
@@ -135,14 +145,42 @@ class LauncherPatchFetchTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
         self.assertEqual(self.left_beside_dest(), [])
 
-    def test_an_existing_file_is_replaced_only_by_a_complete_body(self):
-        with open(self.dest, "wb") as fh:
-            fh.write(b"the previous copy")
-        self.server.mode = "short"
-        self.assertEqual(self.fetch().returncode, 1)
+    def assert_previous_copy_kept(self):
         with open(self.dest, "rb") as fh:
             self.assertEqual(fh.read(), b"the previous copy")
-        self.assertEqual(self.left_beside_dest(), ["APACHE00.ZDB"])
+        self.assertEqual(self.left_beside_dest(), ["APACHE00.ZDB"])   # no staging name, no .part
+
+    def test_an_existing_file_is_replaced_only_by_a_complete_body(self):
+        # "short" fails in the transport (exit 1); "close" (no Content-Length) arrives cut short and only the
+        # size check refuses it (exit 2). Either way <dest> is byte-identical: the body was staged, never renamed.
+        for mode, code in (("short", 1), ("close", 2)):
+            with self.subTest(mode=mode):
+                with open(self.dest, "wb") as fh:
+                    fh.write(b"the previous copy")
+                self.server.mode = mode
+                r = self.fetch()
+                self.assertEqual(r.returncode, code, r.stdout + r.stderr)
+                self.assert_previous_copy_kept()
+
+    def test_an_existing_file_survives_a_body_with_the_wrong_sha(self):
+        # Finding 1 (#88 review): the body is checked under its staging name and only then renamed onto <dest>,
+        # so a tampered or wrong body neither overwrites a good package nor deletes it.
+        with open(self.dest, "wb") as fh:
+            fh.write(b"the previous copy")
+        r = self.fetch(sha=hashlib.sha256(b"another package").hexdigest())
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("REFUSED.", r.stdout)
+        self.assert_previous_copy_kept()
+
+    def test_a_redirect_is_refused_not_followed(self):
+        # Finding 2 (#88 review): both glues refuse a 3xx the same way -- WinHTTP with redirects disabled, curl
+        # without --location -- so the package is never fetched from a host the redirect names.
+        self.server.mode = "redirect"
+        r = self.fetch()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("NOT FETCHED. the server answered HTTP 302: redirects are refused", r.stdout)
+        self.assertEqual([q["path"] for q in self.server.requests], [PATH])
+        self.assertEqual(self.left_beside_dest(), [])
 
     def test_without_developer_mode_the_live_server_is_never_asked(self):
         # The seam is ignored without PS2X_DEV, the base falls back to PSRewired, and the headless mode refuses

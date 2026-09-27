@@ -53,4 +53,28 @@ namespace launcher::patchfetch
         out.ok = true;
         return out;
     }
+
+    std::filesystem::path stagingPath(const std::filesystem::path &dest)
+    {
+        std::filesystem::path staged = dest;
+        staged += ".new";
+        return staged;
+    }
+
+    Verdict installPackage(const std::filesystem::path &staged, const std::filesystem::path &dest, uint64_t expectedBytes,
+                           const std::string &expectedSha256Hex)
+    {
+        Verdict out = verifyPackage(staged, expectedBytes, expectedSha256Hex);   // a refusal deletes `staged`
+        if (!out.ok)
+            return out;
+        std::error_code ec;
+        std::filesystem::rename(staged, dest, ec);   // replaces an existing `dest`
+        if (ec)
+        {
+            out.ok = false;
+            out.reason = "could not move the package to " + dest.string() + " (" + ec.message() + ")";
+            std::filesystem::remove(staged, ec);
+        }
+        return out;
+    }
 }
