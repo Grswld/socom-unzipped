@@ -17,6 +17,7 @@
 #include "ui/pad_render.h"
 #include "ui/theme.h"
 #include "ui/tips.h"   // issue #74: the tooltips
+#include "font_advances.h"   // issue #74: the footer tip, measured in the launcher's face
 #include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
 #include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
@@ -81,6 +82,67 @@ namespace
         off += record(dir + off, 19u, 3u, "SYSTEM.CNF;1");
         std::memcpy(img.data() + 19u * 2048u, "hello", 5);
         return img;
+    }
+
+    // Issue #74: every line the CONTROLLER page's tooltips can say, walked through the page's own focus list in every
+    // shape it takes (SETUP with three pads, BUTTONS under each crouch value, each of the three dialogs), each crouch
+    // value and each pad family. `where` names the shape and the control, for a failure message.
+    struct TipSeen
+    {
+        std::string where;
+        std::string id;
+        std::string line;
+    };
+
+    std::vector<TipSeen> controllerTipWalk()
+    {
+        using namespace launcher::mapping;
+        const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+        static ui::BindFlow idle;
+        static ui::BindFlow conflict;
+        conflict.state = ui::BindFlow::State::Conflict;
+        conflict.button = kPs2L1;
+        conflict.host = kHostR1;
+        conflict.takenBy = kPs2R1;
+        static ui::BindFlow switchConflict;
+        switchConflict = conflict;
+        switchConflict.button = ui::kSwitchTarget;
+        static ui::BindFlow restore;
+        restore.state = ui::BindFlow::State::ConfirmRestore;
+
+        struct Shape
+        {
+            const char *what;
+            ui::LayoutInputs in;
+            const ui::BindFlow *flow;
+        };
+        std::vector<Shape> shapes;
+        ui::LayoutInputs setup;
+        setup.padChoices = 3;
+        shapes.push_back(Shape{"SETUP", setup, &idle});
+        ui::LayoutInputs buttons;
+        buttons.padButtons = true;
+        shapes.push_back(Shape{"BUTTONS", buttons, &idle});
+        for (const ui::BindFlow *flow : {&conflict, &switchConflict, &restore})
+        {
+            ui::LayoutInputs dialog = buttons;
+            dialog.padDialogButtons = ui::dialogButtonCount(*flow);
+            shapes.push_back(Shape{"a dialog", dialog, flow});
+        }
+
+        std::vector<TipSeen> out;
+        for (const char *crouch : launcher::kCrouchShortcuts)
+            for (const ui::GlyphFamily family : {ui::GlyphFamily::Xbox, ui::GlyphFamily::PlayStation, ui::GlyphFamily::Generic})
+                for (const Shape &shape : shapes)
+                {
+                    launcher::Config c;
+                    c.crouchShortcut = crouch;
+                    const ui::TipState state{&c, family, shape.flow};
+                    for (const ui::Node &n : ui::layoutFor(ui::Page::Controller, window, shape.in))
+                        out.push_back(TipSeen{std::string(shape.what) + ", crouch " + crouch + ": " + n.id, n.id,
+                                              ui::tipFor(ui::Page::Controller, n.id, state)});
+                }
+        return out;
     }
 
     iso9660::Reader memoryReader(const std::vector<uint8_t> &img)
@@ -2126,62 +2188,19 @@ void register_launcher_tests()
         tc.Run("issue #74: every focusable control on the CONTROLLER page has a non-empty one-line tooltip", [](TestCase &t)
         {
             using namespace launcher::mapping;
-            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
             t.IsTrue(ui::tipTable(ui::Page::Controller).count > 0u, "the CONTROLLER page has its own table");
-
-            ui::BindFlow idle;
-            ui::BindFlow conflict;
-            conflict.state = ui::BindFlow::State::Conflict;
-            conflict.button = kPs2L1;
-            conflict.host = kHostR1;
-            conflict.takenBy = kPs2R1;
-            ui::BindFlow switchConflict = conflict;
-            switchConflict.button = ui::kSwitchTarget;
-            ui::BindFlow restore;
-            restore.state = ui::BindFlow::State::ConfirmRestore;
-
-            struct Shape
-            {
-                const char *what;
-                ui::LayoutInputs in;
-                const ui::BindFlow *flow;
-            };
-            std::vector<Shape> shapes;
-            ui::LayoutInputs setup;
-            setup.padChoices = 3;
-            shapes.push_back(Shape{"SETUP", setup, &idle});
-            ui::LayoutInputs buttons;
-            buttons.padButtons = true;
-            shapes.push_back(Shape{"BUTTONS", buttons, &idle});
-            for (const ui::BindFlow *flow : {&conflict, &switchConflict, &restore})
-            {
-                ui::LayoutInputs dialog = buttons;
-                dialog.padDialogButtons = ui::dialogButtonCount(*flow);
-                shapes.push_back(Shape{"a dialog", dialog, flow});
-            }
-
             size_t walked = 0;
-            for (const char *crouch : launcher::kCrouchShortcuts)
-                for (const ui::GlyphFamily family : {ui::GlyphFamily::Xbox, ui::GlyphFamily::PlayStation, ui::GlyphFamily::Generic})
-                    for (const Shape &shape : shapes)
-                    {
-                        launcher::Config c;
-                        c.crouchShortcut = crouch;
-                        const ui::TipState state{&c, family, shape.flow};
-                        for (const ui::Node &n : ui::layoutFor(ui::Page::Controller, window, shape.in))
-                        {
-                            const std::string line = ui::tipFor(ui::Page::Controller, n.id, state);
-                            const std::string where = std::string(shape.what) + ", crouch " + crouch + ": " + n.id;
-                            t.IsFalse(line.empty(), ("the control has a line -- " + where).c_str());
-                            t.IsTrue(line.find('\n') == std::string::npos && line.size() <= ui::kTipMaxChars,
-                                     ("and it is one line -- " + where).c_str());
-                            ++walked;
-                        }
-                    }
+            for (const TipSeen &seen : controllerTipWalk())
+            {
+                t.IsFalse(seen.line.empty(), ("the control has a line -- " + seen.where).c_str());
+                t.IsTrue(seen.line.find('\n') == std::string::npos, ("and it is one line of text -- " + seen.where).c_str());
+                ++walked;
+            }
             t.IsTrue(walked > 100u, "the walk covered the page's controls");
 
             // The bar's own example: the crouch shortcut's cell says what the value means, not just its name.
             launcher::Config c;
+            const ui::BindFlow idle;
             const ui::TipState state{&c, ui::GlyphFamily::Xbox, &idle};
             const std::string l3 = ui::tipFor(ui::Page::Controller, "pad.crouch.1", state);
             t.IsTrue(l3.rfind("L3:", 0) == 0 && l3.find("left stick") != std::string::npos && l3.find("crouch") != std::string::npos,
@@ -2190,6 +2209,81 @@ void register_launcher_tests()
             const std::string cross = ui::tipFor(ui::Page::Controller, "pad.bind.cross", state);
             t.IsTrue(cross.find(" A") != std::string::npos, "an Xbox pad's CROSS cell names A, the button that sends it");
             t.IsTrue(ui::tipFor(ui::Page::Controller, "no.such.control", state).empty(), "an id no page draws answers nothing");
+        });
+
+        // Issue #74, review round 1: the bar's "the same line in the footer" is the WHOLE line. The bottom bar's slot is
+        // measured here in the launcher's own face (Rajdhani Medium, loaded at the pixel size the window draws it at,
+        // measured as MeasureTextEx does) and every line the walk can produce must wrap into at most two lines of it --
+        // at 1100x700, at the 800x520 minimum (type held at 13 real pixels, so larger there) and maximized at
+        // 1920x1080. The hover box's single line must fit the window too.
+        tc.Run("issue #74: every CONTROLLER tooltip is whole in the bottom bar's slot, measured in the launcher's face", [](TestCase &t)
+        {
+            const std::vector<TipSeen> walk = controllerTipWalk();
+            struct Window
+            {
+                int w, h;
+            };
+            for (const Window win : {Window{1100, 700}, Window{800, 520}, Window{1920, 1080}})
+            {
+                const float scale = ui::scaleFor(win.w, win.h);
+                const ui::Rect window{0.0f, 0.0f, static_cast<float>(win.w) / scale, static_cast<float>(win.h) / scale};
+                const ui::Rect slot = ui::footerTipSlot(ui::frameFor(window));
+                const std::string at = std::to_string(win.w) + "x" + std::to_string(win.h);
+                t.IsTrue(slot.w >= 300.0f, "the slot is the gap the bar leaves: " + at + " gives " + std::to_string(slot.w));
+                const auto pixelsFor = [scale](float size)
+                {
+                    const int wanted = static_cast<int>(std::lround(size * scale));
+                    return std::max(wanted, ui::metrics::minTextPx);
+                };
+                const std::vector<int> footer = font_advances::rajdhaniMedium(pixelsFor(ui::kFooterTipSize));
+                const std::vector<int> hover = font_advances::rajdhaniMedium(pixelsFor(ui::metrics::captionSize - 1.0f));
+                t.Equals(footer.size(), static_cast<size_t>(95), "the embedded face loads (" + at + ")");
+                if (footer.size() != 95u || hover.size() != 95u)
+                    continue;
+                t.IsTrue(std::all_of(footer.begin(), footer.end(), [](int a) { return a > 0; }),
+                         "every glyph advances, so MeasureTextEx sums advances as widthOf does (" + at + ")");
+                const auto width = [&footer, scale](const std::string &s)
+                { return static_cast<float>(font_advances::widthOf(footer, s)) / scale; };
+                for (const TipSeen &seen : walk)
+                {
+                    t.IsTrue(font_advances::widthOf(footer, seen.line) >= 0, "plain ASCII, which the face draws -- " + seen.where);
+                    const std::vector<std::string> lines = ui::wrapWords(seen.line, slot.w, width);
+                    t.IsTrue(lines.size() <= ui::kFooterTipLines,
+                             at + ": at most " + std::to_string(ui::kFooterTipLines) + " lines in the bar, got " +
+                                 std::to_string(lines.size()) + " -- " + seen.where + ": " + seen.line);
+                    for (const std::string &l : lines)
+                        t.IsTrue(width(l) <= slot.w, at + ": each line inside the slot -- " + seen.where + ": " + l);
+                    const float boxText = static_cast<float>(font_advances::widthOf(hover, seen.line)) / scale;
+                    t.IsTrue(boxText <= window.w - 56.0f, at + ": the hover box's line is whole in the window -- " + seen.where);
+                }
+            }
+            // The wrap itself: greedy, word by word, trailing spaces dropped.
+            const auto chars = [](const std::string &s) { return static_cast<float>(s.size()); };
+            const std::vector<std::string> wrapped = ui::wrapWords("aa bb cc", 5.0f, chars);
+            t.Equals(wrapped.size(), static_cast<size_t>(2), "'aa bb ' is 6 wide, over 5: the line breaks after 'aa '");
+            t.Equals(wrapped.front(), std::string("aa"), "the first line, its trailing space dropped");
+            t.Equals(wrapped.back(), std::string("bb cc"), "the rest");
+        });
+
+        // Issue #74, review round 1: a mouse left resting over a cell must not keep a box over the pad's focus ring.
+        // The hover is armed by the mouse moving that frame, disarmed by keyboard or pad steering until it moves again.
+        tc.Run("issue #74: keyboard or pad steering cancels the hover until the mouse moves again", [](TestCase &t)
+        {
+            ui::HoverTip tip;
+            tip.frame(false, false, "pad.bind.cross", 1.0);
+            t.IsFalse(tip.shows(5.0), "a mouse that never moved hovers nothing");
+            tip.frame(true, false, "pad.bind.cross", 10.0);
+            tip.frame(false, false, "pad.bind.cross", 10.6);
+            t.IsTrue(tip.shows(10.6), "moved onto a cell and rested half a second: shown");
+            tip.frame(false, true, "pad.bind.cross", 10.7);
+            t.IsFalse(tip.shows(10.7), "the pad moved the focus: gone at once");
+            tip.frame(false, false, "pad.bind.cross", 12.0);
+            t.IsFalse(tip.shows(12.0), "and it stays gone while the mouse rests there");
+            tip.frame(true, false, "pad.bind.cross", 13.0);
+            t.IsFalse(tip.shows(13.2), "the mouse moves again: the half-second starts over");
+            t.IsTrue(tip.shows(13.5), "then it shows");
+            tip.frame(true, true, "pad.bind.cross", 14.0);
+            t.IsTrue(tip.shows(14.0), "a frame where the mouse moved counts as the mouse's");
         });
 
         // Issue #74: the hover half. About half a second resting on one control; the clock restarts on every change.

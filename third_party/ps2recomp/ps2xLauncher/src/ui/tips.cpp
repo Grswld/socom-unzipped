@@ -2,6 +2,8 @@
 // The lines themselves are the pages' (tips.h).
 #include "tips.h"
 
+#include "theme.h"
+
 namespace ui
 {
     namespace
@@ -48,6 +50,66 @@ namespace ui
         if (id.rfind("bar.launch.", 0) == 0)
             return "LAUNCH: starts the game with these settings. Greyed until your disc image is verified.";
         return std::string();
+    }
+
+    Rect footerTipSlot(const Frame &frame)
+    {
+        // main.cpp's drawBottomBar: the status column starts 130 past the margin (after PROFILE), and the prompts
+        // take the 330 before LAUNCH (220 wide, one margin in from the right edge); 24 of air before the prompts.
+        const float x = metrics::margin + 130.0f;
+        const float prompts = frame.bar.right() - metrics::margin - 220.0f - 330.0f;
+        return Rect{x, frame.bar.y, prompts - x - 24.0f, frame.bar.h};
+    }
+
+    std::vector<std::string> wrapWords(const std::string &s, float maxWidth, const std::function<float(const std::string &)> &width)
+    {
+        std::vector<std::string> lines;
+        std::string line;
+        size_t at = 0;
+        while (at < s.size())
+        {
+            size_t end = at;
+            while (end < s.size() && s[end] != ' ')
+                ++end;
+            while (end < s.size() && s[end] == ' ')
+                ++end;
+            const std::string word = s.substr(at, end - at);
+            at = end;
+            if (!line.empty() && width(line + word) > maxWidth)
+            {
+                lines.push_back(line);
+                line.clear();
+            }
+            line += word;
+        }
+        if (!line.empty())
+            lines.push_back(line);
+        for (std::string &l : lines)
+            while (!l.empty() && l.back() == ' ')
+                l.pop_back();
+        return lines;
+    }
+
+    void StatusWatch::update(const std::string &status, double now)
+    {
+        if (status == seen)
+            return;
+        seen = status;
+        since = now;
+    }
+
+    bool StatusWatch::fresh(double now) const
+    {
+        return !seen.empty() && now - since < kStatusHoldSeconds;
+    }
+
+    void HoverTip::frame(bool mouseMoved, bool steered, const std::string &over, double now)
+    {
+        if (mouseMoved)
+            armed = true;
+        else if (steered)
+            armed = false;
+        update(armed ? over : std::string(), now);
     }
 
     void HoverTip::update(const std::string &over, double now)

@@ -61,7 +61,9 @@ namespace ui
         }
 
         // The crouch shortcut's cells, by value (launcher_config.h, kCrouchShortcuts). Each says what the value
-        // means; the chosen one says so. The keyboard keys are the ones test_launcher_wording.py holds to the map.
+        // means; the chosen one says so. A displaced button's key is named "the keyboard's N key", the pattern
+        // test_launcher_wording.py (KeyboardSentencesAgreeWithTheMap) reads here as it does in crouchShortcutHint,
+        // and holds to mapping.cpp -- move L3 or L2 off its key there and this file fails that test.
         std::string crouchLine(const std::string &id, const TipState &s)
         {
             const int i = std::atoi(id.c_str() + std::string("pad.crouch.").size());
@@ -70,7 +72,7 @@ namespace ui
             const std::string value = launcher::kCrouchShortcuts[i];
             std::string line;
             if (value == "l3")
-                line = "L3: press the left stick to crouch; the game's own crouch key stays. Fire mode goes to key 2.";
+                line = "L3: press the left stick to crouch; the game's own crouch key stays. Fire mode goes to the keyboard's 2 key.";
             else if (value == "touchpad")
                 line = "TOUCHPAD: click the touchpad to crouch (DualShock 4 / DualSense); nothing else moves.";
             else if (value == "l2")

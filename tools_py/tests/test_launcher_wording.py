@@ -181,6 +181,17 @@ class KeyboardSentencesAgreeWithTheMap(unittest.TestCase):
                 key = re.search(r"keyboard's (\S) key", hint).group(1)
                 self.assertEqual(keys.get(key), button, f"{shortcut}: the hint names {key}, which the map binds to {keys.get(key)}")
 
+    def test_the_crouch_tips_name_the_key_the_map_gives_the_displaced_button(self):
+        """Issue #74: the CONTROLLER tooltips for the L3 and L2 crouch cells repeat the hint's key; held the same way."""
+        text = read(LAUNCHER_UI, "page_controller_tips.cpp")
+        keys = default_keys()
+        for shortcut, button in {"l3": "L3", "l2": "L2"}.items():
+            with self.subTest(shortcut=shortcut):
+                tip = re.search(r'value == "' + shortcut + r'"\)\s*line = "([^"]+)";', text).group(1)
+                key = re.search(r"keyboard's (\S) key", tip)
+                self.assertIsNotNone(key, f"{shortcut}: the tip names the displaced button's key as \"the keyboard's N key\"")
+                self.assertEqual(keys.get(key.group(1)), button, f"{shortcut}: the tip names {key.group(1)}, which the map binds to {keys.get(key.group(1))}")
+
     def test_install_quotes_the_page(self):
         install = doc("docs/INSTALL.md")
         for line in self.caption_lines():

@@ -641,20 +641,41 @@ namespace
                                    : rectOf(nodes, barLaunchId(app.nav.page));
         const float statusX = metrics::margin + 130.0f;
         const float promptsX = launch.x - 330.0f;
-        // Issue #74: the focused control's one-line tooltip -- the same line the hover box shows, here so a
-        // keyboard or a pad gets it too. It takes the slot's top line and the status steps under it; not on the
-        // rail, not while typing, not while the pad is being listened to (the prompts are the whole story then).
+        // Issue #74: the focused control's tooltip -- the same line the hover box shows, here so a keyboard or a
+        // pad gets it too. Whole, never cut: wrapped into the slot (footerTipSlot, tips.h), one line or two; the
+        // test measures every CONTROLLER line in the real face against it. One line: the status steps under it.
+        // Two lines fill the slot, so the status gives way -- but for kStatusHoldSeconds after it changes, when
+        // it shows alone and the tip waits. Not on the rail, not while typing, not while the pad is being
+        // listened to (the prompts are the whole story then).
         const bool quiet = app.nav.onRail() || !app.activeField.empty() || app.bind.state == BindFlow::State::Listening;
         const std::string tip =
             quiet ? std::string() : tipFor(app.nav.page, app.nav.focus, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
-        const float room = promptsX - statusX - 24.0f;
+        const Rect slot = footerTipSlot(app.frame);
+        std::vector<std::string> lines;
         if (!tip.empty())
-            text(ctx, ellipsizeEnd(ctx, tip, room, 15.0f).c_str(), Vec2{statusX, bar.y + 9.0f}, 15.0f, theme::text);
-        if (!app.status.empty())
+            lines = wrapWords(tip, slot.w, [&ctx](const std::string &s) { return textWidth(ctx, s.c_str(), kFooterTipSize); });
+        static StatusWatch statusWatch;
+        statusWatch.update(app.status, ctx.time);
+        if (lines.size() > 1u && !app.status.empty() && !ctx.fake && statusWatch.fresh(ctx.time))
+            lines.clear();
+        if (lines.size() > kFooterTipLines)
         {
-            const float size = tip.empty() ? 16.0f : 14.0f;
-            const std::string shown = ellipsizeEnd(ctx, app.status, room, size);
-            text(ctx, shown.c_str(), Vec2{statusX, bar.y + (tip.empty() ? 20.0f : 30.0f)}, size, theme::dim);
+            // Only a line the test has not seen (another page's, one day): the rest of it is still better than a
+            // third line through the bar's edge.
+            lines.resize(kFooterTipLines);
+            lines.back() = ellipsizeEnd(ctx, lines.back() + " ...", slot.w, kFooterTipSize);
+        }
+        // The type never drops under 13 real pixels, so at the minimum window a line is taller than its size says.
+        const float drawn = std::max(kFooterTipSize, static_cast<float>(metrics::minTextPx) / (ctx.scale * ctx.dpi));
+        const float lineH = drawn * 1.12f;
+        const float top = lines.size() > 1u ? bar.y + (bar.h - lineH * static_cast<float>(lines.size())) * 0.5f : bar.y + 9.0f;
+        for (size_t i = 0; i < lines.size(); ++i)
+            text(ctx, lines[i].c_str(), Vec2{slot.x, top + lineH * static_cast<float>(i)}, kFooterTipSize, theme::text);
+        if (!app.status.empty() && lines.size() < 2u)
+        {
+            const float size = lines.empty() ? 16.0f : 14.0f;
+            const std::string shown = ellipsizeEnd(ctx, app.status, slot.w, size);
+            text(ctx, shown.c_str(), Vec2{statusX, bar.y + (lines.empty() ? 20.0f : 30.0f)}, size, theme::dim);
         }
         drawPrompts(ctx, app, promptsX, bar.y + 12.0f, 26.0f);
 
@@ -1357,6 +1378,7 @@ int main(int argc, char **argv)
         ctx.mouseMoved = (mouse.x != lastMouse.x || mouse.y != lastMouse.y);
         if (ctx.mouseMoved)
             lastMouse = mouse;
+        const bool mouseMovedNow = ctx.mouseMoved;   // issue #74: the hover's arming reads this frame's, not the sticky one
         static bool mouseEverMoved = false;
         mouseEverMoved = mouseEverMoved || ctx.mouseMoved;
         ctx.mouseMoved = mouseEverMoved;
@@ -1724,12 +1746,13 @@ int main(int argc, char **argv)
         ring.update(graph, nav.focus, GetFrameTime());
         if (ring.visible)
             ui::focusRing(ctx, ring.shown);
-        // Issue #74: only a mouse that has moved hovers (ctx.mouseMoved is sticky, as hovered() reads it), never
-        // under --screenshot, and not while the pad is being listened to.
-        hoverTip.update(!app.fake && ctx.mouseMoved && app.bind.state != ui::BindFlow::State::Listening
-                            ? ui::nodeAt(nodes, ctx.mouse)
-                            : std::string(),
-                        ctx.time);
+        // Issue #74: the hover is armed by the mouse moving this frame and disarmed by any keyboard or pad steering
+        // (a focus the input moved, an activation, an adjust, back) until the mouse moves again, so a box never
+        // sits over the pad's focus ring. Never under --screenshot, and not while the pad is being listened to.
+        const bool steered = (nav.focus != focusBefore && !ctx.click) || ctx.activate || ctx.adjust != 0 || cueBack;
+        hoverTip.frame(mouseMovedNow, steered,
+                       !app.fake && app.bind.state != ui::BindFlow::State::Listening ? ui::nodeAt(nodes, ctx.mouse) : std::string(),
+                       ctx.time);
         drawHoverTip(ctx, app, nodes, hoverTip);
         EndDrawing();
 
@@ -2075,8 +2098,10 @@ int main(int argc, char **argv)
                         ui::restoreAsk(app.bind);
                         shotPendingFocus = ui::dialogFocusId(app.bind.state);
                     }
+                    // Issue #74: Triangle's cell, whose tip is the longest the page says -- the record that the
+                    // bottom bar draws a two-line tip whole.
                     if (suffix == "_buttons")
-                        shotPendingFocus = ui::bindCellId(0);
+                        shotPendingFocus = ui::bindCellId(3);
                     // Q4: the switch. Every shot starts from the guide; _buttons_switch has it on VIEW with the
                     // cell focused, _buttons_switch_conflict caught VIEW while SELECT still drives it.
                     app.config.focusToggle = suffix == "_buttons_switch" ? "select" : "guide";

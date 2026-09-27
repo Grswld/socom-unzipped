@@ -18,6 +18,7 @@
 #include "launcher/launcher_config.h"
 
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -56,20 +57,46 @@ namespace ui
     // "" when nothing answers -- the footer and the hover then show nothing, never a placeholder.
     std::string tipFor(Page page, const std::string &id, const TipState &state);
 
-    // One line: the footer's slot is one line wide and the hover box is one line tall. The test holds every
-    // CONTROLLER line under this.
-    constexpr std::size_t kTipMaxChars = 110;
+    // The bottom bar's line. It is drawn whole, never cut: at kFooterTipSize, wrapped at footerTipSlot's width into
+    // at most kFooterTipLines lines. The slot is the gap between the PROFILE block and the prompts -- 340 design
+    // units at 1100x700 and at the 800x520 minimum (whose type is held at 13 real pixels, so it is larger there).
+    // launcher_tests.cpp measures every CONTROLLER line in the embedded Rajdhani at those sizes against it.
+    constexpr float kFooterTipSize = 15.0f;
+    constexpr std::size_t kFooterTipLines = 2;
+    Rect footerTipSlot(const Frame &frame);
+
+    // Greedy word wrap at `maxWidth`, measured by `width` (widgets.cpp's textWidth in the launcher, the font's own
+    // advances in the test -- the same breaks either way). A word carries its trailing space, as wrapText's does.
+    std::vector<std::string> wrapWords(const std::string &s, float maxWidth, const std::function<float(const std::string &)> &width);
+
+    // A two-line tip fills the bar's slot, so the status line steps aside for it -- except for kStatusHoldSeconds
+    // after the status changes ("CROSS is now A", "binding cancelled"): then the status shows and the tip waits.
+    constexpr double kStatusHoldSeconds = 3.0;
+    struct StatusWatch
+    {
+        std::string seen;
+        double since = -1.0e9;
+
+        void update(const std::string &status, double now);
+        bool fresh(double now) const;
+    };
 
     // "About half a second" over one control before the box appears.
     constexpr double kTipDelaySeconds = 0.5;
 
     // The hover timer. Fed the control under the mouse every frame ("" for none); the clock restarts whenever
     // that changes, so sweeping across a row shows nothing until the mouse rests.
+    //
+    // frame() is the launcher's entry: the hover is armed by the mouse actually moving THIS frame and disarmed by
+    // any keyboard or pad steering (a move, an activation, an adjust, back), and stays off until the mouse moves
+    // again -- so a mouse left resting over a cell never puts a box over the pad's focus ring.
     struct HoverTip
     {
         std::string id;
         double since = 0.0;
+        bool armed = false;
 
+        void frame(bool mouseMoved, bool steered, const std::string &over, double now);
         void update(const std::string &over, double now);
         bool shows(double now) const;
     };

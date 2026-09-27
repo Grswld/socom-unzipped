@@ -69,6 +69,7 @@ add_library(ps2_test_lib STATIC
     src/socom2_lgaud_tests.cpp
     src/host_config_tests.cpp
     src/launcher_tests.cpp
+    src/font_advances.cpp   # issue #74: the footer tip measured in the launcher's own face
     src/exit_codes_tests.cpp
     src/preflight_tests.cpp
     src/bare_run_tests.cpp
@@ -121,6 +122,9 @@ endif()
 if(UNIX AND NOT APPLE)
     target_link_libraries(ps2_test_lib PRIVATE ${CMAKE_DL_LIBS})
 endif()
+
+# Issue #74: font_advances.cpp measures the launcher's lines in the embedded face itself (raylib's LoadFontData).
+target_compile_definitions(ps2_test_lib PRIVATE PS2X_LAUNCHER_FONTS_DIR="${CMAKE_SOURCE_DIR}/ps2xLauncher/assets/fonts")
 
 if(TARGET ps2_iop_fake_plugin)
     target_compile_definitions(ps2_test_lib PRIVATE

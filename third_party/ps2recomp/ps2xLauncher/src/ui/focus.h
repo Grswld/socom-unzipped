@@ -113,8 +113,9 @@ namespace ui
 
     // Sprint 9 P4 (owner: "tooltips where the launcher is unclear ... 'what is a profile?' first"). The
     // help is DATA, keyed by a control's own id, and empty for the controls that explain themselves --
-    // which is most of them. It is shown where the FOCUS is, not where a mouse is: the launcher is driven
-    // by a pad, and the mouse left the game entirely in Q3 (R210), so hover would be help most players never see.
+    // which is most of them. This is the "?" band: the two-line answer to a stranger's real question, shown in
+    // the title strip for the focused control. The one-line tips are tips.h's, a different thing: they show on a
+    // 0.5 s hover and, for the focused control, in the bottom bar (issue #74, the owner 2026-09-26).
     std::string helpFor(const std::string &id);
     // Every id the set answers for, so a test can hold the set to the controls that actually exist.
     std::vector<std::string> helpedIds();
