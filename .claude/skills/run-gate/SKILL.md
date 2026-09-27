@@ -14,8 +14,7 @@ rules 5-6 (their reasons: `docs/archive/HANDOFF-to-2026-09-26.md` §5) and `docs
 `tools_py/parity/`, `scripts/parity/` or `build.sh` -- `./build.sh test` and the three-stage gate green BEFORE the
 commit, `./build.sh runtime` first when the runtime changed (`build.sh test` does not rebuild `dist/socom2.exe`).
 **One build or launch at a time, host-wide** (rule 6): the owner feels long builds and game runs on this machine, so
-every lock-bound job is announced as a window first (step 0, R297), and a controller's game run -- a two-instance
-online run included -- happens only inside a window the owner has named (`docs/HUMAN_TASKS.md` O20).
+every lock-bound job, a two-instance online run included, waits on step 0's window (R297).
 
 ## Steps
 
@@ -35,8 +34,8 @@ online run included -- happens only inside a window the owner has named (`docs/H
    (the gate's own take/release are NESTED no-ops inside a run).
 3. **Detached** (game runs, the gate, anything long):
    `bash scripts/run_detached.sh --owner <o> --wait <min> <script> <marker>` -- queues in the foreground first
-   (queue through `run_detached.sh` and poll its marker from a later turn; a tool-shell background loop can be killed
-   between turns and lose its place), launches `<script>` under nohup, renews while its PID lives,
+   (run the `run_detached.sh` call itself in the background of the tool call (run_in_background) and poll its marker
+   from a later turn; never a shell `until ... sleep` loop, which can be killed between turns), launches `<script>` under nohup, renews while its PID lives,
    releases, then writes `exit=<code>` to `<marker>` (`exit=75 BUSY|TIMEOUT`, `exit=3 REFUSED` under 4 GB free
    disk or 3 GB free memory). The script keeps its work in the foreground. Poll the marker; never return control
    to wait on it. Never edit a chain script while it runs (bash reads it by offset).

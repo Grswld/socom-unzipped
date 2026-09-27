@@ -32,7 +32,7 @@ itself is checked on the maintainer's machine, with a disc.
   r0001); the launcher verifies the disc before it will launch. **No game code or game data is in this repository**:
   not the executable, not the recompiled C++, not textures, audio, movies or saves -- the recompiled program is built
   by each developer from their own disc. A contribution that adds any of it is closed unread (`CONTRIBUTING.md`); the
-  release will carry the program, never the disc's code (issue #70).
+  release will carry the program, never the disc's own files (issue #70).
 - **Online play on a server we host.** The game's original network (DNAS / Medius) is gone; this project runs a
   [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server) configured for SOCOM II and points
   the game at it. The launcher's default server is `socom.scotho.com`.

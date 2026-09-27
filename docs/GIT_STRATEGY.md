@@ -51,11 +51,9 @@ a Fable-class reviewer passed with high confidence, or that tests confirm, may b
 a human review. A human review returns when the owner calls stability. Publishing a Release and the repository's
 settings stay the owner's (§5, §6).
 
-**A branch checked out in a worktree is removed before it is merged (2026-09-26 20:41Z, `docs/HAZARDS.md` git).**
-`bash scripts/agent_worktree.sh remove <name>` FIRST, then `gh pr merge <n> --merge` WITHOUT `--delete-branch`, then
-`git push origin --delete agent/<name>` and `git branch -D agent/<name>` -- `--delete-branch` tears down the branch's
-checkout, and through its `tools/` junction the main tree's toolchain went with it. The steps in full: the
-`agent-worktree` skill's step 5.
+**A branch checked out in a worktree is removed before it is merged, and never with `gh pr merge --delete-branch`
+(2026-09-26 20:41Z, `docs/HAZARDS.md` git):** that flag tears down the branch's checkout, and through its `tools/`
+junction the main tree's toolchain went with it. The steps: the `agent-worktree` skill's step 5.
 
 *The open branch is always `docs/CURRENT_SPRINT.md`'s `branch:` line -- read it there rather than trusting this
 literal, which has pointed at a merged branch twice (`sprint-9` until 2026-09-25, then `sprint-10`).* Sprint 12 was the
@@ -151,7 +149,7 @@ Annotated tags only (`git tag -a`), pushed explicitly (`git push origin <tag>`).
 |---|---|---|
 | `playtest-N` | A build the owner (or invited testers) plays. Not a release: no promise, no GitHub Release page. The archive's sha256 is recorded in `docs/PLAYTEST.md`. | Sprint 9 P7, and any later playtest. |
 | `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.5.0` onwards). `v0.<sprint>.<n>` for a hotfix on it. *(Superseded 2026-09-25, Sprint 13 R2: the examples read "`v0.9.0`, `v0.10.0`, `v0.11.0`", as if the series began at 9; `git ls-remote --tags origin` shows `v0.5.0` to `v0.12.0`.)* | At each close-out, on the merge commit. |
-| `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met -- not on a sprint number.** D2, the other precondition, was answered by R290 on 2026-09-26 (§5's last bullet). *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- are blocked on D2.)* |
+| `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met and #70 has landed (R290) -- not on a sprint number.** *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- were blocked on D2, answered by R290 on 2026-09-26: §5's last bullet.)* |
 
 **Every release keeps its symbols.** The release exe is stripped; `dist-release/symbols/` of that exact build is the
 only thing that makes a stranger's crash record readable. Until the release workflow (below) uploads it as a private
@@ -177,8 +175,8 @@ from the owner's disc and is not, and must never be, in the repository. So:
   it never publishes.
 - Whether the archives may be distributed at all (they contain code recompiled from the game's executable) was **the
   owner's legal-position decision, D2 in the Sprint 11 spec**, answered by R290 (2026-09-26): `socom2.exe` ships in
-  the release archives only, never in the repository, and the ELF never ships -- the launcher builds it on the
-  player's machine from their own r0001 disc by a native first-run decrypt (issue #70).
+  the release archives only, never in the repository, and the ELF never ships -- the launcher is to build it on
+  the player's machine from their own r0001 disc by a native first-run decrypt (issue #70, not landed).
   *(Superseded 2026-09-27: until R290 this bullet said the project's answer so far was "the player's own disc is
   required and no game data ships", a sentence to be re-examined for the executable before a public Release carried
   one.)*

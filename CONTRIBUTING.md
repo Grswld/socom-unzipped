@@ -16,7 +16,7 @@ build and test everything else, which is where most contributions land:
 | A clone, Windows (Git Bash, Python 3) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/bootstrap_windows.sh` (fetches llvm-mingw, CMake and Ninja into `tools/`, each pinned by sha256; ~245 MB once), then `python -m pip install -r requirements.txt`, `./build.sh runtime --no-runner` and `./build.sh test --no-runner`. The `windows` workflow does exactly this on a bare runner. |
 | Your own r0001 disc as well | the game | `pip install -r requirements.txt`, then `bash scripts/disc_to_elf.sh "<your ISO>"` (eight minutes and 4.2 GB: it extracts the disc and decrypts the overlays), then `./build.sh recomp`, `./build.sh runtime`, `./build.sh test` (Windows, Git Bash) or `scripts/build_linux.sh`; the recipe is `docs/DEVELOPING.md` "From your own disc to a buildable ELF". |
 
-**The game from your own disc**, step by step with the line that says each step worked, is `docs/DEVELOPING.md`'s "a newcomer's first hour"; if a step refuses on your machine, open an issue with the line it refused on.
+**The game from your own disc**, step by step with the line that says each step worked, is `docs/DEVELOPING.md`'s "a newcomer's first hour"; if a step refuses on your machine, open an issue with the line it refused on. `scripts/disc_to_elf.sh` has never run on Linux from an ISO; if it refuses, report the line it refused on.
 
 Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is "not r0001").
 

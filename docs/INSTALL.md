@@ -1,7 +1,8 @@
 # Installing SOCOM Unzipped
 
 SOCOM II: U.S. Navy SEALs, statically recompiled into a native PC program. **It plays from your own disc.** No game
-data, and nothing from your disc, is distributed with it. Nothing on this page works without your own ISO of the US
+data, and nothing from your disc, will be distributed with the public download (#70); tester archives carry the ELF
+by the owner's hand. Nothing on this page works without your own ISO of the US
 retail release.
 
 This page is for players. Building it yourself is `DEVELOPING.md`; what is proven and what is still open is
