@@ -65,6 +65,19 @@ describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_A
     expect(by('railstraithi1').length).toBe(by('railstraitlo1').length);
     expect(by('railstraithi1').every((p) => p.lod?.nearFade[0] === 0 && p.lod.farFade[0] === 100)).toBe(true);
     expect(by('railstraitlo1').every((p) => !p.alternate)).toBe(true);   // a LOD copy is not a state
+    // The copies of one object share a placement: every low rail stands within 5 units of a high rail,
+    // which is what lets `world.ts` tell a copy with a successor from the last one at its spot. The
+    // grate has no low copy placed at all, so past 360 units it is the last one and stays.
+    const spots = (name: string): [number, number, number][] => by(name).flatMap((p) => {
+      const out: [number, number, number][] = [];
+      for (let i = 0; i < p.matrices.length; i += 16) out.push([p.matrices[i + 12]!, p.matrices[i + 13]!, p.matrices[i + 14]!]);
+      return out;
+    });
+    const near = (a: [number, number, number], b: [number, number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 5;
+    const highs = spots('railstraithi1');
+    expect(spots('railstraitlo1').every((lo) => highs.some((hi) => near(lo, hi)))).toBe(true);
+    expect(by('grate_midlod').length).toBeGreaterThan(0);
+    expect(by('grate_lowlod').length).toBe(0);
     expect(map.props.filter((p) => p.lod === null).length).toBeGreaterThan(map.props.filter((p) => p.lod !== null).length);
     // The facade flag reaches the props; the scroll bands reach the world chunks they name.
     expect(map.props.some((p) => p.facade !== 0)).toBe(true);
