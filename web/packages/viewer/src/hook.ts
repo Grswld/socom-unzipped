@@ -24,6 +24,8 @@ export interface ViewerHook {
   flares(): [number, number, number][];
   lines(): { texture: string | null; min: [number, number, number]; max: [number, number, number] }[];
   sliders(): Record<SliderName, number>;
+  /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
+  revision: string;
 }
 
 declare global {
