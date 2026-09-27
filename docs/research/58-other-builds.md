@@ -248,8 +248,8 @@ obtain a build, and whether it is legal to, is the owner's decision.
 **What not to do.** Nothing from a build enters the repository: no image, no extracted section, no symbol dump.
 research/44's rule applies: names, addresses and counts only, in notes and git-ignored proposal files. The route
 for a fifth input is the one the four take now. The owner places the file at the private location and adds its
-line to that location's `SHA256SUMS`. `scripts/fetch_private_inputs.sh` then needs one new `DEST` entry (served
-name → `game/<dir>/<file>`). Its map lists exactly four files today, and it verifies each fetched file against
+line to that location's `SHA256SUMS`. `scripts/fetch_private_inputs.sh` then needed one new `DEST` entry (served
+name → `game/<dir>/<file>`) *(the location and the script are retired since 2026-09-27, issue #75; a fifth input now travels by the owner's hand into `game/` on this machine)*. Its map lists exactly four files today, and it verifies each fetched file against
 `SHA256SUMS`. The `DEST` line is a tracked-file edit for the owner or controller, not for a research agent. No
 agent fetches a build (spec §5).
 
@@ -265,4 +265,4 @@ agent fetches a build (spec §5).
 | research/44 addendum | The SOCOM II demo's build id is **not** in `.comment` (which holds `MW MIPS C Compiler (2.4.1.01)`/`PlayStation2`). It is the string at 0x005135E0 | A one-line correction when the note is next touched. Check step 3 above uses the banner |
 | Goal 5 (ccc/DWARF1) and Q11 (SASE) | Only a named SOCOM II build with `.debug` would give SOCOM II layouts and SASE names. SOCOM 1's give neither | No change unless a named copy turns up. R262's layout-age caveat stands |
 | Task 10 / research/43b (regeneration check) | Regenerated `game/r0004/match.json` reports `resolved 10008` (0.6726), not research/43b's 12,071. The r0004 table is 16,417 rows, not 16,423 (`ced43a0`) | The controller should reconcile before any task quotes research/43b's 81.1 %. Not this question's to resolve |
-| `scripts/fetch_private_inputs.sh` | Its `DEST` map has exactly four files. A fifth needs a `SHA256SUMS` line at the private location plus one `DEST` entry | The route is ready. Its only cost is one tracked line, made by the owner or controller |
+| ~~`scripts/fetch_private_inputs.sh`~~ (retired 2026-09-27, issue #75) | ~~Its `DEST` map has exactly four files. A fifth needs a `SHA256SUMS` line at the private location plus one `DEST` entry~~ | The route is gone with the cloud sessions; a fifth input is placed under `game/` by hand |
