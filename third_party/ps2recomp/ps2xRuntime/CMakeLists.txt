@@ -452,6 +452,7 @@ target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_hostnet.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_libnetb.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_crypto.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_persona_record.cpp)   # Sprint 16 L1b (#73): the login's record beside the card
 # Sprint 13 Task C8 (audit F8): the libpad2 HLE, the msifrpc HLE and the exposure readback, out of the overrides file
 # so ps2x_tests compiles the same files (ps2xTest/CMakeLists.txt) and tests them instead of linking stand-ins.
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_pad2_hle.cpp)

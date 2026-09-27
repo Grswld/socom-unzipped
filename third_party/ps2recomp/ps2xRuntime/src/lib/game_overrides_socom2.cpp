@@ -33,6 +33,7 @@
 #include "socom2_host_input.h"
 #include "socom2_libnetb.h"
 #include "socom2_crypto.h"
+#include "socom2_persona_record.h"   // Sprint 16 L1b (#73): the password keyboard, for the persona record
 #include "socom2_msifrpc.h"
 #include "runtime/host_prof_start.h"
 #include "Kernel/HleStats.h"
@@ -1252,10 +1253,12 @@ namespace
     // an EE scheduler checkpoint and resume later (the third driven login, s10_g9_prefill_diag3: `[ret-unwound]
     // OskActivate pc=0x3766a0`), so code placed after `g_oskOpenOriginal(...)` runs before the game has read the
     // buffer -- the first version blanked it there and every keyboard opened empty. Nothing is submitted
-    // (R180): ENTER applies the text to the UI variable exactly as typed text would. With neither variable set
-    // the wrapper is never installed.
+    // (R180): ENTER applies the text to the UI variable exactly as typed text would. Since Sprint 16 L1b the
+    // wrapper is installed always (it tells the persona record the password keyboard opened) and writes the
+    // buffer only with a variable set.
     // ------------------------------------------------------------------------------------------
     PS2Runtime::RecompiledFunction g_oskOpenOriginal = nullptr;
+    bool g_oskPrefillArmed = false;   // PS2X_SOCOM2_LOGIN_NAME or _PASS set: the wrapper writes the buffer
 
     void socom2_OskOpenPrefill(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
@@ -1269,9 +1272,14 @@ namespace
             text = socom2_osk::prefillFor(req.field, ps2x::knob("PS2X_SOCOM2_LOGIN_NAME"), ps2x::knob("PS2X_SOCOM2_LOGIN_PASS"),
                                           socom2_osk::capFor(req.maxChars, req.maxBytes, socom2_osk::kOskTextBufferBytes));
         }
+        // Sprint 16 L1b (#73): the persona record's savedPassword -- the password keyboard opened for this login.
+        if (req.field == socom2_osk::Field::Password)
+            socom2_persona::onPasswordKeyboardOpened();
         // The buffer's whole image, before the original and never after it (the header comment): the text for
-        // a login field, zeros for any other keyboard, so what the previous open left never shows.
-        if (bufAddr + socom2_osk::kOskTextBufferBytes <= PS2_RAM_SIZE)
+        // a login field, zeros for any other keyboard, so what the previous open left never shows. Only when a
+        // variable is set: since L1b the wrapper is installed always (the observer above), and with neither set
+        // the buffer is left exactly as the game leaves it, as before.
+        if (g_oskPrefillArmed && bufAddr + socom2_osk::kOskTextBufferBytes <= PS2_RAM_SIZE)
             socom2_osk::writeBuffer(rdram + bufAddr, socom2_osk::kOskTextBufferBytes, text);
         // One line per keyboard, whatever was decided: the first driven login is research/38's dynamic
         // confirmation (the live purpose, keyboard and caps), and never the text itself.
@@ -1292,8 +1300,10 @@ namespace
         const char *pass = ps2x::knob("PS2X_SOCOM2_LOGIN_PASS");
         const bool haveName = name != nullptr && *name != '\0';
         const bool havePass = pass != nullptr && *pass != '\0';
-        if (!haveName && !havePass)
-            return;
+        // Sprint 16 L1b (#73): installed ALWAYS -- the persona record needs to know whether the password keyboard
+        // opened (socom2_persona_record.h) -- and armed only with a variable set, so with neither the keyboards
+        // open exactly as they did.
+        g_oskPrefillArmed = haveName || havePass;
         // All three of the keyboard's addresses are revision-bound and all three come from one place
         // (runtime/socom2_addresses.h): the handler, the thunk the UI action table actually dispatches
         // through, and the initial-text buffer the wrapper writes.
@@ -1320,6 +1330,11 @@ namespace
         }
         std::cout << "[socom2] on-screen keyboard prefill wraps " << installed << " of "
                   << (sizeof(entries) / sizeof(entries[0])) << " entries" << std::endl;
+        if (!g_oskPrefillArmed)
+        {
+            std::cout << "[socom2] on-screen keyboard prefill not armed (neither variable set); the wrap only observes" << std::endl;
+            return;
+        }
         std::cout << "[socom2] on-screen keyboard prefill armed: persona name " << (haveName ? std::to_string(std::strlen(name)) + " chars" : "unset")
                   << ", password " << (havePass ? std::to_string(std::strlen(pass)) + " chars" : "unset") << std::endl;
     }
@@ -2059,7 +2074,7 @@ namespace
                     runtime.replaceFunction(b.address, b.fn);
         }
         installRtNetPortShift(runtime);
-        installOskPrefill(runtime);   // Sprint 10 Goal 9: only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
+        installOskPrefill(runtime);   // Sprint 10 Goal 9; since L1b always wrapped, armed only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
         installChatBound(runtime);    // Sprint 11 milestone S: unconditional, no knob
         socom2_server_records::install(runtime, socom2_addresses::current());   // Sprint 13 U6: unconditional, no knob
 

@@ -24,8 +24,8 @@ Player-facing. Each is a field of `config.json` that the launcher (and a bare ru
 | `PS2X_SOCOM2_LOGIN_NAME` | Text | unset | The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty. | `ps2xRuntime/src/lib/game_overrides_socom2.cpp` `socom2_OskOpenPrefill`<br>`ps2xRuntime/src/lib/game_overrides_socom2.cpp` `installOskPrefill` |
 | `PS2X_SOCOM2_LOGIN_PASS` | Text | unset | The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports). | `ps2xRuntime/src/lib/game_overrides_socom2.cpp` `socom2_OskOpenPrefill`<br>`ps2xRuntime/src/lib/game_overrides_socom2.cpp` `installOskPrefill` |
 | `PS2X_SOCOM2_PAD` | Flag | `1` | The libpad2 HLE and host input path; 0 boots with no controller. | `ps2xRuntime/src/lib/socom2_pad2_hle.cpp` `socom2PadEnabled` |
-| `PS2X_SOCOM2_RSA_KEY` | Text | `a` | b (or B, 1) selects the second precomputed RSA pair (a second instance on one host). | `ps2xRuntime/src/lib/socom2_crypto.cpp` `socom2_RsaGenerateKeyPair` |
-| `PS2X_SOCOM2_SERVER` | Text | `127.0.0.1` | Address or name every Medius/DNAS host name resolves to. | `ps2xRuntime/src/lib/socom2_hostnet.cpp` `loadHosts` |
+| `PS2X_SOCOM2_RSA_KEY` | Text | `a` | b (or B, 1) selects the second precomputed RSA pair (a second instance on one host). | `ps2xRuntime/src/lib/socom2_crypto.cpp` `socom2_RsaGenerateKeyPair`<br>`ps2xRuntime/src/lib/socom2_persona_record.cpp` `recorder` |
+| `PS2X_SOCOM2_SERVER` | Text | `127.0.0.1` | Address or name every Medius/DNAS host name resolves to. | `ps2xRuntime/src/lib/socom2_hostnet.cpp` `loadHosts`<br>`ps2xRuntime/src/lib/socom2_persona_record.cpp` `recorder` |
 | `PS2X_SOCOM2_UDP_SHIFT` | Int | `0` | Shift the fixed UDP ports 3658.. by n, in the host bind and the port rt_net advertises (a second instance). | `ps2xRuntime/src/lib/game_overrides_socom2.cpp` `socom2UdpShift`<br>`ps2xRuntime/src/lib/socom2_libnetb.cpp` `doCreate` |
 | `PS2X_WINDOW_SIZE` | Text | `640x448` | <w>x<h> (64-16384) \| fullscreen (borderless): the window at creation; unset or invalid = 640x448. | `ps2xRuntime/src/lib/ps2_runtime.cpp` `initialize` |
 

@@ -171,8 +171,8 @@
     X("PS2X_SOCOM2_NET_TRACE_PEERS", Dev, Int, "16", "With NET_TRACE: peer packets to hex-dump in each direction.") \
     X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.") /* read: ps2xRuntime/src/lib/socom2_pad2_hle.cpp:socom2PadEnabled */ \
     X("PS2X_SOCOM2_PAD_TRACE", Dev, Presence, "", "Log the scePad2 socket lifecycle and reads.") \
-    X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b (or B, 1) selects the second precomputed RSA pair (a second instance on one host).") /* read: ps2xRuntime/src/lib/socom2_crypto.cpp:socom2_RsaGenerateKeyPair */ \
-    X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") /* read: ps2xRuntime/src/lib/socom2_hostnet.cpp:loadHosts */ \
+    X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b (or B, 1) selects the second precomputed RSA pair (a second instance on one host).") /* read: ps2xRuntime/src/lib/socom2_crypto.cpp:socom2_RsaGenerateKeyPair ps2xRuntime/src/lib/socom2_persona_record.cpp:recorder */ \
+    X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") /* read: ps2xRuntime/src/lib/socom2_hostnet.cpp:loadHosts ps2xRuntime/src/lib/socom2_persona_record.cpp:recorder */ \
     X("PS2X_SOCOM2_UDP_SHIFT", Shipping, Int, "0", "Shift the fixed UDP ports 3658.. by n, in the host bind and the port rt_net advertises (a second instance).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2UdpShift ps2xRuntime/src/lib/socom2_libnetb.cpp:doCreate */ \
     X("PS2X_TEST_SKIP", Test, Text, "", "ps2x_tests: skip tests whose name contains one of these substrings.") \
     X("PS2X_TEST_SUITE", Test, Text, "", "ps2x_tests: run only suites whose name contains this.") \
