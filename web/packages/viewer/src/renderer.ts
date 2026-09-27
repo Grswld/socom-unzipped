@@ -44,7 +44,9 @@ const BACKGROUND = 0x14161a;
  * for nothing WebGPU-specific, so the two paths draw the same scene; only the reported backend differs.
  */
 export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerRenderer> {
-  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL: false });
+  // An opaque WebGPU canvas; the WebGL2 fallback ignores it (three's WebGLBackend forces alpha on), so
+  // the real fix is that no world draw writes alpha (`blendFactorsFor`, `world.ts`).
+  const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL: false, alpha: false });
   await renderer.init();
   let ratio = Math.min(globalThis.devicePixelRatio, 2);
   let mode: Presentation = 'native';
