@@ -17,21 +17,21 @@ branch:       sprint-15 -- OPEN 2026-09-26 16:57Z off main at 200f3287 (the Spri
               machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
               agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
               CLOSED block (12's and 11's are archived, see plans). No cloud session runs from 2026-09-26.
-spec:         docs/superpowers/specs/2026-09-26-sprint-14-guards-not-sentences-design.md (seven milestones G, I, W, D,
-              S, E, M with a bar each, the filler X1; the acceptance bar is its section 4; section 1.5 says what the
-              loss of the cloud changed). The Sprint 13, 12 and 11 specs closed with v0.13.0, v0.12.0 and v0.11.0.
-plans:        docs/superpowers/plans/2026-09-26-sprint-14.md (the task table, the Log newest first, the rulings
-              R269-R281 from the global counter -- no sprint-local names from this sprint on, R273); it came from
-              docs/audits/2026-09-26-autonomy-structure-review.md (nine findings, options A-I, six notes beside it).
-              The Sprint 13 plan (its rulings S13-R1..R14), the Sprint 12 plan (S12-R1..R25) and the Sprint 11 plan
-              are closed; Sprint 13 is listed in its block below, Sprints 12 and 11 in
-              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older are in
+spec:         docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md, re-cut 2026-09-26 on the owner's
+              word (audio first, #67, the two measurements if time allows; its acceptance bar is its section 4; the walk
+              list's other rows live in docs/LATER.md). The Sprint 14, 13, 12 and 11 specs closed with v0.14.0, v0.13.0,
+              v0.12.0 and v0.11.0.
+plans:        docs/superpowers/plans/2026-09-26-sprint-15.md (the task table, the Log newest first, the rulings R282-R289
+              from the global counter; the owner's sitting of 2026-09-26 holds R290-R297 in
+              docs/superpowers/plans/2026-09-26-owner-sitting.md). The Sprint 14 plan (R269-R281) is closed, listed in its
+              block below; the Sprint 13 plan (S13-R1..R14) too; Sprints 12 and 11 are in
+              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 15 "borrowed confidence" (R276): docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md
-              and docs/superpowers/plans/2026-09-26-sprint-15.md, PROPOSED, opened from the confidence register at
-              this sprint's close; the standing "visible defects first" order resumes inside it. Its origin, the
-              cloud handoff of 2026-09-25, never ran and is kept under a NEVER RUN banner
-              (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
+next sprint:  Sprint 16 "ten minutes to the server": docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md
+              (the owner's, PROPOSED, 6f57eb1e); its plan is drafted by the Sprint 16 controller session in its own worktree
+              and it opens on sprint-16 off main once this sprint is closed and merged (its D10 carries what this sprint
+              leaves short of an outcome). Sprint 15's origin, the cloud handoff of 2026-09-25, never ran and is kept
+              under a NEVER RUN banner (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
