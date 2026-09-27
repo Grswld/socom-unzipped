@@ -133,7 +133,9 @@ case "$STOP" in elf|toml|recomp|runtime) ;; *) die2 "--stop-after must be one of
 PS2R="$ROOT/third_party/ps2recomp"
 TOOLBUILD="$PS2R/build-tools"
 # The recompiler step 4 runs. BR_PS2_RECOMP names another one -- a test seam (tools_py/tests/test_build_revision.py
-# drives step 4 twice with a stand-in that writes like ps2_recomp); a build never sets it.
+# drives step 4 with a stand-in that writes like ps2_recomp); a build never sets it. With it set, step 4 builds
+# NOTHING: the two cmake lines that configure and build ps2_recomp in build-tools/ are skipped and the named
+# recompiler runs as-is, so a test never builds the real one outside the loop lock. Unset, step 4 is unchanged.
 PS2_RECOMP="${BR_PS2_RECOMP:-$TOOLBUILD/ps2xRecomp/ps2_recomp.exe}"
 if [ -n "$OUT" ]; then
   OUT="$(mkdir -p "$OUT" && cd "$OUT" && pwd)"
@@ -465,9 +467,11 @@ else
   # which is why every build left the tracked map modified in git status.
   [ -f "$FIXED" ] || die2 "recomp: $(rel "$FIXED") is not there. Step 0 writes it; run scripts/build_revision.sh from the top rather than re-entering the lock-bound tail with --_tail"
   say "recomp: function map $(rel "$FIXED") sha256 $(sha "$FIXED")"
-  cmake -S "$PS2R" -B "$TOOLBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
-  cmake --build "$TOOLBUILD" --target ps2_recomp ps2_analyzer -j "$(nproc)"
+  if [ -z "${BR_PS2_RECOMP:-}" ]; then   # the test seam builds nothing (its comment, under "where everything is")
+    cmake -S "$PS2R" -B "$TOOLBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
+    cmake --build "$TOOLBUILD" --target ps2_recomp ps2_analyzer -j "$(nproc)"
+  fi
   # The output directory is NOT deleted first (issue #57, as build.sh's recomp()): ps2_recomp rewrites a file only
   # when its bytes change and removes the function files an earlier run left that this one did not produce, so an
   # unchanged file keeps its timestamp and step 5 after a rename recompiles only what the rename touched. The one

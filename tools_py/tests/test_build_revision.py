@@ -5,10 +5,12 @@
 These cases hold the script's argument handling, its preconditions, its dry run and the mark step 4 skips on,
 through tools_py/tests/shell.BASH (a bare `bash` resolves to WSL's on a GitHub Windows runner). They touch no
 disc and are meant to stop at a refusal, at a skip check, at `--stop-after elf` or at the dry run, before the first
-minute of Unicorn and before the first cmake. Since #56 that holds only for a revision with no products in the
-tree: a non-dry --out case on a revision whose `game/overlays_<rev>/` is current (r0004 on a working checkout)
-copies those overlays instead of decrypting, skips the step-1 refusal it meant to reach and runs on into the
-lock-bound recomp and runtime. So every non-dry case uses a throwaway revision name (r0009...).
+minute of Unicorn and before the first cmake -- except BuildRevisionRecompKeepsItsOutputTest, which runs step 4
+with BR_PS2_RECOMP naming a stand-in, and with that seam set step 4 runs no cmake at all. Since #56 that holds
+only for a revision with no products in the tree: a non-dry --out case on a revision whose `game/overlays_<rev>/`
+is current (r0004 on a working checkout) copies those overlays instead of decrypting, skips the step-1 refusal it
+meant to reach and runs on into the lock-bound recomp and runtime. So every non-dry case uses a throwaway
+revision name (r0009...).
 
 NOT covered here, because only a disc can cover it: that the pipeline reproduces r0001 byte for byte. That is the
 bar the controller runs from the main tree (`r0001check` against dist/socom2_game.elf and recomp/output); the
@@ -56,7 +58,8 @@ def touch(*parts):
 
 def fake_toolchain(tmp):
     """clang/cmake/ninja stubs for the lock-bound tail's toolchain check, so these cases run on a machine (or a
-    CI runner) with no tools/ tree. Nothing here ever invokes them: both cases stop before the first cmake."""
+    CI runner) with no tools/ tree. Nothing invokes them: the skip cases stop before step 4's cmake, and the
+    BR_PS2_RECOMP cases reach step 4 with the seam set, which skips both cmake lines."""
     binaries = os.path.join(tmp, "fakebin")
     os.makedirs(binaries)
     for name in ("clang", "cmake", "ninja"):
@@ -368,8 +371,9 @@ done
 class BuildRevisionRecompKeepsItsOutputTest(unittest.TestCase):
     """#57's r0004 leg: step 4 used to `rm -rf` its output directory before ps2_recomp ran, so every file came back
     with a new timestamp and the runtime build after a one-name change recompiled every object -- the incremental
-    rebuild the emitter's per-file declarations bought, thrown away. Both cases drive the lock-bound tail (--_tail
-    with BR_*) through step 4 with the stand-in above named by BR_PS2_RECOMP, and stop after it."""
+    rebuild the emitter's per-file declarations bought, thrown away. Every case drives the lock-bound tail (--_tail
+    with BR_*) through step 4 with the stand-in above named by BR_PS2_RECOMP, and stops after it; with the seam
+    set step 4 builds nothing (the last case holds that)."""
     REV = "r0009keep"
     OLD = 1_000_000_000   # a timestamp no run of the stand-in can write
 
@@ -428,6 +432,41 @@ class BuildRevisionRecompKeepsItsOutputTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(gen, ".complete")), "a failed recomp kept the old mark")
             p = self._step4(env, force=False)
             self.assertNotIn("skipped", p.stdout, "the next build trusted a tree the failed run left: " + p.stdout)
+
+    def test_with_the_seam_set_step_4_builds_no_recompiler(self):
+        """The seam names the recompiler step 4 runs; it must also stop step 4 building the real one. A case that
+        ran `cmake -S third_party/ps2recomp -B build-tools` and `cmake --build ... -j $(nproc)` configured and
+        built the recompiler outside the loop lock on every suite run where tools/ holds a toolchain -- the script
+        puts tools/ at the FRONT of PATH, ahead of any stand-in. So this case runs a copy of the script from a
+        synthetic ROOT with no tools/ and no third_party/, puts a cmake that leaves a marker and exits 1 first on
+        PATH, and asserts cmake never ran: no marker, no cmake or ninja line, no build-tools directory."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "root")
+            os.makedirs(os.path.join(root, "scripts"))
+            for name in ("build_revision.sh", "python_env.sh"):
+                with open(os.path.join(ROOT, "scripts", name), "rb") as src, \
+                        open(os.path.join(root, "scripts", name), "wb") as dst:
+                    dst.write(src.read())
+            out, gen, env = self._tree(tmp, [("entry", "100000")])
+            marker = os.path.join(tmp, "cmake-was-called")
+            trap = os.path.join(tmp, "trapbin")
+            os.makedirs(trap)
+            cmake = os.path.join(trap, "cmake")
+            with open(cmake, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(f'#!/bin/sh\necho "cmake $*" >> "{sh(marker)}"\nexit 1\n')
+            os.chmod(cmake, 0o755)
+            env["PATH"] = trap + os.pathsep + env["PATH"]
+            p = subprocess.run([BASH, os.path.join("scripts", "build_revision.sh"), "--_tail"],
+                               capture_output=True, text=True, cwd=root, env=dict(env, BR_FORCE="0"))
+            said = p.stdout + p.stderr
+            self.assertFalse(os.path.exists(marker), "step 4 ran cmake with the seam set: " + said)
+            self.assertEqual(p.returncode, 0, said)
+            for word in ("cmake", "ninja"):
+                self.assertNotIn(word, said.lower(), f"step 4 printed a {word} line with the seam set")
+            self.assertFalse(os.path.exists(os.path.join(root, "third_party", "ps2recomp", "build-tools")),
+                             "step 4 configured build-tools with the seam set")
+            self.assertEqual(sorted(n for n in os.listdir(gen) if n.endswith(".cpp")), ["entry_0x100000.cpp"])
+            self.assertTrue(os.path.isfile(os.path.join(gen, ".complete")))
 
 
 @unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
