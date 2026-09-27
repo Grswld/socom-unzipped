@@ -73,7 +73,7 @@ one with `PS2X_HOST_PROF_MAIN=1` on the thread that called `PS2Runtime::run` (`l
 first sampler row at or after the HUD step (drive step s28, t=293.6 s game run / 297.3 s GL run) to the log's end --
 `t=294.18`-`484.30` (190.12 s) and `t=298.19`-`481.31` (183.12 s) [E], the bounds in §8; the walk to s48 (361.9 /
 368.4 s) where it differs. Stats blocks carry no clock and sit at the sampler row before them (their cumulative
-`elapsed=` is 0.80 s short of the game run's window and 0.51 s over the GL run's (its first counted block began before the window's row)).
+`elapsed=` runs 0.80 s short (game) and 0.51 s over (GL)).
 
 The GL thread's `[gs-gl stats]` clocks are the **game-thread run's**, where it ran unsuspended; the EE-side `shadow=`,
 `record=` and `bp_wait_ms` come from both, the GL-thread run's in brackets. A sampled thread's clocks are perturbed:
