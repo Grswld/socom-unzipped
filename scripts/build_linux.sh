@@ -5,7 +5,10 @@
 # Usage: scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]
 #   tools     configure + build ps2_recomp / ps2_analyzer in build-linux-tools
 #   runtime   configure + build the runner (when there is generated code) and the launcher in build-linux
-#   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped, symbols kept
+#   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped,
+#             symbols kept;
+#             PS2X_RELEASE_KIND=player (default: debug UI and probes compiled out) or developer (both in:
+#             build-linux-release-dev -> dist-linux-release-dev), as build.sh release (Sprint 16 R3a, R295)
 #   test      the Python suite AND ps2x_tests -- both run, both verdicts print, non-zero if either failed
 #   all       tools + runtime (the default)
 #   --no-runner   build with no generated code at all: PS2X_RUNNER_GENERATED_DIR="", which skips the
@@ -39,6 +42,7 @@ GEN="${PS2X_RUNNER_GENERATED_DIR:-$ROOT/recomp/output}"
 DIST="$ROOT/dist-linux"
 RELBUILD="$PS2R/build-linux-release"    # Sprint 9 Goal 2: the release configuration, its own tree ...
 RELDIST="$ROOT/dist-linux-release"      # ... and its own folder
+REL_KIND="${PS2X_RELEASE_KIND:-player}" # Sprint 16 R3a (R295): player|developer, see build.sh release()
 
 STEP=""
 for arg in "$@"; do
@@ -92,7 +96,12 @@ runtime() {
 
 release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the system toolchain, ELF strip
   local genopt="${REL_GENOPT:--O2}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
-  local fc=() src name objcopy tag
+  local fc=() src name objcopy tag debug_ui probes
+  case "$REL_KIND" in
+    player) debug_ui=OFF; probes=OFF ;;
+    developer) debug_ui=ON; probes=ON; RELBUILD="$PS2R/build-linux-release-dev"; RELDIST="$ROOT/dist-linux-release-dev" ;;
+    *) echo "build_linux: PS2X_RELEASE_KIND=$REL_KIND -- it is player|developer" >&2; return 2 ;;
+  esac
   for src in "$RTBUILD"/_deps/*-src; do
     [ -d "$src" ] || continue
     name="$(basename "$src")"; name="${name%-src}"
@@ -100,7 +109,8 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
   done
   cmake_configure "$RELBUILD" -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
         -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
-        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" ${fc[@]+"${fc[@]}"} >/dev/null
+        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" \
+        -DPS2X_ENABLE_DEBUG_UI="$debug_ui" -DPS2X_ENABLE_PROBES="$probes" ${fc[@]+"${fc[@]}"} >/dev/null
   objcopy="${OBJCOPY:-$(command -v llvm-objcopy || command -v objcopy)}"
   tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"
   mkdir -p "$RELDIST/symbols"
@@ -125,7 +135,7 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
     [ -f "$elf" ] || continue
     cp "$elf" "$RELDIST/"; break
   done
-  echo "built $RELDIST: $(ls "$RELDIST" | tr '\n' ' ') (genopt=$genopt lto=$lto/$scope icf=${icf:-off})"
+  echo "built $RELDIST, the $REL_KIND kind: $(ls "$RELDIST" | tr '\n' ' ') (genopt=$genopt lto=$lto/$scope icf=${icf:-off} debug_ui=$debug_ui probes=$probes)"
 }
 
 verdict() {   # $1 = what ran, $2 = its exit code

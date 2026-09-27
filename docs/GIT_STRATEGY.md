@@ -155,6 +155,8 @@ from the owner's disc and is not, and must never be, in the repository. So:
   build anything; it does now.*)
 - The playable archives are built on the owner's machine (`./build.sh release`, `scripts/make_portable.sh --release`,
   the Linux pair in the VM), gated 3/3 on that exact exe, audited for their import closure, and hashed.
+- Two kinds from one packaging run (R295): `socom2-portable.zip`, the player exe (debug UI and probes compiled out,
+  the one the gate passes), and `socom2-developer.zip` (`PS2X_RELEASE_KIND=developer ./build.sh release`, both in).
 - A release is: tag -> the archives + `SHA256SUMS` + `THIRD_PARTY_NOTICES` attached to a **draft** GitHub Release by
   `gh release create --draft` -> the owner reads it and publishes. Publishing is the owner's click, every time.
   **Built (Sprint 10 H8, 2026-09-21):** `.github/workflows/release-draft.yml` -- a `v*` tag runs the leak check and

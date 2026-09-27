@@ -70,7 +70,7 @@ if [ "$DRY_RUN" = 1 ]; then
       tools)     echo "  would run: tools -- ps2_recomp and ps2_analyzer in third_party/ps2recomp/build-tools" ;;
       recomp)    echo "  would run: recomp -- overlay ELF, fixed function map, tools, ps2_recomp into recomp/output" ;;
       runtime)   echo "  would run: runtime -- third_party/ps2recomp/build-clang: $([ "$NO_RUNNER" = 1 ] && echo "ps2_runtime (no generated code)" || echo ps2EntryRunner), the launcher, into dist/" ;;
-      release)   echo "  would run: release -- third_party/ps2recomp/build-release, stripped, into dist-release/" ;;
+      release)   echo "  would run: release (${PS2X_RELEASE_KIND:-player}) -- third_party/ps2recomp/build-release[-dev], stripped, into dist-release[-dev]/" ;;
       test_step) echo "  would run: test -- the quiet gate, the Python suite, the C++ tests" ;;
     esac
   done
@@ -86,6 +86,10 @@ TOOLBUILD="$PS2R/build-tools"      # ps2_recomp / ps2_analyzer
 RTBUILD="$PS2R/build-clang"        # runtime + runner with generated code
 RELBUILD="$PS2R/build-release"     # Sprint 9 Goal 2: the release configuration -- its own tree, never the developer's
 RELDIST="$ROOT/dist-release"       # ... and its own folder; dist/socom2.exe stays the gate's and the harness's default
+# Sprint 16 R3a (R295): the release is two kinds. player (the default) compiles the debug UI and the probes out and
+# stages into dist-release/; developer keeps both and stages into dist-release-dev/, from its own tree, so building
+# one kind never reconfigures the other's (release() picks them). scripts/make_portable.sh --release packages both.
+REL_KIND="${PS2X_RELEASE_KIND:-player}"
 GEN="$ROOT/recomp/output"
 [ "$NO_RUNNER" = 1 ] && GEN=""
 
@@ -156,7 +160,12 @@ release() {
   # default said -O2 from 443238e until Sprint 9 P7 found it, so every release built by running this
   # script plainly had shipped the configuration the measurement rejected.
   local genopt="${REL_GENOPT:--O1}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
-  local fc=() src name
+  local fc=() src name debug_ui probes
+  case "$REL_KIND" in
+    player) debug_ui=OFF; probes=OFF ;;
+    developer) debug_ui=ON; probes=ON; RELBUILD="$PS2R/build-release-dev"; RELDIST="$ROOT/dist-release-dev" ;;
+    *) echo "build.sh: PS2X_RELEASE_KIND=$REL_KIND -- it is player|developer" >&2; return 2 ;;
+  esac
   socom_require_python build.sh      # the import closure below (portable_audit.py) -- before a long build, not after
   # Reuse the developer tree's fetched sources read-only (raylib, imgui, ...): a second tree would clone them all again.
   for src in "$RTBUILD"/_deps/*-src; do
@@ -168,7 +177,8 @@ release() {
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
         -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
-        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" -DPS2X_GAME_REVISION=r0001 ${fc[@]+"${fc[@]}"} >/dev/null
+        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" -DPS2X_GAME_REVISION=r0001 \
+        -DPS2X_ENABLE_DEBUG_UI="$debug_ui" -DPS2X_ENABLE_PROBES="$probes" ${fc[@]+"${fc[@]}"} >/dev/null
   cmake --build "$RELBUILD" --target ps2EntryRunner socom_unzipped_launcher -j "${REL_JOBS:-$(nproc)}"
   local stage="$RELDIST/.stage" tag
   tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"
@@ -195,7 +205,7 @@ release() {
   done
   [ -f "$ROOT/dist/socom2_game.elf" ] && cp "$ROOT/dist/socom2_game.elf" "$RELDIST/"
   rm -rf "$stage"
-  echo "built dist-release/socom2.exe ($(wc -c < "$RELDIST/socom2.exe") bytes; genopt=$genopt lto=$lto/$scope icf=${icf:-off}; symbols in dist-release/symbols)"
+  echo "built $(basename "$RELDIST")/socom2.exe, the $REL_KIND kind ($(wc -c < "$RELDIST/socom2.exe") bytes; genopt=$genopt lto=$lto/$scope icf=${icf:-off} debug_ui=$debug_ui probes=$probes; symbols in $(basename "$RELDIST")/symbols)"
 }
 
 test_step() {

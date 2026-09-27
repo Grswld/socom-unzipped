@@ -45,19 +45,28 @@ def render(manifest, today=None):
                                                manifest.get("branch", "?"))
     if dirty > 0:
         build += "   dirty tree: %d uncommitted path%s" % (dirty, "" if dirty == 1 else "s")
-    archive = "archive:  %s" % manifest.get("archive", "?")
-    if manifest.get("archive_path"):
-        archive += "   (%s)" % manifest["archive_path"]
-    lines = [
-        "```",
-        build,
-        archive,
-        "          sha256: %s" % manifest.get("archive_sha256", "?"),
-        "exe:      %s sha256: %s" % (manifest.get("exe", "socom2.exe"), manifest.get("exe_sha256", "?")),
+    # Sprint 16 R3a (R295): a --release run packages the player and the developer archive; the manifest lists each
+    # under "archives" with its kind (the first, the player, is also the top level). An older manifest has one.
+    archives = manifest.get("archives") or [manifest]
+    lines = ["```", build]
+    for a in archives:
+        archive = "archive:  %s" % a.get("archive", "?")
+        if a.get("kind"):
+            archive += "   [%s]" % a["kind"]
+        if a.get("archive_path"):
+            archive += "   (%s)" % a["archive_path"]
+        lines += [
+            archive,
+            "          sha256: %s" % a.get("archive_sha256", "?"),
+            "exe:      %s sha256: %s" % (a.get("exe", "socom2.exe"), a.get("exe_sha256", "?")),
+        ]
+    play = ("play that archive" if len(archives) == 1 else
+            "play the %s archive (the first)" % (archives[0].get("kind") or "first"))
+    lines += [
         "```",
         "",
         "Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_portable.sh` wrote with this "
-        "archive (the chain's last step); play that archive, unzipped to a new folder.",
+        "archive (the chain's last step); %s, unzipped to a new folder." % play,
     ]
     return "\n".join(lines)
 

@@ -64,6 +64,22 @@ class RenderTest(unittest.TestCase):
         self.assertRegex(block, r"(?m)^build:")
         self.assertRegex(block, r"(?m)^archive:")
 
+    def test_a_two_archive_manifest_renders_both_with_their_kind(self):
+        # Sprint 16 R3a (R295): one --release run packages the player and the developer archive
+        two = dict(MANIFEST, kind="player", archive_path="dist-release/portable/socom2-portable.zip", archives=[
+            {"kind": "player", "archive": "socom2-portable.zip",
+             "archive_path": "dist-release/portable/socom2-portable.zip", "archive_sha256": "a" * 64,
+             "exe": "socom2.exe", "exe_sha256": "b" * 64},
+            {"kind": "developer", "archive": "socom2-developer.zip",
+             "archive_path": "dist-release/portable/socom2-developer.zip", "archive_sha256": "c" * 64,
+             "exe": "socom2.exe", "exe_sha256": "d" * 64}])
+        block = playtest_block.render(two, "2026-09-26")
+        for text in ("socom2-portable.zip", "socom2-developer.zip", "a" * 64, "b" * 64, "c" * 64, "d" * 64,
+                     "player", "developer"):
+            self.assertIn(text, block)
+        self.assertRegex(block, r"(?m)^archive:.*socom2-portable\.zip")   # sitting.py reads the first archive: line
+        self.assertLess(block.index("socom2-portable.zip"), block.index("socom2-developer.zip"), "the player first")
+
     def test_a_dirty_tree_is_said(self):
         block = playtest_block.render(dict(MANIFEST, tree_dirty=3), "2026-09-26")
         self.assertIn("dirty tree", block)

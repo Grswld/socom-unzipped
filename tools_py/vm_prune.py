@@ -32,9 +32,11 @@ ROOTS = ("third_party/ps2recomp/ps2xLauncher/", "third_party/ps2recomp/ps2xShare
 # synced (its config and its Linux scripts are what three Python tests read) but never pruned: the tar leaves
 # server/config/simulated.db behind on purpose, and that file is the guest's own.
 EXCLUDED = (".git/", "vm/", "logs/", "game/", "dist/", "dist-release/", "dist-linux/", "dist-linux-release/",
+            "dist-release-dev/", "dist-linux-release-dev/",
             "recomp/output/", "tools/", "research/", "node_modules/", "server/",
             "third_party/ps2recomp/build-clang/", "third_party/ps2recomp/build-tools/",
-            "third_party/ps2recomp/build-linux/", "third_party/ps2recomp/build-linux-release/")
+            "third_party/ps2recomp/build-linux/", "third_party/ps2recomp/build-linux-release/",
+            "third_party/ps2recomp/build-linux-release-dev/")
 SKIP_PARTS = ("__pycache__", "_deps")
 
 

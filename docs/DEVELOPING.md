@@ -44,7 +44,12 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ## Run it (players)
 The player's page is `docs/INSTALL.md`, and what goes wrong is `docs/FAQ.md`. For a developer: `scripts/make_portable.sh`
 builds `dist/portable/socom2/` (and a zip) from a finished build — the game, its DLLs, the launcher, a README and the
-licences, with empty `cards/` and `logs/` — which is the folder INSTALL describes.
+licences, with empty `cards/` and `logs/` — which is the folder INSTALL describes. The release is two kinds (R295):
+`./build.sh release` builds the **player** exe into `dist-release/` with the debug UI and the probes compiled out
+(`-DPS2X_ENABLE_DEBUG_UI=OFF -DPS2X_ENABLE_PROBES=OFF`: developer mode, so every Dev knob, reads as off), and
+`PS2X_RELEASE_KIND=developer ./build.sh release` the **developer** exe with both in, into `dist-release-dev/`;
+`scripts/make_portable.sh --release` then writes `socom2-portable.zip` and `socom2-developer.zip` from one run, one
+`SHA256SUMS` line and one manifest entry (with its `kind`) each. The ELF ships in both for now (issue #70).
 
 ## Publishing anything: the leak check
 
@@ -792,8 +797,9 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 
 - **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
   Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
-  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Packaging: `scripts/make_portable.sh
-  [--release]`, `scripts/make_server_zip.sh`.
+  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Release kind: `PS2X_RELEASE_KIND=player`
+  (default; `dist-release/`) or `developer` (`dist-release-dev/`; `dist-linux-release[-dev]/` on Linux). Packaging:
+  `scripts/make_portable.sh [--release]` (both kinds' archives when both are built), `scripts/make_server_zip.sh`.
 - **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score
   without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
   The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources
