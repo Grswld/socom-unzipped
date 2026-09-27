@@ -601,8 +601,8 @@ recorded (the r0001 recomp's measured time is the build block's, 273 s and 352 s
 ### Build, run, verify — a newcomer's first hour
 
 **Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
-under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), then `./build.sh runtime --no-runner`
-builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
+under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), `python -m pip install -r requirements.txt`
+installs the pinned Python packages, then `./build.sh runtime --no-runner` builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
 verify. That is what the `windows` and `linux` workflows do. Since Sprint 13 C1 their `build` / `build-windows` jobs
 also run `bash scripts/build_synthetic_runner.sh --build-dir <the job's tree>`: the runner (`ps2EntryRunner`) is
 configured against `tests/fixtures/synthetic_recomp/` -- three hand-written functions in the recompiler's shape (an
@@ -622,7 +622,7 @@ beside it (resolve a new one with `git ls-remote <repo> <tag> '<tag>^{}'`; the `
 annotated tag), and never with `GIT_SHALLOW TRUE` (a shallow clone cannot check out a bare commit). The Windows
 FFmpeg is `ffmpeg-7.1.5` of System233/ffmpeg-msvc-prebuilt with a `URL_HASH SHA256=` (a bump: `gh api
 repos/System233/ffmpeg-msvc-prebuilt/releases/tags/<tag>` gives the asset's `digest`; download the file and check
-`sha256sum` matches it). CI's `pip install` takes `==` pins (through the root `requirements.txt` once H7 lands it).
+`sha256sum` matches it). CI's `pip install` takes `==` pins (through the root `requirements.txt`).
 `linux.yml`'s `apt-get install` is deliberately not version-pinned -- a -dev pin holds back a runtime package the
 runner image upgrades itself, which ends in a downgrade conflict -- so the step records the last green run's
 versions in a comment and prints the FFmpeg family's installed versions (`dpkg-query -W`) into every run's log; the

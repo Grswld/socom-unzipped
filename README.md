@@ -8,7 +8,7 @@ hosted server.**
 [![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
 
 A green badge means everything that builds without the game built and passed its tests on a clean machine. The game
-itself is checked on the maintainer's machine, with a disc. There is no public release yet.
+itself is checked on the maintainer's machine, with a disc.
 
 > ## ⚠️ Multiplayer disclaimer
 >
@@ -31,8 +31,8 @@ itself is checked on the maintainer's machine, with a disc. There is no public r
 - **Your own disc.** The game reads its assets from the ISO of the US retail release (`SCUS-97275`, disc revision
   r0001); the launcher verifies the disc before it will launch. **No game code or game data is in this repository**:
   not the executable, not the recompiled C++, not textures, audio, movies or saves -- the recompiled program is built
-  by each developer from their own disc. A contribution that adds any of it is closed unread (`CONTRIBUTING.md`). How
-  a player build is distributed without shipping any of that is being settled before the first public release.
+  by each developer from their own disc. A contribution that adds any of it is closed unread (`CONTRIBUTING.md`); the
+  release will carry the program, never the disc's code (issue #70).
 - **Online play on a server we host.** The game's original network (DNAS / Medius) is gone; this project runs a
   [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server) configured for SOCOM II and points
   the game at it. The launcher's default server is `socom.scotho.com`.
@@ -42,14 +42,13 @@ itself is checked on the maintainer's machine, with a disc. There is no public r
 ## Status
 
 As of 2026-09-26 the game boots from your own disc to the title, through the menus and into the missions, with a pad
-or the keyboard, and renders through OpenGL at up to four times the console's resolution. Online login, the lobby and
+(the keyboard walks the menus), and renders through OpenGL at up to four times the console's resolution. Online login, the lobby and
 full rounds work on the hosted server, so far only between copies of the game driven by the test harness on one
-machine; a build of the community's r0004 revision plays a round too. Not yet: a public download, the console's full
-frame rate in missions, a finished Linux client, and any disc other than the NTSC r0001 release.
+machine; a build of the community's r0004 revision plays a round too. Not yet: the console's full frame rate in
+missions, a finished Linux client, and any disc other than the NTSC r0001 release.
 The game does not send your voice yet.
 
-The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`; `docs/CHANGELOG.md` is
-what merged when, and `docs/CURRENT_SPRINT.md` says what is being worked on now.
+The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`.
 
 ## For players: get it
 
@@ -86,10 +85,6 @@ bash scripts/disc_to_elf.sh "<your ISO>"   # the disc tree and the decrypted ove
 python -m tools_py.parity.gate --stamp first_run     # the in-game gate, 15 to 17 minutes
 ```
 
-*(Until 2026-09-25 this block ran `python -m unittest discover ...` as a separate step after `./build.sh test`, which
-already runs it -- the Python suite twice -- and called the gate "about 15 minutes"; `docs/DEVELOPING.md`'s first-hour
-table has the measured times.)*
-
 `docs/DEVELOPING.md` is the full developer reference: repository layout, the first hour on a clean checkout with the
 lines that say each step worked, every runtime knob (`PS2X_*`) and its exact effect, the online harness, and the
 launcher internals. `CONTRIBUTING.md` says what a pull request needs; `docs/GIT_STRATEGY.md` how branches are cut.
@@ -111,10 +106,10 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 | `build.sh`, `run.sh` | Build and run on Windows (Git Bash); `scripts/build_linux.sh` on Linux |
 | `recomp/` | Recompiler configuration, the function map, and the readable names with their provenance (`socom2_names.csv`; `docs/DEVELOPING.md` "Names in the generated code") |
 | `third_party/ps2recomp/` | The vendored PS2Recomp fork with this project's runtime changes (`git log -- third_party`) |
-| `tools_py/` | Python tooling: the disc-to-ELF chain, the recompiler's inputs, the naming levers, the parity gate and the online harness, tests (`docs/DEVELOPING.md` has a map of every module). *(Reworded 2026-09-25, Sprint 13 S1: the row named only "the overlay decryptor, ELF builder, the parity gate and the online harness".)* |
+| `tools_py/` | Python tooling: the disc-to-ELF chain, the recompiler's inputs, the naming levers, the parity gate and the online harness, tests (`docs/DEVELOPING.md` has a map of every module). |
 | `ghidra_scripts/` | Headless Ghidra scripts used for the reverse engineering |
 | `server/` | Horizon Private Server sources and the SOCOM II configuration |
-| `docs/` | `HANDOFF.md` (start here), `KNOWN.md`, `STATUS.md`, `CURRENT_SPRINT.md`, `HUMAN_TASKS.md`, the research notes under `docs/research/`, and each sprint's spec and plan under `docs/superpowers/` |
+| `docs/` | Player pages `docs/INSTALL.md` and `docs/FAQ.md`; the developer reference `docs/DEVELOPING.md`; the record `docs/KNOWN.md` |
 | `tests/` | Fixtures for the C++ suite |
 
 ### How it was built

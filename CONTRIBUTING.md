@@ -13,10 +13,10 @@ build and test everything else, which is where most contributions land:
 | You have | You can build | How |
 |---|---|---|
 | A clone, Linux (Ubuntu 24.04 is what CI uses) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/build_linux.sh --no-runner`, then `bash scripts/build_linux.sh test --no-runner`. The package list is in `.github/workflows/linux.yml`. |
-| A clone, Windows (Git Bash, Python 3) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/bootstrap_windows.sh` (fetches llvm-mingw, CMake and Ninja into `tools/`, each pinned by sha256; ~245 MB once), then `./build.sh runtime --no-runner` and `./build.sh test --no-runner`. The `windows` workflow does exactly this on a bare runner. |
+| A clone, Windows (Git Bash, Python 3) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/bootstrap_windows.sh` (fetches llvm-mingw, CMake and Ninja into `tools/`, each pinned by sha256; ~245 MB once), then `python -m pip install -r requirements.txt`, `./build.sh runtime --no-runner` and `./build.sh test --no-runner`. The `windows` workflow does exactly this on a bare runner. |
 | Your own r0001 disc as well | the game | `pip install -r requirements.txt`, then `bash scripts/disc_to_elf.sh "<your ISO>"` (eight minutes and 4.2 GB: it extracts the disc and decrypts the overlays), then `./build.sh recomp`, `./build.sh runtime`, `./build.sh test` (Windows, Git Bash) or `scripts/build_linux.sh`; the recipe is `docs/DEVELOPING.md` "From your own disc to a buildable ELF". |
 
-**The state of the game build (2026-09-21).** `./build.sh recomp` starts from files this repository does not and must not contain: the extracted disc tree (`game/disc/`) and the plaintext overlays merged into one ELF (`game/overlays/socom2_game.elf`). Producing them from your own disc is now one command -- `bash scripts/disc_to_elf.sh "<your ISO>"` -- which extracts the ISO9660 filesystem, decrypts the DNAS overlay and the `RUN/RAW/APACHE00.ZDB` code package by running the game's own code under Unicorn, merges the result into the ELF, and verifies every step against the digests recorded in `tools_py/disc_to_elf_expected.json`. It is idempotent: a second run is a no-op that still verifies. **What is proven:** the whole path a newcomer is told to walk, run end to end on 2026-09-21 from a genuine `git clone` of this repository into an empty directory on Windows -- clone, `install_hooks.sh`, `bootstrap_windows.sh` (a real 245 MB download from no cache), `build.sh runtime --no-runner`, `build.sh test --no-runner` (764/764), the Python suite, `disc_to_elf.sh` against an r0001 ISO, `build.sh recomp`, `build.sh runtime` -- **42 minutes from `git clone` to a `dist/socom2.exe` of 236,852,224 bytes**, with the overlays and the merged ELF hashing to the recorded digests on the third independent reproduction of them. The numbers are in `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md`. **What is not:** any other disc image of that revision (the command says clearly which check failed if yours differs), and the same chain on Linux, where only `scripts/build_linux.sh` has been run and never from an ISO. If either fails for you, open an issue with the line it refused on -- that is exactly the report this needs.
+**The game from your own disc**, step by step with the line that says each step worked, is `docs/DEVELOPING.md`'s "a newcomer's first hour"; if a step refuses on your machine, open an issue with the line it refused on.
 
 Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is "not r0001").
 
@@ -78,8 +78,7 @@ milestone is the backlog.
 marks the ones you can close without a disc. The rule is `docs/DOC_MAINTENANCE.md` §7 step 6, applied at every sprint
 close: the label goes on an issue only when its closing bar needs no disc, no run of the in-game gate and nothing
 that lives on the maintainer's machine, and `good first issue` only where that bar is a test you can run yourself.
-On 2026-09-25 that was #33, #39, #40, #46 and #48, with #48 also `good first issue`; each of them carries a comment
-saying what you can do there without a disc and what you cannot. `needs-disc-gate` marks the ones that need the disc.
+Each labelled issue carries a comment saying what you can do there without a disc and what you cannot. `needs-disc-gate` marks the ones that need the disc.
 An issue whose body opens with "Internal:" is the maintainer's loop lock or gate harness: public for the record, not
 something a contributor can run. Some Evidence sections cite paths under `logs/`: those are git-ignored files on the
 maintainer's machine, and the same section says so and names what a clone holds instead (the test, the KNOWN row, a
@@ -103,7 +102,7 @@ move it onto the stack once it is reproduced from the project's own code and har
 ## Conduct
 
 Be civil and specific. This is a preservation project run by one person and a set of AI agents working under that
-person's direction (`docs/HANDOFF.md` and `docs/LOOP_PROMPT.md` describe how); agent-written commits carry a
+person's direction (`docs/HOW_IT_WAS_BUILT.md` describes how); agent-written commits carry a
 `Co-Authored-By` trailer. Cheats, exploits against other players, and anything aimed at a server the project does not
 run are out of scope and unwelcome. SOCOM, PlayStation and related marks belong to their owners; this project is not
 affiliated with or endorsed by Sony Interactive Entertainment.
