@@ -54,20 +54,20 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 16 controller** (a desktop-app worktree under `.claude/worktrees/`, the owner's word 2026-09-27) in the
-  main tree on `sprint-16`; its agents in `C:/projects/wt-s16-<task>` (`agent/s16-<task>`, `scripts/agent_worktree.sh`)
-  or in cloud sessions on `agent/s16-<task>` branches off `main` (R312). `wt-s15-t1b` holds `agent/s15-t1b` (T1b's
-  round closed at `d183a627`; its review and merge are V0's) -- do not remove it.
-- **The Sprint 15 controller** is done (`v0.15.0`); it handed the main tree over.
-- **Other sessions' trees:** `wt-launch-rev`, `wt-docs-review`, `wt-pad-focus`, `wt-web-viewer`; never edit them.
-- **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
-  an orphan directory, not a worktree; leave it until someone identifies it.
+- **The Sprint 16 controller** (`.claude/worktrees/sprint-16-cronjob-setup-76e59d`, branch `claude/sprint-16-cronjob-setup-76e59d`)
+  fast-forwards the main tree's `sprint-16`; its seat cannot push (the guard); the push seat closed 23:20Z -- O24.
+- **Keep** `wt-s16-r1b` (`agent/s16-r1b` at `3d17f192`, unmerged; its `logs/` hold research/76's patch and script);
+  the merged `wt-s16-f2`, `wt-s16-l1b-drv`, `wt-s16-l1b-seam` can go (`agent_worktree.sh remove`, then `git branch -D`).
+- **Other sessions' trees, never edit:** the site/web session's `wt-doc-surfaces`, `wt-domain-socomunzipped`, `wt-web-*`,
+  `socom_pc_web`; the Sprint 17 seat's `.claude/worktrees/mission-frame-drops-7e50ea`; `wt-pad-focus`, `wt-cherry`, `wt-ci-fix`.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
 
 ## 6. What is owed
 
-- **The owner's rows:** the 9 open rows `docs/SITTING.md` lists (`docs/HUMAN_TASKS.md`). Under R271 a row unanswered
-  through two sittings closes by default at the next close (`docs/SITTING.md` marks them): nothing today.
-- **Sprint 16's, lock-free:** the plan's table; the rounds of L1a, L2 and X1; R1a's spike.
-- **Lock-bound, the end of this block with the desk idle (the owner's word, R311):** V0 -- the chain (the gate, the
-  fourth leg, parity and dips), T2's drag proof, T1b's review, merge and capture; then F0's window.
+- **The owner's rows** (`docs/SITTING.md`): O24 the one push of `sprint-16` before the PR; O22 the helper as a shipped binary.
+- **Sprint 16's close (this session):** the batch-4 chain's verdict on the F2 merge and F2's A/B
+  (`logs/s16_f2_ab.sh`), the CLOSED block, the close-out commit, the PR `sprint-16 -> main` (approved by the owner
+  2026-09-27 22:50Z), the tag `v0.16.0`, the merge-back; then the notice to the Sprint 17 seat.
+- **Carried to Sprint 17's Task 0:** R1b (#70), R2 (#71), #57's r0004 leg, #59's fence, R3b, R3a's developer build, F1, F3
+  (#32, backlog), X2, X4 (#41, backlog).
+

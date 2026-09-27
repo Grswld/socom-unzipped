@@ -47,7 +47,7 @@ As of 2026-09-27 the game boots from your own disc to the title, through the men
 (the keyboard walks the menus), and renders through OpenGL at up to four times the console's resolution. Online login,
 the lobby and full rounds work on the project's test server, so far only between copies of the game driven by the test
 harness on one machine; a build of the community's r0004 revision passes the same checks and plays a round there too.
-The launcher lists the personas your card has made, from a record the game itself writes on each login. Version
+The launcher lists the personas that have logged in from this launcher, from a record the game writes on each successful login. Version
 0.15.0 is the latest; the open sprint is working towards a program-only download that builds the game's image from
 your disc on first run, the launcher installing the community's r0004 update itself, and a frame-rate bar. Not yet:
 playing on a community server (the launcher's community preset stays greyed until the update installs), the console's

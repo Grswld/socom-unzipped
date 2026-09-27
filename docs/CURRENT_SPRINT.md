@@ -17,7 +17,7 @@ branch:       sprint-16 -- OPEN 2026-09-27 07:00Z off main at d84ffbde (X5's Dep
 spec:         docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md (four milestones R, F, L, X
               with a bar each; the acceptance bar is its section 4; six sentences superseded at the open, the plan's
               Task 0 Step 5). The Sprint 15, 14, 13, 12 and 11 specs closed with v0.15.0 down to v0.11.0.
-plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R313
+plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R320 (R314 vacant)
               from the global counter; its task book 2026-09-27-sprint-16-tasks.md and the readers' facts
               2026-09-27-sprint-16-tree-facts.md beside it). The Sprint 15 plan (R282-R289; R298 the close's window,
               superseded) and the owner's sitting (R290-R297, docs/superpowers/plans/2026-09-26-owner-sitting.md) are
@@ -34,12 +34,13 @@ rulings:      indexed in docs/RULINGS.md (generated: every ruling with its statu
 baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gate: the Sprint 14
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
+              the player archive); the quiet baseline F0's three gates on `4cbbb14f` (median 27.09 ms, spread 7.0 %); before them the Sprint 14
               close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
               Sprint 14 plan's Log, 16:20Z); before it (Sprint 13, 2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
               same exe (23:51Z), `s13_proof3_gate` 3/3 (r0001, 20:54Z), `s13_names_r0004_gate` 3/3 PINS MATCH (r0004,
               d027546d...); the plan's Log has each; audio parity
-              `s9_q1_parity_ours2` 31/48 (2026-09-20, unchanged since)
+              `s16_v0_t1b` 12/48 on the merged tree (2026-09-27, issue #91: the ambient bed 11 dB low; the Sprint 9 capture `s9_q1_parity_ours2` still reads 31/48 under today's compare)
 ```
 
 Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money or decision; **[B: x]** blocked on x.
@@ -58,7 +59,7 @@ developer archives under R295, the first archives against a draft), **F** the fr
 GL thread's top phase, the -O2 A/B, the conditional levers, #59's ceiling as a refusal), **L** the launcher's face (#73
 the persona viewer, #74 the tooltips), **X** fillers (tools/ restored by one flag, the beta matcher, #57's r0004 leg,
 #41's menu frame, Dependabot #10). First: **V0**, the Sprint 15 legs the owner deferred, one chain at the end of this
-controller's first block with the desk idle. The defaults D1-D15 are ruled R299-R313 in the plan; the bar is the spec's
+controller's first block with the desk idle. The defaults D1-D15 are ruled R299-R313 in the plan (R315-R320 followed; R314 was never issued); the bar is the spec's
 section 4; no regression (D6, R304). Before the open, on the owner's word: L2 as PR #82, L1a's design note, R3a
 re-scoped, X1 reviewed, X5 merged (`d84ffbde`). The plan's Log is the live state; this block gains its table at the
 close.

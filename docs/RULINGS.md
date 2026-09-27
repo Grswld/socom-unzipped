@@ -2,13 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-353 rulings (314 global, 39 sprint-local): 345 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+354 rulings (315 global, 39 sprint-local): 346 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-314 rulings.
+315 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
@@ -18,6 +18,7 @@
 | R317 | 2026-09-27 | active | `PS2Runtime::initialize` gains a headless mode taken by an explicit argument the helper's `main` passes (not a knob), default off so `socom2.exe`'s behaviour i… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R317** |
 | R316 | 2026-09-27 | active | the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a… (amended: see the ledger) | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R316** |
 | R315 | 2026-09-27 | active | the player exe drops the debug UI only (`PS2X_ENABLE_DEBUG_UI=OFF`); the runtime's probes stay in both kinds, because the gate reads them (… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R315** |
+| R314 | -- | active | never issued: the counter went R313 to R315 on 2026-09-27; the range is Sprint 16's. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R314** |
 | R313 | 2026-09-27 | active | the owner's word of 05:57Z ("proceed to tackle open tasks or issues in the order you see fit"): lock-free tasks started on topic branches off `main` before… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R313** |
 | R312 | 2026-09-27 | active | cloud sessions on the owner's credit (the owner's word of 05:57Z: "any cloud session model/task combination that would be relevant and expedient to the sprint"… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R312** |
 | R311 | 2026-09-27 | active | the owner's words of 2026-09-27 (06:16Z "it can close it's session without the play test and YOU run the play test at the end"; then "proceed autonomously with… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R311** |

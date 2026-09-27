@@ -412,8 +412,7 @@ developer's chain and the oracle's producer.
    `game/disc` (or `PS2X_CD_IMAGE`) exists and prints `first run: skipped -- no disc` where it does not, the
    console-replay pattern (R222); the container parse (the 0x580 signed header, the ZDB entry walk), the exit codes
    and the progress states are tested from fixtures that hold no disc bytes (a synthetic ZDB, as
-   `test_disc_to_elf.py` builds a synthetic ISO). The generated `throw` sites are asserted to be exactly the 31
-   known data-word addresses (§2.3; the in-row ones, the same 31 over the whole 340-function set), and beside them
+   `test_disc_to_elf.py` builds a synthetic ISO). The generated `throw` sites are asserted to be exactly the 31 known data-word addresses (superseded: the pin is 191 from 2026-09-27 09:58Z, §2.3's blockquote, and 199 since R1b round 8 -- the plan's R1b row) (§2.3; the in-row ones, the same 31 over the whole 340-function set), and beside them
    the map's boundary rows are asserted to be exactly the six gap addresses `0x4efac8`, `0x52af30`, `0x5375a4`,
    `0x539e00`, `0x53b7bc` and `0x540a10` (derived by R1b's tool from the recompiler's log, pinned by the test), so a
    real unhandled instruction can never hide among them; the pin covers
