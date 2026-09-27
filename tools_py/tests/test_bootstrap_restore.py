@@ -191,6 +191,28 @@ class RestoreTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(partial, ".restore-incomplete")), "the marker outlived the copy")
         self.assertTrue(os.path.isfile(os.path.join(partial, "pcsx2-qt.exe")))
 
+    def test_a_replace_interrupted_after_its_deletions_still_leaves_the_marker(self):
+        # The invariant behind the marker: from the first deletion to the last verified byte, the marker is on
+        # disk. The script's fault seam stops the replace right after the deletion step, where rmtree(dst) would
+        # have taken the marker with the files.
+        partial = os.path.join(self.tools, "pcsx2")
+        os.makedirs(os.path.join(partial, "inis"))
+        for rel in (".restore-incomplete", "inis/PCSX2.ini", "stale.dll"):
+            with open(os.path.join(partial, *rel.split("/")), "wb") as fh:
+                fh.write(b"old\n")
+        env = self.env()
+        env["SOCOM_RESTORE_FAULT"] = "after-delete"
+        code, out = run_script(["--restore-owner-tools"], env)
+        self.assertEqual(code, 1, out)
+        self.assertIn("fault injected after the deletion step", out)
+        self.assertEqual(os.listdir(partial), [".restore-incomplete"], "a child survived, or the marker did not")
+        # The next run, without the fault, reads the entry as incomplete again and finishes it.
+        code, out = self.restore()
+        self.assertEqual(code, 0, out)
+        self.assertIn("restore: pcsx2 incomplete from an earlier run, replaced", out)
+        self.assertIn("restore: pcsx2 restored (2 files)", out)
+        self.assertFalse(os.path.exists(os.path.join(partial, ".restore-incomplete")))
+
     def test_a_destination_that_is_a_link_or_a_junction_is_refused_before_any_copy(self):
         target = os.path.join(self.tmp, "elsewhere")
         os.makedirs(target)

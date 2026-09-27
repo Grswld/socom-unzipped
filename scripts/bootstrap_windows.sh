@@ -162,11 +162,23 @@ for name, files, probe, size, sha, src, dst, action in plan:
             print("restore: would copy %s -> %s (%d files)" % (fwd(src), fwd(dst), files))
         continue
     if action == "replace":
+        # The marker must outlive the deletions: rmtree(dst) would take it first and a Ctrl-C in the middle would
+        # leave a half-deleted entry with no marker, which the next run would call "present". So every child but
+        # the marker goes, one by one, and the copy lands in the directory that still holds it.
         print("restore: %s incomplete from an earlier run, replaced" % name)
-        shutil.rmtree(dst)
+        for child in os.listdir(dst):
+            if child == MARKER:
+                continue
+            p = os.path.join(dst, child)
+            if os.path.isdir(p) and not is_reparse(p):
+                shutil.rmtree(p)
+            else:
+                os.remove(p)
+        if os.environ.get("SOCOM_RESTORE_FAULT") == "after-delete":     # the test's seam, nothing else sets it
+            raise SystemExit("restore: %s: fault injected after the deletion step (tests only)" % name)
     elif os.path.isdir(dst):
         os.rmdir(dst)                     # empty: the planted case
-    os.makedirs(dst)
+    os.makedirs(dst, exist_ok=True)
     with open(os.path.join(dst, MARKER), "w") as fh:
         fh.write("a restore of %s from %s is in flight; if this file is here, the copy did not finish\n"
                  % (name, fwd(src)))
