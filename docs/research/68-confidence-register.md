@@ -15,6 +15,15 @@ number differently from a KNOWN row, §3 says so with the evidence and KNOWN is 
 >   -- per minute `2 2 0 0 2 0 0 0 0 0 0 0 0 0 0 0` (16 endpoint minutes; the game's own callbacks cover 735 s).
 >   KNOWN §2's #42 row said 6: confirmed, not replaced. A trial's capture must be clean and read at or below 6 in
 >   total and 2 in a minute.
+> - **2026-09-27 13:40Z (Sprint 16 V0 leg 3b, the main tree at `ab3b8e92`, exe `b6c0c19c…`, the dump exported): the
+>   dip bar is red on the count and the count is issue #42's** — `audio_dips --dump` on `logs/parity/s16_v0_t1b_dump`
+>   read `DEVICE total 9 over 11 minutes, max 3 in a minute (01:00)`, per minute `2 3 2 2 0 0 0 0 0 0 0`, against the
+>   bar's 6 and 2 (the 2026-09-25 baseline 6 over 16 minutes, max 2). All nine are 50 ms holes 10.3–20.2 dB deep
+>   before 192 s — the menu and briefing minutes, streams live — in the endpoint and not in the dump at the aligned
+>   time (offset 3.78 s, correlation 0.99), none in the mission windows s32–s47: the shape KNOWN §2's #42 row
+>   describes, not a seam effect (T1b inert, 0 `snd_AutoVol` calls; the callback trace 0 late, 0 dry,
+>   `pcm_underruns=0`). Parity 13/48 on this capture (issue #91's bed). The next measurement is a quiet-host
+>   re-capture; still above 6/2 → a trial build with T1b's merges reverted (KNOWN §2's T1b row).
 > - **2026-09-27 12:20Z (Sprint 16 V0 leg 3, the tree `39bff922`, the chain's exe `83a79563…`): the parity bar on a
 >   fresh capture reads 12/48**, not 31/48 — every mission window s32–s47 fails on rms alone, the ambient bed at
 >   -51.2 dBFS against the console's -35..-41, a level regression that dates from 2026-09-20's square-law group
