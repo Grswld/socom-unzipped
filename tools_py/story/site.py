@@ -388,9 +388,18 @@ def render(doc, timeline, repo, img_base, logo, ui_css_inline=None, base=""):
     title = doc["title"].replace("SOCOM Unzipped: ", "").replace("SOCOM Unzipped \u2014 ", "")
     fore = doc.get("foreword")
     closing = [c for c in doc["closing"] if c is not fore]
-    out = ["<title>SOCOM Unzipped Story</title>",
+    out = ["<title>SOCOM Unzipped Story: how SOCOM II is becoming a PC game</title>",
            '<meta name="description" content="How SOCOM II is becoming a PC game: the timeline, every claim cited.">',
            '<meta name="theme-color" content="#08121a">',
+           # SEO (2026-09-27): one canonical for both copies, and the link-preview tags; the share image is the site's.
+           '<link rel="canonical" href="%s/story.html">' % SITE,
+           '<meta property="og:type" content="article">',
+           '<meta property="og:site_name" content="SOCOM II Unzipped">',
+           '<meta property="og:title" content="SOCOM Unzipped Story: how SOCOM II is becoming a PC game">',
+           '<meta property="og:description" content="How SOCOM II is becoming a PC game: the timeline, every claim cited.">',
+           '<meta property="og:url" content="%s/story.html">' % SITE,
+           '<meta property="og:image" content="%s/img/share.jpg">' % SITE,
+           '<meta name="twitter:card" content="summary_large_image">',
            FONTS]
     if ui_css_inline is None:
         out.append('<link rel="stylesheet" href="/src/ui.css">')
