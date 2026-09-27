@@ -2,16 +2,31 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-332 rulings (293 global, 39 sprint-local): 326 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+347 rulings (308 global, 39 sprint-local): 341 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-293 rulings.
+308 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R313 | 2026-09-27 | active | the owner's word of 05:57Z ("proceed to tackle open tasks or issues in the order you see fit"): lock-free tasks started on topic branches off `main` before… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R313** |
+| R312 | 2026-09-27 | active | cloud sessions on the owner's credit (the owner's word of 05:57Z: "any cloud session model/task combination that would be relevant and expedient to the sprint"… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R312** |
+| R311 | 2026-09-27 | active | the owner's words of 2026-09-27 (06:16Z "it can close it's session without the play test and YOU run the play test at the end"; then "proceed autonomously with… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R311** |
+| R310 | 2026-09-27 | active | L1's persona list is a sidecar beside the card, outside `PS2X_MC_DIR`, written by the runtime and committed only on a successful login response, built in… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R310** |
+| R309 | 2026-09-27 | active | the canonical r0004 image is rebuilt from the served package inside R2 (LATER row 33), its pins re-accepted after a green run under a ruling; the PCSX2-sourced… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R309** |
+| R308 | 2026-09-27 | active | a Sprint 15 task not at its recorded outcome carries into this plan under the milestone it serves with its record cited: the legs the owner deferred are V0; T3… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R308** |
+| R307 | 2026-09-27 | active | R297 (windows) and R294 (merges) are Global Constraints of this plan, not re-ruled. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R307** |
+| R306 | 2026-09-27 | active | #32's title and bar are corrected to the identical-bytes skip for `same_rewritten` tiles (R108b, V2); the task runs only if F0 ranks uploads in the mission's t… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R306** |
+| R305 | 2026-09-27 | active | no audio task this sprint unless V0's capture leaves a lead; then the one candidate is the frame-stamped replay of research/70 §9.4 as an X row. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R305** |
+| R304 | 2026-09-27 | active | the no-regression bar for a performance change: the gate 3/3 PINS MATCH with gate freshness, the fourth leg, `--vram-diff` 15/15, the console-replay case, audi… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R304** |
+| R303 | 2026-09-27 | active | six to eight loop days; V0 first, then F0 and R1a's spike; the close by day eight; a phase past its box hands its rows to LATER with a trigger. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R303** |
+| R302 | 2026-09-27 | active | a mid-sprint merge to `main` once R1 and R3 are reviewed and gated (R184's precedent), so the release does not wait on F. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R302** |
+| R301 | 2026-09-27 | active | R1's route is decided by the half-day spike between recompiling the decrypt routines and porting from the decompilation; the spike may recommend neither, in wh… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R301** |
+| R300 | 2026-09-27 | active | `-O2` for the generated code ships only if `FRAME mean=` improves 10 % or more against F0's baseline and the release zip grows under 5 MB against today's 67.7… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R300** |
+| R299 | 2026-09-27 | active | the loop builds and gates the release archives and writes the exact `gh release upload` and verify-half commands into the Log and O2, and stops short of the up… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R299** |
 | R298 | 2026-09-27 | active | the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R298** |
 | R297 | 2026-09-26 | active | lock-bound work (a build, a game run, a chain) is announced as a window by the session that runs it, to the owner and to the other controller sessions on the m… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R297** |
 | R296 | 2026-09-26 | active | the naming defaults D1-D7 stand as the loop judged them; the hand read of the five routines and the holding of the 148 slot-count namings become one future tas… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R296** |

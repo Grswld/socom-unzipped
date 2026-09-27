@@ -10,11 +10,12 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-27 06:27Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut) is CLOSED on `sprint-15`
-  without its play test (the owner's word); the PR to `main` and the tag `v0.15.0` follow. Next: Sprint 16 "ten minutes to
-  the server", opened by its own controller session on `sprint-16` off `main`; it also runs Sprint 15's carried legs as one
-  chain (the Sprint 15 plan's Outcome lists them with their bars). No cloud session from this machine's loop.
-- **Next free ruling number: R299** (R290-R297 the owner's sitting, `docs/superpowers/plans/2026-09-26-owner-sitting.md`; R298 the close's window, the Sprint 15 plan).**
+- **Where the loop is now (2026-09-27 07:00Z, LATEST) -- Sprint 16 ("ten minutes to the server") is OPEN on `sprint-16`,
+  off `main` at `d84ffbde` (Sprint 15 merged as `v0.15.0` at `10650369`, PR #81, without its play test). First V0 (the
+  Sprint 15 legs, one chain at the end of this block, the desk idle), then R1a's spike and F0's window; L2 (#74) is PR
+  #82 in a fix round, L1a's note in one, R3a and X1 in flight. Cloud sessions are allowed for lock-free work (R312).
+  The plan `docs/superpowers/plans/2026-09-27-sprint-16.md` (its Log) is the live state.
+- **Next free ruling number: R314** (R299-R313 are Sprint 16's D1-D15, its plan; R298 the Sprint 15 close's window, superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -49,10 +50,11 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 15 controller** (the same session that ran Sprint 14) in the main tree on `sprint-15`; its agents in
-  `C:/projects/wt-s15-<task>`, one branch `agent/s15-<task>` each, made and removed by `scripts/agent_worktree.sh`.
-- **The Sprint 16 controller** (its own worktree under `.claude/worktrees/`, the owner's word 2026-09-27) drafts Sprint 16's
-  plan and starts once Sprint 15 is merged: `sprint-16` off `main`; the main tree moves there after the tag.
+- **The Sprint 16 controller** (a desktop-app worktree under `.claude/worktrees/`, the owner's word 2026-09-27) in the
+  main tree on `sprint-16`; its agents in `C:/projects/wt-s16-<task>` (`agent/s16-<task>`, `scripts/agent_worktree.sh`)
+  or in cloud sessions on `agent/s16-<task>` branches off `main` (R312). `wt-s15-t1b` holds `agent/s15-t1b` (T1b's
+  GREEN build commits on green; its merge is V0's) -- do not remove it.
+- **The Sprint 15 controller** is done (`v0.15.0`); it handed the main tree over.
 - **The Sprint 13 controller** is done (the sitting held, R290-R297). **Other sessions' trees:** `wt-launch-rev`,
   `wt-pad-focus`, `wt-private-inputs`, `wt-web-viewer` (the HUMAN_TASKS and r0004 sessions'); never edit them.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
@@ -64,6 +66,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** the 8 open rows `docs/SITTING.md` lists (`docs/HUMAN_TASKS.md`). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers the open rows would close together (`docs/SITTING.md` marks them).
-- **Nothing lock-free is owed by Sprint 15;** Sprint 16's Task 0 lifts the Outcome's carried legs.
-- **Lock-bound (Sprint 16's, one chain at the end of its controller's block):** the gate, the fourth leg, parity and dips,
-  T2's drag proof, T1b's capture; then T3's quiet gates and T4's builds in windows the owner names.
+- **Sprint 16's, lock-free:** the plan's table; the rounds of L1a, L2 and X1; R1a's spike.
+- **Lock-bound, the end of this block with the desk idle (the owner's word, R311):** V0 -- the chain (the gate, the
+  fourth leg, parity and dips), T2's drag proof, T1b's review, merge and capture; then F0's window.

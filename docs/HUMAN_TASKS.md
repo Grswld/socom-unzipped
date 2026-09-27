@@ -39,6 +39,7 @@ numbers written before that day means the archive.
 | O18 | ~~**The private-inputs location**~~ **Answered 2026-09-26 (R296): retired -- the loop's half is #75, the site's half in its TODO. The full row is in the archive.** | ~~nothing changes; the fetch script stays~~ | Sprint 14 D9 | 2026-09-26 |
 | O19 | ~~**`tools_py/story/site.py`, modified and uncommitted in the main tree**~~ **Answered 2026-09-26 (R296): committed as the owner's, `83c62d75`. The full row is in the archive.** | ~~stashed around each night chain and restored (R281)~~ | Sprint 14 W2 | 2026-09-26 |
 | O20 | **Windows for game runs** (R297): the hours a controller may run a game on this machine. First asked for the Sprint 15 drag test in a mission (#67, code-complete, its run waiting). | no game run by a controller until you name a window; builds are announced as windows | R297 | 2026-09-26 |
+| O21 | **The `ci` label** `.github/dependabot.yml:11` asks for does not exist, so Dependabot warns on every PR (seen on #10): create the label, or say the line goes. | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | Sprint 16 X5 | 2026-09-27 |
 
 O9 and O17, answered, are in the archive (`docs/archive/HUMAN_TASKS-to-2026-09-25.md`, struck rows); reopenable by number.
 

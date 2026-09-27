@@ -9,30 +9,23 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-15 -- CLOSED 2026-09-27 06:27Z (the PR to main and the tag v0.15.0 follow; opened 2026-09-26 off main at 200f3287 (the Sprint 14 merge, PR #68, tagged v0.14.0;
-              Sprint 13 merged as v0.13.0 at 6a82caaa, PR #61). This machine's checkout is on sprint-15 (the same
-              controller session); agents work in worktrees on agent/s15-* branches. See "Sprint 15 -- OPEN" below,
-              then the Sprint 14 CLOSED block. (The Sprint 14 line read: opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
-              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
-              machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
-              agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
-              CLOSED block (12's and 11's are archived, see plans). No cloud session runs from 2026-09-26.
-spec:         docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md, re-cut 2026-09-26 on the owner's
-              word (audio first, #67, the two measurements if time allows; its acceptance bar is its section 4; the walk
-              list's other rows live in docs/LATER.md). The Sprint 14, 13, 12 and 11 specs closed with v0.14.0, v0.13.0,
-              v0.12.0 and v0.11.0.
-plans:        docs/superpowers/plans/2026-09-26-sprint-15.md (the task table, the Log newest first, the rulings R282-R289
-              from the global counter; the owner's sitting of 2026-09-26 holds R290-R297 in
-              docs/superpowers/plans/2026-09-26-owner-sitting.md). The Sprint 14 plan (R269-R281) is closed, listed in its
-              block below; the Sprint 13 plan (S13-R1..R14) too, its block in
-              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 are in
-              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older in
+branch:       sprint-16 -- OPEN 2026-09-27 07:00Z off main at d84ffbde (X5's Dependabot merge, above the Sprint 15 merge
+              10650369, PR #81, tagged v0.15.0; Sprint 14 merged as v0.14.0 at 200f3287, PR #68). This machine's checkout
+              is on sprint-16 (the Sprint 16 controller session, a desktop-app worktree beside it); agents work in
+              worktrees on agent/s16-* branches, or in cloud sessions on branches off main (D14, R312); the controller
+              merges them. See "Sprint 16 -- OPEN" below, then the Sprint 15 and 14 CLOSED blocks.
+spec:         docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md (four milestones R, F, L, X
+              with a bar each; the acceptance bar is its section 4; six sentences superseded at the open, the plan's
+              Task 0 Step 5). The Sprint 15, 14, 13, 12 and 11 specs closed with v0.15.0 down to v0.11.0.
+plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R313
+              from the global counter; its task book 2026-09-27-sprint-16-tasks.md and the readers' facts
+              2026-09-27-sprint-16-tree-facts.md beside it). The Sprint 15 plan (R282-R289; R298 the close's window,
+              superseded) and the owner's sitting (R290-R297, docs/superpowers/plans/2026-09-26-owner-sitting.md) are
+              closed, listed in the block below; the Sprint 14 plan (R269-R281) too; the Sprint 13 plan's block is in
+              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 in
+              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 16 "ten minutes to the server": docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md
-              (the owner's, PROPOSED, 6f57eb1e); its plan is drafted by the Sprint 16 controller session in its own worktree
-              and it opens on sprint-16 off main once this sprint is closed and merged (its D10 carries what this sprint
-              leaves short of an outcome). Sprint 15's origin, the cloud handoff of 2026-09-25, never ran and is kept
-              under a NEVER RUN banner (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
+next sprint:  not named; the plan's Task 98 names the candidate at the close.
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
@@ -55,7 +48,22 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 15 — CLOSED 2026-09-27 (the PR `sprint-15` -> `main` and the tag `v0.15.0` on its merge commit follow this close-out; closed without its play test on the owner's word; the record of the sprint is the block below)
+## Sprint 16 — OPEN 2026-09-27 07:00Z (plan `docs/superpowers/plans/2026-09-27-sprint-16.md`, "ten minutes to the server")
+
+Opened by the Sprint 16 controller off `main` at `d84ffbde` (above the Sprint 15 merge `10650369`, `v0.15.0`) on the
+owner's word of 2026-09-27 (05:33Z the seat; 05:57Z cloud sessions on the credit and open tasks in the controller's
+order; 06:16Z Sprint 15 closes without its play test and this controller runs it at the end). Four milestones with a bar
+each -- **R** the exe-only release (#70's native first-run decrypt after a spike, #71's r0004 package, the player and
+developer archives under R295, the first archives against a draft), **F** the frame rate (measured on a quiet host, the
+GL thread's top phase, the -O2 A/B, the conditional levers, #59's ceiling as a refusal), **L** the launcher's face (#73
+the persona viewer, #74 the tooltips), **X** fillers (tools/ restored by one flag, the beta matcher, #57's r0004 leg,
+#41's menu frame, Dependabot #10). First: **V0**, the Sprint 15 legs the owner deferred, one chain at the end of this
+controller's first block with the desk idle. The defaults D1-D15 are ruled R299-R313 in the plan; the bar is the spec's
+section 4; no regression (D6, R304). Before the open, on the owner's word: L2 as PR #82, L1a's design note, R3a
+re-scoped, X1 reviewed, X5 merged (`d84ffbde`). The plan's Log is the live state; this block gains its table at the
+close.
+
+## Sprint 15 — CLOSED 2026-09-27 (merged to `main` as `v0.15.0` at `10650369`, PR #81, 06:52Z; closed without its play test on the owner's word -- the legs are Sprint 16's V0; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-26 16:57Z, closed 2026-09-27 06:27Z: one loop day, every task reviewed by a fresh
 agent. Adopted #254's LLE IOP as an out-of-tree audio oracle on the owner's word (the disc's own 989SND.IRX with our provider
