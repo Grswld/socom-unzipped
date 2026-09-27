@@ -3,6 +3,7 @@
 // MediusAccountLoginResponse does -- and a ledger under the temp folder, never a real card (the design note, section 4).
 #include "MiniTest.h"
 #include "launcher/personas.h"
+#include "socom2_crypto.h"
 #include "socom2_persona_record.h"
 #include "socom2_rt_frames.h"
 
@@ -442,6 +443,87 @@ void register_persona_record_tests()
             t.IsTrue(w.seen.size() == 2 && w.carry.kept.capacity() <= socom2_rt::kAppMostBytes, "the longest length: the carry never grew past its cap");
             w.recv(rtFrame(0x0A, loginResponse("msgid-0001", 0, 0x08, 198)));
             t.Equals(f.rec.commits(), 1, "the frame after them is read");
+        });
+
+        tc.Run("the Dev lines (RED first): pending, answered with its status, unmatched, unanswered -- never a field", [](TestCase &t)
+        {
+            std::vector<std::string> lines;   // before the recorder: it speaks from its destructor
+            Fixture f;
+            {
+                pr::Recorder rec{pr::Context{f.ledger, "socom.scotho.com", false, [&](const std::string &l) { lines.push_back(l); }},
+                                 [] { return std::time_t(1790000000); }};
+                auto send = [&](const char *id, const char *pass) {
+                    const std::vector<uint8_t> m = loginRequest(id, "alpha", pass);
+                    rec.encrypt(kState, 0, m.data(), m.size());
+                };
+                auto receive = [&](const char *id, int32_t status) {
+                    const std::vector<uint8_t> m = loginResponse(id, status, 0x08, 198);
+                    rec.decrypt(pr::socketState(3), 0, m.data(), m.size());
+                };
+                receive("msgid-0000", 0);
+                send("msgid-0001", "hunter2");
+                receive("msgid-0009", 0);
+                receive("msgid-0001", 0);
+                send("msgid-0002", "wrong");
+                receive("msgid-0002", -1003);
+                rec.closeState(pr::socketState(4));   // nothing pending: silent
+                send("msgid-0003", "hunter2");
+                send("msgid-0004", "hunter2");
+                rec.closeState(pr::socketState(3));
+            }
+            const std::vector<std::string> want{
+                "a login response with no request pending",
+                "a login request pending",
+                "a login response for another request: unmatched, still pending",
+                "answered: status 0, committed (1 so far)",
+                "a login request pending",
+                "answered: status -1003, refused and dropped",
+                "a login request pending",
+                "a login request pending (it replaces one never answered)",
+                "state 0x80000003 torn down with a login request pending: unanswered",
+                "the recorder torn down with a login request pending: unanswered",
+            };
+            t.Equals(lines.size(), want.size(), "one line per event");
+            for (std::size_t i = 0; i < lines.size() && i < want.size(); ++i)
+                t.Equals(lines[i], want[i], "line " + std::to_string(i));
+            for (const std::string &l : lines)
+                t.IsTrue(l.find("alpha") == std::string::npos && l.find("hunter2") == std::string::npos &&
+                             l.find("wrong") == std::string::npos && l.find("msgid") == std::string::npos,
+                         "never a name, a password or a MessageID");
+        });
+
+        tc.Run("the frame and RC4 trace labels (RED first): class and type only where they are; a tiny counter-0 call is whole", [](TestCase &t)
+        {
+            socom2_rt::Frame app;
+            app.id = 0x0A;
+            app.len = 198;
+            app.lead[0] = 0x01;
+            app.lead[1] = 0x08;
+            app.leadHave = 2;
+            t.Equals(socom2_rt::describe(app), std::string("id=0x0a plain len=198 class=0x1 type=0x8"), "a plain SERVER_APP");
+            socom2_rt::Frame sealed = app;
+            sealed.id = 0x8B;
+            sealed.len = 104;
+            t.Equals(socom2_rt::describe(sealed), std::string("id=0x8b encrypted len=104"), "encrypted: no class, no type");
+            socom2_rt::Frame accept = app;
+            accept.id = 0x07;
+            t.Equals(socom2_rt::describe(accept), std::string("id=0x07 plain len=198"), "an RT control frame: its first bytes are a field");
+            // Through the walk: the lead bytes gathered across chunks, never an encrypted frame's.
+            Fixture f;
+            Wire w{f.rec};
+            const std::vector<uint8_t> request = rtFrame(0x0B, loginRequest("msgid-0001", "alpha", "hunter2"));
+            w.recv(request, 0, 3);
+            w.recv(request, 3, 4);
+            w.recv(request, 4);
+            w.recv(rtFrame(0x8B, loginRequest("msgid-0001", "alpha", "hunter2")));
+            t.IsTrue(w.seen.size() == 2 && socom2_rt::describe(w.seen[0]) == "id=0x0b plain len=104 class=0x1 type=0x7" &&
+                         socom2_rt::describe(w.seen[1]) == "id=0x8b encrypted len=104",
+                     "the client's plain APP_TOSERVER, then its encrypted one");
+            const uint8_t two[2] = {0x01, 0x07};
+            t.Equals(socom2_crypto::rc4TraceTail(0, two, 104), std::string(" class=0x1 type=0x7"), "a message's first call");
+            t.Equals(socom2_crypto::rc4TraceTail(0, two, 1), std::string(" (a whole 1-byte message: no class or type)"),
+                     "counter 0 and one byte: a whole message (an RT_MSG_CLIENT_ECHO), not a continuation");
+            t.Equals(socom2_crypto::rc4TraceTail(50, two, 54), std::string(" (continues)"), "a later counter continues");
         });
     });
 }

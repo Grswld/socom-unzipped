@@ -91,7 +91,7 @@ namespace socom2_hostnet
             bool used = false;
             bool connecting = false;
             bool blocking = false;
-            socom2_rt::Carry rx;   // Sprint 16 L1b: the RT frame walk of what arrives; closeSocket's reset starts it again
+            socom2_rt::Carry rx, tx;   // Sprint 16 L1b: the RT frame walk each way; closeSocket's reset starts it again
         };
 
         std::mutex g_mutex;
@@ -200,10 +200,25 @@ namespace socom2_hostnet
         // so it never crosses the RC4 seam. Every TCP byte received is walked as RT frames (socom2_rt_frames.h) and each
         // plain RT_MSG_SERVER_APP body is kept for socom2_persona::onServerApp, which the caller runs AFTER g_mutex is
         // released (the ledger write must not sit under the socket table's lock); encrypted frames are the RC4 seam's.
-        void walkFrames(socom2_rt::Carry &carry, const void *bytes, std::size_t n, std::vector<std::vector<uint8_t>> *apps)
+        // The send side is walked for PS2X_SOCOM2_LOGIN_TRACE alone. The trace prints each chunk's descriptor and size and
+        // each frame's head at its last byte (socom2_rt::describe) -- never a field, never a hash.
+        bool loginTraceOn()
         {
-            socom2_rt::splitRtFrames(carry, static_cast<const uint8_t *>(bytes), n, true, [&](const socom2_rt::Frame &f) {
-                if (f.kept)
+            static const bool on = ps2x::knob("PS2X_SOCOM2_LOGIN_TRACE") != nullptr;
+            return on;
+        }
+
+        void walkFrames(int fd, socom2_rt::Carry &carry, const void *bytes, std::size_t n, bool receiving,
+                        std::vector<std::vector<uint8_t>> *apps)
+        {
+            const bool trace = loginTraceOn();
+            const char *way = receiving ? "recv" : "send";
+            if (trace)
+                std::cout << "[login-trace] hostnet " << way << " fd=" << fd << " n=" << n << std::endl;
+            socom2_rt::splitRtFrames(carry, static_cast<const uint8_t *>(bytes), n, receiving, [&](const socom2_rt::Frame &f) {
+                if (trace)
+                    std::cout << "[login-trace] hostnet " << way << " frame fd=" << fd << ' ' << socom2_rt::describe(f) << std::endl;
+                if (f.kept && apps != nullptr)
                     apps->emplace_back(f.body, f.body + f.len);
             });
         }
@@ -448,12 +463,15 @@ namespace socom2_hostnet
 
     int closeSocket(int fd)
     {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        Entry *e = entry(fd);
-        if (!e)
-            return -9;
-        hostnetClose(e->s);
-        *e = Entry{};   // the frame walk's carry goes with it
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            Entry *e = entry(fd);
+            if (!e)
+                return -9;
+            hostnetClose(e->s);
+            *e = Entry{};   // the frame walk's carries go with it
+        }
+        socom2_persona::onSocketClosed(fd);   // outside the lock, as onServerApp is
         return 0;
     }
 
@@ -596,7 +614,11 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         const IoResult n = ::send(e->s, static_cast<SendBuf>(data), static_cast<IoLen>(size), 0);
-        return n >= 0 ? static_cast<int>(n) : mapError();
+        if (n <= 0)
+            return n == 0 ? 0 : mapError();
+        if (e->proto == Proto::Tcp && loginTraceOn())
+            walkFrames(fd, e->tx, data, static_cast<std::size_t>(n), false, nullptr);   // the bytes that went, only
+        return static_cast<int>(n);
     }
 
     int recv(int fd, void *data, uint32_t size)
@@ -613,7 +635,7 @@ namespace socom2_hostnet
                 return n == 0 ? 0 : mapError();
             g_rxBytes += static_cast<uint64_t>(n);
             if (e->proto == Proto::Tcp)
-                walkFrames(e->rx, data, static_cast<std::size_t>(n), &apps);
+                walkFrames(fd, e->rx, data, static_cast<std::size_t>(n), true, &apps);
         }
         for (const std::vector<uint8_t> &body : apps)
             socom2_persona::onServerApp(fd, body.data(), body.size());

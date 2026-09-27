@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 
@@ -307,14 +308,22 @@ namespace socom2_crypto
         void traceRc4(const char *what, uint32_t stateAddr, uint32_t counter, const uint8_t *plain, uint32_t len)
         {
             std::cout << "[login-trace] " << what << " state=0x" << std::hex << stateAddr << std::dec << " counter=" << counter
-                      << " len=" << len;
-            if (counter == 0 && len >= 2)
-                std::cout << " class=0x" << std::hex << static_cast<unsigned>(plain[0]) << " type=0x" << static_cast<unsigned>(plain[1])
-                          << std::dec;
-            else
-                std::cout << " (continues)";
-            std::cout << std::endl;
+                      << " len=" << len << rc4TraceTail(counter, plain, len) << std::endl;
         }
+    }
+
+    // Every rc4SetKeyHash re-keys per MESSAGE (the hash covers the whole of it), so a call at counter 0 is a whole
+    // message: under 2 bytes it is a tiny one -- the 1-byte RT_MSG_CLIENT_ECHO -- not a continuation (the seam reading).
+    std::string rc4TraceTail(uint32_t counter, const uint8_t *plain, uint32_t len)
+    {
+        char out[64];
+        if (counter != 0)
+            return " (continues)";
+        if (len < 2)
+            std::snprintf(out, sizeof out, " (a whole %u-byte message: no class or type)", static_cast<unsigned>(len));
+        else
+            std::snprintf(out, sizeof out, " class=0x%x type=0x%x", static_cast<unsigned>(plain[0]), static_cast<unsigned>(plain[1]));
+        return out;
     }
 
     void rc4SetKeyHash(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)    // FUN_0062a638(state, key, hash)

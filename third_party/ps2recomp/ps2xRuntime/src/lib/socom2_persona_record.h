@@ -82,12 +82,18 @@ namespace socom2_persona
         std::string ledgerPath;   // launcher::personas::ledgerPathFor(the card root)
         std::string server;       // PS2X_SOCOM2_SERVER, the address the game is pointed at
         bool second = false;      // PS2X_SOCOM2_RSA_KEY selects key b: the second instance
+        // The Dev lines (PS2X_SOCOM2_LOGIN_TRACE; empty = silent): pending, answered with its status, unanswered --
+        // counts and statuses, never a name, a password or a MessageID.
+        std::function<void(const std::string &)> trace;
     };
 
     class Recorder
     {
     public:
         explicit Recorder(Context context, std::function<std::time_t()> clock = [] { return std::time(nullptr); });
+        ~Recorder();   // says so when a request is still pending: never answered
+        // A state torn down (socom2_hostnet closed its descriptor): its half message goes, and a pending request says so.
+        void closeState(uint32_t state);
 
         // The OSK wrapper saw the login's password keyboard open (socom2_osk::Field::Password).
         void passwordKeyboardOpened() { m_keyboardOpened = true; }
@@ -116,6 +122,11 @@ namespace socom2_persona
         void onRequest(const std::vector<uint8_t> &message);
         void onResponse(const std::vector<uint8_t> &message);
         void commit();
+        void say(const std::string &line) const
+        {
+            if (m_context.trace)
+                m_context.trace(line);
+        }
 
         Context m_context;
         std::function<std::time_t()> m_clock;
@@ -131,8 +142,9 @@ namespace socom2_persona
     // seams in socom2_crypto.cpp and the keyboard wrapper in game_overrides_socom2.cpp call these.
     void onRc4Encrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len);
     void onRc4Decrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len);
-    // socom2_hostnet: a plain RT_MSG_SERVER_APP body read on descriptor fd (outside hostnet's lock).
+    // socom2_hostnet: a plain RT_MSG_SERVER_APP body read on descriptor fd (outside hostnet's lock), and fd closed.
     void onServerApp(int fd, const uint8_t *body, std::size_t len);
+    void onSocketClosed(int fd);
     void onPasswordKeyboardOpened();
     // installOskPrefill's count: how many of the keyboard's entries it wrapped, of how many.
     void onKeyboardObserverWraps(int wrapped, int entries);
