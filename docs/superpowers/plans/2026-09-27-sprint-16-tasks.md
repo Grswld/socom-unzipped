@@ -100,7 +100,9 @@ block), issue #67, `docs/PLAYTEST.md` (the chain writes its block).
   scripts/kill_stale_drivers.ps1`; more than 3 GB free.
 - [ ] **Step 2 (the chain):** on `sprint-16` with `main` at `v0.15.0` merged and no modified tracked file: `cp
   scripts/parity/merged_chain.sh logs/s16_v0_chain.sh && bash scripts/run_detached.sh --owner s16-v0 --purpose
-  "launch: V0 the Sprint 15 legs" --wait 90 --class run logs/s16_v0_chain.sh logs/s16_v0_chain.marker s16_v0` — recomp,
+  "merged chain: V0 the Sprint 15 legs" --wait 90 --class run logs/s16_v0_chain.sh logs/s16_v0_chain.marker s16_v0`
+  (the purpose must NOT start with "launch": `run_detached.sh` then writes the quiet marker `logs/.quiet`, and the
+  chain's own `build.sh test` refuses under it — the 10:00Z red, corrected here) — recomp,
   runtime, `./build.sh test` (the Python suite, `ps2x_tests`, `--vram-diff` 15/15), the gate on the exe it built, the
   fourth leg, the release build, PLAYTEST's block; poll the marker, never wait in the foreground. Leg 1's bar: the
   gate summary's `PINS MATCH` line and the leg's `12/12`.
