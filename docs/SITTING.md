@@ -2,13 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 9 open O rows (11 answered or struck); 48 active rulings since 2026-09-26 (48 dated, 0 placed by number or home, 202 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
+The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 10 open O rows (11 answered or struck); 50 active rulings since 2026-09-26 (50 dated, 0 placed by number or home, 202 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-9 open, 11 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
+10 open, 11 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
@@ -20,6 +20,7 @@ The page as of 2026-09-27, for the sitting after the one of 2026-09-26: 9 open O
 | O10 | Public actions upstream | file later (owner, 2026-09-26): nothing filed; `docs/UPSTREAM.md` is the register | 2026-09-25 | 2 |
 | O15 | Linux on real hardware | not yet (owner, 2026-09-26: no such machine at hand); CI and the VM stand in; the VM half is the loop's backlog | 2026-09-18 | 9 |
 | O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 1 |
+| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 0 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 0 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
@@ -38,7 +39,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-48 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 48 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 202 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+50 active rulings on or after 2026-09-26, in the counter's order (the sprint-local names last, by date): 50 dated on or after it, and 0 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-26 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 202 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R269** (2026-09-26) an infrastructure sprint ahead of visible defects, in the order G, I, W, D, S, E, M. -- overturn by number
 - **R270** (2026-09-26) KNOWN §4's standing hazards move to their own file (`docs/HAZARDS.md`, class L, headed by the area each bites), KNOWN keeping §1–§3. -- overturn by number
@@ -66,7 +67,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R292** (2026-09-26) the launcher's post-SEND line excepts security reports ("unless it is a security report: those go through SECURITY.md, never a public issue"); the CONTACT fiel… -- overturn by number
 - **R293** (2026-09-26) the launcher obtains the r0004 package itself and takes the steps (fetch, decrypt with no console identity, build the r0004 ELF, switch to the shipped r0004 ex… -- overturn by number
 - **R294** (2026-09-26) no nightly ladder: the Task Scheduler entry stays disabled and the online tests run when a task needs them; the second machine is not yet; `main` keeps 0 requi… -- overturn by number
-- **R295** (2026-09-26) the player archive drops the debugger and the probe binaries and a developer archive keeps them; the report's log box stays off; the listens and the pad hands… -- overturn by number
+- **R295** (2026-09-26) the player archive drops the debugger and the probe binaries and a developer archive keeps them; the report's log box stays off; the listens and the pad hands…… -- overturn by number
 - **R296** (2026-09-26) the naming defaults D1-D7 stand as the loop judged them; the hand read of the five routines and the holding of the 148 slot-count namings become one future tas… -- overturn by number
 - **R297** (2026-09-26) lock-bound work (a build, a game run, a chain) is announced as a window by the session that runs it, to the owner and to the other controller sessions on the m… -- overturn by number
 - **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
@@ -85,6 +86,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R311** (2026-09-27) the owner's words of 2026-09-27 (06:16Z "it can close it's session without the play test and YOU run the play test at the end"; then "proceed autonomously with… -- overturn by number
 - **R312** (2026-09-27) cloud sessions on the owner's credit (the owner's word of 05:57Z: "any cloud session model/task combination that would be relevant and expedient to the sprint"… -- overturn by number
 - **R313** (2026-09-27) the owner's word of 05:57Z ("proceed to tackle open tasks or issues in the order you see fit"): lock-free tasks started on topic branches off `main` before… -- overturn by number
+- **R315** (2026-09-27) the player exe drops the debug UI only (`PS2X_ENABLE_DEBUG_UI=OFF`); the runtime's probes stay in both kinds, because the gate reads them (… -- overturn by number
+- **R316** (2026-09-27) the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a… -- overturn by number
 - **S13-R12** (2026-09-26) the close's issue-stack read, acted on. -- overturn by number
 - **S13-R13** (2026-09-26) the frame-time pin stays informational; #59 carries with the measured reason. -- overturn by number
 - **S13-R14** (2026-09-26) the carried-twice three go to the owner, the rest carry once to the backlog. #25 (the Linux VM suites; no Sprint 13 task), #26 (the chat bound's path; O2 resta… -- overturn by number

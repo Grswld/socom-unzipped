@@ -2,16 +2,18 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-347 rulings (308 global, 39 sprint-local): 341 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+349 rulings (310 global, 39 sprint-local): 343 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-308 rulings.
+310 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R316 | 2026-09-27 | active | the first-run decrypt is RECOMPILED: `ps2_recomp` turns the executed set (329 functions, identical over r0001's two blobs and the served r0004 package) into a… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R316** |
+| R315 | 2026-09-27 | active | the player exe drops the debug UI only (`PS2X_ENABLE_DEBUG_UI=OFF`); the runtime's probes stay in both kinds, because the gate reads them (… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R315** |
 | R313 | 2026-09-27 | active | the owner's word of 05:57Z ("proceed to tackle open tasks or issues in the order you see fit"): lock-free tasks started on topic branches off `main` before… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R313** |
 | R312 | 2026-09-27 | active | cloud sessions on the owner's credit (the owner's word of 05:57Z: "any cloud session model/task combination that would be relevant and expedient to the sprint"… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R312** |
 | R311 | 2026-09-27 | active | the owner's words of 2026-09-27 (06:16Z "it can close it's session without the play test and YOU run the play test at the end"; then "proceed autonomously with… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R311** |
@@ -30,7 +32,7 @@
 | R298 | 2026-09-27 | active | the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R298** |
 | R297 | 2026-09-26 | active | lock-bound work (a build, a game run, a chain) is announced as a window by the session that runs it, to the owner and to the other controller sessions on the m… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R297** |
 | R296 | 2026-09-26 | active | the naming defaults D1-D7 stand as the loop judged them; the hand read of the five routines and the holding of the 148 slot-count namings become one future tas… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R296** |
-| R295 | 2026-09-26 | active | the player archive drops the debugger and the probe binaries and a developer archive keeps them; the report's log box stays off; the listens and the pad hands… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R295** |
+| R295 | 2026-09-26 | active | the player archive drops the debugger and the probe binaries and a developer archive keeps them; the report's log box stays off; the listens and the pad hands… (amended: see the ledger) | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R295** |
 | R294 | 2026-09-26 | active | no nightly ladder: the Task Scheduler entry stays disabled and the online tests run when a task needs them; the second machine is not yet; `main` keeps 0 requi… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R294** |
 | R293 | 2026-09-26 | active | the launcher obtains the r0004 package itself and takes the steps (fetch, decrypt with no console identity, build the r0004 ELF, switch to the shipped r0004 ex… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R293** |
 | R292 | 2026-09-26 | active | the launcher's post-SEND line excepts security reports ("unless it is a security report: those go through SECURITY.md, never a public issue"); the CONTACT fiel… | `docs/superpowers/plans/2026-09-26-owner-sitting.md` **R292** |

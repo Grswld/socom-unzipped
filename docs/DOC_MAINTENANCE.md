@@ -140,6 +140,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/2026-09-26-sprint-14-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 17 entries of `docs/superpowers/plans/2026-09-26-sprint-14.md`'s Log, verbatim; the Log points here |
+| `docs/archive/2026-09-27-sprint-16-log-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 13 entries of `docs/superpowers/plans/2026-09-27-sprint-16.md`'s Log, verbatim; the Log points here |
 
 ## 4. What is enforced mechanically
 

@@ -1,10 +1,129 @@
-# Sprint 16 -- the task book (the bodies of the R, F, L and X tasks; the plan holds the table and the state)
+# Sprint 16 -- the task book (the bodies of every task; the plan holds the table and the state)
 
 Date: 2026-09-27. Split from the plan `docs/superpowers/plans/2026-09-27-sprint-16.md` at the open so the plan
 fits the open-plan ceiling (59,100 bytes after the Sprint 15 close's ratchet, R279); the plan's table and Log are
 the live state, this file is what an implementer is dispatched with. The readers' facts each task rests on:
 `docs/superpowers/plans/2026-09-27-sprint-16-tree-facts.md`. Class S by location. A body found false is corrected
 here with a `> Superseded by` blockquote (rule 11); a task's state lives only in the plan's table.
+
+## Task 0: the open
+
+**Files:** `docs/CURRENT_SPRINT.md` (header and an OPEN block), `docs/HANDOFF.md` §2 (the one "now" bullet, the
+counter) and §5 (who is in the tree), this file's Log and Rulings, the spec (two `> Superseded by` blockquotes),
+`docs/KNOWN.md` (the V0 row), `docs/RULINGS.md` and `docs/SITTING.md` (regenerated).
+
+- [ ] **Step 1:** when the Sprint 15 controller's line arrives with the tag: `git fetch origin && git tag -l v0.15.0
+  && git merge-base --is-ancestor v0.15.0 origin/main && echo CLOSED`. The Sprint 15 controller's session ended its
+  turn at 06:27Z with PR #81 open on its checks: if it does not return to merge and tag, this controller does both
+  from the main tree (`gh pr merge 81 --merge`; `sha=$(gh pr view 81 --json mergeCommit -q .mergeCommit.oid)`; `git
+  tag -a v0.15.0 $sha -m "Sprint 15: borrowed confidence, re-cut"`; `git push origin v0.15.0`; the CLOSED heading's
+  hash in the sprint file). Then, from a tree that may push (the main tree, checked out to `sprint-16` by whichever
+  session tags; this plan's worktree is for reading from then on): `git checkout -b sprint-16 origin/main` if the
+  branch does not exist yet, then this plan's commit
+  cherry-picked onto it (`git cherry-pick <sha>`; the worktree's `git log --oneline -1 --
+  docs/superpowers/plans/2026-09-27-sprint-16.md` names it), then the pre-open branches that merged to `main`
+  are already in (R3a, L2, L1a, X1 as the table's state column says at that hour).
+- [ ] **Step 2:** the GitHub milestone: `gh api -X POST repos/Scotho/socom-unzipped/milestones -f title='Sprint 16'
+  -f description='ten minutes to the server' --jq .number`; the sprint's issues (#70, #71, #73, #74, #59, #32, #57,
+  #41, #69) moved onto it with `gh issue edit N --milestone 'Sprint 16'`.
+- [ ] **Step 3:** fifteen rulings from the global counter (its next free number on), one per D1–D15, each with the decision, the
+  cost and the overturn, in this file's "Rulings made on the owner's behalf"; HANDOFF §2's counter line moved;
+  `python -m tools_py.rulings` and `python -m tools_py.sitting` run and their pages committed in the same commit.
+- [ ] **Step 4:** the Sprint 15 assumptions (spec §1.4) checked and recorded in the Log, one line each: T2's code
+  merged (`f84f4f66`, yes); T1b at a recorded outcome (no: DONE (code) on `agent/s15-t1b`, `795c93fe` plus the fix
+  round, its GREEN build and review not landed before the close — its merge and its chain step are V0's);
+  #69's fix merged (no: `agent/launch-rev` at `bca0d0d1` has no PR — R5 carries its run and
+  its merge); #75 merged (PR #79 — its state that hour); the counter past the Sprint 15 controller's window ruling
+  (HANDOFF §2 names the next free number). The four legs the owner
+  deferred are copied from the Sprint 15 plan's Outcome into V0 verbatim, bars included.
+- [ ] **Step 5 (rule 11):** two corrections in the spec, each a `> Superseded by` blockquote under the sentence it
+  corrects, with the readers' evidence: (a) §1.2's table row for `s14_close1` — the stamp's rows
+  (`mission.game.log:12815` and `:18196`) give 37.6 guest VBlanks/s, 369 ms/s of back-pressure wait (37 % of wall)
+  and 14.2 idle sleeps/s over the walk, not 41.5 / 289 / 18.6 and 29 % (the author confirmed 06:20Z: an every-120th-row
+  pass; the ladder row was computed the same way and is re-read from exact rows before a task cites it); the
+  conclusion stands; (b) §1.1's and L1's "research/38
+  and Sprint 13 W10 have the card's persona layout" — research/38 is the OSK routine and W10 a behaviour proof; the
+  record is opaque (D12). Issue #73 gets the same comment. (c) R1's "the DNAS self-decrypt ported straight from the
+  161-line Python" — `tools_py/dnas_selfdecrypt.py:10–12` reimplements no transform: it runs the overlay's four core
+  routines under Unicorn, so the DNAS stage is the spike's question too (R1a). (d) R3's "the debugger and the probe
+  binaries" — no such files exist; the words name the compile option `PS2X_ENABLE_DEBUG_UI` (`ps2xRuntime/CMakeLists.txt:18`)
+  and the probes compiled in beside it, so the split is a second release configuration with its own exe (R3a).
+  (e) X1's "PCSX2, Ghidra and the reference trees come back" — the backup's top level is cmake, ghidra, llvm-mingw,
+  ninja, pcsx2, pcsx2_b; nothing in the tree or the backup names a reference tree (the phrase is
+  `bootstrap_windows.sh:14`'s), so the manifest holds what the backup holds. (f) L1's bar and §4 item 5 cite #73's
+  "a card with two saved personas shows both and launching with either logs in as it" — met under D12 for personas
+  recorded through this build; a card whose personas predate it (or were made on a console) shows the "again"
+  sentence and each appears after its first login here; the decode that would show them at once is a LATER row.
+  Issue #73 gets that restated bar as a comment.
+  Also the issues audit must exit 0 before the open: #71 cited as a known issue in KNOWN §1 without the
+  `known-issue` label (the label, or the KNOWN wording).
+- [ ] **Step 6:** the sprint file's header block rewritten (branch, spec, plans, next sprint, baselines) and the
+  Sprint 16 OPEN block; the Sprint 15 CLOSED block left as the Sprint 15 controller wrote it; HANDOFF §2's bullet
+  and §5's rows (this controller in the main tree; the peers); the `docmaint: future` markers off the spec's plan
+  references; the next free research number read (`ls docs/research | sort -n | tail -3` → 73); KNOWN §2 gains the
+  V0 row ("v0.15.0's T2 code unproven by a game run until V0; T1b's branch unmerged, its review, merge and capture
+  in V0"); commit with the pathspec; push; `gh run list
+  --commit` shows only `secrets` and `docs`.
+
+**Verification:** `python -m tools_py.docmaint; echo $?` (OK and 0; the rulings line names the new highest);
+`python -m tools_py.issues audit; echo $?` (0).
+
+## Task V0: the Sprint 15 legs (D13) — one chain, the end of the first session block
+
+**The owner's word (2026-09-27 06:16Z):** "it can close it's session without the play test and YOU run the play test at
+the end." The legs, with their bars, verbatim from the Sprint 15 plan's Outcome (closed 06:27Z):
+
+1. **The close chain on the merged tree** (`scripts/parity/merged_chain.sh`, one lock): the gate 3/3 PINS MATCH and the
+   fourth leg 12/12 on the exe it builds; audio parity not below 31/48; the dip count at or below 6 (at most 2 in any
+   minute) on a mission capture with the dump (research/68's state block has the commands) — this is also T1b's Step 3.
+2. **T2's Step 3 (#67):** a ten-second title-bar drag in a mission with `PS2X_PC_SAMPLER=0.25 PS2X_AUDIO_TRACE=1
+   PS2X_AUDIO_CB_TRACE=<csv>`: `python -m tools_py.parity.window_drag drag --log <game.log> --seconds 10 --stamps <file>`
+   then `readout` must print ADVANCING with `cb_late +0 cb_dry +0 pcm_underruns +0` (exit 0); the before-capture on the
+   pre-fix exe `logs/s15_t2_before_352fed01.exe` (needs `--stale-ok` — `gate.py`'s flag; a plain `drive.py` run of the
+   stale exe checks no freshness) must read FROZEN or SLOWED; then a control round with one instance dragged mid-round;
+   then KNOWN's #67 row moved and the issue closed on its bar. Watch the frames right after `WM_EXITSIZEMOVE` (a
+   readback that returned early during the drag leaves stale VRAM for a frame or two).
+3. **T1b at DONE (code) on `agent/s15-t1b`** (`795c93fe` plus the fix round, its GREEN build and review not landed
+   before the close) — its merge and its chain step carried.
+4. **T3 (#59) and T4 (#32):** unstarted; their rows stay in LATER with triggers (F0/F5 and F3 here).
+
+V0's gate doubles as F0's first gate when the exe is the same and the host was quiet (the same instrument, the same
+`FRAME` line); F0 then owes two more.
+
+**Files:** `logs/s16_v0_chain.sh` (a copy of `scripts/parity/merged_chain.sh`), `logs/parity/gate/s16_v0/`,
+`docs/KNOWN.md` (#67's row, the T1b register row, the V0 row), `docs/research/68-confidence-register.md` (the state
+block), issue #67, `docs/PLAYTEST.md` (the chain writes its block).
+
+- [ ] **Step 1 (the window):** announced in the Log and to the peer sessions with the hour; the desk idle 15 minutes
+  or more (`GetLastInputInfo` through PowerShell, the run-gate skill's check); `bash scripts/check_quiet_gate.sh`;
+  `bash scripts/loop_lock.sh check` free; `powershell -NoProfile -ExecutionPolicy Bypass -File
+  scripts/kill_stale_drivers.ps1`; more than 3 GB free.
+- [ ] **Step 2 (the chain):** on `sprint-16` with `main` at `v0.15.0` merged and no modified tracked file: `cp
+  scripts/parity/merged_chain.sh logs/s16_v0_chain.sh && bash scripts/run_detached.sh --owner s16-v0 --purpose
+  "launch: V0 the Sprint 15 legs" --wait 90 --class run logs/s16_v0_chain.sh logs/s16_v0_chain.marker s16_v0` — recomp,
+  runtime, `./build.sh test` (the Python suite, `ps2x_tests`, `--vram-diff` 15/15), the gate on the exe it built, the
+  fourth leg, the release build, PLAYTEST's block; poll the marker, never wait in the foreground. Leg 1's bar: the
+  gate summary's `PINS MATCH` line and the leg's `12/12`.
+- [ ] **Step 3 (T2's drag, leg 2):** under the same lock holding or the next: a mission run with
+  `PS2X_PC_SAMPLER=0.25 PS2X_AUDIO_TRACE=1 PS2X_AUDIO_CB_TRACE=<csv>`, `python -m tools_py.parity.window_drag drag
+  --log <game.log> --seconds 10 --stamps <file>` after the HUD, then `readout`: ADVANCING with `cb_late +0 cb_dry +0
+  pcm_underruns +0` (exit 0); the frames right after `WM_EXITSIZEMOVE` looked at; the before-capture on the pre-fix
+  exe `logs/s15_t2_before_352fed01.exe` reads FROZEN or SLOWED; then a control round (the ladder's RUNG0 rules,
+  `docs/LADDER.md`) with one instance dragged mid-round: both instances finish the round, the kill lands.
+- [ ] **Step 4 (T1b, legs 1 and 3):** T1b's branch first: its fix round's GREEN build (`bash scripts/loop_lock.sh run
+  s16-v0 --class build -- ./build.sh test`), a fresh review, the merge into `sprint-16` — or, if its review fails,
+  the branch stays out and the Log says so; then the mission capture with the endpoint recording
+  (`scripts/parity/audio_parity.sh`'s live capture, WASAPI loopback, the desk idle) on the merged exe: `python -m
+  tools_py.parity.audio_parity compare scripts/parity/refs/audio_launch_to_mission_xl.pcsx2.json
+  <capture>/audio_scores.json` ≥ 31/48; `python -m tools_py.parity.audio_dips <capture>/endpoint.wav --dump
+  <capture>/mix.wav --log <game.log>` ≤ 6 DEVICE dips, at most 2 in any minute (research/68's commands). If T1b
+  merged after the chain of Step 2, the chain's gate is re-run on the exe that carries it.
+- [ ] **Step 5:** KNOWN moved with the artefacts (#67's row to fixed; the T1b register row; the V0 row retired or
+  kept with the failing leg); issue #67 closed on its bar; research/68's state block; the Log; commit. A red leg is
+  a KNOWN row and an issue, never a silent carry (a red gate blocks every later chain until fixed).
+
+**Verification:** the chain's marker `exit=0` and `logs/merged_chain.last_green` moved; the gate's summary line;
+the drag readout; the two audio numbers with their commands; `python -m tools_py.docmaint; echo $?`.
 
 ## Task F0: the baseline and the profile — one window of about an hour on a quiet host
 
@@ -222,59 +341,75 @@ branch `agent/s16-l1-design`), this file (the D12 ruling and L1b's steps sharpen
 **The shape (D12; the authority is L1a's note after its fix round, `docs/superpowers/plans/2026-09-27-sprint-16-l1-profile-viewer-design.md` <!-- docmaint: future -->):**
 the **runtime** holds a record from the login request (the `rc4EncryptFn` seam, `socom2_crypto.cpp:311`; class 0x01,
 type 0x07, Username at payload offset 40, Password at 72 — `server/horizon-server/RT.Models/Lobby/MediusAccountLoginRequest.cs`,
-read-only) and **commits it on the success response** (type 0x08, StatusCode at offset 26, `rc4DecryptFn`
-`:318–323`, matched by MessageID) to `cards/<profile>.personas.json` **beside the card** (inside `PS2X_MC_DIR` the game
-would list it), atomically, through `ps2x_shared`'s `personas.cpp`; `savedPassword` per login = no password keyboard
-opened since the previous request (the observer installed unconditionally, reset per request) and a non-empty
-Password; the launcher lists the records under PERSONAS (at most two rows visible, the list scrolling inside itself,
-NEW PERSONA its last row, the ADDRESS row re-anchored), newest first; picking a row sets `profile` and `loginName`
-and clears the typed password; a row from `<p>_b` sets `profile=<p>` and the second-instance toggle; the three fields
-go; a masked PASSWORD beside the selected row when its record says the card does not hold one, and for NEW PERSONA;
-`config.json` writes `loginPassword` only then. **Step 0 [L]:** a driven two-persona card (`online_login_ours.py`,
-V0's window or the next) records which persona the game's list gives the form; then the runtime steers the list or a
-ruling re-words the bar's "logs in as it" (the row says "pick <name> in the game's list"). `docs/INSTALL.md:159-162`,
-`docs/PLAYTEST.md:118`, `RULINGS.md`'s R237 row and `knobs.h:164`'s "plain in the player's config.json" are corrected
-in this task (rule 11; `python -m tools_py.knobs write`).
+read-only; the fallback seam is the hostnet `recv`, `socom2_hostnet.cpp:587`, a TCP stream needing RT-header
+reassembly) and **commits it on the success response** (type 0x08, StatusCode at offset 26, `rc4DecryptFn`
+`:318–323`, matched by MessageID) to `cards/<profile>.personas.json` **beside the card** (a trailing separator on
+`PS2X_MC_DIR` stripped first, else the ledger lands inside the card and the game lists it), atomically, through
+`ps2x_shared`'s `personas.cpp`; **one record per (name, server)** (the game keeps personas per server, KNOWN §1) with
+the **instance** (`a`/`b`) recorded in the record, never inferred from a `_b` suffix; `savedPassword` per login = no
+password keyboard opened since the last **committed success** (the observer installed unconditionally; the flag
+cleared on a committed success, not per request, so a failed CONNECT's retry under SAVE PASSWORD NO stays false) and a
+non-empty Password; the JSON reader's `\u` branch maps 0x80–0xFF to the byte so an accented name round-trips; the
+launcher lists the records under PERSONAS (three rows visible, the list scrolling inside itself, NEW PERSONA its last
+row, the ADDRESS row re-anchored), newest first, the server label by matching `kServerPresets[i].address` against the
+record's server; `LayoutInputs` gains the row count, the scroll, the selected index and a "password shown" flag, and
+a row narrows while the field shows; picking a row sets `profile` and `loginName` and clears the typed password — a
+name that does not survive `normalizeLoginName` unchanged leaves `loginName` empty; the three fields go; a masked
+PASSWORD (`online.persona.password`) beside the selected row when its record says the card does not hold one **or
+there is no record**, and for NEW PERSONA; `config.json` writes `loginPassword` only then and otherwise keeps the key
+empty (`diagnostics_tests.cpp:109` requires the key). **Step 0 [L]:** a driven two-persona card (`online_login_ours.py`,
+V0's window or the next) records which persona the game's list gives the form, and lists the card's files before and
+after the first create (is `SaveGame*` a persona?); then the runtime steers the list or a ruling re-words the bar's
+"logs in as it" (the row says "pick <name> in the game's list"). Rule 11 in this task: `RULINGS.md`'s and
+`CURRENT_SPRINT.md`'s R237 rows open "superseded by R310"; `knobs.h:164`'s "plain in the player's config.json" (then
+`python -m tools_py.knobs write`); `docs/INSTALL.md` and `docs/PLAYTEST.md` were corrected by PR #84 already.
 
 **Files:** `third_party/ps2recomp/ps2xLauncher/src/ui/page_online.cpp` (:77–108 the three fields, the rows),
-`src/ui/focus.cpp` (:251–278 the ONLINE nodes: `online.persona.N`, `online.persona.new`, `online.password` only with
-a selection; the help rows at :308–363), `src/ui/focus.h` (`LayoutInputs` gains the persona count),
-`third_party/ps2recomp/ps2xShared/include/launcher/persona_ledger.h` and `src/persona_ledger.cpp` (new: `read(dir)`,
-`write(dir, entries)`, `touch(dir, name, server, now)`), `ps2xShared/src/launcher_config.cpp` (:154–155 the password
-key no longer written; :549–554 the env from the selection), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp`
-(the cases; the disk-fixture pattern at :2447–2454: `temp_directory_path()/"ps2x_<tag>_"+stamp`, never a real card),
-`tools_py/parity/online_login_ours.py` (unchanged: `--saved-password` covers the launch half), `docs/KNOBS.md` if a
-knob moves, `docs/FAQ.md`'s login answer.
+`src/ui/focus.cpp` (:251–278 the ONLINE nodes: `online.persona.N`, `online.persona.new`, `online.persona.password`;
+the help rows at :308–363), `src/ui/focus.h` (`LayoutInputs`: the row count, the scroll, the selected index, the
+password-shown flag), `third_party/ps2recomp/ps2xShared/include/launcher/personas.h` and `src/personas.cpp` (new, in
+`ps2x_shared`: `readCard`, `readCards`, `toJson`, `fromJson`, the atomic write), `ps2xRuntime/src/lib/socom2_persona_record.cpp`
+(new: the request parsed at the seam, the record committed on the success response), `ps2xShared/src/launcher_config.cpp`
+(:154–155 the conditional write, the key kept; :549–554 the env from the selection; :39–45 the preset match by
+address), `ps2xShared/src/json_reader.h` (:71–74 the `\u` branch), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp`
+(the cases; the portable disk-fixture pattern of `preflight_tests.cpp:24`, never a real card),
+`tools_py/parity/online_login_ours.py` (unchanged: `--saved-password` proves a card-held password logs in untyped),
+`docs/KNOBS.md` (regenerated for `knobs.h:164`), `docs/FAQ.md`'s login answer.
 
 - [ ] **Step 1 (RED):** `launcher_tests.cpp` cases from fixtures under a temp folder (the portable pattern of
   `preflight_tests.cpp:24`, not the POSIX-only block): an absent, empty (0 bytes and `[]`) or corrupt (truncated)
-  ledger reads as empty with the one sentence, the NEW PERSONA node present and no `online.name`/`online.password`/
-  `online.profile` node; a ledger with two personas builds two rows and selecting the second sets the launch's name
-  and clears the password; a third persona scrolls; a name with every name-keyboard character (0x21–0x7E but the
-  double quote, including the backslash, braces, colon and comma) and an accented name round-trip through
-  `toJson`/`fromJson` and are shown, not refused (Review Focus 4); the writer parses a synthetic 104-byte request
-  (class, type, length, the two fields) and a response, commits only on success, and writes temp-then-rename; `config.json` saved from a Config whose selected persona's record reads
-  `savedPassword: true` carries no `loginPassword` key, and one whose record reads false keeps it; the runtime's
-  writer, fed a login request after a run in which the password keyboard OPENED, writes `savedPassword: false` (the
-  inference's negative, so a future OSK change cannot flip the record silently). Paste the failing run (`bash scripts/loop_lock.sh run s16-l1b --class build --wait 60 --
-  ./build.sh test`).
+  ledger reads as empty with the one sentence, the NEW PERSONA node and its `online.persona.password` field present
+  and no `online.name`/`online.password`/`online.profile` node; a ledger with two personas builds two rows and
+  selecting the second sets the launch's name and clears the password; a fourth persona scrolls; a name with every
+  name-keyboard character (0x21–0x7E but the double quote, including the backslash, braces, colon and comma) and an
+  accented name round-trip through `toJson`/`fromJson` byte for byte and are shown, not refused (Review Focus 4); a
+  name `normalizeLoginName` would change leaves `loginName` empty; two records with one name on two servers are two
+  rows; the writer parses a synthetic 104-byte request (class, type, length, the two fields) and a response, commits
+  only on success, keys by (name, server) with the instance, and writes temp-then-rename; `config.json` saved from a
+  Config whose selected persona's record reads `savedPassword: true` carries `"loginPassword": ""`, one whose record
+  reads false or is absent keeps the typed value; the writer, fed a login request after the password keyboard OPENED,
+  writes `savedPassword: false`, and a request retried after a failed CONNECT under SAVE PASSWORD NO stays false (the
+  flag clears only on a committed success). Paste the failing run (`bash scripts/loop_lock.sh run s16-l1b --class
+  build --wait 60 -- ./build.sh test`).
 - [ ] **Step 2 (GREEN):** the ledger, the page, the nodes, the config change, the help rows (the ≥ 25-character rule of
   `launcher_tests.cpp:1428`); the suites; review by a fresh agent; the height budget (`focus.cpp:43–47`: the caption
   four units above the body's floor) holds with three rows, the list capped and scrolled beyond.
 - [ ] **Step 3 [L]:** the launch half: `python -m tools_py.parity.online_login_ours --saved-password --mc-dir
-  <card with a saved persona>` on a launcher-started run logs in as the picked persona; a screenshot of the viewer
-  with two rows for the record (`--screenshot` sets `ctx.fake`, so a focus-based capture).
+  <card with a saved persona>` on a launcher-started run proves the card-held password logs in untyped; "as the
+  picked persona" is claimed only from Step 0's two-persona run; a screenshot of the viewer with two rows for the
+  record (`--screenshot` sets `ctx.fake`, so a focus-based capture).
 - [ ] **Step 4:** KNOWN's rows (the card and password rows: R237's prefill superseded), #73 closed on its bar, the
   Log; commit.
 
 **Bar (D12's restatement of #73's, the "two saved personas" clause):** the three fields gone from ONLINE; a fresh
 install shows the empty viewer's one sentence and a working new-persona path; two personas recorded in the sidecar
-show both and either launches as itself (`--saved-password` covers the launch half); a card with personas and no
-sidecar shows the "again" sentence and each appears after its first login through this build; `config.json` keeps
-no plain password for a persona whose record says the card holds it; the sidecar read tested from fixtures, never a
-real card.
+show both and either launches as itself (Step 0's two-persona run settles the mechanism; `--saved-password` proves
+the untyped login); a card with personas and no sidecar shows the "again" sentence (an inference to be confirmed by
+Step 0's card listing) and each appears after its first login through this build; `config.json` keeps no plain
+password for a persona whose record says the card holds it (the key stays, empty); the sidecar read tested from
+fixtures, never a real card.
 **Verification:** `ps2x_tests` through `./build.sh test` under the lock; the login driver's `login:saved-password`
-class line; `grep -c loginPassword <a fresh config.json>` → 0.
+class line; a fresh `config.json` after a saved-password launch reads `"loginPassword": ""`.
 
 ## Task L2: #74 tooltips (in flight in the cloud, D14)
 
@@ -416,8 +551,9 @@ served ZDB 1,605,944 B sha `d9f67b53…`, the image's sha computed from `game/r0
 **What the tree has:** `docs/superpowers/plans/2026-09-27-sprint-16-tree-facts.md`, the Task R3a section.
 
 **Files:** `build.sh` (`release()` gains `PS2X_RELEASE_KIND=player|developer`: the player passes
-`-DPS2X_ENABLE_DEBUG_UI=OFF` and the probes' options off into `dist-release/`, the developer keeps them on into
-`dist-release-dev/`), `ps2xRuntime/CMakeLists.txt` (the probes' option if none exists: `PS2X_ENABLE_PROBES`),
+`-DPS2X_ENABLE_DEBUG_UI=OFF` into `dist-release/`, the developer keeps it ON into `dist-release-dev/`; the probes
+stay in both kinds, R315 — PR #85's `PS2X_ENABLE_PROBES` option is dropped in its round 2; `release()` writes the
+kind as one word in `RELEASE_KIND` beside the exe, which `make_portable` refuses to mismatch),
 `scripts/make_portable.sh` (a `--kind` or a second run: `socom2-portable.zip` and `socom2-developer.zip`, the manifest
 with both), `tools_py/playtest_block.py` (both archives), `tools_py/portable_audit.py` (unchanged: run per folder),
 `.github/release-notes-template.md:11` (both zips), `tools_py/tests/test_make_portable.py`, `test_portable_folder.py`
@@ -432,10 +568,16 @@ with both), `tools_py/playtest_block.py` (both archives), `tools_py/portable_aud
 - [ ] **Step 2 (RED then GREEN, lock-free):** `test_make_portable.py`: two archives from one invocation with the
   fake dist carrying both exes; the player's manifest names its exe's sha and kind; `test_playtest_block.py`: the
   block shows both. The CMake option's presence pinned by a test that greps the release configure line.
-- [ ] **Step 3 [L]:** one new build — the player exe (about 50 minutes at `-j 4`; the developer configuration IS
-  today's release build, `dist-release/` renamed by the kind) — and both archives; the megabytes saved recorded in
-  KNOWN; the player exe's gate is R4's. Both builds sit in the close chain anyway (Task 99); R3a's own window is
-  needed only if the D4 slice wants the archives earlier.
+- [ ] **Step 3 [L]:** two full release builds (re-budgeted 08:16Z on PR #85's review: the player kind flips
+  `PS2X_ENABLE_DEBUG_UI` to OFF in `build-release/`, which recompiles the runner; the developer kind is a fresh
+  `build-release-dev/`; about 50 minutes each at `-j 4`) and both archives; the megabytes saved recorded in KNOWN
+  beside the 67,725,996-byte row; the player exe's gate is R4's (its probes stay: R315). Both builds sit in the
+  close chain (Task 99); R3a's own window is needed only if the D4 slice wants the archives earlier. The window's
+  reviewer reads: the CMake cache OFF in `build-release/` and ON in `build-release-dev/`; `llvm-nm
+  symbols/socom2.exe.debug | grep -c ImGui` 0 against more than 0; `wc -c` of both exes and zips; the launcher's
+  `--diagnostics` from each folder with only System32 on PATH exits 0; the player runner with `--home <empty>`
+  exits 68; the `[knobs]` line of the player exe run with `PS2X_DEV=1 PS2X_PEEK=…` shows `dev=1` with the peek; a
+  title-stage gate on the player exe; the manifest's `exe_sha256` equal to the new `symbols/INDEX.txt` hash.
 
 **Bar:** `portable_audit` and `test_make_portable*` green on both archives; the exit-code suite on the release runner
 unchanged (`SOCOM_EXE=dist-release/socom2.exe python -m unittest tools_py.tests.test_runner_exit_codes`); the
@@ -464,7 +606,7 @@ community answers (`FAQ.md:192–199, 256–264`) are R2's.
 - [ ] **Step 1 [L] (in the close chain's window):** after the chain: the player archive's gate as above (stamp
   `s16_release_gate`); both archives' `SHA256SUMS` and audit; the manifest's commit equals the tagged commit.
 - [ ] **Step 2:** the exact commands into the Log and O2: `gh release upload v0.16.0
-  dist-release/portable/socom2-portable.zip dist-release-dev/portable/socom2-developer.zip
+  dist-release/portable/socom2-portable.zip dist-release/portable/socom2-developer.zip
   dist-release/portable/SHA256SUMS dist-release/portable/THIRD_PARTY_NOTICES.md --clobber` and `gh workflow run
   release-draft.yml -f tag=v0.16.0`; **the loop stops short of the upload** (D1); if the owner says in one line that
   the loop may attach, it attaches, runs the verify half and appends "Verified"; publishing stays the owner's click.
@@ -577,3 +719,30 @@ row), issue #41.
 - [ ] **Step 2:** when `leakcheck` is green: `gh pr merge 10 --merge` (the merge-commit shape of #8 and #9; never
   `--delete-branch`); the Log line. The `ci` label `.github/dependabot.yml:11` names does not exist (Dependabot warns
   on every PR): a repository setting, the owner's — one line in HUMAN_TASKS, or the line dropped in a later task.
+
+## Task 99: the close
+
+- [ ] **Step 1 (the two reviews, lock-free):** the `sprint-close` skill: DOC_MAINTENANCE §5 (docmaint exit 0, and
+  `python -m tools_py.docmaint archive-log --plan docs/superpowers/plans/2026-09-27-sprint-16.md --keep 10` if the
+  ceiling fires; the L documents read; the stale claims fixed; two CLOSED blocks kept in the sprint file, the
+  third archived; "Last full review" stamped) and §7 (`python -m tools_py.issues audit --stale-since <the open's
+  date>` exit 0; every open issue read against the tree; `gh issue list --state closed --label known-issue --search
+  "closed:>=<open date>"`; the carry; `python -m tools_py.issues milestone close "Sprint 16" --next "Sprint 17"`;
+  `issues backlog` and `--check`; `rulings --check`; `changelog --check`; `python -m tools_py.flow` and `--check`;
+  `issues tally --since <open date>`; `python -m tools_py.sitting` and `--check`; the R271 breaker); the ratchet
+  last, while `plans:` still names this plan (`ratchet`, `ratchet --write`, docmaint OK).
+- [ ] **Step 2 [L] (the close chain, one window):** `cp scripts/parity/merged_chain.sh logs/s16_close_chain.sh && bash
+  scripts/run_detached.sh --owner s16-close --purpose "launch: the Sprint 16 close chain" --wait 120 --class run
+  logs/s16_close_chain.sh logs/s16_close_chain.marker s16_close1` — recomp, runtime, the suites (`--vram-diff` 15/15,
+  the console-replay cases), the gate 3/3 PINS MATCH, the fourth leg, both release builds, both archives and
+  PLAYTEST's block; then F5's two more gates and R4's archive gate under the same or the next holding; the audio
+  numbers (research/68's commands) on V0's capture or a new one if a change touched audio; `logs/merged_chain.last_green`.
+- [ ] **Step 3:** the Outcome section (the acceptance bar of spec §4 row by row; the tasks by outcome; the numbers
+  before and after); the close-out commit with an explicit pathspec; `git push origin sprint-16`; `gh run list
+  --commit <sha>`; `gh pr create --base main --head sprint-16 --title "Sprint 16: ten minutes to the server"` with the
+  close-out block as the body; the three checks; `gh pr merge --merge`; `git fetch origin`; `sha=$(gh pr view <N>
+  --json mergeCommit -q .mergeCommit.oid)`; `git rev-list --parents -n 1 $sha` (three hashes); `git tag -a v0.16.0
+  $sha -m "Sprint 16: ten minutes to the server"`; `git push origin v0.16.0`; the CLOSED heading "merged to `main` as
+  `v0.16.0` at <hash>, PR #M"; HANDOFF rewritten; the next sprint named when the owner names it.
+
+**Verification:** the gate's summary lines; `python -m tools_py.docmaint; echo $?`; `gh run list --commit <head>`.

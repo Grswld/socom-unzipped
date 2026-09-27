@@ -15,7 +15,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   Sprint 15 legs, one chain at the end of this block, the desk idle), then R1a's spike and F0's window; L2 (#74) is PR
   #82 in a fix round, L1a's note in one, R3a and X1 in flight. Cloud sessions are allowed for lock-free work (R312).
   The plan `docs/superpowers/plans/2026-09-27-sprint-16.md` (its Log) is the live state.
-- **Next free ruling number: R314** (R299-R313 are Sprint 16's D1-D15, its plan; R298 the Sprint 15 close's window, superseded).**
+- **Next free ruling number: R317** (R299-R316 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
