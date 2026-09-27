@@ -7,15 +7,16 @@
 # by accident: no Python, or a repository it cannot find, exits 0 (the call proceeds unguarded) -- never 1, never
 # socom_require_python's 2.
 #
-# The fast path: every Bash rule is about git or the loop lock, and every Edit/Write rule (G2) about a script
-# under logs/ or loop_lock.sh, so a call whose JSON names none of `git`, `loop_lock`, `logs/` or `logs\`
-# (case-insensitive) exits 0 here, before Python starts -- the hook runs on EVERY Bash, Edit and Write call.
+# The fast path: every Bash rule is about git, `gh pr merge` or the loop lock, and every Edit/Write rule (G2) about
+# a script under logs/ or loop_lock.sh, so a call whose JSON names none of `git`, `gh pr`, `loop_lock`, `logs/` or
+# `logs\` (case-insensitive) exits 0 here, before Python starts -- the hook runs on EVERY Bash, Edit and Write call.
 # The backslash is quoted ('\'): Git Bash's case matched neither `[/\\]` nor an unquoted `\\` against it.
 #
 # It runs from its OWN repository (the script's directory, two up), not the caller's cwd: the cwd a tool call runs
 # in can be any tree, or no tree at all. The cwd that matters for the rules comes in the JSON.
 input=$(cat)
 case "$input" in
+  *[Gg][Hh]' '[Pp][Rr]' '*|*[Gg][Hh].[Ee][Xx][Ee]' '[Pp][Rr]' '*) ;;   # `gh pr merge` names no git
   *[Gg][Ii][Tt]*|*[Ll][Oo][Oo][Pp]_[Ll][Oo][Cc][Kk]*|*[Ll][Oo][Gg][Ss]/*|*[Ll][Oo][Gg][Ss]'\'*) ;;
   *) exit 0 ;;
 esac

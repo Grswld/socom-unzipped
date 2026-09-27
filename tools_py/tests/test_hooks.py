@@ -99,6 +99,21 @@ REVIEW_CASES = [  # the G1 review's bypass table (round one), each closed by a p
     ("git push --delete origin agent/s14-g1", False, 0), ("git push origin :fix/old", False, 0),
 ]
 
+GH_MERGE_CASES = [  # `gh pr merge --delete-branch` removed a worktree and, through its tools/ junction, the main
+    # tree's toolchain (2026-09-26 20:41Z; docs/HAZARDS.md git) -- the hook refuses it and its spellings
+    ("gh pr merge 76 --merge --delete-branch", False, 2), ("gh pr merge --delete-branch 76", False, 2),
+    ("gh pr merge 76 -d", False, 2), ("gh pr merge 76 --merge -d --admin", False, 2),
+    ("git fetch && gh pr merge 76 --delete-branch", False, 2), ("gh pr merge 76 -md", False, 2),
+    ("gh pr merge 76 --delete-branch=true", False, 2), ("gh.exe pr merge 76 -d", True, 2),
+    ('bash -c "gh pr merge 76 -d"', False, 2), ("gh pr merge -R Scotho/socom_pc 76 -d", False, 2),
+    ("gh pr merge 76 --merge", False, 0), ("gh pr merge 76 --squash", False, 0), ("gh pr view 76", False, 0),
+    ("gh pr merge --help", False, 0), ("git push origin --delete agent/x", False, 0),
+    ("gh pr merge 76 --merge --body '-d'", False, 0), ("gh pr merge 76 -t -d", False, 0),
+    ("gh pr merge 76 --delete-branch=false", False, 0), ("gh pr list -d", False, 0),
+    ("echo 'gh pr merge 76 -d'", False, 0), ("gh pr create -t merge -d", False, 0),
+    ("gh pr view merge -d", False, 0),
+]
+
 
 class PretoolPlantedTest(unittest.TestCase):
     def run_cases(self, cases):
@@ -139,6 +154,13 @@ class PretoolPlantedTest(unittest.TestCase):
 
     def test_review_round_one_cases(self):
         self.run_cases(REVIEW_CASES)
+
+    def test_gh_pr_merge_delete_branch_is_refused(self):
+        self.run_cases(GH_MERGE_CASES)
+        code, why = pretool.decide("Bash", {"command": "gh pr merge 76 --merge --delete-branch"}, ".", False)
+        self.assertEqual(code, 2, why)
+        for words in ("--delete-branch", "junction", "docs/HAZARDS.md git", "scripts/agent_worktree.sh remove"):
+            self.assertIn(words, why)
 
     def follow(self, cmd, session_wt):
         return pretool.decide("Bash", {"command": cmd}, "C:/projects/socom_pc" if not session_wt else
@@ -410,6 +432,13 @@ class PretoolWiringTest(unittest.TestCase):
         p = self.hook("cd '%s' && git commit --no-edit" % linked.replace("\\", "/"))
         self.assertEqual(p.returncode, 0, p.stderr)
 
+    def test_gh_pr_merge_delete_branch_reaches_python(self):
+        # the fast path must not wave it through: the JSON of `gh pr merge 76 -d` names no `git`
+        p = self.hook("gh pr merge 76 -d")
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("--delete-branch", p.stderr)
+        self.assertEqual(self.hook("gh pr view 76").returncode, 0)
+
     def test_other_tool_passes(self):
         self.assertEqual(self.hook("git add -A", tool_name="Read").returncode, 0)
 
@@ -426,8 +455,13 @@ class PretoolWiringTest(unittest.TestCase):
             doc = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "."}
             return subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input=json.dumps(doc), capture_output=True,
                                   text=True, cwd=self.tmp.name, env=env, timeout=60)
-        self.assertEqual(run("ls -la").returncode, 0)
-        self.assertFalse(os.path.exists(marker))
+        for quiet in ("ls -la", "echo merge", "grep merge x", "bash scripts/parity/merged_chain.sh"):
+            self.assertEqual(run(quiet).returncode, 0, quiet)
+            self.assertFalse(os.path.exists(marker), quiet)
+        for loud in ("gh pr merge 76 -d", "gh.exe pr merge 76 -d"):   # `gh pr` names no git: it must reach Python
+            self.assertEqual(run(loud).returncode, 2, loud)
+            self.assertTrue(os.path.exists(marker), loud)
+            os.remove(marker)
         self.assertEqual(run("GIT status").returncode, 2)
         self.assertTrue(os.path.exists(marker))
 
