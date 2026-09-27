@@ -3583,10 +3583,15 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     // instead of reading the GPU pixels back into the shadow and decoding them (the readback was
     // ~26% of the GL thread). Pending shadow->GPU rectangles are applied first, so the GPU texture
     // holds everything the readback+decode would have produced. Restricted to texel-coordinate
-    // draws with clamp/region-clamp wrapping (the shader normalizes by the target's size then),
-    // never for the target being drawn into (feedback). PS2X_GS_RT_TEXTURE=0 restores the readback.
+    // draws whose wrap mode is REPEAT, CLAMP or REGION_CLAMP (WMS/WMT 0-2; the shader's wrapCoord
+    // then folds, clamps or region-clamps the native texel coordinate against the target's own
+    // extent, uTexSize -- REGION_REPEAT's mask arithmetic is refused), to a TBP0 on a page
+    // boundary (Sprint 16 F2: pageStart below drops the block bits, so a texture starting inside
+    // the target's first page would be served from the target's origin -- the read-back path
+    // decodes it from its true block), never for the target being drawn into (feedback).
+    // PS2X_GS_RT_TEXTURE=0 disables the whole path (every case it serves, not only F2's).
     static const bool s_rtTexture = ps2x::knob("PS2X_GS_RT_TEXTURE") == nullptr || std::atoi(ps2x::knob("PS2X_GS_RT_TEXTURE")) != 0;
-    if (s_rtTexture && tex.psm == GS_PSM_CT32 && state.prim.fst)
+    if (s_rtTexture && tex.psm == GS_PSM_CT32 && state.prim.fst && (tex.tbp0 & 31u) == 0u)
     {
         const uint64_t clamp = state.context.clamp;
         const uint32_t wrapU = static_cast<uint32_t>(clamp & 3u), wrapV = static_cast<uint32_t>((clamp >> 2) & 3u);
@@ -3605,10 +3610,15 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                 // refused every full read of the frame -- a 640x448 buffer can only be declared
                 // 1024x512 -- and the post-process copy went back to downloadRenderTargetToShadow, a
                 // whole-frame glReadPixels behind a GPU drain, every frame (research/73 section 1;
-                // logs/f2_design.md). The envelope does not enter the mapping: the draw's texel
-                // coordinates are native and uTexSize below is the target's native extent. Texels
-                // past the target's extent edge-clamp here where the shadow path would read the VRAM
-                // bytes beyond it; PS2X_GS_RT_TEXTURE=0 is the A/B.
+                // the Sprint 16 plan's Log, F2 Step 1). The envelope does not enter the mapping: the
+                // draw's texel coordinates are native and uTexSize below is the target's native
+                // extent. Where the two paths part is a texel PAST that extent: the read-back path
+                // decodes the VRAM bytes beyond the target (the next page row's columns, the next
+                // buffer's rows); this path hands the coordinate to the shader's wrapCoord against
+                // uTexSize, so REPEAT (mode 0) folds it onto the target's own opposite side (u=700 on
+                // a 640-wide target reads column 60), CLAMP (1) reads the last column or row and
+                // REGION_CLAMP (2) its region bound. A draw that stays inside the target sees the
+                // same pixels either way.
                 refreshDirtyRows(rt);
                 // The draw samples this target with the same native texel coordinates it would use
                 // for a decoded texture, so it must be handed a native-sized view -- rt.color
