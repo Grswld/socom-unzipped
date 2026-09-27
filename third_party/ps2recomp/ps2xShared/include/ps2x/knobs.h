@@ -24,8 +24,10 @@
 //                   first tried to reclass PS2X_MC_TRACE and PS2X_AUDIO_DUMP here so a player could produce
 //                   evidence; that was wrong twice over -- it broke the enforced rule, and it was not needed:
 //                   devMode() reads PS2X_DEV from the environment in EVERY build (knobs.cpp), so a Dev knob
-//                   is already reachable in a shipped executable with PS2X_DEV=1. What was actually missing
-//                   is that a FAILURE said nothing at all; see MemoryCard.cpp's unconditional line.
+//                   is already reachable in a shipped executable with PS2X_DEV=1 (since Sprint 16 R3a, R295: in
+//                   the developer archive only -- the player release forbids developer mode, forbidDevMode()).
+//                   What was actually missing is that a FAILURE said nothing at all; see MemoryCard.cpp's
+//                   unconditional line.
 //         Dev       a probe, trace, dump or A/B switch; honoured only in developer mode (--dev on the runner's
 //                   command line, or PS2X_DEV=1). A stranger's environment cannot switch one on by accident,
 //                   but the owner of any build can, which is how a player-reported fault gets instrumented.
@@ -247,6 +249,12 @@ namespace ps2x
         bool devMode();
         void setDevMode(bool on);
         void resetDevModeForTests();   // forget the decision so the next devMode() reads PS2X_DEV again
+
+        // Sprint 16 R3a (R295): a runner built with PS2X_ENABLE_PROBES=OFF (the player release) calls this first
+        // thing in main(). Developer mode is then off for the life of the process -- setDevMode(true), --dev and
+        // PS2X_DEV change nothing -- so every Dev knob reads as unset. resetDevModeForTests() lifts it.
+        void forbidDevMode();
+        bool devModeForbidden();
 
         // On. setEnforcement(false) exists for the Knobs suite, which proves what off meant.
         bool enforcement();

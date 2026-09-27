@@ -16,6 +16,13 @@ option(PS2X_ENABLE_IOP_RPC_TRACE "Log unhandled IOP/SIF RPC trace suggestions" O
 option(PS2X_STRICT_RETURN_DIAGNOSTICS "Route generated JR $ra returns through runtime branch diagnostics" OFF)
 option(PS2X_SHOW_WINDOWS_CONSOLE "Show a console window for ps2EntryRunner on Windows release builds" ON)
 option(PS2X_ENABLE_DEBUG_UI "Build the desktop runtime debug UI" ON)
+# Sprint 16 R3a (R295): the player release compiles the dump and trace probes out of the runner. They are all Dev
+# knobs, and every read goes through ps2x::knob(), which honours a Dev knob only in developer mode; with this OFF
+# the runner's main() forbids developer mode (ps2x::knobs::forbidDevMode), so --dev and PS2X_DEV are ignored and
+# every Dev knob reads as unset. The knob table does not change -- a knob whose probe is compiled out is read and
+# ignored, and docs/KNOBS.md stays as generated. The runtime library is shared with ps2x_tests, which selects its
+# reference paths through Dev knobs, so the gate is the runner's entry point, not the library's sources.
+option(PS2X_ENABLE_PROBES "Compile the dump and trace probes" ON)
 
 if(PS2X_ENABLE_SCCACHE)
     find_program(PS2X_SCCACHE_PROGRAM sccache)
@@ -534,6 +541,11 @@ if(PS2X_ENABLE_DEBUG_UI)
     )
     target_link_libraries(ps2EntryRunner PRIVATE rlImGui imgui)
     target_compile_definitions(ps2EntryRunner PRIVATE PS2X_ENABLE_DEBUG_UI=1)
+endif()
+if(PS2X_ENABLE_PROBES)
+    target_compile_definitions(ps2EntryRunner PRIVATE PS2X_ENABLE_PROBES=1)
+else()
+    target_compile_definitions(ps2EntryRunner PRIVATE PS2X_ENABLE_PROBES=0)
 endif()
 
 ps2x_stage_ffmpeg_runtime_dlls(ps2EntryRunner)
