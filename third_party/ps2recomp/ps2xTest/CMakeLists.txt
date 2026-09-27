@@ -75,6 +75,7 @@ add_library(ps2_test_lib STATIC
     src/zip_store_tests.cpp
     src/diagnostics_tests.cpp
     src/bug_report_tests.cpp
+    src/patch_fetch_tests.cpp   # Sprint 16 R2a (#71)
     src/mapping_tests.cpp
     src/socom2_osk_prefill_tests.cpp
     src/knobs_tests.cpp

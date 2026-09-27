@@ -616,5 +616,147 @@ namespace win32glue
         out.status = static_cast<int>(status);
         return out;
     }
+
+    // Sprint 16 R2a (#71): the same WinHTTP calls as httpRequest, streamed to a file in 64 KiB chunks with no
+    // cap, the caller's User-Agent, a GET only, and Content-Length honoured.
+    DownloadResult httpDownload(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
+                                int timeoutMs, const DownloadProgress &progress)
+    {
+        DownloadResult out;
+        const std::wstring wideUrl = widen(url);
+        wchar_t host[256] = {};
+        wchar_t path[2048] = {};
+        URL_COMPONENTS parts{};
+        parts.dwStructSize = sizeof(parts);
+        parts.lpszHostName = host;
+        parts.dwHostNameLength = static_cast<DWORD>(sizeof(host) / sizeof(host[0]));
+        parts.lpszUrlPath = path;
+        parts.dwUrlPathLength = static_cast<DWORD>(sizeof(path) / sizeof(path[0]));
+        if (!WinHttpCrackUrl(wideUrl.c_str(), static_cast<DWORD>(wideUrl.size()), 0, &parts) ||
+            (parts.nScheme != INTERNET_SCHEME_HTTPS && parts.nScheme != INTERNET_SCHEME_HTTP))
+        {
+            out.error = "not an http(s) URL: " + url;
+            return out;
+        }
+        const bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+
+        InternetHandle session, connection, request;
+        session.h = WinHttpOpen(widen(userAgent).c_str(), kProxyAccess, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (session.h == nullptr)
+        {
+            out.error = winHttpError("WinHttpOpen");
+            return out;
+        }
+        const int each = timeoutMs > 0 ? timeoutMs : 300000;
+        WinHttpSetTimeouts(session.h, each, each, each, each);
+        connection.h = WinHttpConnect(session.h, host, parts.nPort, 0);
+        if (connection.h == nullptr)
+        {
+            out.error = winHttpError("WinHttpConnect");
+            return out;
+        }
+        request.h = WinHttpOpenRequest(connection.h, L"GET", path[0] != L'\0' ? path : L"/", nullptr, WINHTTP_NO_REFERER,
+                                       WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0);
+        if (request.h == nullptr)
+        {
+            out.error = winHttpError("WinHttpOpenRequest");
+            return out;
+        }
+        if (!WinHttpSendRequest(request.h, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+            !WinHttpReceiveResponse(request.h, nullptr))
+        {
+            out.error = winHttpError("the request");
+            return out;
+        }
+        DWORD status = 0, size = sizeof(status);
+        if (!WinHttpQueryHeaders(request.h, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                                 &status, &size, WINHTTP_NO_HEADER_INDEX))
+        {
+            out.error = winHttpError("reading the status");
+            return out;
+        }
+        out.status = static_cast<int>(status);
+        if (status != 200)
+        {
+            out.error = "the server answered HTTP " + std::to_string(status);
+            return out;
+        }
+        int64_t total = -1;
+        DWORD length = 0;
+        size = sizeof(length);
+        if (WinHttpQueryHeaders(request.h, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                                &length, &size, WINHTTP_NO_HEADER_INDEX))
+            total = static_cast<int64_t>(length);
+
+        const std::filesystem::path temp = downloadTempPath(dest);
+        std::error_code ec;
+        std::filesystem::remove(temp, ec);
+        HANDLE file = CreateFileW(temp.wstring().c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            out.error = "could not create " + temp.string() + " (error " + std::to_string(GetLastError()) + ")";
+            return out;
+        }
+        std::vector<char> chunk(64u * 1024u);
+        const ULONGLONG deadline = GetTickCount64() + static_cast<ULONGLONG>(each);
+        bool failed = false;
+        for (;;)
+        {
+            DWORD available = 0;
+            if (!WinHttpQueryDataAvailable(request.h, &available))
+            {
+                out.error = winHttpError("reading the body");
+                failed = true;
+                break;
+            }
+            if (available == 0)
+                break;
+            const DWORD want = available < chunk.size() ? available : static_cast<DWORD>(chunk.size());
+            DWORD got = 0;
+            if (!WinHttpReadData(request.h, chunk.data(), want, &got))
+            {
+                out.error = winHttpError("reading the body");
+                failed = true;
+                break;
+            }
+            if (got == 0)
+                break;
+            DWORD written = 0;
+            if (!WriteFile(file, chunk.data(), got, &written, nullptr) || written != got)
+            {
+                out.error = "could not write " + temp.string() + " (error " + std::to_string(GetLastError()) + ")";
+                failed = true;
+                break;
+            }
+            out.bytes += got;
+            if (progress)
+                progress(out.bytes, total);
+            if (GetTickCount64() > deadline)
+            {
+                out.error = "the download took longer than " + std::to_string(each / 1000) + " s";
+                failed = true;
+                break;
+            }
+        }
+        CloseHandle(file);
+        if (!failed && total >= 0 && out.bytes != static_cast<uint64_t>(total))
+        {
+            out.error = "the body was " + std::to_string(out.bytes) + " bytes, shorter than its Content-Length " +
+                        std::to_string(total);
+            failed = true;
+        }
+        if (failed)
+        {
+            std::filesystem::remove(temp, ec);
+            return out;
+        }
+        if (!MoveFileExW(temp.wstring().c_str(), dest.wstring().c_str(), MOVEFILE_REPLACE_EXISTING))
+        {
+            out.error = "could not move the download to " + dest.string() + " (error " + std::to_string(GetLastError()) + ")";
+            std::filesystem::remove(temp, ec);
+            return out;
+        }
+        return out;
+    }
 }
 #endif // _WIN32

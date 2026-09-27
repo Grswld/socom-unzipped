@@ -618,6 +618,120 @@ namespace win32glue
         }
         return out;
     }
+
+    // ---- Sprint 16 R2a (#71): one streamed download to a file (the r0004 package) ---------------------------
+    // `curl` again, started with an argv (no shell): --output to the temporary name, --fail so an HTTP error
+    // writes nothing and exits 22, and curl's own Content-Length check (a short body exits 18). No body cap: the
+    // bytes go to the file, never through this process. stdout carries only -w's status code.
+    DownloadResult httpDownload(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
+                                int timeoutMs, const DownloadProgress &progress)
+    {
+        DownloadResult out;
+        if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0)
+        {
+            out.error = "not an http(s) URL: " + url;
+            return out;
+        }
+        if (!onPath("curl"))
+        {
+            out.error = "curl is not installed, so nothing can be downloaded from here";
+            return out;
+        }
+        const fs::path temp = downloadTempPath(dest);
+        std::error_code ec;
+        fs::remove(temp, ec);
+
+        int fromChild[2] = {-1, -1};
+        if (::pipe2(fromChild, O_CLOEXEC) != 0)
+        {
+            out.error = "pipe failed";
+            return out;
+        }
+        const int seconds = timeoutMs > 0 ? (timeoutMs + 999) / 1000 : 300;
+        std::vector<std::string> args = {"curl", "--silent", "--show-error", "--fail", "--max-time", std::to_string(seconds),
+                                         "--proto", "=http,https", "--user-agent", userAgent,
+                                         "--output", temp.string(), "--write-out", "%{http_code}", "--", url};
+        std::vector<char *> argv;
+        for (std::string &a : args)
+            argv.push_back(a.data());
+        argv.push_back(nullptr);
+
+        posix_spawn_file_actions_t actions;
+        ::posix_spawn_file_actions_init(&actions);
+        ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+        ::posix_spawn_file_actions_adddup2(&actions, fromChild[1], STDOUT_FILENO);
+        ::posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+        pid_t child = 0;
+        const int rc = ::posix_spawnp(&child, "curl", &actions, nullptr, argv.data(), environ);
+        ::posix_spawn_file_actions_destroy(&actions);
+        ::close(fromChild[1]);
+        if (rc != 0)
+        {
+            ::close(fromChild[0]);
+            out.error = "curl could not be started (" + std::string(std::strerror(rc)) + ")";
+            return out;
+        }
+
+        // -w writes a few bytes when curl is done, well inside a pipe's buffer, so the wait comes first; while
+        // curl runs, the temporary file's size is the progress (curl does not hand this process the header).
+        int status = 0;
+        for (;;)
+        {
+            const pid_t done = ::waitpid(child, &status, WNOHANG);
+            if (done == child || (done < 0 && errno != EINTR))
+                break;
+            if (progress)
+            {
+                const auto size = fs::file_size(temp, ec);
+                progress(ec ? 0 : static_cast<uint64_t>(size), -1);
+            }
+            ::usleep(100 * 1000);
+        }
+        std::string raw;
+        char buf[256];
+        for (;;)
+        {
+            const ssize_t n = ::read(fromChild[0], buf, sizeof(buf));
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break;
+            raw.append(buf, static_cast<size_t>(n));
+        }
+        ::close(fromChild[0]);
+
+        out.status = std::atoi(raw.c_str());
+        const int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+        if (exitCode != 0 || out.status != 200)
+        {
+            fs::remove(temp, ec);
+            if (out.status >= 400 || exitCode == 22)
+                out.error = "the server answered HTTP " + std::to_string(out.status);
+            else if (exitCode == 18)
+                out.error = "the body was shorter than its Content-Length (curl exit 18)";
+            else
+                out.error = "curl exited with " + std::to_string(exitCode) + " (6 = no such host, 7 = refused, "
+                            "28 = timed out, 60 = the certificate was not trusted), HTTP " + std::to_string(out.status);
+            return out;
+        }
+        const auto size = fs::file_size(temp, ec);
+        if (ec)
+        {
+            out.error = "the download left no file";
+            return out;
+        }
+        out.bytes = static_cast<uint64_t>(size);
+        fs::rename(temp, dest, ec);
+        if (ec)
+        {
+            fs::remove(temp, ec);
+            out.error = "could not move the download to " + dest.string();
+            return out;
+        }
+        if (progress)
+            progress(out.bytes, static_cast<int64_t>(out.bytes));
+        return out;
+    }
 }
 
 #endif // !_WIN32

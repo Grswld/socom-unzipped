@@ -4,6 +4,9 @@
 // opening a folder in Explorer.
 #include "launcher/launcher_config.h"
 
+#include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <string>
 
 namespace win32glue
@@ -86,4 +89,30 @@ namespace win32glue
         std::string error;       // why there was no answer, for the log; empty when status != 0
     };
     HttpResult httpRequest(const std::string &method, const std::string &url, const std::string &body, int timeoutMs);
+
+    // Sprint 16 R2a (#71): one blocking GET streamed to a file, for the r0004 package (1,605,944 bytes -- above
+    // httpRequest's 1 MB cap). Call it off the UI thread. No body cap; `userAgent` is sent as given (the package
+    // server is asked the way the r0001 client asks it). The body goes to downloadTempPath(dest) and is renamed
+    // onto `dest` only when it is complete: HTTP 200, and exactly Content-Length bytes when the server sent one
+    // (a shorter body is a failure). On any failure the temporary file is deleted and `dest` is left as it was.
+    // Plain http:// is allowed to any host here, unlike httpRequest: the package server speaks only http, and
+    // what arrives is checked by size and sha256 (launcher::patchfetch::verifyPackage) before anything reads it.
+    // Windows: WinHTTP. POSIX: a `curl` subprocess (--output, --fail, --max-time); no curl = `error`.
+    struct DownloadResult
+    {
+        int status = 0;          // the HTTP status; 0 when there was no answer
+        uint64_t bytes = 0;      // the bytes written to `dest` (so far, on a failure)
+        std::string error;       // why the download failed; empty on success
+    };
+    // Bytes so far and the Content-Length (-1 when not known: always on POSIX, where curl keeps the header).
+    using DownloadProgress = std::function<void(uint64_t bytesSoFar, int64_t contentLength)>;
+    DownloadResult httpDownload(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
+                                int timeoutMs, const DownloadProgress &progress);
+    // "<dest>.part", beside dest: the name the body is written under until it is complete.
+    inline std::filesystem::path downloadTempPath(const std::filesystem::path &dest)
+    {
+        std::filesystem::path temp = dest;
+        temp += ".part";
+        return temp;
+    }
 }

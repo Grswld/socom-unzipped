@@ -13,6 +13,7 @@ add_library(ps2x_shared STATIC
     src/zip_store.cpp
     src/diagnostics.cpp
     src/bug_report.cpp
+    src/patch_fetch.cpp   # Sprint 16 R2a (#71): the r0004 package's URL and its check
     src/mapping.cpp
     src/knobs.cpp
     src/host_window.cpp   # Sprint 10 Q4: the game window's title and the launcher's palette on its chrome
