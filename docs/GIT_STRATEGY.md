@@ -33,8 +33,8 @@ audit row 40.)*
 
 | Branch | What lands on it | Who pushes | Lifetime |
 |---|---|---|---|
-| `main` | Only merges: a closed sprint, a reviewed topic PR, a hotfix. Always green (CI + the last recorded gate). Every release and playtest tag points into `main`'s history or a sprint branch that is about to merge into it. | Nobody directly: the `main` ruleset requires a pull request with the `build`, `build-windows` and `leakcheck` checks and has no bypass actors (since 2026-09-20, R182; `build-windows` since 2026-09-21). The controller opens and merges the PR at close-out. *(Superseded 2026-09-25, Sprint 13 R2: this cell said "today the controller, at sprint close-out only" -- written before the ruleset existed; documents audit row 42.)* | Forever |
-| `sprint-N` | The agent loop's integration branch for one sprint. Small commits, each green. Docs and code together. | The controller and the sessions it coordinates. | Opens off `main` when the sprint opens; merged by PR at close-out; deleted from the remote one sprint later (the merge commit and the tag keep the history). |
+| `main` | Only merges: a closed sprint, a reviewed topic PR, a hotfix. Always green (CI + the last recorded gate). Every release and playtest tag points into `main`'s history or a sprint branch that is about to merge into it. | Nobody directly: the `main` ruleset requires a pull request with the `build`, `build-windows` and `leakcheck` checks and has no bypass actors (since 2026-09-20, R182; `build-windows` since 2026-09-21). The controller opens and merges the PR at close-out; who may merge what to `main`, and on whose review, is the merge-authority paragraph below the table (R294). *(Superseded 2026-09-25, Sprint 13 R2: this cell said "today the controller, at sprint close-out only" -- written before the ruleset existed; documents audit row 42.)* | Forever |
+| `sprint-N` | The agent loop's integration branch for one sprint. Small commits, each green. Docs and code together. | The controller and the sessions it coordinates. | Opens off `main` when the sprint opens; merged by PR at close-out; deleted by the owner (the `sprint-*` ruleset forbids the loop; R296's sweep), the merge commit and the tag keeping the history. |
 | `fix/<slug>`, `feat/<slug>`, `docs/<slug>` | One topic. The shape an outside contributor uses, and the shape the loop uses for a risky change it wants to be able to abandon. | Anyone, from a fork or the repo. | Until the PR merges or closes. |
 | `hotfix/<version>` | A fix to something already released, branched from the release tag, merged to `main` AND to the open sprint branch. | Controller / owner. | Until merged and tagged. |
 | `develop` | **Retired and DELETED 2026-09-20 at the Sprint 9 merge** (`4415254`, `v0.9.0`). It duplicated `main` (never held anything `main` did not), and a public contributor who sees both has to ask which one to target. `git grep` found nothing outside the records naming it. | -- | Gone. Do not recreate it. |
@@ -45,11 +45,22 @@ branch with a PR.
 *(Superseded 2026-09-25, Sprint 13 R2: this line said "no sprint branch is open" on the morning Sprint 13 opened on
 `sprint-13` -- a live state in a contract document, which is the defect the pointer above replaces.)*
 Never force-push a shared branch. Never rewrite `main`.
+
+**Merge authority (R294, 2026-09-26):** `main` keeps 0 required approvals and CODEOWNERS is advisory; agent code that
+a Fable-class reviewer passed with high confidence, or that tests confirm, may be merged to `main` by the loop without
+a human review. A human review returns when the owner calls stability. Publishing a Release and the repository's
+settings stay the owner's (§5, §6).
+
+**A branch checked out in a worktree is removed before it is merged, and never with `gh pr merge --delete-branch`
+(2026-09-26 20:41Z, `docs/HAZARDS.md` git):** that flag tears down the branch's checkout, and through its `tools/`
+junction the main tree's toolchain went with it. The steps: the `agent-worktree` skill's step 5.
+
 *The open branch is always `docs/CURRENT_SPRINT.md`'s `branch:` line -- read it there rather than trusting this
 literal, which has pointed at a merged branch twice (`sprint-9` until 2026-09-25, then `sprint-10`).* Sprint 12 was the
 first sprint run on a second branch beside an open one (`sprint-12` off `origin/sprint-11`, run in a Claude cloud
 session, `docs/superpowers/plans/2026-09-24-sprint-12.md`); it merged `origin/sprint-11` daily and went to `main` after
-Sprint 11 did — the procedure is that plan's cloud handoff, §5.
+Sprint 11 did — the procedure is that plan's cloud handoff, §5. *(Historical: no cloud session has run since
+2026-09-26 and none is planned; the procedure is kept as the record.)*
 
 **Slices: a proven item reaches `main` the day it is proven, not at the sprint's end (2026-09-21, the owner's
 instruction "ensure main gets all of our hardening/security fixes and developer setup info as soon as possible ... the
@@ -138,7 +149,7 @@ Annotated tags only (`git tag -a`), pushed explicitly (`git push origin <tag>`).
 |---|---|---|
 | `playtest-N` | A build the owner (or invited testers) plays. Not a release: no promise, no GitHub Release page. The archive's sha256 is recorded in `docs/PLAYTEST.md`. | Sprint 9 P7, and any later playtest. |
 | `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.5.0` onwards). `v0.<sprint>.<n>` for a hotfix on it. *(Superseded 2026-09-25, Sprint 13 R2: the examples read "`v0.9.0`, `v0.10.0`, `v0.11.0`", as if the series began at 9; `git ls-remote --tags origin` shows `v0.5.0` to `v0.12.0`.)* | At each close-out, on the merge commit. |
-| `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met and D2 is answered -- not on a sprint number.** *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- are blocked on D2.)* |
+| `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met and #70 has landed (R290) -- not on a sprint number.** *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- were blocked on D2, answered by R290 on 2026-09-26: §5's last bullet.)* |
 
 **Every release keeps its symbols.** The release exe is stripped; `dist-release/symbols/` of that exact build is the
 only thing that makes a stranger's crash record readable. Until the release workflow (below) uploads it as a private
@@ -162,16 +173,19 @@ from the owner's disc and is not, and must never be, in the repository. So:
   the same workflow, run by hand with the tag, verifies `SHA256SUMS`, the import closure, the leak check and the
   notices in each archive and appends the verdict to the draft. It is the only workflow with `contents: write`, and
   it never publishes.
-- Whether the archives may be distributed at all (they contain code recompiled from the game's executable) is **the
-  owner's legal-position decision, D2 in the Sprint 11 spec** -- the project's answer so far is "the player's own disc
-  is required and no game data ships"; that sentence must be re-examined for the *executable*, not only the assets,
-  before a public Release carries one.
+- Whether the archives may be distributed at all (they contain code recompiled from the game's executable) was **the
+  owner's legal-position decision, D2 in the Sprint 11 spec**, answered by R290 (2026-09-26): `socom2.exe` ships in
+  the release archives only, never in the repository, and the ELF never ships -- the launcher is to build it on
+  the player's machine from their own r0001 disc by a native first-run decrypt (issue #70, not landed).
+  *(Superseded 2026-09-27: until R290 this bullet said the project's answer so far was "the player's own disc is
+  required and no game data ships", a sentence to be re-examined for the executable before a public Release carried
+  one.)*
 
 ## 6. Permissions and protection (AT PUBLIC -- owner's admin rights)
 
 - `main`: require a PR and the `build`, `build-windows` and `leakcheck` checks, no force-push, no deletion, no bypass
   actors, linear history NOT required (sprint merges are merge commits). No CODEOWNERS review and 0 approvals (the
-  deviation below).
+  deviation below); who merges to `main`, and on what review, is §2's merge-authority paragraph (R294).
   > Superseded 2026-09-25 (Sprint 13 R2): this bullet, the design of 2026-09-20, said "require the `linux` check (and
   > the Windows check once it exists), require a CODEOWNERS review"; the ruleset as built (R182) requires no review,
   > and `build-windows` joined the required set on 2026-09-21 (documents audit row 41). `gh api
@@ -194,7 +208,7 @@ from the owner's disc and is not, and must never be, in the repository. So:
   by commit SHA (`sha_pinning_required`); fork PRs from first-time contributors wait for approval. **One deviation
   from the first bullet of this section:** no CODEOWNERS review is required on `main` -- the owner is the only code
   owner and GitHub does not count an author's own review, so the rule would lock the owner's sprint merges out; it
-  goes on the day a second maintainer exists. `build-windows` joined the required set on 2026-09-21 once the workflow was green on `sprint-10`.
+  goes on the day a second maintainer exists (and R294 keeps it off until the owner calls stability: §2). `build-windows` joined the required set on 2026-09-21 once the workflow was green on `sprint-10`.
 - The full-history audit of Sprint 11 Goal 1 (secrets, addresses) ran before the flip (`9253026`, the address
   rewrite); the disc-derived-bytes half ran after it (`docs/audits/2026-09-21-disc-derived-bytes.md`). Decision D1
   was made by the flip: this history, rewritten once, is the public one.

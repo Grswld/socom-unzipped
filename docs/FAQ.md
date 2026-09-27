@@ -61,7 +61,8 @@ launcher. Since the same day every entry here says where its code can be met.)*
 
 > socom2_game.elf is missing or damaged. Unpack the download again and keep every file together.
 
-`socom2_game.elf` is the game's own program image and it has to sit beside `socom2.exe`. This is usually an
+`socom2_game.elf` is the game's own program image (in the tester archive today; the public download builds it
+from your disc, #70) and it has to sit beside `socom2.exe`. This is usually an
 antivirus quarantine or a half-finished unzip. Unpack the archive again into a clean folder, and check it against
 the `SHA256SUMS` that ships beside it.
 
@@ -127,8 +128,10 @@ log — send that log with the report.
 
 Where you meet it: in the middle of a run, from either path.
 
-*(Two more you may see: **0** is a normal exit, and **1** or **3** mean the game stopped on an error it could not
-name. Both ask you to press SAVE DIAGNOSTICS; the end of the log says more.)*
+*(Three more you may see: **0** is a normal exit; **1** means the game stopped on an error it did not name, and
+**3** that it stopped itself after an internal error — both ask you to press SAVE DIAGNOSTICS, and the end of the
+log says more. Any code not on this page reads "The game closed with code N. Press SAVE DIAGNOSTICS to collect the
+log.")*
 
 ### Notices on the LAST RUN line
 
@@ -168,10 +171,11 @@ exit code 75; ruling S13-R9 made it a notice, so it no longer hides a 65 or a 72
 
 ### Why isn't the ISO included? Where do I get the game?
 
-Because it is not ours to give. SOCOM II is still the property of its rights holders, and this project distributes
-**none** of it: no game executable, no recompiled C++, no textures, audio, movies or saves. That holds for the
-repository as much as the download — a pull request containing any of it is closed unread (`../CONTRIBUTING.md`).
-What the project distributes is the machinery that runs *your* copy.
+Because it is not ours to give. SOCOM II is still the property of its rights holders. The **repository** holds none
+of it: no game code, no recompiled C++, no assets — a pull request containing any of it is closed unread
+(`../CONTRIBUTING.md`). The **download** will hold the program (`socom2.exe`) and never the disc's own files: your
+disc supplies those. Once issue #70 lands, the program image is built from your disc on first run (today's tester
+archive still carries it).
 
 So you need your own disc, and your own dump of it. This page will not tell you where to download one.
 
@@ -193,7 +197,8 @@ that both produce a faithful r0001 image will both pass.
 
 The **GAME VERSION** row sits on both the PLAY page and the ONLINE page and says which build LAUNCH starts. It has
 two cells. **r0001 (your disc)** is the one you play. **r0004 (community update)** is the revision the community
-servers run; the download does not include an r0004 build, so that cell is drawn greyed with
+servers run. The download has no r0004 build yet: a later download adds `socom2_r0004.exe`, and the launcher
+fetches the community package and builds its image on your machine (#71). Until then that cell is drawn greyed with
 *"needs the r0004 game update -- planned"* beside it and cannot be picked. It is there so you know the version exists
 and why it is not on offer, not because something is wrong with your setup. See *"Can I play on PSRewired or another
 community server?"* below for why this client stays on r0001.
@@ -257,14 +262,11 @@ Two separate reasons, and each is enough on its own:
 
 1. **It would not work.** The community servers run SOCOM II **r0004** — a different code package from the r0001
    disc this client is built from. That is why the launcher draws the community preset but refuses to select it,
-   with the line *"needs the r0004 game update -- planned"*. An r0004 build now exists, passes the gate and plays
-   online on the project's own server (2026-09-24) — but the launcher's community row is still a placeholder, and
-   whether this client is ever pointed at somebody else's server is the owner's call, not this page's. Note also
+   with the line *"needs the r0004 game update -- planned"*. The launcher will fetch the community package itself
+   (#71); until then, please do not point the game at a server that is not yours or the project's. Note also
    that r0001 and r0004 clients **cannot join each other's games**: the client's own token filter bounces the join
    silently.
-2. **This client's network code has not been audited.** It is the game's own twenty-year-old code, recompiled
-   as-is, running as a native program with your user's access — see `../SECURITY.md`. Aiming an unaudited client at
-   other people's server is not a thing to do to them or to yourself.
+2. **This client's network code has not been audited** — see `../SECURITY.md`.
 
 SOCOM Unzipped is **not affiliated with, endorsed by, or connected to** the SOCOM community servers or their
 operators. The preset row exists because a player would otherwise wonder; it is not an arrangement with anybody.
@@ -294,15 +296,8 @@ answer — press **SAVE DIAGNOSTICS** and send the zip.
 
 ### The game won't remember my online password
 
-It does not yet, and this is the current state rather than a mystery. Found by a driven two-launch test on
-2026-09-23 (runs `w10_virgin_a` / `w10_virgin_b`; the record is the Sprint 10 close entry in `STATUS.md`): launch
-one created a persona on an empty card with the game's own SAVE PASSWORD ticked and reached the lobby; launch two,
-from that same card, got the **persona name** back and an **empty password field**. Whether the game only writes the
-saved password on a clean exit, or our memory-card code drops it, is the open question — `KNOWN.md` §2 carries it.
-
-Until that is fixed, use the launcher's ONLINE page: type your PLAYER NAME and PASSWORD there and the game's
-keyboards open already filled. Be aware of what the launcher itself tells you on that page — the password is stored
-in plain text in `config.json` next to the exe, so do not hand that file to anyone.
+It does. Tick **SAVE PASSWORD = YES** before **CONNECT**, and the persona and password come back from the memory
+card on the next start (`KNOWN.md` §3, issue #27).
 
 ### The music cuts out, wobbles, or comes and goes
 

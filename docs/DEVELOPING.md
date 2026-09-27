@@ -37,7 +37,7 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 | `server/` | Horizon Private Server sources+config for app id 10472, `start-servers.ps1`, README |
 | `docs/` | The live documents (`HANDOFF`, `KNOWN`, `STATUS`, `CURRENT_SPRINT`, `HUMAN_TASKS`, this file), the player pages (`INSTALL`, `FAQ`), the research notes under `docs/research/`, each sprint's spec and plan under `docs/superpowers/`, dated audits under `docs/audits/`; `docs/DOC_MAINTENANCE.md` classifies every one |
 | `game/` (ignored) | ISO, extracted disc tree, decrypted overlays, Ghidra decompilation exports |
-| `tools/` (ignored) | Portable toolchain: llvm-mingw clang, CMake, Ninja (the three `scripts/bootstrap_windows.sh` fetches), plus Ghidra and PCSX2 on the maintainer's machine |
+| `tools/` (ignored) | Portable toolchain: llvm-mingw clang 20260826, CMake 4.4.3, Ninja 1.13.2 (the three `scripts/bootstrap_windows.sh` fetches), plus on the maintainer's machine Ghidra 12.1.3 with ghidra-emotionengine-reloaded v2.1.37 and PCSX2 2.8.2 (`tools/pcsx2`, `tools/pcsx2_b`); an off-tree copy of the whole folder is `D:\socom_archive\tools_backup_2026-09-26` (`docs/HAZARDS.md` git) |
 | `ghidra_proj/` (ignored) | Ghidra project `socom` (programs: SCUS_972.75, DNAS.BIN/.dec.bin, socom2_game.elf, 989SND.IRX) |
 | `dist/` (ignored) | `socom2.exe`, the launcher, their DLLs |
 
@@ -327,12 +327,12 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `pcsx2_shell.py` | The console side of the mixed match, pressing on what its screen shows |
 | `pine.py` | A minimal PCSX2 PINE client |
 | `cam_poll.py` | Poll guest memory over PINE while PCSX2 runs |
-| `state_poll.py` | Load a PCSX2 savestate and sample pointer chains as `[peek]` rows |
-| `probe_poll.py` | Poll the collision query object on PCSX2 at a savestate |
-| `gsdump_capture.py` | Capture a multi-frame PCSX2 GS dump at a savestate |
+| `state_poll.py` | Load a PCSX2 savestate and sample pointer chains as `[peek]` rows (needs a savestate; none exist since 2026-09-26 -- the harness boots from the disc) |
+| `probe_poll.py` | Poll the collision query object on PCSX2 at a savestate (needs a savestate; none exist since 2026-09-26 -- the harness boots from the disc) |
+| `gsdump_capture.py` | Capture a multi-frame PCSX2 GS dump at a savestate (needs a savestate; none exist since 2026-09-26 -- the harness boots from the disc) |
 | `find_dialog_ptr.py` | Find a static pointer chain to the current dialog's name in a RAM dump |
 | `capture_env.py` | The `PS2X_*` environment a capture ran with, written beside its output in the gate's pin format (issue #38 (closed); `scripts/parity/write_env.sh` for the shell scripts) |
-| `p2s_extract.py` | Extract a member from a PCSX2 `.p2s` savestate (zstd entries). Run it as: `python -m tools_py.parity.p2s_extract <state.p2s> <out.bin> [member]` |
+| `p2s_extract.py` | Extract a member from a PCSX2 `.p2s` savestate (zstd entries). Run it as: `python -m tools_py.parity.p2s_extract <state.p2s> <out.bin> [member]` (needs a savestate; none exist since 2026-09-26 -- the harness boots from the disc) |
 | `dns_stub.py` | A tiny DNS responder that points the PCSX2 guest at the Horizon host |
 
 **The parity harness, `tools_py/parity/` — online:**
@@ -351,7 +351,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `two_machine_readout.py` | The readout for the first two-machine match |
 | `control_round_readout.py` | The verdict lines of Sprint 13's two control rounds, read off the rounds' own logs |
 | `peer_pause.py` | Pause the peer of a running online round and record A through it (Sprint 13 V7's bar) |
-| `online_login.py` | Drive the PCSX2 client from savestate 9 through login |
+| `online_login.py` | Drive the PCSX2 client from savestate 9 through login (needs a savestate; none exist since 2026-09-26 -- the harness boots from the disc) |
 | `online_match.py` | Two PCSX2 clients on the local Horizon stack: host, join, READY |
 
 **The parity harness, `tools_py/parity/` — audio:**
@@ -602,8 +602,8 @@ recorded (the r0001 recomp's measured time is the build block's, 273 s and 352 s
 ### Build, run, verify — a newcomer's first hour
 
 **Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
-under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), then `./build.sh runtime --no-runner`
-builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
+under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), `python -m pip install -r requirements.txt`
+installs the pinned Python packages, then `./build.sh runtime --no-runner` builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
 verify. That is what the `windows` and `linux` workflows do. Since Sprint 13 C1 their `build` / `build-windows` jobs
 also run `bash scripts/build_synthetic_runner.sh --build-dir <the job's tree>`: the runner (`ps2EntryRunner`) is
 configured against `tests/fixtures/synthetic_recomp/` -- three hand-written functions in the recompiler's shape (an
@@ -623,7 +623,7 @@ beside it (resolve a new one with `git ls-remote <repo> <tag> '<tag>^{}'`; the `
 annotated tag), and never with `GIT_SHALLOW TRUE` (a shallow clone cannot check out a bare commit). The Windows
 FFmpeg is `ffmpeg-7.1.5` of System233/ffmpeg-msvc-prebuilt with a `URL_HASH SHA256=` (a bump: `gh api
 repos/System233/ffmpeg-msvc-prebuilt/releases/tags/<tag>` gives the asset's `digest`; download the file and check
-`sha256sum` matches it). CI's `pip install` takes `==` pins (through the root `requirements.txt` once H7 lands it).
+`sha256sum` matches it). CI's `pip install` takes `==` pins (through the root `requirements.txt`).
 `linux.yml`'s `apt-get install` is deliberately not version-pinned -- a -dev pin holds back a runtime package the
 runner image upgrades itself, which ends in a downgrade conflict -- so the step records the last green run's
 versions in a comment and prints the FFmpeg family's installed versions (`dpkg-query -W`) into every run's log; the
@@ -833,8 +833,9 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   any other way needs `--dev` or `PS2X_DEV=1` for a probe to be honoured (developer mode, since 2026-09-21).
   > Superseded 2026-09-25 (Sprint 13 R2): this said "once Goal 3 lands"; it landed as Sprint 10's Q2 on 2026-09-21
   > (the first bullet of this section) -- documents audit row 18.
-- **The ladder, scheduled (Sprint 10 Goal 1):** `scripts/ladder_job.sh [rounds]` is what the Task Scheduler entry
-  `SOCOM Unzipped ladder` (disabled until the owner names the windows) fires: quiet gate, lock free, no game, then
+- **The ladder, scheduled (Sprint 10 Goal 1) -- retired 2026-09-26 (R294, R296):** the Task Scheduler entry `SOCOM
+  Unzipped ladder` stays disabled, and the online tests run when a task needs them. What the entry fired, kept for a
+  hand-started run: `scripts/ladder_job.sh [rounds]` -- quiet gate, lock free, no game, then
   `scripts/parity/ladder_frostfire.sh` pinned and detached against the hosted server, then
   `tools_py/parity/ladder_ledger.py add` -- one record per run in `logs/ladder/ledger.jsonl`, the three rates and
   the clean streak rendered to `docs/LADDER.md` (a person commits it). The bar is seven consecutive runs with no
@@ -1051,7 +1052,9 @@ carries the exit codes and knobs. `scripts/pin_harness.sh` archives `tools_py`/`
 `<out_dir>/harness` and records `HARNESS_COMMIT`/`EXE_BUILD`; it does not run or re-exec anything. The template runs
 that snapshot with `PYTHONPATH=<snapshot>` plus **`PYTHONSAFEPATH=1`** from the repo root, so a pinned run cannot
 accidentally import the live tree instead (Python otherwise puts the current directory ahead of `PYTHONPATH`). The
-scheduled form is `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_ledger.py` renders to `docs/LADDER.md`.
+scheduled form was `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_ledger.py` renders to `docs/LADDER.md`;
+the schedule is retired (R294, R296 -- the Task Scheduler entry stays disabled) and a run is started by hand when a
+task needs it.
 
 ## The loop lock
 
