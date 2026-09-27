@@ -7,7 +7,7 @@ import {
 import type { Blending, BlendingDstFactor, BlendingSrcFactor, Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
 import { materialReference, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
-import { lodVisible } from '@s2u/scene';
+import { lodIsLast, lodVisible, type LodBand } from '@s2u/scene';
 import { drawState, materialSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
 import type { Rgba } from '@s2u/gs';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
@@ -127,6 +127,9 @@ interface Built {
 }
 
 /** A drawn object with the facts its visibility and its place in the draw order depend on. */
+/** Two LOD copies within half a metre (5 units at 0.1 m/unit) share a placement. */
+const LOD_SAME_SPOT_SQ = 5 * 5;
+
 interface Drawn {
   object: Object3D;
   order: number;
@@ -134,7 +137,7 @@ interface Drawn {
   shadow: boolean;
   line: boolean;
   /** Shown only in its LOD band's range; null for everything drawn at every range. */
-  lod: { band: import('@s2u/scene').LodBand; at: Vector3; visible: boolean } | null;
+  lod: { band: import('@s2u/scene').LodBand; at: Vector3; visible: boolean; last: boolean } | null;
 }
 
 /** The textures that are drop shadows: `shadow.tif`, `shadow_square.tif`, `t_shadow*`, and their kin. */
@@ -403,7 +406,7 @@ export function buildWorld(map: LoadedMap): WorldView {
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
           mesh.applyMatrix4(m);
           const at = new Vector3().setFromMatrixPosition(m);
-          later(revealProps, mesh, part.order, prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0) });
+          later(revealProps, mesh, part.order, prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0), last: false });
         }
         triangles += (part.indices.length / 3) * count;
         continue;
@@ -421,6 +424,17 @@ export function buildWorld(map: LoadedMap): WorldView {
         later(revealProps, mesh, part.order, prop.alternate, part.textureName);
       }
       triangles += (part.indices.length / 3) * count;
+    }
+  }
+
+  // Which LOD copy is the last at its spot (`lodIsLast`): the copies of one object share a placement,
+  // so the others at a placement are the bands within a stride of it. Tens of placements, once.
+  {
+    const lodDrawn = drawn.filter((d): d is Drawn & { lod: NonNullable<Drawn['lod']> } => d.lod !== null);
+    for (const d of lodDrawn) {
+      const bandsHere: LodBand[] = [];
+      for (const o of lodDrawn) if (o !== d && o.lod.at.distanceToSquared(d.lod.at) < LOD_SAME_SPOT_SQ) bandsHere.push(o.lod.band);
+      d.lod.last = lodIsLast(d.lod.band, bandsHere);
     }
   }
 
@@ -490,7 +504,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       let lodChanged = false;
       for (const d of drawn) {
         if (d.lod === null) continue;
-        const visible = lodVisible(d.lod.band, d.lod.at.distanceTo(camera.position));
+        const visible = lodVisible(d.lod.band, d.lod.at.distanceTo(camera.position), d.lod.last);
         if (visible !== d.lod.visible) { d.lod.visible = visible; lodChanged = true; }
       }
       if (lodChanged) refreshVisibility();

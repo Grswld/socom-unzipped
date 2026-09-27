@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { farLodModels, lodBands, lodVisible } from '../src/lod';
+import { farLodModels, lodBands, lodIsLast, lodVisible } from '../src/lod';
 import type { RdrNode } from '@s2u/archive';
 
 /**
@@ -61,8 +61,36 @@ describe('lodVisible', () => {
     for (const range of [110, 200, 429]) { expect(lodVisible(high, range)).toBe(false); expect(lodVisible(low, range)).toBe(true); }
   });
 
-  it('shows neither copy past the far fade of the far one', () => {
+  it('culls both copies past the far fade of the far one, as the engine does', () => {
     expect(lodVisible(low, 431)).toBe(false);
     expect(lodVisible(high, 431)).toBe(false);
+  });
+
+  it('keeps the last copy at every range when asked, and the near copy still steps aside for it', () => {
+    expect(lodVisible(low, 431, true)).toBe(true);
+    expect(lodVisible(low, 5000, true)).toBe(true);
+    expect(lodVisible(low, 50, true)).toBe(false);      // not yet faded in
+    expect(lodVisible(high, 431, true)).toBe(true);     // a lone near copy asked to stay, stays
+  });
+});
+
+describe('lodIsLast', () => {
+  const bands = lodBands(FROSTFIRE);
+  const high = bands.get('railstraithi1')!;
+  const low = bands.get('railstraitlo1')!;
+  const lone = bands.get('chair_office')!;
+
+  it('is the far copy of a pair, not the near one', () => {
+    expect(lodIsLast(low, [high])).toBe(true);
+    expect(lodIsLast(high, [low])).toBe(false);
+  });
+
+  it('is a copy with nothing else at its spot', () => {
+    expect(lodIsLast(lone, [])).toBe(true);
+    expect(lodIsLast(high, [])).toBe(true);
+  });
+
+  it('ignores itself and another copy that fades in no later', () => {
+    expect(lodIsLast(low, [low, high, lone])).toBe(true);
   });
 });

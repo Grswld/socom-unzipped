@@ -4,7 +4,7 @@
 
 Please do not open a public issue for a security problem. Use GitHub's **private vulnerability reporting** on this
 repository (Security tab, "Report a vulnerability"; it is enabled), or write to the owner through the contact on
-https://s2u.scotho.com. Reports are read; there is no promised response time and no bounty.
+https://socomunzipped.com. Reports are read; there is no promised response time and no bounty.
 
 ## What the repository does about its own secrets
 
@@ -27,7 +27,7 @@ before it is pointed at.
   memory-card folder is also resolved through links; this is tested, so a way out of those folders is in scope.
 - The network client: anything a hostile game server or peer can do to a player's machine.
 - The bug-report path: anything that makes the launcher send what the player was not shown.
-- The hosted project server (`socom.scotho.com`) and the site (`s2u.scotho.com`): report, do not test destructively.
+- The hosted project server (`socom.scotho.com`) and the site (`socomunzipped.com`): report, do not test destructively.
 
 ## Known: the game's own network code
 

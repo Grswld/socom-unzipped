@@ -219,8 +219,8 @@ from the owner's disc and is not, and must never be, in the repository. So:
 
 Two doors, one room:
 
-- **Players** report from the launcher's REPORT A BUG page or from s2u.scotho.com. That goes to a private inbox
-  (`POST https://s2u.scotho.com/api/bugs`) and returns a `BR-YYYYMMDD-xxxxxx` id. Reports may carry a contact and a
+- **Players** report from the launcher's REPORT A BUG page or from socomunzipped.com. That goes to a private inbox
+  (`POST https://socomunzipped.com/api/bugs`) and returns a `BR-YYYYMMDD-xxxxxx` id. Reports may carry a contact and a
   log; they are never public.
 - **Contributors** open GitHub issues from the templates in `.github/ISSUE_TEMPLATE/`. The bug template has a field
   for a `BR-` id, so a player who also files an issue links the two without pasting their log in public.

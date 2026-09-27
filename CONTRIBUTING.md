@@ -59,7 +59,7 @@ documentation that a stranger followed successfully. Large refactors and new fea
 
 ## Reporting a bug
 
-- **As a player:** use REPORT A BUG in the launcher (or on https://s2u.scotho.com). It goes to a private inbox, can
+- **As a player:** use REPORT A BUG in the launcher (or on https://socomunzipped.com). It goes to a private inbox, can
   attach a scrubbed log if you tick the box, and gives you a `BR-` id. Nothing is sent until you press SEND.
 - **As a contributor:** open a GitHub issue with the bug template. If you also sent a launcher report, put its `BR-`
   id in the issue instead of pasting your log in public. SAVE DIAGNOSTICS in the launcher writes a zip with your home
