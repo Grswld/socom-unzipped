@@ -26,7 +26,7 @@ namespace ui
             {"AUDIO", "AUDIO -- how loud the game is", "rail.audio"},
             {"CONTROLLER", "CONTROLLER -- what the game will read from your pad", "rail.controller"},
             {"MICROPHONE", "MICROPHONE -- the capture device, and proof it hears you", "rail.microphone"},
-            {"ONLINE", "ONLINE -- the server, your profile, a second instance", "rail.online"},
+            {"ONLINE", "ONLINE -- the server, your personas, a second instance", "rail.online"},
             {"REPORT A BUG", "REPORT A BUG -- tell us what went wrong; nothing is sent until you press SEND", "rail.report"},
             {"ABOUT", "ABOUT -- what this is, where it keeps things", "rail.about"},
         };
@@ -39,6 +39,13 @@ namespace ui
         // Task 11: the GAME VERSION cells. 176 is what holds "r0004 (community update)" unellipsized at
         // the design size and still leaves the ONLINE row room for the note beside it.
         constexpr float kRevisionCellW = 176.0f;
+
+        // Sprint 16 L1b: the PERSONAS rows (the presets' height and pitch) and the password beside the selected one.
+        constexpr float kPersonaTop = 72.0f;
+        constexpr float kPersonaPitch = 38.0f;
+        constexpr float kPersonaRowH = 32.0f;
+        constexpr float kPersonaPasswordW = 200.0f;
+        constexpr float kPersonaPasswordGap = 10.0f;
 
         // ONLINE's row sits between the server list and the fields under it. Sprint 10 Goal 9 had already
         // filled that page to the design height -- the second-instance toggle's caption ends 4 units above
@@ -263,13 +270,24 @@ namespace ui
             // Task 11: the GAME VERSION row, between the server list and the fields -- the server and the
             // build have to agree, so the two choices sit together and the warning between them is short.
             addRevisionCells(out, page, window, in);
-            const float y = revisionCell(window, page, 0).bottom() + 10.0f;
+            const float y = onlineAddressRow(window).y;
             if (in.customServer)
-                add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
-            add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + kOnlineRowPitch, 300.0f, 40.0f});
-            // Sprint 10 Goal 9: the persona and its password, under the profile that keeps the card.
-            add(out, page, "online.name", Rect{b.x + metrics::labelW, y + 2.0f * kOnlineRowPitch, 300.0f, 40.0f});
-            add(out, page, "online.password", Rect{b.x + metrics::labelW, y + 3.0f * kOnlineRowPitch, 300.0f, 40.0f});
+                add(out, page, "online.server", onlineAddressRow(window));
+            // Sprint 16 L1b (#73, R295): the PERSONAS list in the 142 units the PROFILE, PLAYER NAME and PASSWORD
+            // fields had -- three visible rows of the records and NEW PERSONA, the password beside the selected one.
+            const int records = in.personaRows < 0 ? 0 : in.personaRows;
+            const int total = records + 1;
+            const int scroll = personaScrollToShow(in.personaScroll, in.personaScroll, total);
+            for (int i = scroll; i < total && i < scroll + kPersonaVisibleRows; ++i)
+            {
+                const bool withField = i == in.personaSelected && in.personaPasswordShown;
+                Rect row = onlinePersonaRow(window, i, scroll);
+                if (withField)
+                    row.w = onlinePersonaPassword(window, i, scroll).x - kPersonaPasswordGap - row.x;
+                add(out, page, personaRowId(i, records), row);
+                if (withField)
+                    add(out, page, "online.persona.password", onlinePersonaPassword(window, i, scroll));
+            }
             // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
             // reveals are below it, last in reading order and last in the focus order.
             // Task 11 moved these two up (212 -> 188, 252 -> 224) to pay for the row above; the gaps they
@@ -316,22 +334,20 @@ namespace ui
         // Kept short enough to read in one glance under the page. Each one answers a question a stranger
         // actually has on their first run -- not a restatement of the label above it.
         const Help kHelp[] = {
-            {"online.profile",
-             "A profile is one save: it picks the memory card kept in cards/<profile>, and it is the persona "
-             "other players see online. Change it and you start again on a fresh card."},
+            // Sprint 16 L1b (#73, R295): the PERSONAS list. The owner's first ask ("what is a profile?") is answered
+            // where the profile now is -- the card NEW PERSONA keeps.
+            {"online.persona.new",
+             "A new persona: the game asks for its name on its own keyboard and keeps it on the memory card in "
+             "cards/<profile>. It joins this list after its first login."},
+            {"online.persona.password",
+             "The persona's password, up to 12 characters, masked here. Kept in config.json next to the launcher, in "
+             "plain text, only until the game remembers it on the card."},
             {"online.server",
              "Which Horizon server the game logs in to. The project hosts one; a different address is for a "
              "server you run yourself."},
             {"online.second",
              "Starts a second copy of the game on this machine, on its own ports and its own memory card, so "
              "two players here can meet in the same match. For testing."},
-            // Sprint 10 Goal 9 (R179, R180): the game's keyboards open already holding these; ENTER is the player's.
-            {"online.name",
-             "The persona other players see, and the name the game logs in with. Leave it empty and the game "
-             "asks on its own keyboard, as it always did. Up to 14 characters, no spaces."},
-            {"online.password",
-             "The persona's password, up to 12 characters. Kept in config.json next to the launcher, in plain "
-             "text, masked here; the game's keyboard opens with it already typed and you press ENTER."},
             {"disc.path",
              "Your own SOCOM II disc image. Nothing from the game is shipped with this program, so it reads "
              "the movies, sounds and levels out of the file you point it at."},
@@ -370,6 +386,10 @@ namespace ui
         for (const Help &h : kHelp)
             if (id == h.id)
                 return h.text;
+        // Sprint 16 L1b: a persona row, whatever its index.
+        if (id.rfind("online.persona.", 0) == 0 && id.size() > 15 && id[15] >= '0' && id[15] <= '9')
+            return "A persona this card has logged in with: its name, the server it was made on and when it last played. "
+                   "Pick it, press LAUNCH, then pick it in the game's list.";
         // The crouch cells: each one's trade, the line the page's caption used to carry (R139).
         if (id.rfind("pad.crouch.", 0) == 0)
         {
@@ -406,10 +426,76 @@ namespace ui
         return layoutFor(page, window, in);
     }
 
-    // The ONLINE page's field pitch: a 40-px field and a 6-px gap. It was the REPORT page's 12 (Sprint 10
-    // Goal 9) until Task 11 put the GAME VERSION row above these fields; the page was already full to the
-    // design height, so the row is paid for out of this pitch and the two gaps below the password.
-    const float kOnlineRowPitch = 46.0f;
+    // Sprint 16 L1b (#73, R295; the L1 design note, section 2). The ADDRESS row is where it was (Task 11's y, under
+    // the GAME VERSION row). The PERSONAS heading is drawn 26 above the first row, as SERVER is; the rows keep the
+    // presets' 38 pitch and 32 height from y + 72, so three visible rows end at y + 180, 8 clear of ADVANCED at
+    // y + 188 -- the 142 units the three fields had. No other node moves when the list scrolls.
+    Rect onlineAddressRow(Rect window)
+    {
+        const Frame f = frameFor(window);
+        return Rect{f.body.x + metrics::labelW, revisionCell(window, Page::Online, 0).bottom() + 10.0f, 420.0f, 40.0f};
+    }
+
+    Rect onlinePersonaRow(Rect window, int index, int scroll)
+    {
+        const Frame f = frameFor(window);
+        const float top = onlineAddressRow(window).y + kPersonaTop;
+        return Rect{f.body.x, top + static_cast<float>(index - scroll) * kPersonaPitch, f.body.w, kPersonaRowH};
+    }
+
+    Rect onlinePersonaPassword(Rect window, int index, int scroll)
+    {
+        const Rect row = onlinePersonaRow(window, index, scroll);
+        return Rect{row.right() - kPersonaPasswordW, row.y, kPersonaPasswordW, row.h};
+    }
+
+    std::string personaRowId(int index, int records)
+    {
+        return index == records ? std::string("online.persona.new") : "online.persona." + std::to_string(index);
+    }
+
+    int personaIndexOf(const std::string &id, int records)
+    {
+        if (id == "online.persona.new")
+            return records;
+        const std::string prefix = "online.persona.";
+        if (id.rfind(prefix, 0) != 0 || id.size() == prefix.size())
+            return -1;
+        int index = 0;
+        for (size_t i = prefix.size(); i < id.size(); ++i)
+        {
+            if (id[i] < '0' || id[i] > '9' || index > 100000)
+                return -1;
+            index = index * 10 + (id[i] - '0');
+        }
+        return index < records ? index : -1;
+    }
+
+    int personaScrollToShow(int index, int scroll, int total)
+    {
+        if (index < scroll)
+            scroll = index;
+        if (index >= scroll + kPersonaVisibleRows)
+            scroll = index - kPersonaVisibleRows + 1;
+        const int most = total > kPersonaVisibleRows ? total - kPersonaVisibleRows : 0;
+        return scroll < 0 ? 0 : (scroll > most ? most : scroll);
+    }
+
+    bool personaMove(const LayoutInputs &in, const std::string &from, Dir dir, std::string &to, int &scroll)
+    {
+        if (dir != Dir::Up && dir != Dir::Down)
+            return false;
+        const int records = in.personaRows < 0 ? 0 : in.personaRows;
+        const int at = personaIndexOf(from, records);
+        if (at < 0)
+            return false;
+        const int next = at + (dir == Dir::Down ? 1 : -1);
+        if (next < 0 || next > records)
+            return false;   // off the list's ends: ADDRESS above, ADVANCED below, by the layout
+        to = personaRowId(next, records);
+        scroll = personaScrollToShow(next, scroll, records + 1);
+        return true;
+    }
 
     Rect onlinePresetRow(Rect window, int index)
     {

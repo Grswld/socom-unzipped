@@ -7,6 +7,7 @@
 #include "focus.h"
 #include "launcher/bug_report.h"
 #include "launcher/launcher_config.h"
+#include "launcher/personas.h"   // Sprint 16 L1b (#73): the ONLINE page's PERSONAS list
 #include "pad_render.h"
 #include "widgets.h"
 
@@ -100,6 +101,12 @@ namespace ui
         // it is the loop's word on where the cues stand ("from your disc", "no disc set: silent", "off").
         bool requestMenuSounds = false;
         std::string menuSoundsStatus;
+
+        // Sprint 16 L1b (#73, R295): the personas every card's ledger holds (read by main.cpp at start and after each
+        // run -- a page never touches the disk), the list's scroll, and the clock the rows' ages are measured by.
+        launcher::personas::Cards personas;
+        int personaScroll = 0;
+        long long personasNow = 0;
 
         std::string activeField;   // the text field holding the keyboard, by node id
         Nav nav;

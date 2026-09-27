@@ -14,6 +14,11 @@
 #include <string>
 #include <vector>
 
+namespace launcher
+{
+    struct Config;
+}
+
 namespace launcher::personas
 {
     struct Persona
@@ -78,4 +83,26 @@ namespace launcher::personas
 
     // What a row can draw of a name: printable ASCII as is, any other byte as '?' (the launcher's glyph set).
     std::string displayName(const std::string &name);
+
+    // ---- the ONLINE page's selection (the design note, section 2) -------------------------------------------------
+    // The card a Config launches: normalizeProfile(profile), plus "_b" for the second instance -- what a row's `card`
+    // is compared with.
+    std::string cardLeaf(const Config &c);
+    // A record counts -- for the password field and for the saved-password rule -- only on the server the game is
+    // pointed at: on another server the game runs a create-persona login and opens its keyboard empty.
+    bool counts(const Persona &row, const Config &c);
+    // The selected row: the record whose card is cardLeaf(c) and whose name is c.loginName byte for byte (of two
+    // alike, the one that counts, else the first); rows.size() -- NEW PERSONA -- when none matches.
+    std::size_t selectedRow(const std::vector<Persona> &rows, const Config &c);
+    // The masked PASSWORD field shows for NEW PERSONA, a record that does not count, and one whose card does not hold
+    // the password.
+    bool passwordShown(const std::vector<Persona> &rows, const Config &c);
+    // Picking a row: the card (a `second` record in a <p>_b ledger sets <p> and the second instance, since
+    // environmentFor appends _b itself), the name when normalizeLoginName leaves it as it is and EMPTY otherwise, and
+    // the typed password cleared -- one loginPassword serves every row, and B picked after A must not send A's.
+    void pick(Config &c, const Persona &row);
+    // NEW PERSONA: the name and the password cleared, the card kept; the game asks for a name on its own keyboard.
+    void pickNewPersona(Config &c);
+    // "last played today", "last played 1 day ago", "last played <n> days ago".
+    std::string ageCaption(std::time_t lastLogin, std::time_t now);
 }

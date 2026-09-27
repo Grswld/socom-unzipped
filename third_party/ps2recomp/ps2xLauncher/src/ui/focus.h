@@ -80,6 +80,13 @@ namespace ui
         // cell is DRAWN either way -- greyed, with the note -- but it is only a focusable node when the
         // build it names exists, because a control a player cannot use must not be reachable by the pad.
         uint32_t gameRevisionsInstalled = 0;
+        // Sprint 16 L1b (#73): the ONLINE page's PERSONAS list -- how many records it lists (NEW PERSONA is one more,
+        // last), how far it is scrolled (the first visible row), which row is selected (personaRows = NEW PERSONA,
+        // the default inputs' case) and whether the masked PASSWORD field shows beside the selected row.
+        int personaRows = 0;
+        int personaScroll = 0;
+        int personaSelected = 0;
+        bool personaPasswordShown = true;
     };
 
     // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it
@@ -104,8 +111,22 @@ namespace ui
     // The ONLINE page's preset rows, by index: a row exists for every preset, but only the ones that can
     // actually be played get a focusable node (see launcher::presetAvailable).
     Rect onlinePresetRow(Rect window, int index);
-    // The pitch between the ONLINE page's fields (the address sits one pitch above the profile, drawn by the page).
-    extern const float kOnlineRowPitch;
+    // Sprint 16 L1b (#73, R295): the ONLINE page under the server list. ADDRESS on its own row; the PERSONAS list's
+    // rows at the presets' pitch, three visible, scrolling inside themselves past three, NEW PERSONA last; the masked
+    // password beside the selected row, which narrows for it. Shared as onlinePresetRow is, so the drawn and the
+    // focusable rects agree. A row is by its index in the whole list (records, then NEW PERSONA) and the scroll.
+    constexpr int kPersonaVisibleRows = 3;
+    Rect onlineAddressRow(Rect window);
+    Rect onlinePersonaRow(Rect window, int index, int scroll);
+    Rect onlinePersonaPassword(Rect window, int index, int scroll);
+    // "online.persona.<i>" for a record, "online.persona.new" for index == records; the reverse (-1: not a row).
+    std::string personaRowId(int index, int records);
+    int personaIndexOf(const std::string &id, int records);
+    // The scroll that shows `index` (unchanged when it already shows), clamped to the list.
+    int personaScrollToShow(int index, int scroll, int total);
+    // Up and down inside the list are the list's own moves, so a hidden row is reachable: true with `to` and the
+    // `scroll` that shows it; false off either end, where the layout's geometry takes over (ADDRESS, ADVANCED).
+    bool personaMove(const LayoutInputs &in, const std::string &from, Dir dir, std::string &to, int &scroll);
 
     // Task 11: the GAME VERSION selector's cells, by index, on the page that carries it (PLAY or ONLINE).
     // Shared the way onlinePresetRow is: layoutFor emits a node for the cells that can be chosen, and the

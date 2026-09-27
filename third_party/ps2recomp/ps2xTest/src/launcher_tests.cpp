@@ -1325,7 +1325,7 @@ void register_launcher_tests()
 
             t.IsFalse(ui::drawable(ui::rectOf(nodes, "online.no.such.control")),
                       "an id the list does not hold answers a rect nothing may draw from");
-            t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.profile")), "an id it does hold answers a real one");
+            t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.persona.new")), "an id it does hold answers a real one");
         });
 
         // Sprint 10 (owner, 2026-09-20): "text from a selected tab displays inline around the top left before
@@ -1465,7 +1465,7 @@ void register_launcher_tests()
             const ui::Rect second = ui::rectOf(open, "online.second");
             t.IsTrue(ui::drawable(disclosure) && ui::drawable(second), "both are real rects");
             t.IsTrue(second.y > disclosure.y, "the toggle sits below the disclosure that reveals it");
-            t.IsTrue(second.y > ui::rectOf(open, "online.profile").y,
+            t.IsTrue(second.y > ui::rectOf(open, "online.persona.new").y,
                      "and the whole section is below the settings a stranger does need");
 
             // The focus order: ADVANCED is the last thing on the page before the bottom bar's LAUNCH, so
@@ -1477,7 +1477,7 @@ void register_launcher_tests()
             for (size_t i = 0; i < ids.size(); ++i)
             {
                 if (ids[i] == "online.advanced") advancedAt = i;
-                if (ids[i] == "online.profile") profileAt = i;
+                if (ids[i] == "online.persona.new") profileAt = i;   // Sprint 16 L1b: the viewer's last row
             }
             t.IsTrue(advancedAt < ids.size() && profileAt < ids.size(), "both are in the graph");
             t.IsTrue(advancedAt > profileAt, "ADVANCED comes after the ordinary settings, not before them");
@@ -1501,42 +1501,132 @@ void register_launcher_tests()
                      "the toggle a player switched on is always on the page they switched it on");
         });
 
-        // Sprint 10 Goal 9: the persona and its password, under PROFILE and above ADVANCED -- a stranger's first-run
-        // settings, in reading order, and still inside the body with the second-instance caption at the small size.
-        tc.Run("the ONLINE page holds a name and a masked password under PROFILE, above ADVANCED, clear of each other", [](TestCase &t)
+        // Sprint 16 L1b (#73, R295): the PERSONAS list replaces Sprint 10 Goal 9's PROFILE, PLAYER NAME and PASSWORD fields
+        // in the same 142 units under the address: three visible rows at the presets' pitch, NEW PERSONA last, the masked
+        // password beside the selected row, ADVANCED where it was -- still inside the body at the design size.
+        tc.Run("the ONLINE page holds the PERSONAS rows and a masked password under the address, above ADVANCED, clear of each other", [](TestCase &t)
         {
             for (const ui::Rect window : {ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f}, ui::Rect{0.0f, 0.0f, 800.0f, 520.0f}})
             {
                 ui::LayoutInputs in;
                 in.advancedOpen = true;
                 in.customServer = true;   // the tallest form: the address field is on the page too
+                in.personaRows = 2;       // two records, NEW PERSONA third: the three visible rows full
+                in.personaSelected = 0;
+                in.personaPasswordShown = true;
                 const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
-                const ui::Rect profile = ui::rectOf(nodes, "online.profile");
-                const ui::Rect name = ui::rectOf(nodes, "online.name");
-                const ui::Rect password = ui::rectOf(nodes, "online.password");
+                for (const char *gone : {"online.profile", "online.name", "online.password"})
+                    t.IsFalse(ui::hasNode(nodes, gone), std::string("the old field is gone: ") + gone);
+                const ui::Rect address = ui::rectOf(nodes, "online.server");
+                const ui::Rect row0 = ui::rectOf(nodes, "online.persona.0");
+                const ui::Rect row1 = ui::rectOf(nodes, "online.persona.1");
+                const ui::Rect fresh = ui::rectOf(nodes, "online.persona.new");
+                const ui::Rect password = ui::rectOf(nodes, "online.persona.password");
                 const ui::Rect advanced = ui::rectOf(nodes, "online.advanced");
                 const ui::Rect second = ui::rectOf(nodes, "online.second");
-                t.IsTrue(ui::drawable(name) && ui::drawable(password), "both fields are laid out");
-                t.IsTrue(name.y >= profile.bottom() && password.y >= name.bottom(), "in reading order under PROFILE");
-                t.IsTrue(advanced.y >= password.bottom(), "ADVANCED is below them");
+                t.IsTrue(ui::drawable(row0) && ui::drawable(row1) && ui::drawable(fresh) && ui::drawable(password), "every row and the field are laid out");
+                t.IsTrue(address.y == ui::onlineAddressRow(window).y, "ADDRESS sits on its own shared row");
+                t.IsTrue(row0.y >= address.bottom() + 26.0f, "the rows start below the address with room for the PERSONAS heading");
+                t.IsTrue(row1.y >= row0.bottom() && fresh.y >= row1.bottom(), "in reading order, NEW PERSONA last");
+                t.IsTrue(advanced.y >= fresh.bottom() + 8.0f, "ADVANCED is below the three rows, 8 clear");
+                t.IsTrue(password.y == row0.y && password.x >= row0.right(), "the password sits beside the selected row, which narrows for it");
+                t.IsTrue(std::fabs(row1.right() - password.right()) < 0.01f, "an unselected row spans what the two share");
                 t.IsTrue(second.y >= advanced.bottom(), "and the second-instance toggle below that");
                 const ui::Frame f = ui::frameFor(window);
                 if (window.w >= 1100.0f)   // the small window scrolls its body; the design size must not need to
                     t.IsTrue(second.bottom() + 40.0f <= f.body.bottom(), "with its caption still inside the body");
-                // The focus order follows the reading order: profile, name, password, then ADVANCED.
                 const std::vector<std::string> ids = ui::FocusGraph::build(window, in).idsOn(ui::Page::Online);
-                size_t profileAt = ids.size(), nameAt = ids.size(), passwordAt = ids.size(), advancedAt = ids.size();
+                size_t addressAt = ids.size(), row0At = ids.size(), freshAt = ids.size(), advancedAt = ids.size();
                 for (size_t i = 0; i < ids.size(); ++i)
                 {
-                    if (ids[i] == "online.profile") profileAt = i;
-                    if (ids[i] == "online.name") nameAt = i;
-                    if (ids[i] == "online.password") passwordAt = i;
+                    if (ids[i] == "online.server") addressAt = i;
+                    if (ids[i] == "online.persona.0") row0At = i;
+                    if (ids[i] == "online.persona.new") freshAt = i;
                     if (ids[i] == "online.advanced") advancedAt = i;
                 }
-                t.IsTrue(profileAt < nameAt && nameAt < passwordAt && passwordAt < advancedAt, "focus walks profile, name, password, ADVANCED");
+                t.IsTrue(addressAt < row0At && row0At < freshAt && freshAt < advancedAt, "focus walks address, the rows, NEW PERSONA, ADVANCED");
             }
-            t.IsFalse(ui::helpFor("online.name").empty() || ui::helpFor("online.password").empty(), "both fields have help");
-            t.IsTrue(ui::helpFor("online.password").find("config.json") != std::string::npos, "and the password's says where it is kept (R179)");
+            t.IsFalse(ui::helpFor("online.persona.new").empty() || ui::helpFor("online.persona.password").empty(), "the new nodes have help");
+            t.IsFalse(ui::helpFor("online.persona.0").empty(), "and so does a row, by its prefix");
+            t.IsTrue(ui::helpFor("online.persona.password").find("config.json") != std::string::npos, "the password's says where it is kept");
+        });
+
+        tc.Run("the empty viewer: NEW PERSONA and its masked field, and none of the old three fields", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            const ui::LayoutInputs in;   // no records: NEW PERSONA is the list and the selected row
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(nodes, "online.persona.new"), "the NEW PERSONA row");
+            t.IsTrue(ui::hasNode(nodes, "online.persona.password"), "and its password field");
+            t.IsFalse(ui::hasNode(nodes, "online.persona.0"), "no record row");
+            for (const char *gone : {"online.profile", "online.name", "online.password"})
+                t.IsFalse(ui::hasNode(nodes, gone), std::string("no ") + gone);
+            t.IsTrue(ui::rectOf(nodes, "online.persona.new").y == ui::onlinePersonaRow(window, 0, 0).y, "in the first slot");
+        });
+
+        tc.Run("readCards (k): four records -> three rows visible; a focus move onto the fourth scrolls by one and no other node moves", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.customServer = true;
+            in.personaRows = 4;
+            in.personaSelected = 4;   // NEW PERSONA
+            in.personaPasswordShown = true;
+            const std::vector<ui::Node> top = ui::layoutFor(ui::Page::Online, window, in);
+            int visible = 0;
+            for (const ui::Node &n : top)
+                if (n.id.rfind("online.persona.", 0) == 0 && n.id != "online.persona.password")
+                    ++visible;
+            t.Equals(visible, ui::kPersonaVisibleRows, "three rows of five");
+            t.IsTrue(ui::hasNode(top, "online.persona.2") && !ui::hasNode(top, "online.persona.3"), "the fourth is below the fold");
+            t.IsFalse(ui::hasNode(top, "online.persona.password"), "the selected row (NEW PERSONA) is not visible, nor its field");
+            std::string to;
+            int scroll = 0;
+            t.IsTrue(ui::personaMove(in, "online.persona.2", ui::Dir::Down, to, scroll), "down from the last visible row is the list's own move");
+            t.Equals(to, std::string("online.persona.3"), "onto the fourth");
+            t.Equals(scroll, 1, "scrolled by one");
+            in.personaScroll = scroll;
+            const std::vector<ui::Node> down = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(down, "online.persona.3") && !ui::hasNode(down, "online.persona.0"), "the list moved inside itself");
+            t.IsTrue(ui::rectOf(down, "online.persona.3").y == ui::rectOf(top, "online.persona.2").y, "the fourth takes the last slot");
+            for (const ui::Node &n : top)
+            {
+                if (n.id.rfind("online.persona.", 0) == 0)
+                    continue;
+                const ui::Rect after = ui::rectOf(down, n.id);
+                t.IsTrue(after.x == n.r.x && after.y == n.r.y && after.w == n.r.w && after.h == n.r.h, "no other node moves: " + n.id);
+            }
+            t.IsTrue(ui::personaMove(in, "online.persona.2", ui::Dir::Down, to, scroll) && to == "online.persona.3" && scroll == 1,
+                     "a move to a row already showing keeps the scroll");
+            scroll = 0;
+            t.IsFalse(ui::personaMove(in, "online.persona.0", ui::Dir::Up, to, scroll), "up from the first row the layout takes over (ADDRESS)");
+            scroll = 1;
+            t.IsTrue(ui::personaMove(in, "online.persona.1", ui::Dir::Up, to, scroll) && to == "online.persona.0" && scroll == 0,
+                     "up from the first visible row scrolls back");
+            in.personaScroll = 2;
+            scroll = 2;
+            t.IsTrue(ui::personaMove(in, "online.persona.3", ui::Dir::Down, to, scroll) && to == "online.persona.new" && scroll == 2,
+                     "NEW PERSONA is the last row");
+            t.IsFalse(ui::personaMove(in, "online.persona.new", ui::Dir::Down, to, scroll), "and below it the layout takes over (ADVANCED)");
+            t.Equals(ui::personaScrollToShow(4, 0, 5), 2, "showing the last row scrolls to its page");
+            t.Equals(ui::personaScrollToShow(0, 2, 5), 0, "and the first back to the top");
+        });
+
+        tc.Run("the password field shows for NEW PERSONA and a record without a saved password on this server, never beside a hidden row", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.personaRows = 2;
+            in.personaSelected = 1;
+            in.personaPasswordShown = false;   // the record says the card holds it
+            const std::vector<ui::Node> held = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsFalse(ui::hasNode(held, "online.persona.password"), "no field when the card holds the password");
+            t.IsTrue(std::fabs(ui::rectOf(held, "online.persona.1").w - ui::onlinePersonaRow(window, 1, 0).w) < 0.01f, "and the row spans the body");
+            in.personaPasswordShown = true;
+            const std::vector<ui::Node> typed = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(typed, "online.persona.password"), "the field for a record without one");
+            t.IsTrue(ui::rectOf(typed, "online.persona.password").y == ui::rectOf(typed, "online.persona.1").y, "beside that row");
+            t.IsTrue(ui::rectOf(typed, "online.persona.1").w < ui::onlinePersonaRow(window, 1, 0).w, "which narrows");
         });
 
         // Sprint 9 P4 (owner, 2026-09-20): "tooltips where the launcher is unclear, 'what is a profile?'
@@ -1548,8 +1638,9 @@ void register_launcher_tests()
             t.IsTrue(ui::helpFor("no.such.control").empty(), "an id with no help answers nothing, not a placeholder");
             t.IsTrue(ui::helpFor("").empty(), "and neither does an empty id");
 
-            // The owner's first ask, by name: a profile is the card directory AND the persona.
-            const std::string profile = ui::helpFor("online.profile");
+            // The owner's first ask, by name: a profile is the card directory AND the persona. Sprint 16 L1b: the answer
+            // moved with the fields it explained, to the PERSONAS list's NEW PERSONA row.
+            const std::string profile = ui::helpFor("online.persona.new");
             t.IsFalse(profile.empty(), "'what is a profile?' is answered");
             t.IsTrue(profile.find("cards/") != std::string::npos, "it says where the profile puts the memory card");
             t.IsTrue(profile.find("persona") != std::string::npos, "and that it is the name the server sees");
@@ -1807,8 +1898,8 @@ void register_launcher_tests()
                     // Sprint 11 review, Minor 8: hold the re-tuned ONLINE rhythm -- the row belongs above
                     // the fields, not among them, whatever a later edit does to the pitch.
                     if (page == ui::Page::Online)
-                        t.IsTrue(ui::revisionCell(window, page, 0).bottom() <= ui::rectOf(nodes, "online.profile").y,
-                                 "the GAME VERSION row sits above PROFILE in the same column");
+                        t.IsTrue(ui::revisionCell(window, page, 0).bottom() <= ui::onlineAddressRow(window).y,
+                                 "the GAME VERSION row sits above ADDRESS in the same column");
                 }
             }
         });
@@ -3117,6 +3208,82 @@ void register_launcher_tests()
                 t.IsTrue(!read.rows[1].second && read.rows[1].card == "sgt_b", "a hand-made sgt_b card is a card like any other");
             }
             removeCardsDir(cards);
+        });
+
+        tc.Run("selection (c, h, i, j): a row is selected by its card and name; picking sets the launch and clears the password", [](TestCase &t)
+        {
+            launcher::Config c;   // profile "player", the project's server
+            const std::string server = launcher::effectiveServer(c);
+            std::vector<ps::Persona> rows = {persona("alpha", server, 20), persona("bravo", server, 10)};
+            rows[0].card = "player";
+            rows[1].card = "player";
+            t.Equals(ps::selectedRow(rows, c), rows.size(), "an empty name matches no record: NEW PERSONA is selected");
+            t.IsTrue(ps::passwordShown(rows, c), "and the field shows");
+            c.loginPassword = "old1";   // a config from before this build: its plain password
+            c.loginName = "zulu";
+            t.Equals(ps::selectedRow(rows, c), rows.size(), "a name the ledger never held selects NEW PERSONA too");
+            ps::pick(c, rows[0]);
+            t.IsTrue(c.profile == "player" && c.loginName == "alpha" && c.loginPassword.empty(), "(c) picking sets the card and the name, clears the password");
+            t.Equals(ps::selectedRow(rows, c), size_t(0), "and the row is the selected one");
+            c.loginPassword = "typed";   // typed for alpha
+            ps::pick(c, rows[1]);
+            t.IsTrue(c.loginName == "bravo" && c.loginPassword.empty(), "(i) B picked after A never launches with A's password");
+            t.Equals(ps::selectedRow(rows, c), size_t(1), "B is selected");
+
+            ps::Persona accented = persona(std::string("xmf") + static_cast<char>(0xFB), server, 5);
+            accented.card = "player";
+            c.loginPassword = "x";
+            ps::pick(c, accented);
+            t.IsTrue(c.loginName.empty(), "(j) a name normalizeLoginName would change leaves loginName EMPTY, never 'xmf'");
+            bool sendsName = false;
+            for (const std::string &e : launcher::environmentFor(c))
+                sendsName = sendsName || e.rfind("PS2X_SOCOM2_LOGIN_NAME=", 0) == 0;
+            t.IsFalse(sendsName, "so no PS2X_SOCOM2_LOGIN_NAME is sent");
+
+            ps::Persona b = persona("bravo", server, 30, false, true);
+            b.card = "player_b";
+            ps::pick(c, b);
+            t.IsTrue(c.profile == "player" && c.secondInstance, "(h) second: true in player_b -> profile player, the toggle on");
+            std::vector<ps::Persona> withB = rows;
+            withB.push_back(b);
+            t.Equals(ps::selectedRow(withB, c), size_t(2), "and the _b row is the selected one after its pick");
+            bool cardB = false;
+            for (const std::string &e : launcher::environmentFor(c))
+                cardB = cardB || e == "PS2X_MC_DIR=cards/player_b";
+            t.IsTrue(cardB, "environmentFor appends _b itself");
+            ps::Persona sgt = persona("sierra", server, 1, false, false);
+            sgt.card = "sgt_b";
+            ps::pick(c, sgt);
+            t.IsTrue(c.profile == "sgt_b" && !c.secondInstance, "second: false in sgt_b -> sgt_b, the toggle off");
+
+            c.loginPassword = "keep";
+            ps::pickNewPersona(c);
+            t.IsTrue(c.loginName.empty() && c.loginPassword.empty() && c.profile == "sgt_b", "NEW PERSONA clears the name and password and keeps the card");
+        });
+
+        tc.Run("a record counts only on effectiveServer: the field and the saved password follow the server", [](TestCase &t)
+        {
+            launcher::Config c;
+            const std::string here = launcher::effectiveServer(c);
+            std::vector<ps::Persona> rows = {persona("alpha", "192.0.2.10", 50, true), persona("alpha", here, 40, true), persona("bravo", here, 30, false)};
+            for (ps::Persona &r : rows)
+                r.card = "player";
+            c.loginName = "alpha";
+            t.Equals(ps::selectedRow(rows, c), size_t(1), "one name on two servers: the one on effectiveServer wins");
+            t.IsFalse(ps::passwordShown(rows, c), "its card holds the password: no field");
+            t.IsTrue(ps::counts(rows[1], c) && !ps::counts(rows[0], c), "a record counts only on the server the game is pointed at");
+            std::vector<ps::Persona> elsewhere = {rows[0]};
+            t.Equals(ps::selectedRow(elsewhere, c), size_t(0), "alone, the other server's record is still the selected row (else the first)");
+            t.IsTrue(ps::passwordShown(elsewhere, c), "but it is 'no record' there: the field shows");
+            c.loginName = "bravo";
+            t.IsTrue(ps::passwordShown(rows, c), "a record without a saved password: the field shows");
+        });
+
+        tc.Run("the row's captions: the age of the last login", [](TestCase &t)
+        {
+            t.Equals(ps::ageCaption(1000, 1000 + 3600), std::string("last played today"), "the same day");
+            t.Equals(ps::ageCaption(1000, 1000 + 86400), std::string("last played 1 day ago"), "one day");
+            t.Equals(ps::ageCaption(1000, 1000 + 5 * 86400 + 7), std::string("last played 5 days ago"), "five");
         });
 
         tc.Run("the atomic write: the ledger is unchanged until the rename, and nothing is left behind", [](TestCase &t)

@@ -313,4 +313,70 @@ namespace launcher::personas
         }
         return out;
     }
+
+    std::string cardLeaf(const Config &c)
+    {
+        return normalizeProfile(c.profile) + (c.secondInstance ? "_b" : "");
+    }
+
+    bool counts(const Persona &row, const Config &c)
+    {
+        return row.server == effectiveServer(c);
+    }
+
+    std::size_t selectedRow(const std::vector<Persona> &rows, const Config &c)
+    {
+        const std::string leaf = cardLeaf(c);
+        std::size_t first = rows.size();
+        for (std::size_t i = 0; i < rows.size(); ++i)
+        {
+            if (rows[i].card != leaf || rows[i].name != c.loginName || c.loginName.empty())
+                continue;
+            if (counts(rows[i], c))
+                return i;   // of two alike on one card (one name, two servers), the one the game is pointed at
+            if (first == rows.size())
+                first = i;
+        }
+        return first;
+    }
+
+    bool passwordShown(const std::vector<Persona> &rows, const Config &c)
+    {
+        const std::size_t at = selectedRow(rows, c);
+        return at == rows.size() || !counts(rows[at], c) || !rows[at].savedPassword;
+    }
+
+    void pick(Config &c, const Persona &row)
+    {
+        const std::string suffix = "_b";
+        const bool bLedger = row.card.size() > suffix.size() && row.card.compare(row.card.size() - suffix.size(), suffix.size(), suffix) == 0;
+        if (row.second && bLedger)
+        {
+            c.profile = row.card.substr(0, row.card.size() - suffix.size());   // environmentFor appends _b itself
+            c.secondInstance = true;
+        }
+        else
+        {
+            c.profile = row.card;
+            c.secondInstance = false;
+        }
+        // Only a name the keyboard could have typed reaches the prefill: "xmf" + an accent would otherwise launch as
+        // "xmf", a persona the ledger never held.
+        c.loginName = normalizeLoginName(row.name) == row.name ? row.name : std::string();
+        c.loginPassword.clear();
+    }
+
+    void pickNewPersona(Config &c)
+    {
+        c.loginName.clear();
+        c.loginPassword.clear();
+    }
+
+    std::string ageCaption(std::time_t lastLogin, std::time_t now)
+    {
+        const long long days = now > lastLogin ? static_cast<long long>(now - lastLogin) / 86400 : 0;
+        if (days == 0)
+            return "last played today";
+        return "last played " + std::to_string(days) + (days == 1 ? " day ago" : " days ago");
+    }
 }
