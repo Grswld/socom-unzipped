@@ -580,7 +580,105 @@ namespace ps2_syscalls
         }
 
         scheduler.setupCurrentThread(initialStack, stackSize, getRegU32(ctx, 28));
+        // Sprint 17 Q2: SetupThread(gp, stack, stack_size, args, root) -- $a3 is the crt0's argument block and
+        // the kernel fills it with the boot arguments. Only a restart has any (LoadExecPS2's request); a first
+        // boot writes nothing, so the block stays what the ELF's zeroed bss makes it (argc 0), as it always has.
+        const uint32_t argsAddr = getRegU32(ctx, 7);
+        if (runtime && argsAddr != 0u && runtime->hasBootArguments())
+        {
+            const PS2Runtime::GuestRestartRequest args = runtime->bootArguments();
+            writeCrt0Arguments(rdram, argsAddr, args.guestPath, args.argv);
+        }
         setReturnU32(ctx, sp);
+    }
+
+    uint32_t bootArgumentBlockAddress()
+    {
+        return guestSyscallEntryScratchAddr(3u);
+    }
+
+    uint32_t writeBootArgumentBlock(uint8_t *rdram, const std::string &program, const std::vector<std::string> &argv)
+    {
+        const uint32_t base = bootArgumentBlockAddress();
+        constexpr uint32_t kStringsOffset = 0x40u;          // SetArg: the filename copy at base+0x40
+        constexpr uint32_t kMaxArgs = 15u;                   // SetArg: at most 15 arguments after the filename
+        const uint32_t capacity = kSyscallEntryScratchStride; // one entry's block
+        if (!rdram)
+        {
+            return base;
+        }
+        std::memset(rdram + (base & PS2_RAM_MASK), 0, capacity);
+        auto put32 = [rdram](uint32_t addr, uint32_t value) { std::memcpy(rdram + (addr & PS2_RAM_MASK), &value, sizeof(value)); };
+        uint32_t cursor = base + kStringsOffset;
+        auto putString = [&](const std::string &s, uint32_t slot) -> bool
+        {
+            const uint32_t bytes = static_cast<uint32_t>(s.size()) + 1u;
+            if (cursor + bytes > base + capacity)
+            {
+                return false;
+            }
+            std::memcpy(rdram + (cursor & PS2_RAM_MASK), s.c_str(), bytes);
+            put32(slot, cursor);
+            cursor += bytes;
+            return true;
+        };
+        if (!putString(program, base))
+        {
+            std::cerr << "[LoadExecPS2] the boot-argument block cannot hold the program name (" << program.size()
+                      << " bytes); it is left empty" << std::endl;
+            return base;
+        }
+        for (uint32_t i = 0; i < argv.size(); ++i)
+        {
+            if (i >= kMaxArgs || !putString(argv[i], base + 4u * (i + 1u)))
+            {
+                std::cerr << "[LoadExecPS2] the boot-argument block holds " << i << " of " << argv.size()
+                          << " arguments; the rest are dropped" << std::endl;
+                break;
+            }
+        }
+        return base;
+    }
+
+    void writeCrt0Arguments(uint8_t *rdram, uint32_t argsAddr, const std::string &program, const std::vector<std::string> &argv)
+    {
+        constexpr uint32_t kMaxArgv = 16u;                       // char *argv[16]
+        constexpr uint32_t kPointersOffset = 4u;                 // after argc
+        constexpr uint32_t kPayloadOffset = kPointersOffset + 4u * kMaxArgv;   // 0x44
+        constexpr uint32_t kPayloadBytes = 256u;
+        if (!rdram || argsAddr == 0u)
+        {
+            return;
+        }
+        auto put32 = [rdram](uint32_t addr, uint32_t value) { std::memcpy(rdram + (addr & PS2_RAM_MASK), &value, sizeof(value)); };
+        std::memset(rdram + (argsAddr & PS2_RAM_MASK), 0, kPayloadOffset + kPayloadBytes);
+        uint32_t cursor = argsAddr + kPayloadOffset;
+        uint32_t argc = 0u;
+        auto putString = [&](const std::string &s) -> bool
+        {
+            const uint32_t bytes = static_cast<uint32_t>(s.size()) + 1u;
+            // 15 real entries at most: argv[argc] stays the null terminator, as the crt0's block has room for.
+            if (argc + 1u >= kMaxArgv || cursor + bytes > argsAddr + kPayloadOffset + kPayloadBytes)
+            {
+                return false;
+            }
+            std::memcpy(rdram + (cursor & PS2_RAM_MASK), s.c_str(), bytes);
+            put32(argsAddr + kPointersOffset + 4u * argc, cursor);
+            cursor += bytes;
+            ++argc;
+            return true;
+        };
+        bool dropped = !putString(program);
+        for (size_t i = 0; !dropped && i < argv.size(); ++i)
+        {
+            dropped = !putString(argv[i]);
+        }
+        if (dropped)
+        {
+            std::cerr << "[SetupThread] the crt0's argument block holds " << argc << " of " << (argv.size() + 1u)
+                      << " arguments (16 slots, 256 bytes); the rest are dropped" << std::endl;
+        }
+        put32(argsAddr, argc);
     }
 
     // 0x3D SetupHeap: returns heap base/start pointer

@@ -17,6 +17,8 @@
 #include "runtime/ee_scheduler.h"
 #include "ThreadNaming.h"
 #include "Kernel/Stubs/Audio.h"
+#include "Kernel/Syscalls/System.h"   // Sprint 17 Q2: the boot-argument block a restart hands the crt0
+#include "Kernel/Syscalls/RPC.h"      // Sprint 17 Q2: the IOP reboot model (the RPC queues, the module table)
 #include "Kernel/Stubs/GS.h"
 #include "Kernel/Stubs/MPEG.h"
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"   // Sprint 11 Task 8b
@@ -567,15 +569,7 @@ PS2Runtime::PS2Runtime()
     }
 #endif
 
-    // Assign rather than memset: R5900Context's constructor zeroes itself and
-    // then applies the COP0 reset values, which a memset here would discard.
-    m_cpuContext = R5900Context{};
-
-    // R0 is always zero in MIPS
-    m_cpuContext.r[0] = _mm_set1_epi32(0);
-    m_cpuContext.vu0_vf[0] = _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f);
-    m_cpuContext.vu0_q = 1.0f;
-    m_cpuContext.vu0_r = _mm_castsi128_ps(_mm_set1_epi32(0x3F800000));
+    resetCpuContext();
 
     // Stack pointer (SP) and global pointer (GP) will be set by the loaded ELF
 
@@ -588,6 +582,19 @@ PS2Runtime::PS2Runtime()
     m_guestHeapConfigured = false;
     m_asyncCallbackStackFloor = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
     m_asyncCallbackStackTop = PS2_RAM_SIZE;
+}
+
+void PS2Runtime::resetCpuContext()
+{
+    // Assign rather than memset: R5900Context's constructor zeroes itself and
+    // then applies the COP0 reset values, which a memset here would discard.
+    m_cpuContext = R5900Context{};
+
+    // R0 is always zero in MIPS
+    m_cpuContext.r[0] = _mm_set1_epi32(0);
+    m_cpuContext.vu0_vf[0] = _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f);
+    m_cpuContext.vu0_q = 1.0f;
+    m_cpuContext.vu0_r = _mm_castsi128_ps(_mm_set1_epi32(0x3F800000));
 }
 
 void PS2Runtime::setDebugUiCallbacks(DebugUiCallback initCallback,
@@ -1078,11 +1085,24 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
         return false;
     }
 
-    ps2_game_overrides::applyMatching(*this,
-                                      elfPath,
-                                      m_cpuContext.pc,
-                                      elfCrc32,
-                                      elfCrc32Valid);
+    // Keyed on the normalized absolute path configureIoPathsFromElf recorded, not the string handed in: main()
+    // may pass a relative path and a restart passes IoPaths' absolute one, and they name the same file.
+    const std::string overridesKey = getIoPaths().elfPath.string();
+    if (!overridesKey.empty() && m_overridesAppliedFor == overridesKey)
+    {
+        // Sprint 17 Q2: the same ELF reloaded by an in-process restart. The overrides are in the function
+        // table already; the IoPaths (the disc image among them) survive configureIoPathsFromElf above.
+        std::cout << "[game_overrides] " << module.name << " reloaded on this runtime: the overrides applied at boot are kept" << std::endl;
+    }
+    else
+    {
+        ps2_game_overrides::applyMatching(*this,
+                                          elfPath,
+                                          m_cpuContext.pc,
+                                          elfCrc32,
+                                          elfCrc32Valid);
+        m_overridesAppliedFor = overridesKey;
+    }
 
     RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
     return true;
@@ -2597,9 +2617,8 @@ void PS2Runtime::HandleIntegerOverflow(R5900Context *ctx)
     raiseCop0Exception(ctx, EXCEPTION_INTEGER_OVERFLOW);
 }
 
-void PS2Runtime::run()
+void PS2Runtime::prepareGuestBoot()
 {
-    m_stopRequested.store(false, std::memory_order_relaxed);
     ps2_stubs::resetSifState();
     resetIop();
     ps2_stubs::resetAudioStubState();
@@ -2613,6 +2632,175 @@ void PS2Runtime::run()
     m_debugRa.store(static_cast<uint32_t>(_mm_extract_epi32(m_cpuContext.r[31], 0)), std::memory_order_relaxed);
     m_debugSp.store(static_cast<uint32_t>(_mm_extract_epi32(m_cpuContext.r[29], 0)), std::memory_order_relaxed);
     m_debugGp.store(static_cast<uint32_t>(_mm_extract_epi32(m_cpuContext.r[28], 0)), std::memory_order_relaxed);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sprint 17 Task Q2 (D3): LoadExecPS2 as an in-process restart of the guest.
+// ---------------------------------------------------------------------------------------------
+
+bool PS2Runtime::requestGuestRestart(std::string elfPath, std::vector<std::string> argv, std::string guestPath)
+{
+    if (guestPath.empty())
+    {
+        guestPath = std::filesystem::path(elfPath).filename().string();
+    }
+    {
+        std::lock_guard lock(m_guestRestartMutex);
+        if (m_guestRestartPending)
+        {
+            std::cerr << "[LoadExecPS2] restart already pending (" << m_guestRestartRequest.guestPath
+                      << "); this request is ignored: \"" << guestPath << "\" argc=" << argv.size() << std::endl;
+            return false;
+        }
+        m_guestRestartPending = true;
+        m_guestRestartRequest.elfPath = std::move(elfPath);
+        m_guestRestartRequest.guestPath = guestPath;
+        m_guestRestartRequest.argv = std::move(argv);
+    }
+    const GuestRestartRequest request = guestRestartRequest();
+    std::cerr << "[LoadExecPS2] restart requested: elf=" << request.elfPath << " as \"" << request.guestPath
+              << "\" argc=" << request.argv.size() << " argv=";
+    for (size_t i = 0; i < request.argv.size(); ++i)
+    {
+        std::cerr << (i ? " \"" : "\"") << request.argv[i] << "\"";
+    }
+    std::cerr << " -- the game thread stops at its next checkpoint; the loop thread restarts the guest" << std::endl;
+    // The game thread honours this at its next checkpoint: EeScheduler::run() returns, run()'s loop sees it
+    // finished with a restart pending and performs it. The runtime's own stop flag stays clear: the run goes on.
+    if (m_eeScheduler)
+    {
+        m_eeScheduler->requestStop();
+    }
+    return true;
+}
+
+bool PS2Runtime::guestRestartPending() const
+{
+    std::lock_guard lock(m_guestRestartMutex);
+    return m_guestRestartPending;
+}
+
+PS2Runtime::GuestRestartRequest PS2Runtime::guestRestartRequest() const
+{
+    std::lock_guard lock(m_guestRestartMutex);
+    return m_guestRestartRequest;
+}
+
+uint64_t PS2Runtime::guestRestartCount() const
+{
+    return m_guestRestartCount.load(std::memory_order_acquire);
+}
+
+bool PS2Runtime::hasBootArguments() const
+{
+    std::lock_guard lock(m_guestRestartMutex);
+    return m_bootArgumentsSet;
+}
+
+PS2Runtime::GuestRestartRequest PS2Runtime::bootArguments() const
+{
+    std::lock_guard lock(m_guestRestartMutex);
+    return m_bootArguments;
+}
+
+bool PS2Runtime::restartGuest()
+{
+    GuestRestartRequest request;
+    {
+        std::lock_guard lock(m_guestRestartMutex);
+        if (!m_guestRestartPending)
+        {
+            return false;
+        }
+        request = m_guestRestartRequest;
+        m_guestRestartPending = false;
+    }
+    std::cerr << "[LoadExecPS2] restarting the guest in-process: " << request.elfPath << " as \""
+              << request.guestPath << "\" argc=" << request.argv.size() << std::endl;
+
+    // The caller has joined the game thread, so the scheduler is idle; the stop stays requested until the
+    // new game thread's EeScheduler::reset clears it.
+    if (m_eeScheduler)
+    {
+        m_eeScheduler->requestStop();
+    }
+    // The IOP reboot model (sceSifRebootIop: the IRXs are gone, and with them the RPC queues and the module
+    // table), then the rest of the machine as run() prepares it below.
+    ps2_syscalls::SifResetRpcState();
+    ps2_syscalls::SifResetModuleState();
+    // The mixer: every sound, stream and the PCM ring stopped -- the game tore its sound system down before
+    // asking (research/78 section 4), the reset makes it so whatever it left.
+    m_audioBackend.stopForGuestRestart();
+    // The GS: the frontend's registers and the backend's state, through the render-thread token wait; the
+    // window and its GL context stay (a Reset command, not a re-init).
+    m_gs.reset();
+    m_vu0.reset();
+    m_vu1.reset();
+    // The EE kernel bookkeeping a fresh kernel has none of: exit handlers, syscall overrides, the mirror.
+    {
+        std::lock_guard lock(m_eeKernelStateMutex);
+        m_eeExitHandlers.clear();
+        m_eeSyscallOverrides.clear();
+        m_eeSyscallMirrorAddresses.clear();
+        m_unrunnableSyscallOverrides.clear();
+    }
+    // Guest RAM and the scratchpad zeroed: the crt0 zeroes only its own bss.
+    uint8_t *rdram = m_memory.getRDRAM();
+    if (!rdram)
+    {
+        std::cerr << "[LoadExecPS2] the restart has no guest RAM to reload into" << std::endl;
+        return false;
+    }
+    std::memset(rdram, 0, PS2_RAM_SIZE);
+    if (uint8_t *scratchpad = m_memory.getScratchpad())
+    {
+        std::memset(scratchpad, 0, PS2_SCRATCHPAD_SIZE);
+    }
+    // The runtime's guest heap back to unconfigured, so loadELF's noteLoadedImageEnd places it again.
+    {
+        std::lock_guard<std::mutex> lock(m_guestHeapMutex);
+        m_guestHeapBlocks.clear();
+        m_guestHeapBase = kGuestHeapDefaultBase;
+        m_guestHeapEnd = kGuestHeapDefaultBase;
+        m_guestHeapLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
+        m_guestHeapSuggestedBase = kGuestHeapDefaultBase;
+        m_guestHeapConfigured = false;
+    }
+    m_loadedModules.clear();
+    resetCpuContext();
+    resetMissingFunctionReportOnce();
+
+    // The ELF, through the same loader main() uses (the IOP profile and the game overrides re-applied with it).
+    if (!loadELF(request.elfPath))
+    {
+        std::cerr << "[LoadExecPS2] the restart could not reload " << request.elfPath << "; the run ends" << std::endl;
+        return false;
+    }
+    // The kernel's boot-argument area, in SetArg's layout at the address syscall 0x5B answers for entry 3, and
+    // the copy SetupThread hands the crt0 (the guest's argv[0] is the path it asked for, as on the console).
+    ps2_syscalls::writeBootArgumentBlock(rdram, request.guestPath, request.argv);
+    {
+        std::lock_guard lock(m_guestRestartMutex);
+        m_bootArguments = request;
+        m_bootArgumentsSet = true;
+    }
+    prepareGuestBoot();
+    // The EE scheduler fresh on this thread (the VBlank tick 0, no threads, the stop cleared), so the restart
+    // is complete when this returns; the respawned game thread resets it again on its own thread before run().
+    if (m_eeScheduler)
+    {
+        m_eeScheduler->reset(rdram, m_cpuContext);
+    }
+    m_guestRestartCount.fetch_add(1u, std::memory_order_acq_rel);
+    std::cerr << "[LoadExecPS2] guest restarted at 0x" << std::hex << m_cpuContext.pc << std::dec
+              << " (restart " << guestRestartCount() << ")" << std::endl;
+    return true;
+}
+
+void PS2Runtime::run()
+{
+    m_stopRequested.store(false, std::memory_order_relaxed);
+    prepareGuestBoot();
 
     RUNTIME_LOG("Starting execution at address 0x" << std::hex << m_cpuContext.pc << std::dec);
 
@@ -2623,7 +2811,11 @@ void PS2Runtime::run()
 
     std::atomic<bool> gameThreadFinished{false};
 
-    std::thread gameThread([&]()
+    // The game thread; spawned once here and again after each in-process restart (Sprint 17 Q2).
+    const auto spawnGameThread = [&]() -> std::thread
+    {
+        gameThreadFinished.store(false, std::memory_order_release);
+        return std::thread([&]()
                            {
         ThreadNaming::SetCurrentThreadName("GameThread");
         // The EE FPU and VU0 truncate every result (PCSX2's default "Chop/Zero" rounding for EE
@@ -2652,13 +2844,29 @@ void PS2Runtime::run()
             std::cerr << "Error during program execution: unknown exception" << std::endl;
         }
         gameThreadFinished.store(true, std::memory_order_release); });
+    };
+    std::thread gameThread = spawnGameThread();
     // PS2X_HOST_PROF=<ms>: host-level sampling profiler of the game thread (runtime/host_prof_start.h: the runner's
-    // sampler when it has one, else the runtime's weak no-op).
+    // sampler when it has one, else the runtime's weak no-op). Started once: a restarted game thread is not
+    // re-sampled (the profiler is a one-thread instrument).
     ps2HostProfStart(gameThread.native_handle());
 
     uint64_t tick = 0;
-    while (!isStopRequested() && !gameThreadFinished.load(std::memory_order_acquire))
+    while (!isStopRequested())
     {
+        if (gameThreadFinished.load(std::memory_order_acquire))
+        {
+            // Sprint 17 Q2: the game thread returned. With a restart pending this is LoadExecPS2's stop, and the
+            // guest starts over on a fresh game thread; otherwise the run is over as it always was.
+            if (!guestRestartPending())
+                break;
+            if (gameThread.joinable())
+                gameThread.join();
+            if (!restartGuest())
+                break;
+            gameThread = spawnGameThread();
+            continue;
+        }
         PS2_IF_AGRESSIVE_LOGS({
             tick++;
             if ((tick % 120) == 0)
