@@ -5,8 +5,10 @@ Lock-bound: a person or the controller runs it under `scripts/loop_lock.sh run`,
 recipe is docs/research/79-seal-speed-on-the-console.md. Nothing here launches anything under test.
 
   Run: python -m tools_py.parity.seal_speed_probe --dry-run                   # print the plan, exit 0, touch nothing
+       python -m tools_py.parity.seal_speed_probe --dry-run --light           # the plan with the light-stick groups
        python -m tools_py.parity.seal_speed_probe                             # attach: PCSX2 already at a spawn
        python -m tools_py.parity.seal_speed_probe --slot 8                    # launch PCSX2, load slot 8 (state_poll's path)
+       python -m tools_py.parity.seal_speed_probe --slot 8 --light            # ... with a temporary light-stick PCSX2.ini
        python -m tools_py.parity.seal_speed_probe --save-state 8              # save the running console to slot 8, exit
 
 What one row reads (the chains of scripts/parity/guest_probe_console.json, by NAME from guest_addresses, the
@@ -18,9 +20,22 @@ a game frame and is dropped (counted as torn). Rows sharing a clock value are co
 The pad path is drive.py's `hold+<s>:BTN` step and pcsx2_ctl's `hold` command: `tools_py.parity.keys.press(hwnd,
 button, "pcsx2", hold_s=seconds)`, a WM_KEYDOWN/WM_KEYUP pair posted to the PCSX2 window and its children, which
 PCSX2's [Pad1] keyboard bindings (tools/pcsx2/inis/PCSX2.ini) turn into FULL deflection -- a keyboard key has no
-half. Two things the schedule therefore cannot do from the keyboard, both left to the controller (PINE writes to
-the pad buffer, or a PCSX2 pressure-modifier binding): a light Triangle (the stand/crouch toggle), and a push under
-0.838 (the crouch WALK; a full push in crouch stands the SEAL up and runs, spec section 7).
+half. Two things the keyboard alone cannot do: a light Triangle (the stand/crouch toggle), and a push under 0.838
+(the crouch WALK; a full push in crouch stands the SEAL up and runs, spec section 7).
+
+--light does both through PCSX2's own macro buttons (research/79 section 5). A [Pad1] `Macro<N>` fires its
+`Macro<N>Binds` at `Macro<N>Pressure` (Pad::ApplyMacroButton -> PadDualshock2::Set, which for a stick half-axis
+stores u8(pressure x AxisScale x 255) and for a face button u8(pressure x 255)). PCSX2's PressureModifier is NOT
+the route: PadDualshock2::Set skips the analog keys when it applies it, so it scales button pressures only. PCSX2
+reads the macros at launch and, with portable.ini/portable.txt beside the exe, ignores -datapath (portable mode has
+"absolute priority", EmuFolders::SetDataDirectory), so there is no ini-path argument: --light needs --slot, backs the
+owner's PCSX2.ini up beside it, writes a copy with two macros added (Macro15 = Keyboard/7: Triangle at a pressure
+under 0.3; Macro16 = Keyboard/8: LUp at the pressure that lands ly on 128 - 128 x push), launches, and restores the
+original after PCSX2 is killed -- in a finally, on SIGTERM/SIGBREAK/SIGHUP, at exit, and at the start of the next
+--light run if a backup was left behind. The light groups are appended to the schedule: half_fwd#1-3 (standing,
+expected push x 65 = 32.5) and crouch_walk#1-3 (crouched, the 14.0 crouch walk), each followed by a full back hold
+(kind "return": played, not fitted) that brings the player back; the light Triangle takes stand -> crouch and
+crouch -> stand.
 
 What a FIRM Triangle does (peak pressure >= 0.3; the decompilation's PlayerUpd, socom2_game.elf.decomp.c
 ~453331-453425, the wished stance byte at actor+0x374): from stand or crouch it wishes PRONE when FUN_00584b00
@@ -38,10 +53,13 @@ Writes logs/parity/seal_speed_<stamp>.txt (the rows) and seal_speed_<stamp>.sche
 span) and prints seal_speed_fit's table.
 """
 import argparse
+import atexit
 import collections
+import contextlib
 import json
 import math
 import os
+import signal
 import struct
 import sys
 import threading
@@ -51,7 +69,7 @@ from tools_py.parity import guest_addresses as ga
 from tools_py.parity import keys
 from tools_py.parity import seal_speed_fit as F
 
-Step = collections.namedtuple("Step", "name kind buttons seconds stance direction", defaults=(None, None))
+Step = collections.namedtuple("Step", "name kind buttons seconds stance direction push", defaults=(None, None, None))
 
 # PCSX2's [Pad1] keyboard bindings for the names the schedule uses (keys.MAPS["pcsx2"] posts the key; this is what
 # PCSX2 makes of it). Read from tools/pcsx2/inis/PCSX2.ini; note a step script's "I" on pcsx2 is the RIGHT stick
@@ -64,6 +82,8 @@ PAD1_BINDING = {
     "TRIANGLE": "Triangle = Keyboard/I",
     "CROSS": "Cross = Keyboard/K",
     "L": "RRight = Keyboard/H",
+    "W_LIGHT": "Macro16 = Keyboard/8: LUp at the light pressure (--light's temporary ini)",
+    "TRIANGLE_LIGHT": "Macro15 = Keyboard/7: Triangle at the light pressure (--light's temporary ini)",
 }
 TAP_HOLD_S = 0.15            # pcsx2_shell's press hold: the console shell reads a 9-frame hold as one press
 DEFAULT_REVISION = "r0001"   # the console boots the r0001 disc
@@ -72,13 +92,22 @@ STANCE_SETTLE_S = 3.0        # after a stance tap, before the root is read again
 STANCE_TAPS = 2              # at most this many corrective taps before a hold
 FIRM_REACHABLE = ("stand", "prone")   # what a firm Triangle can wish (the decompilation, above)
 
+# --light: PCSX2 [Pad1] macro buttons (Pad::LoadMacroButtonConfig reads Macro<N>, Macro<N>Binds, Macro<N>Pressure;
+# N runs 1..16). The name the schedule uses -> (the key the macro is bound to, the pad input it fires, N).
+LIGHT_MACROS = {"TRIANGLE_LIGHT": ("Keyboard/7", "Triangle", 15), "W_LIGHT": ("Keyboard/8", "LUp", 16)}
+LIGHT_STICK = 0.5            # the half stick: 32.5 standing, and under the crouch walk's 0.838
+LIGHT_TRIANGLE = 0.2         # the light Triangle: under the 0.3 the decompilation's handler compares
+LIGHT_BACKUP_SUFFIX = ".seal_speed_light.bak"
+DEFAULT_AXIS_SCALE = 1.33    # PadDualshock2's AxisScale default (s_settings), when [Pad1] has none
+DEFAULT_PCSX2_INI = os.path.join("tools", "pcsx2", "inis", "PCSX2.ini")   # beside drive.py's PCSX2
+
 
 def _rest(name, s):
     return Step(name, "rest", (), float(s))
 
 
-def _hold(name, buttons, stance, direction, s=6.0):
-    return Step(name, "hold", tuple(buttons), float(s), stance, direction)
+def _hold(name, buttons, stance, direction, s=6.0, push=None):
+    return Step(name, "hold", tuple(buttons), float(s), stance, direction, push)
 
 
 def _tap(name, button):
@@ -108,6 +137,179 @@ DEFAULT_SCHEDULE = (
 )
 
 
+def effective_push(stick):
+    """The push the light macro really gives: ly lands on a whole step, 128 - round(128 x stick)."""
+    return round(stick * 128) / 128.0
+
+
+def light_schedule(push):
+    """The light-stick groups, from standing: three half_fwd holds, a light Triangle to crouch, three crouch_walk
+    holds, a light Triangle back to stand. After each hold a full back hold (kind "return", not fitted) as long as
+    the forward distance needs at the back band, so the player ends near where the group began."""
+    back = F.EXPECTED[("stand", "back")]
+    out = [_rest("light_rest", 3)]
+    for group, stance, band in (("half_fwd", "stand", F.expected_speed("fwd", "stand", push)),
+                                ("crouch_walk", "crouch", F.expected_speed("fwd", "crouch", push))):
+        if stance == "crouch":
+            out += [_tap("to_crouch", "TRIANGLE_LIGHT"), _rest("crouch_rest", 3)]
+        ret = round(6.0 * band / back, 1)
+        for i in (1, 2, 3):
+            out += [_hold("%s#%d" % (group, i), ["W_LIGHT"], stance, "fwd", push=push),
+                    _rest("rest_%s%d" % (group, i), 3),
+                    Step("%s_return%d" % (group, i), "return", ("S",), ret),
+                    _rest("rest_%s_return%d" % (group, i), 3)]
+    out += [_tap("to_stand_light", "TRIANGLE_LIGHT"), _rest("light_end_rest", 3)]
+    return tuple(out)
+
+
+def schedule_for(light=None, base=DEFAULT_SCHEDULE):
+    """`base` with the light groups appended at `light`'s push; `base` itself when not --light."""
+    if light is None:
+        return base
+    return tuple(base) + light_schedule(effective_push(light))
+
+
+def _ini_pad1(text):
+    out, on, seen = {}, False, False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith("["):
+            on = s == "[Pad1]"
+            seen = seen or on
+        elif on and "=" in s:
+            k, v = s.split("=", 1)
+            out[k.strip()] = v.strip()
+    if not seen:
+        raise ValueError("no [Pad1] section in the PCSX2 ini")
+    return out
+
+
+def light_plan(ini_text, stick=LIGHT_STICK, triangle=LIGHT_TRIANGLE):
+    """What --light writes and what PCSX2 makes of it, from the ini's own AxisScale, Deadzone and ButtonDeadzone.
+    The stick: PCSX2 stores raw = u8(pressure x AxisScale x 255) and an up push merges to ly = 127 - raw / 2, so the
+    pressure aims at raw + 0.5 for ly = 128 - round(128 x stick) (0.5 -> raw 127, ly 64 = 0x40). The Triangle:
+    raw = u8(pressure x 255), under 0.3 of 255."""
+    if not 0.05 <= stick < F.CROUCH_WALK_BELOW:
+        raise ValueError("--light %g: the crouch walk needs a push in [0.05, %.3f)" % (stick, F.CROUCH_WALK_BELOW))
+    if not 0.0 < triangle < 0.3:
+        raise ValueError("--light-triangle %g: a light Triangle is a pressure in (0, 0.3)" % triangle)
+    pad = _ini_pad1(ini_text) if ini_text is not None else {}
+    axis = float(pad.get("AxisScale", DEFAULT_AXIS_SCALE))
+    dz = float(pad.get("Deadzone", 0.0))
+    bdz = float(pad.get("ButtonDeadzone", 0.0))
+    d = int(round(stick * 128))
+    raw = 2 * d - 1
+    stick_p = (raw + 0.5) / (axis * 255.0)
+    tri_raw = int(triangle * 255.0)
+    tri_p = (tri_raw + 0.5) / 255.0
+    if raw / 255.0 <= dz:
+        raise ValueError("[Pad1] Deadzone %g swallows a %g push" % (dz, stick))
+    if tri_p < bdz:
+        raise ValueError("[Pad1] ButtonDeadzone %g swallows a %g Triangle" % (bdz, triangle))
+    (tk, tb, tn), (sk, sb, sn) = LIGHT_MACROS["TRIANGLE_LIGHT"], LIGHT_MACROS["W_LIGHT"]
+    lines = [("Macro%d" % tn, tk), ("Macro%dBinds" % tn, tb), ("Macro%dPressure" % tn, "%.6f" % tri_p),
+             ("Macro%d" % sn, sk), ("Macro%dBinds" % sn, sb), ("Macro%dPressure" % sn, "%.6f" % stick_p)]
+    return {"axis_scale": axis, "stick": stick, "stick_pressure": stick_p, "stick_raw": raw, "ly": 128 - d,
+            "push": d / 128.0, "triangle": triangle, "triangle_pressure": tri_p, "triangle_raw": tri_raw,
+            "lines": lines}
+
+
+_MACRO_SUFFIXES = ("", "Binds", "Pressure", "Frequency", "Toggle", "Deadzone")
+
+
+def light_ini_text(ini_text, stick=LIGHT_STICK, triangle=LIGHT_TRIANGLE):
+    """`ini_text` with --light's two macros in [Pad1] (any earlier Macro15/16 lines replaced); every other line kept
+    byte for byte. Refused when a spare key is already bound anywhere else in the ini."""
+    plan = light_plan(ini_text, stick, triangle)
+    ours = {"Macro%d%s" % (n, suf) for _k, _b, n in LIGHT_MACROS.values() for suf in _MACRO_SUFFIXES}
+    lines = ini_text.splitlines(keepends=True)
+    eol = "\r\n" if lines and lines[0].endswith("\r\n") else "\n"
+    out, section, last_pad1 = [], None, None
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("["):
+            section = s
+        key = s.split("=", 1)[0].strip() if "=" in s else None
+        if section == "[Pad1]" and key in ours:
+            continue
+        if key is not None:
+            value = s.split("=", 1)[1]
+            for k, _b, _n in LIGHT_MACROS.values():
+                if k in [t.strip() for t in value.split("&")]:
+                    raise ValueError("%s is already bound (%s): --light needs it spare" % (k, s))
+        out.append(ln)
+        if section == "[Pad1]" and s:
+            last_pad1 = len(out)
+    new = ["%s = %s%s" % (k, v, eol) for k, v in plan["lines"]]
+    if not out[last_pad1 - 1].endswith(("\n", "\r")):
+        out[last_pad1 - 1] += eol
+    return "".join(out[:last_pad1] + new + out[last_pad1:])
+
+
+_SIGNALS = tuple(getattr(signal, n) for n in ("SIGTERM", "SIGBREAK", "SIGHUP") if hasattr(signal, n))
+
+
+class LightIni:
+    """The owner's PCSX2.ini swapped for --light's copy while the block runs, and put back after: the original is
+    backed up beside it first (PCSX2.ini + LIGHT_BACKUP_SUFFIX), and restored on the block's exit (normal or an
+    exception), on SIGTERM/SIGBREAK/SIGHUP (raised as SystemExit), at interpreter exit, and -- if a run died past all
+    of those -- by the next LightIni before it reads the file."""
+
+    def __init__(self, path, stick=LIGHT_STICK, triangle=LIGHT_TRIANGLE):
+        self.path = path
+        self.backup = path + LIGHT_BACKUP_SUFFIX
+        self.stick = stick
+        self.triangle = triangle
+        self.original = None
+        self.plan = None
+        self._restored = True
+        self._old = {}
+
+    def __enter__(self):
+        if os.path.exists(self.backup):
+            print("%s: a backup a dead --light run left; restored first" % self.backup, flush=True)
+            os.replace(self.backup, self.path)
+        with open(self.path, "rb") as f:
+            self.original = f.read()
+        text = light_ini_text(self.original.decode("utf-8"), self.stick, self.triangle)   # refuses before a write
+        self.plan = light_plan(self.original.decode("utf-8"), self.stick, self.triangle)
+        with open(self.backup, "wb") as f:
+            f.write(self.original)
+            f.flush()
+            os.fsync(f.fileno())
+        self._restored = False
+        if threading.current_thread() is threading.main_thread():
+            for sig in _SIGNALS:
+                self._old[sig] = signal.signal(sig, self._on_signal)
+        atexit.register(self.restore)
+        with open(self.path, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+        return self
+
+    def _on_signal(self, signum, frame):
+        raise SystemExit(128 + int(signum))
+
+    def restore(self):
+        if self._restored:
+            return
+        if os.path.exists(self.backup):
+            os.replace(self.backup, self.path)
+        else:
+            with open(self.path, "wb") as f:
+                f.write(self.original)
+        self._restored = True
+
+    def __exit__(self, *exc):
+        try:
+            self.restore()
+        finally:
+            for sig, old in self._old.items():
+                signal.signal(sig, old)
+            self._old = {}
+            atexit.unregister(self.restore)
+        return False
+
+
 def with_turn_first(steps, seconds):
     """Prepend a right-stick-right hold (kind "turn": played, not fitted) and a 2 s rest: the first mission's spawn
     faces a stream (research/25 section 5: a 6 s forward hold from it walked into the water), and the ground's
@@ -118,21 +320,22 @@ def with_turn_first(steps, seconds):
 
 
 def load_steps(path):
-    """A schedule file: [{"name", "kind": rest|hold|tap|turn, "buttons": [...], "seconds"}]; unbound buttons
-    refused. Only "hold" steps are fitted; "turn" is played like a hold and skipped by the fit."""
+    """A schedule file: [{"name", "kind": rest|hold|tap|turn|return, "buttons": [...], "seconds"[, "push"]}];
+    unbound buttons refused. Only "hold" steps are fitted; "turn" and "return" are played like a hold and skipped
+    by the fit."""
     with open(path) as f:
         data = json.load(f)
     steps = []
     for e in data:
         kind = e["kind"]
-        if kind not in ("rest", "hold", "tap", "turn"):
-            raise ValueError("step %r: kind %r is not rest, hold, tap or turn" % (e.get("name"), kind))
+        if kind not in ("rest", "hold", "tap", "turn", "return"):
+            raise ValueError("step %r: kind %r is not rest, hold, tap, turn or return" % (e.get("name"), kind))
         buttons = tuple(b.upper() for b in e.get("buttons", ()))
         for b in buttons:
             if b not in keys.MAPS["pcsx2"]:
                 raise ValueError("step %r: %r is not a PCSX2 [Pad1] key in keys.MAPS" % (e.get("name"), b))
         steps.append(Step(e["name"], kind, buttons, float(e.get("seconds", TAP_HOLD_S)), e.get("stance"),
-                          e.get("direction")))
+                          e.get("direction"), e.get("push")))
     return tuple(steps)
 
 
@@ -243,14 +446,25 @@ def press_hold(hwnd, buttons, seconds, press=None):
         t.join()
 
 
-def ensure_stance(recorder, hwnd, planned, press, sleep):
-    """(stance the root reads, root, taps): up to STANCE_TAPS firm Triangles toward `planned` when a firm press can
-    reach it, the root re-read STANCE_SETTLE_S after each."""
+def stance_tap(actual, planned, light=False):
+    """The Triangle that moves `actual` toward `planned`, or None: with --light a light press toggles stand <->
+    crouch and takes prone to crouch; a firm press wishes prone from stand/crouch and stand from prone."""
+    if light and (planned == "crouch" or (planned == "stand" and actual != "prone")):
+        return "TRIANGLE_LIGHT"
+    return "TRIANGLE" if planned in FIRM_REACHABLE else None
+
+
+def ensure_stance(recorder, hwnd, planned, press, sleep, light=False):
+    """(stance the root reads, root, taps): up to STANCE_TAPS Triangles toward `planned` when a press can reach it
+    (firm, or light with --light), the root re-read STANCE_SETTLE_S after each."""
     root = recorder.rest_root(1.0)
     actual = F.stance_of(root)
     taps = 0
-    while actual != planned and planned in FIRM_REACHABLE and taps < STANCE_TAPS:
-        press(hwnd, "TRIANGLE", "pcsx2", hold_s=TAP_HOLD_S)
+    while actual != planned and taps < STANCE_TAPS:
+        button = stance_tap(actual, planned, light)
+        if button is None:
+            break
+        press(hwnd, button, "pcsx2", hold_s=TAP_HOLD_S)
         taps += 1
         sleep(STANCE_SETTLE_S)
         root = recorder.rest_root(1.0)
@@ -258,24 +472,26 @@ def ensure_stance(recorder, hwnd, planned, press, sleep):
     return actual, root, taps
 
 
-def run_schedule(steps, recorder, hwnd, press=None, sleep=time.sleep):
+def run_schedule(steps, recorder, hwnd, press=None, sleep=time.sleep, light=False):
     """Play the steps; returns the schedule records with each step's guest-clock span (and, for a hold with a
-    planned stance, the stance its rest root read after any corrective taps)."""
+    planned stance, the stance its rest root read after any corrective taps, and its push when not full)."""
     press = press or keys.press
     out = []
     for s in steps:
         extra = {}
         if s.kind == "hold" and s.stance:
-            actual, root, taps = ensure_stance(recorder, hwnd, s.stance, press, sleep)
+            actual, root, taps = ensure_stance(recorder, hwnd, s.stance, press, sleep, light)
             extra = {"stance": actual, "planned_stance": s.stance, "stance_taps": taps, "root_y_rest": root,
                      "direction": s.direction}
+        if s.kind == "hold" and s.push is not None:
+            extra["push"] = s.push
             if actual != s.stance:
                 print("%-12s stance %s where %s was planned (root %.3f, %d taps): the hold is marked %s"
                       % (s.name, actual, s.stance, root, taps, actual), flush=True)
         t0, h0 = recorder.latest_t(), time.time()
         if s.kind == "rest":
             sleep(s.seconds)
-        elif s.kind in ("hold", "turn"):
+        elif s.kind in ("hold", "turn", "return"):
             press_hold(hwnd, s.buttons, s.seconds, press)
         else:
             for b in s.buttons:
@@ -301,13 +517,16 @@ def plan_text(a, steps):
     lines += ["revision %s: clock %#x, actor *%#x, pos +%#x..+%#x, root *(actor+%#x)+0x4, MoveScale +%#x" % (
         rev, ga.address("guest_clock", rev), ga.address("player_actor", rev), ga.offset("actor_pos", rev),
         ga.offset("actor_pos", rev) + 8, ga.offset("root_node", rev), ga.offset("move_scale", rev)),
-        "preflight: %.1f s of rows, the clock advancing, MoveScale exactly 1.0" % PREFLIGHT_S, "",
+        "preflight: %.1f s of rows, the clock advancing, MoveScale exactly 1.0" % PREFLIGHT_S, ""]
+    if a.light is not None:
+        lines += light_plan_lines(a) + [""]
+    lines += [
         "| # | step | kind | keys | [Pad1] binding | stance | expected u/s | seconds |",
         "|---|---|---|---|---|---|---:|---:|"]
     total = 0.0
     for i, s in enumerate(steps):
         binding = "; ".join(PAD1_BINDING.get(b, "keys.MAPS %s" % b) for b in s.buttons) or "-"
-        exp = F.expected_label(s.direction, s.stance) if s.kind == "hold" else "-"
+        exp = F.expected_label(s.direction, s.stance, s.push) if s.kind == "hold" else "-"
         lines.append("| %d | %s | %s | %s | %s | %s | %s | %.2f |" % (
             i, s.name, s.kind, "+".join(s.buttons) or "-", binding, s.stance or "-", exp, s.seconds))
         total += s.seconds
@@ -315,6 +534,31 @@ def plan_text(a, steps):
               "rows -> %s" % os.path.join(a.out_dir, "seal_speed_<stamp>.txt"),
               "schedule -> %s" % os.path.join(a.out_dir, "seal_speed_<stamp>.schedule.json")]
     return "\n".join(lines)
+
+
+def light_plan_lines(a):
+    """The --light block of the plan: the scale, the macros and what PCSX2 makes of them. Reads the ini, never
+    writes it."""
+    ini = a.pcsx2_ini
+    try:
+        with open(ini, "rb") as f:
+            text = f.read().decode("utf-8")
+        where = "read from %s (read only)" % ini
+    except OSError:
+        text, where = None, "assumed: no ini at %s" % ini
+    plan = light_plan(text, a.light, a.light_triangle)
+    out = ["light stick %.2f (--light): push %.3f, the light Triangle %.2f -- PCSX2 [Pad1] macros written into a "
+           "temporary %s at launch, the owner's file restored after PCSX2 is killed (finally, SIGTERM/SIGBREAK, at "
+           "exit, or by the next --light run from %s)" % (a.light, plan["push"], a.light_triangle, ini,
+                                                          os.path.basename(ini) + LIGHT_BACKUP_SUFFIX),
+           "  AxisScale %g %s" % (plan["axis_scale"], where)]
+    out += ["  [Pad1] %s = %s" % kv for kv in plan["lines"]]
+    out += ["  -> LUp raw %d, ly %d (0x%02x): %.3f of full; Triangle pressure byte %d (%.2f, under 0.3)"
+            % (plan["stick_raw"], plan["ly"], plan["ly"], plan["push"], plan["triangle_raw"],
+               plan["triangle_raw"] / 255.0)]
+    if a.slot is None:
+        out.append("  --light launches PCSX2 so it reads the macros: a real run needs --slot")
+    return out
 
 
 def _pine_port():
@@ -349,6 +593,10 @@ def default_launch(a):
     def cleanup():
         proc.terminate()
         hostplatform.kill_process_by_name("pcsx2-qt")
+        try:
+            proc.wait(10)    # gone before --light puts the owner's ini back
+        except subprocess.TimeoutExpired:
+            pass
 
     t0, pine = time.time(), None
     while pine is None and time.time() - t0 < 120:
@@ -381,12 +629,26 @@ def build_parser():
     ap.add_argument("--turn-first", type=float, default=0.0, dest="turn_first",
                     help="seconds of right stick right before the schedule (face away from the spawn's stream)")
     ap.add_argument("--out-dir", default=os.path.join("logs", "parity"), dest="out_dir")
+    ap.add_argument("--light", type=float, nargs="?", const=LIGHT_STICK, default=None,
+                    help="append the light-stick groups (half_fwd, crouch_walk) at this stick (default %g) through "
+                         "a temporary PCSX2.ini with two [Pad1] macros; needs --slot" % LIGHT_STICK)
+    ap.add_argument("--light-triangle", type=float, default=LIGHT_TRIANGLE, dest="light_triangle",
+                    help="the light Triangle's pressure (default %g, under 0.3)" % LIGHT_TRIANGLE)
+    ap.add_argument("--pcsx2-ini", default=DEFAULT_PCSX2_INI, dest="pcsx2_ini",
+                    help="the PCSX2.ini --light swaps and restores (default %s)" % DEFAULT_PCSX2_INI)
     return ap
 
 
 def main(argv=None, launch=None, attach=None):
     a = build_parser().parse_args(argv)
-    steps = with_turn_first(load_steps(a.schedule) if a.schedule else DEFAULT_SCHEDULE, a.turn_first)
+    if a.light is not None:
+        try:
+            light_plan(None, a.light, a.light_triangle)
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 2
+    base = load_steps(a.schedule) if a.schedule else DEFAULT_SCHEDULE
+    steps = with_turn_first(schedule_for(a.light, base), a.turn_first)
     if a.dry_run:
         print(plan_text(a, steps))
         return 0
@@ -395,28 +657,41 @@ def main(argv=None, launch=None, attach=None):
         Pine(port=_pine_port()).save_state(a.save_state)
         print("saved the running console to slot %d" % a.save_state)
         return 0
-    pine, hwnd, cleanup = (launch or default_launch)(a) if a.slot is not None else (attach or default_attach)(a)
-    try:
-        rec = Recorder(Sampler(pine, a.revision))
-        rec.start()
-        time.sleep(PREFLIGHT_S)
-        ok, why = preflight([r[:6] for r in rec.snapshot()])
-        if not ok:
+    if a.light is not None and a.slot is None:
+        print("--light needs --slot: PCSX2 reads the [Pad1] macros at launch, so a running PCSX2 has none",
+              file=sys.stderr)
+        return 2
+    if a.light is not None and launch is None:
+        from tools_py.parity import hostplatform
+        if hostplatform.process_running("pcsx2-qt"):
+            print("pcsx2-qt is already running: --light swaps its ini only for a PCSX2 it launches", file=sys.stderr)
+            return 2
+    light = LightIni(a.pcsx2_ini, a.light, a.light_triangle) if a.light is not None else contextlib.nullcontext()
+    with light:                         # the owner's ini comes back after cleanup() has killed PCSX2
+        pine, hwnd, cleanup = (launch or default_launch)(a) if a.slot is not None else (attach or default_attach)(a)
+        try:
+            rec = Recorder(Sampler(pine, a.revision))
+            rec.start()
+            time.sleep(PREFLIGHT_S)
+            ok, why = preflight([r[:6] for r in rec.snapshot()])
+            if not ok:
+                rec.stop()
+                print("PREFLIGHT FAIL: %s" % why, file=sys.stderr)
+                return 3
+            schedule = run_schedule(steps, rec, hwnd, light=a.light is not None)
             rec.stop()
-            print("PREFLIGHT FAIL: %s" % why, file=sys.stderr)
-            return 3
-        schedule = run_schedule(steps, rec, hwnd)
-        rec.stop()
-    finally:
-        cleanup()
+        finally:
+            cleanup()
     rows = rec.snapshot()
     os.makedirs(a.out_dir, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     rows_path = os.path.join(a.out_dir, "seal_speed_%s.txt" % stamp)
     sched_path = os.path.join(a.out_dir, "seal_speed_%s.schedule.json" % stamp)
     with open(rows_path, "w") as f:
-        f.write("# seal_speed_probe revision=%s slot=%s rows=%d torn=%d null=%d errors=%d\n"
-                % (a.revision, a.slot, len(rows), rec.sampler.torn, rec.sampler.null, rec.errors))
+        f.write("# seal_speed_probe revision=%s slot=%s rows=%d torn=%d null=%d errors=%d light=%s push=%s "
+                "light_triangle=%s\n" % (a.revision, a.slot, len(rows), rec.sampler.torn, rec.sampler.null,
+                                         rec.errors, a.light, effective_push(a.light) if a.light else None,
+                                         a.light_triangle if a.light else None))
         f.write("# guest_t x y z root_y move_scale host_t\n")
         for r in rows:
             f.write("%s %.3f\n" % (F.format_row(r), r[6]))

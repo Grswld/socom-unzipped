@@ -339,5 +339,39 @@ class ReportAndFilesTest(unittest.TestCase):
         self.assertIn("| fwd |", buf.getvalue())
 
 
+class LightStickFitTest(unittest.TestCase):
+    """The light-stick holds (--light): a push under 0.838 in crouch is the crouch walk, whatever the push; standing,
+    the speed is the push times the band (design section 7's linear law)."""
+
+    def test_a_partial_push_expects_the_crouch_walk_in_crouch_and_the_linear_law_standing(self):
+        self.assertEqual(F.expected_speed("fwd", "crouch", push=0.5), 14.0)
+        self.assertEqual(F.expected_speed("back", "crouch", push=0.5), 12.8)
+        self.assertEqual(F.expected_speed("fwd", "stand", push=0.5), 32.5)
+        self.assertEqual(F.expected_speed("fwd", "crouch", push=0.9), 0.9 * 65.0)   # 0.838 or more stands and runs
+        self.assertEqual(F.expected_speed("fwd", "stand"), 65.0)                     # the full push is the default
+        self.assertIn("push 0.50", F.expected_label("fwd", "stand", push=0.5))
+        self.assertIn("crouch walk", F.expected_label("fwd", "crouch", push=0.5))
+
+    def test_a_scheduled_push_reaches_the_fit_and_the_report_labels_it(self):
+        rows = simulate([(3.0, 9.0, 0.0, 32.5, 0.2, None)], 11.0)
+        fit = F.fit_holds(rows, [F.Hold("half_fwd#1", 3.0, 9.0, "half_fwd", "stand", "fwd", 0.5)])[0]
+        self.assertEqual((fit.stance, fit.expected, fit.push, fit.status), ("stand", 32.5, 0.5, "OK"))
+        self.assertIn("32.5 (push 0.50)", F.report([fit]))
+        rows = simulate([(3.0, 9.0, 0.0, 14.0, 0.2, None)], 11.0, root_y=5.504)
+        fit = F.fit_holds(rows, [F.Hold("crouch_walk#1", 3.0, 9.0, "crouch_walk", "crouch", "fwd", 0.5)])[0]
+        self.assertEqual((fit.stance, fit.expected, fit.status), ("crouch", 14.0, "OK"))
+        self.assertIn("14.0 (crouch walk, push 0.50)", F.report([fit]))
+
+    def test_the_schedule_file_carries_the_push(self):
+        d = tempfile.mkdtemp()
+        sp = os.path.join(d, "s.json")
+        with open(sp, "w") as f:
+            f.write('[{"name": "half_fwd#1", "kind": "hold", "t_start": 3.0, "t_end": 9.0, "stance": "stand",'
+                    ' "direction": "fwd", "push": 0.5}, {"name": "fwd#1", "kind": "hold", "t_start": 12.0,'
+                    ' "t_end": 18.0}]')
+        holds = F.load_schedule(sp)
+        self.assertEqual([h.push for h in holds], [0.5, None])
+
+
 if __name__ == "__main__":
     unittest.main()

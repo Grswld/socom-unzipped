@@ -9,12 +9,13 @@ import io
 import json
 import math
 import os
+import signal
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 
 from tools_py.parity import guest_addresses as ga
 from tools_py.parity import keys
@@ -298,6 +299,277 @@ class PreflightTest(unittest.TestCase):
     def test_a_running_clock_at_move_scale_1_is_in_play(self):
         ok, why = P.preflight([(5.0 + i / 60, 0, 0, 0, 5.5, 1.0) for i in range(30)])
         self.assertTrue(ok, why)
+
+
+# A [Pad1] like the owner's (tools/pcsx2/inis/PCSX2.ini, read 2026-09-28) with the sections around it; the tests
+# write only copies of this string, never the owner's file.
+SAMPLE_INI = """[UI]
+SettingsVersion = 1
+
+
+[Hotkeys]
+LoadStateFromSlot = Keyboard/F3
+SaveStateToSlot = Keyboard/F1
+TogglePause = Keyboard/Space
+
+
+[Pad1]
+Type = DualShock2
+InvertL = 0
+InvertR = 0
+Deadzone = 0
+AxisScale = 1.33
+LargeMotorScale = 1
+SmallMotorScale = 1
+ButtonDeadzone = 0
+PressureModifier = 0.5
+Triangle = Keyboard/I
+Cross = Keyboard/K
+L2 = Keyboard/1
+R2 = Keyboard/3
+LUp = Keyboard/W
+LRight = Keyboard/D
+LDown = Keyboard/S
+LLeft = Keyboard/A
+RRight = Keyboard/H
+
+
+[Pad2]
+Type = None
+"""
+
+
+def ini_section(text, name):
+    out, on = {}, False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith("["):
+            on = s == "[%s]" % name
+        elif on and "=" in s:
+            k, v = s.split("=", 1)
+            out[k.strip()] = v.strip()
+    return out
+
+
+def pcsx2_stick_byte(pressure, axis_scale):
+    """PadDualshock2::Set for an analog key (PCSX2 master, pcsx2/SIO/Pad/PadDualshock2.cpp): raw = u8(value x
+    AxisScale x 255), and an up push merges to ly = 127 - raw / 2."""
+    raw = int(min(255.0, max(0.0, pressure * axis_scale * 255.0)))
+    return raw, 127 - raw // 2
+
+
+def temp_ini(text=SAMPLE_INI):
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "PCSX2.ini")
+    with open(p, "w", newline="") as f:
+        f.write(text)
+    return p
+
+
+class LightIniTest(unittest.TestCase):
+    def test_the_temp_ini_carries_the_macros_and_the_scale(self):
+        text = P.light_ini_text(SAMPLE_INI, stick=0.5, triangle=0.2)
+        pad = ini_section(text, "Pad1")
+        stick, tri = P.LIGHT_MACROS["W_LIGHT"], P.LIGHT_MACROS["TRIANGLE_LIGHT"]
+        self.assertEqual(pad["Macro%d" % stick[2]], "Keyboard/8")
+        self.assertEqual(pad["Macro%dBinds" % stick[2]], "LUp")
+        self.assertEqual(pad["Macro%d" % tri[2]], "Keyboard/7")
+        self.assertEqual(pad["Macro%dBinds" % tri[2]], "Triangle")
+        raw, ly = pcsx2_stick_byte(float(pad["Macro%dPressure" % stick[2]]), 1.33)
+        self.assertEqual((raw, ly), (127, 64), "half of the 128 steps from centre")
+        traw = int(float(pad["Macro%dPressure" % tri[2]]) * 255.0)
+        self.assertEqual(traw, 51)
+        self.assertLess(traw / 255.0, 0.3, "a light Triangle is under 0.3")
+        for k, v in ini_section(SAMPLE_INI, "Pad1").items():
+            self.assertEqual(pad[k], v, "the owner's own [Pad1] lines stay")
+        self.assertEqual(ini_section(text, "Hotkeys"), ini_section(SAMPLE_INI, "Hotkeys"))
+        self.assertEqual(ini_section(text, "Pad2"), {"Type": "None"})
+
+    def test_the_stick_pressure_follows_the_axis_scale(self):
+        text = P.light_ini_text(SAMPLE_INI.replace("AxisScale = 1.33", "AxisScale = 1"), stick=0.5, triangle=0.2)
+        pad = ini_section(text, "Pad1")
+        n = P.LIGHT_MACROS["W_LIGHT"][2]
+        self.assertEqual(pcsx2_stick_byte(float(pad["Macro%dPressure" % n]), 1.0), (127, 64))
+        plan = P.light_plan(SAMPLE_INI, stick=0.5, triangle=0.2)
+        self.assertEqual((plan["ly"], plan["push"], plan["triangle_raw"]), (64, 0.5, 51))
+
+    def test_a_spare_key_already_bound_is_refused(self):
+        with self.assertRaises(ValueError):
+            P.light_ini_text(SAMPLE_INI.replace("L2 = Keyboard/1", "L2 = Keyboard/8"), 0.5, 0.2)
+        with self.assertRaises(ValueError):
+            P.light_ini_text(SAMPLE_INI.replace("[Pad1]", "[PadX]"), 0.5, 0.2)
+
+    def test_a_scale_the_crouch_walk_cannot_use_is_refused(self):
+        for bad in (0.0, 0.9, 1.0):
+            with self.assertRaises(ValueError):
+                P.light_plan(SAMPLE_INI, stick=bad, triangle=0.2)
+        with self.assertRaises(ValueError):
+            P.light_plan(SAMPLE_INI, stick=0.5, triangle=0.3)
+
+    def test_the_restore_runs_on_exit(self):
+        p = temp_ini()
+        with open(p, "rb") as f:
+            before = f.read()
+        with P.LightIni(p, 0.5, 0.2):
+            with open(p) as f:
+                self.assertIn("Macro%dBinds = LUp" % P.LIGHT_MACROS["W_LIGHT"][2], f.read())
+        with open(p, "rb") as f:
+            self.assertEqual(f.read(), before)
+        self.assertEqual(os.listdir(os.path.dirname(p)), ["PCSX2.ini"], "no backup left behind")
+
+    def test_the_restore_runs_on_an_exception(self):
+        p = temp_ini()
+        with self.assertRaises(RuntimeError):
+            with P.LightIni(p, 0.5, 0.2):
+                raise RuntimeError("the run died")
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+        self.assertEqual(os.listdir(os.path.dirname(p)), ["PCSX2.ini"])
+
+    def test_a_sigterm_inside_the_run_restores_and_the_old_handler_returns(self):
+        p = temp_ini()
+        old = signal.getsignal(signal.SIGTERM)
+        with self.assertRaises(SystemExit):
+            with P.LightIni(p, 0.5, 0.2):
+                handler = signal.getsignal(signal.SIGTERM)
+                self.assertTrue(callable(handler))
+                handler(signal.SIGTERM, None)
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), old)
+
+    def test_a_stale_backup_from_a_dead_run_is_restored_first(self):
+        p = temp_ini(P.light_ini_text(SAMPLE_INI, 0.5, 0.2))
+        with open(p + P.LIGHT_BACKUP_SUFFIX, "w", newline="") as f:
+            f.write(SAMPLE_INI)
+        with redirect_stdout(io.StringIO()):
+            with P.LightIni(p, 0.5, 0.2):
+                pass
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+        self.assertEqual(os.listdir(os.path.dirname(p)), ["PCSX2.ini"])
+
+
+class LightScheduleTest(unittest.TestCase):
+    def test_the_light_groups_carry_the_push_and_the_expected_bands(self):
+        steps = P.light_schedule(0.5)
+        holds = [s for s in steps if s.kind == "hold"]
+        groups = collections.Counter(F.group_of(s.name) for s in holds)
+        self.assertEqual(groups, {"half_fwd": 3, "crouch_walk": 3})
+        for s in holds:
+            self.assertEqual((s.buttons, s.direction, s.push, s.seconds), (("W_LIGHT",), "fwd", 0.5, 6.0), s)
+            want = {"half_fwd": ("stand", 32.5), "crouch_walk": ("crouch", 14.0)}[F.group_of(s.name)]
+            self.assertEqual((s.stance, F.expected_speed(s.direction, s.stance, s.push)), want, s)
+        taps = [s for s in steps if s.kind == "tap"]
+        self.assertEqual([s.buttons for s in taps], [("TRIANGLE_LIGHT",), ("TRIANGLE_LIGHT",)])
+        for s in steps:
+            for b in s.buttons:
+                self.assertIn(b, keys.MAPS["pcsx2"], s)
+                self.assertIn(b, P.PAD1_BINDING, s)
+        self.assertNotIn("return", [s.kind for s in P.DEFAULT_SCHEDULE])
+
+    def test_light_appends_the_groups_to_the_default_schedule(self):
+        steps = P.schedule_for(light=0.5)
+        self.assertEqual(steps[:len(P.DEFAULT_SCHEDULE)], P.DEFAULT_SCHEDULE)
+        self.assertEqual(steps[len(P.DEFAULT_SCHEDULE):], P.light_schedule(0.5))
+        self.assertIs(P.schedule_for(light=None), P.DEFAULT_SCHEDULE)
+
+
+LIGHT = {"stand": "crouch", "crouch": "stand", "prone": "crouch"}   # a light press where FUN_005857e0 != 0
+
+
+class LightStancePine(StancePine):
+    def press(self, hwnd, button, target, hold_s=0.15):
+        if button == "TRIANGLE_LIGHT":
+            self.presses.append(button)
+            self.set(LIGHT[self.stance])
+        else:
+            super().press(hwnd, button, target, hold_s)
+
+
+class LightStanceTest(unittest.TestCase):
+    def run_one(self, start, planned):
+        pine = LightStancePine(start)
+        steps = (P.Step("rest", "rest", (), 3.0), P.Step("h#1", "hold", ("W_LIGHT",), 6.0, planned, "fwd", 0.5))
+        with redirect_stdout(io.StringIO()):
+            recs = P.run_schedule(steps, SyncRecorder(pine), hwnd=None, press=pine.press, sleep=lambda s: None,
+                                  light=True)
+        return pine, recs[1]
+
+    def test_crouch_is_reached_with_a_light_tap(self):
+        pine, rec = self.run_one("stand", "crouch")
+        self.assertEqual(pine.presses, ["TRIANGLE_LIGHT", "W_LIGHT"])
+        self.assertEqual((rec["stance"], rec["stance_taps"], rec["push"]), ("crouch", 1, 0.5))
+
+    def test_stand_from_crouch_is_one_light_tap(self):
+        pine, rec = self.run_one("crouch", "stand")
+        self.assertEqual(pine.presses, ["TRIANGLE_LIGHT", "W_LIGHT"])
+        self.assertEqual((rec["stance"], rec["stance_taps"]), ("stand", 1))
+
+    def test_prone_still_takes_a_firm_tap(self):
+        pine, rec = self.run_one("stand", "prone")
+        self.assertEqual(pine.presses, ["TRIANGLE", "W_LIGHT"])
+        self.assertEqual(rec["stance"], "prone")
+
+
+class LightMainTest(unittest.TestCase):
+    def test_dry_run_light_prints_the_plan_with_the_scale_and_touches_nothing(self):
+        p = temp_ini()
+        st = os.stat(p)
+        out = tempfile.mkdtemp()
+        r = subprocess.run([sys.executable, "-m", "tools_py.parity.seal_speed_probe", "--dry-run", "--light",
+                            "--pcsx2-ini", p, "--out-dir", out], cwd=ROOT, capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        for want in ("light stick 0.50", "Keyboard/8", "Keyboard/7", "LUp", "Macro%dPressure" %
+                     P.LIGHT_MACROS["W_LIGHT"][2], "half_fwd#1", "crouch_walk#3", "32.5 (push 0.50)",
+                     "14.0 (crouch walk, push 0.50)", "TRIANGLE_LIGHT", "restored"):
+            self.assertIn(want, r.stdout)
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+        self.assertEqual(os.stat(p).st_mtime_ns, st.st_mtime_ns)
+        self.assertEqual(os.listdir(os.path.dirname(p)), ["PCSX2.ini"])
+        self.assertEqual(os.listdir(out), [])
+
+    def test_light_refuses_to_attach(self):
+        called = []
+        err = io.StringIO()
+        with redirect_stderr(err):
+            rc = P.main(["--light", "--pcsx2-ini", temp_ini()], attach=lambda *a: called.append(a))
+        self.assertEqual(rc, 2)
+        self.assertEqual(called, [])
+        self.assertIn("--slot", err.getvalue())
+
+    def test_the_launch_sees_the_temp_ini_and_the_owner_file_comes_back_after_the_kill(self):
+        p = temp_ini()
+        seen = []
+
+        def cleanup():
+            with open(p) as f:
+                seen.append(("cleanup", "Macro" in f.read()))
+
+        def launch(a):
+            with open(p) as f:
+                seen.append(("launch", "Macro%dBinds = Triangle" % P.LIGHT_MACROS["TRIANGLE_LIGHT"][2] in f.read()))
+            return FakePine(), 1, cleanup
+
+        d = tempfile.mkdtemp()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            rc = P.main(["--slot", "8", "--light", "--pcsx2-ini", p, "--out-dir", d], launch=launch)
+        self.assertEqual(rc, 3, "the fake clock never advances: preflight fails")
+        self.assertEqual(seen, [("launch", True), ("cleanup", True)], "PCSX2 is killed before the restore")
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+
+    def test_a_launch_that_raises_still_restores(self):
+        p = temp_ini()
+
+        def launch(a):
+            raise RuntimeError("no PINE")
+
+        with self.assertRaises(RuntimeError), redirect_stdout(io.StringIO()):
+            P.main(["--slot", "8", "--light", "--pcsx2-ini", p], launch=launch)
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
 
 
 if __name__ == "__main__":
