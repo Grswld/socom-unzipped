@@ -16,11 +16,17 @@ An agent working on the recomp can skip this directory entirely.
 **Start here if you are a new agent or contributor:** the design and the findings recorded as the
 viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/specs/2026-09-20-web-map-viewer-design.md)
 and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
-(the plan beside them in `docs/plans/`); the byte-level format authority is the viewer's own
+(the plan beside them in `docs/plans/`); the open sprint is web sprint 1, "the engine's world":
+[`docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md`](docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md)
+and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md), whose Log is the
+live state; the byte-level format authority is the viewer's own
 [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
 the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
-and its Ghidra function names.
+and its Ghidra function names. The behaviour every change is checked against, maps and pictures
+included, is pinned down in [`packages/viewer/e2e/viewer.spec.ts`](packages/viewer/e2e/viewer.spec.ts)
+(`npm run e2e`); the viewer's chrome is the s2u design system, vendored under
+`packages/viewer/src/ds/` by `npm run ds:sync` (the manifest test refuses a hand edit).
 
 ## How it works (one paragraph)
 
@@ -41,7 +47,9 @@ brighten, blend) in the order the engine drew them, and puts a fly camera in fro
 - **Node 24** or newer (the tools use `import.meta.dirname` and top-level `await`).
 - **A disc tree**: a directory with `RUN/MP*.ZDB` in it, from your own SOCOM II disc (US retail,
   SCUS-97275). The viewer needs only those 22 archives, about 224 MB. See the next section for where
-  to get them.
+  to get them. A player needs neither: since web sprint 1 the page opens the `.iso` itself
+  (**Open your own disc**, or drop the file on the page) and reads the archives out of it as ISO9660 in
+  the browser, byte for byte what the served tree would hold, nothing uploaded anywhere.
 
 ### What the viewer takes from the rest of the repository
 
@@ -116,6 +124,7 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
 | `F` | fullscreen, and back (also the button under the frame counter) |
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
+| `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -204,8 +213,12 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 - **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
   (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
   world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the
-  camera's range against. Each placement of a banded model is its own mesh and is shown by its
-  distance from the camera, switching at the middle of each fade (`lodVisible` in `scene`).
+  camera's range against. Each placement of a banded model is its own mesh and fades across its band as
+  `DrawLOD` scales it: the ramp is linear in the range *squared* (the disc stores `1 / (far² − near²)`),
+  so the two copies of a pair sum to one across the crossover and each is at half at 110.45 units, not
+  110 (`lodOpacity` in `scene`; a copy at rest keeps its shared material and only a fading one takes a
+  blended twin, `viewer/src/lodFade.ts`). The "scaled" range `GetScaledRangeSquared` is a stub in
+  reCOM, so the plain distance is used.
 - **Facades face the camera because the disc says so.** `m_facade` (node flags bits 8-9) marks the
   lamp flares, the stars, the moon and the sun -- 41 nodes over 22 maps -- and applies to everything
   under a flagged node, as the engine's matrix stack does. It replaces the old guess that turned
@@ -217,13 +230,44 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 - **Drop shadows are a decal pass** ("prop shadows" in `options`, on by default): every draw whose
   texture is a `shadow*.tif`, blended source-over after the world with no depth written and a polygon
   offset off its ground, whatever the draw-order mode.
-- **The draw order is three's, by choice.** reCOM's `CPipe::RenderWorld` walks the engine's *grid*
-  outward from the camera (`StartTraversalOrdered`), with decals and shadows in passes of their own,
-  and writes depth under every blend (`ZMSK = 0`, research 26 §2). The viewer records each draw's
-  place in the scene-graph walk (`LoadedMesh.order`, the merge cut at every blended chunk so no opaque
-  draw straddles one) and can draw in it -- "scene-graph draw order (experimental)" -- but that is not
-  the grid walk either, and a shadow quad or a flare drawn before the wall behind it shows the sky
-  through itself. So by default blended draws go to three's back-to-front sort with no depth written.
+- **The engine's grid is built, and its draw order is a switch.** `grid_params` in every world root is
+  reCOM's `tag_GRID_PARAMS` (atom count 8192, posts 16, the cell dimension, the cells across and down; no
+  origin is stored, it is always 0): Frostfire is 160 units, 8 × 9. `scene/grid.ts` generates the cells as
+  `CGrid::Create` does, files every placement, clutter instance and collision-owning node into each cell its
+  bounds cover -- one atom per cell, the bound chopped to single precision as the EE chops it, which is what
+  reproduces the console's census of 414 world atoms and 117 prop atoms on Frostfire -- and walks the rings
+  outward from a cell in reCOM's diamond (`|dx| + |dz|`). `CPipe::RenderWorld` draws in that walk with depth
+  written under every blend (`ZMSK = 0`, research 26 §2); the viewer can ("engine draw order" under
+  Advanced, recomputed when the camera crosses a cell, shadows and decals after the last ring). It is off by
+  default: the 22-map sweep is identical either way, but near-first with depth under every blend makes a lamp
+  flare drawn before the pipe behind it cut a rectangle out of it, so that is not the whole of what the
+  console did for the flares, and their pass is the open question. By default blended draws go to three's
+  back-to-front sort with no depth written; each draw's place in the scene-graph walk (`LoadedMesh.order`)
+  stays as the tie-break.
+- **The detail texture pass is drawn.** `mp<N>_lib.rdr`'s `detail{name, uv, range, bmode}` per texture is
+  the record the engine compiles into every visual (2,395 of 2,395 visuals with a bound texture carry one);
+  the viewer draws a second mesh over the base's geometry with the detail texture at `uv` times the base's
+  uvs (8 on Frostfire's oil-grime floor, 2 to 10 across the disc, not the 4.0 the mission dumps showed),
+  blended as `bmode` says (`COLORBLEND` is `ALPHA 0x44`, `ADDITIVE` is `0x48`), depth less-or-equal (the
+  records' own `GEQUAL`) with no depth write, fading per fragment to nothing at the root of the squared
+  `range`. The engine switches the whole pass on per visual by its centroid's range instead; the viewer's
+  merged draws have no centroid, so it fades (the sprint's W1.R7). "detail pass" under Advanced.
+- **The spawns come from the disc.** `AIMAPS.MPS` -- not a ZAR -- is fully decoded (`scene/aimaps.ts`,
+  `docs/research/75-aimaps-mps.md`): a head, per sub-map a header, the cells as row spans and eight counted
+  tables, and a trailer with the spawn list of 24 slots a side, each a cell with a side bit and a facing.
+  `PlayerStart` turned out to be one named cell, not a region. The slots are drawn under the **spawns** toggle
+  as a cell outline and a facing arrow per side, each standing on the probe's floor under its centre (all 1,058
+  do), beside the measured A and B; the camera opens at A's (x, z), 20 units over the probe's floor there (on
+  the 20 maps whose A is the orbit camera's position that is 12.7-31.2 units lower than the recorded y + 20 it
+  used to stand at), and which of the 24 a player gets is game logic (A was always side 0's first slot and B
+  side 1's second in the recorded rounds).
+- **The ground is the engine's.** `scene/probe.ts` is the game's ground probe (`FUN_002d3030`'s per-model
+  gate, the vertical line, first hit per model in surface order, the pick chosen as research 24 §2 says),
+  over the grid's collision atoms: 3,318 world-space polygons on Frostfire, the engine's own count once the
+  `di` the exporter copies onto nested instance nodes -- which the engine never keeps -- is dropped. The four
+  actor-measured spawns land within [−3, +1] of it; the forty online-sweep rows in `spawns.ts` turned out to
+  be the orbit camera, 25 units above the floor and 23 behind the actor. The walk (`viewer/src/walk.ts`) is a
+  60 Hz fixed-step mover on that floor.
 - **The shading is the GS's modulate, in the GS's order** (`world.ts`): `(texel * vertex) >> 7`, the
   product clamped by `COLCLAMP` *before* the fog is mixed in, then the post-process's `1 + FIX/128` as a
   uniform on every material rather than a factor baked into the vertex — so an overbright vertex under
@@ -238,10 +282,17 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 
 ## Known gaps
 
-- **The engine's grid walk, region culling and LOD fades are not modelled.** `RenderWorld` walks the
-  grid outward from the camera and `CanSeeRegion` skips whole nodes by region mask; `DrawLOD` fades a
-  copy's opacity across its band where the viewer switches at the middle. The two facade modes are
-  drawn alike, reCOM's `ComputeFacadeMatrix` being a stub.
+- **Region culling, and the flares' place in the engine order.** The per-node region bits (node flags
+  13-17) are on the disc on 8 maps and the collision polygons carry masks over the same bits on 6, but the
+  writer of the camera's visible set (`CanSeeRegion`'s other operand) is not in the tree, so nothing is
+  culled by region; and the engine draw order stays a switch until the pass that keeps a flare from cutting
+  the wall behind it is found (the sprint spec's §7). The two facade modes are drawn alike, reCOM's
+  `ComputeFacadeMatrix` being a stub.
+- **The walk is conservative.** The mover refuses any drop over 20 units (the probe's window, read as a
+  rule), so it never falls off a deck the game would let you fall from; the record's layer mask is probed
+  as all layers (the literal reading contradicts research 24's own walk); and the slot outlines are drawn
+  without a depth test because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more
+  than a unit off the floor under the centre).
 - **Animated map objects beyond the uv scrolls are not drawn.** The door animations (`actions.rdr`,
   `MOTION_S.ZAR`), the destructible states, and the particle effects (`COMMON/EFFE_*`:
   `fire_hardedge.tif` and the smoke sprites) are driven by game code the viewer does not run; the
@@ -250,13 +301,10 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   its factor is game logic, and at rest it draws nothing.
 - **The auto-exposure is a slider.** `FIX` is computed per frame from a column of frame pixels; the
   viewer opens at the one value measured (93) and leaves the readback unmodelled.
-- **The detail texture pass is not drawn** (SEMANTICS §11.6).
-- **Spawns are not on the disc.** `AIMAPS.MPS` is the file that would hold them and no reader for it exists;
-  `scene/spawns.ts` carries the measured table instead, so a map that was never measured opens on its own
-  extent rather than at a spawn.
-- **The ISO source is M5.** Only the served `public/maps/` tree loads today. The seam is `sourceFor` in
-  `packages/viewer/src/worker.ts`, which builds an `HttpAssetSource` per base URL; an ISO source needs a
-  `File` from the page, so `ViewerRequest` will have to carry one rather than a `baseUrl` string.
+- **The ISO source has met no retail disc yet.** It reads ISO9660 (the primary volume at sector 16, `;1`
+  names, files by LBN) and was checked against images written by an independent library in four flavours
+  (plain, Joliet with Rock Ridge, a UDF bridge, El Torito), but no SOCOM II image was on the host that built
+  it. A raw 2352-byte `.bin` and a multi-extent file are refused by name rather than read.
 
 ## No game data in the repository
 

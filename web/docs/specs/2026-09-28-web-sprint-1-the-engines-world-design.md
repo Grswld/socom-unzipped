@@ -167,9 +167,10 @@ respected).
 
 ## 5. What is not in this batch, and why
 
-- **The ISO source (M5)** — the door stays open (`worker.ts` `sourceFor`) and is the first candidate for web sprint
-  2: it is infrastructure, and the owner's ordering puts the visible above it. Not shut: `ViewerRequest` will carry a
-  `File`, and nothing in W1 assumes a URL.
+- **The ISO source (M5)** — *superseded 2026-09-28 by W1.R11: it landed in this sprint as W1.7 under the owner's
+  instruction to use the session's budget (`ViewerRequest` carries a `File`; §7's ISO finding).* The line as written at
+  the open: the door stays open (`worker.ts` `sourceFor`) and it is the first candidate for web sprint 2: it is
+  infrastructure, and the owner's ordering puts the visible above it.
 - **Animated map objects** (`actions.rdr`, `MOTION_S.ZAR`: the doors, the fans) and **the destructible states** —
   a skeletal-motion format nobody has decoded; a sprint of its own once the grid and the tick exist (W1.1, W1.4).
 - **Particle effects** and **the `FIX` glow** — driven by game code the viewer does not run; behind the animations.
@@ -189,6 +190,181 @@ run recorded in the plan's Task 0; the four numbers of section 3's bar item 3 in
 
 *(dated, newest last; the convention of the two earlier specs)*
 
+### The LOD record is 32 bytes and the ramp is linear in range squared (2026-09-28, W1.3)
+
+The world root's `LOD_Object` is 32-byte records: `minRangeNearSq`, `minRangeFarSq`, `minInvDeltaRangeSq`,
+`maxRangeNearSq`, `maxRangeFarSq`, then a sixth float at +20 that reCOM's `CLOD_band` (`zRender/zrender.h:180-192`,
+28 bytes) lacks -- the far fade's own inverse delta -- then the fade bits at +24 (bit 0 `minFade`, bit 1 `maxFade`) and
+a pointer-sized word at +28. Each inverse delta is `1 / (far² − near²)`: Frostfire's railings store 1/4400 =
+1/(120² − 100²), and on MP2, MP6 and MP72 a fade is flagged exactly where its two ends differ (MP2 10 records, MP6 20,
+MP72 3). So `CVisual::DrawLOD`'s opacity, `m_minInvDeltaRangeSq × (rangeSq − m_minRangeNearSq)`, is linear in the range
+*squared*: the two copies of a pair sum to 1 across the crossover and each is at half at 110.45 units, not 110. reCOM's
+`DrawLOD` as transcribed (`zVisual/vis_main.cpp:305-317`) has its comparisons reversed and its second range test
+repeating the first; `GetScaledRangeSquared` is a stub there (`zCamera/zcam.h:181`), so the "scaled" factor is
+unknown and the viewer uses the plain distance. The decomp names `zdb_CVisual_DrawLOD` at `0x003b7b90`
+(`recomp/socom2_names.csv`) but its body is not in the tree. The engine draws a visual at opacity 1 in place and
+defers one below it to the alpha pass (`zRender/zrndr_pipe.cpp:344-364`, down to 1/128); the viewer does the same
+with a fading twin per shared material (`viewer/src/lodFade.ts`), the 1/128 floor not copied.
+
+### The grid's record, the origin, the census and the ring (2026-09-28, W1.1)
+
+`grid_params` is reCOM's `tag_GRID_PARAMS` in `zNode/znode.h:109-120`: `s32 m_AtomCnt; s32 m_posts; f32 m_CellDim;
+s32 cx; s32 cy` -- 8192 and 16 in the first two words on all 22 maps, then the dimension and the cell counts (Frostfire
+160, 8 × 9). No origin is stored: `CGrid::Create` takes the world node's bbox minimum (`zGrid/grid_main.cpp:42-57`) and
+the grid is read before the world tree (`node_saveload.cpp:313` against `:337`), so the origin is a fresh node's zero.
+The engine's default without the key is 640, 8 × 8 (research 23 §2.3). M51, whose live grid research 23 §2.1 reads as
+180.0 and 36 × 25, is a single-player archive (research 03 lists M51-M83), not one of the 22; MP51 is 160, 12 × 10. The
+22 grids, dimension then cells x × z: MP1 160 20×26, MP2 160 8×9, MP5 160 12×16, MP6 180 14×15, MP7 180 15×15, MP8 160
+16×10, MP9 160 22×15, MP10 256 11×10, MP11 320 6×7, MP12 180 15×14, MP51 160 12×10, MP52 360 14×11, MP53 200 24×28, MP61
+160 9×16, MP62 160 18×18, MP64 160 14×19, MP71 180 16×13, MP72 170 14×16, MP73 180 19×18, MP81 160 11×16, MP82 160 16×20,
+MP83 360 7×9. Footprints are the bbox's two corners transformed, as `gridAddNodeToGrids` does (`grid_main.cpp:408-431`),
+which under-covers a turned node by up to 31 units on about a tenth of the placements; the bound is chopped to single
+precision as the EE chops (research 25), the inverse rounded to nearest, the product truncated -- so read, the 129
+type-1 world nodes spend 414 atoms without the three `ocean_*` nodes (bit 10, `m_reflective`; why they are left out is
+unknown) and the 65 type-2 nodes spend exactly research 24 §1.1's 117; rounded to nearest instead, type-2 is 115 (one
+`relieftower` bound at 799.9999981). Collision is filed per owning node (the probe's unit), not per polygon: one atom per
+polygon would spend 12,621 on MP72 and 24,514 on MP82 against a pool of 8,192. The ring label is reCOM's
+`abs(dx)+abs(dz)` (`grid_main.cpp:351`), a diamond, and `buildOrderedCellAtomList` (`:357-360`) is empty there: W1.R8.
+Research 23 §2.1's chain-cut description implies a cell's list reads newest first; the viewer keeps insertion order.
+
+### The detail pass is bound per texture, scaled by the manifest's `uv`, and the engine switches it per visual (2026-09-28, W1.6)
+
+`mp<N>_lib.rdr`'s `detail{name, uv, range, bmode}` is compiled into each visual's 28-byte `detail_buff` (range at +0,
+the `ALPHA_1` selector byte at +20, the scale at +24; `CVisual::Read`, reCOM `zVisual/vis_main.cpp:276-296`): binding
+by texture is binding by visual, 2,395 of 2,395 visuals drawn with a detail-bound texture carry a record and none
+lacks one. The S,T scale is the manifest's `uv`: **8 on Frostfire** (all 61 records; `floor_oilgrime.tif`), 2 to 10
+across the disc, 4 the most common (30 of 66) -- SEMANTICS §11.6's "4.0" was the mission dumps' value, now settled
+there. `range` is squared (90000 = 300², 250000 = 500²). `bmode` is `COLORBLEND` on 932 records, all `0x44`
+`(Cs − Cd)·As + Cd`, and `ADDITIVE` on 68 (MP1 and MP2 only), all `0x48` `(Cs − 0)·As + Cd`; the detail textures' own
+bind packets say `0x44` for both, so the blend is the visual record's, and their `TEST_1` is `ZTE=1, ZTST=GEQUAL` on all
+65 -- less-or-equal in GL terms, which the viewer uses rather than EQUAL. A name listed twice in a manifest keeps its
+first entry (MP1's 56 visuals). The engine does not fade the pass: `CPipe::RenderNode` turns it on for a whole visual
+whose centroid is within range (`zRender/zrndr_pipe.cpp:311-322`); the viewer's merged draws have no centroid, hence
+W1.R7. 22 detail blocks name 20 files; 21 of 22 maps bind a pass (all but MP7 and MP81).
+
+### `AIMAPS.MPS` is decoded; the spawn list, not `PlayerStart`, holds the 44 (2026-09-28, W1.5)
+
+The layout is in `web/docs/research/75-aimaps-mps.md`: a 0x28-byte head; per sub-map a 0xA8-byte header, 8-byte cells
+stored as row spans, and eight counted tables; a trailer with the link block and the file's spawn list; every reference
+is a stored cell addressed by `CAiMapLoc` (low 6 bits the sub-map index), and the sub-map count and order match
+`aimaps.rdr`'s `map_list` on all 22. `PlayerStart` is a single named cell, not a region (the only records with extents
+are 15 `Safety` rectangles on the 7 maps with hostage starts), and holds 0 of the 44 measured spawns. The spawn list is
+24 slots a side, each one cell with a side bit and a facing in eighth turns (step k points to (sin 45k°, −cos 45k°): 0
+is −z, 2 is +x -- *corrected 2026-09-28, later: the first reading, (−sin 45k°, cos 45k°), was derived assuming the 40
+sweep rows lay ahead of the slot; W1.4 showed they are the orbit camera behind the actor, and of sixteen conventions only
+this one places all 40 behind a same-side slot, research 75 §11*): 4 measured positions are at a slot's centre within
+0.51 (Frostfire's and Vigilance's, KNOWN §1's rows) and 40 are 20.1-28.0 units *behind* one along its facing (median
+23.8, across 1.0 to 3.2, the same side for all 40; the sentence read "ahead" until the correction), the other side's
+nearest slot at least 824.6 units away -- 44 of 44 accounted for; which of the 24 a player gets is game logic. Research 72 §6's
+"briefing overlay" strings (`Opacity( 0.5 )`, `Color( 87 112 176 )`) are leftover memory in an unread 32-byte header
+field at +0x88, stale text on 13 sub-maps, not records; the file's only line data is polylines on Blizzard, Frostfire
+and Bitter Jungle.
+
+### The spawn slots' order, and the sweep's y is not the feet (2026-09-28, W1.5b)
+
+In the trailer's order of the spawn list, the one slot that accounts for the measured A is side 0's #0 and for B side
+1's #1, on all 22 maps (44 of 44; exactly one slot of the side qualifies each time, and #0 and #1 of a side are 22-851
+units apart; in the sub-maps' own lists the same slots sit at scattered positions, so only the trailer's order carries
+the pattern). A was the host and B the joiner in those rounds; "player n gets slot n of their side" fits all 44 and is
+not proven. The slot's y is not in the file. A rough check against the collision hull at each measured position's own
+(x, z): 37 of the 40 online-sweep rows (research 33) sit 12.7-38.1 units above the only floor there (median 25.0), 3
+have a surface 12-25 units above them, none is inside [−3, +1] of a floor; the 4 KNOWN §1 rows (Frostfire's and
+Vigilance's) sit 0.0-1.1 above the floor. With the same 40 rows also 20-28 units displaced horizontally from their
+slot, the sweep's actor block may have been read at the third-person camera rather than the feet -- in which case the
+facing convention W1.5 derived from "ahead" is turned 180° -- which W1.4's probe decides (W1.R10). The hull check is a
+scratch approximation, not the probe.
+
+### The engine's draw order lands; the camera's region set is not in the tree (2026-09-28, W1.2)
+
+The order walks Task 1's rings from the camera's cell over `world.ts`'s draw records; a merged world part sits at the
+ring of its nearest node (Frostfire's median part covers 5 cells, the largest all 72; Crossroads' median 27, Desert
+Glory's 6), draws with no cell go after the last ring and before the shadows, and the walk runs to the grid's edge (reCOM's
+`m_ring < 2` bound would stop at five cells and drop draws). Frostfire's 453 draws by ring from spawn A: 11, 181, 88, 46,
+80, 39, 5; from spawn B: 58, 49, 80, 47, 92, 55, 69. The ring label's writer is `zdb_CGrid_addOrderedCellAtom` at
+`0x002d7030` (`recomp/socom2_names.csv`, call-graph round 1, score 0.80; 384 bytes), its body not in the tree; reCOM's
+`buildOrderedCellAtomList` is empty, so "near to far" is the spec's reading. Landmarks (`m_landmarks`, drawn after the
+walk in `RenderWorld` :250-266; Frostfire has `skyhorizon`, `drilltower`, `boom`; MP6 `f18s`) are not held back.
+**Regions.** On the disc: `tag_NODE_PARAMS.m_region_shift` (node flag bits 13-17, `znode.h:90`) is non-zero on 8 maps;
+on six of them (MP2, MP11, MP52, MP61, MP62, MP81) the `di` polygons' `m_region` words are masks over exactly those
+maps' shift bits (Frostfire: shifts 1 and 5, `0x22` on 279 polygons, all on the `deck*` nodes; the floor under both
+Frostfire spawns is `0x22`), bit 0 never set; MP6 and MP82 have shifts but all-zero polygon words; the GEO `regionmask`
+key appears only on Frostfire's 22 light instances. In reCOM: `CanSeeRegion` (`zcam_main.cpp:136-145`, a zero mask
+counts as 1, `m_do_region_test` static true), the three camera fields `m_PlayerCanSeeRegions`, `m_CameraCanSeeRegions`,
+`m_SeeRegions` (`zcam.h:213-218`; research 50 §4b reads them as three 4-byte masks at `0x2a0-0x2a8`, unchanged from
+SOCOM 1), `InheritRegionMasks` (`node_main.cpp:583-597`, its two arguments swapping at every level as transcribed), and
+the script commands `SET/GET_CAMERA_REGION_TEST` whose parse and tick are stubs. In the decomp's names: nothing for
+`CanSeeRegion`, `InheritRegionMasks` or `RenderWorld`; `CAppCamera_Tick` at `0x002998f0` the likeliest home of a camera
+probe, `anon_fts_mission_LoadMissionMapVisibilities` at `0x002af550` (508 bytes, reads a `CRdrFile`; name only),
+`CZSealBody_CheckForRegionTrigger` at `0x005a2f90`. "The camera's set is the region word of the polygon under it" fits
+the data but is not the game's code: taken literally at Frostfire's spawn A (`0x22`) it hides nearly all 409 shift-0
+placements, with bit 0 added it hides nothing; the missing rule is which polygon (the player's or the camera's) and how
+a zero word and bit 0 are read. Not wired; the README's gap line stays.
+
+### The engine order shows the flares' black box; it stays a switch (2026-09-28, W1.2, W1.R3)
+
+With "engine draw order" on -- the rings walked outward from the camera, depth written under every blend -- the 22-map
+sweep is identical to the default's and the e2e passes, but Frostfire's lamp flares from 70 units show the polish spec's
+black box: the flare's quad, drawn at its near ring before the pipe behind it, keeps that pipe out of the depth buffer
+and shows the sky through a rectangle (`flare0-e`: 109,351 of 921,600 pixels differ from the default, 39,333 strongly;
+`flare1-s`: 71,619 and 59,319). The agent's prediction (11 of Frostfire's 15 flares share a cell with an unblended
+world part later in the walk) held. So near-first with depth under every blend is not what the console did for these
+draws: either the flares go to the engine's alpha pass (`m_alpha`, which reCOM shows only for opacity under 0.99) or
+the ring walk is not near-first for them (`buildOrderedCellAtomList` is empty in reCOM). W1.R3's answer is OFF: the
+switch stays, the default is three's sort, and the flares' pass is the first fidelity question for web sprint 2.
+
+### The probe's world is the engine's: 3,318 polygons, the camera in the sweep, the window's direction (2026-09-28, W1.4)
+
+**3,318.** The viewer's 3,338 on Frostfire were the engine's 3,318 plus the `di` the exporter copies onto nested
+instance nodes (ten `…/bigtank/tankrail{2,3,4}=tankrail{N}/railpostfiller` nodes, two polygons each): the engine keeps
+both copies only for an instance read from the world's own file (`CreateInstance(sload)` then `ReadDataBegin` adds the
+node's own `di`, reCOM `zNode/node_io.cpp:46-51`, `node_saveload.cpp:49-74`), while an instance inside a prototype is
+rebuilt from its model by `_Copy` (`node_main.cpp:312-333`) and the file's copy never reaches the world. `worldDi`
+drops it; every dropped polygon has a world-space twin that stays. Bounds x 120-1200, y 40-241.1, z 322.5-1280; the
+collision column moves on 9 of 22 maps. **Bit 18** of research 23/24's surface flags is `m_cameratype`'s low bit in the
+packed `di` params word (ditype bits 0-1, ptcount 2-9, material 10-17, cameratype 18-19); 19 Frostfire polygons carry
+it, all ditype 2; ditype's bit 0 is the ground bit. **The sweep's y.** The 40 online-sweep rows of `spawns.ts` are the
+third-person orbit camera, not the actor: `tools_py/parity/online_match_ours.py:42-45` peeks `0x416054`, "the local
+player's ORBITING CAMERA record" (its `MP51_SEAL_SPAWN` (542.3, 1479.9) against KNOWN §1's actor at (540, 1456)); the
+probe finds their floor a median 25.000 below (exactly 25.000 on flat ground; p99 38.1, min 12.7), and 36 of 40 have a
+floor at y − 25 on research 18's 23.1-unit orbit ring -- the camera behind and above the actor. The 4 KNOWN §1 rows are
+the feet (residuals 0, −1, −1.10, −0.89). W1.5's facing convention, read from "ahead", is therefore turned 180°
+(corrected under W1.5b). **The window.** Research 23 §1.1 item 9 rejects a pick more than 20 *above* the feet, not
+below: from origin 70 the deck at 42 is taken; the plan's "from 70, nothing" was wrong. Walking off Frostfire's deck is
+a 42-unit fall in the game (research 24 §7.4); the mover refuses any drop over 20 (`MAX_DROP`), the conservative
+reading, not the game's rule. **The layer mask** read literally as "last surface word 0 | 1" contradicts research 24
+§3c (B's ramp `railramp_d8n` has region 0, the y 100 floor `deckv_*` is layer 1; on Guidance every region is 0 while
+nodes sit on layers 0 and 1), so the mover probes all layers. **Data facts, all 22 maps:** every `di` polygon lies
+inside its own node's bbox in x and z, and every node carrying polygons is active with `m_hasDI` set. The walk runs at
+40 units/s (research 18, finding 3); the 2.5× boost is the viewer's own.
+
+### The ISO reads the disc by ranges; 0.34 % of it names every map (2026-09-28, W1.7)
+
+`IsoAssetSource` reads ISO9660's primary volume descriptor at sector 16 (scanning past a boot record to the terminator),
+walks the directory tree lazily, strips `;1` and a bare trailing `.` (ECMA-119 §7.5.1; `tools_py/iso_lbn.py` keeps the
+dot), and reads files by LBN through `Blob.slice`. A `RangedAssetSource` lets `listMaps` read each archive's 0xA0-byte
+head, its table of contents and `READERM.ZAR` only: over an in-memory ISO of all 22 served archives, 66 ranged reads,
+788 KiB of 224 MiB (0.34 %), 23 ms under node, name every map. The fixture archives come back sha256-identical to the
+served tree per archive and per ZDB member (M5's bar). No SOCOM II image was on the host; images written by pycdlib in
+four flavours (plain, Joliet with Rock Ridge, a UDF 2.60 bridge, El Torito) each read 65 of 65 files byte-identical.
+Refused by name: a raw 2352-byte `.bin` (CD001 at 16 × 2352 + 16 or + 24), a logical block size other than 2048, a
+multi-extent or interleaved file. The page offers `Open your own disc (.iso)` and drag-and-drop through the standard
+file APIs (Safari lacks the File System Access API); a 404 on `maps/index.json` opens the panel on that control instead
+of "booting" forever.
+
+### The orbit camera is 25 over the actor's feet; every slot has a floor; the stand opens on it (2026-09-28, W1.4b)
+
+Measured against the floor of the slot their actor stood on (A on side 0's #0, B on side 1's #1) rather than the
+floor under the camera itself, the 40 camera rows sit 18.2-26.6 units up, median 25.000, 36 of 40 within 25 ± 3 and 30
+within ± 1 (over the ground under the camera they spread 12.7-38.1: W1.4's spread was the terrain's, not the camera's;
+the four outside ± 3 are Death Trap B 21.0, Sujo B 21.9, Enowapi A 18.2, Shadow Falls A 20.4); on the 4 feet rows the
+slot's floor matches the probe under the feet within 0.07. All 1,058 slot centres have a probe candidate inside their
+sub-map's height range, so every slot stands on a floor (`placeSpawnSlots(ai, measured, grid)`, the pick from the
+estimate + 5 without the actor's 20-unit reject, which bounds a floor over feet a slot has not; 34 slots would have
+been refused with it, 18 on The Ruins). The opening stand is A's (x, z) at `EYE` over the probe's floor
+(`viewer/src/stand.ts`, computed in the worker beside the slots): 12.7-31.2 units lower than before on the 20 camera
+maps, 0 on Frostfire, 1.1 on Vigilance. The slot outlines stay undepth-tested: a flat 10-unit cell sits more than a
+unit off the floor at a corner on 362 of 1,058 slots (median 0.24, p90 2.5).
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
@@ -204,4 +380,28 @@ run recorded in the plan's Task 0; the four numbers of section 3's bar item 3 in
 - **W1.R6** — Opus implementers do the tasks, Fable reviews the documents and the two judgment calls (W1.2's region
   writer, W1.5's layout); the owner's staffing ruling of 2026-09-20.
 
-All six the owner can overturn by number.
+- **W1.R7** — the detail pass fades per fragment, linearly to zero at √`range`, where the engine switches the whole
+  pass on per visual while the visual's centroid is in range (`zrndr_pipe.cpp:311-322`): the viewer's merged draws have
+  no centroid to switch on, and a per-fragment step would draw a hard ring on the ground the engine never shows; revisit
+  on a capture that shows the pop (the cloud controller, 2026-09-28, W1.6).
+- **W1.R8** — the traversal's ring is reCOM's `abs(dx)+abs(dz)` (a diamond, `grid_main.cpp:351`), not the square the
+  plan assumed; Task 2 flips the default and checks the decomp's writer of `GRIDCELLATOM.ring`, keeping the square as
+  the neighbourhood query Task 4 uses (the cloud controller, 2026-09-28, W1.1).
+- **W1.R9** — W1.R4's condition is not the disc's structure (`PlayerStart` is one cell); the disc's source of the spawns
+  is the file's spawn list, 24 slots a side with a facing, which accounts for 44 of 44. The slots become the spawn
+  markers (W1.5b) and `spawns.ts` stays the opening stand and becomes the oracle: every measured position lies at, or
+  within 30 units *behind* along the facing of, a same-side slot (the ruling read "ahead" until W1.4 showed the sweep
+  rows are the orbit camera; corrected 2026-09-28, later). Which slot a player gets is game logic outside this sprint
+  (the cloud controller, 2026-09-28, W1.5).
+
+- **W1.R10** — bar item 3 is re-read on W1.5b's finding: the probe lands within [−3, +1] of the recorded y at the 4
+  KNOWN §1 rows and at Frostfire's walkway column, and at the 40 online-sweep rows it reports its floor's offset from the
+  recorded y (median, p99, max) and whether that offset is consistent, with a reading of what the sweep recorded; the 44
+  positions still all return a floor (the cloud controller, 2026-09-28, W1.4).
+
+- **W1.R11** — the ISO source (M5) is pulled into this sprint as W1.7 under the owner's instruction to use the session's
+  budget; the plan's §5 line deferring it is superseded. The served tree stays the default where it exists; the disc is
+  read with the browser's file APIs (a `File`'s ranges, nothing uploaded), ISO9660's primary volume only (the cloud
+  controller, 2026-09-28, W1.7).
+
+All eleven the owner can overturn by number.

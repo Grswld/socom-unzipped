@@ -1,0 +1,72 @@
+/* The s2u design system, layer 2 of 3: the base. The engineering tokens the artifact does not define, the reset,
+   the body, links, code, focus, selection, the CRT opt-in, reduced motion and forced colours. Spec 4.2 and 6. */
+@layer s2u.base {
+  :root {
+    --s2u-gutter: clamp(16px, 4vw, 40px);
+    --s2u-max: 1080px;
+    --s2u-measure: 66ch;
+    --s2u-dur-fast: 120ms;
+    --s2u-dur-base: 200ms;
+    --s2u-dur-slow: 600ms;
+    --s2u-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --s2u-z-overlay: 30;
+    --s2u-z-scan: 40;
+    --s2u-z-bar: 50;
+    --s2u-z-progress: 60;
+    --s2u-z-skip: 100;
+  }
+  /* the one density switch (spec 4.2): the viewer's panel and any dense table */
+  [data-density="compact"] {
+    --s2u-type-body: var(--s2u-type-readout);
+    --s2u-type-tab: 600 13px/18px var(--s2u-font-label);
+    --s2u-space-3: 6px;
+    --s2u-space-4: 8px;
+    --s2u-space-6: 12px;
+  }
+  *, ::before, ::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 64px; overflow-x: clip; color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--s2u-ground);
+    color: var(--s2u-text);
+    font: var(--s2u-type-body);
+    letter-spacing: var(--s2u-tracking-body);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
+  }
+  a { color: var(--s2u-glyph-cross); }
+  b, strong { font-weight: 600; }
+  code { font: var(--s2u-type-readout); font-size: 0.85em; color: var(--s2u-text-strong); background: var(--s2u-tab); padding: 1px 5px; }
+  ::selection { background: var(--s2u-gold); color: var(--s2u-ground); }
+  :focus-visible { outline: 2px solid var(--s2u-focus); outline-offset: 2px; }
+
+  /* the CRT, opt-in: scanlines at the scanline alpha over ground and panels; never over the viewer (spec rule 6) */
+  .s2u-scan { display: none; }
+  body.s2u-crt .s2u-scan {
+    display: block; position: fixed; inset: 0; z-index: var(--s2u-z-scan); pointer-events: none;
+    opacity: var(--s2u-scanline);
+    background: repeating-linear-gradient(to bottom, transparent 0 2px, var(--s2u-ground-deep) 2px 3px);
+  }
+  body.s2u-crt .s2u-crt-text { filter: blur(0.45px); }
+
+  .s2u-skip {
+    position: absolute; left: -999px; top: 8px; z-index: var(--s2u-z-skip);
+    padding: var(--s2u-space-2) var(--s2u-space-3);
+    background: var(--s2u-gold); color: var(--s2u-ground);
+    font: var(--s2u-type-nav); letter-spacing: var(--s2u-tracking-nav); text-transform: uppercase;
+  }
+  .s2u-skip:focus { left: 8px; }
+
+  /* the reading-progress line: a page sets --s2u-progress (0..1) on the element */
+  .s2u-progress { position: fixed; left: 0; top: 0; width: 100%; height: 2px; z-index: var(--s2u-z-progress); padding-top: env(safe-area-inset-top, 0px); pointer-events: none; background: var(--s2u-panel-edge); }
+  .s2u-progress::before { content: ''; display: block; height: 2px; width: calc(100% * var(--s2u-progress, 0)); background: var(--s2u-gold); }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, ::before, ::after { transition: none !important; animation: none !important; }
+  }
+  /* forced colours drop the shadows and glows themselves; only the lit state needs help */
+  @media (forced-colors: active) {
+    .is-on, [aria-pressed="true"], [aria-current] { outline: 2px solid CanvasText; outline-offset: -2px; }
+  }
+}

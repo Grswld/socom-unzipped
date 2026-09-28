@@ -1,18 +1,22 @@
 import {
-  parseRdr, parseZdb, rdrGet, Reader, Zar, zdbMember,
-  type RdrNode,
+  parseRdr, parseZdb, rdrGet, readTexManifest, Reader, Zar, zdbMember,
+  type RdrNode, type TexDetail, type TexEntry,
   type AssetSource, type ZarKey, type ZdbEntry,
 } from '@s2u/archive';
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
-  collisionLines, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter, parseGlobalLighting,
-  parseSceneGraph, parseWorldRoot, placeClutter, type LodBand,
-  placeInstances, resolveChunk, transformPoint, worldCollision,
-  type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
-  type SceneNode,
+  buildGrid, collisionLines, DEFAULT_GRID_PARAMS, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter,
+  parseGlobalLighting, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, type LodBand,
+  placeInstances, placementCells, resolveChunk, transformPoint, worldCollision,
+  type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
+  type PlacedModel, type SceneNode,
 } from '@s2u/scene';
+import { parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
+import { collisionOwners, type WorldPoly } from '@s2u/scene';
+import { groundGrid, packGround, type GroundData } from './walk';
+import { openingStand, type Stand } from './stand';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -51,6 +55,14 @@ export type LoadedMesh = MeshData & {
    * Frostfire's oceans and sky horizon), or null for the still majority.
    */
   scroll: [number, number] | null;
+  /**
+   * A world part's grid cells (`x + z * cellsX` of `LoadedMap.grid`): every cell the placements merged into
+   * it are filed in, as the engine's grid files them (`placementCells`) -- the engine order draws it at the
+   * first ring that holds one (`./engineOrder`). The union of the placements' own cells, not the cells of
+   * their joint extent, so a part with pieces in two far corners does not claim the cells between. A
+   * prop's are per placement, on its entry (`LoadedMap.props[].cells`). Absent on a draw built by hand.
+   */
+  cells?: number[];
 };
 
 export interface LoadedMap {
@@ -75,6 +87,8 @@ export interface LoadedMap {
     facade: number;
     /** The model's LOD band, or null: shown by camera range, one copy of a pair at a time. */
     lod: LodBand | null;
+    /** Per placement, in `matrices` order: the grid cells it is filed in (see `LoadedMesh.cells`). */
+    cells?: number[][];
   }[];
   textures: Record<string, Rgba>;
   /**
@@ -83,12 +97,40 @@ export interface LoadedMap {
    * `./materialSpec` for how the three become a material.
    */
   textureFlags: Record<string, TextureFlags>;
+  /**
+   * The detail pass each drawn texture binds, by texture name: its `mp<N>_lib.rdr` entry's `detail` record
+   * (web/docs/research/72 §6, `readTexManifest`), the detail texture's name lower-cased as `textures` keys
+   * it, and only where that texture decoded. Empty on a map with no detail textures (Night Stalker, MP81).
+   */
+  detail: Record<string, TexDetail>;
   metersPerUnit: number;
+  /**
+   * `MP*.ZED/grid_params`, the engine's grid (`parseGridParams`; the engine's default 640 and 8 x 8 when the
+   * key is absent): the cells every draw's `cells` index, walked by the engine order (W1.2).
+   */
+  grid: GridParams;
   /** `MP*.ZED/GlobalLighting`: the map's own light rig, or null when the key is missing or short. */
   lightRig: GlobalLighting | null;
   origin: [number, number, number];
   /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
   collision: CollisionLines;
+  /**
+   * The disc's spawn slots (W1.5b): `AIMAPS.MPS`'s spawn list, 24 a side with their facing, placed by
+   * `placeSpawnSlots` (web/docs/research/75 §5.5-§7), each on the ground probe's floor under its centre where
+   * the map has ground (W1.4b). Drawn as the spawn overlay; the camera's opening stand stays at the measured
+   * spawn A of `spawns.ts` (the spec's W1.R9; `stand`). Empty, with a diagnostic, when the file will not read.
+   */
+  slots: SpawnSlot[];
+  /**
+   * What the walk stands on (`./walk`, W1.4): the hull's polygons as the probe reads them, their nodes, and the
+   * map's `grid_params`. Absent when the graph would not parse.
+   */
+  ground?: GroundData;
+  /**
+   * Where the fly camera opens (W1.4b, `./stand`): spawn A's (x, z), `EYE` over the ground probe's floor there,
+   * or over A's recorded y where the probe finds none. Absent when the map has no measured spawns.
+   */
+  stand?: Stand;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -173,7 +215,9 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // node draws and where; everything below is decoding what it points at.
   const library = loadModelLibrary(mdlArchives(bytes, toc, stem, notes));
   const chunksOf = decoder(library, notes);
-  const placement = place(library, bytes, toc, stem, notes);
+  // The engine's grid, cells only: what each placement is filed under for the engine order (W1.2).
+  const grid = worldGrid(bytes, toc, stem, notes);
+  const placement = place(library, bytes, toc, stem, notes, buildGrid(grid, [], [], []));
   /** The world's meshes, each with its place in the scene walk, so a blended surface keeps its own draw. */
   const parts: LoadedMesh[] = [];
   let chunk = 0;
@@ -189,11 +233,12 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const { meshes, lines } = chunksOf(p);
     const alternate = placement.alternate(p);
     const scroll = placement.scroll(p);
+    const cells = placement.cells(p);
     meshes.forEach((mesh, i) => {
       const order = orderOf(p, i);
-      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit || mesh.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll });
+      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit || mesh.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll, cells });
     });
-    for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0));
+    for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0), cells);
   }
 
   // The props: one entry per model-node, its geometry decoded once and a matrix per placement.
@@ -207,7 +252,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     // 877 segments across the three maps in total.
     const order = orderOf(first, 0);
     for (const placementOf of group) {
-      for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor, orderOf(placementOf, 0));
+      for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor, orderOf(placementOf, 0), placement.cells(placementOf));
     }
     const alternate = placement.alternate(first);
     const geometry: LoadedMesh[] = decoded.meshes.map((mesh, i) => ({
@@ -220,6 +265,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     props.push({
       modelName: first.modelName, parts: geometry, matrices, order, alternate,
       facade: first.facade, lod: placement.lod.get(first.modelName) ?? null,
+      cells: group.map((p) => placement.cells(p)),
     });
   }
 
@@ -228,14 +274,17 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
+  const drawn = [...parts, ...props.flatMap((p) => p.parts)]
+    .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)));
+  // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
+  const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...parts, ...props.flatMap((p) => p.parts)];
+    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name)];
     let decoded = 0;
-    for (const mesh of wanted) {
+    for (const name of wanted) {
       step('textures', decoded++, wanted.length);
-      const name = mesh.textureName === null ? null : textureKey(mesh.textureName);
       if (name === null || name in textures) continue;
       const hit = keys.get(name);
       if (!hit) {
@@ -262,6 +311,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
       }
     }
   }
+  // A detail texture that did not decode has had its diagnostic above; its pass is not drawn.
+  for (const [base, d] of Object.entries(detail)) if (!(d.name in textures)) delete detail[base];
 
   // One draw call per texture: Frostfire's 416 packets cite 37 names, and merging by name turns 416 draws
   // into 37 without touching a vertex. Two things split a texture's draw:
@@ -299,22 +350,33 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     cull: list[0]!.cull,
     alternate: list[0]!.alternate,
     scroll: list[0]!.scroll,
+    cells: unionCells(list.map((part) => part.cells ?? [])),
   })).sort((a, b) => a.order - b.order);
 
+  const name = missionName(bytes, toc, notes) ?? stem;
+  // W1.4b: the probe's grid, built here once for the two things a load stands on the floor -- the opening stand
+  // and the spawn slots -- so the page's thread does not pay for it; the walk builds its own when first asked.
+  const probe = placement.ground ? groundGrid(placement.ground) : undefined;
+  const measured = spawnsFor(name);
   return {
     archive: stem,
     lines: segments.result(),
     camera: cameraParams(bytes, toc, stem, notes),
     path,
-    name: missionName(bytes, toc, notes) ?? stem,
+    name,
     world,
     props,
     textures,
     textureFlags,
+    detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
+    grid,
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
     collision: placement.collision,
+    slots: spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe),
+    ground: placement.ground,
+    ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -331,6 +393,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   }
   for (const prop of map.props) out.push(prop.matrices.buffer);
   out.push(map.collision.positions.buffer, map.collision.colors.buffer);
+  if (map.ground) out.push(map.ground.points.buffer, map.ground.fields.buffer);
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   return out;
@@ -408,6 +471,22 @@ function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes:
   return { palettes: PaletteTable.fromZars(pals), keys, libs: stems.length };
 }
 
+/**
+ * W1.5b: the map's spawn slots, read out of its `AIMAPS.MPS` (web/docs/research/75) and placed
+ * (`placeSpawnSlots`): the y the ground probe's floor under each slot's centre when the probe's grid is given
+ * (W1.4b), else the estimate from the side's measured spawn. A file that is missing or will not read -- the
+ * reader refuses any file its layout does not account for to the last byte -- costs one diagnostic and an empty
+ * list, never the load: the slots are an overlay, and the map draws without them.
+ */
+export function spawnSlotsOf(bytes: Uint8Array, toc: ZdbEntry[], measured: Spawns | undefined, note: (line: string) => void, ground?: Grid): SpawnSlot[] {
+  try {
+    return placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), measured, ground);
+  } catch (e) {
+    note(`spawn slots: ${say(e)}`);
+    return [];
+  }
+}
+
 /** 36 section 6: the shown name is `READERM.ZAR/mission.rdr`'s `description`, as `listMaps` reads it. */
 function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string | null {
   try {
@@ -420,6 +499,44 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string |
     notes.add(`mission name: ${say(e)}`);
     return null;
   }
+}
+
+/**
+ * Every texture manifest `READERM.ZAR` holds -- one `*_lib.rdr` per library the map loads, `mp51_lib.rdr`
+ * beside `rm51_lib.rdr` -- read (`readTexManifest`, web/docs/research/72 §6) and merged, the first entry
+ * of a name winning as it does within one file. No name is listed by two files on the disc.
+ */
+function texManifest(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, TexEntry> {
+  const out = new Map<string, TexEntry>();
+  try {
+    const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
+    for (const key of readerm.root.children) {
+      if (!/_lib\.rdr$/i.test(key.name)) continue;
+      try {
+        for (const [name, entry] of readTexManifest(parseRdr(readerm.data(key)))) if (!out.has(name)) out.set(name, entry);
+      } catch (e) {
+        notes.add(`texture manifest ${key.name}: ${say(e)}`);
+      }
+    }
+  } catch (e) {
+    notes.add(`texture manifest: ${say(e)}`);
+  }
+  return out;
+}
+
+/**
+ * The detail pass each drawn texture binds: its manifest entry's `detail` record, the detail texture named
+ * as `LoadedMap.textures` keys it. Binding by texture is the disc's own rule -- over the 22 maps every one
+ * of the 2,395 visuals drawn with a texture that has a detail record carries a `detail_buff` of its own
+ * (`CVisual::Read`, `zVisual/vis_main.cpp:276-296`), and no visual drawn with one lacks it.
+ */
+export function detailBindings(manifest: ReadonlyMap<string, TexEntry>, drawn: Iterable<string>): Record<string, TexDetail> {
+  const out: Record<string, TexDetail> = {};
+  for (const name of drawn) {
+    const d = manifest.get(name)?.detail;
+    if (d && !(name in out)) out[name] = { ...d, name: textureKey(d.name) };
+  }
+  return out;
 }
 
 /**
@@ -479,6 +596,23 @@ function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
     notes.add(`MetersPerUnit: ${say(e)}`);
   }
   return DEFAULT_METERS_PER_UNIT;
+}
+
+/** `MP*.ZED/grid_params` (`parseGridParams`, which takes the engine's default grid when the key is absent). */
+function worldGrid(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): GridParams {
+  try {
+    return parseGridParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+  } catch (e) {
+    notes.add(`grid_params: ${say(e)}`);
+    return DEFAULT_GRID_PARAMS;
+  }
+}
+
+/** The cells of several draws as one sorted list, each once. */
+function unionCells(lists: Iterable<Iterable<number>>): number[] {
+  const out = new Set<number>();
+  for (const list of lists) for (const c of list) out.add(c);
+  return [...out].sort((a, b) => a - b);
 }
 
 /**
@@ -556,10 +690,17 @@ interface Placement {
   lod: Map<string, LodBand>;
   /** The texture scroll of a placement's node (`TextureScroll_Object`), or null. */
   scroll: (p: PlacedModel) => [number, number] | null;
+  /**
+   * The grid cells a placement is filed in (`placementCells`): a graph placement by its node's bbox, a
+   * clutter instance by its position -- the two rules the engine's grid links them by (`grid.ts`).
+   */
+  cells: (p: PlacedModel) => number[];
   /** Zero once the graph has been read: the matrices are already in the positions. */
   origin: [number, number, number];
   /** The collision hull, already in world space and already cut into segments (36 section 6). */
   collision: CollisionLines;
+  /** The same hull as polygons, with its nodes and the grid, for the walk (`LoadedMap.ground`). */
+  ground?: GroundData;
 }
 
 /**
@@ -576,7 +717,7 @@ const noCollision = (): CollisionLines => ({ positions: new Float32Array(0), col
  */
 const ALTERNATE_STATE = /^(vis_)?whats_left$|^parts$|^(beer|radio)_parts$|^nolight$|_off$|_pulse$/i;
 
-function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Placement {
+function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes, grid: Grid): Placement {
   try {
     const geo = Zar.parse(zdbMember(bytes, toc, `${stem}_GEO.ZED`));
     const models = parseSceneGraph(geo);
@@ -587,7 +728,8 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
     const ranks = new Map<PlacedModel, number>();
     // The clutter joins the props: `CLUTTER.ZAR` places models the graph holds as prototypes but never
     // instances from the root, so without this pass Desert Glory's ground is bare (36 section 2).
-    for (const p of [...placed, ...clutter(models, bytes, toc, notes)]) {
+    const clutterPlaced = new Set(clutter(models, bytes, toc, notes));
+    for (const p of [...placed, ...clutterPlaced]) {
       ranks.set(p, ranks.size);
       if (p.modelName === WORLD_MODEL) continue;
       // A group draws its first member's chunks at every member's matrix, so it must not mix instance
@@ -607,12 +749,14 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       const node = p.path.split('/').pop()?.split('=')[0] ?? '';
       return scrolls.get(node) ?? null;
     };
+    const { collision, ground } = hull(models, bytes, toc, stem, notes);
     return {
-      world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes),
+      world, props: [...groups.values()], origin: [0, 0, 0], collision, ground,
       rank: (p) => ranks.get(p) ?? 0,
       alternate,
       lod: lods(bytes, toc, notes),
       scroll,
+      cells: (p) => placementCells(grid, p, clutterPlaced.has(p) ? 'clutter' : 'model').map((c) => c.index),
     };
   } catch (e) {
     notes.add(`scene graph: ${say(e)} -- falling back to the modal node translation, props omitted`);
@@ -627,6 +771,8 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
     return {
       world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision(),
       rank: () => 0, alternate: () => false, lod: new Map(), scroll: () => null,
+      // No graph, no node bboxes: nothing to file the one modal placement by, so it is drawn after the walk.
+      cells: () => [],
     };
   }
 }
@@ -660,13 +806,30 @@ function textureScroll(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
  * the chunks, so a hull that does not sit on the floor is a placement bug, not a collision one -- which
  * is most of why the overlay is worth having.
  */
-function hull(models: SceneNode[], notes: Notes): CollisionLines {
+function hull(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): { collision: CollisionLines; ground?: GroundData } {
+  let polys;
   try {
-    return collisionLines(worldCollision(models, WORLD_MODEL));
+    polys = worldCollision(models, WORLD_MODEL);
   } catch (e) {
     notes.add(`collision: ${say(e)}`);
-    return noCollision();
+    return { collision: noCollision() };
   }
+  return { collision: collisionLines(polys), ground: groundOf(polys, models, bytes, toc, stem, notes) };
+}
+
+/**
+ * The hull as the probe reads it, for the walk (`./walk`): the polygons with their nodes (`collisionOwners` walks
+ * the graph as `worldCollision` does, so the owners index the polygons) and the world root's `grid_params`. A
+ * root without the key takes the engine's default grid, as `CGrid::Read` does (research 23 section 2.3).
+ */
+function groundOf(polys: WorldPoly[], models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): GroundData {
+  let grid = DEFAULT_GRID_PARAMS;
+  try {
+    grid = parseGridParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+  } catch (e) {
+    notes.add(`grid_params: ${say(e)} -- the walk takes the engine's default grid`);
+  }
+  return packGround(grid, polys, collisionOwners(models, WORLD_MODEL));
 }
 
 /**
@@ -701,21 +864,22 @@ function clutter(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], notes:
  */
 class Segments {
   private readonly groups = new Map<string, {
-    textureName: string | null; fog: boolean; order: number;
+    textureName: string | null; fog: boolean; order: number; cells: Set<number>;
     positions: number[]; uvs: number[]; colors: number[]; normals: number[];
   }>();
 
-  add(strip: LineStrip, rowMajor: Float32Array, order: number): void {
+  add(strip: LineStrip, rowMajor: Float32Array, order: number, cells: readonly number[] = []): void {
     const n = strip.positions.length / 3;
     if (n < 2) return;                                   // a single point draws nothing
     const textureName = strip.textureName === null ? null : textureKey(strip.textureName);
     const key = `${textureName ?? ''}|${strip.fog ? 1 : 0}`;
     let g = this.groups.get(key);
     if (!g) {
-      g = { textureName, fog: strip.fog, order, positions: [], uvs: [], colors: [], normals: [] };
+      g = { textureName, fog: strip.fog, order, cells: new Set(), positions: [], uvs: [], colors: [], normals: [] };
       this.groups.set(key, g);
     }
     g.order = Math.min(g.order, order);
+    for (const c of cells) g.cells.add(c);
     const m = rowMajor;
     const at = (k: number): [number, number, number] =>
       transformPoint(m, strip.positions[k * 3]!, strip.positions[k * 3 + 1]!, strip.positions[k * 3 + 2]!);
@@ -745,7 +909,7 @@ class Segments {
   result(): LoadedLineGroup[] | null {
     if (this.groups.size === 0) return null;
     return [...this.groups.values()].map((g) => ({
-      textureName: g.textureName, fog: g.fog, order: g.order,
+      textureName: g.textureName, fog: g.fog, order: g.order, cells: unionCells([g.cells]),
       positions: Float32Array.from(g.positions),
       uvs: Float32Array.from(g.uvs),
       colors: Float32Array.from(g.colors),
@@ -762,6 +926,8 @@ export interface LoadedLineGroup {
   textureName: string | null;
   fog: boolean;
   order: number;
+  /** The grid cells of every placement whose strips are in the group (see `LoadedMesh.cells`). */
+  cells?: number[];
   positions: Float32Array;
   uvs: Float32Array;
   colors: Float32Array;

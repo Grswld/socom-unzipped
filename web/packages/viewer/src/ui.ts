@@ -1,11 +1,11 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
-import { viewerRevision } from './revision';
+import { viewerRevision, viewerRevisionBadge } from './revision';
 import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'fog', 'blendgraded', 'discorder', 'shadows', 'alternate', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
+  'fog', 'blendgraded', 'engineorder', 'shadows', 'alternate', 'detail', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -19,10 +19,12 @@ export class Ui {
   private readonly diagnostics = find<HTMLUListElement>('diagnostics');
   private readonly diagnosticsCount = find<HTMLElement>('diagnostics-count');
   private readonly hint = find<HTMLParagraphElement>('hint');
-  private readonly fps = find<HTMLElement>('fps');
+  private readonly fpsNumber = find<HTMLElement>('fps-n');
+  private readonly fpsRest = find<HTMLElement>('fps-rest');
   private readonly loading = find<HTMLElement>('loading');
   private readonly loadingWhat = find<HTMLElement>('loading-what');
   private readonly loadingBar = find<HTMLElement>('loading-bar');
+  private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
   private readonly panelTitle = find<HTMLElement>('panel-title');
   /**
@@ -46,9 +48,10 @@ export class Ui {
     untextured: find('untextured'),
     fog: find('fog'),
     blendgraded: find('blendgraded'),
-    discorder: find('discorder'),
+    engineorder: find('engineorder'),
     shadows: find('shadows'),
     alternate: find('alternate'),
+    detail: find('detail'),
     linestrips: find('linestrips'),
     billboards: find('billboards'),
     rigeverywhere: find('rigeverywhere'),
@@ -83,6 +86,46 @@ export class Ui {
 
   onMapChange(handler: (path: string) => void): void {
     this.maps.addEventListener('change', () => handler(this.maps.value));
+  }
+
+  /**
+   * "Open your own disc (.iso)" (W1.7, milestone M5): the panel's file input, and a file dropped anywhere
+   * on the page. Both are the standard file APIs -- an `<input type=file>` and the drop's `DataTransfer`
+   * -- and not the File System Access API, which Safari does not offer. Either way the page gets a `File`,
+   * a handle the worker reads by range; nothing is uploaded. `accept=".iso"` only steers the picker: a
+   * dropped file of any name is handed on, and the ISO9660 reader says what it is not.
+   */
+  onDisc(handler: (file: File) => void): void {
+    const input = find<HTMLInputElement>('disc-file');
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      // Cleared so choosing the same image again still fires `change`.
+      input.value = '';
+      if (file) handler(file);
+    });
+    const carriesFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const over = (on: boolean): void => { document.body.classList.toggle('disc-over', on); };
+    document.addEventListener('dragover', (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();                       // what makes the page a drop target at all
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      over(true);
+    });
+    // `relatedTarget` is null only when the drag leaves the window, not when it crosses between elements.
+    document.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) over(false); });
+    document.addEventListener('drop', (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();                       // or the browser navigates to the dropped file
+      over(false);
+      const file = e.dataTransfer?.files[0];
+      if (file) handler(file);
+    });
+  }
+
+  /** No maps are served: the panel opens on the disc control, even on a phone where it starts folded. */
+  offerDisc(): void {
+    this.setPanelCollapsed(false);
+    document.body.classList.add('no-served');
   }
 
   /** The fog colour picker. `FOGCOL` is a register value, so it is handed over as 0..255 per channel. */
@@ -170,6 +213,7 @@ export class Ui {
 
   private setPanelCollapsed(collapsed: boolean): void {
     document.body.classList.toggle('panel-collapsed', collapsed);
+    this.panel.classList.toggle('is-folded', collapsed);
     this.panelToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
   }
@@ -196,11 +240,12 @@ export class Ui {
   }
 
   /**
-   * The build's revision and stamp: on the About line's badge, so it is readable without unfolding
-   * anything, and again as the last line of the About text. Returns the label for the debug hook.
+   * The build's revision: `rev <hash>` alone on the About summary's chip, so it is readable without
+   * unfolding anything, and the full "rev … · built …" line as the last line of the About text.
+   * Returns the full label for the debug hook.
    */
-  showRevision(label = viewerRevision()): string {
-    find<HTMLElement>('revision').textContent = label;
+  showRevision(label = viewerRevision(), badge = viewerRevisionBadge()): string {
+    find<HTMLElement>('revision').textContent = badge;
     find<HTMLElement>('revision-line').textContent = label;
     return label;
   }
@@ -220,7 +265,7 @@ export class Ui {
    * toggles, the hook and the tests read -- and remembers the choice, so a return visit opens on it.
    */
   onLook(): void {
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look .look'));
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look button[data-look]'));
     const box = this.checks.ps2look;
     const show = (): void => {
       for (const b of buttons) b.setAttribute('aria-pressed', (b.dataset['look'] === 'ps2') === box.checked ? 'true' : 'false');
@@ -281,9 +326,9 @@ export class Ui {
   setLoading(on: boolean, what = '', fraction = -1): void {
     this.loading.hidden = !on;
     this.maps.disabled = on;
-    if (!on) { this.loadingBar.style.width = '0%'; return; }
+    if (!on) { this.loadingBar.style.setProperty('--s2u-progress', '0'); return; }
     if (what) this.loadingWhat.textContent = fraction >= 0 ? `${what} ${Math.round(fraction * 100)}%` : what;
-    if (fraction >= 0) this.loadingBar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+    if (fraction >= 0) this.loadingBar.style.setProperty('--s2u-progress', String(Math.max(0, Math.min(1, fraction))));
   }
 
   /** Calls `handler` with the slider that moved, and keeps its readout in step. */
@@ -332,6 +377,22 @@ export class Ui {
   }
 
   /**
+   * The walk switch (W1.4): walk on the game's floors at the SEAL's eye height, or fly. It is not one of the
+   * overlay toggles -- it moves the camera, so `apply` must not replay it on every map load -- and it mirrors `G`
+   * through `setWalk`. The box starts as the markup has it, like the toggles.
+   */
+  onWalkSwitch(handler: (on: boolean) => void): void {
+    const box = find<HTMLInputElement>('walk');
+    box.checked = box.defaultChecked;
+    box.addEventListener('change', () => handler(box.checked));
+  }
+
+  /** Puts the walk switch where the mode is, whoever changed it. */
+  setWalk(on: boolean): void {
+    find<HTMLInputElement>('walk').checked = on;
+  }
+
+  /**
    * The camera's line. It reads differently once the mouse is captured, because the way back out —
    * Esc — is the one control a player cannot guess from the others.
    */
@@ -339,7 +400,7 @@ export class Ui {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · F fullscreen · ${speed}`
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
   }
@@ -349,12 +410,15 @@ export class Ui {
    * same in a counter but 16.7 ms and 34 ms do not.
    */
   setFps(fps: number, frameMs: number): void {
-    this.fps.textContent = `${Math.round(fps)} fps · ${frameMs.toFixed(1)} ms`;
+    // Two spans: at 360px the pill keeps the number and styles.css hides the rest, so it clears the
+    // site bar's GitHub tab.
+    this.fpsNumber.textContent = String(Math.round(fps));
+    this.fpsRest.textContent = ` fps · ${frameMs.toFixed(1)} ms`;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {
     this.status.textContent = text;
-    this.status.classList.toggle('error', kind === 'error');
+    this.status.classList.toggle('is-bad', kind === 'error');
   }
 
   setDiagnostics(lines: string[]): void {

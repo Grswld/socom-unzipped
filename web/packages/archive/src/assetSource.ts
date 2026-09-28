@@ -16,3 +16,22 @@ export interface AssetSource {
 
 /** Bytes so far and the declared total; `total` is 0 when the server did not say. */
 export type ReadProgress = (loaded: number, total: number) => void;
+
+/**
+ * A source that can read part of a file without the rest of it, and say how long the file is. The ISO
+ * source is one (design spec §3.1: it reads by LBN, so any range of an extent is one `Blob.slice`), and it
+ * is why `listMaps` can name the maps on a player's disc from each archive's table of contents and its
+ * `READERM.ZAR` -- tens of kilobytes an archive -- instead of the 224 MB of all 22. A served directory
+ * has `index.json` for that instead and does not implement it.
+ */
+export interface RangedAssetSource extends AssetSource {
+  size(path: string): Promise<number>;
+  /** `length` bytes from `offset`; throws when the range runs past the end of the file. */
+  readRange(path: string, offset: number, length: number): Promise<Uint8Array>;
+}
+
+/** Whether `source` reads by range. */
+export function isRanged(source: AssetSource): source is RangedAssetSource {
+  const s = source as Partial<RangedAssetSource>;
+  return typeof s.readRange === 'function' && typeof s.size === 'function';
+}

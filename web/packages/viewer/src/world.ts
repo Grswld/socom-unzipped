@@ -1,14 +1,19 @@
 import {
   Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, CustomBlending, DataTexture, DoubleSide, DstColorFactor,
-  FrontSide, Group, type Object3D, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, LineSegments, Matrix4, Mesh,
+  FrontSide, Group, type Object3D, InstancedMesh, LessEqualDepth, LinearFilter, LinearMipmapLinearFilter, LineSegments, Matrix4, Mesh,
   NearestFilter, NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, RepeatWrapping, SrcAlphaFactor,
   Texture, Vector2, Vector3, ZeroFactor,
 } from 'three';
 import type { Blending, BlendingDstFactor, BlendingSrcFactor, Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
-import { materialReference, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
-import { lodIsLast, lodVisible, type LodBand } from '@s2u/scene';
-import { drawState, materialSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
+import { float, materialReference, positionView, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
+import { buildGrid, cellAt, lodIsLast, lodOpacity, lodVisible, type LodBand } from '@s2u/scene';
+import {
+  detailDrawState, detailRenderOrder, drawState, materialSpec,
+  type DetailSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags,
+} from './materialSpec';
+import { engineOrder } from './engineOrder';
+import { fadeMaterial, fadePhase } from './lodFade';
 import type { Rgba } from '@s2u/gs';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
 import type { LoadedMap, LoadedMesh } from './loadMap';
@@ -40,6 +45,8 @@ export interface WorldView {
   /** How many draws are drop shadows, and how many are alternate states -- what the two toggles govern. */
   shadowDraws: number;
   alternateDraws: number;
+  /** How many draws carry a detail pass (`setDetail`): what `tools/map-health.ts` lists per map. */
+  detailDraws: number;
   /** Every material at once, for seeing the topology through the skin. */
   setWireframe(on: boolean): void;
   /**
@@ -55,14 +62,16 @@ export interface WorldView {
    */
   setBlendGraded(on: boolean): void;
   /**
-   * Whether every draw goes out in scene-graph order writing depth as it goes, or blended draws are
-   * handed to three to sort back to front by object centre with no depth written under them
-   * (`drawState` in `./materialSpec`). **Off by default, and experimental**: the engine's real order
-   * is a walk of its grid outward from the camera (`CPipe::RenderWorld`, `StartTraversalOrdered`)
-   * with decals and shadows in passes of their own, which the graph order does not reproduce -- on,
-   * a shadow quad or a flare drawn before the wall behind it shows the clear colour through itself.
+   * The engine's draw order (W1.2), or three's. On, every draw goes out in the order `CPipe::RenderWorld`
+   * issues it -- the grid walked ring by ring outward from the camera's cell, the drop shadows after the
+   * last ring (`./engineOrder`) -- as its `renderOrder`, in the opaque list, writing depth under every
+   * blend as the console did (research 26 section 2; `drawState` in `./materialSpec`). The order is
+   * recomputed when the camera crosses into another cell, not every frame. Off, blended draws go to
+   * three's back-to-front sort with no depth written. **Off by default** until the sweep and the poses
+   * clear it (W1.R3). The LOD fade twins stay in the transparent list either way (W1.3, `./lodFade`),
+   * and a detail pass is drawn right after its base in either (`detailRenderOrder`).
    */
-  setDiscOrder(on: boolean): void;
+  setEngineOrder(on: boolean): void;
   /**
    * The drop shadows: the quads under props and the baked shadow patches on the ground, every draw
    * whose texture is a `shadow*.tif`. Drawn as the engine's decal pass draws them -- source alpha,
@@ -82,14 +91,23 @@ export interface WorldView {
    */
   setLineStrips(on: boolean): void;
   /**
+   * The detail pass (W1.6): a second draw over every surface whose texture's `mp<N>_lib.rdr` entry
+   * carries a `detail` record -- the detail texture at `uv` times the surface's own, blended by the
+   * record's `bmode`, fading out over its range, drawn after its base without writing depth
+   * (`./materialSpec`, `DetailSpec`). The console's grain on the ground close up. On by default.
+   */
+  setDetail(on: boolean): void;
+  /**
    * The per-frame work, called once a frame before the render: turns the facades to the camera,
-   * picks each LOD pair's copy by range, and advances the scrolling textures.
+   * picks each LOD pair's copy by range, advances the scrolling textures, and -- with the engine order
+   * on -- walks the grid again when the camera has crossed into another cell (`setEngineOrder`).
    *
    * A flare on disc is a single quad on a single plane -- `lightcage`'s `lightrays.tif` node is 4
    * vertices and 2 triangles, normal (0, 0.96, -0.24) -- so a fixed quad that nearly faces the sky is
    * edge-on from a standing player. The engine turns the nodes flagged `m_facade` (`facadeOf`); so
-   * does this. `CVisual::DrawLOD` shows one copy of a LOD pair by the camera's range; so does this,
-   * at the middle of each fade. A `TextureScroll_Object` band adds its `du, dv` to a node's uvs; so does
+   * does this. `CVisual::DrawLOD` scales a LOD copy's opacity by the camera's range across its fades,
+   * so a pair crosses over rather than switching; so does this (`lodOpacity`, `./lodFade`). A
+   * `TextureScroll_Object` band adds its `du, dv` to a node's uvs; so does
    * this, at `SCROLL_TICKS_PER_SECOND` steps a second (1: the step is per second, see the constant).
    */
   frame(camera: Camera, dt: number): void;
@@ -126,13 +144,15 @@ interface Built {
   scrollNode: ColorNode | null;
 }
 
-/** A drawn object with the facts its visibility and its place in the draw order depend on. */
 /** Two LOD copies within half a metre (5 units at 0.1 m/unit) share a placement. */
 const LOD_SAME_SPOT_SQ = 5 * 5;
 
+/** A drawn object with the facts its visibility and its place in the draw order depend on. */
 interface Drawn {
   object: Object3D;
   order: number;
+  /** The grid cells of the placements it draws (`LoadedMesh.cells`): where the engine order files it. */
+  cells: readonly number[];
   alternate: boolean;
   shadow: boolean;
   line: boolean;
@@ -204,15 +224,22 @@ export function buildWorld(map: LoadedMap): WorldView {
   const billboards: Mesh[] = [];
   let billboardsOn = true;
   let blendGraded = false;
-  let discOrder = false;
+  /** The engine order (`setEngineOrder`): on, `renderOrder` is each draw's place in the grid walk. */
+  let engineOn = false;
   let highlight = false;
   let lineStripsOn = true;
   let wireframeOn = false;
   let shadowsOn = true;
   let alternateOn = false;
   const built: Built[] = [];
-  /** Every drawn object, for `setDiscOrder` and for the visibility switches. */
+  /** Every drawn object, for `setEngineOrder` and for the visibility switches. */
   const drawn: Drawn[] = [];
+  /** The map's grid, cells only: what the engine order walks (`LoadedMap.grid`). */
+  const grid = buildGrid(map.grid, [], [], []);
+  /** The camera's cell the engine order was last computed for; -1 when it is stale. */
+  let orderCell = -1;
+  /** Where `frame` last saw the camera, in the group's frame, so switching the order on can order at once. */
+  const lastCamera = { x: 0, z: 0, seen: false };
   const refreshVisibility = (): void => {
     for (const d of drawn) {
       d.object.visible = (!d.alternate || alternateOn) && (!d.shadow || shadowsOn) && (!d.line || (lineStripsOn && !wireframeOn))
@@ -253,14 +280,72 @@ export function buildWorld(map: LoadedMap): WorldView {
   /** The colour an untextured mesh takes when the highlight is on: nothing in the game is this. */
   const MAGENTA: ColorNode = vec4(1, 0, 1, 1);
 
+  // LOD fades (W1.3). `CVisual::DrawLOD` scales a LOD copy's opacity across its fades (`lodOpacity`,
+  // reCOM `zVisual/vis_main.cpp:305-317`), and the engine draws a copy at 1 in place and one below it in
+  // its alpha pass (`zRender/zrndr_pipe.cpp:344-364`). The copies share their texture's material, so the
+  // opacity is not a material property: it is one uniform three refreshes per object as it draws it --
+  // `uniform()` lives in the object group, whose bindings three clones per render object, and
+  // `onObjectUpdate` reads the drawn object's own value -- and it sits only in the graph of a *fading
+  // twin*, one per shared material, made the first time a copy drawn with it fades. At rest a copy is
+  // drawn with its shared material, so its draw state is `materialSpec`'s and nothing else (`./lodFade`).
+  // Cloning a material per copy would have cost a material per placement and a spec to keep in step on
+  // each; an instance attribute would have needed the copies instanced, and each is its own mesh.
+  const lodOpacityOf = new WeakMap<Object3D, number>();
+  const fadeOpacity = uniform(1).onObjectUpdate(({ object }) => (object ? lodOpacityOf.get(object) ?? 1 : 1));
+  const fades = new Map<Basic, MeshBasicNodeMaterial>();
+  /** The shared material, with what it was built from, that a LOD copy is drawn with at rest. */
+  const lodRest = new WeakMap<Object3D, Built>();
+  /** Puts a fading twin in step with its shared material, as `apply` has just left that. */
+  const applyFade = (b: Built, twin: MeshBasicNodeMaterial): void => {
+    const fade = fadeMaterial(materialSpec(b.flags, b.fog, blendGraded, b.cull), b.shadow);
+    const shared = b.material;
+    // What `apply` chose -- shaded, carrier, scroll or magenta -- each built as a `vec4` above.
+    const base = (shared.colorNode ?? SHADED) as Node<'vec4'>;
+    twin.map = shared.map;
+    twin.vertexColors = false;
+    twin.colorNode = fade.mode === 'solid' ? vec4(base.rgb, fadeOpacity)
+      : fade.mode === 'carrier' ? vec4(base.rgb.mul(fadeOpacity), base.a)
+      : vec4(base.rgb, base.a.mul(fadeOpacity));
+    twin.maskNode = fade.mask > 0 ? base.a.greaterThan(fade.mask) : null;
+    twin.alphaTest = 0;                                  // the mask tests the unfaded alpha instead
+    twin.transparent = fade.state.transparent;
+    twin.depthWrite = fade.state.depthWrite;
+    Object.assign(twin, blendFactorsFor(fade.state.factors));
+    twin.polygonOffset = shared.polygonOffset;
+    twin.polygonOffsetFactor = shared.polygonOffsetFactor;
+    twin.polygonOffsetUnits = shared.polygonOffsetUnits;
+    twin.side = shared.side;
+    twin.fog = shared.fog;
+    twin.wireframe = shared instanceof MeshBasicNodeMaterial && shared.wireframe;
+    twin.needsUpdate = true;
+  };
+  /** Draws a LOD copy at `opacity`: with its shared material at rest (and hidden), its twin while fading. */
+  const fadeTo = (object: Object3D, opacity: number): void => {
+    const rest = lodRest.get(object);
+    if (!rest || !(object instanceof Mesh)) return;
+    lodOpacityOf.set(object, opacity);
+    let want: Basic = rest.material;
+    if (fadePhase(opacity) === 'fading') {
+      let twin = fades.get(rest.material);
+      if (!twin) {
+        twin = new MeshBasicNodeMaterial();
+        twin.name = 'lod fade';
+        fades.set(rest.material, twin);
+        applyFade(rest, twin);
+      }
+      want = twin;
+    }
+    if (object.material !== want) object.material = want;
+  };
+
   /** Puts a spec on a material: the shading graph, the blend, the test, the depth write, the cull and the fog. */
   const apply = (b: Built): void => {
     const spec = materialSpec(b.flags, b.fog, blendGraded, b.cull);
     // A shadow is a decal: blended over whatever is under it, after the world, writing no depth, and
-    // never in the graph-order list where a quad drawn before its ground would show the sky through.
+    // never in the engine order's opaque list, where a quad drawn before its ground would show the sky through.
     const state = b.shadow
       ? { transparent: true, depthWrite: false, factors: { src: 'srcAlpha' as const, dst: 'oneMinusSrcAlpha' as const } }
-      : drawState(spec, discOrder);
+      : drawState(spec, engineOn);
     const { material } = b;
     const carrier = spec.blend === 'destination';
     material.polygonOffset = b.shadow;                  // off the ground it lies on, so it cannot z-fight it
@@ -279,6 +364,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     // A destination brighten reads only `As`, which the GS does not fog; fogging the carrier would fog it.
     material.fog = spec.fog && !carrier;
     material.needsUpdate = true;
+    const twin = fades.get(material);                    // a LOD fade's twin follows every change (W1.3)
+    if (twin) applyFade(b, twin);
   };
 
   /**
@@ -330,6 +417,86 @@ export function buildWorld(map: LoadedMap): WorldView {
   };
 
   /**
+   * The detail pass (W1.6). For every draw whose texture binds a detail record (`LoadedMap.detail`), a
+   * second mesh over the same geometry -- a child of the base, so it moves, instances and hides with it --
+   * drawn with the detail texture. What the console did (SEMANTICS §7, §11.6): VU1's `0x30`/`0x32` kick
+   * the pass's GS state, multiply the staging `S`,`T` by the record's `uv` and re-run the draw handler over
+   * the same vertices, colours and `PRIM`. So the graph is the base's modulate on a scaled uv, the fog bit
+   * and the cull are the base's, and the blend is the record's (`detailDrawState`).
+   *
+   * One material and one graph per bound (texture, fog, cull), as the scrolling textures have: the scale
+   * and the fade are uniforms, so the passes share a program. A few per map, twelve at most (MP53).
+   * The facades take none (no facade is drawn with a bound texture) and nor do the line strips: the two
+   * handlers re-run the triangle draw handlers `0x1780`/`0x1a78` (research 13 §4.8), and the two strip
+   * groups that cite a bound texture (MP11's `ground.tif`, MP61's `wall_white.tif`) are one pixel wide.
+   */
+  let detailOn = true;
+  const detailMaterials = new Map<string, { material: MeshBasicNodeMaterial; flags: TextureFlags | undefined; fog: boolean; cull: boolean; spec: DetailSpec }>();
+  /** Each detail pass beside the draw it lies on, whose place in the order it follows. */
+  const details: { mesh: Mesh; base: Object3D }[] = [];
+  /** The pass's colour: `clamp(texel(uv * scale) * vertex)`, brightened; its alpha times the fade (`detailWeight`). */
+  const detailColor = (texture: Texture, spec: DetailSpec): ColorNode => {
+    const scale = uniform(spec.scale), fade = uniform(spec.fade);
+    const texel = vec4(textureNode(texture, uv().mul(scale)).mul(vertexColor())).clamp(0, 1);
+    const weight = float(1).sub(positionView.length().div(fade)).clamp(0, 1);
+    return vec4(texel.rgb.mul(brighten), texel.a.mul(weight));
+  };
+  /** Puts a detail pass's state on its material: its list follows its base's, which the two switches move. */
+  const applyDetail = (entry: { material: MeshBasicNodeMaterial; flags: TextureFlags | undefined; fog: boolean; cull: boolean; spec: DetailSpec }): void => {
+    const state = detailDrawState(entry.spec, drawState(materialSpec(entry.flags, entry.fog, blendGraded, entry.cull), engineOn));
+    const { material } = entry;
+    material.transparent = state.transparent;
+    material.depthWrite = state.depthWrite;
+    material.depthFunc = LessEqualDepth;
+    Object.assign(material, blendFactorsFor(state.factors));
+    material.side = entry.spec.cull ? FrontSide : DoubleSide;
+    material.fog = entry.spec.fog;
+    material.needsUpdate = true;
+  };
+  const detailMaterialFor = (base: string, fog: boolean, cull: boolean): MeshBasicNodeMaterial | null => {
+    const key = `${base}|${fog ? 1 : 0}|${cull ? 1 : 0}`;
+    const cached = detailMaterials.get(key);
+    if (cached) return cached.material;
+    const flags = map.textureFlags[base];
+    const spec = materialSpec(flags, fog, blendGraded, cull, map.detail[base]).detail;
+    const rgba = spec ? map.textures[spec.texture] : undefined;
+    if (!spec || !rgba) return null;
+    let texture = textures.get(spec.texture);
+    if (!texture) {
+      // A detail texture's own `CLAMP_1` is REPEAT on both axes on all 65 detail records whose texture is
+      // on the disc; 62 of them ask `TEX1` for the mipmaps the minification at `uv` times needs.
+      texture = makeTexture(rgba, { ...materialSpec(map.textureFlags[spec.texture], fog, true, false), wrapS: 'repeat', wrapT: 'repeat' });
+      textures.set(spec.texture, texture);
+    }
+    const material = new MeshBasicNodeMaterial();
+    material.vertexColors = false;                     // the graph reads the attribute itself
+    material.colorNode = detailColor(texture, spec);
+    const entry = { material, flags, fog, cull, spec };
+    applyDetail(entry);
+    detailMaterials.set(key, entry);
+    return material;
+  };
+  const refreshDetail = (): void => { for (const d of details) d.mesh.visible = detailOn && !wireframeOn; };
+  /** Hangs a detail pass under a queued base draw, when its texture binds one. */
+  const addDetail = (base: Mesh, part: LoadedMesh): void => {
+    if (part.textureName === null || SHADOW_TEXTURE.test(part.textureName) || !map.detail[part.textureName]) return;
+    const material = detailMaterialFor(part.textureName, part.fog, part.cull);
+    if (!material) return;
+    let mesh: Mesh;
+    if (base instanceof InstancedMesh) {
+      const instanced = new InstancedMesh(base.geometry, material, base.count);
+      instanced.instanceMatrix = base.instanceMatrix;       // the same placements, uploaded once
+      mesh = instanced;
+    } else mesh = new Mesh(base.geometry, material);
+    mesh.name = `${base.name} (detail)`;
+    mesh.frustumCulled = base.frustumCulled;
+    mesh.renderOrder = detailRenderOrder(base.renderOrder, engineOn);
+    mesh.visible = detailOn && !wireframeOn;
+    base.add(mesh);
+    details.push({ mesh, base });
+  };
+
+  /**
    * Building an object is cheap; *drawing it the first time* is not, because that is when three uploads
    * its texture and geometry and compiles its program. So nothing is added to the group here. Each
    * object becomes a one-line task, and `main.ts` runs those across frames (`./scheduler`), which turns
@@ -339,17 +506,20 @@ export function buildWorld(map: LoadedMap): WorldView {
   const revealWorld: (() => void)[] = [];
   const revealProps: (() => void)[] = [];
   const box = new Box3();
-  /** Queues an object at its place in the walk, and grows the map's extent by it. */
+  /**
+   * Queues an object with its place in the scene walk and its grid cells, and grows the map's extent by it.
+   * Its `renderOrder` stays three's 0 until the engine order numbers it (`reorder`).
+   */
   const later = (
-    queue: (() => void)[], object: Object3D, order: number, alternate: boolean, texture: string | null,
-    line = false, lod: Drawn['lod'] = null,
+    queue: (() => void)[], object: Object3D, order: number, cells: readonly number[], alternate: boolean,
+    texture: string | null, line = false, lod: Drawn['lod'] = null,
   ): void => {
     object.updateWorldMatrix(false, false);
     // An alternate state is not part of the extent the camera frames: it sits where its twin sits.
     if (!alternate) box.expandByObject(object);
     const shadow = texture !== null && SHADOW_TEXTURE.test(texture);
-    drawn.push({ object, order, alternate, shadow, line, lod });
-    object.renderOrder = discOrder ? order : 0;
+    drawn.push({ object, order, cells, alternate, shadow, line, lod });
+    object.renderOrder = 0;
     object.visible = (!alternate || alternateOn) && (!shadow || shadowsOn) && (!line || (lineStripsOn && !wireframeOn))
       && (lod === null || lod.visible);
     queue.push(() => group.add(object));
@@ -360,12 +530,16 @@ export function buildWorld(map: LoadedMap): WorldView {
     mesh.name = part.textureName ?? 'untextured';
     if (!part.textureName) untexturedDraws++;
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
-    later(revealWorld, mesh, part.order, part.alternate, part.textureName);
+    later(revealWorld, mesh, part.order, part.cells ?? [], part.alternate, part.textureName);
+    addDetail(mesh, part);
     triangles += part.indices.length / 3;
   }
 
   for (const prop of map.props) {
     const count = prop.matrices.length / 16;
+    /** A placement's cells; an instanced draw is filed under all of its placements' (`LoadedMesh.cells`). */
+    const cellsOf = (i: number): readonly number[] => prop.cells?.[i] ?? [];
+    const allCells = [...new Set(prop.cells?.flat() ?? [])];
     // A world chunk's normals are rotated into world space by `loadMap` before they are lit; a prop's
     // are not, because the rotation lives in the placement matrix instead. Lighting them unrotated
     // would light a turned prop as though it faced the way it was modelled, so they are rotated here
@@ -389,7 +563,7 @@ export function buildWorld(map: LoadedMap): WorldView {
           mesh.name = `${prop.modelName} (flare)`;
           mesh.position.copy(at.applyMatrix4(m));
           billboards.push(mesh);
-          later(revealProps, mesh, part.order, prop.alternate, part.textureName);
+          later(revealProps, mesh, part.order, cellsOf(i), prop.alternate, part.textureName);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
@@ -400,13 +574,16 @@ export function buildWorld(map: LoadedMap): WorldView {
       if (prop.lod) {
         // A model in a LOD band is shown by the camera's range to each placement, so every placement
         // is its own mesh -- there are tens of these per map, not the hundreds instancing is for.
+        const rest = built.find((b) => b.material === material);   // what its fading twin is made from
         for (let i = 0; i < count; i++) {
           const mesh = new Mesh(geometry, material);
           mesh.name = `${prop.modelName} (lod)`;
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
           mesh.applyMatrix4(m);
           const at = new Vector3().setFromMatrixPosition(m);
-          later(revealProps, mesh, part.order, prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0), last: false });
+          later(revealProps, mesh, part.order, cellsOf(i), prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0), last: false });
+          if (rest) lodRest.set(mesh, rest);
+          addDetail(mesh, part);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
@@ -415,13 +592,15 @@ export function buildWorld(map: LoadedMap): WorldView {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
         mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
-        later(revealProps, mesh, part.order, prop.alternate, part.textureName);
+        later(revealProps, mesh, part.order, cellsOf(0), prop.alternate, part.textureName);
+        addDetail(mesh, part);
       } else {
         const mesh = new InstancedMesh(geometry, material, count);
         mesh.name = prop.modelName;
         for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
         mesh.instanceMatrix.needsUpdate = true;
-        later(revealProps, mesh, part.order, prop.alternate, part.textureName);
+        later(revealProps, mesh, part.order, allCells, prop.alternate, part.textureName);
+        addDetail(mesh, part);
       }
       triangles += (part.indices.length / 3) * count;
     }
@@ -458,8 +637,19 @@ export function buildWorld(map: LoadedMap): WorldView {
     segments.frustumCulled = false;
     if (!strip.textureName) untexturedDraws++;
     lineObjects.push(segments);
-    later(revealProps, segments, strip.order, false, null, true);
+    later(revealProps, segments, strip.order, strip.cells ?? [], false, null, true);
   }
+
+  /**
+   * Numbers every draw by its place in the engine order from a camera at (x, z) in the group's frame, and
+   * each detail pass half a step behind its base (`detailRenderOrder`). three's opaque list sorts by
+   * `renderOrder` first, so this is the order the draws go out in.
+   */
+  const reorder = (x: number, z: number): void => {
+    orderCell = cellAt(grid, x, z).index;
+    engineOrder(drawn, grid, x, z).forEach((d, i) => { d.object.renderOrder = i; });
+    for (const { mesh, base } of details) mesh.renderOrder = detailRenderOrder(base.renderOrder, true);
+  };
 
   return {
     group,
@@ -470,6 +660,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     untextured: untexturedDraws,
     shadowDraws: drawn.filter((d) => d.shadow).length,
     alternateDraws: drawn.filter((d) => d.alternate).length,
+    detailDraws: details.length,
     setWireframe: (on) => {
       // `needsUpdate` as well as the flag: three's WebGPU renderer builds a geometry's wireframe index
       // the first time a render object is refreshed in full, and a bare flag change is not a refresh.
@@ -478,9 +669,11 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const { material } of built) {
         if (material instanceof MeshBasicNodeMaterial) { material.wireframe = on; material.needsUpdate = true; }
       }
+      for (const twin of fades.values()) { twin.wireframe = on; twin.needsUpdate = true; }
       // A line has no faces to show through, so it simply steps aside while the topology is on view.
       wireframeOn = on;
       refreshVisibility();
+      refreshDetail();                                  // a pass over a wireframe hides the topology it is for
     },
     setUntexturedHighlight: (on) => {
       if (on === highlight) return;
@@ -501,11 +694,20 @@ export function buildWorld(map: LoadedMap): WorldView {
     },
     frame: (camera, dt) => {
       if (billboardsOn) for (const mesh of billboards) mesh.quaternion.copy(camera.quaternion);
+      // The engine order follows the camera's cell: a new cell, a new walk; the same cell, the same order.
+      lastCamera.x = camera.position.x - group.position.x;
+      lastCamera.z = camera.position.z - group.position.z;
+      lastCamera.seen = true;
+      if (engineOn && cellAt(grid, lastCamera.x, lastCamera.z).index !== orderCell) reorder(lastCamera.x, lastCamera.z);
       let lodChanged = false;
       for (const d of drawn) {
         if (d.lod === null) continue;
-        const visible = lodVisible(d.lod.band, d.lod.at.distanceTo(camera.position), d.lod.last);
+        // `DrawLOD`'s opacity at the camera's range squared: drawn where it is above zero (`lodVisible`),
+        // faded across each fade, at rest on the plateau.
+        const opacity = lodOpacity(d.lod.band, d.lod.at.distanceToSquared(camera.position), d.lod.last);
+        const visible = opacity > 0;
         if (visible !== d.lod.visible) { d.lod.visible = visible; lodChanged = true; }
+        fadeTo(d.object, opacity);
       }
       if (lodChanged) refreshVisibility();
       for (const s of scrolling) {
@@ -527,16 +729,25 @@ export function buildWorld(map: LoadedMap): WorldView {
     setLineStrips: (on) => { lineStripsOn = on; refreshVisibility(); },
     setShadows: (on) => { shadowsOn = on; refreshVisibility(); },
     setAlternate: (on) => { alternateOn = on; refreshVisibility(); },
+    setDetail: (on) => { detailOn = on; refreshDetail(); },
     setBlendGraded: (on) => {
       if (on === blendGraded) return;
       blendGraded = on;
       for (const b of built) apply(b);
+      for (const d of detailMaterials.values()) applyDetail(d);   // a pass's list follows its base's
     },
-    setDiscOrder: (on) => {
-      if (on === discOrder) return;
-      discOrder = on;
+    setEngineOrder: (on) => {
+      if (on === engineOn) return;
+      engineOn = on;
       for (const b of built) apply(b);
-      for (const { object, order } of drawn) object.renderOrder = on ? order : 0;
+      for (const d of detailMaterials.values()) applyDetail(d);
+      orderCell = -1;
+      if (on) {
+        if (lastCamera.seen) reorder(lastCamera.x, lastCamera.z);   // else the next frame orders it
+        return;
+      }
+      for (const { object } of drawn) object.renderOrder = 0;
+      for (const { mesh } of details) mesh.renderOrder = detailRenderOrder(0, false);
     },
     dispose: () => {
       for (const child of group.children) {
@@ -545,6 +756,9 @@ export function buildWorld(map: LoadedMap): WorldView {
         if (child instanceof InstancedMesh) child.dispose();
       }
       for (const { material } of built) material.dispose();
+      for (const twin of fades.values()) twin.dispose();
+      for (const { material } of detailMaterials.values()) material.dispose();
+      for (const { mesh } of details) if (mesh instanceof InstancedMesh) mesh.dispose();
       for (const texture of textures.values()) texture.dispose();
     },
   };

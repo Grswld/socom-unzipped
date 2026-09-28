@@ -14,7 +14,9 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
-import type { ViewerRequest, ViewerResponse } from './worker';
+import { WalkMode } from './walk';
+import { openingStand } from './stand';
+import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
 // The maps directory sits beside the page: `/maps` in dev, `/map-viewer/maps` when served under a prefix.
@@ -34,8 +36,6 @@ const RATIO_FLOOR = 0.75;
 const SLOW_MS = 24, FAST_MS = 12, ADAPT_EVERY_MS = 2000;
 /** The game's own projection, framebuffer-wide: `tan(hfov) / tan(vfov)` at the authored half-angles. */
 const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
-/** Eye height above a spawn's feet: a standing player, not a floating one. */
-const EYE = 20;
 
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('the page has no #view canvas');
@@ -47,6 +47,8 @@ const fly = new FlyCamera(canvas, {
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
 });
 const overlays = new Overlays(scene);
+/** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
+const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -112,25 +114,60 @@ let revealing: Spread | null = null;
 const load = (path: string): void => {
   askedAt = performance.now();
   wantedMap = ++requests;
+  wantedMapFrom = source.kind;
   rememberMap(path);
   revealing?.cancel();
   revealing = null;
   // The old map stays on screen and the camera stays live while this runs; what is taken away is the
   // picker, because a second load started over the first is how two maps end up half drawn together.
   ui.setLoading(true, 'fetching the archive', 0);
-  ask({ kind: 'load', id: wantedMap, baseUrl: MAPS, path });
+  ask({ kind: 'load', id: wantedMap, source, path });
 };
+
+/**
+ * Where the archives come from (W1.7). The served tree is the default whenever `maps/index.json` answers;
+ * the player's own disc image replaces it once opened. `source` is what the picker's paths are read from,
+ * and it changes only when that source's map list arrives, so a map picked from the old list in the
+ * meantime is still read from the source that listed it.
+ */
+const SERVED: SourceRequest = { kind: 'http', baseUrl: MAPS };
+let source: SourceRequest = SERVED;
+/** The source the wanted map list was asked of; it becomes `source` when that list arrives. */
+let wantedIndexFrom: SourceRequest = SERVED;
+/** The source the wanted map is being read from, and the one the map on screen came from, for `stats()`. */
+let wantedMapFrom: SourceRequest['kind'] = 'http';
+let shownFrom: SourceRequest['kind'] = 'http';
+
+/** Asks `from` for its map list; the answer switches the picker, and the source, over to it. */
+function askIndex(from: SourceRequest): void {
+  wantedIndexFrom = from;
+  wantedIndex = ++requests;
+  ask({ kind: 'index', id: wantedIndex, source: from });
+}
+
+/**
+ * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
+ * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
+ * never uploaded and the page itself reads none of it.
+ */
+function openDisc(file: File): void {
+  ui.setStatus(`reading the disc image ${file.name} ...`);
+  askIndex({ kind: 'iso', file });
+}
+ui.onDisc(openDisc);
 
 worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   const message = event.data;
   if (message.kind === 'error') {
     if (message.id !== wantedIndex && message.id !== wantedMap) return;
+    if (message.id === wantedIndex) wantedIndexFrom = source;   // a disc that will not open changes nothing
     ui.setLoading(false);
     ui.setStatus(`failed while ${message.doing}: ${message.message}`, 'error');
     return;
   }
   if (message.kind === 'index') {
     if (message.id !== wantedIndex) return;
+    source = wantedIndexFrom;
     showMaps(message.maps);
     return;
   }
@@ -140,6 +177,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.id !== wantedMap) return;
+  shownFrom = wantedMapFrom;
   show(message.map);
 });
 
@@ -154,6 +192,8 @@ ui.apply(applyToggle);
 ui.onChromeToggle();
 ui.onFullscreen();
 attachTouchControls(fly);
+walk.bindKey();
+ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
 const revision = ui.showRevision();
 
@@ -205,9 +245,10 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'wireframe') view?.setWireframe(on);
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
   else if (name === 'blendgraded') view?.setBlendGraded(on);
-  else if (name === 'discorder') view?.setDiscOrder(on);
+  else if (name === 'engineorder') view?.setEngineOrder(on);
   else if (name === 'shadows') view?.setShadows(on);
   else if (name === 'alternate') view?.setAlternate(on);
+  else if (name === 'detail') view?.setDetail(on);
   else if (name === 'linestrips') view?.setLineStrips(on);
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
@@ -279,6 +320,7 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
+    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
 
@@ -295,16 +337,19 @@ async function boot(): Promise<void> {
   };
   requestAnimationFrame(frame);
 
-  if (await served()) {
+  const hasServed = await served();
+  if (wantedIndexFrom.kind === 'iso') return;     // a disc was opened while the page came up: it wins
+  if (hasServed) {
     ui.setStatus(`${backend}: indexing the archives ...`);
-    wantedIndex = ++requests;
-    ask({ kind: 'index', id: wantedIndex, baseUrl: MAPS });
+    askIndex(SERVED);
   } else {
-    ui.setStatus(`no maps served at ${MAPS}/index.json -- run the extractor, or open an ISO (milestone M5)`, 'error');
+    // A site with no maps of its own (W1.7): the disc is the way in, so the panel is opened on it.
+    ui.offerDisc();
+    ui.setStatus('no maps are served here: open your own SOCOM II disc image (.iso) -- it is read in this browser, never uploaded');
   }
 }
 
-/** The served source answers only when the disc tree has been extracted; the ISO source is M5. */
+/** The served source answers only when the disc tree has been extracted; otherwise the disc is the source. */
 async function served(): Promise<boolean> {
   try {
     return (await fetch(`${MAPS}/index.json`)).ok;
@@ -321,7 +366,8 @@ function showMaps(maps: MapInfo[]): void {
     ?? ordered.find((m) => m.archive === DEFAULT_ARCHIVE) ?? ordered[0];
   ui.setMaps(ordered, first?.path ?? null);
   if (!first) {
-    ui.setStatus('the served index lists no MP archives', 'error');
+    ui.setStatus(source.kind === 'iso' ? 'the disc image holds no RUN/MP*.ZDB archives: is it SOCOM II?'
+      : 'the served index lists no MP archives', 'error');
     return;
   }
   ui.setStatus(`loading ${first.name} ...`);
@@ -378,10 +424,11 @@ function show(map: LoadedMap): void {
   // Held rather than built: the hull is tens of thousands of segments on the larger maps and the
   // checkbox is off by default, so `overlays` makes the object the first time it is switched on.
   overlays.placeCollision(map.collision);
-  // 36 section 6: spawns are not on the disc. `@s2u/scene` holds the measured table, keyed by the name
-  // `mission.rdr` shows, which is the name this map was just loaded under.
+  // The measured table (`@s2u/scene`'s `spawnsFor`, keyed by the name `mission.rdr` shows) still places the
+  // camera, at A's (x, z) below; the overlay draws it beside the disc's spawn slots, read in the worker from
+  // `AIMAPS.MPS` (W1.5b). Which slot a player gets is game logic, so the stand is not moved to one (W1.R9).
   const spawn: Spawns | undefined = spawnsFor(map.name);
-  overlays.placeSpawns(spawn ?? null);
+  overlays.placeSpawns(spawn ?? null, map.slots);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -392,14 +439,20 @@ function show(map: LoadedMap): void {
   if (map.camera) fly.setFov(2 * map.camera.vfov * 180 / Math.PI);
   fit?.();                                        // the PS2 presentation's aspect is the map's own
 
-  if (spawn) {
-    fly.lookFrom([spawn.a[0], spawn.a[1] + EYE, spawn.a[2]], spawn.b);
+  // W1.4b: the stand the worker worked out (`LoadedMap.stand`, `./stand`): A's (x, z), `EYE` over the ground
+  // probe's floor there, not over A's recorded y -- the orbit camera's on 20 maps, 25 over that floor.
+  const stand = spawn ? map.stand ?? openingStand(spawn.a, undefined) : null;
+  if (spawn && stand) {
+    fly.lookFrom(stand.position, spawn.b);
   } else {
     // No measured spawns for this map yet: stand off its own extent and look at the middle of it.
     const [cx, cy, cz] = centre(view.box);
     const reach = Math.max(view.box.max.x - view.box.min.x, view.box.max.z - view.box.min.z) || 1000;
     fly.lookFrom([cx, cy + reach * 0.4, cz + reach * 0.6], [cx, cy, cz]);
   }
+  // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
+  // just placed, or at spawn A's (x, z) on the stand's floor (A's recorded y where the probe found none).
+  walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
 
   ui.select(map.path);
   ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
@@ -424,9 +477,9 @@ function show(map: LoadedMap): void {
       `${map.collision.polygons.toLocaleString('en-GB')} collision polys`,
     ]),
     ui.isNarrow() ? `${map.loadMs} ms` : `${map.loadMs} ms load${suffix}`,
-    // A thinner separator on a phone as well as fewer parts: "  |  " five times over is most of what
-    // pushes the line onto a second row at 360px.
-  ].join(ui.isNarrow() ? ' · ' : '  |  '));
+    // The system's separator on every width: "  |  " five times over was most of what pushed the
+    // line onto a second row at 360px, and the phone and the desktop should read as one line.
+  ].join(' · '));
 
   // The world first.
   //
@@ -451,7 +504,7 @@ function show(map: LoadedMap): void {
     if (view !== built0) return;                  // another map was picked while this one was revealing
     retire();
     ui.setLoading(false);
-    say(`  |  ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
+    say(` · ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
     // The props follow, over further frames. The map is already drawn and flyable while they arrive,
     // and the flares among them are turned by the render loop on the frame after they land.
     revealing = spreadAcrossFrames(built0.revealProps);
@@ -463,7 +516,7 @@ function show(map: LoadedMap): void {
  * a checked assignment to a real property rather than a cast of the global object.
  */
 window.__viewer = {
-  setCamera: (pose: Partial<Pose>) => fly.setPose(pose),
+  setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
   stats: () => ({
     triangles: view?.triangles ?? 0,
@@ -471,11 +524,15 @@ window.__viewer = {
     diagnostics: loaded?.diagnostics ?? [],
     loadMs: loaded?.loadMs ?? 0,
     map: loaded?.name ?? null,
+    source: shownFrom,
     collisionPolys: loaded?.collision.polygons ?? 0,
     untexturedDraws: view?.untextured ?? 0,
     shadowDraws: view?.shadowDraws ?? 0,
     alternateDraws: view?.alternateDraws ?? 0,
+    detailDraws: view?.detailDraws ?? 0,
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
+    stand: loaded?.stand ?? null,
+    slots: overlays.slotCounts(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -483,5 +540,9 @@ window.__viewer = {
   flares: () => view?.flarePositions() ?? [],
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
+  mode: () => walk.mode(),
+  setMode: (mode) => walk.setMode(mode),
+  walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
+  feet: () => walk.feet(),
   revision,
 } satisfies ViewerHook;
