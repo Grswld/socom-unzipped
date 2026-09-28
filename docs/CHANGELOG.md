@@ -2,12 +2,15 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-221 merges (57 on the first-parent line, 164 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+224 merges (60 on the first-parent line, 164 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.15.0
 
-42 merges.
+45 merges.
 
+- 2026-09-27 `48e26736` merge(sprint-16): the main tree's 279a0766 (the owner's web session: the viewer's chrome on the s2u design system) [branch not named]
+- 2026-09-27 `0f22b555` merge(sprint-16): the main tree's d9dc8caa (the owner's web session: the viewer vendors the s2u design system) [branch not named]
+- 2026-09-27 `56992b66` merge(sprint-16): the main tree's 28a131a3 (the owner's story page on the s2u design system) into the controller branch [branch not named]
 - 2026-09-27 `f5705791` merge(sprint-16): the main tree's 0cda431c (the doc-surfaces merge, R318-R320) into the controller branch [branch not named]
   - 2026-09-27 `7452b8f5` wiki + Announcements (R318-R319), revise-not-append (R320), doc-maintenance skill [agent/doc-surfaces]
 - 2026-09-27 `6702d2ab` merge(sprint-16): the main tree's 84216bcf (the owner's session's merge of origin/sprint-16) into the controller branch [branch not named]

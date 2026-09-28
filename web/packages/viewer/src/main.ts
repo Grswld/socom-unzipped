@@ -477,9 +477,9 @@ function show(map: LoadedMap): void {
       `${map.collision.polygons.toLocaleString('en-GB')} collision polys`,
     ]),
     ui.isNarrow() ? `${map.loadMs} ms` : `${map.loadMs} ms load${suffix}`,
-    // A thinner separator on a phone as well as fewer parts: "  |  " five times over is most of what
-    // pushes the line onto a second row at 360px.
-  ].join(ui.isNarrow() ? ' · ' : '  |  '));
+    // The system's separator on every width: "  |  " five times over was most of what pushed the
+    // line onto a second row at 360px, and the phone and the desktop should read as one line.
+  ].join(' · '));
 
   // The world first.
   //
@@ -504,7 +504,7 @@ function show(map: LoadedMap): void {
     if (view !== built0) return;                  // another map was picked while this one was revealing
     retire();
     ui.setLoading(false);
-    say(`  |  ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
+    say(` · ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
     // The props follow, over further frames. The map is already drawn and flyable while they arrive,
     // and the flares among them are turned by the render loop on the frame after they land.
     revealing = spreadAcrossFrames(built0.revealProps);

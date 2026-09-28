@@ -70,6 +70,11 @@ class ChromeUsesTheSystem(unittest.TestCase):
         self.assertNotIn("s2u-iconbtn", head)
         self.assertIn('<p class="s2u-fine" id="foot-fine">fine</p>', _text(site.chrome_footer("", "fine")))
 
+    def test_footer_nav_has_map_viewer_and_data_links(self):
+        foot = _text(site.chrome_footer("https://socomunzipped.com", "fine"))
+        self.assertIn('<a href="https://socomunzipped.com/map-viewer/">Map viewer (experimental)</a>', foot)
+        self.assertIn('<a href="https://socomunzipped.com/data.html">Your data</a>', foot)
+
     def test_timeline_css_speaks_tokens(self):
         self.assertNotRegex(site.CSS, r"var\(--(gold|head|disp|mono|lit|dim|dim2|line|line2|teal|glow|bg|panel|panel2|gold2|ease)\)")
         self.assertNotRegex(site.CSS, r"#[0-9a-fA-F]{3,8}\b|rgba?\(")
@@ -137,6 +142,26 @@ class RenderedPage(unittest.TestCase):
             self.assertNotIn(old, page, old)
         for anchor in ('id="2026-09-02-the-first-thing"', 'id="from-the-creator"', 'id="era-2026-09-02"'):
             self.assertIn(anchor, page, anchor)
+
+    def test_the_page_joins_with_a_slash_never_a_middle_dot_outside_code_and_chips(self):
+        # the design system's rule (phase-2 plan, Global Constraints): a stat line, a kicker, a tab's what-line
+        # and the fine print join with " / "; a middle dot survives only inside <code> or a citation chip
+        page = site.render(self.doc, _TIMELINE, "https://x/repo", "/story/img", "/img/logo.webp")
+        outside = re.sub(r"<code>.*?</code>", "", page, flags=re.S)
+        outside = re.sub(r'<div class="chips">.*?</div>', "", outside, flags=re.S)
+        for dot in ("&middot;", "&#183;", "·"):
+            self.assertNotIn(dot, outside, dot)
+        self.assertIn("Mission briefing / the story so far", page)
+        self.assertRegex(page, r'<span class="s2u-tab__what">[^<]* &ndash; [^<]* / \d+</span>')
+        self.assertRegex(page, r'id="foot-fine">generated [^<]* / \d+ entries, \d+ commit citations / checked by')
+
+    def test_the_eras_script_lights_one_tab_and_marks_it_current(self):
+        page = site.render(self.doc, _TIMELINE, "https://x/repo", "/story/img", "/img/logo.webp")
+        script = page[page.index("function current()"):]
+        script = script[:script.index("addEventListener('scroll'")]
+        self.assertIn("classList.toggle('is-on'", script)
+        self.assertIn("setAttribute('aria-current','true')", script)
+        self.assertIn("removeAttribute('aria-current')", script)
 
 
 if __name__ == "__main__":

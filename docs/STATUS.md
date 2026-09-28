@@ -1,7 +1,7 @@
 # Project status — "Current state" below is kept current; the dated log that stood under it is archived
 
 ## Current state (keep it short; update when it changes)
-- **2026-09-27 06:27Z -- Sprint 15 ("borrowed confidence", re-cut) is CLOSED on `sprint-15` without its play test, on the owner's word; the PR to `main` and the tag `v0.15.0` follow (the release waits).** Adopted: #254's LLE IOP as an out-of-tree audio oracle (832 of 13,044). Merged code: #67's fix, the AutoVol step schedule. Carried to Sprint 16: the chain (gate, fourth leg, parity, dips), T2's drag proof, T3, T4. Live state: `docs/CURRENT_SPRINT.md` "Sprint 15 -- CLOSED"; next: Sprint 16 "ten minutes to the server" (its controller session).
+- **2026-09-28 01:24Z -- Sprint 16 ("ten minutes to the server") is CLOSED on `sprint-16`; the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24).** Done: V0, R1a, R2a, R3a, R5, L1a, L1b (#73), L2 (#74), F0 (research/73), F2 (ADOPTED: the read-back 123 → 20 ms/s, `submit=` 568 → 541), X1, X3, X5. Not done: the first-run helper (R1b stopped in the package stage, research/76; #70 carried), R2 (#71 carried), F1, F3 (#32 to the backlog), F5's pin (#59 carried). The owner's play test: the drag fixed, the audio much better, the online screens' music open (#94). Live state: `docs/CURRENT_SPRINT.md` "Sprint 16 -- CLOSED"; next: Sprint 17 "sixty and the way back", opened by its own seat off `main`.
 - Older state bullets: the twenty that stood under the one above (2026-09-19 to 2026-09-25 early) became dated
   entries of the log on 2026-09-25, verbatim (Sprint 13 Task R1, R268); that log is
   `docs/archive/STATUS-log-to-2026-09-26.md` since 2026-09-26 (R272). This block has a byte ceiling

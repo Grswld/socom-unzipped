@@ -23,7 +23,10 @@ live state; the byte-level format authority is the viewer's own
 [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
 the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
-and its Ghidra function names.
+and its Ghidra function names. The behaviour every change is checked against, maps and pictures
+included, is pinned down in [`packages/viewer/e2e/viewer.spec.ts`](packages/viewer/e2e/viewer.spec.ts)
+(`npm run e2e`); the viewer's chrome is the s2u design system, vendored under
+`packages/viewer/src/ds/` by `npm run ds:sync` (the manifest test refuses a hand edit).
 
 ## How it works (one paragraph)
 

@@ -1,0 +1,7 @@
+# The root .gitattributes normalizes every path under web/ to text/LF ("web/** text eol=lf"), which corrupts
+# binary font files (autocrlf strips bytes it mistakes for CRLF). Mark the vendored fonts binary here: a
+# .gitattributes closer to the path wins over the root one.
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary

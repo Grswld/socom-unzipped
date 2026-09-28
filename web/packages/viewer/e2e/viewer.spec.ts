@@ -64,6 +64,17 @@ const settle = (page: Page): Promise<void> => page.evaluate(
   () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
 );
 
+/**
+ * The panel folds to a bar on a coarse pointer by design -- the map shows first on a phone -- so a
+ * phone test opens it before measuring anything inside the body.
+ */
+async function unfoldPanel(page: Page): Promise<void> {
+  if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
+    await page.locator('#panel-toggle').click();
+  }
+  await expect(page.locator('#maps')).toBeVisible();
+}
+
 test('all three extracted maps render from the served archives', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
@@ -241,4 +252,69 @@ test('the page never shows through the canvas: Requiem at night, magenta page', 
   expect(leaks.sampled).toBeGreaterThan(1000);
   expect(leaks.n).toBe(0);
   expect(problems).toEqual([]);
+});
+
+/**
+ * The fonts ship with the viewer. Live, `/map-viewer/fonts/oswald-normal-variable-latin.woff2` once
+ * answered 200 text/html: Vite rewrote the vendored `url('/fonts/…')` under `base` while
+ * `copyPublicDir: false` emitted no fonts, and nginx's try_files handed back index.html. The dev server
+ * serves `public/` itself, so the build's copy is guarded by `build_fonts.test.ts`; this is the page's
+ * side: the two families the chrome uses are `loaded`, not `error`, and the woff2 answers as a font.
+ */
+test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/woff2', async ({ page, request }) => {
+  await page.goto('/');
+  await page.evaluate(() => document.fonts.ready);
+  const faces = await page.evaluate(() => [...document.fonts].map((f) => [f.family.replace(/^["']|["']$/g, ''), f.status]));
+  for (const family of ['Oswald', 'JetBrains Mono']) {
+    const own = faces.filter(([name]) => name === family);
+    expect(own, `${family} declared`).not.toHaveLength(0);
+    expect(own.map(([, status]) => status), family).toEqual(own.map(() => 'loaded'));
+  }
+  const res = await request.get('/fonts/oswald-normal-variable-latin.woff2');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toMatch(/^font\/woff2/);
+});
+
+test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  await unfoldPanel(page);
+  const panel = await page.locator('#panel').boundingBox();
+  const fab = await page.locator('#fullscreen').boundingBox();
+  expect(Math.round(panel!.width)).toBe(390 - 16);
+  expect(Math.round(fab!.width)).toBe(44);
+  expect(Math.round(fab!.height)).toBe(44);
+  await ctx.close();
+});
+
+/**
+ * Fix round 1, item 1: the phone media query used to lift `#fullscreen` above the two 56px
+ * touch-lift buttons; the s2u-design-system rewrite dropped that override and left the fab at the
+ * system's default right/bottom 24px, which sits on top of the lower lift button on a coarse
+ * pointer. A separate `describe` block, appended at the file's end, so this does not collide with
+ * the phone test above it.
+ */
+test.describe('fix round 1: the fullscreen fab clears the touch-lift buttons', () => {
+  test('on a phone with touch controls, the fab does not overlap either lift button', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    await unfoldPanel(page);
+    const status = page.locator('#status');
+    await expect(status).toContainText('webgl2'); // a narrow status abbreviates "triangles" to "tris"
+    await page.locator('#maps').selectOption('RUN/MP2.ZDB');
+    await expect(status).toContainText('FROSTFIRE (MP2)');
+    await expect(page.locator('#touch-lift')).toBeVisible();
+    const fab = (await page.locator('#fullscreen').boundingBox())!;
+    const up = (await page.locator('#touch-up').boundingBox())!;
+    const down = (await page.locator('#touch-down').boundingBox())!;
+    const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a): boolean =>
+      a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    mkdirSync(SCREENS, { recursive: true });
+    await page.screenshot({ path: join(SCREENS, 'fullscreen-clears-touch-lift.png') });
+    expect(intersects(fab, up)).toBe(false);
+    expect(intersects(fab, down)).toBe(false);
+    await ctx.close();
+  });
 });
