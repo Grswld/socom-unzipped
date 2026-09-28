@@ -60,6 +60,17 @@ const settle = (page: Page): Promise<void> => page.evaluate(
   () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
 );
 
+/**
+ * The panel folds to a bar on a coarse pointer by design -- the map shows first on a phone -- so a
+ * phone test opens it before measuring anything inside the body.
+ */
+async function unfoldPanel(page: Page): Promise<void> {
+  if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
+    await page.locator('#panel-toggle').click();
+  }
+  await expect(page.locator('#maps')).toBeVisible();
+}
+
 test('all three extracted maps render from the served archives', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
@@ -235,12 +246,7 @@ test('the panel fills a phone with the system gutters and the fullscreen target 
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   await page.goto('/');
-  // The panel folds to a bar on a coarse pointer by design -- the map shows first on a phone -- so
-  // open it before measuring the body this test is about.
-  if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
-    await page.locator('#panel-toggle').click();
-  }
-  await expect(page.locator('#maps')).toBeVisible();
+  await unfoldPanel(page);
   const panel = await page.locator('#panel').boundingBox();
   const fab = await page.locator('#fullscreen').boundingBox();
   expect(Math.round(panel!.width)).toBe(390 - 16);
@@ -261,11 +267,7 @@ test.describe('fix round 1: the fullscreen fab clears the touch-lift buttons', (
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const page = await ctx.newPage();
     await page.goto('/');
-    // The panel folds to a bar on a coarse pointer by design; open it before this test's measurements.
-    if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
-      await page.locator('#panel-toggle').click();
-    }
-    await expect(page.locator('#maps')).toBeVisible();
+    await unfoldPanel(page);
     const status = page.locator('#status');
     await expect(status).toContainText('webgl2'); // a narrow status abbreviates "triangles" to "tris"
     await page.locator('#maps').selectOption('RUN/MP2.ZDB');

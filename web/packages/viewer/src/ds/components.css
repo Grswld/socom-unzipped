@@ -13,7 +13,13 @@
   .s2u-bar__brand { flex: none; display: inline-flex; align-items: center; gap: var(--s2u-space-2); text-decoration: none; color: var(--s2u-gold); font: var(--s2u-type-nav); letter-spacing: var(--s2u-tracking-nav); text-transform: uppercase; }
   .s2u-bar__ii { color: var(--s2u-glyph-cross); font-style: italic; font-weight: 600; }
   .s2u-bar__word { white-space: nowrap; }
-  .s2u-bar__nav { display: flex; gap: var(--s2u-space-1); flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .s2u-bar__nav {
+    display: flex; gap: var(--s2u-space-1); flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* the nav scrolls where it does not fit: the last visible link fades at the right edge so the cut reads as a
+       scroll, not a clip. Opaque against transparent is all the mask needs, so the ground token stands for opaque. */
+    mask-image: linear-gradient(to right, var(--s2u-ground) calc(100% - 28px), transparent);
+    -webkit-mask-image: linear-gradient(to right, var(--s2u-ground) calc(100% - 28px), transparent);
+  }
   .s2u-bar__nav::-webkit-scrollbar { display: none; }
   .s2u-bar__nav a {
     display: block; padding: 6px 10px; text-decoration: none; color: var(--s2u-text);
@@ -21,7 +27,7 @@
     transition: color var(--s2u-dur-fast), background-color var(--s2u-dur-fast);
   }
   .s2u-bar__nav a:hover, .s2u-bar__nav a.is-on, .s2u-bar__nav a[aria-current="page"] { background: var(--s2u-tab-lit); color: var(--s2u-gold); }
-  .s2u-bar__end { margin-left: auto; display: flex; align-items: center; gap: var(--s2u-space-2); }
+  .s2u-bar__end { flex: none; margin-left: auto; display: flex; align-items: center; gap: var(--s2u-space-2); }
   @media (max-width: 720px) {
     .s2u-bar { gap: var(--s2u-space-3); }
   }
@@ -71,7 +77,7 @@
   }
   .s2u-panel__body { background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-0); padding: var(--s2u-space-4); color: var(--s2u-text); font: var(--s2u-type-body); }
   .s2u-panel__body > :first-child { margin-top: 0; } .s2u-panel__body > :last-child { margin-bottom: 0; }
-  .s2u-panel__body p { max-width: var(--s2u-measure); }
+  .s2u-panel__body p, .s2u-panel__body ul, .s2u-panel__body ol { max-width: var(--s2u-measure); }
   .s2u-panel--image .s2u-panel__body { padding: 0; }
   .s2u-panel--image img { display: block; width: 100%; height: auto; }
   .s2u-panel.is-link { text-decoration: none; transition: background-color var(--s2u-dur-fast); }
