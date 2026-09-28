@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attachTouchControls, boostFromRim, DEAD_ZONE, knobOffset, stickVector } from '../src/touch';
-import type { FlyCamera } from '../src/camera';
+import { boostFromRim, DEAD_ZONE, knobOffset, stickVector } from '../src/touch';
 
 /**
  * The stick's one piece of arithmetic: a thumb's offset in CSS pixels turned into an axis pair the
@@ -90,25 +89,5 @@ describe('boostFromRim', () => {
   });
   it('is not a boost at the rim for a moment', () => {
     expect(boostFromRim(1, 100)).toBe(false);
-  });
-});
-
-describe('the touch fire button (W2.5)', () => {
-  it('presses and lets go of the trigger, beside the stance button', () => {
-    document.body.innerHTML = `<div id="stick-zone"></div><div id="stick-base" hidden><div id="stick-knob"></div></div>
-      <button id="touch-up"></button><button id="touch-down"></button><button id="touch-stance"></button><button id="touch-fire"></button>`;
-    const fire = document.getElementById('touch-fire')!;
-    fire.setPointerCapture = () => undefined;
-    const trigger: boolean[] = [];
-    let stance = 0;
-    const camera = { setStick: () => undefined, setLift: () => undefined, setStickBoost: () => undefined };
-    attachTouchControls(camera as unknown as FlyCamera, () => { stance++; }, (down) => trigger.push(down));
-    fire.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, bubbles: true }));
-    fire.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, bubbles: true }));
-    fire.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, bubbles: true }));
-    fire.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 3, bubbles: true }));
-    expect(trigger).toEqual([true, false, true, false]);
-    expect(stance).toBe(0);
-    document.body.innerHTML = '';
   });
 });
