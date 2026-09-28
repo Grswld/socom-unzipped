@@ -242,6 +242,27 @@ test('the page never shows through the canvas: Requiem at night, magenta page', 
   expect(problems).toEqual([]);
 });
 
+/**
+ * The fonts ship with the viewer. Live, `/map-viewer/fonts/oswald-normal-variable-latin.woff2` once
+ * answered 200 text/html: Vite rewrote the vendored `url('/fonts/…')` under `base` while
+ * `copyPublicDir: false` emitted no fonts, and nginx's try_files handed back index.html. The dev server
+ * serves `public/` itself, so the build's copy is guarded by `build_fonts.test.ts`; this is the page's
+ * side: the two families the chrome uses are `loaded`, not `error`, and the woff2 answers as a font.
+ */
+test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/woff2', async ({ page, request }) => {
+  await page.goto('/');
+  await page.evaluate(() => document.fonts.ready);
+  const faces = await page.evaluate(() => [...document.fonts].map((f) => [f.family.replace(/^["']|["']$/g, ''), f.status]));
+  for (const family of ['Oswald', 'JetBrains Mono']) {
+    const own = faces.filter(([name]) => name === family);
+    expect(own, `${family} declared`).not.toHaveLength(0);
+    expect(own.map(([, status]) => status), family).toEqual(own.map(() => 'loaded'));
+  }
+  const res = await request.get('/fonts/oswald-normal-variable-latin.woff2');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toMatch(/^font\/woff2/);
+});
+
 test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
