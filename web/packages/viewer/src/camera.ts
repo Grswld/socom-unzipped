@@ -1,5 +1,6 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
-import { PAD_DEAD_ZONE } from './gamepad';
+import { PAD_DEAD_ZONE, strongest } from './gamepad';
+import { moveStick } from './moveStick';
 import {
   FirstPersonBob, LookLaw, nudgePitch, ScreenShake, SCREEN, stepPitch, viewOffset,
   type LookOptions, type LookState, type Shake,
@@ -384,16 +385,21 @@ export class FlyCamera {
   }
 
   /**
-   * The ground-plane half of what `update` would steer by: W/S and the stick's y forward, D/A and the stick's x to
-   * the right, clamped into the unit disc as `update` clamps. The boost (a double-tapped W held, or the stick held at
-   * its rim) is the fly camera's: on the ground it is never on. Space and shift have no meaning on the ground.
+   * The ground-plane half of what `update` would steer by, as the console's pad reader hands the mover its stick
+   * (web research 88 section 3): the stick -- the pad's or the touch stick's, its push as the pad gave it (`./gamepad`'s
+   * radial 0.15 dead zone and rescale undone, as `walkLook` does for the look) -- through the move stick's law
+   * (`moveStick`: 0.3 per axis, the rescale, the circle's x sqrt 2); the keys a full byte on each axis they press, so
+   * W+D is (1, 1) as PCSX2's binds and the host port's keys give it; on each axis the larger of the two. Not put back
+   * in the unit disc: the game never does. The boost (a double-tapped W held, or the stick held at its rim) is the fly
+   * camera's: on the ground it is never on. Space and shift have no meaning on the ground.
    */
   groundWish(): GroundWish {
-    let forward = this.stickY + (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
-    let right = this.stickX + (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
-    const length = Math.hypot(forward, right);
-    if (length > 1) { forward /= length; right /= length; }
-    return { forward, right, boost: false };
+    const push = Math.hypot(this.stickX, this.stickY);
+    const raw = push > 0 ? (PAD_DEAD_ZONE + (1 - PAD_DEAD_ZONE) * Math.min(1, push)) / push : 0;
+    const [sx, sy] = moveStick(this.stickX * raw, this.stickY * raw);
+    const keyForward = (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
+    const keyRight = (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
+    return { forward: strongest(keyForward, sy) + 0, right: strongest(keyRight, sx) + 0, boost: false };
   }
 
   /**
