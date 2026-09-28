@@ -1,0 +1,52 @@
+# Sprint 17 Q0: the in-mission exit route -- the fast path to the HUD (mission_music_fast.txt's), then the
+# pause menu (START): RESUME / REPLAY MISSION / ABORT / INVERT PITCH / HELP / AIM ASSIST / VIBRATION /
+# FIREMODE/TACMAP (s17_q0/ingame1, 2026-09-28) -- ABORT is two rows down; its confirm prompt ("Are you sure you want to abort the game?", NO
+# selected) is answered LEFT then CROSS; the MISSION FAILURE statistics page follows (s17_q0/ingame2) whose
+# legend is a button legend, TRIANGLE = MISSION BRIEFING and CROSS = REPLAY (s17_q0/ingame3-5, the legend crop):
+# TRIANGLE goes through a LOADING screen back to the briefing page, and the briefing's exit
+# (TRIANGLE, LEFT, CROSS -- the route quit_mission.txt found) is the owner's route out. The owner's report (2026-09-27): leaving
+# a mission after reaching its briefing page closes the game; leaving FROM the briefing page itself returns to the
+# main menu in-process (s17_q0/mission2, 2026-09-28), so the route is from inside the mission.
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+next+2.0:CROSS      # main menu -> NEW GAME
+next+2.0:CROSS      # select rank
+next+2.0:CROSS      # controller presets (1)
+next+2.0:CROSS      # controller presets (2)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # briefing cinematic -> skip
+next+2.0:DOWN       # briefing: OVERVIEW -> ...
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN       # DEPLOY
+wait+2.0:CROSS      # deploy -> load mission
+wait+2.0:NONE       # the load is under way; the untilref below polls it (no 40 s settle wait here)
+untilref(scripts/parity/ref_hud_ours.png,92,112,0,40,40,20,lit)+1.0:CROSS   # press through the load and the flyover until the HUD shows
+ifpopup+1.0:CROSS   # the first objective pop-up / "X TO ABORT" cinematic, if it is up
+wait+4.0:NONE
+ifpopup+1.0:CROSS   # a second one can arrive a few seconds after the HUD (s6_depth_m4)
+wait+3.0:NONE       # a settled in-mission capture
+wait+2.0:START      # the pause menu, RESUME highlighted
+wait+1.5:DOWN       # REPLAY MISSION
+wait+1.5:DOWN       # ABORT
+wait+2.0:CROSS      # abort -> a confirm prompt (NO selected), or straight out
+wait+3.0:NONE       # capture the prompt
+wait+1.5:LEFT       # -> YES
+wait+2.0:CROSS      # leave
+wait+4.0:NONE       # the MISSION FAILURE statistics page
+wait+2.0:TRIANGLE   # MISSION BRIEFING: LOADING, then the briefing page
+wait+8.0:NONE       # the load
+wait+6.0:NONE       # the briefing page again, settled
+wait+2.0:TRIANGLE   # "Are you sure you want to leave the mission?" (NO selected)
+wait+1.5:LEFT       # -> YES
+wait+2.0:CROSS      # leave
+wait+6.0:NONE       # the game either shows the main menu, or has left the process
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE

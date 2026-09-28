@@ -3,6 +3,8 @@
 #include "runtime/host_mic.h"
 #include "runtime/host_window_chrome.h"   // Sprint 10 Q4
 #include "runtime/host_move_loop.h"       // issue #67
+#include "runtime/shot_queue.h"           // Sprint 17 F0 Step 5b
+#include <optional>                       // Sprint 17 Q2: the shot queue re-made across an in-process restart
 #include "socom2_host_input.h"
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
@@ -2617,6 +2619,68 @@ void PS2Runtime::HandleIntegerOverflow(R5900Context *ctx)
     raiseCop0Exception(ctx, EXCEPTION_INTEGER_OVERFLOW);
 }
 
+namespace
+{
+    // Sprint 17 F0 Step 5b (LATER 43): the screenshot knobs' writer, run on ShotQueue's worker thread, never the GL
+    // thread. The PNG bytes are ExportImage's own: ExportImageToMemory calls the same stbi_write_png_to_mem on the same
+    // RGBA pixels, without ExportImage's IsFileExtension, whose TextSplit/TextToLower static buffers the GL thread's
+    // raylib text calls share, and without SaveFileData's "FILEIO: ... saved successfully" INFO line, which landed in
+    // the game log every 150 ms, often in the middle of another line.
+    bool writeShotPng(ps2x::ShotJob &job)
+    {
+        Image image{};
+        image.data = job.bytes.data();
+        image.width = job.w;
+        image.height = job.h;
+        image.mipmaps = 1;
+        image.format = job.format;
+        int size = 0;
+        unsigned char *const png = ExportImageToMemory(image, ".png", &size);
+        if (png == nullptr)
+            return false;
+        const std::string &out = job.tmpPath.empty() ? job.finalPath : job.tmpPath;
+        bool ok = false;
+        {
+            std::ofstream file(out, std::ios::binary | std::ios::trunc);
+            if (file && size > 0)
+            {
+                file.write(reinterpret_cast<const char *>(png), size);
+                ok = static_cast<bool>(file);
+            }
+        }
+        MemFree(png);
+        if (ok && !job.tmpPath.empty())
+        {
+            std::error_code ec;
+            std::filesystem::rename(job.tmpPath, job.finalPath, ec);
+            ok = !ec;
+        }
+        return ok;
+    }
+
+    // The GL-thread half: read the frame (LoadImageFromScreen is a GL call), copy the pixels into a job, free the
+    // raylib buffer, and hand the job over; the encode, the write and the rename happen on the worker.
+    void pushScreenShot(ps2x::ShotQueue &queue, std::string tmpPath, std::string finalPath)
+    {
+        Image shot = LoadImageFromScreen();
+        if (shot.data == nullptr || shot.width <= 0 || shot.height <= 0)
+        {
+            UnloadImage(shot);
+            return;
+        }
+        ps2x::ShotJob job;
+        job.w = shot.width;
+        job.h = shot.height;
+        job.format = shot.format;
+        const auto *const pixels = static_cast<const uint8_t *>(shot.data);
+        job.bytes.assign(pixels, pixels + static_cast<size_t>(GetPixelDataSize(shot.width, shot.height, shot.format)));
+        UnloadImage(shot);
+        job.tmpPath = std::move(tmpPath);
+        job.finalPath = std::move(finalPath);
+        queue.push(std::move(job));
+    }
+}
+
 void PS2Runtime::prepareGuestBoot()
 {
     ps2_stubs::resetSifState();
@@ -2851,6 +2915,27 @@ void PS2Runtime::run()
     // re-sampled (the profiler is a one-thread instrument).
     ps2HostProfStart(gameThread.native_handle());
 
+    // The two screenshot knobs' worker (Sprint 17 F0 Step 5b): started by the first shot, so a run with neither knob
+    // set has no extra thread; stopped after the loop, which writes the frames still waiting. An in-process restart
+    // (Sprint 17 Q2) stops it the same way before the guest changes -- the old guest's waiting frames are written
+    // and the worker joined, so no frame of the old guest lands in the new one's file -- and starts a fresh one
+    // for the restarted guest (stop() is final: a stopped queue drops every later push). The counters add up
+    // across queues, so the [shot-queue] line at exit still counts the whole run.
+    std::optional<ps2x::ShotQueue> shotQueue;
+    shotQueue.emplace(writeShotPng);
+    struct ShotTotals { uint64_t pushed = 0, replaced = 0, written = 0, failed = 0; } shotTotals;
+    const auto stopShotQueue = [&]()
+    {
+        if (!shotQueue)
+            return;
+        shotQueue->stop();   // the frames still waiting are written, then the worker joins
+        shotTotals.pushed += shotQueue->pushed();
+        shotTotals.replaced += shotQueue->replaced();
+        shotTotals.written += shotQueue->written();
+        shotTotals.failed += shotQueue->failed();
+        shotQueue.reset();
+    };
+
     uint64_t tick = 0;
     while (!isStopRequested())
     {
@@ -2862,8 +2947,16 @@ void PS2Runtime::run()
                 break;
             if (gameThread.joinable())
                 gameThread.join();
+            // The shot queue as shutdown leaves it: the old guest's frames written, the worker joined; then a
+            // fresh queue for the restarted guest (the loop keeps pushing into it).
+            stopShotQueue();
+            std::fprintf(stderr, "[shot-queue] restart: the old guest's frames written (pushed=%llu written=%llu failed=%llu so far)\n",
+                         static_cast<unsigned long long>(shotTotals.pushed),
+                         static_cast<unsigned long long>(shotTotals.written),
+                         static_cast<unsigned long long>(shotTotals.failed));
             if (!restartGuest())
                 break;
+            shotQueue.emplace(writeShotPng);
             gameThread = spawnGameThread();
             continue;
         }
@@ -3076,7 +3169,9 @@ void PS2Runtime::run()
         // every ~150 ms, atomic rename) so the parity harness can read it instead of PrintWindow,
         // which hands back a white bitmap whenever another window (a firewall prompt, Settings)
         // overlaps the GL window. Taken before the debug UI draws so its collapsed title bar does
-        // not end up in the parity captures.
+        // not end up in the parity captures. Only the read stays on this thread; the PNG encode
+        // (17 % of this thread in research/73) and the rename run on shotQueue's worker, and a
+        // frame still waiting there when the next one is read is replaced by it.
         {
             static const char *s_latestEnv = ps2x::knob("PS2X_HOST_SCREENSHOT_LATEST");
             if (s_latestEnv)
@@ -3086,13 +3181,9 @@ void PS2Runtime::run()
                 if (now >= s_nextLatest)
                 {
                     s_nextLatest = now + 0.15;
-                    const std::string finalPath(s_latestEnv);
-                    const std::string tmpPath = finalPath + ".tmp.png";
-                    Image shot = LoadImageFromScreen();
-                    ExportImage(shot, tmpPath.c_str());
-                    UnloadImage(shot);
-                    std::error_code ec;
-                    std::filesystem::rename(tmpPath, finalPath, ec);
+                    std::string finalPath(s_latestEnv);
+                    std::string tmpPath = finalPath + ".tmp.png";
+                    pushScreenShot(*shotQueue, std::move(tmpPath), std::move(finalPath));
                 }
             }
         }
@@ -3151,11 +3242,11 @@ void PS2Runtime::run()
                 if (now >= s_next)
                 {
                     s_next = now + s_interval;
-                    Image shot = LoadImageFromScreen();
                     char path[512];
                     std::snprintf(path, sizeof(path), "%s/host_%03d_%.0fs.png", s_dir.c_str(), s_index++, now);
-                    ExportImage(shot, path);
-                    UnloadImage(shot);
+                    // The same worker as the latest frame; each numbered file is its own destination, so none
+                    // is ever replaced. No tmp file: these were never renamed into place.
+                    pushScreenShot(*shotQueue, std::string(), std::string(path));
                 }
             }
         }
@@ -3172,6 +3263,15 @@ void PS2Runtime::run()
     // The GL thread no longer replays: wake a game thread waiting on GS back-pressure (R35) so
     // the join below cannot wait out the cap.
     gs().releaseHostBackpressure();
+    stopShotQueue();   // the frames still waiting are written, then the worker joins (Sprint 17 F0 Step 5b)
+    // The one trace of the screenshot writes since raylib's per-export FILEIO line went: a failed write or rename
+    // shows as failed=, and a reader counts the exports from written= (F0 Step 5b review). The whole run's
+    // counts, across every in-process restart's queue (Sprint 17 Q2).
+    std::fprintf(stderr, "[shot-queue] pushed=%llu replaced=%llu written=%llu failed=%llu\n",
+                 static_cast<unsigned long long>(shotTotals.pushed),
+                 static_cast<unsigned long long>(shotTotals.replaced),
+                 static_cast<unsigned long long>(shotTotals.written),
+                 static_cast<unsigned long long>(shotTotals.failed));
     requestStop();
     if (gameThread.joinable())
     {
