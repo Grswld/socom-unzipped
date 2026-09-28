@@ -13,6 +13,8 @@ import {
   type SceneNode,
 } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
+import { collisionOwners, DEFAULT_GRID_PARAMS, parseGridParams, type WorldPoly } from '@s2u/scene';
+import { packGround, type GroundData } from './walk';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -95,6 +97,11 @@ export interface LoadedMap {
   origin: [number, number, number];
   /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
   collision: CollisionLines;
+  /**
+   * What the walk stands on (`./walk`, W1.4): the hull's polygons as the probe reads them, their nodes, and the
+   * map's `grid_params`. Absent when the graph would not parse.
+   */
+  ground?: GroundData;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -327,6 +334,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
     collision: placement.collision,
+    ground: placement.ground,
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -343,6 +351,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   }
   for (const prop of map.props) out.push(prop.matrices.buffer);
   out.push(map.collision.positions.buffer, map.collision.colors.buffer);
+  if (map.ground) out.push(map.ground.points.buffer, map.ground.fields.buffer);
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   return out;
@@ -610,6 +619,8 @@ interface Placement {
   origin: [number, number, number];
   /** The collision hull, already in world space and already cut into segments (36 section 6). */
   collision: CollisionLines;
+  /** The same hull as polygons, with its nodes and the grid, for the walk (`LoadedMap.ground`). */
+  ground?: GroundData;
 }
 
 /**
@@ -657,8 +668,9 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       const node = p.path.split('/').pop()?.split('=')[0] ?? '';
       return scrolls.get(node) ?? null;
     };
+    const { collision, ground } = hull(models, bytes, toc, stem, notes);
     return {
-      world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes),
+      world, props: [...groups.values()], origin: [0, 0, 0], collision, ground,
       rank: (p) => ranks.get(p) ?? 0,
       alternate,
       lod: lods(bytes, toc, notes),
@@ -710,13 +722,30 @@ function textureScroll(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
  * the chunks, so a hull that does not sit on the floor is a placement bug, not a collision one -- which
  * is most of why the overlay is worth having.
  */
-function hull(models: SceneNode[], notes: Notes): CollisionLines {
+function hull(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): { collision: CollisionLines; ground?: GroundData } {
+  let polys;
   try {
-    return collisionLines(worldCollision(models, WORLD_MODEL));
+    polys = worldCollision(models, WORLD_MODEL);
   } catch (e) {
     notes.add(`collision: ${say(e)}`);
-    return noCollision();
+    return { collision: noCollision() };
   }
+  return { collision: collisionLines(polys), ground: groundOf(polys, models, bytes, toc, stem, notes) };
+}
+
+/**
+ * The hull as the probe reads it, for the walk (`./walk`): the polygons with their nodes (`collisionOwners` walks
+ * the graph as `worldCollision` does, so the owners index the polygons) and the world root's `grid_params`. A
+ * root without the key takes the engine's default grid, as `CGrid::Read` does (research 23 section 2.3).
+ */
+function groundOf(polys: WorldPoly[], models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): GroundData {
+  let grid = DEFAULT_GRID_PARAMS;
+  try {
+    grid = parseGridParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+  } catch (e) {
+    notes.add(`grid_params: ${say(e)} -- the walk takes the engine's default grid`);
+  }
+  return packGround(grid, polys, collisionOwners(models, WORLD_MODEL));
 }
 
 /**

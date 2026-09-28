@@ -14,6 +14,7 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
+import { WalkMode } from './walk';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -47,6 +48,8 @@ const fly = new FlyCamera(canvas, {
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
 });
 const overlays = new Overlays(scene);
+/** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
+const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -154,6 +157,8 @@ ui.apply(applyToggle);
 ui.onChromeToggle();
 ui.onFullscreen();
 attachTouchControls(fly);
+walk.bindKey();
+ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
 const revision = ui.showRevision();
 
@@ -280,6 +285,7 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
+    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
 
@@ -401,6 +407,9 @@ function show(map: LoadedMap): void {
     const reach = Math.max(view.box.max.x - view.box.min.x, view.box.max.z - view.box.min.z) || 1000;
     fly.lookFrom([cx, cy + reach * 0.4, cz + reach * 0.6], [cx, cy, cz]);
   }
+  // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
+  // just placed, or on spawn A.
+  walk.setGround(map.ground, spawn ? spawn.a : null);
 
   ui.select(map.path);
   ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
@@ -464,7 +473,7 @@ function show(map: LoadedMap): void {
  * a checked assignment to a real property rather than a cast of the global object.
  */
 window.__viewer = {
-  setCamera: (pose: Partial<Pose>) => fly.setPose(pose),
+  setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
   stats: () => ({
     triangles: view?.triangles ?? 0,
@@ -485,5 +494,9 @@ window.__viewer = {
   flares: () => view?.flarePositions() ?? [],
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
+  mode: () => walk.mode(),
+  setMode: (mode) => walk.setMode(mode),
+  walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
+  feet: () => walk.feet(),
   revision,
 } satisfies ViewerHook;

@@ -22,8 +22,23 @@ const PITCH_LIMIT = MathUtils.degToRad(89.9);
  * Braking is slower than accelerating, which is what gives creative-mode flight its glide: you stop
  * over roughly a third of a second rather than on the frame the key comes up.
  */
-const ACCEL = 14;
-const BRAKE = 8;
+export const ACCEL = 14;
+export const BRAKE = 8;
+
+/**
+ * One axis of the velocity model over `dt` seconds, in closed form: v(t) = target + (v0 - target)e^(-rate t).
+ * Both the distance covered and the velocity at the end are taken from that curve rather than from `v * dt` at
+ * one end of it, so the distance does not depend on how the time is cut up. The fly camera steps it once a frame;
+ * the walk (`./walk`) steps it once a 60 Hz tick on the ground plane.
+ */
+export function glide(v0: number, target: number, rate: number, dt: number): { moved: number; velocity: number } {
+  const decay = Math.exp(-rate * dt);
+  const integral = (1 - decay) / rate;            // ∫e^(-rate t) dt over the step
+  return { moved: target * dt + (v0 - target) * integral, velocity: target + (v0 - target) * decay };
+}
+
+/** What the keys and the touch stick ask the walk for (`./walk`): forward and right on the ground plane, -1..1. */
+export interface GroundWish { forward: number; right: number; boost: boolean }
 
 /**
  * The vertical field of view at rest before a map states its own, and how far the boost widens it.
@@ -128,6 +143,8 @@ export class FlyCamera {
   /** When forward was last tapped, and whether the tap that is still held was the second one. */
   private lastForwardTap = 0;
   private sprinting_ = false;
+  /** Walk mode (`./walk`): the keys and the stick steer the mover, and this camera only looks. */
+  private walking = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -227,6 +244,36 @@ export class FlyCamera {
   }
 
   /**
+   * Walk mode on or off. On, `update` still turns the view (the mouse, the arrow keys) and eases the boost's FOV,
+   * but no longer moves the camera: the keys and the stick are read by the walk through `groundWish`, and the page
+   * stands the camera at the mover's eye with `moveTo`. Either way the glide is dropped.
+   */
+  setWalking(on: boolean): void {
+    this.walking = on;
+    this.velocity.set(0, 0, 0);
+  }
+
+  /** Stand the camera at a point without touching the look, the FOV or anything else `setPose` resets. */
+  moveTo(x: number, y: number, z: number): void {
+    this.camera.position.set(x, y, z);
+  }
+
+  /**
+   * The ground-plane half of what `update` would steer by: W/S and the stick's y forward, D/A and the stick's x to
+   * the right, clamped into the unit disc as `update` clamps, and whether the boost is on (a double-tapped W held,
+   * or the stick held at its rim). Space and shift have no meaning on the ground.
+   */
+  groundWish(): GroundWish {
+    let forward = this.stickY + (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
+    let right = this.stickX + (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
+    const length = Math.hypot(forward, right);
+    if (length > 1) { forward /= length; right /= length; }
+    const moving = length > 0;
+    const boost = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
+    return { forward, right, boost };
+  }
+
+  /**
    * One frame of movement. `dt` is seconds, so held keys move the same distance on any refresh rate,
    * and the exponential approach below is sampled rather than iterated — 30 fps and 240 fps land the
    * camera in the same place.
@@ -277,20 +324,13 @@ export class FlyCamera {
     // curve with a rectangle would make the distance depend on the frame length, and the camera would
     // quietly cover less ground on a 240 Hz monitor than on a 30 Hz one.
     const rate = moving ? ACCEL : BRAKE;
-    const decay = Math.exp(-rate * dt);
-    const integral = (1 - decay) / rate;            // ∫e^(-rate t) dt over the frame
-    const step = (v: number, t: number): number => t * dt + (v - t) * integral;
-
-    this.camera.position.set(
-      this.camera.position.x + step(this.velocity.x, target.x),
-      this.camera.position.y + step(this.velocity.y, target.y),
-      this.camera.position.z + step(this.velocity.z, target.z),
-    );
-    this.velocity.set(
-      target.x + (this.velocity.x - target.x) * decay,
-      target.y + (this.velocity.y - target.y) * decay,
-      target.z + (this.velocity.z - target.z) * decay,
-    );
+    const x = glide(this.velocity.x, target.x, rate, dt);
+    const y = glide(this.velocity.y, target.y, rate, dt);
+    const z = glide(this.velocity.z, target.z, rate, dt);
+    if (!this.walking) {
+      this.camera.position.set(this.camera.position.x + x.moved, this.camera.position.y + y.moved, this.camera.position.z + z.moved);
+      this.velocity.set(x.velocity, y.velocity, z.velocity);
+    }
 
     // Below a millimetre a second the glide is over; snapping to zero keeps a released key from
     // leaving the camera creeping forever and keeps `update` cheap when nothing is happening.
