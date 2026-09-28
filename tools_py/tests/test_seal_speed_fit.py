@@ -7,6 +7,7 @@ Nothing here touches PCSX2, the network or a file outside a temporary directory.
 import io
 import math
 import os
+import random
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -15,12 +16,16 @@ from tools_py.parity import seal_speed_fit as F
 
 
 def simulate(segments, t_end, rate=20.0, t0=0.0, start=(100.0, 50.0, 200.0), root_y=11.484, move_scale=1.0,
-             sub=40):
+             sub=40, noise=0.0, seed=1, update_every=1):
     """Rows (t, x, y, z, root_y, move_scale) of a body that moves per `segments`:
     [(t_start, t_stop, heading_deg, band, ramp_s, wall_after_s)], heading in atan2(dz, dx) terms; the speed ramps
     linearly to `band` over `ramp_s` from t_start and is 0 outside [t_start, t_stop) or after `wall_after_s`
-    (None = no wall) into the hold. Integrated on `sub` sub-steps per sample."""
+    (None = no wall) into the hold. Integrated on `sub` sub-steps per sample. `noise` adds a seeded Gaussian of that
+    SD to x and z per row; `update_every` = 2 is a staircase -- the position the game shows moves on every second
+    clock tick only."""
+    rng = random.Random(seed)
     x, y, z = start
+    shown = (x, z)
     rows = []
     dt = 1.0 / rate
     t = t0
@@ -34,8 +39,14 @@ def simulate(segments, t_end, rate=20.0, t0=0.0, start=(100.0, 50.0, 200.0), roo
                 return s * math.cos(math.radians(h)), s * math.sin(math.radians(h))
         return 0.0, 0.0
 
+    k_row = 0
     while t <= t_end + 1e-9:
-        rows.append((round(t, 6), x, y, z, root_y, move_scale))
+        if k_row % update_every == 0:
+            shown = (x, z)
+        k_row += 1
+        nx = rng.gauss(0.0, noise) if noise else 0.0
+        nz = rng.gauss(0.0, noise) if noise else 0.0
+        rows.append((round(t, 6), shown[0] + nx, y, shown[1] + nz, root_y, move_scale))
         h = dt / sub
         for k in range(sub):
             vx, vz = vel(t + (k + 0.5) * h)
@@ -124,9 +135,36 @@ class RejectionTest(unittest.TestCase):
         self.assertEqual(fits[1].status, "BLOCKED")
         self.assertEqual(fits[0].status, "OK")
 
-    def test_a_lone_hold_is_never_blocked_by_its_own_median(self):
+    def test_a_lone_hold_with_no_expected_band_is_never_blocked_by_its_own_median(self):
         rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, 0.8)], 9.0)
-        self.assertFalse(F.fit_holds(rows, [("fwd", 1.0, 7.0)])[0].blocked)
+        fit = F.fit_holds(rows, [("zz", 1.0, 7.0)])[0]
+        self.assertFalse(fit.blocked)
+        self.assertTrue(math.isnan(fit.expected))
+
+    def test_a_lone_hold_under_half_its_expected_band_is_blocked(self):
+        rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, 0.8)], 9.0)
+        fit = F.fit_holds(rows, [("fwd", 1.0, 7.0)])[0]
+        self.assertEqual(fit.expected, 65.0)
+        self.assertTrue(fit.under_expected)
+        self.assertTrue(fit.blocked)
+        self.assertEqual(fit.status, "BLOCKED")
+
+    def test_a_group_hold_under_half_its_expected_band_is_blocked_even_if_the_whole_group_is(self):
+        rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, 0.8), (10.0, 16.0, 0.0, 65.0, 0.2, 0.8)], 18.0)
+        fits = F.fit_holds(rows, [("fwd#1", 1.0, 7.0), ("fwd#2", 10.0, 16.0)])
+        self.assertEqual([f.blocked for f in fits], [True, True])
+
+    def test_move_scale_rejects_before_duplicate_clock_rows_merge(self):
+        rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, None)], 9.0)
+        out = []
+        for r in rows:
+            if abs(r[0] - 4.0) < 1e-9:
+                out.append(r[:5] + (0.5,))     # the first read of this clock value: discarded by the merge
+            out.append(r)
+        self.assertEqual(len(F.dedupe(out)), len(rows))
+        fit = F.fit_holds(out, [("fwd", 1.0, 7.0)])[0]
+        self.assertFalse(fit.move_scale_ok)
+        self.assertTrue(fit.status.startswith("REJECTED"), fit.status)
 
 
 class RestAndSamplingTest(unittest.TestCase):
@@ -162,10 +200,77 @@ class RestAndSamplingTest(unittest.TestCase):
 
     def test_a_noisy_steady_segment_is_flagged(self):
         rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, None)], 9.0)
-        rows = [r if not (4.0 <= r[0] <= 7.0) else (r[0], r[1] + (3.0 if int(r[0] * 20) % 2 else -3.0))
+        rows = [r if not (4.0 <= r[0] <= 7.0) else (r[0], r[1] + (8.0 if int(r[0] * 20) % 2 else -8.0))
                 + r[2:] for r in rows]
         fit = F.fit_holds(rows, [("fwd", 1.0, 7.0)])[0]
         self.assertEqual(fit.status, "NOISY")
+
+
+class RampNoiseAndStaircaseTest(unittest.TestCase):
+    def test_a_short_hold_is_ramping(self):
+        rows = simulate([(1.0, 1.15, 0.0, 65.0, 0.2, None)], 3.0, rate=60.0)
+        fit = F.fit_holds(rows, [("fwd", 1.0, 1.15)])[0]
+        self.assertEqual(fit.status, "RAMPING")
+        self.assertTrue(math.isnan(fit.speed))
+
+    def test_a_hold_shorter_than_three_ramps_is_ramping(self):
+        rows = simulate([(1.0, 2.2, 0.0, 65.0, 0.5, None)], 4.0, rate=60.0)
+        fit = F.fit_holds(rows, [("fwd", 1.0, 2.2)])[0]
+        self.assertEqual(fit.status, "RAMPING")
+
+    def test_t90_under_position_noise_at_60_hz(self):
+        for noise in (0.1, 0.3):
+            for seed in range(1, 6):
+                rows = simulate([(1.0, 7.0, 30.0, 65.0, 0.2, None)], 9.0, rate=60.0, noise=noise, seed=seed)
+                fit = F.fit_holds(rows, [("fwd", 1.0, 7.0)])[0]
+                self.assertEqual(fit.status, "OK", (noise, seed))
+                self.assertAlmostEqual(fit.speed, 65.0, delta=0.5, msg=(noise, seed))
+                self.assertAlmostEqual(fit.t90, 0.18, delta=0.03, msg=(noise, seed, fit.t90))
+
+    def test_the_t90_confidence_flag(self):
+        quiet = simulate([(1.0, 7.0, 30.0, 65.0, 0.2, None)], 9.0, rate=60.0, noise=0.05)
+        self.assertTrue(F.fit_holds(quiet, [("fwd", 1.0, 7.0)])[0].t90_ok)
+        loud = simulate([(1.0, 7.0, 30.0, 65.0, 0.2, None)], 9.0, rate=60.0, noise=1.0)
+        fit = F.fit_holds(loud, [("fwd", 1.0, 7.0)])[0]
+        self.assertFalse(fit.t90_ok)
+        self.assertIn("t90?", F.report([fit]))
+
+    def test_a_staircase_at_half_the_clock_rate_reads_ok(self):
+        rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, None)], 9.0, rate=60.0, update_every=2)
+        fit = F.fit_holds(rows, [("fwd", 1.0, 7.0)])[0]
+        self.assertGreater(fit.resid_rms, 0.4)        # the case is really exercised: about 0.54
+        self.assertLess(fit.resid_rms, 0.7)
+        self.assertEqual(fit.status, "OK")
+        self.assertAlmostEqual(fit.speed, 65.0, delta=0.5)
+
+
+class StanceAndExpectedTest(unittest.TestCase):
+    def test_stance_from_the_root(self):
+        self.assertEqual(F.stance_of(11.484), "stand")
+        self.assertEqual(F.stance_of(11.9), "stand")
+        self.assertEqual(F.stance_of(5.504), "crouch")
+        self.assertEqual(F.stance_of(1.8), "prone")
+        self.assertEqual(F.stance_of(8.0), "unknown")
+        self.assertEqual(F.stance_of(float("nan")), "unknown")
+
+    def test_the_expected_band_follows_direction_and_stance(self):
+        self.assertEqual(F.expected_speed("fwd", "stand"), 65.0)
+        self.assertEqual(F.expected_speed("back", "stand"), 37.0)
+        self.assertEqual(F.expected_speed("left", "stand"), 65.0)
+        self.assertEqual(F.expected_speed("fwd", "crouch"), 14.0)
+        self.assertEqual(F.expected_speed("fwd", "prone"), 11.0)
+        self.assertTrue(math.isnan(F.expected_speed("fwd", "unknown")))
+
+    def test_a_hold_takes_its_planned_stance_from_its_name(self):
+        rows = simulate([(3.0, 9.0, 0.0, 11.0, 0.0, None)], 11.0, root_y=1.8)
+        fit = F.fit_holds(rows, [("prone_fwd#2", 3.0, 9.0)])[0]
+        self.assertEqual((fit.group, fit.stance, fit.expected), ("prone_fwd", "prone", 11.0))
+
+    def test_the_measured_stance_overrides_the_planned_one(self):
+        rows = simulate([(3.0, 9.0, 0.0, 65.0, 0.2, None)], 11.0)
+        fit = F.fit_holds(rows, [F.Hold("crouch_fwd#1", 3.0, 9.0, "crouch_fwd", "stand", "fwd")])[0]
+        self.assertEqual((fit.stance, fit.expected), ("stand", 65.0))
+        self.assertIn("| stand |", F.report([fit]))
 
 
 class ReportAndFilesTest(unittest.TestCase):
@@ -177,6 +282,8 @@ class ReportAndFilesTest(unittest.TestCase):
         self.assertEqual(len(lines), 4)
         self.assertIn("speed", lines[0])
         self.assertIn("t90", lines[0])
+        self.assertIn("stance", lines[0])
+        self.assertIn("expected", lines[0])
         self.assertTrue(set(lines[1]) <= set("|-: "))
         self.assertIn("fwd", lines[2])
         self.assertIn("REJECTED", lines[3])
@@ -192,12 +299,15 @@ class ReportAndFilesTest(unittest.TestCase):
         sp = os.path.join(d, "schedule.json")
         with open(sp, "w") as f:
             f.write('[{"name": "rest0", "kind": "rest", "t_start": 0.0, "t_end": 1.0},'
-                    ' {"name": "fwd", "kind": "hold", "t_start": 1.0, "t_end": 7.0}]')
+                    ' {"name": "fwd", "kind": "hold", "t_start": 1.0, "t_end": 7.0},'
+                    ' {"name": "crouch_fwd#1", "kind": "hold", "t_start": 8.0, "t_end": 8.5, "stance": "stand",'
+                    ' "planned_stance": "crouch", "direction": "fwd"}]')
         back = F.load_rows(rp)
         self.assertEqual(len(back), len(rows))
         self.assertAlmostEqual(back[50][1], rows[50][1], places=4)
         holds = F.load_schedule(sp)
-        self.assertEqual(holds, [F.Hold("fwd", 1.0, 7.0, "fwd")])
+        self.assertEqual(holds, [F.Hold("fwd", 1.0, 7.0, "fwd"),
+                                 F.Hold("crouch_fwd#1", 8.0, 8.5, "crouch_fwd", "stand", "fwd")])
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(F.main([rp, sp]), 0)

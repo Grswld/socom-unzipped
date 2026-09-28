@@ -19,11 +19,19 @@ The pad path is drive.py's `hold+<s>:BTN` step and pcsx2_ctl's `hold` command: `
 button, "pcsx2", hold_s=seconds)`, a WM_KEYDOWN/WM_KEYUP pair posted to the PCSX2 window and its children, which
 PCSX2's [Pad1] keyboard bindings (tools/pcsx2/inis/PCSX2.ini) turn into FULL deflection -- a keyboard key has no
 half. Two things the schedule therefore cannot do from the keyboard, both left to the controller (PINE writes to
-the pad buffer, or a PCSX2 pressure-modifier binding): a light Triangle (the stand/crouch toggle; a full Triangle
-goes PRONE at once, KNOWN section 1 R139), and a push under 0.838 (the crouch WALK; a full push in crouch stands the
-SEAL up and runs, spec section 7). The default schedule is ordered for what full presses reach: from the crouched
-spawn (spec section 7, W2.3), a crouch-stance hold, Triangle to prone, a prone hold, Triangle to stand, then the
-standing holds. The root Y at rest before every hold says which stance it really was.
+the pad buffer, or a PCSX2 pressure-modifier binding): a light Triangle (the stand/crouch toggle), and a push under
+0.838 (the crouch WALK; a full push in crouch stands the SEAL up and runs, spec section 7).
+
+What a FIRM Triangle does (peak pressure >= 0.3; the decompilation's PlayerUpd, socom2_game.elf.decomp.c
+~453331-453425, the wished stance byte at actor+0x374): from stand or crouch it wishes PRONE when FUN_00584b00
+allows, and from prone it wishes STAND on every branch -- so firm presses cycle stand/crouch -> prone -> stand and
+never reach crouch (a light press from prone would). The default schedule is ordered for that: from the crouched
+spawn (spec section 7, W2.3) three crouch-stance pairs, Triangle to prone, three prone holds, Triangle to stand,
+then the standing pairs -- every direction three times, so research/18's half-the-group-median rule has a group.
+Before every hold the probe reads the root at rest (seal_speed_fit.stance_of: standing 11.48 +-0.5, crouched
+5.50 +-0.5, prone under 3); a stand or prone hold found in another stance gets up to two more firm taps (3 s
+apart); a crouch hold gets none (no firm press reaches it). The schedule record carries the stance the root
+finally read, the planned one and the taps, and the fit reports the measured stance.
 
 Writes logs/parity/seal_speed_<stamp>.txt (the rows) and seal_speed_<stamp>.schedule.json (each step's guest-clock
 span) and prints seal_speed_fit's table.
@@ -42,7 +50,7 @@ from tools_py.parity import guest_addresses as ga
 from tools_py.parity import keys
 from tools_py.parity import seal_speed_fit as F
 
-Step = collections.namedtuple("Step", "name kind buttons seconds")
+Step = collections.namedtuple("Step", "name kind buttons seconds stance direction", defaults=(None, None))
 
 # PCSX2's [Pad1] keyboard bindings for the names the schedule uses (keys.MAPS["pcsx2"] posts the key; this is what
 # PCSX2 makes of it). Read from tools/pcsx2/inis/PCSX2.ini; note a step script's "I" on pcsx2 is the RIGHT stick
@@ -59,38 +67,43 @@ PAD1_BINDING = {
 TAP_HOLD_S = 0.15            # pcsx2_shell's press hold: the console shell reads a 9-frame hold as one press
 DEFAULT_REVISION = "r0001"   # the console boots the r0001 disc
 PREFLIGHT_S = 1.0
+STANCE_SETTLE_S = 3.0        # after a stance tap, before the root is read again
+STANCE_TAPS = 2              # at most this many corrective taps before a hold
+FIRM_REACHABLE = ("stand", "prone")   # what a firm Triangle can wish (the decompilation, above)
 
 
 def _rest(name, s):
     return Step(name, "rest", (), float(s))
 
 
-def _hold(name, buttons, s=6.0):
-    return Step(name, "hold", tuple(buttons), float(s))
+def _hold(name, buttons, stance, direction, s=6.0):
+    return Step(name, "hold", tuple(buttons), float(s), stance, direction)
 
 
 def _tap(name, button):
     return Step(name, "tap", (button,), TAP_HOLD_S)
 
 
+def _pairs(a, b, rest=3):
+    """Three alternating holds each way -- a group of three per direction, and the player back near where it began."""
+    out = []
+    for i in (1, 2, 3):
+        out += [_hold("%s#%d" % (a[0], i), *a[1:]), _rest("rest_%s%d" % (a[0], i), rest)]
+        if b is not None:
+            out += [_hold("%s#%d" % (b[0], i), *b[1:]), _rest("rest_%s%d" % (b[0], i), rest)]
+    return tuple(out)
+
+
 DEFAULT_SCHEDULE = (
-    _rest("spawn_rest", 3),                       # the spawn stance's root at rest (crouched: 5.504, W2.R9)
-    _hold("crouch_fwd", ["W"]),                   # crouch stance, full push: stands and runs (spec section 7)
-    _rest("rest1", 3),
-    _tap("to_prone", "TRIANGLE"),                 # full pressure >= 0.3: prone at once (R139)
-    _rest("prone_rest", 3),
-    _hold("prone_fwd", ["W"]),                    # prone: no ramp, the crawl's band
-    _rest("rest2", 3),
-    _tap("to_stand", "TRIANGLE"),                 # prone -> stand
-    _rest("stand_rest", 3),
-    _hold("fwd", ["W"]),                          # standing: forward 65, the facing for along/across
-    _rest("rest3", 3),
-    _hold("back", ["S"]),                         # back 37
-    _rest("rest4", 3),
-    _hold("left", ["A"]),                         # strafe 65
-    _rest("rest5", 3),
-    _hold("fwd_left", ["W", "A"]),                # 45 deg: the renormalised blend, still 65 (spec section 7)
-    _rest("rest6", 3),
+    (_rest("spawn_rest", 3),)                                          # the spawn stance's root (crouched: 5.504)
+    + _pairs(("crouch_fwd", ["W"], "crouch", "fwd"),                   # full push in crouch: stands and runs
+             ("crouch_back", ["S"], "crouch", "back"))
+    + (_tap("to_prone", "TRIANGLE"), _rest("prone_rest", 3))           # firm: prone at once (R139)
+    + _pairs(("prone_fwd", ["W"], "prone", "fwd"), None)               # prone: no ramp, the crawl's 11
+    + (_tap("to_stand", "TRIANGLE"), _rest("stand_rest", 3))           # firm from prone: stand
+    + _pairs(("fwd", ["W"], "stand", "fwd"), ("back", ["S"], "stand", "back"))       # 65 / 37; fwd is the facing
+    + _pairs(("left", ["A"], "stand", "left"), ("right", ["D"], "stand", "right"))   # 65 each way
+    + (_hold("fwd_left", ["W", "A"], "stand", "fwd_left"), _rest("rest_diag", 3))  # 45 deg: still 65 (section 7)
 )
 
 
@@ -117,7 +130,8 @@ def load_steps(path):
         for b in buttons:
             if b not in keys.MAPS["pcsx2"]:
                 raise ValueError("step %r: %r is not a PCSX2 [Pad1] key in keys.MAPS" % (e.get("name"), b))
-        steps.append(Step(e["name"], kind, buttons, float(e.get("seconds", TAP_HOLD_S))))
+        steps.append(Step(e["name"], kind, buttons, float(e.get("seconds", TAP_HOLD_S)), e.get("stance"),
+                          e.get("direction")))
     return tuple(steps)
 
 
@@ -200,6 +214,18 @@ class Recorder(threading.Thread):
         with self._lock:
             return self.rows[-1][0] if self.rows else math.nan
 
+    def rest_root(self, window_s=1.0):
+        """The median skeleton-root Y over the last `window_s` guest seconds of rows (NaN with none)."""
+        with self._lock:
+            if not self.rows:
+                return math.nan
+            t1 = self.rows[-1][0]
+            ys = sorted(r[4] for r in self.rows if r[0] >= t1 - window_s and not math.isnan(r[4]))
+        if not ys:
+            return math.nan
+        k = len(ys) // 2
+        return ys[k] if len(ys) % 2 else 0.5 * (ys[k - 1] + ys[k])
+
     def snapshot(self):
         with self._lock:
             return list(self.rows)
@@ -216,11 +242,35 @@ def press_hold(hwnd, buttons, seconds, press=None):
         t.join()
 
 
+def ensure_stance(recorder, hwnd, planned, press, sleep):
+    """(stance the root reads, root, taps): up to STANCE_TAPS firm Triangles toward `planned` when a firm press can
+    reach it, the root re-read STANCE_SETTLE_S after each."""
+    root = recorder.rest_root(1.0)
+    actual = F.stance_of(root)
+    taps = 0
+    while actual != planned and planned in FIRM_REACHABLE and taps < STANCE_TAPS:
+        press(hwnd, "TRIANGLE", "pcsx2", hold_s=TAP_HOLD_S)
+        taps += 1
+        sleep(STANCE_SETTLE_S)
+        root = recorder.rest_root(1.0)
+        actual = F.stance_of(root)
+    return actual, root, taps
+
+
 def run_schedule(steps, recorder, hwnd, press=None, sleep=time.sleep):
-    """Play the steps; returns the schedule records with each step's guest-clock span."""
+    """Play the steps; returns the schedule records with each step's guest-clock span (and, for a hold with a
+    planned stance, the stance its rest root read after any corrective taps)."""
     press = press or keys.press
     out = []
     for s in steps:
+        extra = {}
+        if s.kind == "hold" and s.stance:
+            actual, root, taps = ensure_stance(recorder, hwnd, s.stance, press, sleep)
+            extra = {"stance": actual, "planned_stance": s.stance, "stance_taps": taps, "root_y_rest": root,
+                     "direction": s.direction}
+            if actual != s.stance:
+                print("%-12s stance %s where %s was planned (root %.3f, %d taps): the hold is marked %s"
+                      % (s.name, actual, s.stance, root, taps, actual), flush=True)
         t0, h0 = recorder.latest_t(), time.time()
         if s.kind == "rest":
             sleep(s.seconds)
@@ -232,6 +282,7 @@ def run_schedule(steps, recorder, hwnd, press=None, sleep=time.sleep):
         t1, h1 = recorder.latest_t(), time.time()
         rec = {"name": s.name, "kind": s.kind, "buttons": list(s.buttons), "seconds": s.seconds,
                "t_start": t0, "t_end": t1, "host_start": round(h0, 3), "host_end": round(h1, 3)}
+        rec.update(extra)
         out.append(rec)
         print("%-12s %-5s %-10s guest %8.3f -> %8.3f" % (s.name, s.kind, "+".join(s.buttons) or "-", t0, t1),
               flush=True)
@@ -250,12 +301,15 @@ def plan_text(a, steps):
         rev, ga.address("guest_clock", rev), ga.address("player_actor", rev), ga.offset("actor_pos", rev),
         ga.offset("actor_pos", rev) + 8, ga.offset("root_node", rev), ga.offset("move_scale", rev)),
         "preflight: %.1f s of rows, the clock advancing, MoveScale exactly 1.0" % PREFLIGHT_S, "",
-        "| # | step | kind | keys | [Pad1] binding | seconds |", "|---|---|---|---|---|---:|"]
+        "| # | step | kind | keys | [Pad1] binding | stance | expected u/s | seconds |",
+        "|---|---|---|---|---|---|---:|---:|"]
     total = 0.0
     for i, s in enumerate(steps):
         binding = "; ".join(PAD1_BINDING.get(b, "keys.MAPS %s" % b) for b in s.buttons) or "-"
-        lines.append("| %d | %s | %s | %s | %s | %.2f |" % (i, s.name, s.kind, "+".join(s.buttons) or "-", binding,
-                                                            s.seconds))
+        exp = F.expected_speed(s.direction, s.stance) if s.kind == "hold" else math.nan
+        lines.append("| %d | %s | %s | %s | %s | %s | %s | %.2f |" % (
+            i, s.name, s.kind, "+".join(s.buttons) or "-", binding, s.stance or "-",
+            "-" if math.isnan(exp) else "%.1f" % exp, s.seconds))
         total += s.seconds
     lines += ["", "schedule: %.1f s" % total,
               "rows -> %s" % os.path.join(a.out_dir, "seal_speed_<stamp>.txt"),

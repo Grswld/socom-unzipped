@@ -19,19 +19,33 @@ stick ramp (90 % of full on tick 11, 0.18 s) -- and the skeleton root per stance
   never 4 Hz peek rows (research 25 §5); rows sharing a clock value collapse to the last read.
 - **Holds.** Full deflection only: `keys.press(hwnd, button, "pcsx2", hold_s=6)` -- drive.py's `hold+` step and
   pcsx2_ctl's `hold` -- posts a key PCSX2's [Pad1] binds: W = LUp, S = LDown, A = LLeft, Triangle = Keyboard/I,
-  H = RRight (the step-script name `L`). Default schedule (`--dry-run` prints it, about 63 s): rest 3 s at the spawn;
-  **crouch_fwd** (W); Triangle -> prone; **prone_fwd** (W); Triangle -> stand; **fwd** (W), **back** (S), **left**
-  (A), **fwd_left** (W+A); 6 s each, 3 s of rest before and after. The order is the brief's reshaped for what a
-  keyboard reaches: a full Triangle goes PRONE at once (KNOWN §1, R139: pressure 0.3 or more), so from the
-  crouched spawn (design §7, W2.3) the stances run crouch -> prone -> stand and never back to crouch.
-- **Fit, per hold** (research 18 §3.13's rules): the steady speed is a least-squares line through x(t), z(t) over
-  the last 60 % of the hold's rows (RMS residual over 0.5 units = NOISY); t90 from the hold's start to the first
-  centred-difference speed at 0.9 x steady (NaN when rows are sparser than 0.1 s); the heading atan2(vz, vx) and the
-  velocity along and across the facing (the **fwd** hold's heading), so **back** reads about -37 along; the root Y
-  at rest is the median over the 1 s before the hold; any MoveScale row not exactly 1.0 inside the hold REJECTS it
-  (the camera record 0x416054 is not the feet and is not read; the "lead" of research 18's affine response is the
-  camera's slack and does not apply to the actor's own words). A hold under half its group's median distance is
-  BLOCKED; groups are the name before `#`.
+  H = RRight (the step-script name `L`), D = LRight. Default schedule (`--dry-run` prints it, about 3.5 min): rest
+  3 s at the spawn; **crouch_fwd#1-3** (W) alternating with **crouch_back#1-3** (S); Triangle -> prone;
+  **prone_fwd#1-3** (W); Triangle -> stand; **fwd#1-3** (W) alternating with **back#1-3** (S); **left#1-3** (A)
+  with **right#1-3** (D); one **fwd_left** (W+A); 6 s each, 3 s of rest before and after. Every direction runs three
+  times so the blocked rule has a group, and the pairs bring the player back towards the start.
+- **Stance.** The decompilation's Triangle handler (PlayerUpd, `game/analysis/socom2_game.elf.decomp.c`
+  ~453331-453425; the wished stance is the byte at actor+0x374) reads the press's peak pressure. A **firm** press
+  (0.3 or more, every keyboard press) from stand or crouch wishes prone (when `FUN_00584b00` allows), and from
+  prone it wishes **stand** on every branch. A light press toggles stand/crouch, and from prone it goes to crouch.
+  Firm presses therefore cycle stand/crouch -> prone -> stand and never reach crouch; the order above starts from
+  the crouched spawn (design §7, W2.3) for that reason. Before every hold the probe reads the root at rest
+  (standing 11.48 ± 0.5, crouched 5.50 ± 0.5, prone under 3). A stand or prone hold found in another stance gets up
+  to two more firm taps, 3 s apart; a crouch hold gets none. The schedule records the stance the root finally read,
+  and the table shows that one, not the planned label.
+- **Fit, per hold** (research 18 §3.13's rules). Any MoveScale row not exactly 1.0 inside the hold REJECTS it,
+  judged before duplicate clock rows merge. A hold shorter than max(1 s, 3 × t90) is RAMPING, with no steady
+  number. The steady speed is a least-squares line through x(t), z(t) over the last 60 % of the hold's rows; it is
+  NOISY when the RMS residual exceeds 1.5 rows' motion + 0.1 units (so a position that moves on every second clock
+  tick still reads OK). t90 runs from the hold's start to the first smoothed speed (a local linear fit over ±2 rows)
+  at 0.9 × steady; it is NaN when rows are sparser than 0.1 s, and marked "t90?" when the per-axis noise exceeds
+  10 % of one row's motion. On synthetic 60 Hz rows t90 stays within about 0.03 s of 0.18 at 0.3 units of noise,
+  and the flag already fires there. The heading is atan2(vz, vx), with the velocity along and across the facing
+  (the **fwd** holds' heading), so **back** reads about -37 along. The root Y at rest is the median over the 1 s
+  before the hold. The camera record 0x416054 is not the feet and is not read; the "lead" of research 18's affine
+  response is the camera's slack and does not apply to the actor's own words. A hold is BLOCKED when its distance
+  is under half its group's median (groups are the name before `#`) or its speed is under half the expected band
+  for its direction and measured stance.
 - **t90 includes the input latency** from the key-down to the game's pad read (one or two frames); the ramp itself
   is 0.18 s by the decompilation.
 
@@ -61,15 +75,17 @@ end, so the save goes inside the tail.
 
 ## 3. The commands (under the lock, in the owner's window)
 
-The savestate, one lock hold (the drive's step lines go to the log; the save waits for the HUD match, then 20 s for
-the script's two pop-up guards):
+The savestate, one lock hold (the drive's step lines go to the log). The save waits for the step script's LAST step
+line (`s24_none` for mission_music_fast.txt's 25 steps, computed below), so every pop-up guard's Cross has already
+landed and only the drive's tail -- no presses -- is left; the probe's preflight then wants the guest clock
+running at MoveScale 1.0:
 
 ```
 bash scripts/loop_lock.sh run agent-web-s2c --purpose "W2.2c console speed: spawn savestate" -- bash -c '
   python -m tools_py.parity.drive --target pcsx2 --script scripts/parity/mission_music_fast.txt \
-      --out logs/parity/w22c_spawn --tail 240 > logs/parity/w22c_spawn.log 2>&1 & d=$!
-  until grep -q "matched=True" logs/parity/w22c_spawn.log || ! kill -0 $d 2>/dev/null; do sleep 5; done
-  sleep 20
+      --out logs/parity/w22c_spawn --tail 360 > logs/parity/w22c_spawn.log 2>&1 & d=$!
+  last=$(printf "s%02d_" $(( $(grep -cvE "^[[:space:]]*(#|$)" scripts/parity/mission_music_fast.txt) - 1 )))
+  until grep -q "^$last" logs/parity/w22c_spawn.log || ! kill -0 $d 2>/dev/null; do sleep 2; done
   python -m tools_py.parity.seal_speed_probe --save-state 8
   python -m tools_py.parity.seal_speed_probe --turn-first 1.4
   wait $d'
@@ -88,16 +104,18 @@ Output: `logs/parity/seal_speed_<stamp>.txt` (rows: guest_t x y z root_y move_sc
 and null counts) and `seal_speed_<stamp>.schedule.json`; the table is printed and can be re-made with
 `python -m tools_py.parity.seal_speed_fit <rows> <schedule>`:
 
-| hold | rows | speed u/s | along | across | heading deg | rel. deg | t90 s | rootY at rest | distance | resid | status |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| hold | stance | rows | speed u/s | expected | along | across | heading deg | rel. deg | t90 s | rootY at rest | distance | resid | status |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
 
 ## 4. Acceptance
 
-- **W2.R7:** fwd, left and fwd_left within 5 % of 65 (61.75-68.25), back within 5 % of 37 along the facing, each
-  status OK; a measured value beyond 5 % is a KNOWN row and the measured value wins. crouch_fwd at full push is
-  expected near 65 (design §7: the SEAL stands and runs while the stance stays crouch); prone_fwd near 11.
-- **W2.R9:** the root Y at rest before crouch_fwd, prone_fwd and fwd, to two decimals (expected 5.50, unknown,
-  11.48).
+- **W2.R7:** the median of each group's OK holds -- fwd, left, right within 5 % of 65 (61.75-68.25), back within
+  5 % of 37 along the facing, fwd_left near 65; a measured value beyond 5 % is a KNOWN row and the measured value
+  wins. crouch_fwd and crouch_back at full push are expected near the standing 65 and 37, not the table's
+  14.0 / 12.8 (design §7: the SEAL stands and runs while the stance stays crouch -- that is the test of the claim);
+  prone_fwd near 11.
+- **W2.R9:** the root Y at rest before crouch_fwd#1, prone_fwd#1 and fwd#1, to two decimals (expected 5.50,
+  unknown, 11.48), each with the stance column saying the same.
 - t90 against 0.18 s (plus the latency), on OK holds only.
 
 **Not measurable from the keyboard** (left to the controller: PINE writes to the pad buffer, or a PCSX2

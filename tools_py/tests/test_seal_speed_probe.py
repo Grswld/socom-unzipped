@@ -4,7 +4,10 @@
 binds; one sample must walk the pointer chains through a fake PINE and refuse a torn read. No game, no PINE
 socket, no window: the fake below is a dict of guest words.
 """
+import collections
 import io
+import json
+import math
 import os
 import struct
 import subprocess
@@ -94,9 +97,13 @@ class ScheduleTest(unittest.TestCase):
             self.assertGreaterEqual(steps[i + 1].seconds, 3.0)
             self.assertEqual(steps[i - 1].kind, "rest", steps[i])
             self.assertGreaterEqual(steps[i - 1].seconds, 2.0, "root Y at rest needs >= 1 s before the hold")
-        names = [steps[i].name for i in holds]
+        groups = collections.Counter(F.group_of(steps[i].name) for i in holds)
         for want in ("fwd", "back", "left", "crouch_fwd", "prone_fwd"):
-            self.assertIn(want, names)
+            self.assertEqual(groups[want], 3, "a group of three, so the half-the-median rule has a group: %s" % want)
+        for i in holds:
+            self.assertIn(steps[i].stance, ("stand", "crouch", "prone"), steps[i])
+            self.assertTrue(steps[i].direction, steps[i])
+            self.assertFalse(math.isnan(F.expected_speed(steps[i].direction, steps[i].stance)), steps[i])
 
     def test_the_stance_taps_are_triangle(self):
         taps = [s for s in P.DEFAULT_SCHEDULE if s.kind == "tap"]
@@ -140,6 +147,93 @@ class ScheduleTest(unittest.TestCase):
             f.write('[{"name": "x", "kind": "hold", "buttons": ["NOPE"], "seconds": 1}]')
         with self.assertRaises(ValueError):
             P.load_steps(p)
+
+
+ROOT_OF = {"stand": 11.484, "crouch": 5.504, "prone": 1.8}
+FIRM = {"stand": "prone", "crouch": "prone", "prone": "stand"}   # the decompilation's firm-press branch
+
+
+class StancePine(FakePine):
+    """A fake console whose skeleton root follows a stance a firm Triangle cycles (stand/crouch -> prone -> stand);
+    `swallow` presses are ignored first (a pop-up, a transition)."""
+
+    def __init__(self, stance, swallow=0):
+        super().__init__()
+        self.node = self.mem[self.mem[ga.address("player_actor", "r0001")] + ga.offset("root_node", "r0001")]
+        self.swallow = swallow
+        self.presses = []
+        self.set(stance)
+
+    def set(self, stance):
+        self.stance = stance
+        self.mem[self.node + 4] = fbits(ROOT_OF[stance])
+
+    def press(self, hwnd, button, target, hold_s=0.15):
+        self.presses.append(button)
+        if button == "TRIANGLE":
+            if self.swallow:
+                self.swallow -= 1
+            else:
+                self.set(FIRM[self.stance])
+
+
+class SyncRecorder:
+    """The Recorder's reading surface, sampling the fake on demand instead of in a thread."""
+
+    def __init__(self, pine):
+        self.sampler = P.Sampler(pine, "r0001")
+        self.pine = pine
+        self.t = 0.0
+
+    def latest_t(self):
+        self.t += 0.5
+        return self.t
+
+    def rest_root(self, window_s=1.0):
+        return self.sampler.sample()[4]
+
+
+class StanceVerifyTest(unittest.TestCase):
+    def run_one(self, start, planned, swallow=0):
+        pine = StancePine(start, swallow)
+        steps = (P.Step("rest", "rest", (), 3.0), P.Step("h#1", "hold", ("W",), 6.0, planned, "fwd"))
+        with redirect_stdout(io.StringIO()):
+            recs = P.run_schedule(steps, SyncRecorder(pine), hwnd=None, press=pine.press, sleep=lambda s: None)
+        return pine, recs[1]
+
+    def test_the_right_stance_needs_no_tap(self):
+        pine, rec = self.run_one("stand", "stand")
+        self.assertEqual(pine.presses, ["W"])
+        self.assertEqual((rec["stance"], rec["planned_stance"], rec["stance_taps"]), ("stand", "stand", 0))
+        self.assertAlmostEqual(rec["root_y_rest"], 11.484, places=3)
+
+    def test_a_wrong_stance_is_tapped_into_place(self):
+        pine, rec = self.run_one("stand", "prone")
+        self.assertEqual(pine.presses, ["TRIANGLE", "W"])
+        self.assertEqual((rec["stance"], rec["stance_taps"]), ("prone", 1))
+
+    def test_standing_from_crouch_takes_two_firm_taps(self):
+        pine, rec = self.run_one("crouch", "stand")
+        self.assertEqual(pine.presses, ["TRIANGLE", "TRIANGLE", "W"])
+        self.assertEqual((rec["stance"], rec["stance_taps"]), ("stand", 2))
+
+    def test_two_swallowed_taps_mark_the_hold_with_the_measured_stance(self):
+        pine, rec = self.run_one("stand", "prone", swallow=2)
+        self.assertEqual(pine.presses, ["TRIANGLE", "TRIANGLE", "W"])
+        self.assertEqual((rec["stance"], rec["planned_stance"], rec["stance_taps"]), ("stand", "prone", 2))
+
+    def test_crouch_is_not_tapped_for_because_a_firm_press_never_reaches_it(self):
+        pine, rec = self.run_one("stand", "crouch")
+        self.assertEqual(pine.presses, ["W"])
+        self.assertEqual((rec["stance"], rec["planned_stance"], rec["stance_taps"]), ("stand", "crouch", 0))
+
+    def test_the_fit_reads_the_measured_stance_back(self):
+        pine, rec = self.run_one("stand", "crouch")
+        d = tempfile.mkdtemp()
+        sp = os.path.join(d, "s.json")
+        with open(sp, "w") as f:
+            json.dump([rec], f)
+        self.assertEqual(F.load_schedule(sp)[0].stance, "stand")
 
 
 class SampleTest(unittest.TestCase):
