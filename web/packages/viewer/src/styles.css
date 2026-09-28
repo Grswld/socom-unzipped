@@ -93,6 +93,9 @@ body.touch #touch { display: block; }
   #site-links { top: 8px; left: 8px; }
   #panel { top: 60px; left: var(--s2u-space-4); width: calc(100vw - 2 * var(--s2u-space-4)); }
   #fps { top: 8px; right: 8px; }
+  /* Above the two 56px touch-lift buttons (10px apart), which the fullscreen fab's default
+     right/bottom 24px placement would otherwise sit on top of on a coarse pointer. */
+  #fullscreen { right: 12px; bottom: calc(16px + 2 * 66px + env(safe-area-inset-bottom, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

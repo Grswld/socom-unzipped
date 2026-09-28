@@ -1,11 +1,11 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "source": "scotho apps/s2u/src/ds",
   "files": {
     "index.css": "016472464f0b152727c77f6e5e8d02559c23488d92fc106895eab141f0b9c6a7",
-    "tokens.css": "aca84a887bea12d8ddafdc8e7a90560f9b2424a1a177d83f43ba9dea366c79b6",
+    "tokens.css": "283aa9501385e80e1ced4c018815a1da4bd80c2b7d3f88d5dc3399a08ad0ddc8",
     "fonts.css": "c08282bf55c5480e51864d46234d05b9af0db2a3af9997e8297dde670d890b58",
     "base.css": "c39410187929b6c761434678f4a2dc0c9e87132644b39c2abd3a7842cd9430f0",
-    "components.css": "53d7fd6cd059c6923ebbba116bf050cb7d3b74f605663f7644a3c9e0dc332a0b"
+    "components.css": "f3c7851e7a64a0d64693a3afa5b507eb8eb8ba3207673865cc572c9112fad225"
   }
 }

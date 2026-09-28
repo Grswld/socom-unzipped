@@ -235,6 +235,11 @@ test('the panel fills a phone with the system gutters and the fullscreen target 
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   await page.goto('/');
+  // The panel folds to a bar on a coarse pointer by design -- the map shows first on a phone -- so
+  // open it before measuring the body this test is about.
+  if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
+    await page.locator('#panel-toggle').click();
+  }
   await expect(page.locator('#maps')).toBeVisible();
   const panel = await page.locator('#panel').boundingBox();
   const fab = await page.locator('#fullscreen').boundingBox();
@@ -242,4 +247,34 @@ test('the panel fills a phone with the system gutters and the fullscreen target 
   expect(Math.round(fab!.width)).toBe(44);
   expect(Math.round(fab!.height)).toBe(44);
   await ctx.close();
+});
+
+/**
+ * Fix round 1, item 1: the phone media query used to lift `#fullscreen` above the two 56px
+ * touch-lift buttons; the s2u-design-system rewrite dropped that override and left the fab at the
+ * system's default right/bottom 24px, which sits on top of the lower lift button on a coarse
+ * pointer. A separate `describe` block, appended at the file's end, so this does not collide with
+ * the phone test above it.
+ */
+test.describe('fix round 1: the fullscreen fab clears the touch-lift buttons', () => {
+  test('on a phone with touch controls, the fab does not overlap either lift button', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    const status = page.locator('#status');
+    await expect(status).toContainText('webgl2'); // a narrow status abbreviates "triangles" to "tris"
+    await page.locator('#maps').selectOption('RUN/MP2.ZDB');
+    await expect(status).toContainText('FROSTFIRE (MP2)');
+    await expect(page.locator('#touch-lift')).toBeVisible();
+    const fab = (await page.locator('#fullscreen').boundingBox())!;
+    const up = (await page.locator('#touch-up').boundingBox())!;
+    const down = (await page.locator('#touch-down').boundingBox())!;
+    const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a): boolean =>
+      a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    mkdirSync(SCREENS, { recursive: true });
+    await page.screenshot({ path: join(SCREENS, 'fullscreen-clears-touch-lift.png') });
+    expect(intersects(fab, up)).toBe(false);
+    expect(intersects(fab, down)).toBe(false);
+    await ctx.close();
+  });
 });
