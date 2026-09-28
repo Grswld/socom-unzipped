@@ -128,7 +128,15 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `F` | fullscreen, and back (also the button under the frame counter) |
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
 | the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
-| `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `C` (walking) | cycles stand, crouch and prone; on a touch screen, the **C** button beside the lift buttons |
+
+**Walking speeds are the game's own** (`READERC.ZAR/motion.rdr`, web sprint 2 W2.R2): 65 units a second at a full
+stick (6.5 m/s), 37 backing up, 65 strafing; 14.8 / 13.5 / 15 crouched; 11 / 5.5 prone; a half stick is half the
+speed, and the stick reaches full in a fifth of a second (`FUN_00586c10`). There is no boost on the ground. A kerb
+up to 6.5 units is stepped onto and a higher one stops you, a slope over 50 degrees is not climbed, and a drop of
+more than 8 is a fall under the game's gravity of 235 units a second squared (`dynamics.rdr`). `Space` does not
+jump: the game's jump is an animation's root motion, not yet read.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -293,8 +301,10 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   culled by region; and the engine draw order stays a switch until the pass that keeps a flare from cutting
   the wall behind it is found (the sprint spec's §7). The two facade modes are drawn alike, reCOM's
   `ComputeFacadeMatrix` being a stub.
-- **The walk is conservative.** The mover refuses any drop over 20 units (the probe's window, read as a
-  rule), so it never falls off a deck the game would let you fall from; the record's layer mask is probed
+- **The walk is the decompilation's reading, not yet measured.** The speeds, the stick's ramp and the fall are
+  the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement is web
+  sprint 2's W2.2c, and the crouch and prone root heights and body columns are estimates until it runs. There is
+  no jump. The record's layer mask is probed
   as all layers (the literal reading contradicts research 24's own walk); and the slot outlines are drawn
   without a depth test because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more
   than a unit off the floor under the centre).

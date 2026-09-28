@@ -407,7 +407,7 @@ export class Ui {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · F fullscreen · ${speed}`
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · C stance · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
   }

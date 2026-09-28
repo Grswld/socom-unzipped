@@ -37,7 +37,10 @@ export function glide(v0: number, target: number, rate: number, dt: number): { m
   return { moved: target * dt + (v0 - target) * integral, velocity: target + (v0 - target) * decay };
 }
 
-/** What the keys and the touch stick ask the walk for (`./walk`): forward and right on the ground plane, -1..1. */
+/**
+ * What the keys and the touch stick ask the walk for (`./walk`): forward and right on the ground plane, -1..1. The
+ * boost is the fly camera's gesture; the walk does not read it (W2.R2).
+ */
 export interface GroundWish { forward: number; right: number; boost: boolean }
 
 /**
@@ -76,11 +79,11 @@ const approach = (a: number, b: number, k: number, dt: number): number =>
 /**
  * Every code the camera consumes. A keydown on one of these is prevented, so the browser chords that
  * share them -- Ctrl+D bookmark, Ctrl+A select-all, Ctrl+S save, Space page-scroll -- never fire while
- * the viewer has the keyboard.
+ * the viewer has the keyboard. `C` is the walk's stance (`./walk`, W2.2b), which `WalkMode` reads itself.
  */
 const OWNED = new Set([
   'keyw', 'keya', 'keys', 'keyd', 'keyq', 'keye', 'space', 'shiftleft', 'shiftright',
-  'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
+  'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'keyc',
 ]);
 
 export interface FlyCameraOptions {
@@ -311,7 +314,8 @@ export class FlyCamera {
     if (this.down() || this.keys.has('keyq')) wish.y -= 1;
 
     const moving = wish.lengthSq() > 0;
-    const boosting = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
+    // The walk has no boost (W2.R2: the game's run is 65 and nothing faster), so neither has its field of view.
+    const boosting = !this.walking && moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
     const cruise = this.speed * this.speedMultiplier * (boosting ? SPRINT : 1);
     // One key or three, the speed is the same: clamping stops diagonals being 1.7x faster. It *clamps*
     // rather than normalises so that a stick pushed half way moves at half speed -- with keys the

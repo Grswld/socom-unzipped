@@ -3,6 +3,7 @@ import type { Pose } from './camera';
 import type { Backend } from './renderer';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
+import type { Stance } from './walk';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -47,6 +48,10 @@ export interface ViewerHook {
   walkFor(seconds: number, input?: { forward?: number; right?: number }): Pose;
   /** Walk mode: the mover's feet, or null in fly mode. */
   feet(): [number, number, number] | null;
+  /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */
+  stance(): Stance;
+  /** Sets the stance, walking or not; false for a name that is not a stance. */
+  setStance(stance: Stance): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
