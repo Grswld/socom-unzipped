@@ -2,20 +2,19 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-27, for the sitting after the one of 2026-09-27: 6 open O rows (7 answered or struck); 24 active rulings since 2026-09-27 (23 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-09-27, for the sitting after the one of 2026-09-27: 5 open O rows (8 answered or struck); 24 active rulings since 2026-09-27 (23 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-6 open, 7 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
+5 open, 8 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
 | O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 1 |
 | O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 0 |
 | O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | -1 |
-| O24 | One `git push origin sprint-16` from the main tree, right before the PR to `main` | the close-out is committed and both trees stand at `ff390365` (2026-09-28 01:29Z); the controller's seat cannot move to the main tree (the desktop app refused… | 2026-09-27 | 0 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 0 |
 | O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 0 |
 
@@ -28,6 +27,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - O8: A PLAYTEST sitting on the current build -- Closed by default 2026-09-27 (R321, R271's breaker: unanswered through the sittings of 2026-09-26 and 2026-09-27): a quick sitting done 2026-09-27 (issue #94 f…
 - O10: Public actions upstream -- Closed by default 2026-09-27 (R321, R271's breaker: unanswered through the sittings of 2026-09-26 and 2026-09-27): file later (owner, 2026-09-26): nothing file…
 - O15: Linux on real hardware -- Closed by default 2026-09-27 (R321, R271's breaker: unanswered through the sittings of 2026-09-26 and 2026-09-27): not yet (owner, 2026-09-26): CI and the VM s…
+- O24: One `git push origin sprint-16` from the main tree, right before the PR to `main` -- Done 2026-09-28: you pushed `sprint-16` three times (01:44Z, 01:51Z, 02:37Z -- the close-out, then two CI fixes); PR #97 merged 02:53Z as `v0.16.0` at…
 
 ## 2. The rulings since the last sitting
 
