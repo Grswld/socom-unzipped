@@ -12,13 +12,14 @@ import {
   type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
   type PlacedModel, type SceneNode,
 } from '@s2u/scene';
-import { parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
+import { BULLET_MARK, parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './walk';
 import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
 import { DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
+import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -146,6 +147,10 @@ export interface LoadedMap {
    * not read, with a diagnostic.
    */
   weapon?: { name: string; parts: LoadedMesh[]; points: WeaponPoint[] };
+  /** W2.4: the rifle reticle's bitmaps off `HUD2_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
+  reticle?: ReticleBitmaps | null;
+  /** W2.5: the shot's mark, `BULLET_MARK`'s bitmap off `EFFE_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
+  bulletMark?: Rgba | null;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -381,6 +386,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const probe = placement.ground ? groundGrid(placement.ground) : undefined;
   const measured = spawnsFor(name);
   const slots = spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe);
+  const reticle = readReticle(bytes, toc);
+  for (const line of reticle.diagnostics) notes.add(line);
+  const bulletMark = readEffectBitmap(bytes, toc, BULLET_MARK.texture);
+  for (const line of bulletMark.diagnostics) notes.add(line);
   return {
     archive: stem,
     lines: segments.result(),
@@ -402,6 +411,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     ...(weapon ? { weapon } : {}),
+    reticle: reticle.bitmaps,
+    bulletMark: bulletMark.rgba,
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -422,6 +433,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   if (map.body) out.push(...bodyTransferables(map.body));
+  for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy, map.bulletMark]) if (rgba) out.push(rgba.data.buffer);
   return out;
 }
 

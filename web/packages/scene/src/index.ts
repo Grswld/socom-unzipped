@@ -17,3 +17,6 @@ export * from './character';
 export * from './firePoint';
 export * from './ray';
 export * from './weapon';
+export * from './tuning';
+export * from './segment';
+export * from './weapons';

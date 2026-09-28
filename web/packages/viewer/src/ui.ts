@@ -28,7 +28,10 @@ export class Ui {
   private readonly loadingBar = find<HTMLElement>('loading-bar');
   private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
-  private readonly panelTitle = find<HTMLElement>('panel-title');
+  /** The ammo box (W2.5): bottom-left, shown while walking. */
+  private readonly ammo = find<HTMLElement>('ammo');
+  /** The loaded map's name, for the cog's tooltip; null before the first load. */
+  private mapName: string | null = null;
   /**
    * The continuous controls, as [input, readout, how to word the number]. Kept as one table for the same
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
@@ -193,10 +196,9 @@ export class Ui {
   }
 
   /**
-   * The whole overlay folded to one bar, and back. Two ways in, because they answer different wants:
-   * the backtick takes *everything* away for a clean picture, and this leaves a bar behind that says
-   * which map is on screen and can be tapped to bring the panel back -- which is the one that works
-   * with a thumb.
+   * The panel folded away behind the cog in the site bar, and back (W2.0). Two ways in, because they
+   * answer different wants: the backtick takes *everything* away for a clean picture, and the cog
+   * takes the panel only and stays where a thumb can tap it to bring the panel back.
    *
    * The state is remembered, in `localStorage` and so best-effort: a private window, blocked site data
    * or a browser that throws on access all end up with the panel open, which is the right default
@@ -218,16 +220,23 @@ export class Ui {
     document.body.classList.toggle('panel-collapsed', collapsed);
     this.panel.classList.toggle('is-folded', collapsed);
     this.panelToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
+    this.titleCog(collapsed);
+  }
+
+  private titleCog(collapsed: boolean): void {
+    this.panelToggle.title = collapsed
+      ? (this.mapName ? `show the settings · ${this.mapName}` : 'show the settings')
+      : 'hide the settings';
   }
 
   /**
-   * The title bar's label. It is always "Settings", so the strip says what pressing it gets you, with
-   * the map's name after it when one is loaded -- that is the bit worth reading while the panel is
-   * folded, and the bit that gives way to the ellipsis when there is no room for both.
+   * The loaded map's name, which the folded panel used to show in its title bar. The panel folds to
+   * nothing now (W2.0), so the name rides on the cog's tooltip while it is folded; open, the status
+   * line says it.
    */
   setPanelTitle(map: string | null): void {
-    this.panelTitle.textContent = map ? `Settings · ${map}` : 'Settings';
+    this.mapName = map;
+    this.titleCog(this.panelCollapsed());
   }
 
   /**
@@ -380,7 +389,7 @@ export class Ui {
   }
 
   /**
-   * The walk switch (W1.4): walk on the game's floors at the SEAL's eye height, or fly. It is not one of the
+   * The walk switch (W1.4): walk on the game's floors behind the SEAL, in the game's camera (W2.1), or fly. It is not one of the
    * overlay toggles -- it moves the camera, so `apply` must not replay it on every map load -- and it mirrors `G`
    * through `setWalk`. The box starts as the markup has it, like the toggles.
    */
@@ -395,26 +404,6 @@ export class Ui {
     find<HTMLInputElement>('walk').checked = on;
   }
 
-  // ---- W2.6: the shoulder camera's rig switch (not a toggle: `apply` must not replay it on every map load) ----------
-
-  /** The switch between research 18's measured ring (off, the default) and the disc's `cam_back` triple (on). */
-  onCameraRigSwitch(handler: (disc: boolean) => void): void {
-    const box = find<HTMLInputElement>('cam-disc');
-    box.checked = box.defaultChecked;
-    box.addEventListener('change', () => handler(box.checked));
-  }
-
-  setCameraRigSwitch(disc: boolean): void {
-    find<HTMLInputElement>('cam-disc').checked = disc;
-  }
-
-  /** The switch is offered once the disc's table has been read with a `cam_back` in it (W2.R6: the page says which). */
-  setCameraRigAvailable(on: boolean): void {
-    const box = find<HTMLInputElement>('cam-disc');
-    box.disabled = !on;
-    if (!on) box.checked = false;
-  }
-
   /**
    * The camera's line. It reads differently once the mouse is captured, because the way back out —
    * Esc — is the one control a player cannot guess from the others.
@@ -424,7 +413,7 @@ export class Ui {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk (space jump, C crouch) · F fullscreen · ${speed}`
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · space jump · C stance · V first person · click fire · R reload · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
     if (this.padConnected) this.hint.textContent += ' · pad: connected';
@@ -439,6 +428,12 @@ export class Ui {
     // site bar's GitHub tab.
     this.fpsNumber.textContent = String(Math.round(fps));
     this.fpsRest.textContent = ` fps · ${frameMs.toFixed(1)} ms`;
+  }
+
+  /** The ammo box's line (`./fire`'s `ammoText`), or null to hide it (not walking). Written only when it changes. */
+  setAmmo(text: string | null): void {
+    this.ammo.hidden = text === null;
+    if (text !== null && this.ammo.textContent !== text) this.ammo.textContent = text;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {

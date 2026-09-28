@@ -55,13 +55,11 @@ describe('the mover as the body reads it (WalkMode.snapshot)', () => {
     mode.setMode('walk');
     const s = mode.snapshot()!;
     expect(s).toMatchObject({ feet: [10, 0, 20], yaw: expect.closeTo(30, 9), vx: 0, vz: 0, vy: 0, airborne: false, crouched: false, landing: null, jumps: 0 });
-    // a part tick in hand: the feet are drawn where the eye is, between the last two ticks
+    // a part tick in hand: the feet are drawn between the last two ticks, as the camera is
     mode.walkFor(0.5, { forward: 1, right: 0, boost: false });
     mode.frame(0.004);
     const t = mode.snapshot()!;
-    expect(t.feet[1] + EYE_HEIGHT).toBeCloseTo(fly.pose().y, 9);
-    expect(t.feet[0]).toBeCloseTo(fly.pose().x, 9);
-    expect(t.feet[2]).toBeCloseTo(fly.pose().z, 9);
+    expect(t.feet).toEqual(mode.drawnFeet());
     expect(Math.hypot(t.vx, t.vz)).toBeGreaterThan(30);
   });
 
@@ -175,76 +173,57 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     play.setBody(view, map.body!);
     play.setClips({ clips: [still('seal_stand', 10), still('seal_walk', 10)], table: null });
     const slotA = [...view.group.position.toArray()];
-    play.frame(1 / 60, walk);
+    play.frame(1 / 60, walk, fly.camera);
     expect(view.group.visible).toBe(false);                 // fly mode, switch off
     expect(view.group.position.toArray()).toEqual(slotA);  // not played yet: W2.1's bind pose at slot A
     expect(play.animStats()).toBeNull();
     play.setFlyToggle(true);
-    play.frame(1 / 60, walk);
+    play.frame(1 / 60, walk, fly.camera);
     expect(view.group.visible).toBe(true);
     fly.setPose({ x: 5, y: 40, z: 6, yaw: -45, pitch: 0 });
     walk.setMode('walk');
-    play.frame(1 / 60, walk);
+    play.frame(1 / 60, walk, fly.camera);
     expect(view.group.visible).toBe(true);
     expect(view.group.position.toArray()).toEqual([5, 0, 6]);
     expect(view.group.rotation.y).toBeCloseTo(-Math.PI / 4, 9);
     expect(play.animStats()).toMatchObject({ clip: 'seal_stand' });
     play.setFlyToggle(false);
     walk.setMode('fly');
-    play.frame(1 / 60, walk);
+    play.frame(1 / 60, walk, fly.camera);
     expect(view.group.visible).toBe(false);
     play.setFlyToggle(true);
-    play.frame(1 / 60, walk);
+    play.frame(1 / 60, walk, fly.camera);
     expect(view.group.visible).toBe(true);
     expect(view.group.position.toArray()).toEqual([5, 0, 6]);  // where the play left it
     view.dispose();
     walk.unbindKey();
   });
 
-  it('draws the frame over the shoulder in play, from the eye when aiming, with the fly camera in fly mode (W2.6)', async () => {
+  it('reports the view: the game camera in play, the aim (first person, the body hidden) while held, fly otherwise', async () => {
     const map = await loaded();
     const fly = new FlyCamera(canvas());
-    fly.setClipPlanes(4, 5000);
     const walk = new WalkMode(fly);
     walk.setGround(GROUND, [0, 0, 0]);
     const view = buildBody(map.body!, map, DEFAULT_LIGHTING);
     const play = new Play();
     play.setBody(view, map.body!);
     play.setClips({ clips: [still('seal_stand', 10)], table: null });
-    expect(play.frame(1 / 60, walk, fly.camera)).toBe(fly.camera);
-    expect(play.viewStats()).toMatchObject({ kind: 'fly', rig: 'measured' });
+    play.frame(1 / 60, walk, fly.camera);
+    expect(play.viewStats().kind).toBe('fly');
     fly.setPose({ x: 5, y: 40, z: 6, yaw: 0, pitch: 0 });
     walk.setMode('walk');
-    const third = play.frame(1 / 60, walk, fly.camera);
-    expect(third).not.toBe(fly.camera);
-    expect(play.viewStats().kind).toBe('third');
-    expect(third.far).toBe(5000);                                        // the fly camera's projection
-    // the measured rig over the stand clip's root at 11: 25 up, 23.1 behind, riding the root's 11 - 11.4845
-    expect(third.position.x).toBeCloseTo(5, 6);
-    expect(third.position.z).toBeCloseTo(6 + 23.1, 6);
-    expect(third.position.y).toBeCloseTo(25 + 11 - 11.4845, 4);
-    expect(view.group.visible).toBe(true);
-    // the disc's rig is a switch, refused until the table is read
-    expect(play.useDiscRig(true)).toBe(false);
-    play.setCameraTable({ side: 0, height: 30, dist: 10, aim: [0, 30, -2] }, 1);
-    expect(play.useDiscRig(true)).toBe(true);
     play.frame(1 / 60, walk, fly.camera);
-    expect(play.viewStats().rig).toBe('disc');
-    expect(third.position.z).toBeCloseTo(6 + 10, 6);
-    play.useDiscRig(false);
-    // aiming: the view from the eye (no eye gear on the bare fixture: the walk's eye), along the look; the body hidden
-    play.setAimLane(true);
-    const aim = play.frame(1 / 60, walk, fly.camera);
+    expect(play.viewStats().kind).toBe('third');
+    expect(view.group.visible).toBe(true);
+    walk.setAiming(true);
+    play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('aim');
     expect(view.group.visible).toBe(false);
-    expect(aim.position.toArray()).toEqual(fly.camera.position.toArray());
-    play.setAimLane(false);
-    expect(play.setAimForced(true)).toBe('aim');                         // the hook's, over the lanes
+    walk.setAiming(false);
     play.frame(1 / 60, walk, fly.camera);
-    expect(play.viewStats().kind).toBe('aim');
-    expect(play.setAimForced(null)).toBe('third');
+    expect(play.viewStats().kind).toBe('third');
     walk.setMode('fly');
-    expect(play.frame(1 / 60, walk, fly.camera)).toBe(fly.camera);
+    play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('fly');
     view.dispose();
     walk.unbindKey();

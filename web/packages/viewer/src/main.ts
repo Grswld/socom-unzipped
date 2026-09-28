@@ -14,15 +14,16 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
-import { WalkMode } from './walk';
+import { stanceBody, WalkMode } from './walk';
+import { aimPoint } from './playerCamera';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
+import { Reticle } from './reticle';
 import { buildBody, type BodyView } from './bodyView';
-import { RECOIL_PLACEHOLDER, Shooter, type Mover, type ShotRecord } from './shot';
+import { ammoText, Fire } from './fire';
 import { Play, playActions } from './play';
 import { PLAY_CLIPS } from './animator';
-import { sealTuning } from './physics';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -52,31 +53,31 @@ const scene = new Scene();
 const fly = new FlyCamera(canvas, {
   onSpeedChange: (m) => ui.setCameraHint(m, fly.isLocked()),
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
+  onFire: (down) => trigger(down),
 });
 const overlays = new Overlays(scene);
-/** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
-const walk = new WalkMode(fly, (on) => ui.setWalk(on));
-const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-
 /**
- * W2.4 (`./shot`): the held weapon, the fire point and the shot. The left button fires in walk mode once the mouse
- * is captured -- the click that captures it is the camera's (`camera.ts`), so it is not a shot; the hook's `fire`
- * is the same shot for Playwright, which has no pointer lock. The kick is `RECOIL_PLACEHOLDER`'s: none until W2.5.
+ * Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the game's third-person camera
+ * follows it (W2.1, `./playerCamera`), `V` for first person.
  */
-const shooter = new Shooter();
-scene.add(shooter.group);
-const mover = (): Mover => {
-  const pose = fly.pose();
-  return { mode: walk.mode(), feet: walk.feet(), eye: [pose.x, pose.y, pose.z], yaw: pose.yaw, pitch: pose.pitch };
-};
-const fire = (): ShotRecord | null => {
-  const shot = shooter.fire(mover());
-  if (shot && RECOIL_PLACEHOLDER.kickPitchDegrees !== 0) fly.setPose({ pitch: fly.pose().pitch + RECOIL_PLACEHOLDER.kickPitchDegrees });
-  return shot;
-};
-canvas.addEventListener('pointerdown', (e) => {
-  if (e.button === 0 && e.pointerType === 'mouse' && fly.isLocked() && walk.mode() === 'walk') fire();
-});
+const walk = new WalkMode(fly, (on) => ui.setWalk(on));
+/** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
+const reticle = new Reticle();
+/**
+ * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
+ * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
+ */
+const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
+scene.add(fire.object);
+fire.bindKey();
+/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
+function trigger(down: boolean): void {
+  if (down) fire.pull();
+  else fire.release();
+}
+/** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
+const RUN_SPEED = stanceBody('stand').bands.forward;
+const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
@@ -174,17 +175,6 @@ function askIndex(from: SourceRequest): void {
   ask({ kind: 'index', id: wantedIndex, source: from });
 }
 
-/**
- * The seal table from the disc (W2.3a, W2.R6): asked of each source once the picker has switched to it -- the served
- * tree's `RUN/READERC.ZAR` when it has one, the disc image's always -- and handed to the walk; the mover runs on the
- * defaults until it arrives, and on them when the source has none.
- */
-let wantedDynamics = -1;
-function askDynamics(from: SourceRequest): void {
-  wantedDynamics = ++requests;
-  ask({ kind: 'dynamics', id: wantedDynamics, source: from });
-}
-
 // ---- W2.2b: the play mode -- the walk with the body, the game's clips on the mover (`./play`, `./animator`) ---------
 /**
  * The body and its clips: the map's body (`show`), the source's clips (`RUN/MOTION_P.ZAR` and `motion.rdr`, asked of
@@ -198,7 +188,7 @@ function askPlay(from: SourceRequest): void {
   ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
 }
 
-// ---- W2.6: the shoulder camera, the aim view, and the pad's lanes in play (`./play`, `./thirdPerson`) --------------
+// ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
 /**
  * The aim view is held: the pad's aim lane (L1, W2.R5) or the right mouse button on the canvas (a `mousedown`, which
  * fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
@@ -217,10 +207,8 @@ function playLanes(before: Input, after: Input): void {
     if (act.jump) walk.jump();
     if (act.crouch) walk.crouch();
   }
-  play.setAimLane(act.aim || mouseAim);
+  walk.setAiming(walk.mode() === 'walk' && (act.aim || mouseAim));
 }
-/** The rig switch: the disc's cam_back, or research 18's measured ring (the default); the switch mirrors the refusal. */
-ui.onCameraRigSwitch((on) => { if (!play.useDiscRig(on)) ui.setCameraRigSwitch(false); });
 
 /**
  * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
@@ -246,16 +234,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id !== wantedIndex) return;
     source = wantedIndexFrom;
     showMaps(message.maps);
-    askDynamics(source);
     askPlay(source);
-    return;
-  }
-  if (message.kind === 'dynamics') {
-    if (message.id !== wantedDynamics) return;
-    walk.setTuning(message.tuning);
-    // W2.6: the same file's cam_back rig and cam_tether_stiff for the shoulder camera; the switch offers the rig when read
-    play.setCameraTable(message.camera, sealTuning(message.tuning).cam_tether_stiff);
-    ui.setCameraRigAvailable(message.camera !== null);
     return;
   }
   if (message.kind === 'play') {
@@ -330,7 +309,7 @@ function padFrame(): void {
   padLast = pad;
   padMerged = input;
 }
-attachTouchControls(touchLane);
+attachTouchControls(touchLane, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
 walk.bindKey();
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
@@ -462,14 +441,25 @@ async function boot(): Promise<void> {
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
-    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
-    shooter.frame(dt, mover());     // W2.4: the held weapon at the fire point, along the aim
-    // W2.2b/W2.6: the body at the feet in its clip, and the camera the frame is drawn with -- over the shoulder in
-    // play, at the eyes when aiming, the fly camera otherwise (which stays the look and the walk's eye throughout)
-    const camera = play.frame(dt, walk, fly.camera);
-    shooter.follow(camera, play.viewStats().kind);   // the held weapon rides the drawn camera in the aim view only
-    view?.frame(camera, dt);       // the flares turn, the LODs pick, the oceans scroll -- before the draw
-    render(scene, camera);
+    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
+    const walking = walk.mode() === 'walk';
+    play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
+    if (!walking) fire.release();  // leaving the walk lets a held trigger go
+    fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
+    ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
+    view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    render(scene, fly.camera);
+    const aim = walk.aim();
+    if (aim) {
+      // The reticle on the aim point (FUN_00297410's, 1000 ahead along the look): the frame's centre at rest.
+      fly.camera.updateMatrixWorld();
+      const [nx, ny] = aimPoint(fly.camera, aim);
+      reticle.setAimPoint(nx, ny);
+      // The run's spread (W2.4's estimate) or a round's knock (W2.5, `ZWEAPON.ZAR/zweapon.rdr`), the larger.
+      reticle.setSpread(Math.max(walk.speed() / RUN_SPEED, fire.spread()));
+    }
+    reticle.setVisible(walking);
+    reticle.render(created.renderer);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -554,6 +544,9 @@ function show(map: LoadedMap): void {
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
   }
+  reticle.setBitmaps(map.reticle);
+  fire.reset();                                   // a new map: no marks, full magazines
+  fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
   scene.add(built.group);
@@ -605,11 +598,9 @@ function show(map: LoadedMap): void {
   // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
   // just placed, or at spawn A's (x, z) on the stand's floor (A's recorded y where the probe found none).
   walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
-  // W2.4: the shot's hull and the held weapon; the count starts again on every map.
-  shooter.setMap(map.ground, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null);
 
   ui.select(map.path);
-  ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
+  ui.setPanelTitle(`${map.name} (${map.archive})`);   // the folded cog's tooltip
   ui.setDiagnostics(map.diagnostics);
 
   // The status line is written **when the world is on screen**, not when the map is decoded. Everything
@@ -673,7 +664,6 @@ window.__viewer = {
   setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
   stats: () => ({
-    tuning: walk.tuningSource(),
     triangles: view?.triangles ?? 0,
     backend,
     diagnostics: loaded?.diagnostics ?? [],
@@ -689,10 +679,8 @@ window.__viewer = {
     stand: loaded?.stand ?? null,
     slots: overlays.slotCounts(),
     body: body ? { ...body.stats, visible: body.group.visible } : null,
-    shots: shooter.stats().shots,
-    lastShot: shooter.stats().lastShot,
     anim: play.animStats(),
-    camera: play.viewStats(),
+    view: play.viewStats(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -708,8 +696,13 @@ window.__viewer = {
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
-  fire: () => fire(),
-  setAim: (on) => play.setAimForced(on),
-  setCameraRig: (rig) => { const ok = play.useDiscRig(rig === 'disc'); ui.setCameraRigSwitch(play.viewStats().rig === 'disc'); return ok; },
+  setAim: (on) => { walk.setAiming(on); return walk.view(); },
+  reticle: () => reticle.state(),
+  stance: () => walk.stance(),
+  setStance: (stance) => walk.setStance(stance),
+  camera: () => walk.cameraState(),
+  setView: (view) => walk.setView(view),
+  fire: () => fire.state(),
+  shoot: () => fire.shoot(),
   revision,
 } satisfies ViewerHook;

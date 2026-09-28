@@ -2,13 +2,14 @@ import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Input } from './gamepad';
 import type { Backend } from './renderer';
-import type { ShotRecord } from './shot';
+import type { FireState, Shot } from './fire';
+import type { Rect } from './reticle';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
-import type { MoverState } from './walk';
+import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
-import type { ViewKind, ViewStats } from './play';
+import type { ViewStats } from './play';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -40,11 +41,6 @@ export interface ViewerHook {
      * whether it is shown; null on a map whose body did not decode.
      */
     body: (BodyView['stats'] & { visible: boolean }) | null;
-    /** The seal table the walk runs on (W2.3a, W2.R6): the disc's `dynamics.rdr` over the defaults, or the defaults. */
-    tuning: 'disc' | 'defaults';
-    /** W2.4 (`./shot`): the shots fired on this map, and the last one -- its fire point, its end, whether it hit the hull. */
-    shots: number;
-    lastShot: ShotRecord | null;
     /**
      * The body's clips (W2.2b, `./animator`): the clip playing, its fractional key, the cross-fade's weight (1 settled)
      * and the clip it leaves, the keys a second, the upper-body layer; null with no body, no `MOTION_P.ZAR`, or before
@@ -52,11 +48,10 @@ export interface ViewerHook {
      */
     anim: AnimStats | null;
     /**
-     * The camera the frame is drawn with (W2.6, `./play`): `third` over the shoulder in play, `aim` from the body's
-     * eyes, `fly` otherwise; the rig it runs on (`measured`, research 18's ring, or the disc's `cam_back`), whether the
-     * disc's was read, the tether's stiffness, and its pose. `pose()` stays the look and the walk's eye.
+     * The view the frame is drawn with (`./play`): `third` (the game's camera) in play, `aim` while the aim is held
+     * (first person), `fly` otherwise, and the drawn camera's pose. The walk's camera in detail is `camera()`.
      */
-    camera: ViewStats;
+    view: ViewStats;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
@@ -80,18 +75,34 @@ export interface ViewerHook {
    * on the last frame -- the pad's input merged with the touch stick's (`e2e/pad.spec.ts`).
    */
   pad(): { id: string | null; input: Input };
-  /** Walk mode (W2.3a): in the air, sliding, crouched, and the last landing's class and speed; null in fly mode. */
+  /** Walk mode: in the air, crouched, the stance, and the last landing's class and speed; null in fly mode. */
   mover(): MoverState | null;
-  /** Walk mode: the jump `Space` makes (a named placeholder impulse); false when flying or with no footing. */
+  /** Walk mode: the jump (a named placeholder impulse); false when flying or in the air. */
   jump(): boolean;
-  /** Walk mode: crouch (true), stand (false) or toggle, as `C` does; the stance after, false when flying. */
+  /** Walk mode: crouch (true), stand (false) or toggle stand and crouch; crouched after, false when flying. */
   crouch(on?: boolean): boolean;
-  /** W2.4: one shot from the current pose, as the left button fires it; null in fly mode (`./shot`). */
-  fire(): ShotRecord | null;
-  /** W2.6: the aim view on or off over the lanes (L1, the right mouse button), or null to hand back; the camera kind after. */
-  setAim(on: boolean | null): ViewKind;
-  /** W2.6: the shoulder camera's rig; false, and the measurement, when the disc's `cam_back` was not read. */
-  setCameraRig(rig: 'measured' | 'disc'): boolean;
+  /** The aim view (first person while held: L1, the right mouse button), on or off; the view after. */
+  setAim(on: boolean): WalkView;
+  /** W2.4: the reticle -- drawn or not, and its rectangle in the drawing buffer's pixels (y down) on `frame`. */
+  reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
+  /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */
+  stance(): Stance;
+  /** Sets the stance, walking or not; false for a name that is not a stance. */
+  setStance(stance: Stance): boolean;
+  /**
+   * W2.1: the walk's camera as last drawn -- third or first person, the eye and the look-at target (world), the root
+   * height the target stands on, the camera's pitch in degrees -- or null in fly mode.
+   */
+  camera(): WalkCameraState | null;
+  /** W2.1: third person (the game's camera, the default) or first person (`V`); false for a name that is not one. */
+  setView(view: WalkView): boolean;
+  /**
+   * W2.5 (`./fire`): the shots fired, the magazine, where the last round landed (null for a miss or before one), and
+   * the marks on the walls.
+   */
+  fire(): FireState;
+  /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
+  shoot(): Shot | null;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

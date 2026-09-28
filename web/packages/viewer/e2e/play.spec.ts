@@ -52,7 +52,7 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
 
   // Fly mode: the body is not shown (the panel's switch is off), the fly camera draws.
   expect((await stats(page)).body?.visible).toBe(false);
-  expect((await stats(page)).camera.kind).toBe('fly');
+  expect((await stats(page)).view.kind).toBe('fly');
 
   // Walk at A: the body at the feet, in the stand clip once the clips are in, the shoulder camera drawing.
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -62,11 +62,9 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
   const standing = await stats(page);
   expect(standing.body?.visible).toBe(true);
   expect(standing.body?.at).toEqual(SPAWN_A);
-  expect(standing.camera.kind).toBe('third');
-  // the hook's pose stays the look and the walk's eye (walk.spec.ts reads it there)
-  expect((await page.evaluate(() => window.__viewer.pose())).y).toBeCloseTo(SPAWN_A[1] + EYE, 3);
-  // over the shoulder: behind the feet along the look, above them, within the measured rig's reach (25 up, 23.1 back)
-  const cam = standing.camera.pose;
+  expect(standing.view.kind).toBe('third');
+  // the game's camera (FUN_0029a950): behind the feet along the look and above them, about 25 back and 25.7 up
+  const cam = standing.view.pose;
   const fx = -Math.sin(YAW_TO_1 * Math.PI / 180), fz = -Math.cos(YAW_TO_1 * Math.PI / 180);
   const back = -((cam.x - SPAWN_A[0]) * fx + (cam.z - SPAWN_A[2]) * fz);
   expect(back).toBeGreaterThan(0);
@@ -106,23 +104,23 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
   await page.screenshot({ path: join(SCREENS, 'frostfire-play-shoulder.png') });
 
   // Aiming: from the eyes, the body hidden; then back over the shoulder.
-  expect(await page.evaluate(() => window.__viewer.setAim(true))).toBe('aim');
+  expect(await page.evaluate(() => window.__viewer.setAim(true))).toBe('first');
   await settle(page);
   const aiming = await stats(page);
-  expect(aiming.camera.kind).toBe('aim');
+  expect(aiming.view.kind).toBe('aim');
   expect(aiming.body?.visible).toBe(false);
   const feet = (await page.evaluate(() => window.__viewer.feet()))!;
-  expect(aiming.camera.pose.y - feet[1]).toBeGreaterThan(15);         // the eyes, 18.16 over the feet standing (78 §6.3)
-  expect(aiming.camera.pose.y - feet[1]).toBeLessThan(20);
+  expect(aiming.view.pose.y - feet[1]).toBeGreaterThan(15);         // the head, 18.3 over the feet standing (./stature)
+  expect(aiming.view.pose.y - feet[1]).toBeLessThan(20);
   await page.screenshot({ path: join(SCREENS, 'frostfire-play-aim.png') });
-  expect(await page.evaluate(() => window.__viewer.setAim(null))).toBe('third');
+  expect(await page.evaluate(() => window.__viewer.setAim(false))).toBe('third');
 
   // Fly mode again: the body hidden, the fly camera drawing, left where the eye was.
   const eye = await page.evaluate(() => window.__viewer.pose());
   expect(await page.evaluate(() => window.__viewer.setMode('fly'))).toBe(true);
   await settle(page);
   const flying = await stats(page);
-  expect(flying.camera.kind).toBe('fly');
+  expect(flying.view.kind).toBe('fly');
   expect(flying.body?.visible).toBe(false);
   expect(await page.evaluate(() => window.__viewer.pose())).toEqual(eye);
 
