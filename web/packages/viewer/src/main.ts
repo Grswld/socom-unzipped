@@ -22,8 +22,12 @@ import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { buildBody, type BodyView } from './bodyView';
 import { ammoText, Fire } from './fire';
+
+/** The ammo box's line with the grenade up: `M67 x<left>`, as the console's box names the item and its count. */
+const grenadeText = (left: number): string => `M67 x${left}`;
 import { Play, playActions } from './play';
 import { PLAY_CLIPS } from './animator';
+import { GrenadeThrower } from './grenade';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -70,8 +74,26 @@ const reticle = new Reticle();
 const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
 scene.add(fire.object);
 fire.bindKey();
-/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
+/**
+ * The frag grenade (`./grenade`, web/docs/research/85): `4` takes it up (`1` the rifle), the trigger throws it --
+ * held for power, let go to throw; its flight over the walk's hull, its fuse, its explosion.
+ */
+const grenade = new GrenadeThrower({ grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view() });
+scene.add(grenade.object);
+grenade.bindKey();
+grenade.on('equip', () => fire.release());           // the slot changes under a held trigger: let it go
+grenade.on('explode', (info) => {
+  // MERGE(look): the game's screen shake by distance (research 83, `look.ts`) -- on the integration branch:
+  //   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
+  void info;
+});
+/** The trigger, pressed or let go: the grenade's while it is up, else the rifle's -- only while walking. */
 function trigger(down: boolean): void {
+  if (grenade.equipped()) {
+    if (down) grenade.pull();
+    else grenade.release();
+    return;
+  }
   if (down) fire.pull();
   else fire.release();
 }
@@ -446,7 +468,8 @@ async function boot(): Promise<void> {
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
-    ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
+    grenade.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
+    ui.setAmmo(walking ? (grenade.equipped() ? grenadeText(grenade.stats().left) : ammoText(fire.state().magazine)) : null);
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -549,6 +572,7 @@ function show(map: LoadedMap): void {
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
+  grenade.setMap(built.grenade, map.grenade);     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
@@ -704,5 +728,10 @@ window.__viewer = {
   setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
+  grenade: () => grenade.stats(),
+  throwGrenade: (holdSeconds = 1, immediate = true) => grenade.throwNow(holdSeconds, immediate),
+  equipGrenade: (on) => grenade.equip(on),
+  grenadeTrail: (on) => grenade.setTrail(on),
+  resetGrenades: () => grenade.reset(),
   revision,
 } satisfies ViewerHook;
