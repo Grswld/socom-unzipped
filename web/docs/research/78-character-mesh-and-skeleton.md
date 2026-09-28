@@ -301,8 +301,12 @@ upper lid, the blink closing it.
 `skinSubMesh` is the `0x52` arithmetic for any palette. The viewer takes the bind positions and hands three a
 `SkinnedMesh` per sub-mesh on one `Skeleton` of 26 `Bone`s, `boneInverses` the inverse bind worlds: in the bind pose
 every bone matrix is the placement itself, so what is drawn is the decoded vertex (`viewer/test/body.test.ts`). three
-skins with four influences: the one five-bone vertex of seal_A_scuba keeps its four largest, renormalised
-(`topInfluences`, the dropped weight reported in `stats().body.droppedWeight`). The gear hangs off its bones under its
+skins with four influences: a vertex with more keeps its four largest, renormalised (`topInfluences`, the dropped
+weight in `stats().body.droppedWeight`). **[data]** In the bind pose the cut costs nothing -- every copy lands on one
+point, whatever the weights. Posed, it will: 1,257 vertices of the 411 meshes have five or six influences, and the
+largest weight dropped is 0.151 (MP51's `seal_B_woodland`, a player body); seal_A_scuba's one five-bone vertex weighs
+0 on its fifth, so its cut is exact. W2.2 decides whether a posed body needs the full sum (`skinSubMesh` on the CPU,
+or a six-influence shader). The gear hangs off its bones under its
 offset, so a motion (W2.2) moves it with them.
 
 ### 6.2 Shaded, with two placeholders
