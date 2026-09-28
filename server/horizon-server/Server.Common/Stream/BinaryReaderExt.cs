@@ -8,6 +8,8 @@ namespace Server.Common
 {
     public static class BinaryReaderExt
     {
+        static readonly Encoding FieldEncoding =
+            Encoding.GetEncoding("utf-8", EncoderFallback.ReplacementFallback, new DecoderReplacementFallback("?"));
 
         public static T Read<T>(this Stream.MessageReader reader)
         {
@@ -29,8 +31,10 @@ namespace Server.Common
                 if (buffer[i] == 0)
                     break;
 
+            // LOCAL (socom_pc): an invalid byte reads as one '?', never as U+FFFD (three bytes), so the value
+            // re-encodes within the field it came from.
             if (i > 0)
-                return Encoding.UTF8.GetString(buffer, 0, i);
+                return FieldEncoding.GetString(buffer, 0, i);
             else
                 return string.Empty;
         }

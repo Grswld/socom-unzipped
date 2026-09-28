@@ -22,7 +22,8 @@ namespace RT.Models
             while (reader.BaseStream.Position < reader.BaseStream.Length)
             {
                 var message = BaseScertMessage.Instantiate(reader);
-                Messages.Add(message);
+                if (message != null) // LOCAL (socom_pc): a sub-message that did not deserialize is dropped
+                    Messages.Add(message);
             }
         }
 

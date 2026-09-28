@@ -51,49 +51,14 @@ namespace Server.Pipeline.Tcp
         /// <returns>The <see cref="IByteBuffer" /> which represents the frame or <c>null</c> if no frame could be created.</returns>
         protected virtual object Decode(IChannelHandlerContext context, IByteBuffer input)
         {
-            // 
-            //input.MarkReaderIndex();
-            byte id = input.GetByte(input.ReaderIndex);
-            byte[] hash = null;
-            long frameLength = input.GetShortLE(input.ReaderIndex + 1);
-            int totalLength = 3;
-
-            //
             if (!context.HasAttribute(Constants.SCERT_CLIENT))
                 context.GetAttribute(Constants.SCERT_CLIENT).Set(new Attribute.ScertClientAttribute());
             var scertClient = context.GetAttribute(Constants.SCERT_CLIENT).Get();
 
-            if (frameLength <= 0)
-                return BaseScertMessage.Instantiate((RT_MSG_TYPE)(id & 0x7F), null, new byte[0], scertClient.MediusVersion, scertClient.CipherService);
-
-            if (id >= 0x80)
-            {
-                hash = new byte[4];
-                input.GetBytes(input.ReaderIndex + 3, hash);
-                totalLength += 4;
-                id &= 0x7F;
-            }
-
-            if (frameLength < 0)
-            {
-                throw new CorruptedFrameException("negative pre-adjustment length field: " + frameLength);
-            }
-
-            // never overflows because it's less than maxFrameLength
-            int frameLengthInt = (int)frameLength;
-            if (input.ReadableBytes < frameLengthInt)
-            {
-                //input.ResetReaderIndex();
+            // LOCAL (socom_pc): bounded decode (unsigned length, header counted, undecodable bodies dropped): ScertFrame.
+            if (!ScertFrame.TryDecode(input, scertClient.MediusVersion, scertClient.CipherService, out var message))
                 return null;
-            }
-
-            // extract frame
-            byte[] messageContents = new byte[frameLengthInt];
-            input.GetBytes(input.ReaderIndex + totalLength, messageContents);
-
-            // 
-            input.SetReaderIndex(input.ReaderIndex + totalLength + frameLengthInt);
-            return BaseScertMessage.Instantiate((RT_MSG_TYPE)id, hash, messageContents, scertClient.MediusVersion, scertClient.CipherService);
+            return message;
         }
 
     }
