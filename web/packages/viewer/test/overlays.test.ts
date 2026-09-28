@@ -8,7 +8,7 @@ import { Overlays, SLOT_ARROW, SLOT_CELL, slotSegments } from '../src/overlays';
  * an arrow along its facing, in the side's colour, under the same toggle as the measured A and B.
  */
 const slot = (side: 0 | 1, x: number, y: number, z: number, step: number, index = 0): SpawnSlot => ({
-  side, index, position: [x, y, z], step, facing: facingVector(step), loc: { map: 0, x: 0, z: 0 },
+  side, index, position: [x, y, z], onFloor: true, step, facing: facingVector(step), loc: { map: 0, x: 0, z: 0 },
 });
 
 /** The segments of a position list, each as its two endpoints rounded to a thousandth. */
@@ -65,7 +65,8 @@ describe('Overlays.placeSpawns with the disc\'s slots', () => {
     const drawn = lines(scene);
     expect(drawn.map((l) => (l.material as LineBasicMaterial).color.getHex()).sort()).toEqual([0x4d9bff, 0xff6a3d].sort());
     expect(drawn.map((l) => l.geometry.getAttribute('position').count).sort()).toEqual([14, 28]);
-    // The y is not the file's (75 §4), so a slot is not hidden behind a floor it may be drawn under.
+    // Not depth-tested (W1.4b): the outline and the arrow are flat at the floor under the slot's centre, and on a
+    // slope or a step part of them runs under the ground; a slot off the probe keeps an estimate a floor could hide.
     for (const l of drawn) expect((l.material as LineBasicMaterial).depthTest).toBe(false);
     // ... and last of all, so no blended world draw placed after it in the walk paints over it.
     for (const l of drawn) expect(l.renderOrder).toBe(Number.MAX_SAFE_INTEGER);

@@ -75,11 +75,13 @@ for (const { value, label } of options) {
 
   const s = await page.evaluate(
     () => (window as unknown as { __viewer: ViewerHook }).__viewer.stats());
-  // Stand at a spawn and look level, the way a player first sees the map.
+  // Stand at a spawn and look level, the way a player first sees the map: at the viewer's opening stand, 20 over
+  // the ground probe's floor at A (W1.4b), or 20 over A's recorded y where the page has no stand.
   await page.evaluate(() => {
-    const w = window as unknown as { __viewer: { stats(): { spawns: { a: [number, number, number] } | null }; setCamera(p: Record<string, number>): void } };
-    const a = w.__viewer.stats().spawns?.a;
-    if (a) w.__viewer.setCamera({ x: a[0], y: a[1] + 20, z: a[2], yaw: 40, pitch: -4 });
+    const w = window as unknown as { __viewer: ViewerHook };
+    const { spawns, stand } = w.__viewer.stats();
+    const at = stand?.position ?? (spawns ? [spawns.a[0], spawns.a[1] + 20, spawns.a[2]] : null);
+    if (at) w.__viewer.setCamera({ x: at[0], y: at[1], z: at[2], yaw: 40, pitch: -4 });
   });
   await settle(page);
   await settle(page);

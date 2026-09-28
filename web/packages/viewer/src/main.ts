@@ -15,6 +15,7 @@ import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
+import { openingStand } from './stand';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -35,11 +36,6 @@ const RATIO_FLOOR = 0.75;
 const SLOW_MS = 24, FAST_MS = 12, ADAPT_EVERY_MS = 2000;
 /** The game's own projection, framebuffer-wide: `tan(hfov) / tan(vfov)` at the authored half-angles. */
 const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
-/**
- * Eye height above a spawn's measured y. That y is the feet only on Frostfire and Vigilance; on the other 20
- * maps it is the orbit camera's, 25 above the floor (`spawns.ts`), so the stand is 45 above it there.
- */
-const EYE = 20;
 
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('the page has no #view canvas');
@@ -428,9 +424,9 @@ function show(map: LoadedMap): void {
   // Held rather than built: the hull is tens of thousands of segments on the larger maps and the
   // checkbox is off by default, so `overlays` makes the object the first time it is switched on.
   overlays.placeCollision(map.collision);
-  // The measured table (`@s2u/scene`'s `spawnsFor`, keyed by the name `mission.rdr` shows) stays the
-  // camera's stand; the overlay draws it beside the disc's spawn slots, read in the worker from
-  // `AIMAPS.MPS` (W1.5b). Which slot a player gets is game logic, so the stand is not moved (W1.R9).
+  // The measured table (`@s2u/scene`'s `spawnsFor`, keyed by the name `mission.rdr` shows) still places the
+  // camera, at A's (x, z) below; the overlay draws it beside the disc's spawn slots, read in the worker from
+  // `AIMAPS.MPS` (W1.5b). Which slot a player gets is game logic, so the stand is not moved to one (W1.R9).
   const spawn: Spawns | undefined = spawnsFor(map.name);
   overlays.placeSpawns(spawn ?? null, map.slots);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
@@ -443,8 +439,11 @@ function show(map: LoadedMap): void {
   if (map.camera) fly.setFov(2 * map.camera.vfov * 180 / Math.PI);
   fit?.();                                        // the PS2 presentation's aspect is the map's own
 
-  if (spawn) {
-    fly.lookFrom([spawn.a[0], spawn.a[1] + EYE, spawn.a[2]], spawn.b);
+  // W1.4b: the stand the worker worked out (`LoadedMap.stand`, `./stand`): A's (x, z), `EYE` over the ground
+  // probe's floor there, not over A's recorded y -- the orbit camera's on 20 maps, 25 over that floor.
+  const stand = spawn ? map.stand ?? openingStand(spawn.a, undefined) : null;
+  if (spawn && stand) {
+    fly.lookFrom(stand.position, spawn.b);
   } else {
     // No measured spawns for this map yet: stand off its own extent and look at the middle of it.
     const [cx, cy, cz] = centre(view.box);
@@ -452,8 +451,8 @@ function show(map: LoadedMap): void {
     fly.lookFrom([cx, cy + reach * 0.4, cz + reach * 0.6], [cx, cy, cz]);
   }
   // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
-  // just placed, or on spawn A.
-  walk.setGround(map.ground, spawn ? spawn.a : null);
+  // just placed, or at spawn A's (x, z) on the stand's floor (A's recorded y where the probe found none).
+  walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
 
   ui.select(map.path);
   ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
@@ -532,6 +531,7 @@ window.__viewer = {
     alternateDraws: view?.alternateDraws ?? 0,
     detailDraws: view?.detailDraws ?? 0,
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
+    stand: loaded?.stand ?? null,
     slots: overlays.slotCounts(),
   }),
   toggles: () => ui.toggles(),

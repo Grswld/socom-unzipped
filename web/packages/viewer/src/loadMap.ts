@@ -15,7 +15,8 @@ import {
 import { parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
-import { packGround, type GroundData } from './walk';
+import { groundGrid, packGround, type GroundData } from './walk';
+import { openingStand, type Stand } from './stand';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -115,9 +116,9 @@ export interface LoadedMap {
   collision: CollisionLines;
   /**
    * The disc's spawn slots (W1.5b): `AIMAPS.MPS`'s spawn list, 24 a side with their facing, placed by
-   * `placeSpawnSlots` (web/docs/research/75 §5.5-§7). Drawn as the spawn overlay; the camera's opening stand
-   * stays the measured spawn A of `spawns.ts` (the spec's W1.R9). Empty, with a diagnostic, when the file
-   * will not read.
+   * `placeSpawnSlots` (web/docs/research/75 §5.5-§7), each on the ground probe's floor under its centre where
+   * the map has ground (W1.4b). Drawn as the spawn overlay; the camera's opening stand stays at the measured
+   * spawn A of `spawns.ts` (the spec's W1.R9; `stand`). Empty, with a diagnostic, when the file will not read.
    */
   slots: SpawnSlot[];
   /**
@@ -125,6 +126,11 @@ export interface LoadedMap {
    * map's `grid_params`. Absent when the graph would not parse.
    */
   ground?: GroundData;
+  /**
+   * Where the fly camera opens (W1.4b, `./stand`): spawn A's (x, z), `EYE` over the ground probe's floor there,
+   * or over A's recorded y where the probe finds none. Absent when the map has no measured spawns.
+   */
+  stand?: Stand;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -348,6 +354,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   })).sort((a, b) => a.order - b.order);
 
   const name = missionName(bytes, toc, notes) ?? stem;
+  // W1.4b: the probe's grid, built here once for the two things a load stands on the floor -- the opening stand
+  // and the spawn slots -- so the page's thread does not pay for it; the walk builds its own when first asked.
+  const probe = placement.ground ? groundGrid(placement.ground) : undefined;
+  const measured = spawnsFor(name);
   return {
     archive: stem,
     lines: segments.result(),
@@ -364,8 +374,9 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
     collision: placement.collision,
-    slots: spawnSlotsOf(bytes, toc, spawnsFor(name), (line) => notes.add(line)),
+    slots: spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe),
     ground: placement.ground,
+    ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -461,14 +472,15 @@ function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes:
 }
 
 /**
- * W1.5b: the map's spawn slots, read out of its `AIMAPS.MPS` (web/docs/research/75) and placed, the y from
- * the side's measured spawn (`placeSpawnSlots`). A file that is missing or will not read -- the reader
- * refuses any file its layout does not account for to the last byte -- costs one diagnostic and an empty
+ * W1.5b: the map's spawn slots, read out of its `AIMAPS.MPS` (web/docs/research/75) and placed
+ * (`placeSpawnSlots`): the y the ground probe's floor under each slot's centre when the probe's grid is given
+ * (W1.4b), else the estimate from the side's measured spawn. A file that is missing or will not read -- the
+ * reader refuses any file its layout does not account for to the last byte -- costs one diagnostic and an empty
  * list, never the load: the slots are an overlay, and the map draws without them.
  */
-export function spawnSlotsOf(bytes: Uint8Array, toc: ZdbEntry[], measured: Spawns | undefined, note: (line: string) => void): SpawnSlot[] {
+export function spawnSlotsOf(bytes: Uint8Array, toc: ZdbEntry[], measured: Spawns | undefined, note: (line: string) => void, ground?: Grid): SpawnSlot[] {
   try {
-    return placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), measured);
+    return placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), measured, ground);
   } catch (e) {
     note(`spawn slots: ${say(e)}`);
     return [];

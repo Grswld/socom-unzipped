@@ -386,8 +386,9 @@ export class WalkMode {
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
   /**
-   * A map's ground and its spawn A (feet), or none. A mover already walking is stood again on the new map, under
-   * wherever the page has put the camera; with nothing to stand on it goes back to flying.
+   * A map's ground and a point on the floor at its spawn A, or none: `main.ts` passes A's (x, z) at the opening
+   * stand's floor (W1.4b, `./stand`), A's recorded y where the probe found none. A mover already walking is stood
+   * again on the new map, under wherever the page has put the camera; with nothing to stand on it goes back to flying.
    */
   setGround(ground: GroundData | undefined, spawn: [number, number, number] | null): void {
     this.ground = ground;

@@ -19,12 +19,16 @@ const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens', import.m
  * every earlier task was built on.
  */
 const MAPS = [
-  { name: 'FROSTFIRE', archive: 'MP2', screenshot: 'frostfire-spawnA.png', top: 'frostfire-top.png', clean: true },
-  { name: 'DESERT GLORY', archive: 'MP6', screenshot: 'desert-glory-spawnA.png', top: 'desert-glory-top.png', clean: false },
-  { name: 'CROSSROADS', archive: 'MP72', screenshot: 'crossroads-spawnA.png', top: 'crossroads-top.png', clean: false },
+  { name: 'FROSTFIRE', archive: 'MP2', screenshot: 'frostfire-spawnA.png', top: 'frostfire-top.png', clean: true, floor: 100 },
+  { name: 'DESERT GLORY', archive: 'MP6', screenshot: 'desert-glory-spawnA.png', top: 'desert-glory-top.png', clean: false, floor: -30 },
+  { name: 'CROSSROADS', archive: 'MP72', screenshot: 'crossroads-spawnA.png', top: 'crossroads-top.png', clean: false, floor: 42.5 },
 ] as const;
 
-/** Eye height above a spawn's measured y (the feet or, on 20 maps, the orbit camera: `spawns.ts`), as `main.ts` stands the camera up. */
+/**
+ * The camera's height over the floor at the opening stand (`src/stand.ts`'s `EYE`, W1.4b). `floor` above is the ground
+ * probe's under spawn A (`tools/probe-spawns.ts`): Frostfire's A is the actor's feet, on it; Desert Glory's and
+ * Crossroads' A are the orbit camera, recorded 25 and 25.5 over it (`spawns.ts`).
+ */
 const EYE = 20;
 /**
  * How high the top-down shot stands over the spawns. 800 units is 80 m: high enough to hold both spawns
@@ -103,10 +107,16 @@ test('all three extracted maps render from the served archives', async ({ page }
     // every earlier task was built on, has to be clean.
     if (map.clean) expect(stats.diagnostics).toEqual([]);
 
-    // `main.ts` stands the camera at spawn A and faces it at B whenever the map has measured spawns.
+    // `main.ts` stands the camera at spawn A and faces it at B whenever the map has measured spawns: A's (x, z),
+    // EYE over the ground probe's floor there (W1.4b) -- not over A's recorded y, the orbit camera's on two of these.
     const pose = await page.evaluate(() => window.__viewer.pose());
-    const [ax, ay, az] = stats.spawns!.a;
-    expect([pose.x, pose.y, pose.z]).toEqual([ax, ay + EYE, az]);
+    const [ax, , az] = stats.spawns!.a;
+    expect(stats.stand).not.toBeNull();
+    expect(stats.stand!.floor).not.toBeNull();
+    expect(stats.stand!.floor!).toBeCloseTo(map.floor, 3);
+    expect([pose.x, pose.z]).toEqual([ax, az]);
+    expect(pose.y).toBeCloseTo(map.floor + EYE, 3);
+    expect([pose.x, pose.y, pose.z]).toEqual(stats.stand!.position);
 
     await settle(page);
     await page.screenshot({ path: join(SCREENS, map.screenshot) });
@@ -136,11 +146,11 @@ test('all three extracted maps render from the served archives', async ({ page }
     linestrips: true, shadows: true, alternate: false, engineorder: false,
   });
 
-  // The wireframe, on and off again, from the spawn. It used to blank the frame on the second draw --
+  // The wireframe, on and off again, from the opening stand. It used to blank the frame on the second draw --
   // the check on `problems` at the end is what catches that, the screenshot is what shows it drew.
   await page.evaluate(() => {
-    const spawns = window.__viewer.stats().spawns!;
-    window.__viewer.setCamera({ x: spawns.a[0], y: spawns.a[1] + 20, z: spawns.a[2], yaw: 0, pitch: 0 });
+    const [x, y, z] = window.__viewer.stats().stand!.position;
+    window.__viewer.setCamera({ x, y, z, yaw: 0, pitch: 0 });
   });
   await setToggle(page, 'wireframe', true);
   await settle(page);

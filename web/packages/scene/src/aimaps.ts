@@ -1,4 +1,6 @@
 import { parseZdb, Reader, zdbMember } from '@s2u/archive';
+import type { Grid } from './grid';
+import { probeGround, selectFloor, PROBE_LIFT, type Hit } from './probe';
 import type { Spawns } from './spawns';
 
 /**
@@ -290,7 +292,7 @@ export function fitSpawn(ai: AiMaps, side: 0 | 1, x: number, z: number, maxBehin
 
 /**
  * A spawn slot as the viewer draws it (W1.5b; the spec's W1.R9 makes the slots the spawn markers): the flat
- * form of `AiSpawnSlot`, plain numbers only, so it crosses the worker's `postMessage` as it is.
+ * form of `AiSpawnSlot`, plain numbers and a flag only, so it crosses the worker's `postMessage` as it is.
  */
 export interface SpawnSlot {
   /** 0 is A's side and 1 is B's: bit 5 of the record's flags (75 §5.5); A is side 0 on all 22 maps (75 §0). */
@@ -301,10 +303,13 @@ export interface SpawnSlot {
    */
   index: number;
   /**
-   * World (x, y, z). x and z are the cell's centre (75 §4); the y is not in the file (no record carries a
-   * height, 75 §4, §9) and is `placeSpawnSlots`'s estimate, until W1.4's ground probe can settle it.
+   * World (x, y, z). x and z are the cell's centre (75 §4). The y is not in the file (no record carries a
+   * height, 75 §4, §9): it is the ground probe's floor under the centre where `placeSpawnSlots` is given the
+   * map's ground and the probe finds one (`onFloor`, W1.4b), and its estimate from the measured spawns otherwise.
    */
   position: [number, number, number];
+  /** Whether the y is the ground probe's floor under the cell's centre (W1.4b); false where it is the estimate. */
+  onFloor: boolean;
   /** The facing in eighth turns, bits 0-2 of the flags (75 §5.5). */
   step: number;
   /** The same facing as a unit (x, z): step k points along (sin 45k deg, -cos 45k deg) (`facingVector`, 75 §11). */
@@ -314,27 +319,53 @@ export interface SpawnSlot {
 }
 
 /**
- * Every slot of the file's spawn list, both sides, placed for drawing (W1.5b).
+ * Every slot of the file's spawn list, both sides, placed for drawing (W1.5b; the y, W1.4b).
  *
- * The y, which the file does not hold (75 §4): the measured spawn of the slot's side (`spawns.ts`) where the
- * map has one, held inside the height range of the slot's sub-map -- the header's bounding box, the only
- * heights the file has (75 §3) -- and that range's floor where the map has none. The measured height is the
- * actor's feet only on Frostfire and Vigilance (`KNOWN.md` section 1); on the other 20 maps it is the orbit
- * camera's, about 25 units above the actor's floor (75 §11), so there the slots stand that much high. The hold
- * brings down the slots of a lower sub-map (9 of Death Trap's B on one spanning y -140 to -100.5, where B was
- * measured at 1). A slot's floor is W1.4's to find.
+ * The y, which the file does not hold (75 §4). First an estimate: the measured spawn of the slot's side
+ * (`spawns.ts`) where the map has one, held inside the height range of the slot's sub-map -- the header's
+ * bounding box, the only heights the file has (75 §3) -- and that range's bottom where the map has none. The
+ * measured height is the actor's feet only on Frostfire and Vigilance (`KNOWN.md` section 1); on the other 20
+ * maps it is the orbit camera's, about 25 units above the actor's floor (75 §11), so the estimate stands that
+ * much high there. The hold brings down the slots of a lower sub-map (9 of Death Trap's B on one spanning y -140
+ * to -100.5, where B was measured at 1). Then, given the map's ground (`ground`, the probe's grid), the floor
+ * under the slot's centre (`slotFloor`) replaces the estimate wherever the probe finds one, and `onFloor` says
+ * so: on the 22 maps, 1,058 of the 1,058 slots (2026-09-28, `tools/spawn-slots.ts`).
  */
-export function placeSpawnSlots(ai: AiMaps, measured?: Spawns): SpawnSlot[] {
+export function placeSpawnSlots(ai: AiMaps, measured?: Spawns, ground?: Grid): SpawnSlot[] {
   const count = [0, 0];
   return spawnSlots(ai).map((slot) => {
-    const floor = slot.sub.min[1], ceiling = slot.sub.max[1];
+    const bottom = slot.sub.min[1], top = slot.sub.max[1];
     const table = measured ? (slot.side === 0 ? measured.a : measured.b)[1] : undefined;
-    const y = table === undefined ? floor : Math.min(ceiling, Math.max(floor, table));
+    const estimate = table === undefined ? bottom : Math.min(top, Math.max(bottom, table));
+    const floor = ground ? slotFloor(ground, slot.x, slot.z, estimate, bottom, top) : null;
     return {
-      side: slot.side, index: count[slot.side]!++, position: [slot.x, y, slot.z], step: slot.facing,
-      facing: facingVector(slot.facing), loc: { ...slot.record.loc },
+      side: slot.side, index: count[slot.side]!++, position: [slot.x, floor ? floor.y : estimate, slot.z],
+      onFloor: floor !== null, step: slot.facing, facing: facingVector(slot.facing), loc: { ...slot.record.loc },
     };
   });
+}
+
+/** A floor this far outside a sub-map's height range still counts as in it: the header's bounds are floats (75 §3). */
+const RANGE_SLACK = 1;
+
+/**
+ * The floor under a slot's centre (W1.4b): the ground probe's candidates at (x, z) (`probeGround`, research 23
+ * section 1.1); of them, those inside the slot's sub-map's height range `[bottom, top]` where any is (75 §3); then
+ * the engine's pick from the estimate + 5 -- the highest at or under that origin + 1, else the lowest
+ * (`selectFloor`, research 24 section 2). Null only where nothing is under (x, z).
+ *
+ * **Not the pick's 20-unit reject.** That bounds a floor over an actor's own feet (research 23 section 1.1 item 9),
+ * and a slot has no feet: its estimate is the side's measured y, taken where A or B stood -- up to 851 units from
+ * the slot (75 §10) -- and on 20 maps at the camera's height. Measured over the 22 maps (2026-09-28): every one of
+ * the 1,058 slots has a candidate, and one inside its range; the reject would have refused 34 of them (18 of The
+ * Ruins', 11 of Enowapi's, 4 of Guidance's, 1 of Desert Glory's), each with nothing under the estimate + 6 and a
+ * floor 20.4-119.5 units over it. **The range** moves 3 slots, Sujo's B #12-14 (range -27.2 to 85.5, estimate -25):
+ * from a floor at -46.9, 20 under their sub-map, to the one at -11.9 inside it.
+ */
+function slotFloor(ground: Grid, x: number, z: number, estimate: number, bottom: number, top: number): Hit | null {
+  const hits = probeGround(ground, x, z);
+  const inside = hits.filter((h) => h.y >= bottom - RANGE_SLACK && h.y <= top + RANGE_SLACK);
+  return selectFloor(inside.length > 0 ? inside : hits, estimate + PROBE_LIFT, Number.POSITIVE_INFINITY);
 }
 
 /** How a position (x, z) sits against a placed slot: along its facing, across it, and straight-line. */
