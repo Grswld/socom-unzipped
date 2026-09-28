@@ -1,5 +1,5 @@
 import { copyFileSync, mkdirSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 import { COMMON_ARCHIVES, listMaps, servedIndex } from '@s2u/archive';
 import { FsAssetSource } from '@s2u/archive/node';
 
@@ -12,7 +12,8 @@ import { FsAssetSource } from '@s2u/archive/node';
  * own `mission.rdr`, read here, once, by `listMaps`; reading it in the browser instead would mean fetching
  * all 22 archives (224 MB) to draw a menu. `common` names the archives every map shares, copied into
  * `public/maps/RUN/` too: `READERC.ZAR` (the character scripts, `dynamics.rdr` and `motion.rdr`: the
- * SEAL's tuning) and `ZWEAPON.ZAR` (the weapon table) -- web sprint 2, W2.R5.
+ * SEAL's tuning) and `ZWEAPON.ZAR` (the weapon table) -- web sprint 2, W2.R5 -- and the sound's
+ * `SOUNDRDR.ZAR` and `SOUNDS/BNKSTORE.ZAR` (web/docs/research/81).
  */
 const web = resolve(import.meta.dirname, '..');
 // The repository's own layout: the extracted disc tree beside web/ (docs/DEVELOPING.md); SOCOM_DISC names another.
@@ -27,11 +28,13 @@ const fixtureRun = join(web, 'test-fixtures/RUN');
 mkdirSync(publicRun, { recursive: true });
 mkdirSync(fixtureRun, { recursive: true });
 for (const f of mp) copyFileSync(join(run, f), join(publicRun, f));
-for (const path of COMMON_ARCHIVES) copyFileSync(join(disc, path), join(publicMaps, path));
+/** A common archive may sit in a directory of its own (`RUN/SOUNDS/BNKSTORE.ZAR`, web/docs/research/81). */
+const copyInto = (from: string, to: string): void => { mkdirSync(dirname(to), { recursive: true }); copyFileSync(from, to); };
+for (const path of COMMON_ARCHIVES) copyInto(join(disc, path), join(publicMaps, path));
 for (const f of ['MP2.ZDB', 'MP6.ZDB', 'MP72.ZDB']) copyFileSync(join(run, f), join(fixtureRun, f));
 // The common archives in the fixtures too: `READERC.ZAR/character.rdr` (the gear, web/docs/research/78 §5), the
 // tuning, the weapon table and the motion packs the fixture-backed tests read beside the three maps.
-for (const path of COMMON_ARCHIVES) copyFileSync(join(disc, path), join(web, 'test-fixtures', path));
+for (const path of COMMON_ARCHIVES) copyInto(join(disc, path), join(web, 'test-fixtures', path));
 
 const maps = await listMaps(new FsAssetSource(publicMaps));
 writeFileSync(join(publicMaps, 'index.json'), JSON.stringify(servedIndex(maps), null, 2));

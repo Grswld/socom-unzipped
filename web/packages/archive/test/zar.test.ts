@@ -41,6 +41,11 @@ describe('Zar', () => {
     expect(Array.from(z.data(texdat!))).toEqual([0xde, 0xad, 0xbe, 0xef]);
     expect(z.find('textures/missing')).toBeUndefined();
   });
+  it('reads a zero data_size as the rest of the file, as the sound archives write it (81 §1)', () => {
+    const z = syntheticZar(); new DataView(z.buffer).setUint32(84, 0, true);
+    const zar = Zar.parse(z);
+    expect(Array.from(zar.data(zar.find('textures/a.tif/texdat')!))).toEqual([0xde, 0xad, 0xbe, 0xef]);
+  });
   it('rejects a key tree that does not consume exactly key_count records', () => {
     const bad = syntheticZar(); new DataView(bad.buffer).setUint32(4, 5, true);
     expect(() => Zar.parse(bad)).toThrow(/key_count/);

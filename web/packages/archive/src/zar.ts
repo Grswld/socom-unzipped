@@ -5,10 +5,26 @@ export interface ZarKey { name: string; offset: number; size: number; children: 
 
 const HEAD = 100, V2 = 0x20002; // 36 §1
 
+/** The fixed head of a ZAR/ZED archive, bytes (36 §1): enough for `zarIndexLength`. */
+export const ZAR_HEAD = HEAD;
+
+/**
+ * How many bytes from the start of an archive hold its head, its string table and its key tree -- all `Zar.parse`
+ * needs to list the keys and say where each one's bytes are (`Zar.dataOffset + key.offset`). `head` is at least the
+ * first `ZAR_HEAD` bytes. It is what lets a ranged source read one member of a large archive (web/docs/research/81
+ * §1: `SOUNDS/BNKSTORE.ZAR` is 67 MB and a map wants two of its 115 banks) without the rest.
+ */
+export function zarIndexLength(head: Uint8Array): number {
+  const r = new Reader(head);
+  return HEAD + r.u32(8) + 16 * r.u32(4);
+}
+
 /** A v2 ZAR/ZED archive: a pre-order key tree over one data blob. */
 export class Zar {
   private constructor(readonly root: ZarKey, readonly keyCount: number, readonly version: number,
-                      private readonly blob: Uint8Array) {}
+                      private readonly blob: Uint8Array,
+                      /** Where the data blob starts in the archive's file: a key's bytes are at `dataOffset + key.offset`. */
+                      readonly dataOffset: number) {}
 
   static parse(bytes: Uint8Array): Zar {
     const r = new Reader(bytes);
@@ -20,7 +36,11 @@ export class Zar {
     if (padding <= 0) throw new Error(`ZAR padding ${padding}: the data blob's alignment must be positive`);
     const stableAt = HEAD, keysAt = stableAt + stableSize;
     const dataAt = Math.ceil((keysAt + 16 * keyCount) / padding) * padding;
-    const blob = r.slice(dataAt, Math.min(dataSize, bytes.byteLength - dataAt));
+    // The sound archives (`SOUNDS/BNKSTORE.ZAR`, `SOUNDS/VAGSTORE.ZAR`; web/docs/research/81 §1) write 0 here: the
+    // engine never reads the field (zar_main.cpp keeps no data size), so a zero means "the rest of the file".
+    // Bytes that stop at the key tree (`zarIndexLength`, a ranged read) parse to the keys over an empty blob.
+    const rest = Math.max(0, bytes.byteLength - dataAt);
+    const blob = rest === 0 ? new Uint8Array(0) : r.slice(dataAt, dataSize > 0 ? Math.min(dataSize, rest) : rest);
     let i = 0;
     const readKey = (isRoot: boolean): ZarKey => {
       if (i >= keyCount) throw new Error(`ZAR key tree overran key_count ${keyCount}`);
@@ -41,7 +61,7 @@ export class Zar {
     };
     const root = readKey(true);
     if (i !== keyCount) throw new Error(`ZAR key tree consumed ${i} of key_count ${keyCount}`);
-    return new Zar(root, keyCount, version, blob);
+    return new Zar(root, keyCount, version, blob, dataAt);
   }
 
   /** The key's bytes: a view into the data blob (36 §1: key.offset is blob-relative). */
