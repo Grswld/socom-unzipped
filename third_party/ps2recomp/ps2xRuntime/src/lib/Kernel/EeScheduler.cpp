@@ -124,6 +124,19 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     m_pendingEeTimerInterrupts = 0u;
     m_eeCycle = 0u;
     m_sliceEndCycle = kDefaultTimeSliceCycles;
+    // The host-clock accounting starts over with the cycle clock (Sprint 17 Q2 display round). A reset after a
+    // run -- the in-process restart's -- kept the old guest's last clock read, so the new guest's first
+    // accountCycles charged the whole gap since then (the restart itself, 50 ms in run_20260928_125710.log, capped
+    // at PS2X_CLOCK_CAP_MS) to a cycle clock that had just restarted at 0 beside a VBlank chain anchored at 0 and
+    // now. Every VBlank was then cycle-due a few periods before it was host-due, processDueDeadlines paced each
+    // one at the next checkpoint, the paced time was charged again, and the debt never cleared (no frame boundary
+    // re-anchors a guest that has not drawn yet): the crt0's clearing loop ran one checkpoint per VBlank and the
+    // restarted game never drew. Host time an old guest excluded and never charged goes with it.
+    m_lastAccountHost = {};
+    m_accountBatchedCycles = 0u;
+    m_accountForceClock = false;
+    ps2GuestClockExcludedNs().store(0, std::memory_order_relaxed);
+    m_clockTraceGapNs = m_clockTraceExcludedNs = m_clockTraceLostNs = 0;
     m_stopRequested.store(false, std::memory_order_release);
     m_checkpointPending.store(false, std::memory_order_release);
     m_debugPublishCountdown = 0u;

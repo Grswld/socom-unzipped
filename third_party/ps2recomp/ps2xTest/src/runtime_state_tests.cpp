@@ -36,6 +36,7 @@
 #include "ps2x/exit_codes.h"
 #include "runtime/ee_scheduler.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -45,6 +46,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -270,6 +272,80 @@ namespace
         setRegU32(ctx, 7, kQ2Crt0ArgsAddr);  // args
         setRegU32(ctx, 29, PS2_RAM_SIZE - 0x10u);
         ps2_syscalls::SetupThread(rdram, &ctx, &runtime);
+    }
+
+    // Sprint 17 Q2 display round: SOCOM II's crt0 clearing loop (entry_0x180008, 0x18012c..0x180144: sq $zero,
+    // 0($v0); sltu $at,$v0,$v1; bnez $at with addiu $v0,$v0,0x10 in the delay slot, the generated backward edge's
+    // eeCheckpointDue return), here over 2 MB, then a known word. Registered at the entry and at the loop label, as
+    // the generated table resumes the function mid-way.
+    constexpr uint32_t kQ2ClearLoopPc = kQ2Entry + 0x10u;
+    constexpr uint32_t kQ2ClearStart = 0x01000000u;
+    constexpr uint32_t kQ2ClearEnd = 0x01200000u;
+    constexpr uint32_t kQ2ClearDoneAddr = 0x00120000u;
+    constexpr uint32_t kQ2ClearDoneValue = 0xC1EA2ED0u;
+    std::chrono::steady_clock::time_point g_q2ClearDoneAt{};
+    uint64_t g_q2ClearDispatches = 0u;
+
+    void q2Crt0ClearLoop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ++g_q2ClearDispatches;
+        if (ctx->pc != kQ2ClearLoopPc)
+        {
+            setRegU32(*ctx, 2, kQ2ClearStart);
+            setRegU32(*ctx, 3, kQ2ClearEnd);
+        }
+        for (;;)
+        {
+            ctx->pc = kQ2ClearLoopPc;
+            WRITE128(GPR_U32(ctx, 2), _mm_setzero_si128());
+            const bool more = GPR_U32(ctx, 2) < GPR_U32(ctx, 3);
+            setRegU32(*ctx, 2, GPR_U32(ctx, 2) + 16u);
+            if (!more)
+                break;
+            if (runtime->eeCheckpointDue())
+                return;
+        }
+        q2Put32(rdram, kQ2ClearDoneAddr, kQ2ClearDoneValue);
+        g_q2ClearDoneAt = std::chrono::steady_clock::now();
+        ctx->pc = 0u;
+        runtime->eeScheduler().requestStop();
+    }
+
+    struct Q2ClearRun
+    {
+        bool done = false;
+        double ms = 0.0;
+        uint64_t dispatches = 0u;
+    };
+
+    // One boot of the clearing loop on this thread: the scheduler reset with the boot context (as the game thread
+    // does before run()), run until the loop stops it or a watchdog does after budgetMs.
+    Q2ClearRun q2RunClearLoop(PS2Runtime &runtime, uint8_t *rdram, const R5900Context &boot, int budgetMs)
+    {
+        g_q2ClearDoneAt = {};
+        g_q2ClearDispatches = 0u;
+        q2Put32(rdram, kQ2ClearDoneAddr, 0u);
+        std::atomic<bool> finished{false};
+        std::thread watchdog([&]()
+        {
+            const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(budgetMs);
+            while (!finished.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < until)
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (!finished.load(std::memory_order_acquire))
+                runtime.eeScheduler().requestStop();
+        });
+        const auto start = std::chrono::steady_clock::now();
+        runtime.eeScheduler().reset(rdram, boot);
+        runtime.eeScheduler().run();
+        finished.store(true, std::memory_order_release);
+        watchdog.join();
+        Q2ClearRun out;
+        out.done = g_q2ClearDoneAt != std::chrono::steady_clock::time_point{} &&
+                   q2Get32(rdram, kQ2ClearDoneAddr) == kQ2ClearDoneValue;
+        const auto end = out.done ? g_q2ClearDoneAt : std::chrono::steady_clock::now();
+        out.ms = std::chrono::duration<double, std::milli>(end - start).count();
+        out.dispatches = g_q2ClearDispatches;
+        return out;
     }
 }
 
@@ -760,6 +836,47 @@ void register_runtime_state_tests()
             t.IsTrue(runtime.restartGuest(), "and performed");
             t.IsTrue(runtime.memory().consumePendingIntcCauses().empty(), "no INTC cause is pending after the restart");
             t.IsTrue(runtime.memory().consumeCompletedDmacCauses().empty(), "and no completed DMAC cause either");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("the restarted guest's crt0 clearing loop runs as fast as the first boot's (the display round: the new guest never drew)", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *rdram = runtime.memory().getRDRAM();
+            const fs::path elf = q2WriteTestElf();
+            runtime.registerFunction(kQ2Entry, q2Crt0ClearLoop);
+            runtime.registerFunction(kQ2ClearLoopPc, q2Crt0ClearLoop);
+
+            // The first boot, as run() starts the game thread on a fresh runtime.
+            R5900Context boot{};
+            boot.pc = kQ2Entry;
+            setRegU32(boot, 29, PS2_RAM_SIZE - 0x10u);
+            const Q2ClearRun first = q2RunClearLoop(runtime, rdram, boot, 3000);
+            t.IsTrue(first.done, "the first boot's loop clears its 2 MB and writes the known word");
+
+            // The restart as the loop thread performs it. The old game thread's last clock read and the new one's
+            // first are apart by the restart itself -- 50 ms in run_20260928_125710.log (105184.6 -> 105234.2).
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {}), "the request is taken");
+            t.IsTrue(runtime.restartGuest(), "and performed");
+            const Q2ClearRun second = q2RunClearLoop(runtime, rdram, runtime.cpu(), 3000);
+            std::printf("[q2-clear] first boot %.1f ms (%llu dispatches), restarted %.1f ms (%llu dispatches)%s\n",
+                        first.ms, static_cast<unsigned long long>(first.dispatches), second.ms,
+                        static_cast<unsigned long long>(second.dispatches), second.done ? "" : " -- NOT DONE at the 3 s watchdog");
+
+            t.IsTrue(second.done, "the restarted guest's loop reaches its known word; the game's sat at 0x18012c for good");
+            // Within 2x the first boot, plus 50 ms for a loaded host's scheduling noise on a few-ms loop.
+            t.IsTrue(second.ms <= 2.0 * first.ms + 50.0,
+                     "the restarted loop runs within 2x the first boot's time: first " + std::to_string(first.ms) +
+                         " ms, restarted " + std::to_string(second.ms) + " ms");
+            t.IsTrue(second.dispatches <= 2u * first.dispatches + 16u,
+                     "and returns to the dispatcher about as often: first " + std::to_string(first.dispatches) +
+                         ", restarted " + std::to_string(second.dispatches) + " (a pace wait at every checkpoint makes it one per VBlank)");
+
+            runtime.registerFunction(kQ2Entry, nullptr);
+            runtime.registerFunction(kQ2ClearLoopPc, nullptr);
             q2RemoveTestElf(elf);
         });
     });
