@@ -32,6 +32,12 @@ export interface WorldPoly {
    * walls. On Frostfire 19 polygons carry it, the doorway volume at x 676-680 among them (research 24 section 4.1).
    */
   cameratype: number;
+  /**
+   * `m_appflags`, the three bits after `m_cameratype` (surface word bits 20-22; reCOM `zIntersect/zintersect.h:26`).
+   * Web research 86 section 2: 2 on every ladder polygon of the 22 maps and on nothing else (`APP_LADDER`,
+   * `./ladder`); 4 and 5 on props, fences and terrain. Absent (0) where a caller built the polygon by hand.
+   */
+  appflags?: number;
   /** xyz per point, world space, `ptcount` of them. */
   points: Float32Array;
 }
@@ -111,6 +117,7 @@ export function worldCollision(models: SceneNode[], rootName = 'worldmodel'): Wo
     material: p.poly.material,
     ptcount: p.poly.ptcount,
     cameratype: p.poly.cameratype,
+    appflags: p.poly.appflags,
     points: p.points,
   }));
 }
