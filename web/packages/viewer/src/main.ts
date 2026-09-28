@@ -23,6 +23,7 @@ import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { buildBody, type BodyView } from './bodyView';
 import { ammoText, Fire } from './fire';
+import { HELD_RIFLE } from '@s2u/scene';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { isCycle, PLAY_CLIPS } from './animator';
@@ -84,7 +85,7 @@ const fire = new Fire({
   muzzle: () => play.muzzle(), reloadSeconds: () => play.reloadSeconds(),   // WEAPON: the rifle in hand (`./play`)
   look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
   kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
-});
+}, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
 if (PLAY) fire.bindKey();
 /** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
@@ -110,8 +111,6 @@ const walkSounds = new WalkSounds(audio, {
   anim: () => play.animStats(),
   isCycle,
   grid: () => walk.grid(),
-  shots: () => fire.state().shots,
-  reloading: () => fire.state().magazine.reloading,
 });
 /** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
 const RUN_SPEED = stanceBody('stand').bands.forward;
@@ -226,7 +225,7 @@ const play = new Play();
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
-fire.subscribe((e) => play.weaponEvent(e));
+fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
 let wantedPlay = -1;
 /** The map's sound, asked of the source the map came from once it is shown (`./soundData`). */
 let wantedSound = -1;
@@ -524,7 +523,7 @@ async function boot(): Promise<void> {
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
-    walkSounds.frame();             // the footfalls, the jump, the landing, the rounds and the reload, heard
+    walkSounds.frame();             // the footfalls, the jump and the landing, heard (the rounds: `fire.subscribe`)
     ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);

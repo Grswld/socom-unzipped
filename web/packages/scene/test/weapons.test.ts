@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Zar, parseRdr, type RdrNode } from '@s2u/archive';
 import {
-  BULLET_MARK, DEFAULT_RIFLE, decalEntry, defaultPrimary, kitPrimaries, readBulletMark, readDefaultRifle, weaponRecord,
+  BULLET_MARK, DEFAULT_RIFLE, HELD_RIFLE, decalEntry, defaultPrimary, kitPrimaries, readBulletMark, readDefaultRifle, weaponRecord,
   type DecalEntry, type WeaponRecord,
 } from '../src/weapons';
 
@@ -117,6 +117,12 @@ describe.skipIf(!ZWEAPON || !READERC)('the default rifle off the game\'s ZWEAPON
   it('is the transcription: DEFAULT_RIFLE and BULLET_MARK are the files\', proven each run that has them', () => {
     expect(readDefaultRifle(bytes(ZWEAPON!), bytes(READERC!))).toEqual(DEFAULT_RIFLE);
     expect(readBulletMark(bytes(READERC!), DEFAULT_RIFLE.decalSet)).toEqual(BULLET_MARK);
+  });
+
+  it('is the transcription: HELD_RIFLE is the file M4A1 SD, the rifle the SEAL holds', () => {
+    const zar = Zar.parse(bytes(ZWEAPON!));
+    const script = parseRdr(zar.data(zar.root.children.find((k) => k.name.toLowerCase() === 'zweapon.rdr')!));
+    expect(weaponRecord(script, 'M4A1 SD')).toEqual(HELD_RIFLE);
   });
 
   it('the M16A2 beside it reads its own numbers (the reader is not the transcription)', () => {

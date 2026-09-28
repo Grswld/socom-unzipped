@@ -3,6 +3,7 @@ import { FootfallClock, footfallMoving, type StanceCode } from '@s2u/sound';
 import type { AnimStats } from './animator';
 import type { GameAudio, Vec3 } from './audio';
 import type { Stance } from './walk';
+import type { FireEvent } from './fire';
 
 /**
  * The walk's own signals turned into `GameAudio`'s events (web/docs/research/81 §4-§6), once a frame, so the walk
@@ -27,9 +28,6 @@ export interface WalkSignals {
   /** Whether a clip is a locomotion cycle (the game's clip flag 0x40, `FUN_005551a0`). */
   isCycle(clip: string): boolean;
   grid(): Grid | null;
-  /** Rounds fired so far, and whether a reload is running. */
-  shots(): number;
-  reloading(): boolean;
 }
 
 const STANCE_CODE: Record<Stance, StanceCode> = { stand: 0, crouch: 1, prone: 2 };
@@ -38,12 +36,19 @@ export class WalkSounds {
   private readonly clock = new FootfallClock();
   private jumps: number | null = null;
   private airborne = false;
-  private shots: number | null = null;
-  private reloading = false;
   /** How many of each the walk sent, for the hook. */
   readonly counts = { footfalls: 0, jumps: 0, landings: 0, rounds: 0, reloads: 0 };
 
-  constructor(private readonly audio: GameAudio, private readonly walk: WalkSignals, private readonly weapon = 'M4A1 SD') {}
+  constructor(private readonly audio: GameAudio, private readonly walk: WalkSignals) {}
+
+  /**
+   * The rifle's own events (`./fire` `subscribe`): a round is heard at the fire point it left (the muzzle), a reload
+   * where it starts -- the record's sounds by its `InternalName` (`.M4A1_SIL`, `.M4A1_SIL_RLD` for the M4A1 SD).
+   */
+  fireEvent(e: FireEvent): void {
+    if (e.type === 'round') { this.audio.onFire(e.weapon.name, e.from); this.counts.rounds++; }
+    else if (e.type === 'reloadStart') { this.audio.onReload(e.weapon.name, this.walk.feet()); this.counts.reloads++; }
+  }
 
   /** The material under the feet: the floor the ground probe picks there (`probeFloor`), its polygon's byte. */
   material(feet: Vec3): number {
@@ -53,18 +58,10 @@ export class WalkSounds {
 
   frame(): void {
     const feet = this.walk.feet(), mover = this.walk.mover();
-    // The rifle first: its count and its flag move in fly mode too (a reset), but sound only while walking.
-    const shots = this.walk.shots(), reloading = this.walk.reloading();
     if (!this.walk.walking() || !feet || !mover) {
-      this.jumps = null; this.shots = shots; this.reloading = reloading; this.airborne = false;
+      this.jumps = null; this.airborne = false;
       return;
     }
-    if (this.shots !== null && shots > this.shots) {
-      for (let i = this.shots; i < shots; i++) { this.audio.onFire(this.weapon, feet); this.counts.rounds++; }
-    }
-    if (reloading && !this.reloading) { this.audio.onReload(this.weapon, feet); this.counts.reloads++; }
-    this.shots = shots;
-    this.reloading = reloading;
 
     if (this.jumps !== null && mover.jumps > this.jumps) { this.audio.onJump(feet); this.counts.jumps++; }
     this.jumps = mover.jumps;

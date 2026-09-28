@@ -214,6 +214,25 @@ export const DEFAULT_RIFLE: WeaponRecord = {
   sounds: { close: '.M4A1', med: '.M4A1_M', far: '.M4A1_F', reload: '.M4A1_RLD' },
 };
 
+/**
+ * `zweapon.rdr`'s M4A1 SD (ID 62), transcribed and pinned as `DEFAULT_RIFLE` is: the rifle the viewer's SEAL holds
+ * and fires (the owner's pick, W2.R4 of the cloud sprint 2, over `mp_seal1`'s kit default, the plain M4A1). Against
+ * the M4A1: `FireWait` 0.14 (429 a minute), `Maximum_Range` 800, `muzzle_m4SD` (shell and smoke, no flash), and the
+ * suppressed `.M4A1_SIL` with no medium or far variant.
+ */
+export const HELD_RIFLE: WeaponRecord = {
+  name: 'M4A1 SD', id: 62, fireWait: 0.14, roundsPerMinute: 429, magazine: 30, mags: 3,
+  ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 800, decalSet: 'BULLET_MARK_SMALL',
+  knock: { knock: 12, knockReturn: 70, knockMax: 45 },
+  rifleKick: {
+    stand: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 },
+    crouch: { rate: 0.5, returnRate: 0.18, baseDist: 0.08, randomDist: 0.015 },
+    prone: { rate: 0.5, returnRate: 0.18, baseDist: 0.06, randomDist: 0.015 },
+  },
+  fireAnim: 'muzzle_m4SD',
+  sounds: { close: '.M4A1_SIL', med: null, far: null, reload: '.M4A1_SIL_RLD' },
+};
+
 /** `READERC.ZAR/decals.rdr`'s `BULLET_MARK_SMALL` row for `STONE`, transcribed and pinned as `DEFAULT_RIFLE` is. */
 export const BULLET_MARK: DecalEntry = {
   set: 'BULLET_MARK_SMALL', material: 'STONE', texture: 'bullet_mark_stone.tif', minSize: 1, maxSize: 1.8,
