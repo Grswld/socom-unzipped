@@ -13,10 +13,15 @@
     <!--
       Site navigation, not a viewer control, so it sits outside #panel: the backtick hides the panel
       and this stays, and it is the first thing in the top-left corner whichever way the panel is set.
+      The cog (W2.0) folds the panel away and back. It sits right after the brand rather than in the end
+      group: at 360px the bar is then brand, cog, GitHub, so the cog keeps its place beside the name
+      whatever the right-hand group does, and it is the one button over the panel it opens. It is a
+      real button, so a tap, a click, Enter and Space all work, and `aria-expanded` says which way it is.
     -->
     <nav id="site-links" class="s2u-bar" aria-label="Site">
       <a id="home" class="s2u-bar__brand" href="https://socomunzipped.com/"><span class="s2u-bar__ii">II</span><span class="s2u-bar__word">Unzipped</span></a>
-      <div class="s2u-bar__end"><a id="source" class="s2u-tab s2u-tab--nav" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub">GitHub</a></div>
+      <button id="panel-toggle" class="s2u-iconbtn" type="button" aria-label="settings" aria-expanded="true" aria-controls="panel-body" title="hide the settings"><svg viewBox="0 0 24 24" aria-hidden="true" stroke-linejoin="round"><path d="M19.3 9.8L22 10.1L22 13.9L19.3 14.2L18.7 15.5L20.4 17.7L17.7 20.4L15.5 18.7L14.2 19.3L13.9 22L10.1 22L9.8 19.3L8.5 18.7L6.3 20.4L3.6 17.7L5.3 15.5L4.7 14.2L2 13.9L2 10.1L4.7 9.8L5.3 8.5L3.6 6.3L6.3 3.6L8.5 5.3L9.8 4.7L10.1 2L13.9 2L14.2 4.7L15.5 5.3L17.7 3.6L20.4 6.3L18.7 8.5Z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      <div class="s2u-bar__end"><a id="source" class="s2u-tab s2u-tab--nav" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub" aria-label="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M 8 0 C 3.58 0 0 3.58 0 8 c 0 3.54 2.29 6.53 5.47 7.59 .4 .07 .55 -.17 .55 -.38 0 -.19 -.01 -.82 -.01 -1.49 -2.01 .37 -2.53 -.49 -2.69 -.94 -.09 -.23 -.48 -.94 -.82 -1.13 -.28 -.15 -.68 -.52 -.01 -.53 .63 -.01 1.08 .58 1.23 .82 .72 1.21 1.87 .87 2.33 .66 .07 -.52 .28 -.87 .51 -1.07 -1.78 -.2 -3.64 -.89 -3.64 -3.95 0 -.87 .31 -1.59 .82 -2.15 -.08 -.2 -.36 -1.02 .08 -2.12 0 0 .67 -.21 2.2 .82 .64 -.18 1.32 -.27 2 -.27 .68 0 1.36 .09 2 .27 1.53 -1.04 2.2 -.82 2.2 -.82 .44 1.1 .16 1.92 .08 2.12 .51 .56 .82 1.27 .82 2.15 0 3.07 -1.87 3.75 -3.65 3.95 .29 .25 .54 .73 .54 1.48 0 1.07 -.01 1.93 -.01 2.2 0 .21 .15 .46 .55 .38 A 8.013 8.013 0 0 0 16 8 c 0 -4.42 -3.58 -8 -8 -8 z"/></svg><span id="source-word">GitHub</span></a></div>
     </nav>
     <p id="fps" class="s2u-status s2u-status--pill" aria-live="off"><span id="fps-n">--</span><span id="fps-rest"> fps</span></p>
     <button id="fullscreen" class="s2u-fab" type="button" title="fullscreen (F)" aria-label="fullscreen"><svg viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"/></svg></button>
@@ -28,16 +33,8 @@
       <p id="loading-what" class="s2u-status">loading</p>
       <div id="loading-bar" class="s2u-loading__bar"></div>
     </div>
+    <!-- The settings. Folded, none of it shows: the cog in #site-links is the only trace (W2.0). -->
     <div id="panel" class="s2u-overlay" data-density="compact">
-      <!--
-        The panel's title bar, and the whole of it when the panel is folded. It is a real button so it
-        takes a tap, a click, Enter and Space without any of that being written here, and
-        `aria-expanded` tells a screen reader which way it is.
-      -->
-      <button id="panel-toggle" class="s2u-overlay__toggle" type="button" aria-expanded="true" aria-controls="panel-body">
-        <span id="panel-title">Settings</span>
-        <span id="panel-chevron" aria-hidden="true"></span>
-      </button>
       <div id="panel-body" class="s2u-overlay__body">
       <p id="panel-kicker">Map viewer &middot; SOCOM II multiplayer</p>
       <div class="row">

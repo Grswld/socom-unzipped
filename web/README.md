@@ -123,7 +123,8 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
 | `F` | fullscreen, and back (also the button under the frame counter) |
-| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
+| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
+| the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
 | `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
@@ -154,9 +155,10 @@ screen's whether or not the browser bar is showing, and the pixel ratio starts a
 pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
 step it back up.
 
-Everything the viewer draws over the map goes in one strip along the top: the back link, then the
-panel's title bar beneath it. The panel opens folded on a coarse pointer (a remembered choice still
-wins), its body scrolls inside itself, and the status line drops the draw and collision counts and
+Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link,
+the settings cog beside it, the GitHub mark, whose word drops under 480px), then the panel beneath it.
+The panel opens folded on a coarse pointer, leaving only the cog (a remembered choice still wins), its
+body scrolls inside itself, and the status line drops the draw and collision counts and
 abbreviates the rest so it fits on one row at 360px. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 
