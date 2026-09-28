@@ -191,3 +191,26 @@ are in neither. The console's root lift (research 17 §1's 5.504) + 1 = 6.504 = 
 speed reading every walk-off lands at 61.3 or more (at least "hard"), so the landing rates are probably not compared
 with that speed. The Bash guard misreads a `git commit` whose `-m` argument holds a newline as a commit without paths.
 
+### The weapons' form, the fire point's inputs, and the table that is not on the disc's readers (2026-09-28, W2.4)
+
+Weapons (`WEAP_MDL`), fittings (`FLIB_MDL`, 10 of 10 nodes) and turrets (`TURR_MDL`, 35 of 35 on Crossroads) use VU1
+`0x70`'s position form, `int16 / 32768 × TOP+3.w` (every visual node lands inside its own `nparams` bbox that way and
+none the other; `TOP+3.xyz` is zero in every such packet); the world and the props use `0x68`'s `int16 / 16 +
+TOP+3.xyz`. The `WEAP_*` members' bytes differ between maps (MP6 and MP61 repack the vertices of 24 and 26 weapons,
+MP8, MP52, MP71 of 11) while the triangles are the same everywhere; the M4A1 SD has 1,067 vertices on MP6 against
+1,107 elsewhere. `GetPutativeFirePointW` (0x57fa70-0x57fce0) reads the stance list at `*(+0x1c0)` (the byte at +0x2b of
+each entry, top-down, skipping 3), the actor state `(short)+0x174` (state 3 splits on `(signed char)+0x375 == −1`),
+`m_velM` at +0x2c (moving: |v|² > 400, z ≠ 0, |x/z| < 0.5) and `m_item` at +0xf79; `a1` true takes one of ten constant
+offsets (0x65d038-0x65d0c8, 16 bytes apart) through `m_node`'s matrix (`FUN_003085c0`), false the cached point at
++0x14b0 plus the position at +0x1c (`FUN_00309240`); `a2` picks the second row of three offsets for stance codes 0-2.
+The ten offsets and the zero point at 0x3f64c0 are ELF data (176 bytes) not in the handoff. `CTFireWeapon_Parse`
+(0x5dc800, `Parse__12CTFireWeaponFP5_zrdr`) is the AI script's FireWeapon task parser beside `CTMove`, `CTLookAt`,
+`CTStance`, `CTFireMode`: it allocates a 0x2c-byte node and reads one argument. No weapon table is in `READERC.ZAR`
+(56 compiled scripts), `MOTION_P.ZAR` or the 22 archives; if SOCOM II keeps SOCOM 1's layout the fields are reCOM's
+`CZWeapon`, `CZWeaponStance` (the reticle knock and rifle kick), `CZFTSWeapon` and `CZAmmo` (research 79 §1.2).
+`dynamics.rdr` holds the aim limits: `init_aim_pitch` −9.167, `max_aim_pitch` 60, `min_aim_pitch` −70, `max_aim_yaw`
+85, and `CAMERA_WIGGLE` (amplitude 22, duration 0.6, rate 0.1). The body's recoil is a motion clip (`seal_recoil`,
+`seal_crouch_recoil`, `seal_prone_recoil`, `seal_p_recoil`, `seal_p_prone_recoil`; `looped 0`, `transition_speed_B`
+0.1); `Recoil__10CZSealBodyFv` is among the demo's twelve largest functions (research 49 §5), so it is not a small
+helper, and its r0001 twin is unnamed.
+
