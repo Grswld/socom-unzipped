@@ -269,6 +269,30 @@ same quads at x 288-352, y 192-256 in the PS2 presentation and scales them by th
 one; the arms' cores land on one column where the console's blur spread them over two, within the one-pixel bar. The
 spread between the rest size and 1.5× is an estimate: `m_minsize`/`m_maxsize` were not found in the sitting.
 
+### The game's movement law: the ramp is on the stick, the speed is linear in it, the fall is 2.4 g (2026-09-28, W2.2b)
+
+*(the implementer's reading of the decompilation, under review; the plan's Log records the verdict)* The SEAL's ground
+state is `FUN_00584c60` (`FUN_00586570` when starting from a stand). **The ramp is on the stick axes, not on the
+speed** (`FUN_00586c10`): each axis moves toward the pad's value at most `lower + (upper − lower) × (1 − (1 − |target|)^8)`
+per second — 2 at rest, 5 at full deflection, `lower/upper_x_accel` for the sideways axis and `_z_accel` for forward —
+with a snap: a forward axis above 0.9 whose wish changes faster than 9 per second jumps straight to the wish (sideways
+0.78 and 7.8), so a released or reversed full stick takes effect at once. **Stick to speed** (`FUN_00583350`): a forward
+value within 0.03 is 0 (`DAT_003f3428`); `m = min(1, |stick|)`; `w = asin(|sideways| / |stick|) × 2/π` is how far the
+stick points off straight ahead; the forward/back band carries `1 − w` of the speed and the strafe band `w`, renormalised
+by `1/√(w² + (1 − w)²)` (`DAT_0064fc80`, applied in `FUN_0057a330`), so a 45° stick in two 65 bands still runs at 65.
+**The speed is linear in the stick**: `FUN_0058bdf0` picks the clip as `m × 100 × max_velocity` (cm/s) against the
+transition bands, so speed = `m × max_velocity` — 90 % of full on tick 11 (0.18 s), full on tick 12; a half stick is
+32.5. **`fb_accel`, `lr_accel` and `throt_exp` shape nothing**: no reader but the initialiser and the loader (the
+spec's §1 guess that they set the approach is retracted). **Air control exists only in the Jump state** (`DAT_003deae8`
+is the string "Jump"; `FUN_0057a330`'s stick-driven velocity runs there); a walk-off fall keeps the horizontal velocity
+it had at the edge. **Gravity is in units/s²**: `FUN_0057e770` divides it by 98.1, so the SEAL falls at 2.4 g and a
+42-unit drop lands in 0.60 s. **No jump this sprint**: `jump_factor × gravity × −0.4` only seeds the landing-speed
+record at `actor+0x1364` that fall damage reads; the rise is the jump clip's root motion in `MPZANIM.ZAR`, which nothing
+reads. Not modelled: the slope and water slow-down (`FUN_005b56c0`), the clips' 0.2 s blend-in. Estimates marked for
+W2.2c: crouch rootY 3.4 (0.62 × 5.504), prone 1.8 (under the camera ramp's floor of 2.169); body columns crouch 6-14,
+prone 6-9; prone backward at the crawl's 11 (no backward crawl clip exists — the clip plays reversed). Frostfire's
+clean walk-off for the tests: the deck at x 630-675, z 725-815, y 142, east edge onto the 100 floor (B's ramp is walled).
+
 ## 8. Rulings
 
 - **W2.R1** — "the correct height" is the game's third-person camera with the body in the frame (research 17's
