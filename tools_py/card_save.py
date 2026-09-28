@@ -256,12 +256,17 @@ def write_card_file(raw, personas):
     return scramble(build_zar(replace(tree, None)))
 
 
+def _read(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
 def main(argv):
     if len(argv) == 3 and argv[1] == '--dump':
-        print(json.dumps(read_card_file(open(argv[2], 'rb').read()), indent=2))
+        print(json.dumps(read_card_file(_read(argv[2])), indent=2))
         return 0
     if len(argv) == 3 and argv[1] == '--keys':
-        head, keys = parse_zar(unscramble(open(argv[2], 'rb').read()))
+        head, keys = parse_zar(unscramble(_read(argv[2])))
         print(json.dumps(head))
         for name, data, children in keys:
             print('%-24s %6d bytes  %d children' % (name or '(root)', len(data), children))
