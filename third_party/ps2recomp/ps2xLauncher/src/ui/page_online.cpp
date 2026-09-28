@@ -101,8 +101,9 @@ namespace ui
         }
 
         // Sprint 16 L1b (#73, R295; the L1 design note, section 2): the PERSONAS list replaces the PROFILE, PLAYER NAME
-        // and PASSWORD fields -- one row per record the cards' ledgers hold, newest first, NEW PERSONA last, three
-        // visible and the rest scrolled to; the masked password beside the selected row when the card does not hold it.
+        // and PASSWORD fields -- one row per persona the cards hold (the persona-card plan, R-A), each card in its own
+        // order, NEW PERSONA last, three visible and the rest scrolled to; the masked password beside the selected row
+        // when the card does not hold it, and NEW PERSONA's NAME and PASSWORD beside it when it is selected.
         namespace ps = launcher::personas;
         const std::vector<ps::Persona> &rows = app.personas.rows;
         const int records = static_cast<int>(rows.size());
@@ -115,7 +116,12 @@ namespace ui
             // server warns and does not block -- there the game's first login makes a persona by its own rule.
             std::string note;
             Rgba ink = theme::caption;
-            if (selected < records)
+            if (selected == records && !app.personaNote.empty())
+            {
+                note = app.personaNote;   // CREATE ON CARD did not write: why, until the next try
+                ink = theme::warn;
+            }
+            else if (selected < records)
             {
                 const ps::Persona &r = rows[static_cast<size_t>(selected)];
                 if (!ps::counts(r, c))
@@ -126,6 +132,9 @@ namespace ui
                 else
                     note = "LAUNCH, then pick " + ps::displayName(r.name) + " in the game's list";
             }
+            else if (selected == records)
+                note = app.running ? "the game is running: CREATE ON CARD waits until it exits"
+                                   : "type a name and a password, then CREATE ON CARD";
             else if (records + 1 > kPersonaVisibleRows)
                 note = std::to_string(records + 1) + " rows -- up and down scroll the list";
             if (!note.empty())
@@ -149,13 +158,16 @@ namespace ui
                 if (listRow(ctx, r, ps::displayName(row.name), id, i == selected) && i != selected)
                 {
                     ps::pick(c, row);
+                    app.requestPersonaFirst = i;   // R-C: main.cpp puts it first on its card, so the game's form arrives with it
                     app.dirty = true;
-                    if (app.activeField == "online.persona.password")
+                    if (app.activeField == "online.persona.password" || app.activeField == "online.persona.name")
                         app.activeField.clear();
                 }
-                const std::string line = serverText(row.server) + " -- " +
-                                         ps::ageCaption(static_cast<std::time_t>(row.lastLogin), static_cast<std::time_t>(app.personasNow)) +
-                                         (row.second ? " -- second instance" : "");
+                // A record no ledger dates has not logged in from this launcher yet: its age would be the epoch's.
+                const std::string age = row.lastLogin > 0
+                                            ? ps::ageCaption(static_cast<std::time_t>(row.lastLogin), static_cast<std::time_t>(app.personasNow))
+                                            : std::string("on the card");
+                const std::string line = serverText(row.server) + " -- " + age + (row.second ? " -- second instance" : "");
                 textRightIn(ctx, line.c_str(), captionBox, metrics::captionSize - 1.0f, captionInk);
             }
             else
@@ -165,7 +177,9 @@ namespace ui
                     ps::pickNewPersona(c);
                     app.dirty = true;
                 }
-                textRightIn(ctx, "the game asks for a name on its own keyboard", captionBox, metrics::captionSize - 1.0f, captionInk);
+                // Selected, the row is narrowed for the creator beside it and the heading line carries this caption.
+                if (i != selected)
+                    textRightIn(ctx, "type a name and a password, then CREATE", captionBox, metrics::captionSize - 1.0f, captionInk);
             }
         }
         // The empty viewer's one sentence, under NEW PERSONA where the rows would be.
@@ -182,11 +196,34 @@ namespace ui
         }
         // The password (R179: plain in config.json only until the game remembers it; masked here), capped and
         // filtered as the game's own keyboard caps it (research/38).
+        // The persona-card plan: NEW PERSONA's NAME, filtered as the game's name keyboard is (no double quote).
+        if (hasNode(nodes, "online.persona.name"))
+        {
+            bool typed = false;
+            textField(ctx, rectOf(nodes, "online.persona.name"), app.personaNameTyped, "online.persona.name", typed, true,
+                      launcher::kLoginNameCap, false, [](char ch) { return launcher::keyboardAccepts(ch, false); });
+            if (typed)
+                app.personaNote.clear();   // not a setting: config.json does not keep it, so nothing is dirty
+        }
         if (hasNode(nodes, "online.persona.password"))
         {
             const Rect password = rectOf(nodes, "online.persona.password");
+            const std::string before = c.loginPassword;
             textField(ctx, password, c.loginPassword, "online.persona.password", changed, true, launcher::kLoginPasswordCap, true,
                       [](char ch) { return launcher::keyboardAccepts(ch, true); });
+            if (c.loginPassword != before)
+                app.personaNote.clear();
+        }
+        // The persona-card plan: CREATE ON CARD, live once a name and a password are typed and while no game holds the
+        // card; main.cpp writes it (requestCreatePersona). "CREATE" alone where the strip is too narrow for the words.
+        if (hasNode(nodes, "online.persona.create"))
+        {
+            const Rect create = rectOf(nodes, "online.persona.create");
+            const bool ready = !app.personaNameTyped.empty() && !c.loginPassword.empty() && !app.running;
+            const char *label =
+                textWidth(ctx, "CREATE ON CARD", metrics::labelSize + 1.0f, Face::Bold, 0.04f) + 16.0f <= create.w ? "CREATE ON CARD" : "CREATE";
+            if (button(ctx, create, label, "online.persona.create", ready))
+                app.requestCreatePersona = true;
         }
 
         // Sprint 9 P4: everything above is a stranger's first run; everything below the rule is not. The

@@ -1,6 +1,7 @@
 // Sprint 16 L1b (#73, R295): the persona ledger beside the card -- see launcher/personas.h and the L1 design note.
 #include "launcher/personas.h"
 #include "launcher/launcher_config.h"   // normalizeProfile: a ledger's leaf must be a profile name to be launched
+#include "launcher/card_save.h"         // the persona-card plan: the card's own persona file
 
 #include "json_reader.h"
 
@@ -10,9 +11,28 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <mutex>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#endif
 
 namespace launcher::personas
 {
+    namespace cs = launcher::card;
+
     namespace
     {
         namespace fs = std::filesystem;
@@ -68,17 +88,112 @@ namespace launcher::personas
             return !in.bad();
         }
 
-        // A card's save folder holds a SaveGame* file.
-        bool hasSaveGame(const fs::path &card)
+        bool readBytes(const fs::path &path, std::vector<uint8_t> &out)
+        {
+            std::ifstream in(path, std::ios::binary);
+            if (!in)
+                return false;
+            out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            return !in.bad();
+        }
+
+        // A card file's bytes, refused over kCardMostBytes; false with `note` naming the file relative to cards/.
+        bool readCardBytes(const fs::path &file, const std::string &shown, std::vector<uint8_t> &out, std::string &note)
         {
             std::error_code ec;
-            for (fs::directory_iterator it(card / kSaveFolder, ec), end; !ec && it != end; it.increment(ec))
+            const std::uintmax_t size = fs::file_size(file, ec);
+            if (!ec && size > kCardMostBytes)
             {
-                const std::string name = it->path().filename().string();
-                if (name.rfind(kSaveGamePrefix, 0) == 0)
-                    return true;
+                note = shown + ": larger than 1 MiB, not a card file the game wrote; skipped";
+                return false;
             }
-            return false;
+            if (!readBytes(file, out))
+            {
+                note = shown + ": cannot be read; skipped";
+                return false;
+            }
+            return true;
+        }
+
+        // "a.b.c.d" with four decimal parts of 0-255: the form HOST holds and a resolver hands back as is.
+        bool dottedQuad(const std::string &s)
+        {
+            int parts = 0, digits = 0, value = 0;
+            for (const char ch : s)
+            {
+                if (ch >= '0' && ch <= '9')
+                {
+                    value = value * 10 + (ch - '0');
+                    if (++digits > 3 || value > 255)
+                        return false;
+                }
+                else if (ch == '.' && digits > 0)
+                {
+                    ++parts;
+                    digits = value = 0;
+                }
+                else
+                    return false;
+            }
+            return parts == 3 && digits > 0;
+        }
+
+        // The host part of "host[:port]" (an address with more than one ':' is not an IPv4 one and is kept whole).
+        std::string hostOf(const std::string &address)
+        {
+            const std::size_t colon = address.find(':');
+            if (colon == std::string::npos || address.find(':', colon + 1) != std::string::npos)
+                return address;
+            return address.substr(0, colon);
+        }
+
+        std::string systemResolve(const std::string &host)
+        {
+#ifdef _WIN32
+            static const bool wsaUp = [] {
+                WSADATA wsa;
+                return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;   // once per process; getaddrinfo needs Winsock up
+            }();
+            if (!wsaUp)
+                return std::string();
+#endif
+            addrinfo hints{};
+            hints.ai_family = AF_INET;
+            hints.ai_socktype = SOCK_STREAM;
+            addrinfo *res = nullptr;
+            if (getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || res == nullptr)
+                return std::string();
+            std::string out;
+            for (addrinfo *a = res; a != nullptr && out.empty(); a = a->ai_next)
+            {
+                if (a->ai_family != AF_INET || a->ai_addr == nullptr)
+                    continue;
+                const auto *in = reinterpret_cast<const sockaddr_in *>(a->ai_addr);
+                const uint32_t ip = ntohl(in->sin_addr.s_addr);
+                out = std::to_string((ip >> 24) & 0xFF) + "." + std::to_string((ip >> 16) & 0xFF) + "." +
+                      std::to_string((ip >> 8) & 0xFF) + "." + std::to_string(ip & 0xFF);
+            }
+            freeaddrinfo(res);
+            return out;
+        }
+
+        std::mutex g_resolveLock;
+        Resolver g_resolver = nullptr;
+        std::map<std::string, std::string> g_resolved;   // host -> dotted address, "" for a host that did not resolve
+
+        // A card's records, or false with `note` (the card is then neither listed nor rewritten).
+        bool readCardRecords(const fs::path &file, const std::string &shown, std::vector<cs::Persona> &out, std::string &note)
+        {
+            std::vector<uint8_t> bytes;
+            if (!readCardBytes(file, shown, bytes, note))
+                return false;
+            std::string why;
+            if (!cs::readCardFile(bytes, out, why))
+            {
+                note = shown + ": not a card file this build reads (" + why + "); skipped";
+                return false;
+            }
+            return true;
         }
     }
 
@@ -249,6 +364,176 @@ namespace launcher::personas
         return writeTemp(path, json) && commitTemp(path);
     }
 
+    bool writeTempBytes(const std::string &path, const std::vector<uint8_t> &bytes)
+    {
+        return writeTemp(path, std::string(bytes.begin(), bytes.end()));
+    }
+
+    bool writeAtomicBytes(const std::string &path, const std::vector<uint8_t> &bytes)
+    {
+        return writeTempBytes(path, bytes) && commitTemp(path);
+    }
+
+    std::string cardFilePath(const std::string &cardsDir, const std::string &leaf)
+    {
+        return (fs::path(cardsDir) / leaf / kSaveFolder / kSaveFolder).string();
+    }
+
+    std::string resolveIPv4(const std::string &address)
+    {
+        const std::string host = hostOf(address);
+        if (host.empty())
+            return std::string();
+        if (dottedQuad(host))
+            return host;
+        std::lock_guard<std::mutex> hold(g_resolveLock);
+        const auto known = g_resolved.find(host);
+        if (known != g_resolved.end())
+            return known->second;
+        std::string ip = g_resolver != nullptr ? g_resolver(host) : systemResolve(host);
+        if (!dottedQuad(ip))
+            ip.clear();
+        g_resolved[host] = ip;   // a failure is remembered too: the frame path never asks twice
+        return ip;
+    }
+
+    int serverPort(const std::string &address)
+    {
+        const std::string host = hostOf(address);
+        if (host.size() == address.size() || host.size() + 1 >= address.size())
+            return 10075;
+        int port = 0;
+        for (std::size_t i = host.size() + 1; i < address.size(); ++i)
+        {
+            if (address[i] < '0' || address[i] > '9')
+                return 10075;
+            port = port * 10 + (address[i] - '0');
+            if (port > 65535)
+                return 10075;
+        }
+        return port == 0 ? 10075 : port;
+    }
+
+    std::string resolvedServer(const Config &c)
+    {
+        return resolveIPv4(effectiveServer(c));
+    }
+
+    void setResolverForTests(Resolver resolver)
+    {
+        std::lock_guard<std::mutex> hold(g_resolveLock);
+        g_resolver = resolver;
+        g_resolved.clear();
+    }
+
+    bool createPersona(const std::string &home, const Config &c, const std::string &name, const std::string &password,
+                       std::string &note)
+    {
+        const std::string n = normalizeLoginName(name);
+        const std::string pw = normalizeLoginPassword(password);
+        if (n.empty())
+        {
+            note = "no name: type the persona's name (the game's keyboard has no space)";
+            return false;
+        }
+        if (pw.empty())
+        {
+            note = "no password: type the persona's password";
+            return false;
+        }
+        const std::string server = effectiveServer(c);
+        const std::string host = resolveIPv4(server);
+        if (host.empty())
+        {
+            note = "the server " + server + " does not resolve to an address; nothing written";
+            return false;
+        }
+        const std::string cardsDir = (fs::path(home) / "cards").string();
+        const std::string leaf = cardLeaf(c);
+        const fs::path file(cardFilePath(cardsDir, leaf));
+        const std::string shown = "cards/" + leaf + "/" + kSaveFolder + "/" + kSaveFolder;
+        std::vector<uint8_t> bytes;
+        std::vector<cs::Persona> records;
+        std::error_code ec;
+        if (fs::exists(file, ec))
+        {
+            if (!readCardBytes(file, shown, bytes, note))
+                return false;
+            std::string why;
+            if (!cs::readCardFile(bytes, records, why))
+            {
+                note = shown + ": not a card file this build reads (" + why + "); nothing written";
+                return false;
+            }
+        }
+        cs::Persona record;
+        record.host = host;
+        record.name = n;
+        record.password = pw;
+        record.port = serverPort(server);
+        record.savePassword = true;
+        for (auto it = records.begin(); it != records.end(); ++it)
+            if (it->host == host && it->name == n)
+            {
+                // The same persona again: its password and port are the new ones; what the game keeps of its own
+                // (TOWN, GENDER, the profile checksum) stays as the card holds it.
+                record.town = it->town;
+                record.gender = it->gender;
+                record.checksum = it->checksum;
+                records.erase(it);
+                break;
+            }
+        records.insert(records.begin(), record);
+        const std::vector<uint8_t> out = cs::writeCardFile(bytes, records);
+        if (out.empty())
+        {
+            note = shown + ": the card file could not be rebuilt; nothing written";
+            return false;
+        }
+        fs::create_directories(file.parent_path(), ec);
+        if (!writeAtomicBytes(file.string(), out))
+        {
+            note = shown + ": cannot be written";
+            return false;
+        }
+        note = "wrote " + n + " to " + fs::path(file).make_preferred().string();
+        return true;
+    }
+
+    bool moveFirst(const std::string &cardsDir, const Persona &row, std::string &note)
+    {
+        const fs::path file(cardFilePath(cardsDir, row.card));
+        const std::string shown = "cards/" + row.card + "/" + kSaveFolder + "/" + kSaveFolder;
+        std::vector<uint8_t> bytes;
+        std::vector<cs::Persona> records;
+        if (!readCardBytes(file, shown, bytes, note))
+            return false;
+        std::string why;
+        if (!cs::readCardFile(bytes, records, why))
+        {
+            note = shown + ": not a card file this build reads (" + why + ")";
+            return false;
+        }
+        for (std::size_t i = 0; i < records.size(); ++i)
+        {
+            if (records[i].name != row.name || records[i].host != row.server)
+                continue;
+            if (i == 0)
+                return true;   // first already: the file is left as it is
+            std::rotate(records.begin(), records.begin() + static_cast<std::ptrdiff_t>(i),
+                        records.begin() + static_cast<std::ptrdiff_t>(i) + 1);
+            const std::vector<uint8_t> out = cs::writeCardFile(bytes, records);
+            if (out.empty() || !writeAtomicBytes(file.string(), out))
+            {
+                note = shown + ": cannot be rewritten with " + displayName(row.name) + " first";
+                return false;
+            }
+            return true;
+        }
+        note = shown + ": no longer holds " + displayName(row.name);
+        return false;
+    }
+
     Cards readCards(const std::string &cardsDir)
     {
         Cards cards;
@@ -267,10 +552,65 @@ namespace launcher::personas
         }
         std::sort(ledgers.begin(), ledgers.end());
         std::sort(cardDirs.begin(), cardDirs.end());
+        std::vector<std::string> cardLeaves;   // the cards whose file was read: a ledger beside one is not orphaned
+        for (const fs::path &cardDir : cardDirs)
+        {
+            const std::string leaf = cardDir.filename().string();
+            if (normalizeProfile(leaf) != leaf)
+                continue;   // not a card this launcher could launch (a hand-made folder): not listed, not noted
+            const fs::path file(cardFilePath(cardsDir, leaf));
+            std::error_code kind;
+            if (!fs::is_regular_file(file, kind))
+                continue;   // a card the game has not written a persona file into yet
+            const std::string shown = "cards/" + leaf + "/" + kSaveFolder + "/" + kSaveFolder;
+            std::vector<cs::Persona> records;
+            std::string note;
+            if (!readCardRecords(file, shown, records, note))
+            {
+                cards.notes.push_back(note);
+                continue;
+            }
+            cardLeaves.push_back(leaf);
+            // The ledger beside it dates the records; a corrupt one costs only the dates.
+            std::vector<Persona> ledger;
+            const fs::path ledgerPath = dir / (leaf + kSuffix);
+            if (fs::exists(ledgerPath, kind) && !readLedger(ledgerPath.string(), ledger, note))
+            {
+                cards.notes.push_back(note);
+                ledger.clear();
+            }
+            std::vector<bool> used(ledger.size(), false);
+            for (const cs::Persona &rec : records)
+            {
+                Persona row;
+                row.name = rec.name;
+                row.card = leaf;
+                row.server = rec.host;
+                row.savedPassword = rec.savePassword && !rec.password.empty();
+                row.second = endsWith(leaf, "_b");
+                for (std::size_t i = 0; i < ledger.size(); ++i)
+                {
+                    if (ledger[i].name != rec.name)
+                        continue;
+                    if (ledger[i].server != rec.host && resolveIPv4(ledger[i].server) != rec.host)
+                        continue;
+                    used[i] = true;
+                    if (ledger[i].lastLogin > row.lastLogin)
+                        row.lastLogin = ledger[i].lastLogin;
+                }
+                cards.rows.push_back(row);
+            }
+            const auto unmatched = std::count(used.begin(), used.end(), false);
+            if (unmatched > 0)
+                cards.notes.push_back(leaf + kSuffix + ": " + std::to_string(unmatched) +
+                                      (unmatched == 1 ? " record" : " records") + " with no persona on the card; not listed");
+        }
         for (const fs::path &ledger : ledgers)
         {
             const std::string file = ledger.filename().string();
             const std::string leaf = leafOf(file);
+            if (std::find(cardLeaves.begin(), cardLeaves.end(), leaf) != cardLeaves.end())
+                continue;   // dated its card's rows above
             if (normalizeProfile(leaf) != leaf)
             {
                 cards.notes.push_back(file + ": its card name is not a profile name; skipped");
@@ -279,35 +619,23 @@ namespace launcher::personas
             std::error_code kind;
             if (!fs::is_directory(dir / leaf, kind))
             {
-                // Listed, a row would launch a card that is not there and drop a password it never held.
                 cards.notes.push_back(file + ": its card, cards/" + leaf + "/, is gone; skipped");
                 continue;
             }
+            // The card is there but holds no persona file this build read: the ledger's records are not rows (R-A).
             std::vector<Persona> records;
             std::string note;
             if (!readLedger(ledger.string(), records, note))
-            {
                 cards.notes.push_back(note);
-                continue;
-            }
-            cards.rows.insert(cards.rows.end(), records.begin(), records.end());
+            else if (!records.empty() && !fs::is_regular_file(fs::path(cardFilePath(cardsDir, leaf)), kind))
+                cards.notes.push_back(file + ": its card holds no persona file yet; not listed");
         }
-        for (const fs::path &card : cardDirs)
-        {
-            std::error_code exists;
-            if (!fs::exists(dir / (card.filename().string() + kSuffix), exists) && hasSaveGame(card))
-                cards.savesWithoutLedger = true;
-        }
-        std::stable_sort(cards.rows.begin(), cards.rows.end(),
-                         [](const Persona &a, const Persona &b) { return a.lastLogin > b.lastLogin; });
         return cards;
     }
 
     const char *emptySentence(const Cards &cards)
     {
-        if (!cards.rows.empty())
-            return "";
-        return cards.savesWithoutLedger ? kEmptyAgainSentence : kEmptySentence;
+        return cards.rows.empty() ? kEmptySentence : "";
     }
 
     std::string displayName(const std::string &name)
@@ -328,7 +656,15 @@ namespace launcher::personas
 
     bool counts(const Persona &row, const Config &c)
     {
-        return row.server == effectiveServer(c);
+        const std::string server = effectiveServer(c);
+        if (row.server == server)
+            return true;
+        // A card row holds HOST, the address the game connected to, with no port; the config may name the server by
+        // its hostname or add ":port". Only a dotted row needs the server's address (a dotted one without a lookup,
+        // a name through the cache).
+        if (!dottedQuad(row.server))
+            return false;
+        return resolveIPv4(server) == row.server;
     }
 
     std::size_t selectedRow(const std::vector<Persona> &rows, const Config &c)
@@ -373,6 +709,12 @@ namespace launcher::personas
         c.loginPassword.clear();
     }
 
+    bool pick(Config &c, const Persona &row, const std::string &cardsDir, std::string &note)
+    {
+        pick(c, row);
+        return moveFirst(cardsDir, row, note);
+    }
+
     void pickNewPersona(Config &c)
     {
         c.loginName.clear();
@@ -403,6 +745,13 @@ namespace launcher::personas
     std::string serverCaption(const std::string &address)
     {
         const ServerPreset *preset = findServerPresetByAddress(address);
-        return preset != nullptr ? std::string(preset->label) : address;
+        if (preset != nullptr)
+            return preset->label;
+        // A card row's HOST is the preset's hostname resolved: the preset's label still names it (cached lookups).
+        if (dottedQuad(address))
+            for (const ServerPreset &p : kServerPresets)
+                if (p.address[0] != '\0' && presetAvailable(p) && !dottedQuad(p.address) && resolveIPv4(p.address) == address)
+                    return p.label;
+        return address;
     }
 }

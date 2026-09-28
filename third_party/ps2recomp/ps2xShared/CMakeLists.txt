@@ -24,3 +24,7 @@ target_include_directories(ps2x_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_compile_features(ps2x_shared PUBLIC cxx_std_20)
 # PIC: kept from upstream's SHARED Android runner (removed by Sprint 13 Task C7); a harmless default here.
 set_target_properties(ps2x_shared PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# The persona-card plan Task 2: personas.cpp resolves the server to the address the card's HOST holds (getaddrinfo).
+if(WIN32)
+    target_link_libraries(ps2x_shared PUBLIC ws2_32)
+endif()

@@ -82,7 +82,8 @@ namespace ui
         uint32_t gameRevisionsInstalled = 0;
         // Sprint 16 L1b (#73): the ONLINE page's PERSONAS list -- how many records it lists (NEW PERSONA is one more,
         // last), how far it is scrolled (the first visible row), which row is selected (personaRows = NEW PERSONA,
-        // the default inputs' case) and whether the masked PASSWORD field shows beside the selected row.
+        // the default inputs' case) and whether the masked PASSWORD field shows beside the selected row. NEW PERSONA
+        // selected (personaSelected == personaRows) is what puts the creator's NAME field beside the password.
         int personaRows = 0;
         int personaScroll = 0;
         int personaSelected = 0;
@@ -119,6 +120,14 @@ namespace ui
     Rect onlineAddressRow(Rect window);
     Rect onlinePersonaRow(Rect window, int index, int scroll);
     Rect onlinePersonaPassword(Rect window, int index, int scroll);
+    // The persona-card plan: NEW PERSONA selected is the creator -- a strip at the row's right end (as wide as the row
+    // can spare, 200 to 520) holding the new persona's NAME ("online.persona.name"), its PASSWORD
+    // ("online.persona.password") and the CREATE ON CARD button ("online.persona.create"), left to right. A record
+    // row keeps the one password field.
+    Rect onlinePersonaCreator(Rect window, int index, int scroll);
+    Rect onlinePersonaName(Rect window, int index, int scroll);
+    Rect onlinePersonaNewPassword(Rect window, int index, int scroll);
+    Rect onlinePersonaCreate(Rect window, int index, int scroll);
     // "online.persona.<i>" for a record, "online.persona.new" for index == records; the reverse (-1: not a row).
     std::string personaRowId(int index, int records);
     int personaIndexOf(const std::string &id, int records);

@@ -46,6 +46,11 @@ namespace ui
         constexpr float kPersonaRowH = 32.0f;
         constexpr float kPersonaPasswordW = 200.0f;
         constexpr float kPersonaPasswordGap = 10.0f;
+        // The persona-card plan: NEW PERSONA selected is the creator -- NAME, PASSWORD and CREATE ON CARD beside the
+        // row, in a strip as wide as the row can spare (the row keeps kPersonaCreatorRowLeast for its label) up to
+        // kPersonaCreatorMostW, shared 36/28/36.
+        constexpr float kPersonaCreatorMostW = 520.0f;
+        constexpr float kPersonaCreatorRowLeast = 150.0f;
 
         // ONLINE's row sits between the server list and the fields under it. Sprint 10 Goal 9 had already
         // filled that page to the design height -- the second-instance toggle's caption ends 4 units above
@@ -280,12 +285,22 @@ namespace ui
             const int scroll = personaScrollToShow(in.personaScroll, in.personaScroll, total);
             for (int i = scroll; i < total && i < scroll + kPersonaVisibleRows; ++i)
             {
+                // The persona-card plan: NEW PERSONA selected is the creator -- NAME, PASSWORD, CREATE ON CARD.
+                const bool creator = i == records && i == in.personaSelected;
                 const bool withField = i == in.personaSelected && in.personaPasswordShown;
                 Rect row = onlinePersonaRow(window, i, scroll);
-                if (withField)
+                if (creator)
+                    row.w = onlinePersonaCreator(window, i, scroll).x - kPersonaPasswordGap - row.x;
+                else if (withField)
                     row.w = onlinePersonaPassword(window, i, scroll).x - kPersonaPasswordGap - row.x;
                 add(out, page, personaRowId(i, records), row);
-                if (withField)
+                if (creator)
+                {
+                    add(out, page, "online.persona.name", onlinePersonaName(window, i, scroll));
+                    add(out, page, "online.persona.password", onlinePersonaNewPassword(window, i, scroll));
+                    add(out, page, "online.persona.create", onlinePersonaCreate(window, i, scroll));
+                }
+                else if (withField)
                     add(out, page, "online.persona.password", onlinePersonaPassword(window, i, scroll));
             }
             // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
@@ -337,11 +352,17 @@ namespace ui
             // Sprint 16 L1b (#73, R295): the PERSONAS list. The owner's first ask ("what is a profile?") is answered
             // where the profile now is -- the card NEW PERSONA keeps.
             {"online.persona.new",
-             "A new persona: the game asks for its name on its own keyboard and keeps it on the memory card in "
-             "cards/<profile>. It joins this list after its first login."},
+             "A new persona: type its name and password beside this row, then CREATE ON CARD writes it to the memory "
+             "card in cards/<profile>, as the game itself would, and it joins this list."},
+            {"online.persona.create",
+             "Writes the persona typed beside it to the memory card in cards/<profile>, first in the game's list, with its "
+             "password saved as the game saves it; the game's login form then arrives with it."},
+            {"online.persona.name",
+             "The new persona's name, up to 14 characters, as the game's keyboard would take it; written to the memory "
+             "card by CREATE ON CARD."},
             {"online.persona.password",
-             "The persona's password, up to 12 characters, masked here. Kept in config.json next to the launcher, in "
-             "plain text, only until the game remembers it on the card."},
+             "The persona's password, up to 12 characters, masked here. CREATE ON CARD writes a new persona's to the "
+             "card, as the game keeps it; for a persona made on another server it is kept in config.json until then."},
             {"online.server",
              "Which Horizon server the game logs in to. The project hosts one; a different address is for a "
              "server you run yourself."},
@@ -388,8 +409,8 @@ namespace ui
                 return h.text;
         // Sprint 16 L1b: a persona row, whatever its index.
         if (id.rfind("online.persona.", 0) == 0 && id.size() > 15 && id[15] >= '0' && id[15] <= '9')
-            return "A persona this card has logged in with: its name, the server it was made on and when it last played. "
-                   "Pick it, press LAUNCH, then pick it in the game's list.";
+            return "A persona on this memory card: its name, the server it is for and when it last played. Picking it puts "
+                   "it first on the card, so the game's login form arrives with it; then press LAUNCH.";
         // The crouch cells: each one's trade, the line the page's caption used to carry (R139).
         if (id.rfind("pad.crouch.", 0) == 0)
         {
@@ -447,6 +468,39 @@ namespace ui
     {
         const Rect row = onlinePersonaRow(window, index, scroll);
         return Rect{row.right() - kPersonaPasswordW, row.y, kPersonaPasswordW, row.h};
+    }
+
+    Rect onlinePersonaCreator(Rect window, int index, int scroll)
+    {
+        const Rect row = onlinePersonaRow(window, index, scroll);
+        float w = row.w - kPersonaCreatorRowLeast - kPersonaPasswordGap;
+        if (w > kPersonaCreatorMostW)
+            w = kPersonaCreatorMostW;
+        if (w < kPersonaPasswordW)
+            w = kPersonaPasswordW;
+        return Rect{row.right() - w, row.y, w, row.h};
+    }
+
+    Rect onlinePersonaName(Rect window, int index, int scroll)
+    {
+        const Rect strip = onlinePersonaCreator(window, index, scroll);
+        const float parts = strip.w - 2.0f * kPersonaPasswordGap;
+        return Rect{strip.x, strip.y, parts * 0.36f, strip.h};
+    }
+
+    Rect onlinePersonaNewPassword(Rect window, int index, int scroll)
+    {
+        const Rect name = onlinePersonaName(window, index, scroll);
+        const float parts = onlinePersonaCreator(window, index, scroll).w - 2.0f * kPersonaPasswordGap;
+        return Rect{name.right() + kPersonaPasswordGap, name.y, parts * 0.28f, name.h};
+    }
+
+    Rect onlinePersonaCreate(Rect window, int index, int scroll)
+    {
+        const Rect strip = onlinePersonaCreator(window, index, scroll);
+        const Rect password = onlinePersonaNewPassword(window, index, scroll);
+        const float x = password.right() + kPersonaPasswordGap;
+        return Rect{x, strip.y, strip.right() - x, strip.h};
     }
 
     std::string personaRowId(int index, int records)
