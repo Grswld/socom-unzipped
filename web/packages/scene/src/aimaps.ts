@@ -39,7 +39,7 @@ export interface AiSpawnRecord {
   side: 0 | 1;
   /** Bit 4. A slot is a record with it clear; a twin sits in a cell next to its slot (75 §5.5). */
   twin: boolean;
-  /** 45-degree steps from +z toward -x (`facingVector`), 75 §7. */
+  /** 45-degree steps from -z toward +x (`facingVector`), 75 §7 as corrected in §11. */
   facing: number;
   /** The record's third word: not decoded (pointer-like on some maps, float-like on others). */
   word: number;
@@ -237,10 +237,17 @@ export function namedPoint(ai: AiMaps, ...names: string[]): { sub: AiSubMap; poi
   return undefined;
 }
 
-/** The unit (x, z) a facing points along: step k is 45 degrees x k from +z toward -x (75 §7). */
+/**
+ * The unit (x, z) a facing points along: step k is (sin 45k deg, -cos 45k deg) -- 0 is -z, 2 is +x, 4 is +z,
+ * 6 is -x. Derived from the data (75 §11): 40 of the 44 measured spawns are the orbit camera, which sits behind
+ * the actor along its facing (`tools_py/parity/online_match_ours.py:42-45`), and this is the one convention of
+ * the sixteen (step 0 on any of eight axes, turning either way) under which all 40 lie behind a slot of their
+ * own side -- 20.1-28.0 units back, the bearing to the slot within 2.2-7.6 degrees of its facing; the next best
+ * places 22. Until 2026-09-28 this was its negation, read as the actor standing ahead of its slot.
+ */
 export function facingVector(facing: number): [number, number] {
   const a = (facing & 7) * Math.PI / 4;
-  return [-Math.sin(a), Math.cos(a)];
+  return [Math.sin(a), -Math.cos(a)];
 }
 
 /** A spawn slot placed in the world: a record of the trailer's list with bit 4 clear (75 §5.5, §6). */
@@ -263,18 +270,19 @@ export function spawnSlots(ai: AiMaps, side?: 0 | 1): AiSpawnSlot[] {
 export interface SpawnFit { slot: AiSpawnSlot; along: number; perp: number; distance: number }
 
 /**
- * The slot of `side` that best explains a position (x, z) as the slot's centre moved forward along its
- * facing: of the slots with `along` in `[-1, maxAlong]`, the one with the least `|perp|`; undefined if
- * none qualifies. Research 75 §7 is the check this serves: the measured spawns of `spawns.ts` sit either at
- * a slot's centre or 20-28 units ahead of one.
+ * The slot of `side` that best explains a position (x, z) as at the slot's centre or behind it along its
+ * facing: of the slots with `along` in `[-maxBehind, 1]`, the one with the least `|perp|`; undefined if none
+ * qualifies. Research 75 §7 and §11 are the check this serves: the measured spawns of `spawns.ts` sit either
+ * at a slot's centre (the actor's feet, 4 rows) or 20-28 units behind one (the orbit camera behind the actor,
+ * 40 rows).
  */
-export function fitSpawn(ai: AiMaps, side: 0 | 1, x: number, z: number, maxAlong = 30): SpawnFit | undefined {
+export function fitSpawn(ai: AiMaps, side: 0 | 1, x: number, z: number, maxBehind = 30): SpawnFit | undefined {
   let best: SpawnFit | undefined;
   for (const slot of spawnSlots(ai, side)) {
     const [ux, uz] = facingVector(slot.facing);
     const dx = x - slot.x, dz = z - slot.z;
     const along = dx * ux + dz * uz, perp = dz * ux - dx * uz;
-    if (along < -1 || along > maxAlong) continue;
+    if (along > 1 || along < -maxBehind) continue;
     if (!best || Math.abs(perp) < Math.abs(best.perp)) best = { slot, along, perp, distance: Math.hypot(dx, dz) };
   }
   return best;
@@ -299,7 +307,7 @@ export interface SpawnSlot {
   position: [number, number, number];
   /** The facing in eighth turns, bits 0-2 of the flags (75 §5.5). */
   step: number;
-  /** The same facing as a unit (x, z): step k points along (-sin 45k deg, cos 45k deg) (`facingVector`, 75 §7). */
+  /** The same facing as a unit (x, z): step k points along (sin 45k deg, -cos 45k deg) (`facingVector`, 75 §11). */
   facing: [number, number];
   /** The cell: sub-map index and grid (x, z) (`CAiMapLoc`, 75 §4). */
   loc: AiLoc;
@@ -311,9 +319,10 @@ export interface SpawnSlot {
  * The y, which the file does not hold (75 §4): the measured spawn of the slot's side (`spawns.ts`) where the
  * map has one, held inside the height range of the slot's sub-map -- the header's bounding box, the only
  * heights the file has (75 §3) -- and that range's floor where the map has none. The measured height is the
- * one the side is known to have stood at, 20-28 units from a slot of the side on all 44 rows (75 §7); the
- * hold brings down the slots of a lower sub-map (9 of Death Trap's B on one spanning y -140 to -100.5, where B
- * was measured at 1). A slot's floor is W1.4's to find.
+ * actor's feet only on Frostfire and Vigilance (`KNOWN.md` section 1); on the other 20 maps it is the orbit
+ * camera's, about 25 units above the actor's floor (75 §11), so there the slots stand that much high. The hold
+ * brings down the slots of a lower sub-map (9 of Death Trap's B on one spanning y -140 to -100.5, where B was
+ * measured at 1). A slot's floor is W1.4's to find.
  */
 export function placeSpawnSlots(ai: AiMaps, measured?: Spawns): SpawnSlot[] {
   const count = [0, 0];
@@ -332,33 +341,37 @@ export function placeSpawnSlots(ai: AiMaps, measured?: Spawns): SpawnSlot[] {
 export interface SlotFit { slot: SpawnSlot; along: number; perp: number; distance: number }
 
 /**
- * `fitSpawn` over placed slots: of `side`'s slots with the position's `along` in `[-1, maxAlong]`, the one
- * with the least `|perp|` (`perp = dz * ux - dx * uz`, 75 §7), or undefined when none qualifies.
+ * `fitSpawn` over placed slots: of `side`'s slots with the position's `along` in `[-maxBehind, 1]` -- at the
+ * centre or behind it -- the one with the least `|perp|` (`perp = dz * ux - dx * uz`, 75 §7), or undefined
+ * when none qualifies.
  */
-export function fitSlot(slots: readonly SpawnSlot[], side: 0 | 1, x: number, z: number, maxAlong = 30): SlotFit | undefined {
+export function fitSlot(slots: readonly SpawnSlot[], side: 0 | 1, x: number, z: number, maxBehind = 30): SlotFit | undefined {
   let best: SlotFit | undefined;
   for (const slot of slots) {
     if (slot.side !== side) continue;
     const [ux, uz] = slot.facing;
     const dx = x - slot.position[0], dz = z - slot.position[2];
     const along = dx * ux + dz * uz, perp = dz * ux - dx * uz;
-    if (along < -1 || along > maxAlong) continue;
+    if (along > 1 || along < -maxBehind) continue;
     if (!best || Math.abs(perp) < Math.abs(best.perp)) best = { slot, along, perp, distance: Math.hypot(dx, dz) };
   }
   return best;
 }
 
-/** At a slot's centre: the 4 `KNOWN.md` rows are 0.26-0.51 units off theirs (75 §7). */
+/** At a slot's centre: the 4 `KNOWN.md` rows, the actor's feet, are 0.26-0.51 units off theirs (75 §7). */
 const AT_SLOT = 1;
-/** Ahead of a slot: up to 30 units along its facing (W1.R9) and within half a cell of the line (75 §3: cells are 10). */
-const AHEAD_ALONG = 30, AHEAD_ACROSS = 5;
+/**
+ * Behind a slot: up to 30 units back along its facing (W1.R9) and within half a cell of the line (75 §3: cells
+ * are 10) -- where the orbit camera sits behind an actor standing on the slot (75 §11).
+ */
+const BEHIND_ALONG = 30, BEHIND_ACROSS = 5;
 
 /**
- * The spec's W1.R9 oracle: a measured position is accounted for when it lies at its fitted slot's centre, or
- * ahead of it along its facing, up to 30 units, within half a cell of the line. 75 §7 found all 44: 4 at a
- * centre, 40 at 20.1-28.0 along and 1.0-3.2 across.
+ * The spec's W1.R9 oracle: a measured position is accounted for when it lies at its fitted slot's centre (an
+ * actor row), or behind it along its facing, up to 30 units, within half a cell of the line (a camera row).
+ * 75 §7 and §11 found all 44: 4 at a centre, 40 at 20.1-28.0 behind and 1.0-3.2 across.
  */
 export function accountsFor(fit: SlotFit | undefined): boolean {
   if (!fit) return false;
-  return fit.distance <= AT_SLOT || (fit.along >= 0 && fit.along <= AHEAD_ALONG && Math.abs(fit.perp) <= AHEAD_ACROSS);
+  return fit.distance <= AT_SLOT || (fit.along <= 0 && fit.along >= -BEHIND_ALONG && Math.abs(fit.perp) <= BEHIND_ACROSS);
 }

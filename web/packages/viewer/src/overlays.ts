@@ -124,7 +124,8 @@ export class Overlays {
         // Depth-tested like anything else: a marker that shines through a wall would lie about where it is.
         new MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.8 }),
       );
-      ball.position.set(feet[0], feet[1] + SPAWN_RADIUS, feet[2]);   // the table's y is the feet
+      // The table's y: the feet on KNOWN section 1's two maps, the orbit camera, 25 higher, on the rest (spawns.ts).
+      ball.position.set(feet[0], feet[1] + SPAWN_RADIUS, feet[2]);
       group.add(ball);
       const label = new Sprite(new SpriteMaterial({ map: letter(side.toUpperCase()), transparent: true, depthTest: false }));
       label.position.set(feet[0], feet[1] + LABEL_ABOVE, feet[2]);
@@ -188,7 +189,7 @@ export class Overlays {
 /**
  * The line segments that draw spawn slots, xyz pairs at each slot's y: per slot, its cell's four sides
  * (`SLOT_CELL` square on the cell's centre, research 75 §4) and an arrow from the centre along its facing
- * (`SLOT_ARROW`, 75 §7's vector), with two barbs at the tip -- seven segments.
+ * (`SLOT_ARROW`, `facingVector` as research 75 §11 corrected it), with two barbs at the tip -- seven segments.
  */
 export function slotSegments(slots: readonly SpawnSlot[]): Float32Array {
   const out = new Float32Array(slots.length * 7 * 6);

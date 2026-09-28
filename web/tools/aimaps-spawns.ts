@@ -39,7 +39,7 @@ const f1 = (v: number) => v.toFixed(1);
 const nearestOther = (ai: AiMaps, side: 0 | 1, x: number, z: number) =>
   Math.min(...spawnSlots(ai, side === 0 ? 1 : 0).map((s) => Math.hypot(s.x - x, s.z - z)));
 
-const tally = { rows: 0, inStart: 0, atSlot: 0, ahead: 0, near: 0, sideOk: 0 };
+const tally = { rows: 0, inStart: 0, atSlot: 0, behind: 0, near: 0, sideOk: 0 };
 console.log('map   name            side  measured (x, y, z)        PlayerStart cell (centre)       in?  '
   + '| slot fit: cell        flags  along   perp   dist | nearest other-side slot');
 for (const stem of stems) {
@@ -64,11 +64,11 @@ for (const stem of stems) {
     const same = Math.min(...spawnSlots(ai, side).map((s) => Math.hypot(s.x - x, s.z - z)));
     const other = nearestOther(ai, side, x, z);
     if (other > same) tally.sideOk++;
-    let fitText = 'no slot ahead within 30';
+    let fitText = 'no slot behind within 30';
     if (fit) {
       const r = fit.slot.record;
       if (fit.distance <= 1) tally.atSlot++;
-      else if (Math.abs(fit.perp) <= 5) tally.ahead++;
+      else if (Math.abs(fit.perp) <= 5) tally.behind++;
       fitText = `${`${r.loc.map}:(${r.loc.x},${r.loc.z})`.padEnd(12)} 0x${r.flags.toString(16).padStart(2, '0')} `
         + `${f1(fit.along).padStart(6)} ${f1(fit.perp).padStart(6)} ${f1(fit.distance).padStart(6)}`;
     }
@@ -78,5 +78,5 @@ for (const stem of stems) {
   }
 }
 console.log(`\n${tally.rows} positions: ${tally.inStart} inside their map's PlayerStart cell; `
-  + `${tally.atSlot} at a slot's centre (<= 1 unit); ${tally.ahead} ahead of a slot along its facing (|perp| <= 5); `
+  + `${tally.atSlot} at a slot's centre (<= 1 unit); ${tally.behind} behind a slot along its facing (|perp| <= 5; 75 §11: the orbit camera); `
   + `${tally.near} otherwise; ${tally.sideOk} nearer their own side's slots than the other side's`);

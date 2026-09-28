@@ -12,8 +12,9 @@ import { loadMap, spawnSlotsOf, type LoadedMap } from '../src/loadMap';
 /**
  * The disc's spawn slots as the worker reads them (W1.5b): `AIMAPS.MPS` out of the map's archive, its
  * trailer's list placed (`placeSpawnSlots`, web/docs/research/75 §5.5-§7), and `LoadedMap.slots` set
- * beside the other members. The spec's W1.R9 is the oracle: every measured spawn of `spawns.ts` lies at,
- * or within 30 units ahead along the facing of, a slot of its own side.
+ * beside the other members. The spec's W1.R9 is the oracle: every measured spawn of `spawns.ts` lies at a
+ * slot of its own side (the 4 actor rows) or up to 30 units behind one along its facing (the 40 rows that are
+ * the orbit camera behind the actor, research 75 §11).
  */
 
 /** A ZDB as 36 §1 lays it out: 0xA0 header, count at 0x98, 0x5C-byte entries, members 2048-aligned. */
@@ -98,7 +99,7 @@ describe.skipIf(absent)(`the slots out of loadMap (W1.5b)${absent ? ` (${FIXTURE
   });
 
   for (const [stem, name] of [['MP2', 'FROSTFIRE'], ['MP6', 'DESERT GLORY'], ['MP72', 'CROSSROADS']] as const) {
-    it.skipIf(absent)(`${name}: A and B each lie at, or within 30 units ahead of, a slot of their own side (W1.R9)`, async () => {
+    it.skipIf(absent)(`${name}: A and B each lie at, or up to 30 units behind, a slot of their own side (W1.R9)`, async () => {
       const map = await load(stem);
       expect(map.name).toBe(name);
       expect([map.slots.filter((s) => s.side === 0).length, map.slots.filter((s) => s.side === 1).length]).toEqual([24, 24]);
