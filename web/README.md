@@ -78,23 +78,26 @@ Run from `web/`:
 
 | command | what it does |
 |---|---|
-| `npm install` | workspace install (five packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the two shared archives `READERC.ZAR` and `ZWEAPON.ZAR` beside them, `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `npm install` | workspace install (six packages plus `tools`) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR` and `SOUNDS/BNKSTORE.ZAR`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
-| `npm run typecheck` | `tsc` over the five packages, the viewer and `tools` |
+| `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
+| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §8) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
 
 ### Deploying
 
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
-`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table). The archives are the game's and are never
-part of the build.
+`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
+`maps/RUN/SOUNDS/BNKSTORE.ZAR`). The archives are the game's and are never part of the build. The sound banks are read
+**by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
+(nginx and Vite do); one that does not still works, fetching the whole store.
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -109,6 +112,7 @@ Everything below is relative to `web/`.
 | `packages/archive` | ZDB table of contents, ZAR/ZED v2, compiled `.rdr`, and the `AssetSource` the rest read through (`/node` for the file system, `http` for the browser) |
 | `packages/gs` | GS texture and palette decode, and the GS state block (`ALPHA`, `TEX1`, `TEST`, `CLAMP`) per texture |
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
+| `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
@@ -148,6 +152,12 @@ and fall, a stand-in body, the game's reticle and rifle. The numbers and where e
 backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
 not jump: the game's jump is an animation's root motion, not yet read. The ammo box at the bottom left shows the
 magazine while walking.
+
+**The walk sounds** with the game's own sounds, decoded from the map's banks (`docs/research/81-sounds.md`): a
+footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
+metal on Frostfire's rig, sand in Desert Glory), the stealth step at a light stick and the crawl prone; the jump's
+whoosh and the landing (the surface's, or a bone's crack from a deadly height); the M4A1 SD's suppressed round and its
+reload. The browser starts sound on the first click or key press; `window.__viewer.audio()` reports what played.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
