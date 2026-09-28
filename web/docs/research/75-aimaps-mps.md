@@ -316,7 +316,10 @@ candidate is outside this file: the loading-screen assets research 72 §0 lists 
   and the range's floor on a map with no measured spawn. A rough check against the collision hull (every hull
   polygon whose footprint holds the point, the plane height nearest the estimate) puts that estimate within 3
   units of a floor at 67 of the 1,058 slots, 48 of them Frostfire's: the y is a placeholder for W1.4's probe, and
-  the overlay draws the slots without a depth test so that a wrong one cannot hide a slot. The same check puts
+  the overlay draws the slots without a depth test so that a wrong one cannot hide a slot *(superseded 2026-09-28,
+  later, W1.4b: every slot's y is now the probe's floor under its centre -- candidates inside the sub-map's height
+  range where any is, the pick from the estimate + 5 without the actor's 20-unit reject -- and all 1,058 have one;
+  the lines stay without a depth test because a slot's flat outline sits off a sloping floor at 362 of them)*. The same check puts
   the 40 sweep rows of `spawns.ts` 12.7-38.1 units above the only floor under their own (x, z) (median 25.0; 3
   have a surface 12-25 units above them instead), and the 4 `KNOWN.md` §1 rows 0.0-1.1: the sweep's y is not the
   feet, as its (x, z) is not the slot (§7) -- §11 says what it is.

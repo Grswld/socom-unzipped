@@ -253,9 +253,11 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   `docs/research/75-aimaps-mps.md`): a head, per sub-map a header, the cells as row spans and eight counted
   tables, and a trailer with the spawn list of 24 slots a side, each a cell with a side bit and a facing.
   `PlayerStart` turned out to be one named cell, not a region. The slots are drawn under the **spawns** toggle
-  as a cell outline and a facing arrow per side, beside the measured A and B; the opening stand stays the
-  measured A, and which of the 24 a player gets is game logic (A was always side 0's first slot and B side
-  1's second in the recorded rounds).
+  as a cell outline and a facing arrow per side, each standing on the probe's floor under its centre (all 1,058
+  do), beside the measured A and B; the camera opens at A's (x, z), 20 units over the probe's floor there (on
+  the 20 maps whose A is the orbit camera's position that is 12.7-31.2 units lower than the recorded y + 20 it
+  used to stand at), and which of the 24 a player gets is game logic (A was always side 0's first slot and B
+  side 1's second in the recorded rounds).
 - **The ground is the engine's.** `scene/probe.ts` is the game's ground probe (`FUN_002d3030`'s per-model
   gate, the vertical line, first hit per model in surface order, the pick chosen as research 24 §2 says),
   over the grid's collision atoms: 3,318 world-space polygons on Frostfire, the engine's own count once the
@@ -285,8 +287,9 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   `ComputeFacadeMatrix` being a stub.
 - **The walk is conservative.** The mover refuses any drop over 20 units (the probe's window, read as a
   rule), so it never falls off a deck the game would let you fall from; the record's layer mask is probed
-  as all layers (the literal reading contradicts research 24's own walk); and the spawn slots' y is a
-  placeholder until the probe places them.
+  as all layers (the literal reading contradicts research 24's own walk); and the slot outlines are drawn
+  without a depth test because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more
+  than a unit off the floor under the centre).
 - **Animated map objects beyond the uv scrolls are not drawn.** The door animations (`actions.rdr`,
   `MOTION_S.ZAR`), the destructible states, and the particle effects (`COMMON/EFFE_*`:
   `fire_hardedge.tif` and the smoke sprites) are driven by game code the viewer does not run; the

@@ -351,6 +351,20 @@ multi-extent or interleaved file. The page offers `Open your own disc (.iso)` an
 file APIs (Safari lacks the File System Access API); a 404 on `maps/index.json` opens the panel on that control instead
 of "booting" forever.
 
+### The orbit camera is 25 over the actor's feet; every slot has a floor; the stand opens on it (2026-09-28, W1.4b)
+
+Measured against the floor of the slot their actor stood on (A on side 0's #0, B on side 1's #1) rather than the
+floor under the camera itself, the 40 camera rows sit 18.2-26.6 units up, median 25.000, 36 of 40 within 25 ± 3 and 30
+within ± 1 (over the ground under the camera they spread 12.7-38.1: W1.4's spread was the terrain's, not the camera's;
+the four outside ± 3 are Death Trap B 21.0, Sujo B 21.9, Enowapi A 18.2, Shadow Falls A 20.4); on the 4 feet rows the
+slot's floor matches the probe under the feet within 0.07. All 1,058 slot centres have a probe candidate inside their
+sub-map's height range, so every slot stands on a floor (`placeSpawnSlots(ai, measured, grid)`, the pick from the
+estimate + 5 without the actor's 20-unit reject, which bounds a floor over feet a slot has not; 34 slots would have
+been refused with it, 18 on The Ruins). The opening stand is A's (x, z) at `EYE` over the probe's floor
+(`viewer/src/stand.ts`, computed in the worker beside the slots): 12.7-31.2 units lower than before on the 20 camera
+maps, 0 on Frostfire, 1.1 on Vigilance. The slot outlines stay undepth-tested: a flat 10-unit cell sits more than a
+unit off the floor at a corner on 362 of 1,058 slots (median 0.24, p90 2.5).
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
