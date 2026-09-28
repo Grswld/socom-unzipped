@@ -20,3 +20,4 @@ export * from './weapon';
 export * from './tuning';
 export * from './segment';
 export * from './weapons';
+export * from './projectile';
