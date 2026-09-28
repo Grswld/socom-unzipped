@@ -296,9 +296,16 @@ by `v·dt`); the table's static default at `0x44c250` is 98.1 (1 g) and `dynamic
 loader `FUN_0059ba80`, so the SEAL falls at 2.4 g and a 42-unit drop lands in 0.60 s (the first reading cited
 `FUN_0057e770`'s /98.1, which scales an impulse, not the fall: corrected). **Crouch and prone have laws of their
 own**, transcribed in the fix round: crouch (`FUN_00584c60`) rescales a stick under 0.838 to magnitude 0.946, so the
-crouch walk runs at about 14.0 whatever the deflection, no blend, and at full deflection takes the standing path after
-a 19-unit headroom ray (`FUN_0057efe0`); prone (`FUN_005845c0` → `FUN_00583500`) has no ramp, one axis by direction
-class, speed = max(|x|, |z|) × band. **No jump this sprint**: `jump_factor × gravity × −0.4` only seeds the landing-speed
+crouch walk plays one clip set by direction class (`FUN_005858a0`, with hysteresis) at 14.0 ahead, 12.8 back and
+14.2 sideways whatever the push, and at a push of 0.838 or more with the root under 9 and a clear 19-unit headroom
+ray (`FUN_0057efe0`) calls `FUN_00583030` — the standing run's blend and sets: **the SEAL stands up and runs while
+the stance stays crouch**, dropping back to the crouch walk under 0.838; prone (`FUN_005845c0` → `FUN_00583500`)
+has no ramp, one axis by direction class, speed = that axis × band from the first tick. **A released stick stops at
+once** from any push (`FUN_00586f00` reads a stick within 0.03 as idle; `FUN_00586570` skips the ramp at rest). The
+×0.8 on the fall's velocity is the "Ladderslide" state's alone (`DAT_003def50`, the string at `0x6620c8`). A crouch
+diagonal is sped up along its class axis (19.8 at 45°: `FUN_00582d10` → `FUN_00583350` sets `DAT_0064fc80`, applied
+in `FUN_0057a330`) — for W2.2c to confirm. The headroom ray starts at the feet + 14 (an estimate: the height of the
+node at `actor+0x304` is not known). *(the fix round's readings, under re-review)* **No jump this sprint**: `jump_factor × gravity × −0.4` only seeds the landing-speed
 record at `actor+0x1364` that fall damage reads; the rise is the jump clip's root motion in `MPZANIM.ZAR`, which nothing
 reads. Not modelled: the slope and water slow-down (`FUN_005b56c0`), the clips' 0.2 s blend-in. Estimates marked for
 W2.2c: crouch rootY 3.4 (0.62 × 5.504), prone 1.8 (under the camera ramp's floor of 2.169); body columns crouch 6-14,
