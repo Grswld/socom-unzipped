@@ -29,6 +29,7 @@
 #include "runtime/socom2_rtnet_config.h"
 #include "runtime/socom2_trace_checkpoint.h"
 #include "runtime/socom2_server_records.h"
+#include "runtime/socom2_msg_bounds.h"
 #include "runtime/socom2_net_bounds.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_host_input.h"
@@ -2082,6 +2083,7 @@ namespace
         installChatBound(runtime);    // Sprint 11 milestone S: unconditional, no knob
         socom2_server_records::install(runtime, socom2_addresses::current());   // Sprint 13 U6: unconditional, no knob
         socom2_net_bounds::install(runtime, socom2_net_bounds::sitesFor(socom2_addresses::current().revision));   // unconditional, no knob
+        socom2_msg_bounds::install(runtime, socom2_msg_bounds::sitesFor(socom2_addresses::current().revision));   // unconditional, no knob; r0001 only
 
         {
             const socom2_addresses::Table &addr = socom2_addresses::current();

@@ -95,6 +95,7 @@ add_library(ps2_test_lib STATIC
     src/persona_record_tests.cpp        # Sprint 16 L1b (#73): the runtime's persona record
     src/runtime_seams_tests.cpp         # Sprint 13 Task C8 (audit F22)
     src/socom2_net_bounds_tests.cpp     # the network receive path's bounds (runtime/socom2_net_bounds.h)
+    src/socom2_msg_bounds_tests.cpp     # the message dispatcher's bounds (runtime/socom2_msg_bounds.h)
 )
 
 target_include_directories(ps2_test_lib PRIVATE
