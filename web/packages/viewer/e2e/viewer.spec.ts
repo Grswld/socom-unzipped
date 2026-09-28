@@ -261,6 +261,11 @@ test.describe('fix round 1: the fullscreen fab clears the touch-lift buttons', (
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const page = await ctx.newPage();
     await page.goto('/');
+    // The panel folds to a bar on a coarse pointer by design; open it before this test's measurements.
+    if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
+      await page.locator('#panel-toggle').click();
+    }
+    await expect(page.locator('#maps')).toBeVisible();
     const status = page.locator('#status');
     await expect(status).toContainText('webgl2'); // a narrow status abbreviates "triangles" to "tris"
     await page.locator('#maps').selectOption('RUN/MP2.ZDB');
