@@ -296,6 +296,43 @@ the data but is not the game's code: taken literally at Frostfire's spawn A (`0x
 placements, with bit 0 added it hides nothing; the missing rule is which polygon (the player's or the camera's) and how
 a zero word and bit 0 are read. Not wired; the README's gap line stays.
 
+### The engine order shows the flares' black box; it stays a switch (2026-09-28, W1.2, W1.R3)
+
+With "engine draw order" on -- the rings walked outward from the camera, depth written under every blend -- the 22-map
+sweep is identical to the default's and the e2e passes, but Frostfire's lamp flares from 70 units show the polish spec's
+black box: the flare's quad, drawn at its near ring before the pipe behind it, keeps that pipe out of the depth buffer
+and shows the sky through a rectangle (`flare0-e`: 109,351 of 921,600 pixels differ from the default, 39,333 strongly;
+`flare1-s`: 71,619 and 59,319). The agent's prediction (11 of Frostfire's 15 flares share a cell with an unblended
+world part later in the walk) held. So near-first with depth under every blend is not what the console did for these
+draws: either the flares go to the engine's alpha pass (`m_alpha`, which reCOM shows only for opacity under 0.99) or
+the ring walk is not near-first for them (`buildOrderedCellAtomList` is empty in reCOM). W1.R3's answer is OFF: the
+switch stays, the default is three's sort, and the flares' pass is the first fidelity question for web sprint 2.
+
+### The probe's world is the engine's: 3,318 polygons, the camera in the sweep, the window's direction (2026-09-28, W1.4)
+
+**3,318.** The viewer's 3,338 on Frostfire were the engine's 3,318 plus the `di` the exporter copies onto nested
+instance nodes (ten `…/bigtank/tankrail{2,3,4}=tankrail{N}/railpostfiller` nodes, two polygons each): the engine keeps
+both copies only for an instance read from the world's own file (`CreateInstance(sload)` then `ReadDataBegin` adds the
+node's own `di`, reCOM `zNode/node_io.cpp:46-51`, `node_saveload.cpp:49-74`), while an instance inside a prototype is
+rebuilt from its model by `_Copy` (`node_main.cpp:312-333`) and the file's copy never reaches the world. `worldDi`
+drops it; every dropped polygon has a world-space twin that stays. Bounds x 120-1200, y 40-241.1, z 322.5-1280; the
+collision column moves on 9 of 22 maps. **Bit 18** of research 23/24's surface flags is `m_cameratype`'s low bit in the
+packed `di` params word (ditype bits 0-1, ptcount 2-9, material 10-17, cameratype 18-19); 19 Frostfire polygons carry
+it, all ditype 2; ditype's bit 0 is the ground bit. **The sweep's y.** The 40 online-sweep rows of `spawns.ts` are the
+third-person orbit camera, not the actor: `tools_py/parity/online_match_ours.py:42-45` peeks `0x416054`, "the local
+player's ORBITING CAMERA record" (its `MP51_SEAL_SPAWN` (542.3, 1479.9) against KNOWN §1's actor at (540, 1456)); the
+probe finds their floor a median 25.000 below (exactly 25.000 on flat ground; p99 38.1, min 12.7), and 36 of 40 have a
+floor at y − 25 on research 18's 23.1-unit orbit ring -- the camera behind and above the actor. The 4 KNOWN §1 rows are
+the feet (residuals 0, −1, −1.10, −0.89). W1.5's facing convention, read from "ahead", is therefore turned 180°
+(corrected under W1.5b). **The window.** Research 23 §1.1 item 9 rejects a pick more than 20 *above* the feet, not
+below: from origin 70 the deck at 42 is taken; the plan's "from 70, nothing" was wrong. Walking off Frostfire's deck is
+a 42-unit fall in the game (research 24 §7.4); the mover refuses any drop over 20 (`MAX_DROP`), the conservative
+reading, not the game's rule. **The layer mask** read literally as "last surface word 0 | 1" contradicts research 24
+§3c (B's ramp `railramp_d8n` has region 0, the y 100 floor `deckv_*` is layer 1; on Guidance every region is 0 while
+nodes sit on layers 0 and 1), so the mover probes all layers. **Data facts, all 22 maps:** every `di` polygon lies
+inside its own node's bbox in x and z, and every node carrying polygons is active with `m_hasDI` set. The walk runs at
+40 units/s (research 18, finding 3); the 2.5× boost is the viewer's own.
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
