@@ -35,15 +35,15 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
 
   it('removes every element that carries data-play, and says how many', () => {
     const marked = document.querySelectorAll(`[${PLAY_ATTRIBUTE}]`).length;
-    expect(marked).toBeGreaterThanOrEqual(6);
+    expect(marked).toBeGreaterThanOrEqual(5);     // the ammo pill went to the HUD (`./hud`)
     expect(removePlayUi()).toBe(marked);
     expect(document.querySelectorAll(`[${PLAY_ATTRIBUTE}]`)).toHaveLength(0);
     expect(removePlayUi()).toBe(0);
   });
 
-  it('takes out the Fly / Walk switch, its box, the body row, the ammo box and the touch stance and fire buttons', () => {
+  it('takes out the Fly / Walk switch, its box, the body row and the touch stance and fire buttons', () => {
     removePlayUi();
-    for (const id of ['mode', 'walk', 'body-row', 'player-body', 'ammo', 'touch-stance', 'touch-fire']) {
+    for (const id of ['mode', 'walk', 'body-row', 'player-body', 'touch-stance', 'touch-fire']) {
       expect(document.getElementById(id), id).toBeNull();
     }
     // What is not the play: the fly camera's own touch buttons, the look switch, the panel.
@@ -62,7 +62,7 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
     beforeEach(() => { removePlayUi(); ui = new Ui(); });
 
     it('builds without the play elements, and its setters do nothing to them', () => {
-      expect(() => { ui.setAmmo('30/30'); ui.setAmmo(null); ui.setWalk(true); ui.setWalk(false); ui.onWalkSwitch(() => undefined); }).not.toThrow();
+      expect(() => { ui.setWalk(true); ui.setWalk(false); ui.onWalkSwitch(() => undefined); }).not.toThrow();
       expect(ui.toggles().body).toBe(false);
     });
 

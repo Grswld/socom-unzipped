@@ -4,6 +4,7 @@ import type { Input } from './gamepad';
 import type { Backend } from './renderer';
 import type { FireState, Shot } from './fire';
 import type { Rect } from './reticle';
+import type { HudPatch, HudView } from './hud';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
@@ -129,6 +130,13 @@ export interface ViewerHook {
   trigger(down: boolean): void;
   /** WEAPON: shows or hides a piece of the SEAL's gear by its `character.rdr` name (`Satchel`: the bomb carrier's). */
   setGear(name: string, on: boolean): boolean;
+  /**
+   * The in-game HUD (`./hud`, web/docs/research/87-hud.md): drawn or not, what it shows, and each element's rectangle in
+   * the drawing buffer's pixels (y down) on `frame`.
+   */
+  hud(): HudView;
+  /** The HUD's inputs the walk does not drive yet (a prompt, a message, the fire mode, the team list), for the tests. */
+  setHud(patch: HudPatch): HudView;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

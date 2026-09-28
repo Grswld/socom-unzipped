@@ -43,7 +43,7 @@ test('walk mode on Frostfire: one round marks the container west of spawn A and 
 
   // Flying: no shot, no box.
   expect(await page.evaluate(() => window.__viewer.shoot())).toBeNull();
-  await expect(page.locator('#ammo')).toBeHidden();
+  expect((await page.evaluate(() => window.__viewer.hud())).visible).toBe(false);
 
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
   await page.evaluate(([x, y, z, eye, pitch]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 90, pitch }),
@@ -53,7 +53,8 @@ test('walk mode on Frostfire: one round marks the container west of spawn A and 
   // frames after it (`main.ts`'s reveal), and the screenshot is evidence only once they are in.
   await page.waitForTimeout(1500);
   await settle(page);
-  await expect(page.locator('#ammo')).toHaveText('30/30 · 2 MAGS');
+  // The ammo box is the in-game HUD's (`src/hud.ts`, research 87): "30/30" and "2 MAGS".
+  expect((await page.evaluate(() => window.__viewer.hud())).model).toMatchObject({ rounds: 30, capacity: 30, spare: 2 });
 
   // WEAPON: the round leaves the rifle's muzzle in the SEAL's right hand (`./heldItem`), not the eye, toward the point
   // under the reticle -- the container's side 37.379 along the eye's ray, where it lands.
@@ -71,7 +72,7 @@ test('walk mode on Frostfire: one round marks the container west of spawn A and 
   expect(state.decals).toBe(1);
   expect(state.magazine).toEqual({ rounds: 29, capacity: 30, spare: 2, reloading: false });
   await settle(page);
-  await expect(page.locator('#ammo')).toHaveText('29/30 · 2 MAGS');
+  expect((await page.evaluate(() => window.__viewer.hud())).model).toMatchObject({ rounds: 29, capacity: 30, spare: 2 });
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-spawn-a-west-one-round.png') });
   // A few degrees' turn takes the reticle off the mark, so the second frame shows the mark alone.
   await page.evaluate((pitch) => window.__viewer.setCamera({ yaw: 86, pitch }), REST_PITCH);
@@ -80,6 +81,6 @@ test('walk mode on Frostfire: one round marks the container west of spawn A and 
 
   expect(await page.evaluate(() => window.__viewer.setMode('fly'))).toBe(true);
   await settle(page);
-  await expect(page.locator('#ammo')).toBeHidden();
+  expect((await page.evaluate(() => window.__viewer.hud())).visible).toBe(false);
   expect(problems).toEqual([]);
 });

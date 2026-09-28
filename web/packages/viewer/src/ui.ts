@@ -29,8 +29,6 @@ export class Ui {
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
   /** Whether the play (walk mode) is on the page: the Fly / Walk switch's hidden box is there only then (`./features`). */
   private readonly play = document.getElementById('walk') !== null;
-  /** The ammo box (W2.5): bottom-left, shown while walking. */
-  private readonly ammo = document.getElementById('ammo');      // null when the play is off (`./features`)
   /** The loaded map's name, for the cog's tooltip; null before the first load. */
   private mapName: string | null = null;
   /**
@@ -537,14 +535,6 @@ export class Ui {
     // site bar's GitHub tab.
     this.fpsNumber.textContent = String(Math.round(fps));
     this.fpsRest.textContent = ` fps · ${frameMs.toFixed(1)} ms`;
-  }
-
-  /** The ammo box's line (`./fire`'s `ammoText`), or null to hide it (not walking). Written only when it changes. */
-  setAmmo(text: string | null): void {
-    const ammo = this.ammo;
-    if (!ammo) return;
-    ammo.hidden = text === null;
-    if (text !== null && ammo.textContent !== text) ammo.textContent = text;
   }
 
   /**

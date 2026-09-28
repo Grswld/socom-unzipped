@@ -40,7 +40,7 @@ body.ps2-look #view {
 
 /* The backtick hides the chrome for a clean look at the map. `#site-links` (and the cog in it) and
    `#loading` are not chrome. */
-body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen, body.chrome-hidden #ammo { display: none; }
+body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen { display: none; }
 
 /*
  * Site navigation: the system's bar is a full-width top strip; here it floats as a pill in the
@@ -132,13 +132,6 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #fps { top: 12px; right: 12px; pointer-events: none; }
 
 #fullscreen { position: fixed; right: 24px; bottom: 24px; z-index: 5; }
-
-/*
- * The ammo box (W2.5): the fps pill's system class, moved to the bottom-left corner where the console frame keeps it.
- * A readout, so a drag starting on it reaches the canvas; `hidden` (not walking) wins over the pill's display.
- */
-#ammo { top: auto; right: auto; left: 12px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
-#ammo[hidden] { display: none; }
 
 /* The loading overlay, centred as the system does. */
 #loading { pointer-events: none; }
