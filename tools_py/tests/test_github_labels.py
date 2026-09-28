@@ -22,7 +22,7 @@ SCRIPT = os.path.join(ROOT, "scripts", "github_labels.sh")
 # area to sit under, and the stack's two markers. Adding a label here without adding it to the script (or the
 # other way round) fails: the two lists are meant to be read together.
 EXPECTED = [
-    "bug", "from-launcher", "enhancement", "needs-repro", "needs-disc-gate",
+    "bug", "from-launcher", "feature", "needs-repro", "needs-disc-gate",
     "audio", "render", "online", "launcher", "input", "linux", "packaging", "docs",
     "harness", "server", "build", "recomp",
     "known-issue", "carried",
