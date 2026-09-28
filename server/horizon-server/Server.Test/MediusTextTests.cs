@@ -56,7 +56,9 @@ namespace Server.Test
         [Theory, MemberData(nameof(Fields))]
         public void APlainValueIsUnchanged(string field, int width)
         {
-            Assert.Equal("Seals 24/7", Apply(field, "Seals 24/7"));
+            var plain = "Seals 24/7";
+            Assert.True(plain.Length < width);
+            Assert.Equal(plain, Apply(field, plain));
             Assert.Equal("", Apply(field, null));
         }
 
