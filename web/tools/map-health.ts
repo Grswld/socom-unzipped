@@ -18,7 +18,12 @@ const only = process.argv.slice(2).map((s) => s.toUpperCase());
 const OUT = fileURLToPath(new URL('../test-fixtures/screens/health', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
-const browser = await chromium.launch();
+// The same launch the e2e uses (`playwright.config.ts`): SwiftShader for a host with no GPU, and `PW_CHROMIUM`
+// for one whose Chromium is not the build this Playwright pins.
+const browser = await chromium.launch({
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  executablePath: process.env.PW_CHROMIUM || undefined,
+});
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const crashes: string[] = [];
 page.on('pageerror', (e) => crashes.push(e.message));

@@ -18,6 +18,9 @@ export default defineConfig({
       // Headless chromium has no GPU: ANGLE over SwiftShader is what draws, and recent Chrome versions
       // refuse WebGL on SwiftShader without being told the risk is accepted.
       args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+      // A host whose Chromium is not the build this Playwright pins (a cloud session's pre-installed one)
+      // names it here instead of downloading another: `PW_CHROMIUM=/opt/pw-browsers/chromium npm run e2e`.
+      executablePath: process.env.PW_CHROMIUM || undefined,
     },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

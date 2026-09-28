@@ -16,7 +16,10 @@ An agent working on the recomp can skip this directory entirely.
 **Start here if you are a new agent or contributor:** the design and the findings recorded as the
 viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/specs/2026-09-20-web-map-viewer-design.md)
 and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
-(the plan beside them in `docs/plans/`); the byte-level format authority is the viewer's own
+(the plan beside them in `docs/plans/`); the open sprint is web sprint 1, "the engine's world":
+[`docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md`](docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md)
+and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md), whose Log is the
+live state; the byte-level format authority is the viewer's own
 [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
 the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
