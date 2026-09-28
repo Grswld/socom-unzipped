@@ -298,6 +298,15 @@ export function cellsCovering(grid: Grid, f: Footprint): GridCell[] {
 }
 
 /**
+ * The cells `buildGrid` links a placement into, without linking it: a placement of the scene graph by its
+ * node's bbox (`worldFootprint`, or its translation when it has none), a clutter instance by its position
+ * alone. What a draw made of placements is filed under when the grid is walked (the viewer's engine order).
+ */
+export function placementCells(grid: Grid, p: PlacedModel, kind: 'model' | 'clutter' = 'model'): GridCell[] {
+  return cellsCovering(grid, kind === 'clutter' ? pointFootprint(p.rowMajor) : placedFootprint(p));
+}
+
+/**
  * How a cell's ring is numbered from the camera's cell.
  *
  * - `diamond` (the default, W1.R8): `|dx| + |dz|`, the label reCOM's `addOrderedCellAtom` writes into each

@@ -17,7 +17,7 @@ const SHADOW: DrawState['factors'] = { src: 'srcAlpha', dst: 'oneMinusSrcAlpha' 
 
 const every: [string, DrawState['factors']][] = [];
 for (const blend of ['none', 'source', 'additive', 'destination'] as const) {
-  for (const discOrder of [false, true]) every.push([`${blend}, disc order ${discOrder}`, drawState(spec(blend), discOrder).factors]);
+  for (const engineOrder of [false, true]) every.push([`${blend}, engine order ${engineOrder}`, drawState(spec(blend), engineOrder).factors]);
 }
 every.push(['shadow decal', SHADOW]);
 

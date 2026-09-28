@@ -129,9 +129,9 @@ test('all three extracted maps render from the served archives', async ({ page }
   }
 
   // The line strips and the shadows are on by default -- Desert Glory's power lines and Crossroads'
-  // guy ropes are in the two shots above -- and the alternate states and the experimental order are off.
+  // guy ropes are in the two shots above -- and the alternate states and the engine order are off (W1.R3).
   expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({
-    linestrips: true, shadows: true, alternate: false, discorder: false,
+    linestrips: true, shadows: true, alternate: false, engineorder: false,
   });
 
   // The wireframe, on and off again, from the spawn. It used to blank the frame on the second draw --

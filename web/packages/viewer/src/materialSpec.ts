@@ -186,14 +186,14 @@ export function detailDrawState(detail: DetailSpec, base: DrawState): DetailDraw
 }
 
 /**
- * Where a detail pass sorts. In the disc order every draw's `renderOrder` is its integer place in the walk
- * (`LoadedMesh.order`), so half a step after its base puts the pass right behind it and ahead of the next
+ * Where a detail pass sorts. In the engine order every draw's `renderOrder` is its integer place in the grid
+ * walk (`./engineOrder`), so half a step after its base puts the pass right behind it and ahead of the next
  * draw. In three's order every draw sorts at 0, so half a step puts every pass after every base draw of
  * its list, which is where the depth test needs it; nothing between a base and its pass changes a pixel
  * the pass would touch, the opaque draws having written their depth first.
  */
-export function detailRenderOrder(baseOrder: number, discOrder: boolean): number {
-  return (discOrder ? baseOrder : 0) + 0.5;
+export function detailRenderOrder(baseOrder: number, engineOrder: boolean): number {
+  return (engineOrder ? baseOrder : 0) + 0.5;
 }
 
 /** A blend factor, named the way the GPU names it. */
@@ -219,21 +219,20 @@ const FACTORS: Record<Exclude<Blend, 'none'>, { src: Factor; dst: Factor }> = {
 /**
  * The draw state for a spec, in one of the two orders the viewer draws in.
  *
- * **The disc's order** (`discOrder`): the engine walked the scene graph and drew each visual as it
- * reached it, blended or not, with depth writes on every draw -- the live GS state is `ZMSK = 0`
- * throughout (research 26 §2, `zbp=118 zpsm=3a zmsk=0 test=5000c abe=1` on the water). So every draw
- * goes in three's opaque list, which sorts by `renderOrder` first, with its place in the walk as that
- * order, and writes depth. A blended surface then lands exactly where the hardware put it, holes and
- * all: a glow drawn before the wall behind it keeps the wall out, as the console did.
+ * **The engine's order** (`engineOrder`, W1.2): the engine walks its grid outward from the camera and
+ * draws each visual as the walk reaches it, blended or not, with depth writes on every draw -- the live GS
+ * state is `ZMSK = 0` throughout (research 26 §2, `zbp=118 zpsm=3a zmsk=0 test=5000c abe=1` on the water).
+ * So every draw goes in three's opaque list, which sorts by `renderOrder` first, with its place in the
+ * walk as that order (`./engineOrder`), and writes depth. A blended surface then lands where the hardware
+ * put it, holes and all: a glow drawn before the wall behind it keeps the wall out, as the console did.
  *
- * **three's order**: the reading before this one. A blended draw goes to the transparent list, is sorted
- * back to front by object centre, and writes no depth, which never punches a hole and is never quite
- * where the game drew it.
+ * **three's order**: a blended draw goes to the transparent list, is sorted back to front by object
+ * centre, and writes no depth, which never punches a hole and is never quite where the game drew it.
  */
-export function drawState(spec: MaterialSpec, discOrder: boolean): DrawState {
+export function drawState(spec: MaterialSpec, engineOrder: boolean): DrawState {
   if (spec.blend === 'none') return { transparent: false, depthWrite: true, factors: null };
   const factors = FACTORS[spec.blend];
-  return discOrder
+  return engineOrder
     ? { transparent: false, depthWrite: true, factors }
     : { transparent: true, depthWrite: false, factors };
 }

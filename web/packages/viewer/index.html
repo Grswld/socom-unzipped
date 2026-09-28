@@ -107,7 +107,7 @@
           <label title="The detail texture the game lays over its ground and walls close up: each texture whose mp&lt;N&gt;_lib.rdr entry names a detail texture gets a second pass over the same surface, the detail repeated uv times as often, blended as the entry's bmode says and fading out over its range from the camera."><input type="checkbox" id="detail" checked /> detail pass</label>
         </div>
         <div class="row">
-          <label title="Experimental. Draw every surface in scene-graph order with depth written by every draw, blended or not. The engine really walked its grid outward from the camera, with decals and shadows in passes of their own, so this is not its order either -- a glow or a shadow drawn before the wall behind it shows the sky through itself. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="discorder" /> scene-graph draw order (experimental)</label>
+          <label title="Draw in the engine's order: the map's grid walked cell ring by cell ring outward from the camera's cell, the drop shadows in a pass after the last ring, and depth written under every blend as the console did. Recomputed when the camera crosses into another cell. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="engineorder" /> engine draw order</label>
         </div>
       <details id="sliders-box">
         <summary>lighting (unlit, as the engine draws it)</summary>

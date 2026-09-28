@@ -3,7 +3,7 @@ import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   buildGrid, cellAt, cellByCoord, cellsCovering, chopF32, collisionOwners, collisionRuns, decodeGridParams, footprintDistance,
-  parseClutter, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, placeInstances, planeHeightAt, ringCells,
+  parseClutter, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, placeInstances, placementCells, planeHeightAt, ringCells,
   transformPoint, traverse, worldCollision, worldFootprint, DEFAULT_GRID_PARAMS, IDENTITY,
   type Grid, type GridAtom, type GridParams, type PlacedModel, type SceneNode, type WorldPoly,
 } from '../src/index';
@@ -231,6 +231,25 @@ describe('cells and atoms (CGrid::Create, FUN_002d7580)', () => {
       { modelName: 'worldmodel', path: 'worldmodel/deck', first: 0, count: 2 },
       { modelName: 'worldmodel', path: 'worldmodel/roof', first: 2, count: 1 },
     ]);
+  });
+
+  it('gives the cells buildGrid links a placement into, placement by placement, without linking it (placementCells)', () => {
+    const random = lcg(2026_09_28_2);
+    const placed = Array.from({ length: 30 }, (_, i) => {
+      const x = random() * 900 - 150, z = random() * 700 - 150;
+      return box(x, z, x + random() * 300, z + random() * 300, `b${i}`);
+    });
+    const clutter = Array.from({ length: 8 }, () => tuft(random() * 600, random() * 400));
+    const grid = buildGrid(params(6, 4), placed, clutter, []);
+    const linked = (object: unknown): number[] => grid.cells.filter((c) => c.atoms.some((a) => a.object === object)).map((c) => c.index);
+    for (const o of grid.objects) {
+      if (o.kind === 'collision') continue;
+      expect(placementCells(grid, o.placed, o.kind).map((c) => c.index), `${o.kind} ${o.index}`).toEqual(linked(o));
+    }
+    // A clutter instance is filed by its position alone; the same matrix as a placement is filed by its bbox.
+    const wide = { ...tuft(150, 150), bbox: Float32Array.from([-120, 0, -20, 120, 1, 20]) };
+    expect(placementCells(grid, wide, 'clutter').map((c) => c.index)).toEqual([7]);
+    expect(placementCells(grid, wide).map((c) => c.index)).toEqual([6, 7, 8]);
   });
 
   it('addresses one cell three ways -- by index, by cell (x, z), by world (x, z) -- all clamped', () => {

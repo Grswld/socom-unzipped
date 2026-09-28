@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Mesh, OneFactor, OneMinusSrcAlphaFactor, PerspectiveCamera, SrcAlphaFactor, ZeroFactor, type Material, type Object3D } from 'three';
 import type { MeshBasicNodeMaterial, Node } from 'three/webgpu';
-import type { LodBand } from '@s2u/scene';
+import { DEFAULT_GRID_PARAMS, type LodBand } from '@s2u/scene';
 import { buildWorld } from '../src/world';
 import type { LoadedMap, LoadedMesh } from '../src/loadMap';
 
@@ -27,7 +27,7 @@ const map = (): LoadedMap => ({
   props: [prop('railhi', HIGH), prop('raillo', LOW)],
   textures: { 'rail.tif': { data: new Uint8ClampedArray(16).fill(255), width: 2, height: 2 } },
   textureFlags: { 'rail.tif': { bilinear: true, transparent: false, graded: false, opaque: true, gs: null } },
-  metersPerUnit: 0.1, lightRig: null, origin: [0, 0, 0], detail: {},
+  metersPerUnit: 0.1, lightRig: null, origin: [0, 0, 0], detail: {}, grid: DEFAULT_GRID_PARAMS,
   collision: { positions: new Float32Array(0), colors: new Uint8Array(0), polygons: 0 },
   diagnostics: [], loadMs: 0, timings: { fetch: 0, decode: 0, postedAt: 0 },
 } as LoadedMap);
