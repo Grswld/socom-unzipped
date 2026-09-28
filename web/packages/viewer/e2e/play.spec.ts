@@ -63,12 +63,12 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
   expect(standing.body?.visible).toBe(true);
   expect(standing.body?.at).toEqual(SPAWN_A);
   expect(standing.view.kind).toBe('third');
-  // the game's camera (FUN_0029a950): behind the feet along the look and above them, about 25 back and 25.7 up
+  // the game's camera (FUN_0029a950): behind the feet along the look and above them -- 28.75 back at pitch 0, less pitched
   const cam = standing.view.pose;
   const fx = -Math.sin(YAW_TO_1 * Math.PI / 180), fz = -Math.cos(YAW_TO_1 * Math.PI / 180);
   const back = -((cam.x - SPAWN_A[0]) * fx + (cam.z - SPAWN_A[2]) * fz);
   expect(back).toBeGreaterThan(0);
-  expect(back).toBeLessThan(26);
+  expect(back).toBeLessThan(29);
   expect(cam.y - SPAWN_A[1]).toBeGreaterThan(5);
   expect(cam.y - SPAWN_A[1]).toBeLessThan(28);
   await settle(page);
