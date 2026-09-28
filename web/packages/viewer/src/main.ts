@@ -455,7 +455,7 @@ function show(map: LoadedMap): void {
   walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
 
   ui.select(map.path);
-  ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
+  ui.setPanelTitle(`${map.name} (${map.archive})`);   // the folded cog's tooltip
   ui.setDiagnostics(map.diagnostics);
 
   // The status line is written **when the world is on screen**, not when the map is decoded. Everything

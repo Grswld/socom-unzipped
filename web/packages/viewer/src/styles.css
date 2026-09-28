@@ -38,7 +38,8 @@ body.ps2-look #view {
 }
 #disc-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* The backtick hides the chrome for a clean look at the map. `#site-links` and `#loading` are not chrome. */
+/* The backtick hides the chrome for a clean look at the map. `#site-links` (and the cog in it) and
+   `#loading` are not chrome. */
 body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen { display: none; }
 
 /*
@@ -48,9 +49,14 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #site-links { position: fixed; top: 12px; left: 12px; z-index: 5; height: auto; padding: 4px 8px; right: auto; box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-viewer); }
 
 #panel { top: 56px; left: 12px; }
+/* Folded behind the cog in the site bar (W2.0): nothing of the panel shows, not even a strip. */
+#panel.is-folded { display: none; }
 /* The overlay's overflow: hidden clips a ring drawn outside a control; drawn inside, it is whole. */
 #panel :focus-visible { outline-offset: -2px; }
 #panel-kicker { margin: 0; }
+/* The GitHub mark (W2.0): a filled shape, where the system's icon rule strokes. */
+#source { display: inline-flex; align-items: center; }
+#source svg { flex: none; width: 16px; height: 16px; fill: currentColor; margin-right: 6px; }
 
 /* A readout, not a control: a drag that starts on it must reach the canvas underneath. */
 #fps { top: 12px; right: 12px; pointer-events: none; }
@@ -74,7 +80,7 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 body.touch #touch { display: block; }
 #stick-zone {
   /* The bottom 45vh of the left half: the part of a phone a thumb reaches, and clear of the panel,
-     whose body is capped at 45vh below a title bar in the top strip. */
+     whose body is capped at 45vh below the site bar in the top strip. */
   position: fixed; left: 0; bottom: 0; width: 50vw; height: 45vh; z-index: 4;
   touch-action: none;
 }
@@ -111,6 +117,12 @@ body.touch #touch { display: block; }
   /* Above the two 56px touch-lift buttons (10px apart), which the fullscreen fab's default
      right/bottom 24px placement would otherwise sit on top of on a coarse pointer. */
   #fullscreen { right: 12px; bottom: calc(16px + 2 * 66px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Under 480px the GitHub tab is its mark alone; `aria-label` and `title` still name it. */
+@media (max-width: 480px) {
+  #source-word { display: none; }
+  #source svg { margin-right: 0; }
 }
 
 /* At 360px the fps pill keeps the number alone, so it clears the site bar's GitHub tab. */

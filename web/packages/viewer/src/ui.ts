@@ -26,7 +26,8 @@ export class Ui {
   private readonly loadingBar = find<HTMLElement>('loading-bar');
   private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
-  private readonly panelTitle = find<HTMLElement>('panel-title');
+  /** The loaded map's name, for the cog's tooltip; null before the first load. */
+  private mapName: string | null = null;
   /**
    * The continuous controls, as [input, readout, how to word the number]. Kept as one table for the same
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
@@ -190,10 +191,9 @@ export class Ui {
   }
 
   /**
-   * The whole overlay folded to one bar, and back. Two ways in, because they answer different wants:
-   * the backtick takes *everything* away for a clean picture, and this leaves a bar behind that says
-   * which map is on screen and can be tapped to bring the panel back -- which is the one that works
-   * with a thumb.
+   * The panel folded away behind the cog in the site bar, and back (W2.0). Two ways in, because they
+   * answer different wants: the backtick takes *everything* away for a clean picture, and the cog
+   * takes the panel only and stays where a thumb can tap it to bring the panel back.
    *
    * The state is remembered, in `localStorage` and so best-effort: a private window, blocked site data
    * or a browser that throws on access all end up with the panel open, which is the right default
@@ -215,16 +215,23 @@ export class Ui {
     document.body.classList.toggle('panel-collapsed', collapsed);
     this.panel.classList.toggle('is-folded', collapsed);
     this.panelToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
+    this.titleCog(collapsed);
+  }
+
+  private titleCog(collapsed: boolean): void {
+    this.panelToggle.title = collapsed
+      ? (this.mapName ? `show the settings · ${this.mapName}` : 'show the settings')
+      : 'hide the settings';
   }
 
   /**
-   * The title bar's label. It is always "Settings", so the strip says what pressing it gets you, with
-   * the map's name after it when one is loaded -- that is the bit worth reading while the panel is
-   * folded, and the bit that gives way to the ellipsis when there is no room for both.
+   * The loaded map's name, which the folded panel used to show in its title bar. The panel folds to
+   * nothing now (W2.0), so the name rides on the cog's tooltip while it is folded; open, the status
+   * line says it.
    */
   setPanelTitle(map: string | null): void {
-    this.panelTitle.textContent = map ? `Settings · ${map}` : 'Settings';
+    this.mapName = map;
+    this.titleCog(this.panelCollapsed());
   }
 
   /**
