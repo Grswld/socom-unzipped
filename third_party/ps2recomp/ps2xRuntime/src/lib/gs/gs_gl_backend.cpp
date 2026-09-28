@@ -3403,6 +3403,9 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
 
     // Decode the CLUT once (256 entries) for indexed formats.
     uint32_t clut[256];
+    // S17 F1 attempt 1: the raw resolved entries, as textureSourceHash reads them (before TEXA and the
+    // 5551 expansion), so the decode's own hash is textureSourceHash's without a second walk.
+    uint32_t clutRaw[256];
     if (indexed)
     {
         for (uint32_t i = 0; i < 256u; ++i)
@@ -3410,15 +3413,17 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
             const uint32_t clutIndex = resolveClutIndex(static_cast<uint8_t>(i), clutPsm, tex.csm, tex.csa, tex.psm);
             const uint32_t clutX = static_cast<uint32_t>(state.texclut.cou) + (clutIndex & 0x0Fu);
             const uint32_t clutY = static_cast<uint32_t>(state.texclut.cov) + (clutIndex >> 4);
+            uint32_t raw = 0xFFFF00FFu;
             uint32_t c = 0u;
             switch (clutPsm)
             {
-            case GS_PSM_CT32: c = applyTexa(state.texa, GS_PSM_CT32, GSMem::ReadCT32(clutVram, clutBp, clutBw, clutX, clutY)); break;
-            case GS_PSM_CT24: c = applyTexa(state.texa, GS_PSM_CT24, GSMem::ReadCT24(clutVram, clutBp, clutBw, clutX, clutY)); break;
-            case GS_PSM_CT16: c = applyTexa(state.texa, GS_PSM_CT16, rgba5551To8888(GSMem::ReadCT16(clutVram, clutBp, clutBw, clutX, clutY))); break;
-            case GS_PSM_CT16S: c = applyTexa(state.texa, GS_PSM_CT16S, rgba5551To8888(GSMem::ReadCT16S(clutVram, clutBp, clutBw, clutX, clutY))); break;
+            case GS_PSM_CT32: raw = GSMem::ReadCT32(clutVram, clutBp, clutBw, clutX, clutY); c = applyTexa(state.texa, GS_PSM_CT32, raw); break;
+            case GS_PSM_CT24: raw = GSMem::ReadCT24(clutVram, clutBp, clutBw, clutX, clutY); c = applyTexa(state.texa, GS_PSM_CT24, raw); break;
+            case GS_PSM_CT16: raw = GSMem::ReadCT16(clutVram, clutBp, clutBw, clutX, clutY); c = applyTexa(state.texa, GS_PSM_CT16, rgba5551To8888(raw)); break;
+            case GS_PSM_CT16S: raw = GSMem::ReadCT16S(clutVram, clutBp, clutBw, clutX, clutY); c = applyTexa(state.texa, GS_PSM_CT16S, rgba5551To8888(raw)); break;
             default: c = 0xFFFF00FFu; break;
             }
+            clutRaw[i] = raw;
             clut[i] = c;
         }
         // Diagnostic (with PS2X_GS_DUMP_TEX, after PS2X_GS_GL_DEBUG_AFTER presents, first 64
@@ -3446,9 +3451,12 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
 
     // Row spans (GSMem::ReadSpan: the same per-pixel Read* inlined, no page arithmetic per pixel;
     // this loop was ~14% of the GL thread), conversion chosen once per texture.
+    // S17 F1 attempt 1, the hash fold: the span walk is GsGlTextureIdentity::walkTexels, which mixes
+    // each row into R123's source hash as it reads it -- the value textureSourceHash would return, so
+    // entry.sourceHash below costs no second walk of the source (ps2_gs_tests.cpp pins the equality).
+    uint64_t sourceHash = GsGlTextureIdentity::kUnhashable;
     {
         std::vector<uint32_t> row(width);
-        const bool spanOk = GSMem::ReadSpan(tex.psm, vram, tex.tbp0, tex.tbw, 0u, 0u, 0u, row.data());
         enum class Conv { Color32, Color16, Indexed, Missing } conv;
         switch (tex.psm)
         {
@@ -3456,32 +3464,46 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
         case GS_PSM_CT16: case GS_PSM_CT16S: case GS_PSM_Z16: case GS_PSM_Z16S: conv = Conv::Color16; break;
         default: conv = indexed ? Conv::Indexed : Conv::Missing; break;
         }
-        for (uint32_t y = 0; y < height; ++y)
+        auto convertRow = [&](uint32_t y, const uint32_t *src)
         {
-            if (spanOk)
-                GSMem::ReadSpan(tex.psm, vram, tex.tbp0, tex.tbw, 0u, y, width, row.data());
-            else
-                for (uint32_t x = 0; x < width; ++x)
-                    row[x] = readVramRaw(vram, tex.psm, tex.tbp0, tex.tbw, x, y);
             uint32_t *dst = pixels.data() + static_cast<size_t>(y) * width;
             switch (conv)
             {
             case Conv::Color32:
                 for (uint32_t x = 0; x < width; ++x)
-                    dst[x] = applyTexa(state.texa, tex.psm, row[x]);
+                    dst[x] = applyTexa(state.texa, tex.psm, src[x]);
                 break;
             case Conv::Color16:
                 for (uint32_t x = 0; x < width; ++x)
-                    dst[x] = applyTexa(state.texa, tex.psm, rgba5551To8888(row[x]));
+                    dst[x] = applyTexa(state.texa, tex.psm, rgba5551To8888(src[x]));
                 break;
             case Conv::Indexed:
                 for (uint32_t x = 0; x < width; ++x)
-                    dst[x] = clut[row[x] & 0xFFu];
+                    dst[x] = clut[src[x] & 0xFFu];
                 break;
             default:
                 for (uint32_t x = 0; x < width; ++x)
                     dst[x] = 0xFFFF00FFu;
                 break;
+            }
+        };
+        const GsGlTextureIdentity::DecodeWalk walk = GsGlTextureIdentity::walkTexels(
+            vram, tex.psm, tex.tbp0, tex.tbw, width, height, row.data(), GsGlTextureIdentity::seed(), convertRow);
+        if (walk.sourceWalks != 0u)
+        {
+            sourceHash = walk.sourceHash;
+            if (indexed)
+                sourceHash = GsGlTextureIdentity::hashClut(clutRaw, sourceHash);
+        }
+        else
+        {
+            // No span reader for the format: the per-texel reads, and no hash (textureSourceHash
+            // answers kUnhashable for the same source, so the entry is never revalidated).
+            for (uint32_t y = 0; y < height; ++y)
+            {
+                for (uint32_t x = 0; x < width; ++x)
+                    row[x] = readVramRaw(vram, tex.psm, tex.tbp0, tex.tbw, x, y);
+                convertRow(y, row.data());
             }
         }
     }
@@ -3570,7 +3592,8 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     entry.lastUse = m_frameCounter;
     // R123: what this decode read. The next time a generation bump brings the gate here, the same
     // walk over the shadow answers "did the CONTENT change?" instead of "did a stamp move?".
-    entry.sourceHash = textureSourceHash(state, width, height);
+    // S17 F1 attempt 1: hashed during the decode's own walk above (textureSourceHash's value).
+    entry.sourceHash = sourceHash;
     m_textures[key] = entry;
     return texture;
 }
