@@ -12,3 +12,4 @@ export * from './grid';
 export * from './probe';
 export * from './tuning';
 export * from './segment';
+export * from './weapons';

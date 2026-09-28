@@ -40,7 +40,7 @@ body.ps2-look #view {
 
 /* The backtick hides the chrome for a clean look at the map. `#site-links` (and the cog in it) and
    `#loading` are not chrome. */
-body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen { display: none; }
+body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen, body.chrome-hidden #ammo { display: none; }
 
 /*
  * Site navigation: the system's bar is a full-width top strip; here it floats as a pill in the
@@ -62,6 +62,13 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #fps { top: 12px; right: 12px; pointer-events: none; }
 
 #fullscreen { position: fixed; right: 24px; bottom: 24px; z-index: 5; }
+
+/*
+ * The ammo box (W2.5): the fps pill's system class, moved to the bottom-left corner where the console frame keeps it.
+ * A readout, so a drag starting on it reaches the canvas; `hidden` (not walking) wins over the pill's display.
+ */
+#ammo { top: auto; right: auto; left: 12px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+#ammo[hidden] { display: none; }
 
 /* The loading overlay, centred as the system does. */
 #loading { pointer-events: none; }
@@ -106,13 +113,17 @@ body.touch #touch { display: block; }
 #touch-stance {
   position: fixed; right: 78px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 4;
 }
-#touch-lift button, #touch-stance {
+/* The trigger (W2.5), above the stance button: held, the rifle fires at its rate. */
+#touch-fire {
+  position: fixed; right: 78px; bottom: calc(16px + 66px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+}
+#touch-lift button, #touch-stance, #touch-fire {
   width: 56px; height: 56px; border-radius: 50%; touch-action: none;
   border: 1px solid var(--s2u-panel-edge); background: var(--s2u-tab); backdrop-filter: blur(4px);
   color: var(--s2u-gold); font: 16px/1 var(--s2u-font-label); cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-#touch-lift button:active, #touch-stance:active { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
+#touch-lift button:active, #touch-stance:active, #touch-fire:active { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
 
 @media (max-width: 480px), (pointer: coarse) {
   #site-links { top: 8px; left: 8px; }
@@ -135,5 +146,5 @@ body.touch #touch { display: block; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #touch-lift button, #touch-stance { transition: none; }
+  #touch-lift button, #touch-stance, #touch-fire { transition: none; }
 }

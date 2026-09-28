@@ -24,6 +24,7 @@ describe('the viewer chrome uses the design system', () => {
     ['about', 's2u-disclosure'], ['advanced', 's2u-disclosure'], ['fog-box', 's2u-disclosure'], ['sliders-box', 's2u-disclosure'],
     ['diagnostics-box', 's2u-disclosure'], ['disc', 's2u-label'],
     ['revision-line', 's2u-fine'], ['revision', 's2u-label--warn'], ['home', 's2u-bar__brand'], ['source', 's2u-tab--nav'],
+    ['ammo', 's2u-status--pill'],
   ])('#%s carries %s', (id, cls) => {
     const el = doc.getElementById(id);
     expect(el, id).not.toBeNull();
@@ -72,6 +73,14 @@ describe('the viewer chrome uses the design system', () => {
     expect(css).toMatch(/#panel :focus-visible\s*{[^}]*outline-offset:\s*-2px/);
     expect(css).toMatch(/#panel-kicker\s*{[^}]*margin:\s*0/);
     expect(css).toMatch(/@media \(max-width: 360px\)\s*{[^}]*#fps-rest\s*{[^}]*display:\s*none/);
+  });
+  it('the ammo box (W2.5) is a readout bottom-left, hidden until walking, and goes with the chrome', () => {
+    const ammo = doc.getElementById('ammo')!;
+    expect(ammo.hasAttribute('hidden')).toBe(true);
+    expect(css).toMatch(/#ammo\s*{[^}]*pointer-events:\s*none/);
+    expect(css).toMatch(/#ammo\s*{[^}]*left:[^}]*bottom:/);
+    expect(css).toMatch(/body\.chrome-hidden[^{]*#ammo/);
+    expect(doc.getElementById('touch-fire')!.closest('#touch')).not.toBeNull();
   });
   it('the fps pill is a number and a rest, so the rest can go at 360px', () => {
     expect(doc.querySelector('#fps > #fps-n')).not.toBeNull();

@@ -101,6 +101,11 @@ export interface FlyCameraOptions {
   onSpeedChange?: (multiplier: number) => void;
   /** Called when pointer lock is taken or released, so the page can show a hint. */
   onLockChange?: (locked: boolean) => void;
+  /**
+   * The trigger (W2.5, `./fire`): the left button pressed (true) and let go (false) **while the mouse is captured**.
+   * The click that takes the lock is not a shot; losing the lock lets a held trigger go.
+   */
+  onFire?: (down: boolean) => void;
 }
 
 /**
@@ -160,6 +165,8 @@ export class FlyCamera {
   private walking = false;
   /** Walking, the pitch's limits in radians (`setPitchLimits`: the aim pitch's, W2.1). */
   private walkPitch: [number, number] = [-PITCH_LIMIT, PITCH_LIMIT];
+  /** The left button pressed while locked and not yet let go (`onFire`). */
+  private triggerHeld = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -443,7 +450,10 @@ export class FlyCamera {
     // has no tabindex and never takes focus by itself, so the focus is dropped by hand.
     const focused = globalThis.document?.activeElement;
     if (focused instanceof HTMLElement && focused !== this.canvas) focused.blur();
-    if (this.locked) return;
+    if (this.locked) {
+      if (e.button === 0) { this.triggerHeld = true; this.options.onFire?.(true); }
+      return;
+    }
     if (e.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
       // Raw mouse input where the browser offers it: the OS's pointer acceleration is for a cursor,
       // not for a look, and Chrome lets a page ask for the unadjusted movement. A browser that does
@@ -476,6 +486,7 @@ export class FlyCamera {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    if (e.button === 0) this.letGo();
     if (this.dragging !== e.pointerId) return;
     this.dragging = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
@@ -483,6 +494,7 @@ export class FlyCamera {
 
   private readonly onLockChange = (): void => {
     this.locked = globalThis.document?.pointerLockElement === this.canvas;
+    if (!this.locked) this.letGo();
     if (this.locked && this.dragging !== null) {
       // The click that took the lock also started a drag; the lock owns the look from here.
       if (this.canvas.hasPointerCapture(this.dragging)) this.canvas.releasePointerCapture(this.dragging);
@@ -490,6 +502,13 @@ export class FlyCamera {
     }
     this.options.onLockChange?.(this.locked);
   };
+
+  /** The trigger let go, once, if it was held (`onFire`). */
+  private letGo(): void {
+    if (!this.triggerHeld) return;
+    this.triggerHeld = false;
+    this.options.onFire?.(false);
+  }
 
   private readonly onContextMenu = (e: Event): void => {
     e.preventDefault();
@@ -528,6 +547,7 @@ export class FlyCamera {
    * The velocity goes too, or blurring mid-flight would leave it coasting behind a dead tab.
    */
   private readonly onBlur = (): void => {
+    this.letGo();
     this.keys.clear();
     this.velocity.set(0, 0, 0);
     this.sprinting_ = false;

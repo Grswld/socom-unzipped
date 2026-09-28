@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseZdb } from '@s2u/archive';
 import { csm1ClutIndex, PaletteTable, parsePaletteRecord } from '@s2u/gs';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
-import { decodeNamedTextures, readReticle, RETICLE_TEXTURES } from '../src/hudBitmaps';
+import { decodeNamedTextures, readEffectBitmap, readReticle, RETICLE_TEXTURES } from '../src/hudBitmaps';
 
 /**
  * The reticle's bitmaps (web sprint 2, W2.4): `RUN\COMMON\HUD2_TXR.ZED` in every `MP*.ZDB`, decoded with the palettes
@@ -97,3 +97,25 @@ describe('decodeNamedTextures (synthetic, the same path)', () => {
     expect(RETICLE_TEXTURES).toEqual({ fixed: 'ret_rifle_01.tif', floating: 'ret_rifle_02.tif', accuracy: 'ret_accuracy.tif' });
   });
 });
+
+describe.skipIf(absent)(`the bullet mark off Frostfire's EFFE_TXR.ZED (W2.5)${absent ? ` (${FIXTURES_ABSENT})` : ''}`, () => {
+  it.skipIf(absent)('decals.rdr\'s bullet_mark_stone.tif decodes 16x16 with its own EFFE_PAL: a dark hole in a lighter ring', () => {
+    const { rgba, diagnostics } = readEffectBitmap(bytes!, parseZdb(bytes!), 'bullet_mark_stone.tif');
+    expect(diagnostics).toEqual([]);
+    expect([rgba!.width, rgba!.height]).toEqual([16, 16]);
+    expect(inked(rgba!.data)).toBe(INKED_STONE);
+    const at = (x: number, y: number): number[] => Array.from(rgba!.data.slice((y * 16 + x) * 4, (y * 16 + x) * 4 + 4));
+    expect(at(6, 7)[0]).toBeLessThan(40);          // the hole: dark and the most opaque
+    expect(at(6, 7)[3]).toBe(163);
+    expect(at(0, 0)[3]).toBe(0);                   // the corner: clear
+  });
+
+  it.skipIf(absent)('a name the library does not hold is a diagnostic and no bitmap', () => {
+    const { rgba, diagnostics } = readEffectBitmap(bytes!, parseZdb(bytes!), 'no_such_mark.tif');
+    expect(rgba).toBeNull();
+    expect(diagnostics).toEqual(['bullet mark: no_such_mark.tif: not in the library']);
+  });
+});
+
+/** Non-zero alpha texels of `bullet_mark_stone.tif` as decoded on 2026-09-28. */
+const INKED_STONE = 157;
