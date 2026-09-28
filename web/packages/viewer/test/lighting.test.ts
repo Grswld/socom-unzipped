@@ -135,8 +135,12 @@ describe('applyLighting on a part the engine lights', () => {
     expect(up).toBeGreaterThan(down);
   });
 
-  it('the shipped default is the console-measured brighten, FIX 93, and no rig on unflagged parts', () => {
-    expect(DEFAULT_LIGHTING).toEqual({ rig: null, brighten: 93, rigEverywhere: false });
-    expect(brightenOf(DEFAULT_LIGHTING)).toBeCloseTo(1 + 93 / 128, 6);
+  it('the shipped default is the multiplayer frame: no brighten pass, and no rig on unflagged parts', () => {
+    // The exposure block at 0x488e48 on a live Frostfire round (`frostA_probe600.rdram`): enable byte +0x31 = 0,
+    // the pass count 0x488e90 = 0, ALPHA 0 -- the post-process never runs in multiplayer. FIX 93 (twice: a count
+    // of 2) is the campaign's, read off the Seeding Chaos spawn. Measured against the frames: PCSX2 Vigilance at
+    // spawn A and the recompiled Frostfire at spawn B sit at 0.55 of the viewer's 1.73x picture, 1.0 of the bare one.
+    expect(DEFAULT_LIGHTING).toEqual({ rig: null, brighten: 0, rigEverywhere: false });
+    expect(brightenOf(DEFAULT_LIGHTING)).toBe(1);
   });
 });
