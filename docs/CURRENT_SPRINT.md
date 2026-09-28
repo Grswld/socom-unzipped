@@ -9,7 +9,7 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-16 -- CLOSED 2026-09-28 01:24Z (the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24); opened 2026-09-27 07:00Z off main at
+branch:       sprint-16 -- CLOSED 2026-09-28 01:24Z, merged to main as v0.16.0 at d77b58c5 (PR #97, 02:53Z); opened 2026-09-27 07:00Z off main at
               d84ffbde above the Sprint 15 merge 10650369, v0.15.0). No sprint branch is open until Sprint 17 opens off
               main (its own seat; the spec agreed 2026-09-27); until then a change goes on a topic branch
               (docs/GIT_STRATEGY.md section 2). See "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
@@ -52,7 +52,7 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 16 — CLOSED 2026-09-28 (the PR to `main` and the tag `v0.16.0` follow the owner's push; the merge hash and the PR number are written here when it lands; the record of the sprint is the block below)
+## Sprint 16 — CLOSED 2026-09-28 (merged to `main` as `v0.16.0` at `d77b58c5`, PR #97, 02:53Z; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-27 07:00Z, closed 2026-09-28 01:24Z: one loop day, every merged branch reviewed by a
 fresh agent. Landed -- **L**: #73 closed (the persona ledger written on a real login against our Horizon box: a per-descriptor RT
