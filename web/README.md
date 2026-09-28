@@ -20,7 +20,10 @@ and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09
 [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
 the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
-and its Ghidra function names.
+and its Ghidra function names. The behaviour every change is checked against, maps and pictures
+included, is pinned down in [`packages/viewer/e2e/viewer.spec.ts`](packages/viewer/e2e/viewer.spec.ts)
+(`npm run e2e`); the viewer's chrome is the s2u design system, vendored under
+`packages/viewer/src/ds/` by `npm run ds:sync` (the manifest test refuses a hand edit).
 
 ## How it works (one paragraph)
 
@@ -146,8 +149,9 @@ pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75,
 step it back up.
 
 Everything the viewer draws over the map goes in one strip along the top: the back link, then the
-panel's title bar beneath it. The panel opens folded on a coarse pointer (a remembered choice still
-wins), its body scrolls inside itself, and the status line drops the draw and collision counts and
+panel's title bar beneath it. The panel opens the same as on a desktop -- open, the map picker being
+what a first visit is for -- and a fold from an earlier visit's tap on the title bar is remembered;
+its body scrolls inside itself, and the status line drops the draw and collision counts and
 abbreviates the rest so it fits on one row at 360px. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 

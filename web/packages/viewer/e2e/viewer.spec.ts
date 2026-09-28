@@ -230,3 +230,16 @@ test('the page never shows through the canvas: Requiem at night, magenta page', 
   expect(leaks.n).toBe(0);
   expect(problems).toEqual([]);
 });
+
+test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  await expect(page.locator('#maps')).toBeVisible();
+  const panel = await page.locator('#panel').boundingBox();
+  const fab = await page.locator('#fullscreen').boundingBox();
+  expect(Math.round(panel!.width)).toBe(390 - 16);
+  expect(Math.round(fab!.width)).toBe(44);
+  expect(Math.round(fab!.height)).toBe(44);
+  await ctx.close();
+});
