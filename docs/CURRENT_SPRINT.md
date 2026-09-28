@@ -9,23 +9,25 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-16 -- OPEN 2026-09-27 07:00Z off main at d84ffbde (X5's Dependabot merge, above the Sprint 15 merge
-              10650369, PR #81, tagged v0.15.0; Sprint 14 merged as v0.14.0 at 200f3287, PR #68). This machine's checkout
-              is on sprint-16 (the Sprint 16 controller session, a desktop-app worktree beside it); agents work in
-              worktrees on agent/s16-* branches, or in cloud sessions on branches off main (D14, R312); the controller
-              merges them. See "Sprint 16 -- OPEN" below, then the Sprint 15 and 14 CLOSED blocks.
+branch:       sprint-16 -- CLOSED 2026-09-28 01:24Z (the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24); opened 2026-09-27 07:00Z off main at
+              d84ffbde above the Sprint 15 merge 10650369, v0.15.0). No sprint branch is open until Sprint 17 opens off
+              main (its own seat; the spec agreed 2026-09-27); until then a change goes on a topic branch
+              (docs/GIT_STRATEGY.md section 2). See "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
 spec:         docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md (four milestones R, F, L, X
               with a bar each; the acceptance bar is its section 4; six sentences superseded at the open, the plan's
               Task 0 Step 5). The Sprint 15, 14, 13, 12 and 11 specs closed with v0.15.0 down to v0.11.0.
-plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R320 (R314 vacant)
+plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R321 (R314 vacant)
               from the global counter; its task book 2026-09-27-sprint-16-tasks.md and the readers' facts
               2026-09-27-sprint-16-tree-facts.md beside it). The Sprint 15 plan (R282-R289; R298 the close's window,
               superseded) and the owner's sitting (R290-R297, docs/superpowers/plans/2026-09-26-owner-sitting.md) are
-              closed, listed in the block below; the Sprint 14 plan (R269-R281) too; the Sprint 13 plan's block is in
+              closed, listed in the block below; the Sprint 14 plan (R269-R281) too, its block in
+              docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the Sprint 13 plan's block is in
               docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 in
               docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  not named; the plan's Task 98 names the candidate at the close.
+next sprint:  Sprint 17 "sixty and the way back" -- its spec docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md
+              agreed by the owner 2026-09-27, its plan drafted by its own seat (branch claude/mission-frame-drops-7e50ea),
+              GitHub milestone 7; it opens off main after the v0.16.0 merge. #70, #71, #57, #59 and #94 are its.
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
@@ -35,7 +37,8 @@ baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Bu
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
               that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
-              the player archive); the quiet baseline F0's three gates on `4cbbb14f` (median 27.09 ms, spread 7.0 %); before them the Sprint 14
+              the player archive); the close gate `s16_b4g` by hand on the batch-4 exe `2430919f…` (2026-09-28 01:00Z-01:16Z: 3/3 PINS MATCH,
+              HELDOUT 12/12, FRAME mean 28.82; the chain itself red on HEAD moving under other sessions' commits); the quiet baseline F0's three gates on `4cbbb14f` (median 27.09 ms, spread 7.0 %); before them the Sprint 14
               close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
               Sprint 14 plan's Log, 16:20Z); before it (Sprint 13, 2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
               same exe (23:51Z), `s13_proof3_gate` 3/3 (r0001, 20:54Z), `s13_names_r0004_gate` 3/3 PINS MATCH (r0004,
@@ -49,7 +52,27 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 16 — OPEN 2026-09-27 07:00Z (plan `docs/superpowers/plans/2026-09-27-sprint-16.md`, "ten minutes to the server")
+## Sprint 16 — CLOSED 2026-09-28 (the PR to `main` and the tag `v0.16.0` follow the owner's push; the merge hash and the PR number are written here when it lands; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-27 07:00Z, closed 2026-09-28 01:24Z: one loop day, every merged branch reviewed by a
+fresh agent. Landed -- **L**: #73 closed (the persona ledger written on a real login against our Horizon box: a per-descriptor RT
+frame walk hands the plain MAS/MLS bodies to the recorder, the login driver's keyboard rows and focus walk fixed; PR #90) and #74
+closed (the tooltips, PR #82). **R**: R1a's spike (RECOMPILE, R316, research/74), the download primitive (PR #88), the player and
+developer release kinds (PR #85), #69 closed. **F**: F0's note (research/73: three quiet gates on one exe 28.99 / 26.93 / 27.09 ms,
+median 27.09, spread 7.0 %; the GL replay thread is the wall -- the draw path's read-back inside `submit=` 568 ms/s, the harness's
+screenshots 169, the uploads 81; F4 does not fire) and F2's one measured attempt (the `[gs-submit]` split; the RT fast path's guard
+restored after Sprint 7's shrink: ADOPTED: the read-back 123 → 20 ms/s, `submit=` 568 → 541). **X**: `tools/` restored by one flag, #57's r0004 leg (PR #87), Dependabot #10.
+**V0**: the Sprint 15 legs -- the chain green, #67's drag proof, T1b's capture (12/48 and nine dips, recorded as #91 and #42's).
+Not done: R1b (the first-run helper: eight reviewed regeneration rounds to a byte-exact DNAS stage, stopped in the package stage --
+research/76; #70 carried to Sprint 17 at `3d17f192` unmerged), R2/R3b/R4 (#71 carried), F1 (not run), F3 (fired, not started; #32
+to the backlog), F5 (numbers only, no pin; #59 carried), X2, X4 (#41 to the backlog). The owner's play test (22:40Z): the drag no
+longer freezes, the audio much better, the online screens' music the one lingering defect (#94, Sprint 17), the personas working
+superficially. The close proof: the batch-4 chain's suites green in rerun 4 (`ea24b339`) and the gate and the fourth leg by hand on its exe `2430919f…` (`s16_b4g`, 01:16Z): 3/3 PASS, PINS MATCH (13), HELDOUT 12/12, `FRAME mean=28.82` -- the chain itself went red five times on causes outside the code, three of them the main tree's HEAD moving under other sessions' commits. Issues since the open: opened 4 (#91, #94, #95, #96), closed 5 (#67, #69, #73, #74, #75),
+carried 6 (#32, #41, #57, #59, #70, #71); the highest is #96. The §5 review fixed 38 findings and archived Sprint 14's block; the §7
+read found the audit clean, carried and re-titled, opened #95 and #96, closed the milestone, regenerated the backlog; R271's breaker
+closed O2, O4, O5, O7, O8, O10 and O15 by default (R321). The Outcome in the plan has the bar row by row and the numbers.
+
+**As it stood while open:**
 
 Opened by the Sprint 16 controller off `main` at `d84ffbde` (above the Sprint 15 merge `10650369`, `v0.15.0`) on the
 owner's word of 2026-09-27 (05:33Z the seat; 05:57Z cloud sessions on the credit and open tasks in the controller's
