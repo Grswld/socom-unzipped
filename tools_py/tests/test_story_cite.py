@@ -457,10 +457,17 @@ class TestSiteRefusesAFilesystemPathAsAUrl(unittest.TestCase):
 
     def test_a_url_path_is_accepted(self):
         from tools_py.story import site
+        import tempfile
         story = os.path.join(ROOT, "docs", "STORY.md")
         if not os.path.exists(story):
             self.skipTest("docs/STORY.md not written yet")
-        rc = site.main(["--img", "/story/img", "--logo", "/img/logo.webp", "--out", os.devnull])
+        # The repository copy inlines the site's design system and refuses to render without it (site.py, 2026-09-28);
+        # the default --ds-dir is ../scotho's, which CI never has, so the test brings its own four layer files.
+        with tempfile.TemporaryDirectory() as ds:
+            for name in site.DS_FILES:
+                with open(os.path.join(ds, name), "w", encoding="utf-8") as f:
+                    f.write("/* %s */\n" % name)
+            rc = site.main(["--img", "/story/img", "--logo", "/img/logo.webp", "--out", os.devnull, "--ds-dir", ds])
         self.assertEqual(rc, 0)
 
 
