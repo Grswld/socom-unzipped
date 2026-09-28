@@ -90,8 +90,9 @@ bodies are supplied, else a placeholder named and the task carried; (7) nothing 
 - **W2.R2** — every number is the game's or a named placeholder (§1).
 - **W2.R3** — web sprint 2 continues on the cloud branch of sprint 1 (`claude/web-sprint-cloud-8wa72q`, PR #100 grows)
   unless the owner names another branch; the sprint's rulings are `W2.Rn` in this file.
-- **W2.R4** — the player body is `seal_A_scuba` with the `seal_scuba_*` fittings; the other side's is `al_gman01`; the
-  first weapon `m4Acarbine`, the sidearm `baretta_m9` (the owner can overturn by number).
+- **W2.R4** — the default target is the SEAL model (`seal_A_scuba` with the `seal_scuba_*` fittings) and the
+  **M4A1 SD** (`m4Acarbine_sd` in `WEAP_MDL`) -- the owner's word of 2026-09-28; the other side's body `al_gman01` and
+  the sidearm `baretta_m9` are the controller's defaults after it (the owner can overturn by number).
 
 ## 6. Findings recorded during the sprint
 
