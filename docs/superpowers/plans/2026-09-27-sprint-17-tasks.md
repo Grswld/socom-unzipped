@@ -44,6 +44,27 @@ carry lines in the Log; the doc test OK.
 **Verification:** `git log --oneline origin/sprint-17 -3`; `gh api repos/Scotho/socom-unzipped/milestones --jq
 '.[].title'`; `python -m unittest tools_py.tests.test_doc_maintenance`.
 
+## Task G1: the chain's guard
+
+**Files:** `tools_py/hooks/precommit.py` (new, or the existing pre-commit entry the leak check uses -- read
+`scripts/install_hooks.sh` and `.githooks/` first), `scripts/loop_lock.sh` (read only: the live record's `purpose`),
+`tools_py/tests/test_hooks.py`, `docs/DEVELOPING.md` "## Guards" (one bullet), `CLAUDE.md` "## Guards" (one line).
+
+**Interfaces:** consumes the lock's live record (`bash scripts/loop_lock.sh check` prints `HELD: <owner> ... purpose: <text>`).
+Produces a pre-commit refusal, exit 1, with the one-line reason `a merged chain holds the lock (<owner>): no commit in
+this tree until it releases (Sprint 17 G1)` when the tree is the chain's tree and the purpose starts with `merged chain:`.
+
+- [ ] **Step 1 (RED):** `test_hooks.py`: with a planted lock record whose purpose is `merged chain: ...` and the tree
+  path equal to the record's tree, the pre-commit hook exits 1 with the reason; with any other purpose, or another
+  tree, exit 0; with no lock, exit 0.
+- [ ] **Step 2 (GREEN):** the rule; wired through `scripts/install_hooks.sh` like the leak check; `bash
+  scripts/install_hooks.sh` run in the main tree and in this controller's tree.
+- [ ] **Step 3:** the DEVELOPING and CLAUDE.md lines; the planted test named in DEVELOPING "## Guards".
+
+**Bar:** the three cases green; a commit attempted in the main tree during a chain refused with the reason (checked once,
+by hand, under the first chain's holding).
+**Verification:** `python -m unittest tools_py.tests.test_hooks`.
+
 ## Task F0: the three instruments
 
 **Files:**
@@ -115,6 +136,12 @@ carry lines in the Log; the doc test OK.
 - [ ] **Step 5 (RED, the player knob):** a drive test: with `SOCOM_DRIVE_NO_LATEST_FRAME=1` in the environment,
   `launch()`'s child env has no `PS2X_HOST_SCREENSHOT_LATEST`; without it, it has the default path. GREEN: the guard
   around `drive.py:65`'s `setdefault`.
+- [ ] **Step 5b (RED, the encode off the GL thread; LATER 43):** the screenshot path (`ps2_runtime.cpp:2867-2890`) keeps
+  `LoadImageFromScreen` on the GL thread (it is a GL read) and hands the pixels to a worker that runs `ExportImage` and the
+  rename; a pure helper `ShotQueue` (new header `ps2xRuntime/include/runtime/shot_queue.h`: `push(Image)`, one in
+  flight, a newer frame replaces a waiting one) with a `ps2xTest` case: three pushes while the worker is held leave one
+  waiting image, the newest. GREEN: the helper and the wiring; the gate's captures unchanged (the fourth leg's twelve
+  references match). Measurement: `ExportImage`'s share of the GL thread in the host profile, 14.9 % -> under 1 %.
 - [ ] **Step 6 ([L], one window the owner names):** the player-condition run, mirroring research/73 §3 minus the
   screenshots: `SOCOM_DRIVE_NO_LATEST_FRAME=1 PS2X_PC_SAMPLER=1 PS2X_GS_STATS=1 PS2X_VU_STATS=1 python -m
   tools_py.parity.drive --target ours scripts/parity/gameplay_probe.txt --seconds 480 --tail 170` under the lock, the
@@ -421,7 +448,7 @@ clean, no deploy).
 **Files:** `docs/HUMAN_TASKS.md` (O7, O8: the questions rewritten for this sprint), issue #94 (its bar's first step: the
 owner's description of the defect), the Log.
 
-- [ ] **Step 1:** one message to the owner, prose: the lobby held ten minutes with a headset, then a match, then a long
+- [ ] **Step 1:** one message to the owner, prose (their persona human pass is O25, kept when the Sprint 16 close let O7 lapse by default): the lobby held ten minutes with a headset, then a match, then a long
   session; for each: is the stuttering there, on which screen or minute, and for #94 which track, when, wrong how (a
   missing track, the wrong one, a level, a stall). Nothing in A2–A4 is scheduled before the answer (D5).
 - [ ] **Step 2:** the answer written verbatim into #94 and the Log; A2–A4 fired or moved to LATER with the answer as
