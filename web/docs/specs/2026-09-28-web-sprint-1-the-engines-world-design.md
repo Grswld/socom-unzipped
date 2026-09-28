@@ -189,6 +189,22 @@ run recorded in the plan's Task 0; the four numbers of section 3's bar item 3 in
 
 *(dated, newest last; the convention of the two earlier specs)*
 
+### The LOD record is 32 bytes and the ramp is linear in range squared (2026-09-28, W1.3)
+
+The world root's `LOD_Object` is 32-byte records: `minRangeNearSq`, `minRangeFarSq`, `minInvDeltaRangeSq`,
+`maxRangeNearSq`, `maxRangeFarSq`, then a sixth float at +20 that reCOM's `CLOD_band` (`zRender/zrender.h:180-192`,
+28 bytes) lacks -- the far fade's own inverse delta -- then the fade bits at +24 (bit 0 `minFade`, bit 1 `maxFade`) and
+a pointer-sized word at +28. Each inverse delta is `1 / (far² − near²)`: Frostfire's railings store 1/4400 =
+1/(120² − 100²), and on MP2, MP6 and MP72 a fade is flagged exactly where its two ends differ (MP2 10 records, MP6 20,
+MP72 3). So `CVisual::DrawLOD`'s opacity, `m_minInvDeltaRangeSq × (rangeSq − m_minRangeNearSq)`, is linear in the range
+*squared*: the two copies of a pair sum to 1 across the crossover and each is at half at 110.45 units, not 110. reCOM's
+`DrawLOD` as transcribed (`zVisual/vis_main.cpp:305-317`) has its comparisons reversed and its second range test
+repeating the first; `GetScaledRangeSquared` is a stub there (`zCamera/zcam.h:181`), so the "scaled" factor is
+unknown and the viewer uses the plain distance. The decomp names `zdb_CVisual_DrawLOD` at `0x003b7b90`
+(`recomp/socom2_names.csv`) but its body is not in the tree. The engine draws a visual at opacity 1 in place and
+defers one below it to the alpha pass (`zRender/zrndr_pipe.cpp:344-364`, down to 1/128); the viewer does the same
+with a fading twin per shared material (`viewer/src/lodFade.ts`), the 1/128 floor not copied.
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
