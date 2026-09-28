@@ -1,6 +1,7 @@
 import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 import { playFromDisc, playTransferables, type PlayData } from './motionTable';
+import { soundFromDisc, soundTransferables, type SoundData } from './soundData';
 
 /**
  * The decode thread. A 12 MB archive, 416 VIF packets and 37 palettised textures are a few hundred
@@ -25,7 +26,9 @@ export type ViewerRequest =
   | { kind: 'index'; id: number; source: SourceRequest }
   | { kind: 'load'; id: number; source: SourceRequest; path: string }
   /** The play mode's clips (W2.2b): `RUN/MOTION_P.ZAR`'s named clips and `motion.rdr`'s entries for them, once a source. */
-  | { kind: 'play'; id: number; source: SourceRequest; clips: string[] };
+  | { kind: 'play'; id: number; source: SourceRequest; clips: string[] }
+  /** A map's sound (web/docs/research/81, `./soundData`): its banks, the script, the materials, the weapons, the callbacks. */
+  | { kind: 'sound'; id: number; source: SourceRequest; path: string; archive: string };
 
 /**
  * What comes back. `error` carries the request that failed so the page can say what it was doing, and
@@ -40,6 +43,8 @@ export type ViewerResponse =
   | { kind: 'progress'; id: number; stage: LoadStage; done: number; total: number }
   /** The clips and their table entries, or null when the source has no `MOTION_P.ZAR` (the body keeps its bind pose). */
   | { kind: 'play'; id: number; data: PlayData | null }
+  /** The map's sound data, or null when the source has no `SOUNDS/BNKSTORE.ZAR` (the walk is silent). */
+  | { kind: 'sound'; id: number; data: SoundData | null }
   | { kind: 'error'; id: number; doing: string; message: string };
 
 /** Worker globals without pulling the WebWorker lib in beside the DOM one (they collide on `self`). */
@@ -81,6 +86,10 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         const source = sourceFor(request.source);
         const maps = source instanceof HttpAssetSource ? await source.maps() : await listMaps(source);
         ctx.postMessage({ kind: 'index', id: request.id, maps });
+      } else if (request.kind === 'sound') {
+        // Never an error either: without the banks the walk is silent.
+        const data = await soundFromDisc(sourceFor(request.source), request.path, request.archive);
+        ctx.postMessage({ kind: 'sound', id: request.id, data }, data ? soundTransferables(data) : []);
       } else if (request.kind === 'play') {
         // Never an error either: without the owner's pack the body stands in its bind pose.
         const data = await playFromDisc(sourceFor(request.source), request.clips);

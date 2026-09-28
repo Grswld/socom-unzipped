@@ -10,6 +10,7 @@ import type { SliderName, ToggleName } from './ui';
 import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
 import type { ViewStats } from './play';
+import type { AudioStats } from './audio';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -103,6 +104,13 @@ export interface ViewerHook {
   fire(): FireState;
   /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
   shoot(): Shot | null;
+  /**
+   * The sound (web/docs/research/81, `./audio`): unlocked or not, the banks loaded, the samples decoded, the sounds
+   * played by name, the events sent, the plays dropped and why, the last few plays.
+   */
+  audio(): AudioStats;
+  /** The sound's volume (1 the default level) and mute; the stats after. The UI's panel calls `GameAudio` itself. */
+  setAudio(settings: { volume?: number; muted?: boolean }): AudioStats;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

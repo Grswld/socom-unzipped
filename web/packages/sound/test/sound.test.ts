@@ -95,11 +95,14 @@ describe('the rules (81 §4-§6)', () => {
     expect(panDegrees(0, -1)).toBe(180);
   });
   it('reads the callbacks that play a sound', () => {
-    const map = callbackSounds({ sets: [{ name: 'common', anims: [
-      { name: 'jump_whoosh', names: ['NA', 'jump_whoosh', 'dummy_node', '.JUMP_WHOOSH', 'spinehi'], sequences: [{ commands: [{ set: 0, cmd: 30 }] }] },
-      { name: 'seal_thud', names: ['NA', 'seal_thud', 'dummy_node'], sequences: [{ commands: [{ set: 0, cmd: 60 }] }] },
-    ] }] });
-    expect([...map]).toEqual([['jump_whoosh', '.JUMP_WHOOSH']]);
+    const archive = { sets: [{ name: 'common', anims: [
+      { name: 'jump_whoosh', names: ['NA', 'jump_whoosh', 'dummy_node', '.JUMP_WHOOSH', 'spinehi'], sequences: [{ commands: [{ offset: 28, set: 0, cmd: 30 }] }] },
+      { name: 'seal_thud', names: ['NA', 'seal_thud', 'dummy_node'], sequences: [{ commands: [{ offset: 28, set: 0, cmd: 60 }] }] },
+      { name: 'law_impact', names: ['NA', 'law_impact', '.EXP_1', '.GREN_FAR'], sequences: [{ commands: [{ offset: 28, set: 0, cmd: 30 }, { offset: 60, set: 0, cmd: 30 }] }] },
+    ] }] };
+    expect([...callbackSounds(archive)]).toEqual([['jump_whoosh', ['.JUMP_WHOOSH']], ['law_impact', ['.EXP_1']]]);
+    const payload = (_s: string, anim: string, offset: number): number => (anim === 'law_impact' ? (offset === 28 ? 2 : 3) : 3);
+    expect(callbackSounds(archive, payload).get('law_impact')).toEqual(['.EXP_1', '.GREN_FAR']);
   });
   it('hashes names as the script files them', () => {
     expect(soundHash('.STEP_STONE')).toBe(1440126871);

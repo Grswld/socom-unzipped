@@ -42,23 +42,41 @@ export const ZANIM_PLAY_SOUND = 30;
 
 /** The shape of `@s2u/scene`'s `parseAnimSets` this reads (kept structural so the package needs no scene). */
 export interface ZAnimSetsLike {
-  sets: { name: string; anims: { name: string; names: string[]; sequences: { commands: { set: number; cmd: number }[] }[] }[] }[];
+  sets: {
+    name: string;
+    anims: { name: string; names: string[]; sequences: { commands: { offset: number; set: number; cmd: number }[] }[] }[];
+  }[];
 }
 
 /**
- * The zAnim callbacks' sounds: `motion.rdr`'s `zanim_callback (name (jump_whoosh) time (0.4))` runs the zAnim of that
- * name, which a map's `CZANIM.ZAR` (its `common` set) holds; an animation whose sequence carries a play-sound command
- * (set 0, command 30: 32 bytes whose `u16` at +6 indexes the animation's name table -- read on `jump_whoosh` and
- * `ladder_rung`) plays the sound its name table names, the one entry with a sound's sigil (`.JUMP_WHOOSH`,
- * `.STEP_LADDER`, `.SHOTGUN_COCK`). Callback name to sound name, for every such animation of every set.
+ * Where a play-sound command's name index is: `(set, animation, command offset in Seq_Data) => the u16 at +6`, read
+ * from the animation's `Seq_Data` key; null when the bytes are not to hand.
  */
-export function callbackSounds(archive: ZAnimSetsLike): Map<string, string> {
-  const out = new Map<string, string>();
+export type ZAnimNameIndex = (set: string, anim: string, offset: number) => number | null;
+
+/**
+ * The zAnim callbacks' sounds: `motion.rdr`'s `zanim_callback (name (jump_whoosh) time (0.4))` runs the zAnim of that
+ * name, which a map's `CZANIM.ZAR` (its `common` set) holds; each play-sound command of its sequences (set 0, command
+ * 30, 32 bytes) names a sound through the `u16` at +6, an index into the animation's name table -- a sound's name,
+ * with its sigil, on all 73 such commands of MP6's archive (`.JUMP_WHOOSH`, `.STEP_LADDER`; `law_impact` plays two,
+ * `.EXP_1` and `.GREN_FAR`). Callback name to the sounds it plays, in command order. Without `nameIndex` an
+ * animation's first sigiled name stands in for each command's.
+ */
+export function callbackSounds(archive: ZAnimSetsLike, nameIndex?: ZAnimNameIndex): Map<string, string[]> {
+  const out = new Map<string, string[]>();
   for (const set of archive.sets) {
     for (const anim of set.anims) {
-      const plays = anim.sequences.some((q) => q.commands.some((c) => c.set === 0 && c.cmd === ZANIM_PLAY_SOUND));
-      const name = anim.names.find((n) => /^[.~!][A-Z0-9_]/.test(n));
-      if (plays && name && !out.has(anim.name)) out.set(anim.name, name);
+      if (out.has(anim.name)) continue;
+      const sounds: string[] = [];
+      for (const q of anim.sequences) {
+        for (const c of q.commands) {
+          if (c.set !== 0 || c.cmd !== ZANIM_PLAY_SOUND) continue;
+          const i = nameIndex?.(set.name, anim.name, c.offset) ?? null;
+          const name = i !== null ? anim.names[i] : anim.names.find((n) => /^[.~!][A-Z0-9_]/.test(n));
+          if (name && /^[.~!]/.test(name) && !sounds.includes(name)) sounds.push(name);
+        }
+      }
+      if (sounds.length > 0) out.set(anim.name, sounds);
     }
   }
   return out;
