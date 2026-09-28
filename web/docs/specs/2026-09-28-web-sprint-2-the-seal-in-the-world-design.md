@@ -362,6 +362,25 @@ hit 0.504 under the feet. The camera's surface test in the pass: bit 19 skipped,
 material half of that test is not modelled. The aim point projects to exactly (0.5, 0.5) at rest, so the reticle sits on
 the frame's centre as the console frame shows; the crouched head at 0.63 of the frame's height against the console's 0.64.
 
+### The SEAL's rifle and the game's own bullet mark (2026-09-28, W2.5)
+
+*(the implementer's reading, under review; the plan's Log records the verdict)* `RUN/ZWEAPON.ZAR`'s `zweapon.rdr` decodes
+with `Zar.parse` and `parseRdr` like `READERC.ZAR`. The default primary is the **M4A1**: every `mp_seal1` kit in
+`READERC.ZAR/character.rdr` lists it first, in every theatre (the file's first `mp_seal1` line is the inheritance
+`mp_seal1 : mp_seal`). Its record carries no rounds-per-minute key: **`FireWait` 0.12 s** between rounds (500 a minute),
+`Ammo_Capacity` 30, `NumMags` 3 — read as including the loaded magazine, which gives the console frame's "30/30 · 2
+MAGS" — the round `5.56 x 45mm` (ammo `ID` 8 in the `ZAMMO` list; the weapon's own `ID` 54), `Maximum_Range` 1000 (the
+ray's length), `MaxFireMode 3` read as automatic, `ReticuleKnock`/`ReticuleKnockMax` 12/45 (the reticle's kick per
+shot; the mapping onto W2.4's spread is an estimate). reCOM's `zWeapon/` survives after all (`zweapon.h:515-529`:
+`m_ammocap`, `m_nummags`, `m_firewait`, `m_reloadtime`); the M4A1 has no `ReloadTime` (four weapons carry one) and reCOM
+defaults it to 0 — the real length is the animation's, so the viewer's 2 s is an estimate. **The mark is the game's
+bitmap:** `decals.rdr`'s `BULLET_MARK_SMALL` set for the M4A1, its stone row → `bullet_mark_stone.tif`, 16×16, 1 to 1.8
+units wide, off `EFFE_TXR.ZED` (`ALPH_TXR` holds no marks), drawn on every surface because materials are not modelled.
+No bullet surface class was found in the decompilation: the five callers that switch the collision test into its
+bit-19-skipping mode are the camera, headroom and peek rays, so the ray tests every polygon. The shot starts at the eye
+(no weapon model: the game fires from the weapon's `firepoint` toward the aim point). From Frostfire's spawn A at yaw
+90 the first round meets `container_blue01` 12 units west at 37.379 units.
+
 ## 8. Rulings
 
 - **W2.R1** — "the correct height" is the game's third-person camera with the body in the frame (research 17's
