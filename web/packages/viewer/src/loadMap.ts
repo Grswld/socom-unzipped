@@ -21,6 +21,7 @@ import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, place
 import { DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
 import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
 import { readHud, type HudBitmaps } from './hudAssets';
+import { grenadeTransferables, loadGrenadeAssets, type GrenadeAssets } from './grenadeAssets';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -154,6 +155,8 @@ export interface LoadedMap {
   bulletMark?: Rgba | null;
   /** The in-game HUD's bitmaps off `HUD_TXR`/`HUD2_TXR`/`HUDW_TXR`/`FONT_TXR` (`./hudAssets`, research 87), top row first. */
   hud?: HudBitmaps;
+  /** The frag grenade's model, effect bitmaps and the map's `DefaultMaterial` (`./grenadeAssets`, `./grenade`). */
+  grenade?: GrenadeAssets;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -296,6 +299,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const body = loadBody(bytes, toc, await characterTableFor(source, path), (line) => notes.add(line));
   // W2.4: the held weapon, decoded here with the map so its textures come out of the same asset-library chain.
   const weapon = heldWeapon(bytes, toc, notes);
+  // The frag grenade (`./grenadeAssets`): its model's textures are decoded with the held weapon's below.
+  const grenade = loadGrenadeAssets(bytes, toc, stem, textureKey, (line) => notes.add(line));
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
@@ -303,7 +308,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
-  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? [])]
+  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...grenade.parts]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
     .concat(body ? bodyTextureNames(body) : []);
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
@@ -416,6 +421,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     ...(weapon ? { weapon } : {}),
+    grenade,
     reticle: reticle.bitmaps,
     bulletMark: bulletMark.rgba,
     hud: hud.bitmaps,
@@ -441,6 +447,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   if (map.body) out.push(...bodyTransferables(map.body));
   for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy, map.bulletMark]) if (rgba) out.push(rgba.data.buffer);
   for (const rgba of Object.values(map.hud ?? {})) out.push(rgba.data.buffer);
+  if (map.grenade) out.push(...grenadeTransferables(map.grenade));
   return out;
 }
 

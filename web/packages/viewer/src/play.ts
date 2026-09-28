@@ -186,6 +186,8 @@ export class Play {
   private muzzleAt: Pnt3D | null = null;
   private stance: Stance = 'stand';
   private readonly listeners = new Set<(e: PlayEvent) => void>();
+  /** The rifle put away while another item is in the hand (the grenade: `./grenade`'s `equip`). */
+  private stowed = false;
   private unhook: (() => void) | null = null;
   /** The last action seen, by its serial: a take-off and a landing are told once. */
   private seenAction: { name: MoverActionName; serial: number } | null = null;
@@ -288,7 +290,7 @@ export class Play {
     } else this.weaponPose?.stopReload();
     this.bodyFrame(dt, snap);
     // The rifle rides the clips' `rifle` node: in W2.1's bind pose, never played, the hand holds nothing.
-    if (this.weapon) this.weapon.visible = this.last !== null && this.animator !== null;
+    if (this.weapon) this.weapon.visible = this.last !== null && this.animator !== null && !this.stowed;
     if (snap) this.moverEvents(snap, walk.mover?.() ?? null);
     // FUN_0029a950 reads the posed root: the walk's camera stands on it from its next tick.
     walk.setPosedRoot?.(snap && this.animator ? this.animator.rootY() : null);
@@ -299,6 +301,11 @@ export class Play {
    * Listens to the play mode's events (`PlayEvent`): the clips' callbacks and footfalls, the plays started, the take-offs
    * and the landings. Returns the unsubscribe. The listeners outlive a new map's body and clips.
    */
+  /** The rifle away (true: the grenade is up) or back in the hand. */
+  setRifleStowed(on: boolean): void {
+    this.stowed = on;
+  }
+
   onEvent(listener: (e: PlayEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

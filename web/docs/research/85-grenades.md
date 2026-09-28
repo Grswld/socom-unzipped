@@ -1,0 +1,336 @@
+# 85 — The frag grenade: the hold, the throw, the flight, the fuse and the explosion (2026-09-28)
+
+The grenades workstream (the owner's "if time, grenades can be added"). Everything the viewer's M67 does is read here
+from the game: the weapon record on the disc, the throw's code and `.data` in the SOCOM II ELF, the materials table,
+the motion clips and the effect scripts. The decompilation is reference only: functions are cited by address and
+`socom2_game.elf.decomp.c` line (`decomp :n`), never copied; the `.data` values were read out of
+`game/disc/socom2_game.elf` by virtual address; short hex constants are quoted as the instructions load them. Names
+in quotes after an address are the SOCOM 1 demo's symbol for the function's twin (`SCUS_972.05`, research 44) or
+`recomp/socom2_names.csv`'s. No game run, no PCSX2.
+
+Code: `@s2u/scene`'s `packages/scene/src/projectile.ts` (pure, tested in `test/projectile.test.ts`), the viewer's
+`packages/viewer/src/grenade.ts` and `grenadeAssets.ts`, the e2e `packages/viewer/e2e/grenade.spec.ts`.
+
+## 0. The answers
+
+- **The throw's power is the fire button's pressure, not a timer** — but a held digital button is pressure 1, so it
+  becomes how long it was held (§2). The player controller's update chases the pressure with the power at 3/s rising,
+  1.5/s falling, and throws when the pressure falls under 0.15 of the power. Held 0.25 s: power 0.54; 0.5 s: 0.78;
+  1 s: 0.95.
+- **The aim pitch picks the clip and lifts the arc** (§3, §4): power under 0.6 with `sin(aim)` under 0.3 is the
+  underhand toss; the launch pitch is the aim clamped to 0..55 degrees plus 10..12 degrees by power; the speed runs
+  from 5 % to 100 % of `ComputeMaxVel`, the speed that carries a 45-degree throw 600 units standing (300 otherwise).
+- **The flight is a point under gravity 98 u/s^2 against the hull** (§5): each frame one segment; the nearest hit
+  that is not a penetrable material reflects the velocity about the normal and scales it by the material's
+  `ELASTICITY_COEFF` (x0.75 more on the first bounce); slower than 5 u/s after a bounce that turned a fall upward, it
+  stops. There is **no rolling and no friction term**: a grenade on the ground skids to rest in ever-smaller hops.
+- **The fuse is `Timer1` = 3 s from the release** (the grenade cannot be cooked); `Timer2` = 3.1 s removes it (§6).
+- **The explosion** (§7): `Explosion_Damage` 10 in full to half of `Explosion_Radius` 15 m = 150 units, falling
+  linearly to 0 at 150. Its picture is the zAnim `frag_grenade`: sparks, a long dust, a light flash (radius 100 -> 190
+  over 0.5 s), black smoke with a fireball, a ground dust roll, the sound `.GREN_MED`; the scorch `grenade_mark.tif`.
+- **The model** is `WEAP_GEO`'s `grenade` (81 vertices, 82 triangles, `G11b.tif` + `m79.tif`).
+
+## 1. The record: `RUN/ZWEAPON.ZAR/zweapon.rdr`
+
+The M67's `ZWEAPON` record and its `ZAMMO` round (`M67 Ammo`, `ID 11`), and what the weapon loader (decomp
+322395-322700; the key strings at 0x3fc9f0.. 0x3fcd00) does with each field. `DAT_003dfe10` is `CWorld::m_scale` =
+1 / the map's `MetersPerUnit` (set at decomp 217166) = **10**: the loader multiplies the distance fields by it.
+
+| key | M67 | loaded as | where it lands / what reads it |
+|---|---|---|---|
+| `ID` | 121 (`0x79`, `'y'`) | the type byte `weapon+0x7c` | `HandleIntersections` sends type `'y'` (and 0x97, 0xac, 0xad, 0xb2, 0xb9, 0xba) to `HandleBounce`, every other type to `HandleImpact` (decomp 320032-320041) |
+| `Timer1` | 3 | seconds, absent -> 9999999 (never) | `SetProjectile` puts it at the projectile's `+0x8c` (decomp 0x3cb1a0) |
+| `Timer2` | 3.1 | seconds | `+0x90` |
+| `Muzzle_Velocity` | 0.1 | x10 = **1** (`weapon+0x44`) | `SetProjectile`: `vel = velscale x this + vel` -- the throw's velocity passes unchanged |
+| `Gravity_Acceleration` | absent | **9.8 x10 = 98** (decomp 322410-322415) | `weapon+0x48`; `PreTick` subtracts it from `vel.y` each frame |
+| `ImpactRadius` | 45 | x10 = 450 (`+0x4c`) | `HandleImpact`'s alert sphere (times the material's `IMPACT_RADIUS_MOD`); not a bounce term |
+| `Effective_Range` | 40 | x10 = 400 (`+0x40`) | -- |
+| `Maximum_Range` | 10000 | x10 = 100000 (`+0x3c`) | the projectile's `+0x94`: hits beyond it are ignored |
+| `Ammo_Capacity` / `NumMags` | 3 / 1 | | three grenades |
+| `Sound_Radius` | 700 | raw | -- |
+| `ModelName` | `grenade` | | §8 |
+| `FireAnimName` | `frag_start` | zAnim | `CZANIM.ZAR` `frag_start`: the sound `.THROW_OBJECT` |
+| `HitAnimName` | `grenade_hit` | zAnim stem | `grenade_hit_<material>`: the bounce sounds (§5.4) |
+| `DefaultSpecialAnimName` | `frag_grenade` | zAnim | the explosion (§7) |
+| `DecalSet` | `GRENADE_BLAST` | | `decals.rdr` (§7.3) |
+| `M67 Ammo` `Explosion_Damage` | 10 | raw (`ammo+0x18`) | §7.1 |
+| `M67 Ammo` `Explosion_Radius` | 15 | x10 = **150** (`ammo+0x1c`) | §7.1 |
+| `M67 Ammo` `ImpactDamage`, `Piercing` | 0.2, 4 | | not read here |
+
+The record's `Reticule_Modifiers` and `FireWait 0.1` are the rifles' shape carried along; nothing in the throw reads
+them. The HE grenade (`HE`, `ID 126`, `Explosion_Radius 10`, `Explosion_Damage 11`, model `HEgrenade`) is not in
+`HandleIntersections`' bounce list -- it takes `HandleImpact` [reading: not followed further].
+
+`test/projectile.test.ts` proves `M67` (the transcription) equals `throwableRecord` of the fixture's `ZWEAPON.ZAR`.
+
+## 2. The power: the player controller's update `FUN_00594cf0`
+
+`FUN_00594cf0` is the player controller's per-frame update (research 21 names it the `PlayerUpd` dispatch target);
+its float argument is the frame's `dt` (`mov.s $f20, $f12` at 0x594d40). While a throw is held (0x595ea0-0x595f28):
+
+1. `pressure = FUN_002c6350(pad) x DAT_00650660`: the pad's **pressure byte** for the fire button (0..255; 0x2c6350
+   reads byte 0x1d or 0x1a of the pad buffer by the controller config) times `1/255` (`0x3b808081`).
+2. **The release**: if `pressure <= power x DAT_00650668` (0.15, `0x3e19999a`) the throw goes (`FUN_005dfe30(body,
+   1)` at 0x595f34, the weapon state set to fire; the power is kept).
+3. Otherwise the power chases the pressure: `rate = pressure <= power ? DAT_006505d8 (1.5) : DAT_006505e0 (3.0)`,
+   `f = dt x rate`, `power = power x (1 - f) + pressure x f` (`MULA.S`/`MADD.S` at 0x595f18-0x595f1c), stored at
+   the controller's `+0x11c`.
+
+The power starts at 0 (0x596020 zeroes `+0x11c`, as does `FUN_00592d40`). `CZKit_TickExplosives` reads it back
+from `body->controller+0x11c` (decomp 477024). The SOCOM 1 demo did it differently -- `GetThrowAverage__9CSealCtrlFv`
+(demo 0x2844a0) returns the peak of the last pressure samples over 255 -- so SOCOM II replaced the peak with this lag.
+
+**What it means for a key or a mouse button**: pressure 1 while held, 0 let go. At 60 Hz the power after n frames is
+`1 - 0.95^n`: 0.265 at 0.1 s, 0.537 at 0.25 s, 0.785 at 0.5 s, 0.954 at 1 s, 0.998 at 2 s. On a PS2 pad a light
+press holds the power low however long it is held.
+
+`THROW_PARAMS`' `abort_threshold` (0.15) is loaded but its reader was not found by offset; the release's 0.15 is the
+`.data` constant above, not the dynamics field [reading]. The flag-bit path at 0x595fc0 (the `+0x170` bit 7 case)
+zeroes the power and calls `FUN_005dfe30(body, 2)` -- read as the throw's cancel; not modelled.
+
+## 3. The clip: `GetThrowAnim` (0x57fce0; demo `GetThrowAnim__10CZSealBodyFfR8AnimTypeRfRfR6CPnt3D`)
+
+Arguments: the power, the body; out: the animset type, the release fraction, a zeroed float, the hand's point in
+the actor frame. The toss test (decomp 441723-441726): `power < dynamics+0x1a4` and `body+0x1450 < dynamics+0x1a8`, i.e.
+`toss_power_threshold` and `toss_aim_threshold` (§3.1). `body+0x1450` is the aim's **sine**: `CZKit_TickExplosives`
+takes `asinf` of it (`FUN_001b38c8` -> `FUN_001af178`, a fdlibm `asinf`), and a loaded `toss_aim_threshold` passes
+through `sinf` (`FUN_001b3720`) at load.
+
+The body's state short `+0x174` selects the row. The types (`DAT_003deb20`..`DAT_003debe8`) are set at run time from
+the animset names (decomp 495211-495236), which fixes the states' meaning: **0 stand, 1 crouch, 2 prone, 3 peek**.
+
+| state | condition | animset type | clip (`MOTION_P.ZAR`) | frames | `motion.rdr` playback | release | hand (x right, y up, z behind) | `.data` |
+|---|---|---|---|---|---|---|---|---|
+| 0 stand | throw | Throw grenade | `seal_throwgrenade` | 28 | 1.6 | 0.46 | (3.3438, 19.3478, 3.9138) | 0x66b310 |
+| 0 stand | toss | Toss grenade | `seal_tossgrenade` | 30 | 1.6 | 0.69 | (3.13, 13.8, -10.5) | 0x66b328 |
+| 1 crouch | still (speed^2 <= 225) | Crouch throw grenade | `seal_crouch_throwgrenade` | 19 | 1.1 | 0.70 | (6.05, 15.59, 1.96) | 0x66b340 |
+| 1 crouch | moving | Throw grenade | `seal_throwgrenade` | 28 | 1.6 | 0.46 | the standing throw's | 0x66b310 |
+| 2 prone | throw | Prone throw grenade | `seal_prone_throwgrenade` | 27 | 1.6 | 0.66 | (6.29, 15.05, -0.97) | 0x66b358 |
+| 2 prone | toss | Prone toss grenade | `seal_prone_tossgrenade` | 27 | 1.1 | 0.56 | (2.39, 7.87, -8.53) | 0x66b370 |
+| 3 peek | right lean | Peek right toss | `seal_toss_rlean` | 35 | 1.25 | 0.55 | (7.8, 10.13, -5.31) | 0x66b388 |
+| 3 peek | left lean | Peek left toss | `seal_toss_llean` | 28 | 1.2 | 0.87 | (-8.83, 11.47, -6.48) | 0x66b3a0 |
+
+The crouch's moving test is `|m_velM|^2 <= DAT_00650578` (225, `0x43610000`: 15 u/s). The peek row tests which lean
+clip is playing (`FUN_00577e40` with 0x1d/0x1f and 0x1e/0x20). Clips run at 30 frames a second (research 77).
+
+**The release time.** `FUN_005802b0` returns `0 + fraction x clip(+0x10) x FUN_0028ada0(clip)`; the two factors are
+not decoded. The viewer takes `fraction x duration / playback` [reading] -- the standing throw lets go 0.268 s after
+the button; `motion.rdr`'s `throw_whoosh` callback on `seal_throwgrenade` at 0.45 sits beside its 0.46, so the
+fraction is of the clip. `NoInterrupt` (0.49 on the throw, 0.75 on the toss) is not modelled.
+
+`FUN_005499e0` is a line-of-sight check from the hand to a second point per row (e.g. (1.155, 13.354, -15.75)
+standing) through the hull (`FUN_0031e250`); its caller was not traced, so the viewer does not refuse a blocked throw.
+
+### 3.1 `THROW_PARAMS`
+
+`CharacterDynamics_Load` (0x59ba80) reads a `THROW_PARAMS` list (key at 0x65ecb0) into the dynamics block at
+`+0x198..+0x1a8` (decomp 456874-456884). The shipped `READERC.ZAR/dynamics.rdr` **has no `THROW_PARAMS`**, so the
+defaults the static constructor (decomp 328441) sets through `FUN_002ce1a0` stand:
+
+| key (string) | default | bits |
+|---|---|---|
+| `abort_threshold` (0x65ecc0) | 0.15 | `0x3e19999a` |
+| `max_distance_stand` (0x65ecd0) | 600 | `0x44160000` |
+| `max_distance_crouch` (0x65ecf0) | 300 | `0x43960000` |
+| `toss_power_threshold` (0x65ed10) | 0.6 | `0x3f19999a` |
+| `toss_aim_threshold` (0x65ed30) | 0.3 (a sine; loaded values are degrees through `sinf`) | `0x3e99999a` |
+
+The dynamics block is the global at 0x44c250 (`FUN_0058ce60` returns it); `CAMERA_WIGGLE`'s defaults beside it
+(`FUN_002ce1e0`: 22, 0.6, 0.1) equal the file's values, which checks the mapping.
+
+## 4. The launch: `CZKit_TickExplosives` (0x5c1970) and `CDynGrenade`
+
+At the release frame (decomp 477024-477130; instructions 0x5c20f8-0x5c22f4):
+
+1. **The hand's point**: `FUN_002869d0(body+0x170, bone, (2, 0, 0), &out, 0)` carries the point (2, 0, 0) in the hand
+   bone's frame (`body+0x300`; `+0x2f8` for the left-lean toss) up the skeleton into the actor frame. The arc preview
+   (`FUN_005970b0`, the debug `DrawFunc<11CDynGrenade>`, behind `DAT_003df1b0`) uses `GetThrowAnim`'s table point
+   instead; the viewer does too, as it has no hand bone to offer yet.
+2. **The farthest distance**: `max_distance_stand` when the state is 0, `max_distance_crouch` otherwise.
+3. **`ComputeMaxVel`** (0x5976e0, demo `ComputeMaxVel__11CDynGrenadeFffPf`): `t = sqrt(2 (h + 1 x d) / 98)`,
+   `speed = d / (0.707107 t)` with `h` the hand's height; `DAT_006505b8` = 1, `DAT_006505c0` = 0.707107. It is the
+   speed a 45-degree throw needs to land `d` away from `h` up. Standing (hand 19.35): **238.66 u/s**; crouched (15.59):
+   167.2.
+4. **The pitch**: `asinf(body+0x1450)` clamped to [0, 0.959931] (0x65e630/0x65e638: 0 and 55 degrees, `FUN_00539b70`),
+   plus **`ComputeElevOfs`** (0x5976a0): `(12 power + 10 (1 - power))` degrees (`DAT_006505b0` = 12, `DAT_006505a8` = 10).
+5. **The power's speed**: `lerp(0.05 max, max, power)` (`FUN_00597630`, the 0.05 is `0x3d4ccccd`).
+6. **`ComputeTimeToImpact`** (0x5975d0): the later root of `-49 t^2 + vy t + h = 0` (`FUN_0050de20` with `0xc2440000`,
+   `FUN_00575c50` the max), times `vh`: the range over the ground from the hand.
+7. **The aimed correction** (`DAT_006505c8` = 1 in `.data`, never written): the target is the range straight ahead of
+   the actor's **origin**, `(0, -range)`; the ground-plane direction turns from the hand to it (`FUN_00309110`
+   normalise, `FUN_0050df10` puts `sin p` in y and scales x, z by `cos p`); **the speed becomes the hand's distance to
+   that target**, `sqrt(range^2 + 2 range z + x^2 + z^2)` (`ADDA.S`/`MADD.S` at 0x5c220c/0x5c221c), clamped to
+   [0, max]. (Branch 0, unused: direction `(0, sin p, -cos p)` at the power's speed.)
+8. The direction goes through the body node's rotation (`FUN_00597530`), the hand through its matrix
+   (`FUN_003085c0`), and `FUN_005c5340` fires the weapon with them; `SetProjectile` (0x3cb1a0) takes the velocity x
+   `Muzzle_Velocity` (1).
+
+**Step 7's consequence** (a faithful port, worth confirming on a console): the speed is a distance, so the landing
+point matches the power's prediction only when the flight lasts about a second -- at low pitch it nearly does. Some
+standing throws, the hand's height 19.35 (`throwVelocity`, `impactRange`):
+
+| held | power | aim | launch pitch | speed | power's range | where it lands |
+|---|---|---|---|---|---|---|
+| tap | 0.000 | 0 | 10.0 | 12.0 | 7.6 | 7.7 |
+| 0.1 s | 0.265 | 0 | 10.5 | 59.0 | 55.0 | 43.4 |
+| 0.25 s | 0.537 | 0 | 11.1 | 127.6 | 123.6 | 116.0 |
+| 0.5 s | 0.785 | 0 | 11.6 | 213.9 | 209.9 | 252.2 |
+| 1 s | 0.954 | 0 | 11.9 | 238.7 | 284.0 | 305.3 |
+| 1 s | 0.954 | 30 deg | 41.9 | 238.7 | 549.1 | 598.7 |
+| 2 s | 0.998 | 30 deg | 42.0 | 238.7 | 596.5 | 598.8 |
+
+A level full throw lands about 305 units out; aimed 30 degrees up it reaches the 600 of `max_distance_stand`. At
+mid power and a high aim the speed reaches the max early (0.25 s held, 30 degrees: 443 units).
+
+## 5. The flight: `CZProjectile`
+
+The projectile methods, matched by order and shape to the demo's `CZProjectile` (demo 0x318230-0x319ff0):
+`HandleImpact` 0x3c8920, `HandleBounce` 0x3c8f50, `HandleTimers` 0x3c99a0, `HandleIntersections` 0x3c9b70,
+`PostTick` 0x3c9fb0 (names.csv), `PreTick` 0x3ca5a0, `SetProjectile` 0x3cb1a0. Fields: `+0x48` the frame's start,
+`+0x54` its end, `+0x60` the velocity, `+8` the grenade state, `+10` the projectile state (reCOM's
+`PROJECTILE_STATE`: 1 flying, 2 at rest, 3 to be detonated ...), `+0xb` the resting flag, `+4` bit 1 "first bounce".
+
+### 5.1 A frame
+
+1. **`PreTick`** (flying states 1 and 6, a normal shot type): `vel.y -= gravity x dt`; start = the last end; end =
+   start + `vel x dt` (`FUN_00309180` scale, `FUN_00309240` add): symplectic Euler. The segment is registered as the
+   projectile's intersection query (`FUN_0031dd90`). At rest (state 2) nothing moves.
+2. **`PostTick`**: both timers lose `dt`; then `HandleIntersections`.
+3. **`HandleIntersections`**: over the query's hits nearest first, beyond the last one handled; a hit on a material
+   with PENETRATION exactly 1 is passed over (`fVar15 != 1.0`). The M67's type goes to `HandleBounce`; its answer 1
+   ends the frame there, 2 (passed through) searches on; no hit, `FUN_003c9530` takes the segment's end.
+4. **`HandleTimers`**: `Timer1 <= 0` sets state 3 (to be detonated, grenade state 2); then `Timer2 <= 0` removal.
+
+### 5.2 The bounce (`HandleBounce` 0x3c8f50)
+
+The material is the table's entry for the polygon's byte (`FUN_002dc1d0`, §5.3). If it is **not LIQUID and its
+PENETRATION is under 0.99**:
+
+- `r = v - 2 (v.n) n` (`FUN_00308ef0`, the normal from the intersect record; zero if already resting);
+- `v = r x ELASTICITY_COEFF`, and **x 0.75 more on the first bounce** (flag bit 1 of `+4`, set by `SetProjectile`,
+  cleared here);
+- faster than 10 after it (`10.0 < fVar15`) and not UNDERWATER: the material's hit zAnim plays at the point
+  (`FUN_003d22e0` then `FUN_00272bb0`);
+- slower than **5** and not already at rest: on PERSON (`DAT_003e14f8`, looked up by name) the damping is undone;
+  otherwise, **if the fall was downward before and the new velocity is upward, it stops**: `v = 0`, state 2, `+0xb = 1`;
+- the new position is the hit point plus the unit normal x **0.1** (`0x3dcccccd`).
+
+Otherwise (LIQUID, or PENETRATION >= 0.99): `v x= ELASTICITY_COEFF`, and the position is the point plus `v x 0.0001`
+(`0x38d1b717`); the search continues along the segment.
+
+No other term touches the velocity: **there is no friction and no rolling**. A grenade on flat ground loses
+`1 - e` of its speed at every hop; the hops shorten until one ends under 5 going up. The viewer's normal comes from
+the hull polygon, either side; it is turned to face the grenade [reading: the engine's intersect record's normal].
+
+### 5.3 The materials
+
+The table (`DAT_0044f358`, `DAT_0044f354` entries) is built by `FUN_002dde40` from `READERC.ZAR/materials.rdr`'s
+`SOILS`: first `FUN_002de4b0` adds **`UNKNOWN`** (ELASTICITY 0.3) and **`PARTICLE_SYSTEM`** (PENETRATION 1,
+VOLUMETRIC), then the 44 SOILS in file order -- so a polygon's material byte `i >= 2` is SOILS entry `i - 2`. The fields
+(decomp 181349-181420): `+0x20` OPACITY, `+0x24` PENETRATION, `+0x28` RICOCHET, `+0x2c` ELASTICITY_COEFF, `+0x30`
+IMPACT_RADIUS_MOD, `+0x34` STEALTH_FACTOR, `+0x38` FOOT_STEP_OFFSET, `+0x3c` bit 0 VOLUMETRIC, bit 1 LIQUID, bit 2
+UNDERWATER; the constructor `FUN_002deb30` defaults PENETRATION and ELASTICITY to 0. **Byte 0** is the map's
+default (`DAT_0044f310`, set by `FUN_002ddc30` from a name looked up by `FUN_002de9e0`): the world root's
+`DefaultMaterial` (`MP*.ZED`, decomp 217160; `METAL_THICK` on Frostfire). The hull's bytes bear it out: Frostfire's
+3,318 polygons are 936 byte 0, 1,357 byte 25 (METAL_THICK), 326 byte 7 (STONE), 242 byte 3 (INVISIBLE_DI)...;
+Crossroads' 22 is ASPHALT (1,262) and 19 WOOD_THICK.
+
+What a grenade does on each (ELASTICITY / PENETRATION): STONE, METAL_THICK, PLASTER, CARPET, BARREL 0.5; ASPHALT
+0.45; DIRT, WOOD 0.3; GRASS 0.2; SAND, MUD 0.1; SNOW, ICE, GRAVEL, LEAVES 0.15; GLASS_THICK, GLASS_OPAQUE 0.8.
+Through it goes only WATER (LIQUID, x0.25) and GLASS (PENETRATION 0.99, x0.8); everything under 0.99 bounces, even
+GLASS_MEDIUM (0.985), CAMO_NET and CHAINLINK_FENCE (0.98) and METAL_RAILING (0.95); and it never sees the PENETRATION-1
+ones (ACTION, INVISIBLE_DI, ITEM, the `*_VOL` vegetation, PARTICLE_SYSTEM). `SOILS` in `projectile.ts` is tested equal to the file's.
+
+### 5.4 The bounce sounds
+
+`CZANIM.ZAR` holds `grenade_hit_<material>` per surface, each one sound: `.GREN_STONE`, `.GREN_SAND`, `.GREN_DIRT`,
+`.GREN_GRAVEL`, `.GREN_GRASS`, `.GREN_ICE`, `.GREN_SNOW` (plus effects), `.GREN_TIN` (metal thin), `.GREN_METAL`
+(thick, grate), `.GREN_WOOD`, `.GREN_LEAVES`, `.GREN_WATER` (a ripple, spray), `.GREN_CARPET`, `.GREN_ASPHALT`,
+`.GREN_PLASTER` (a puff), `.GREN_GRATING`; person, fabric, leather, barrel, rubber borrow bullet sounds. The event
+`bounce` carries `anim: grenade_hit_<material>` and `sound` (faster than 10).
+
+## 6. The fuse
+
+`Timer1` 3 s is set at `SetProjectile` -- **the release** -- and counted down in `PostTick`; `HandleTimers`
+detonates at 0 wherever the grenade is, in the air or at rest. There is no cooking: the hold only builds power.
+`Timer2` 3.1 s removes it. (reCOM's `CZProjectile` layout agrees: `m_time`, `m_removaltime`,
+`zWeapon/zweapon.h:588-660`.)
+
+## 7. The explosion
+
+### 7.1 The damage (`CZProjectile::GetDamage`, 0x3c7600, decomp 318700-318760)
+
+For an exploded projectile (states 5, 6): `damage = ammo+0x18 (Explosion_Damage) + weapon+0x64`; `r = distance /
+ammo+0x1c (Explosion_Radius)`; `r > 1` -> 0; `r > 0.5` -> `damage x (1 - (r - 0.5) x 2)`; else full. For the M67:
+10 out to 75 units, 5 at 112.5, 0 at 150. (`weapon+0x64` is a key not in the M67's record; 0.) The query is a sphere
+of the explosion radius registered at the point in `PreTick` state 3 (`FUN_0031dc90` with `FUN_003d4500(ammo)`).
+Nothing in the viewer takes damage; the `explode` event carries the damage at the player's feet.
+
+### 7.2 The picture: the zAnim `frag_grenade` (`RUN/CZANIM.ZAR`, the set `common`)
+
+`frag_grenade` calls `FRAG_sparks`, `dust_explode_long`, `light_flash_large`, `bsmoke_explode_large`,
+`dust_ground_roll` and plays `.GREN_MED`. Per material there are `frag_grenade_<material>` variants (stone: a flash
+and `firepuffStone` with `explosion2.tif`; dirt, grass: dirt thrown up; snow: snow puffs; underwater: `.EXP_WTR` and a
+water column), most calling `frag_grenade` or `frag_grenade_stone`.
+
+The particle emitters are set-0 command 0x27 (~300 bytes each), **not decoded field by field**. Read from the floats
+that stand out (the viewer's `EXPLOSION_READING`, labelled a reading):
+
+| part | bitmaps (`ALPH_TXR.ZED`) | velocity x / y / z | size | life | grey |
+|---|---|---|---|---|---|
+| `light_flash_large` (command 0x32) | -- | -- | radius 100 -> 190 | 0.5 s | (214.2, 242.25, 216.75), 64 |
+| `bsmoke_explode_large` fire | `explosion2.tif` | +-70 / 0..240 / +-70 | 8-10 | -- | -- |
+| its `GreyDustCloudUp`, `BlackDustCloudUp` | `effect_dustpuff01.tif` | -40..40 / 50..100 | 10-12 | 6.5-7.5, 9.5-10.5 | 0.5 -> 0.2 |
+| `dust_explode_long` | `effect_dustcloud.tif` | +-15 | 5-10 | 6.5-9.5 | 0.6 |
+| `FRAG_sparks` `spark_streak` | `effect_spark01.tif` | +-200 / 110..180 / +-200, pulled by (-560, -1000, -560) | 0.5-0.8 | 0.63-0.65 | -- |
+| `dust_ground_roll` `DustRoll` | `cloudpuff01.tif` | +-140 along the ground | 12-15 | 2.6-3.0 | 0.4 |
+
+The flash is a light in the game; the world's materials take no three.js light, so the viewer draws a glow a fifth
+of the radius across instead [placeholder].
+
+### 7.3 The scorch: `decals.rdr` `GRENADE_BLAST`
+
+`grenade_mark.tif` (`EFFE_TXR.ZED`) per material, `MIN_SIZE`-`MAX_SIZE` across: SAND 30-50; DIRT, STONE 20.2-30.9;
+SNOW, METAL_THICK, METAL_THIN, WOOD_THICK 10.2-20.9; WOOD_THIN, ASPHALT 10.2-16; GLASS 10-13. The viewer lays one
+under a grenade that went off at rest (STONE's size for an unlisted material) [reading: the decal's placement was not
+traced].
+
+## 8. The model and the hold
+
+`WEAP_GEO.ZED`'s `grenade` (every map carries it with the weapons, research 79 §2's form): 81 vertices, 82 triangles,
+`G11b.tif` and `m79.tif`, bbox (-0.60, -0.80, -0.52)-(0.67, 1.03, 0.52). `character.rdr`'s `body_items` list a
+`grenade` attachment part beside `rifle` and `pistol` (research 78 §3.1); the skeleton's hands are `rhand` (17) and
+`lhand` (24). The viewer holds the model at `HAND_PLACEHOLDER` (3.5, 12.5, -4) in the actor frame and slides it to the
+clip's release point, until the motion workstream offers the hand bone (§9).
+
+## 9. What the viewer does, and asks
+
+- **Input**: `4` takes the grenade (again, or `1`, the rifle); the fire trigger (left button captured, the touch fire
+  button) holds and throws while it is up; the ammo box reads `M67 x<left>`. The pad binding (the d-pad / Select to
+  change slots, R1 to throw, and R1's analog value as the pressure if a pad offers one) is the UI workstream's.
+- **Events** (`GrenadeThrower.on`): `equip(equipped)` -- the weapon workstream hides the rifle while true;
+  `throwStart({ anim, power, releaseIn })` -- the motion workstream plays `anim.clip` at `anim.playback`;
+  `throw(info)` -- audio `.THROW_OBJECT`; `bounce({ material, pos, speed, sound, anim })` -- audio
+  `grenade_hit_<material>` when `sound`; `explode({ pos, radius, anim, material, damageToPlayer, distanceToPlayer })`
+  -- audio `.GREN_MED`, and the look workstream's shake by distance (a marked `MERGE(look)` call in `main.ts`).
+- **Hook**: `grenade()` (the slot, phase, power, left, the grenades in the air, the last throw, bounces, explosions,
+  the M67's numbers), `throwGrenade(holdSeconds = 1, immediate = true)`, `equipGrenade(on?)`, `grenadeTrail(on)`
+  (a debug line along each flight), `resetGrenades()`.
+- **Asks**: the hand bone's world point from the posed skeleton (`rhand`, and the game's (2, 0, 0) in its frame) to
+  release from, as `CZKit_TickExplosives` does; the peek state, for the lean tosses; `FUN_005802b0`'s two factors, to
+  settle the release time; the particle command 0x27's layout, to replace `EXPLOSION_READING`; `SetModelOrientation`
+  (0x3cabe0) for the grenade's spin in flight (`SPIN_PLACEHOLDER` 14 rad/s); the decal placement.
+
+## 10. The placeholders and readings, by name
+
+| name | value | stands for |
+|---|---|---|
+| `HAND_PLACEHOLDER` | (3.5, 12.5, -4) | the hand bone before the release |
+| release point | `GetThrowAnim`'s table | the hand bone at release (`FUN_002869d0`) |
+| `releaseSeconds` | fraction x duration / playback | `FUN_005802b0`'s two factors |
+| `FLIGHT_TICK` | 1/60 | the projectile runs on the frame's dt |
+| `SPIN_PLACEHOLDER` | 14 rad/s | `SetModelOrientation` |
+| `EXPLOSION_READING` | §7.2 | the particle commands |
+| the flash glow | a fifth of 100 -> 190 | the light |
+| the scorch | at rest only | the decal's placement |
+| hull surfaces | bit 18 skipped (`isShotSurface`) | the projectile query's class |

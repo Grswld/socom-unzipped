@@ -13,6 +13,7 @@ import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
 import type { ViewStats, WeaponStats } from './play';
 import type { AudioStats } from './audio';
+import type { GrenadeStats, ThrowInfo } from './grenade';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -137,6 +138,22 @@ export interface ViewerHook {
   hud(): HudView;
   /** The HUD's inputs the walk does not drive yet (a prompt, a message, the fire mode, the team list), for the tests. */
   setHud(patch: HudPatch): HudView;
+  /**
+   * The frag grenade (`./grenade`, web/docs/research/85): the slot, the phase, the power, the grenades left and in the
+   * air, the last throw, the bounces and the explosions, and the M67's numbers.
+   */
+  grenade(): GrenadeStats;
+  /**
+   * Throws a grenade as if the button were held `holdSeconds` (default 1) then let go, walking: the grenade taken up
+   * first. `immediate` (default) lets go now rather than at the clip's release. Null when none can be thrown.
+   */
+  throwGrenade(holdSeconds?: number, immediate?: boolean): ThrowInfo | null;
+  /** Takes the grenade up (true), puts it away (false) or toggles; the slot after. */
+  equipGrenade(on?: boolean): boolean;
+  /** The debug trail behind the grenades in flight (off: the game draws none). */
+  grenadeTrail(on: boolean): void;
+  /** Clears the grenades, the effects and the marks, and refills the pouch. */
+  resetGrenades(): void;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

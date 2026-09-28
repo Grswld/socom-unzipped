@@ -31,6 +31,7 @@ import { PLAY_CLIPS } from './animator';
 import { gameAudio } from './audio';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
+import { GrenadeThrower } from './grenade';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -92,8 +93,28 @@ const fire = new Fire({
 }, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
 if (PLAY) fire.bindKey();
-/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
+/**
+ * The frag grenade (`./grenade`, web/docs/research/85): `4` takes it up (`1` the rifle), the trigger throws it --
+ * held for power, let go to throw; its flight over the walk's hull, its fuse, its explosion.
+ */
+const grenade = new GrenadeThrower({ grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view() });
+scene.add(grenade.object);
+if (PLAY) grenade.bindKey();
+grenade.on('equip', (on) => { fire.release(); play.setRifleStowed(on); });   // a slot change lets a held trigger go; the rifle away while the grenade is up
+grenade.on('throw', () => { audio.play('.THROW_OBJECT', walk.drawnFeet()); });
+grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
+grenade.on('explode', (info) => {
+  audio.onAnimCallback(info.anim, info.pos);        // frag_grenade: .GREN_MED
+  // The game's screen shake by the distance (research 83, `./look`).
+  if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
+});
+/** The trigger, pressed or let go: the grenade's while it is up, else the rifle's -- only while walking. */
 function trigger(down: boolean): void {
+  if (grenade.equipped()) {
+    if (down) grenade.pull();
+    else grenade.release();
+    return;
+  }
   if (down) fire.pull();
   else fire.release();
 }
@@ -527,6 +548,7 @@ async function boot(): Promise<void> {
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
+    grenade.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -543,7 +565,9 @@ async function boot(): Promise<void> {
     reticle.render(created.renderer);
     hud.setVisible(walking);
     hud.feed({
-      magazine: fire.state().magazine, yaw: fly.pose().yaw, stance: walk.posture(),
+      // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
+      magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
+      yaw: fly.pose().yaw, stance: walk.posture(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
     });
     hud.render(created.renderer);
@@ -637,6 +661,7 @@ function show(map: LoadedMap): void {
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
+  grenade.setMap(built.grenade, map.grenade);     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
@@ -808,5 +833,10 @@ window.__viewer = {
   setGear: (name, on) => play.setGearVisible(name, on),
   hud: () => hud.state(),
   setHud: (patch) => { hud.patch(patch); return hud.state(); },
+  grenade: () => grenade.stats(),
+  throwGrenade: (holdSeconds = 1, immediate = true) => grenade.throwNow(holdSeconds, immediate),
+  equipGrenade: (on) => grenade.equip(on),
+  grenadeTrail: (on) => grenade.setTrail(on),
+  resetGrenades: () => grenade.reset(),
   revision,
 } satisfies ViewerHook;
