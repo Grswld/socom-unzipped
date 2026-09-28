@@ -24,9 +24,11 @@ schedule of holds `(name, t_start, t_end[, group, stance, direction])` on the sa
   * root Y at rest: the median root_y over the 1 s before t_start; the stance is the probe's measured one when the
     schedule carries it, else the one this root reads (`stance_of`), else the one the name plans;
   * expected: the spec's band for (direction, stance) (web sprint 2 design section 7: stand fwd/left/right 65,
-    back 37; prone 11). Every crouch hold here is a FULL push, which stands the SEAL up and runs while the stance
-    stays crouch, so a crouch hold expects the STANDING band; the crouch walk (14.0 ahead, 12.8 back, 14.2
-    sideways) needs a push under 0.838, a light stick the keyboard cannot give;
+    back 37; prone 11). A keyboard hold is a FULL push, which in crouch stands the SEAL up and runs while the
+    stance stays crouch, so such a crouch hold expects the STANDING band; the crouch walk (14.0 ahead, 12.8 back,
+    14.2 sideways) needs a push under 0.838. A hold whose schedule entry carries a `push` (the probe's --light
+    holds, a PCSX2 macro at a set pressure) expects the crouch walk in crouch under 0.838, else push x band (the
+    linear law: a half stick standing is 32.5), and the report prints the push;
   * blocked: the xz distance under half the median of its group's (research/18 section 3.13's rule; the group is
     the name before a '#', so "fwd#1".."fwd#3" are one group), OR the steady speed under half the expected band.
 
@@ -41,10 +43,10 @@ import math
 import sys
 
 Row = collections.namedtuple("Row", "t x y z root_y move_scale")
-Hold = collections.namedtuple("Hold", "name t_start t_end group stance direction", defaults=(None, None))
+Hold = collections.namedtuple("Hold", "name t_start t_end group stance direction push", defaults=(None, None, None))
 HoldFit = collections.namedtuple(
     "HoldFit", "name group stance n speed vx vz heading_deg resid_rms t90 t90_ok root_y_rest move_scale_ok "
-               "distance expected under_expected blocked along lateral rel_heading_deg status")
+               "distance expected push direction under_expected blocked along lateral rel_heading_deg status")
 
 NAN = float("nan")
 STEADY_FRACTION = 0.6
@@ -69,6 +71,7 @@ EXPECTED.update({("crouch", d): _STAND[d] for d in _CROUCH_WALK})     # a full p
 EXPECTED[("prone", "fwd")] = 11.0
 EXPECTED_NOTE = {("crouch", d): "full push stands up; the %.1f crouch walk needs a light stick" % v
                  for d, v in _CROUCH_WALK.items()}
+CROUCH_WALK_BELOW = 0.838   # FUN_00584c60: a push under this in crouch is the crouch walk, whatever the push
 
 
 def group_of(name):
@@ -99,15 +102,33 @@ def stance_of(root_y):
     return "prone" if root_y < PRONE_BELOW else "unknown"
 
 
-def expected_speed(direction, stance):
-    return EXPECTED.get((stance, direction), NAN)
+def _partial(push):
+    return push is not None and push < 1.0
 
 
-def expected_label(direction, stance):
-    """The expected band as the report prints it, with the full-push caveat on a crouch hold."""
-    v = expected_speed(direction, stance)
+def expected_speed(direction, stance, push=None):
+    """The band for (direction, stance) at a push (None: full). A partial push (the probe's --light holds): in crouch
+    under 0.838 the crouch walk whatever the push, at 0.838 or more the standing run times the push; standing and
+    prone, the push times the band (design section 7: the speed is linear in the stick)."""
+    if not _partial(push):
+        return EXPECTED.get((stance, direction), NAN)
+    if stance == "crouch":
+        if push < CROUCH_WALK_BELOW:
+            return _CROUCH_WALK.get(direction, NAN)
+        return _STAND[direction] * push if direction in _STAND else NAN
+    full = EXPECTED.get((stance, direction), NAN)
+    return full * push
+
+
+def expected_label(direction, stance, push=None):
+    """The expected band as the report prints it, with the full-push caveat on a crouch hold and the push of a
+    light-stick hold."""
+    v = expected_speed(direction, stance, push)
     if math.isnan(v):
         return "--"
+    if _partial(push):
+        walk = stance == "crouch" and push < CROUCH_WALK_BELOW
+        return "%.1f (%spush %.2f)" % (v, "crouch walk, " if walk else "", push)
     note = EXPECTED_NOTE.get((stance, direction))
     return "%.0f (%s)" % (v, note) if note else "%.1f" % v
 
@@ -119,7 +140,8 @@ def as_hold(h):
     group = h[3] if len(h) > 3 and h[3] else group_of(name)
     stance = h[4] if len(h) > 4 else None
     direction = h[5] if len(h) > 5 else None
-    return Hold(name, a, b, group, stance, direction)
+    push = h[6] if len(h) > 6 else None
+    return Hold(name, a, b, group, stance, direction, push)
 
 
 def dedupe(rows):
@@ -209,9 +231,10 @@ def fit_hold(rows, hold, raw=None, steady_fraction=STEADY_FRACTION):
     stance = hold.stance or (stance_of(root_rest) if stance_of(root_rest) != "unknown" else
                              planned_stance(hold.group))
     direction = hold.direction or direction_of(hold.group)
-    expected = expected_speed(direction, stance)
+    expected = expected_speed(direction, stance, hold.push)
     base = dict(name=hold.name, group=hold.group, stance=stance, n=len(inside), root_y_rest=root_rest,
-                move_scale_ok=ms_ok, expected=expected, under_expected=False, blocked=False, along=NAN,
+                move_scale_ok=ms_ok, expected=expected, push=hold.push, direction=direction, under_expected=False,
+                blocked=False, along=NAN,
                 lateral=NAN, rel_heading_deg=NAN)
     empty = dict(speed=NAN, vx=NAN, vz=NAN, heading_deg=NAN, resid_rms=NAN, t90=NAN, t90_ok=False, distance=NAN)
     duration = hold.t_end - hold.t_start
@@ -289,9 +312,7 @@ def _num(v, fmt):
 def _expected_cell(f):
     if math.isnan(f.expected):
         return "--"
-    d = next((dd for (st, dd), v in EXPECTED.items() if st == f.stance and v == f.expected
-              and dd == direction_of(f.group)), None)
-    return expected_label(d, f.stance) if d else "%.1f" % f.expected
+    return expected_label(f.direction, f.stance, f.push)
 
 
 def report(fits):
@@ -341,7 +362,7 @@ def load_schedule(path):
     with open(path) as f:
         data = json.load(f)
     return [Hold(e["name"], float(e["t_start"]), float(e["t_end"]), e.get("group") or group_of(e["name"]),
-                 e.get("stance"), e.get("direction"))
+                 e.get("stance"), e.get("direction"), e.get("push"))
             for e in data if e.get("kind") == "hold"]
 
 
