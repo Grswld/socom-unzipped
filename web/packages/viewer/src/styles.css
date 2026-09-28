@@ -37,8 +37,12 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #site-links { position: fixed; top: 12px; left: 12px; z-index: 5; height: auto; padding: 4px 8px; right: auto; box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-viewer); }
 
 #panel { top: 56px; left: 12px; }
+/* The overlay's overflow: hidden clips a ring drawn outside a control; drawn inside, it is whole. */
+#panel :focus-visible { outline-offset: -2px; }
+#panel-kicker { margin: 0; }
 
-#fps { top: 12px; right: 12px; }
+/* A readout, not a control: a drag that starts on it must reach the canvas underneath. */
+#fps { top: 12px; right: 12px; pointer-events: none; }
 
 #fullscreen { position: fixed; right: 24px; bottom: 24px; z-index: 5; }
 
@@ -96,6 +100,11 @@ body.touch #touch { display: block; }
   /* Above the two 56px touch-lift buttons (10px apart), which the fullscreen fab's default
      right/bottom 24px placement would otherwise sit on top of on a coarse pointer. */
   #fullscreen { right: 12px; bottom: calc(16px + 2 * 66px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* At 360px the fps pill keeps the number alone, so it clears the site bar's GitHub tab. */
+@media (max-width: 360px) {
+  #fps-rest { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
