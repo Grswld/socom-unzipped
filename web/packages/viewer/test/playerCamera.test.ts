@@ -169,6 +169,26 @@ describe('the pass against the hull (FUN_0029bf70)', () => {
     }
   });
 
+  it('a camera-type-1 polygon within 2.75 of the target is passed over for the next hit (FUN_0029cd20); at 5 it stops the eye', () => {
+    const typeOne = (z: number): WorldPoly => ({ ...wallZ(z, -50, 50), cameratype: 1, path: 'worldmodel/camera1' });
+    const near = new PlayerCamera(world([floor(0), typeOne(2), wallZ(10, -50, 50)]));
+    settle(near, ORIGIN, 0, 0, STAND, 3);
+    close(near.view(1).eye, [0, 21.484, 10 - CAM_MARGIN]);                  // not inside the head, 1.25 behind the target
+    const far = new PlayerCamera(world([floor(0), typeOne(5), wallZ(10, -50, 50)]));
+    settle(far, ORIGIN, 0, 0, STAND, 3);
+    close(far.view(1).eye, [0, 21.484, 5 - CAM_MARGIN]);
+  });
+
+  it('a filtered hit still counts as a hit (DAT_00416038): the distance lets out during the hold', () => {
+    // A plain wall behind x < 0 only, a type-1 polygon 2 behind everywhere.
+    const typeOne: WorldPoly = { ...wallZ(2, -100, 100), cameratype: 1, path: 'worldmodel/camera1' };
+    const cam = new PlayerCamera(world([floor(0), wallZ(10, -100, 0), typeOne]));
+    settle(cam, [-10, 0, 0], 0, 0, STAND, 3);                               // the plain wall behind: pulled in, held
+    expect(cam.distance()).toBeCloseTo(9.25, 6);
+    settle(cam, [20, 0, 0], 0, 0, STAND, 1);                                // past its end: only the filtered hit
+    expect(cam.distance()).toBeCloseTo(9.25 + 0.03 * (28.75 - 9.25), 6);   // out at once, the hold notwithstanding
+  });
+
   it('holds the pulled-in distance 1.5 s after the last hit, then lets it out at 3 % a tick', () => {
     const cam = new PlayerCamera(world([floor(0), wallZ(10, -50, 50)]));
     settle(cam, ORIGIN, 0, 0, STAND, 5);
@@ -303,6 +323,37 @@ describe('walk mode\'s camera (W2.1)', () => {
     mode.setStance('prone');
     mode.frame(TICK);
     expect(fly.pose().pitch).toBeCloseTo(-20, 6);
+  });
+
+  it('a turn-only setCamera keeps the camera\'s pass: the pulled-in distance and the hold survive it', () => {
+    const fly = new FlyCamera(canvas());
+    const mode = new WalkMode(fly);
+    made.push(mode);
+    mode.setGround(packGround(
+      { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 4, cellsZ: 4, originX: -200, originZ: -200 },
+      [floor(0), wallZ(10, -50, 50)],
+      [{ modelName: 'worldmodel', path: 'worldmodel/ground', first: 0, count: 1 }, { modelName: 'worldmodel', path: 'worldmodel/wall', first: 1, count: 1 }],
+    ), null);
+    fly.setPose({ x: 0, y: 30, z: 0, yaw: 0, pitch: 0 });
+    mode.setMode('walk');
+    mode.setCamera({ pitch: 0 });
+    mode.frame(0.5);                                                         // 30 ticks against the wall behind
+    const before = mode.cameraState()!.pass;
+    expect(before.distance).toBeCloseTo(9.25, 6);
+    expect(before.hold).toBeCloseTo(1.5, 6);
+    mode.setCamera({ yaw: 180 });                                            // a turn: nothing behind now
+    const after = mode.cameraState()!.pass;
+    expect(after.distance).toBeCloseTo(9.25, 6);
+    expect(after.hold).toBeCloseTo(1.5, 6);
+    mode.frame(0.5);                                                         // held, counting down
+    expect(mode.cameraState()!.pass.distance).toBeCloseTo(9.25, 6);
+    expect(mode.cameraState()!.pass.hold).toBeCloseTo(1.0, 6);
+    // A pose with a position is a new stand: a new camera.
+    mode.setCamera({ x: 0, y: 30, z: 0, yaw: 0 });
+    expect(mode.cameraState()!.pass.distance).toBeCloseTo(9.25, 6);       // the wall behind again, at once
+    expect(mode.cameraState()!.pass.hold).toBeCloseTo(1.5, 6);
+    mode.setCamera({ x: 0, y: 30, z: 0, yaw: 180 });
+    expect(mode.cameraState()!.pass.distance).toBeCloseTo(28.75, 6);      // turned away, a new camera: no hold
   });
 
   it('the hook\'s setCamera still drops the mover from a pose, and walkFor moves the camera with the feet', () => {

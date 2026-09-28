@@ -745,8 +745,13 @@ export interface WalkCamera {
 /** Third person (the game's camera, the default: W2.R1) or first person (`V`). */
 export type WalkView = 'third' | 'first';
 
-/** The hook's view of the walk's camera (W2.1): which view, the eye and target drawn, the root, the pitch. */
-export interface WalkCameraState { mode: WalkView; eye: Vec3; target: Vec3; rootY: number; pitch: number }
+/**
+ * The hook's view of the walk's camera (W2.1): which view, the eye and target drawn, the root, the pitch, and the
+ * pass's state (`FUN_0029bf70`: the distance `DAT_003de268`, the hold `cam+0x4c` in seconds).
+ */
+export interface WalkCameraState {
+  mode: WalkView; eye: Vec3; target: Vec3; rootY: number; pitch: number; pass: { distance: number; hold: number };
+}
 
 /**
  * Walk and fly, one switch (W1.4 step 5): `G` toggles it (nothing on Ctrl -- `camera.ts` says why), the panel's
@@ -858,7 +863,8 @@ export class WalkMode {
     this.camera.setPose(pose);
     const w = this.walker;
     if (!this.walking || !w) return;
-    if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.restart(); return; }
+    // A turn only: the camera keeps its pass (the distance, the hold) and its root; the next tick takes the turn.
+    if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.look(w); return; }
     const at = this.camera.pose();
     if (w.place(at.x, at.y, at.z)) this.restart();
     else this.leave();
@@ -909,6 +915,7 @@ export class WalkMode {
     return {
       mode: this.view_, eye: [...placed.eye], target: [...placed.target],
       rootY: this.player?.rootY() ?? rootY(w.posture), pitch: this.camera.pose().pitch,
+      pass: { distance: this.player?.distance() ?? 0, hold: this.player?.hold() ?? 0 },
     };
   }
 

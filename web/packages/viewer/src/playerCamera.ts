@@ -1,5 +1,5 @@
 import { Vector3, type Camera } from 'three';
-import { isCameraSurface, segmentHit, SEAL_TUNING, type Grid } from '@s2u/scene';
+import { isCameraSurface, segmentHit, segmentHits, SEAL_TUNING, type Grid } from '@s2u/scene';
 import { CROUCH_HEIGHT, HEAD_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './body';
 import type { Stance } from './walk';
 
@@ -43,10 +43,13 @@ import type { Stance } from './walk';
  * FUN_0029bf70 (decomp 143197-143660; research 17 section 2's "four segment probes")   -- read; the no-hit case
  *                                                                  CONFIRMED against the console, to 0.001
  *   u = target - eye;  L = |u| + 0.75;  probe = target - û * L     the probe reaches 0.75 past the goal
- *   hit = nearest on the segment target -> probe                   FUN_0031e0a0, FUN_0029cd20
+ *   hits = the segment target -> probe (FUN_0031e0a0)
+ *   hit = FUN_0029cd20 (decomp 143706-143770): the nearest to the target, passing over any polygon whose
+ *         m_cameratype is exactly 1 (bit 18 set, bit 19 clear) within 2.75 of the target; any = hits not empty
+ *         (DAT_00416038 = 1, whether or not the pick survived the filter)
  *   if cam+0x4c > 0: cam+0x4c -= dt                               the hold timer
  *   D = DAT_003de268                                                the camera's distance, kept across frames
- *   if L > D: if cam+0x4c <= 0 or D < 3.3: D += 0.03 * (L - D)     DAT_003de270: out again at 3 % a frame
+ *   if L > D: if cam+0x4c <= 0 or D < 3.3 or any: D += 0.03 * (L - D)   DAT_003de270: out at 3 % a frame
  *   else:     D = L                                                 in at once
  *   no hit:   eye = target - û * D
  *   hit h:    D = min(D, max(0.75, |h - target| - 0.75));  eye = target + normalize(h - target) * D;  cam+0x4c = 1.5
@@ -108,6 +111,8 @@ export const CAM_REGROW = 0.03;
 export const CAM_HOLD = 1.5;
 /** `FUN_0029bf70`: under this distance the hold does not hold (`3.3000002`). */
 const CAM_HOLD_FLOOR = 3.3;
+/** `FUN_0029cd20`: a camera-type-1 polygon this near the target is passed over by the main probe. */
+const TYPE_ONE_CLEAR = 2.75;
 /** `FUN_00297410`: the aim point, this far along the pitched look from the target. */
 export const CAM_FAR = 1000;
 /** `FUN_0029a950`'s ramp (research 17 section 3). */
@@ -186,10 +191,13 @@ export function cameraPass(grid: Grid | null, target: Vec3, eye: Vec3, state: Pa
   const toTarget = sub(target, eye);
   const dir = unit(toTarget);
   const reach = length(toTarget) + CAM_MARGIN;
-  const main = hit(target, sub(target, scale(dir, reach)));
+  // FUN_0029cd20: the main probe's pick, and DAT_00416038 -- any hit at all, kept or passed over.
+  const hits = grid ? segmentHits(grid, target, sub(target, scale(dir, reach)), isCameraSurface) : [];
+  const any = hits.length > 0;
+  const main = hits.find((h) => h.poly.cameratype !== 1 || length(sub(h.point, target)) > TYPE_ONE_CLEAR)?.point ?? null;
   if (state.hold > 0) state.hold -= dt;
   if (reach > state.dist) {
-    if (state.hold <= 0 || state.dist < CAM_HOLD_FLOOR) state.dist += CAM_REGROW * (reach - state.dist);
+    if (state.hold <= 0 || state.dist < CAM_HOLD_FLOOR || any) state.dist += CAM_REGROW * (reach - state.dist);
   } else {
     state.dist = reach;
   }
@@ -294,6 +302,11 @@ export class PlayerCamera {
   /** The pass's distance, `DAT_003de268`. */
   distance(): number {
     return this.pass.dist;
+  }
+
+  /** The pass's hold, seconds left (`cam+0x4c`). */
+  hold(): number {
+    return this.pass.hold;
   }
 
   /** The root height the camera stands on (the stance's, moving to a new one over 0.2 s). */
