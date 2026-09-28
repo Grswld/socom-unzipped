@@ -75,8 +75,14 @@
     padding: var(--s2u-space-3) var(--s2u-space-4);
     font: var(--s2u-type-panel-heading); letter-spacing: var(--s2u-tracking-panel-heading); text-transform: uppercase; color: var(--s2u-gold);
   }
-  .s2u-panel__body { background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-0); padding: var(--s2u-space-4); color: var(--s2u-text); font: var(--s2u-type-body); }
+  .s2u-panel__body { background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-0); padding: var(--s2u-space-4); flex: 1; color: var(--s2u-text); font: var(--s2u-type-body); }
   .s2u-panel__body > :first-child { margin-top: 0; } .s2u-panel__body > :last-child { margin-bottom: 0; }
+  /* a link that is a panel head or a card title keeps the head's gold (cyan on the teal head read wrong: owner,
+     2026-09-28); its underline is gold mixed down against the panel and comes up full when pointed at; a link
+     that leaves the site carries a small arrow, outside the underline */
+  .s2u-panel__head a, .s2u-card > h3 a { color: var(--s2u-gold); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; text-decoration-color: color-mix(in srgb, var(--s2u-gold) 45%, var(--s2u-panel)); }
+  .s2u-panel__head a:hover, .s2u-card > h3 a:hover, .s2u-panel__head a:focus-visible, .s2u-card > h3 a:focus-visible { text-decoration-color: var(--s2u-gold); }
+  .s2u-panel__head a[target="_blank"]::after, .s2u-card > h3 a[target="_blank"]::after { content: ' ↗'; display: inline-block; font-size: 0.8em; color: var(--s2u-text-dim); }
   .s2u-panel__body p, .s2u-panel__body ul, .s2u-panel__body ol { max-width: var(--s2u-measure); }
   .s2u-panel--image .s2u-panel__body { padding: 0; }
   .s2u-panel--image img { display: block; width: 100%; height: auto; }
