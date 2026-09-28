@@ -302,6 +302,8 @@ for t in 0 .. TOP+2.w - 1:
   handler with `S`,`T` multiplied by a float from an inline block (4.0 in every sample) and new GS
   state — a detail/lightmap pass. The inline block lives in the *command list*, which the map file
   does not carry (§9), so a first-cut viewer simply does not draw it. R13 §4.8, NAT:249-250.
+  *Settled 2026-09-28 (§11.6): the float is the base texture's manifest `uv`, 2 to 10 on the disc and
+  8 on Frostfire; "4.0" was the value in the mission dumps sampled. The viewer draws the pass.*
 
 ## 8. Matrix and coordinate frame
 
@@ -507,11 +509,42 @@ of every map and adds nothing.
 Two chunks contain them. Probably degenerate exporter output. **Test:** check whether the affected
 triangles are zero-area; if not, fall back to the geometric normal.
 
-### 11.6 The second (detail) pass
+### 11.6 The second (detail) pass — settled 2026-09-28: the scale is the manifest's `uv`, per texture
 `0x30`/`0x32` scale `S`,`T` by a float from a list-embedded GIF block and redraw (§7). The block is
 in the EE's command list, not the archive, so its per-surface bindings must come from
-`mp2_lib.rdr`'s `detail{name, uv, range, bmode}` instead. **Test:** decode `mp2_lib.rdr` and check
-that the detail `uv` scale is 4.0 for the surfaces whose VU1 dumps use `0x30`/`0x32`.
+`mp2_lib.rdr`'s `detail{name, uv, range, bmode}` instead. **Test (as posed):** decode `mp2_lib.rdr` and
+check that the detail `uv` scale is 4.0 for the surfaces whose VU1 dumps use `0x30`/`0x32`.
+
+**Answer.** The test cannot be run as posed: the `0x30`/`0x32` commands are in the per-frame command
+list (§9), so no map-file tool (`web/tools/dump-prim.ts` included) can show which packets use them; and
+the dumps R13 §4.8 read the 4.0 off (`logs/vu1dump{2,3,4}`) are not in the tree, the one whose place is
+recorded (`vu1dump3`) having been captured in the Seeding Chaos mission (research 26 §3.2), not on a
+multiplayer map. What the archive does carry answers it instead:
+
+- **Every visual that draws the pass says so on disc.** Beside `vparams`, such a visual has
+  `detail_cnt`, `detail_size` and `detail_buff` (`CVisual::Read`,
+  `research/recom/src/gamez/zVisual/vis_main.cpp:276-296`), 28 bytes a record: f32
+  `m_range_sqd_to_camera` at +0 (`zvis.h:96-99`), the pass's `ALPHA_1` selector in the byte at +20, and
+  an f32 at +24. **[data]** Over the 22 maps, each of the 1,000 single-record `detail_buff`s matches its
+  texture's manifest `detail`: +0 is `range`, +24 is `uv`, and +20 is `0x44` (`(Cs - Cd) * As + Cd`) on
+  all 932 whose `bmode` is `COLORBLEND` and `0x48` (`(Cs - 0) * As + Cd`) on all 68 `ADDITIVE`.
+- **Frostfire's scale is 8, not 4.** Its 61 records are all `floor_oilgrime.tif`'s: range 250000,
+  `ALPHA` `0x48`, scale 8.0 -- the manifest's `detail (flooroil_detail.tif 8 250000 ADDITIVE)`. Over the
+  66 detail records of the 36 manifests (`*_lib.rdr`, 22 maps) `uv` runs 2 to 10; 4 is the commonest
+  (30 of 66), which is all "4.0 in every sample" said.
+- **Binding by texture is binding by visual.** 2,395 visuals are drawn with a texture whose entry has a
+  detail record; every one carries a `detail_buff` and no other visual drawn with such a texture lacks
+  one. Seven records sit on visuals drawn with no bound texture (MP10's `camo_net`, MP11's two `wires`,
+  MP52's two chain-link `g1210`, MP61's two `good_parts`); the viewer draws no pass there.
+- **`range` is squared** -- the field it becomes is `m_range_sqd_to_camera`, and the values are squares
+  (90000 = 300², 202500 = 450², 250000 = 500²). reCOM's `CPipe::RenderNode` switches the pass on per
+  visual while its centroid is inside it (`zRender/zrndr_pipe.cpp:311-322`).
+- **[inference]** that the +24 float is what the EE copies into the block's eighth quadword: it equals
+  the manifest `uv` everywhere and is the only scale the visual carries. A multiplayer VU1 dump would
+  confirm it.
+
+Tests: `archive/test/texManifest.test.ts` ("SEMANTICS 11.6"), `viewer/test/detailPass.test.ts`. The
+viewer draws the pass from the manifest (`viewer/src/world.ts`, `materialSpec.ts`; web sprint 1, W1.6).
 
 ### 11.7 `TOP+2.y`
 Read by no handler in any corpus (R13 §8.6); 1 in the VU1 dumps, **0 in every map packet**.

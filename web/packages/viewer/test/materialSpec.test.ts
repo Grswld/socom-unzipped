@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { drawState, materialSpec, type MaterialSpec, type TextureFlags } from '../src/materialSpec';
+import {
+  detailDrawState, detailRenderOrder, detailWeight, drawState, materialSpec, type DrawState, type MaterialSpec, type TextureFlags,
+} from '../src/materialSpec';
 import type { GsState } from '@s2u/gs';
 
 /**
@@ -125,5 +127,75 @@ describe('drawState in three\'s order', () => {
     });
     expect(drawState(spec('additive'), false)).toMatchObject({ transparent: true, depthWrite: false, factors: { src: 'srcAlpha', dst: 'one' } });
     expect(drawState(spec('destination'), false)).toMatchObject({ transparent: true, depthWrite: false, factors: { src: 'dstColor', dst: 'one' } });
+  });
+});
+
+/**
+ * The detail pass (W1.6): a second draw of a surface whose texture's manifest entry carries a `detail`
+ * record (`readTexManifest`, web/docs/research/72 §6). The record's `bmode` is read as the GS ALPHA its
+ * visuals carry in `detail_buff` -- `COLORBLEND` is `0x44` on all 932 records of that mode over the 22
+ * maps, `ADDITIVE` `0x48` on all 68 -- its `uv` scales S,T (SEMANTICS §11.6), and its `range` is a squared
+ * distance (`m_range_sqd_to_camera`), so the weight reaches zero at its root.
+ */
+describe('materialSpec with a detail binding', () => {
+  const colorblend = { name: 'Ground_Grassy_Det.tif', uv: 4, range: 202500, bmode: 'COLORBLEND' };
+  const additive = { name: 'flooroil_detail.tif', uv: 8, range: 250000, bmode: 'ADDITIVE' };
+
+  it('binds the detail texture, its scale and its fade, and keeps every base property as it was', () => {
+    const plain = materialSpec(flags(), true, true, true);
+    const spec = materialSpec(flags(), true, true, true, colorblend);
+    expect(spec).toEqual({
+      ...plain,
+      detail: { texture: 'ground_grassy_det.tif', blend: 'source', scale: 4, fade: 450, fog: true, cull: true },
+    });
+  });
+
+  it('ADDITIVE adds; the pass takes the fog bit and the cull of the draw it lies on', () => {
+    expect(materialSpec(flags(), false, true, false, additive).detail).toEqual({
+      texture: 'flooroil_detail.tif', blend: 'additive', scale: 8, fade: 500, fog: false, cull: false,
+    });
+  });
+
+  it('a bmode the disc was never seen to use, or a record with no scale or range, binds nothing', () => {
+    expect(materialSpec(flags(), true, true, true, { ...colorblend, bmode: 'ADDITIVE_4' }).detail).toBeUndefined();
+    expect(materialSpec(flags(), true, true, true, { ...colorblend, uv: 0 }).detail).toBeUndefined();
+    expect(materialSpec(flags(), true, true, true, { ...colorblend, range: 0 }).detail).toBeUndefined();
+  });
+
+  it('the blend-graded switch does not touch the detail: its blend is the record\'s, not the texture\'s', () => {
+    expect(materialSpec(flags(), true, false, true, colorblend).detail?.blend).toBe('source');
+  });
+});
+
+describe('the detail weight', () => {
+  it('is whole at the camera, half at half the fade, and nothing from the fade out', () => {
+    expect(detailWeight(0, 500)).toBe(1);
+    expect(detailWeight(250, 500)).toBeCloseTo(0.5);
+    expect(detailWeight(500, 500)).toBe(0);
+    expect(detailWeight(900, 500)).toBe(0);
+    for (let d = 0; d < 600; d += 50) expect(detailWeight(d + 50, 500)).toBeLessThanOrEqual(detailWeight(d, 500));
+  });
+});
+
+describe('the detail draw state', () => {
+  const spec = (blend: 'source' | 'additive') => ({ texture: 'd.tif', blend, scale: 4, fade: 450, fog: true, cull: true });
+  const opaqueBase: DrawState = { transparent: false, depthWrite: true, factors: null };
+
+  it('blends by its record, writes no depth, and tests depth as the GS did (GEQUAL, read as less-or-equal)', () => {
+    expect(detailDrawState(spec('source'), opaqueBase)).toEqual({
+      transparent: false, depthWrite: false, depthFunc: 'lessEqual', factors: { src: 'srcAlpha', dst: 'oneMinusSrcAlpha' },
+    });
+    expect(detailDrawState(spec('additive'), opaqueBase).factors).toEqual({ src: 'srcAlpha', dst: 'one' });
+  });
+
+  it('goes in the list its base draw is in, so it can never be drawn before it', () => {
+    expect(detailDrawState(spec('source'), { transparent: true, depthWrite: false, factors: null }).transparent).toBe(true);
+  });
+
+  it('is ordered right after its base draw in the disc order, and after every base in three\'s', () => {
+    expect(detailRenderOrder(512, true)).toBeGreaterThan(512);
+    expect(detailRenderOrder(512, true)).toBeLessThan(513);
+    expect(detailRenderOrder(512, false)).toBeGreaterThan(0);
+    expect(detailRenderOrder(512, false)).toBeLessThan(1);
   });
 });

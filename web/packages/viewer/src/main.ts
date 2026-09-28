@@ -208,6 +208,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'discorder') view?.setDiscOrder(on);
   else if (name === 'shadows') view?.setShadows(on);
   else if (name === 'alternate') view?.setAlternate(on);
+  else if (name === 'detail') view?.setDetail(on);
   else if (name === 'linestrips') view?.setLineStrips(on);
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
@@ -475,6 +476,7 @@ window.__viewer = {
     untexturedDraws: view?.untextured ?? 0,
     shadowDraws: view?.shadowDraws ?? 0,
     alternateDraws: view?.alternateDraws ?? 0,
+    detailDraws: view?.detailDraws ?? 0,
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
   }),
   toggles: () => ui.toggles(),

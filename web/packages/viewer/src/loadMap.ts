@@ -1,6 +1,6 @@
 import {
-  parseRdr, parseZdb, rdrGet, Reader, Zar, zdbMember,
-  type RdrNode,
+  parseRdr, parseZdb, rdrGet, readTexManifest, Reader, Zar, zdbMember,
+  type RdrNode, type TexDetail, type TexEntry,
   type AssetSource, type ZarKey, type ZdbEntry,
 } from '@s2u/archive';
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
@@ -83,6 +83,12 @@ export interface LoadedMap {
    * `./materialSpec` for how the three become a material.
    */
   textureFlags: Record<string, TextureFlags>;
+  /**
+   * The detail pass each drawn texture binds, by texture name: its `mp<N>_lib.rdr` entry's `detail` record
+   * (web/docs/research/72 §6, `readTexManifest`), the detail texture's name lower-cased as `textures` keys
+   * it, and only where that texture decoded. Empty on a map with no detail textures (Night Stalker, MP81).
+   */
+  detail: Record<string, TexDetail>;
   metersPerUnit: number;
   /** `MP*.ZED/GlobalLighting`: the map's own light rig, or null when the key is missing or short. */
   lightRig: GlobalLighting | null;
@@ -228,14 +234,17 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
+  const drawn = [...parts, ...props.flatMap((p) => p.parts)]
+    .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)));
+  // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
+  const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...parts, ...props.flatMap((p) => p.parts)];
+    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name)];
     let decoded = 0;
-    for (const mesh of wanted) {
+    for (const name of wanted) {
       step('textures', decoded++, wanted.length);
-      const name = mesh.textureName === null ? null : textureKey(mesh.textureName);
       if (name === null || name in textures) continue;
       const hit = keys.get(name);
       if (!hit) {
@@ -262,6 +271,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
       }
     }
   }
+  // A detail texture that did not decode has had its diagnostic above; its pass is not drawn.
+  for (const [base, d] of Object.entries(detail)) if (!(d.name in textures)) delete detail[base];
 
   // One draw call per texture: Frostfire's 416 packets cite 37 names, and merging by name turns 416 draws
   // into 37 without touching a vertex. Two things split a texture's draw:
@@ -311,6 +322,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     props,
     textures,
     textureFlags,
+    detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
@@ -420,6 +432,44 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string |
     notes.add(`mission name: ${say(e)}`);
     return null;
   }
+}
+
+/**
+ * Every texture manifest `READERM.ZAR` holds -- one `*_lib.rdr` per library the map loads, `mp51_lib.rdr`
+ * beside `rm51_lib.rdr` -- read (`readTexManifest`, web/docs/research/72 §6) and merged, the first entry
+ * of a name winning as it does within one file. No name is listed by two files on the disc.
+ */
+function texManifest(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, TexEntry> {
+  const out = new Map<string, TexEntry>();
+  try {
+    const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
+    for (const key of readerm.root.children) {
+      if (!/_lib\.rdr$/i.test(key.name)) continue;
+      try {
+        for (const [name, entry] of readTexManifest(parseRdr(readerm.data(key)))) if (!out.has(name)) out.set(name, entry);
+      } catch (e) {
+        notes.add(`texture manifest ${key.name}: ${say(e)}`);
+      }
+    }
+  } catch (e) {
+    notes.add(`texture manifest: ${say(e)}`);
+  }
+  return out;
+}
+
+/**
+ * The detail pass each drawn texture binds: its manifest entry's `detail` record, the detail texture named
+ * as `LoadedMap.textures` keys it. Binding by texture is the disc's own rule -- over the 22 maps every one
+ * of the 2,395 visuals drawn with a texture that has a detail record carries a `detail_buff` of its own
+ * (`CVisual::Read`, `zVisual/vis_main.cpp:276-296`), and no visual drawn with one lacks it.
+ */
+export function detailBindings(manifest: ReadonlyMap<string, TexEntry>, drawn: Iterable<string>): Record<string, TexDetail> {
+  const out: Record<string, TexDetail> = {};
+  for (const name of drawn) {
+    const d = manifest.get(name)?.detail;
+    if (d && !(name in out)) out[name] = { ...d, name: textureKey(d.name) };
+  }
+  return out;
 }
 
 /**

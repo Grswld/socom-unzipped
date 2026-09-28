@@ -39,7 +39,9 @@ const settle = (p: Page): Promise<void> => p.evaluate(
   () => new Promise<void>((d) => requestAnimationFrame(() => requestAnimationFrame(() => d()))),
 );
 
-console.log('archive  name              tris    draws  untex  collis  diag  spawns  notes');
+// `detail`: draws carrying a detail pass (W1.6, `WorldView.detailDraws`), the last fixed column so every
+// earlier one reads as it did before it was added.
+console.log('archive  name              tris    draws  untex  collis  diag  spawns  detail  notes');
 for (const { value, label } of options) {
   const archive = /\(([^)]+)\)/.exec(label)?.[1] ?? value;
   if (only.length && !only.includes(archive.toUpperCase())) continue;
@@ -83,7 +85,7 @@ for (const { value, label } of options) {
     `${archive.padEnd(8)} ${(s.map ?? '?').padEnd(17)} ${String(s.triangles).padStart(6)} `
     + `${String(s.diagnostics.length ? '-' : '-').padStart(6)} ${String(s.untexturedDraws).padStart(6)} `
     + `${String(s.collisionPolys).padStart(7)} ${String(s.diagnostics.length).padStart(5)} `
-    + `${(s.spawns ? 'yes' : 'NO').padStart(6)}  ${notes.join('; ')}`,
+    + `${(s.spawns ? 'yes' : 'NO').padStart(6)} ${String(s.detailDraws).padStart(7)}  ${notes.join('; ')}`,
   );
   for (const d of s.diagnostics.slice(0, 3)) console.log(`           ! ${d.slice(0, 150)}`);
   if (s.diagnostics.length > 3) console.log(`           ! ... and ${s.diagnostics.length - 3} more`);
