@@ -16,7 +16,7 @@ This file is a map, not the state: nothing here changes weekly; each line points
 
 ## Guards -- these refuse, they do not advise (the full rules and planted tests: DEVELOPING "## Guards")
 
-Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/hooks/pretool.py`, test
+Bash/PowerShell rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/hooks/pretool.py`, test
 `tools_py/tests/test_hooks.py`; every hook is wired in `.claude/settings.json`.
 - Bulk staging: a bare `git add`, `-A`/`--all`, `-u`/`--update`, a whole-tree pathspec (`.`, `-- .`), `git commit -a`
   (`-A`/`-u` limited by `-- <paths>` pass) -- enforced by: the Bash hook; home `docs/GIT_STRATEGY.md` section 3.
@@ -36,8 +36,8 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
 - `gh pr merge --delete-branch` (and `-d`) -- enforced by: the Bash hook; home `docs/HAZARDS.md` git.
 - Orphaned watchers (`tail`, `grep`, `sleep`) killed at every Stop and SessionEnd -- enforced by: the reaper
   `tools_py/hooks/reap.py`, test `tools_py/tests/test_reap.py`; home DEVELOPING "Guards", the Sprint 14 plan's G3.
-- `build.sh` refuses (exit 3) while another holder has the lock, unless run as its child; the `tools` step is exempt
-  -- enforced by: test `tools_py/tests/test_build_sh_lock.py`; home DEVELOPING "Build and run" (the `build.sh` refusal), the Sprint 14 plan's G5.
+- `build.sh` exits 3 while another holds the lock, unless run as its child (`tools` exempt) -- test `tools_py/tests/test_build_sh_lock.py`.
+- A commit or a tracked-file Edit/Write in a tree a live merged chain pins (`logs/.merged_chain.running`) -- enforced by: `tools_py/hooks/precommit.py`, the Edit/Write entry; home DEVELOPING "Guards".
 
 ## Procedures, by name
 

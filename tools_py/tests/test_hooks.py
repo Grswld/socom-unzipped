@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from tools_py.hooks import commitmsg, pretool
+from tools_py.hooks import chainmark, commitmsg, precommit, pretool
 from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -602,8 +602,10 @@ class PretoolWiringTest(unittest.TestCase):
             f.write("#!/bin/sh\nexit 2\n")
         os.chmod(fake, 0o755)
         doc = {"tool_name": "Edit", "tool_input": {"file_path": "C:/x/docs/notes.md"}, "cwd": "."}
+        # PRETOOL_CHAIN_TREE="": no chain marker counts, so this holds when a merged chain runs this suite in its tree
         p = subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input=json.dumps(doc), capture_output=True, text=True,
-                           cwd=self.tmp.name, env=dict(os.environ, PYTHON=fake.replace("\\", "/")), timeout=60)
+                           cwd=self.tmp.name, env=dict(os.environ, PYTHON=fake.replace("\\", "/"),
+                                                       PRETOOL_CHAIN_TREE=""), timeout=60)
         self.assertEqual(p.returncode, 0)
 
     def test_garbage_on_stdin_passes(self):
@@ -738,6 +740,459 @@ class CommitMsgWiringTest(unittest.TestCase):
         p = self.run_hook("test: a short subject\n")
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertEqual(p.stderr, "")
+
+
+# ------------------------------------------------------------------------ Sprint 17 G1: the chain's tree is pinned
+
+def dead_pid():
+    """The pid of a process that has exited (a finished child)."""
+    import sys
+    p = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"], capture_output=True, text=True,
+                       check=True, timeout=60)
+    return int(p.stdout.strip())
+
+
+def plant_marker(root, pid=None, start=None, stamp="s17_b1"):
+    """`<root>/logs/.merged_chain.running` as scripts/parity/merged_chain.sh writes it; pid defaults to this test
+    process (alive), start to now."""
+    import time
+    os.makedirs(os.path.join(root, "logs"), exist_ok=True)
+    path = os.path.join(root, "logs", ".merged_chain.running")
+    with open(path, "w", newline="\n") as f:
+        f.write("pid=%d\nstart=%d\nhead=%s\nstamp=%s\nroot=%s\nheld=s17-b1 1-1x1\n"
+                % (os.getpid() if pid is None else pid, int(time.time()) if start is None else start, "a" * 40,
+                   stamp, root.replace("\\", "/")))
+    return path
+
+
+STALE_HINT = ("marker logs/.merged_chain.running; delete it if no chain runs "
+              "(`bash scripts/loop_lock.sh check` FREE)")
+
+
+def chain_reason(stamp="s17_b1", pid=None):
+    return ("a merged chain runs in this tree (stamp %s, pid %d) -- no commit here until it ends; %s "
+            "(Sprint 17 G1; home: docs/DEVELOPING.md Guards)"
+            % (stamp, os.getpid() if pid is None else pid, STALE_HINT))
+
+
+def plant_hook_modules(tree):
+    """Copy the guard's modules into a temp tree: the hooks run them only in a tree that has them (a branch older than
+    the guard is skipped, not refused), and tools_py is a namespace package, so PYTHONPATH=ROOT supplies the rest."""
+    import shutil
+    os.makedirs(os.path.join(tree, "tools_py", "hooks"))
+    for name in ("__init__.py", "chainmark.py", "precommit.py"):
+        shutil.copy(os.path.join(ROOT, "tools_py", "hooks", name), os.path.join(tree, "tools_py", "hooks", name))
+
+
+class ChainMarkerTest(unittest.TestCase):
+    """tools_py/hooks/chainmark.py: the marker merged_chain.sh writes, read and judged in-process (no child: the
+    memory floor kills children, and a hook must answer then too)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="chainmark_")
+        self.root = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_live_pid_is_running(self):
+        plant_marker(self.root)
+        mark = chainmark.running(self.root)
+        self.assertIsNotNone(mark)
+        self.assertEqual((mark["pid"], mark["stamp"]), (os.getpid(), "s17_b1"))
+
+    def test_a_dead_pid_is_not_running(self):
+        plant_marker(self.root, pid=dead_pid())
+        self.assertIsNone(chainmark.running(self.root))
+
+    def test_no_marker_and_a_marker_without_a_pid_are_not_running(self):
+        self.assertIsNone(chainmark.running(self.root))
+        os.makedirs(os.path.join(self.root, "logs"))
+        with open(os.path.join(self.root, "logs", ".merged_chain.running"), "w") as f:
+            f.write("stamp=x\n")
+        self.assertIsNone(chainmark.running(self.root))
+
+    @unittest.skipUnless(os.name == "nt" or os.path.isdir("/proc/self"), "creation time read on Windows and Linux")
+    def test_a_pid_created_after_the_marker_is_a_reused_pid(self):
+        import time
+        plant_marker(self.root, start=int(time.time()) - 86400 * 400)   # this process began long after that
+        self.assertIsNone(chainmark.running(self.root))
+
+    def test_a_denied_or_unreadable_process_is_not_the_chain(self):
+        # review (1): a hard-killed chain's pid reused by a service answers ACCESS_DENIED (163 of 438 processes on the
+        # host); the chain's bash is our own user's and always opens, so denied is NOT alive -- else the main tree is
+        # refused until a reboot
+        start = 1790000000
+        verdict = chainmark.windows_verdict
+        self.assertFalse(verdict(False, 5, None, None, start))                  # OpenProcess: ACCESS_DENIED
+        self.assertFalse(verdict(False, 87, None, None, start))                 # no such process
+        self.assertFalse(verdict(True, 0, 0, start - 60, start))                # exited
+        self.assertFalse(verdict(True, 0, 259, None, start))                    # GetProcessTimes failed
+        self.assertFalse(verdict(True, 0, 259, start + 60, start))              # created after the marker: reused
+        self.assertTrue(verdict(True, 0, 259, start - 60, start))
+        self.assertTrue(verdict(True, 0, 259, None, None))                      # no start recorded: alive suffices
+
+    def test_the_windows_probe_takes_the_denied_shape(self):
+        denied = lambda pid: (False, 5, None, None)                             # noqa: E731
+        self.assertFalse(chainmark._alive_windows(4242, 1790000000, api=denied))
+        unreadable = lambda pid: (True, 0, 259, None)                           # noqa: E731
+        self.assertFalse(chainmark._alive_windows(4242, 1790000000, api=unreadable))
+
+    def test_a_probe_that_raises_is_not_running(self):
+        plant_marker(self.root, pid=4242)
+
+        def boom(pid, start):
+            raise OSError(5, "Access is denied")
+        self.assertIsNone(chainmark.running(self.root, alive=boom))
+
+    def test_the_alive_probe_is_injectable(self):
+        plant_marker(self.root, pid=4242)
+        self.assertIsNotNone(chainmark.running(self.root, alive=lambda pid, start: pid == 4242))
+        self.assertIsNone(chainmark.running(self.root, alive=lambda pid, start: False))
+
+    def test_tree_root_walks_up_to_the_git_entry(self):
+        os.makedirs(os.path.join(self.root, ".git"))
+        deep = os.path.join(self.root, "a", "b")
+        os.makedirs(deep)
+        self.assertEqual(os.path.normcase(chainmark.tree_root(os.path.join(deep, "new.txt"))),
+                         os.path.normcase(self.root))
+
+
+class PrecommitChainGuardTest(unittest.TestCase):
+    """Sprint 17 G1: the pre-commit hook refuses a commit in a tree whose logs/.merged_chain.running names a live
+    pid (Sprint 16: five chains went red when a peer committed or edited in the chain's tree; the audit
+    docs/audits/2026-09-28-multi-session-collisions.md section 3.1). The lock's state is not the key."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="precommit_")
+        self.root = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_live_chain_in_this_tree_refuses(self):
+        plant_marker(self.root)
+        self.assertEqual(precommit.check(self.root), (1, chain_reason()))
+
+    def test_no_marker_passes(self):
+        os.makedirs(os.path.join(self.root, "logs"))
+        self.assertEqual(precommit.check(self.root), (0, ""))
+        self.assertEqual(precommit.check(os.path.join(self.root, "no_such_tree")), (0, ""))
+
+    def test_a_marker_naming_a_dead_pid_passes(self):
+        plant_marker(self.root, pid=dead_pid())                          # a chain hard-killed past its trap
+        self.assertEqual(precommit.check(self.root), (0, ""))
+
+    def test_the_marker_of_another_tree_passes(self):
+        other = os.path.join(self.root, "other")
+        plant_marker(other)
+        mine = os.path.join(self.root, "mine")
+        os.makedirs(os.path.join(mine, "logs"))
+        self.assertEqual(precommit.check(mine), (0, ""))
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class PrecommitWiringTest(unittest.TestCase):
+    """scripts/hooks/pre-commit runs tools_py.hooks.precommit before the leak check: statically (the order of the two
+    command lines) and live, a copy of the hook in a temp repository with a planted marker."""
+
+    HOOK = os.path.join(ROOT, "scripts", "hooks", "pre-commit")
+
+    def test_the_guard_runs_before_the_leak_check(self):
+        with open(self.HOOK, encoding="utf-8") as f:
+            code = [l for l in f.read().splitlines() if l.strip() and not l.lstrip().startswith("#")]
+        guard = [i for i, l in enumerate(code) if "tools_py.hooks.precommit" in l]
+        leak = [i for i, l in enumerate(code) if "tools_py.release.leakcheck" in l]
+        self.assertTrue(guard, "scripts/hooks/pre-commit does not run tools_py.hooks.precommit")
+        self.assertTrue(leak, "scripts/hooks/pre-commit no longer runs the leak check")
+        self.assertLess(guard[0], leak[0])
+
+    def test_the_hook_refuses_a_commit_in_the_chains_tree(self):
+        import shutil
+        with tempfile.TemporaryDirectory(prefix="precommit_wire_") as tree:
+            subprocess.run(["git", "init", "-q", tree], check=True, capture_output=True)
+            os.makedirs(os.path.join(tree, "scripts", "hooks"))
+            shutil.copy(self.HOOK, os.path.join(tree, "scripts", "hooks", "pre-commit"))
+            shutil.copy(os.path.join(ROOT, "scripts", "python_env.sh"), os.path.join(tree, "scripts"))
+            plant_hook_modules(tree)
+            env = dict(os.environ, PYTHONPATH=ROOT)
+
+            def run():
+                return subprocess.run([BASH, "scripts/hooks/pre-commit"], capture_output=True, text=True, cwd=tree,
+                                      env=env, timeout=120)
+            marker = plant_marker(tree)
+            refused = run()
+            os.remove(marker)
+            passed = run()
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertIn("precommit: " + chain_reason(), refused.stderr)
+        self.assertNotIn("leak check", refused.stderr)
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+
+    def test_a_merge_commit_in_the_chains_tree_is_refused(self):
+        # a clean `git merge` runs pre-merge-commit, not pre-commit: the audit's 1(c) collision was a merge
+        import shutil
+        with tempfile.TemporaryDirectory(prefix="premerge_wire_") as tree:
+            git = ["git", "-C", tree, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+            subprocess.run(["git", "init", "-q", tree], check=True, capture_output=True)
+            with open(os.path.join(tree, ".gitignore"), "w") as f:
+                f.write("/logs/\n/scripts/\n/tools_py/\n")
+            subprocess.run(git + ["add", "--", ".gitignore"], check=True, capture_output=True)
+            subprocess.run(git + ["commit", "-q", "-m", "base"], check=True, capture_output=True)
+            base = subprocess.run(git + ["branch", "--show-current"], check=True, capture_output=True,
+                                  text=True).stdout.strip()
+            subprocess.run(git + ["checkout", "-q", "-b", "side"], check=True, capture_output=True)
+            subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "side"], check=True, capture_output=True)
+            subprocess.run(git + ["checkout", "-q", base], check=True, capture_output=True)
+            os.makedirs(os.path.join(tree, "scripts", "hooks"))
+            shutil.copy(os.path.join(ROOT, "scripts", "hooks", "pre-merge-commit"),
+                        os.path.join(tree, "scripts", "hooks", "pre-merge-commit"))
+            shutil.copy(os.path.join(ROOT, "scripts", "python_env.sh"), os.path.join(tree, "scripts"))
+            plant_hook_modules(tree)
+            env = dict(os.environ, PYTHONPATH=ROOT)
+            merge = git + ["-c", "core.hooksPath=scripts/hooks", "merge", "--no-ff", "-m", "merge side", "side"]
+            head0 = subprocess.run(git + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout
+            marker = plant_marker(tree)
+            refused = subprocess.run(merge, capture_output=True, text=True, env=env, timeout=120)
+            head1 = subprocess.run(git + ["rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout
+            subprocess.run(git + ["merge", "--abort"], capture_output=True)
+            os.remove(marker)
+            passed = subprocess.run(merge, capture_output=True, text=True, env=env, timeout=120)
+        self.assertNotEqual(refused.returncode, 0, refused.stdout + refused.stderr)
+        self.assertIn("precommit: " + chain_reason(), refused.stderr)
+        self.assertEqual(head0, head1, "the refused merge moved HEAD")
+        self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+
+    def test_a_tree_without_the_guard_is_not_refused(self):
+        # core.hooksPath can name the main tree's hooks from a worktree whose branch predates G1: no module there,
+        # so the guard is skipped -- never "No module named ..." refusing every commit and merge in that tree
+        import shutil
+        with tempfile.TemporaryDirectory(prefix="precommit_old_") as tree:
+            subprocess.run(["git", "init", "-q", tree], check=True, capture_output=True)
+            os.makedirs(os.path.join(tree, "scripts", "hooks"))
+            for hook in ("pre-commit", "pre-merge-commit"):
+                shutil.copy(os.path.join(ROOT, "scripts", "hooks", hook), os.path.join(tree, "scripts", "hooks", hook))
+            shutil.copy(os.path.join(ROOT, "scripts", "python_env.sh"), os.path.join(tree, "scripts"))
+            os.makedirs(os.path.join(tree, "tools_py", "hooks"))
+            open(os.path.join(tree, "tools_py", "hooks", "__init__.py"), "w").close()   # an older hooks package
+            plant_marker(tree)
+            env = dict(os.environ, PYTHONPATH=ROOT)
+            runs = [subprocess.run([BASH, "scripts/hooks/" + hook], capture_output=True, text=True, cwd=tree, env=env,
+                                   timeout=120) for hook in ("pre-commit", "pre-merge-commit")]
+        for p in runs:
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertNotIn("No module named", p.stderr)
+
+
+class PinnedTreeEditTest(unittest.TestCase):
+    """Sprint 17 G1 (c): an Edit/Write of a TRACKED file in a tree a live merged chain runs in is refused -- the chain
+    reds on `git status` before it looks at HEAD, so an edit is enough; untracked files, logs/ and other trees pass.
+    decide() judges the pinned tree only when given `pinned_of` (main() passes chainmark.running), so a suite run
+    inside a chain's tree stays hermetic."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="pinned_")
+        self.root = os.path.realpath(self.tmp.name)
+        os.makedirs(os.path.join(self.root, ".git"))
+        self.mark = {"pid": 4242, "stamp": "s17_b1"}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def decide(self, tool, rel, tracked=True, pinned=True, key="file_path"):
+        return pretool.decide(tool, {key: os.path.join(self.root, *rel.split("/"))}, self.root, False,
+                              pinned_of=lambda root: self.mark if pinned else None,
+                              tracked_of=lambda root, rel: tracked)
+
+    def test_a_tracked_file_in_the_pinned_tree_is_refused(self):
+        for tool, key in (("Edit", "file_path"), ("Write", "file_path"), ("MultiEdit", "file_path"),
+                          ("NotebookEdit", "notebook_path")):
+            code, why = self.decide(tool, "README.md", key=key)
+            self.assertEqual(code, 2, tool)
+            self.assertIn("a merged chain runs in this tree (stamp s17_b1, pid 4242)", why)
+            self.assertIn(STALE_HINT, why)
+            self.assertIn("home: docs/DEVELOPING.md Guards", why)
+
+    def test_untracked_logs_and_unpinned_pass(self):
+        self.assertEqual(self.decide("Write", "new.txt", tracked=False), (0, ""))
+        self.assertEqual(self.decide("Write", "logs/x.txt"), (0, ""))
+        self.assertEqual(self.decide("Edit", "README.md", pinned=False), (0, ""))
+
+    def test_without_a_probe_nothing_is_pinned(self):
+        self.assertEqual(pretool.decide("Edit", {"file_path": os.path.join(self.root, "README.md")}, self.root,
+                                        False), (0, ""))
+
+    def test_the_pinned_tree_is_the_edited_files_tree(self):
+        other = os.path.join(self.root, "sub")
+        os.makedirs(os.path.join(other, ".git"))                      # a nested tree of its own, not pinned
+        seen = []
+        pretool.decide("Edit", {"file_path": os.path.join(other, "f.txt")}, self.root, False,
+                       pinned_of=lambda root: seen.append(root), tracked_of=lambda root, rel: True)
+        self.assertEqual([os.path.normcase(r) for r in seen], [os.path.normcase(other)])
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class PinnedTreeWiringTest(unittest.TestCase):
+    """The Edit/Write half through scripts/hooks/claude_pretool.sh: a copy of the hook in a temp repository (the main
+    tree) and in a linked worktree of it, a live marker planted in the main tree. The shell's fast path must let the
+    edit through to Python while the marker exists, and must not start Python for it otherwise."""
+
+    def setUp(self):
+        import shutil
+        self.tmp = tempfile.TemporaryDirectory(prefix="pinned_wire_")
+        self.main = os.path.realpath(self.tmp.name)
+        git = ["git", "-C", self.main, "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(["git", "init", "-q", self.main], check=True, capture_output=True)
+        with open(os.path.join(self.main, "README.md"), "w") as f:
+            f.write("readme\n")
+        with open(os.path.join(self.main, ".gitignore"), "w") as f:
+            f.write("/logs/\n/scripts/\n/linked/\n")
+        subprocess.run(git + ["add", "--", "README.md", ".gitignore"], check=True, capture_output=True)
+        subprocess.run(git + ["commit", "-q", "-m", "base"], check=True, capture_output=True)
+        self.linked = os.path.join(self.main, "linked")
+        subprocess.run(git + ["worktree", "add", "-q", "-b", "side", self.linked], check=True, capture_output=True)
+        for tree in (self.main, self.linked):
+            os.makedirs(os.path.join(tree, "scripts", "hooks"))
+            shutil.copy(HOOK_SH, os.path.join(tree, "scripts", "hooks", "claude_pretool.sh"))
+            shutil.copy(os.path.join(ROOT, "scripts", "python_env.sh"), os.path.join(tree, "scripts"))
+        self.env = dict(os.environ, PYTHONPATH=ROOT)
+        self.env.pop("PRETOOL_CHAIN_TREE", None)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def edit(self, path, seat=None, tool_name="Edit", env=None):
+        seat = seat or self.main
+        doc = {"session_id": "t", "cwd": seat, "hook_event_name": "PreToolUse", "tool_name": tool_name,
+               "tool_input": {"file_path": path, "old_string": "a", "new_string": "b"}, "tool_use_id": "toolu_t"}
+        hook = os.path.join(seat, "scripts", "hooks", "claude_pretool.sh").replace("\\", "/")
+        return subprocess.run([BASH, hook], input=json.dumps(doc), capture_output=True, text=True, cwd=seat,
+                              env=env or self.env, timeout=60)
+
+    def test_a_tracked_edit_in_the_chains_tree_is_refused(self):
+        readme = os.path.join(self.main, "README.md")
+        self.assertEqual(self.edit(readme).returncode, 0)                     # no marker
+        marker = plant_marker(self.main)
+        p = self.edit(readme)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("a merged chain runs in this tree", p.stderr)
+        self.assertEqual(self.edit(readme, tool_name="Write").returncode, 2)
+        self.assertEqual(self.edit(os.path.join(self.main, "logs", "x.txt")).returncode, 0)
+        self.assertEqual(self.edit(os.path.join(self.main, "new.txt"), tool_name="Write").returncode, 0)
+        # seated in the linked worktree: its own tree is free, the main tree's README is not
+        self.assertEqual(self.edit(os.path.join(self.linked, "README.md"), seat=self.linked).returncode, 0)
+        p = self.edit(readme, seat=self.linked)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        os.remove(marker)
+        self.assertEqual(self.edit(readme).returncode, 0)
+
+    def test_a_dead_chains_marker_passes(self):
+        plant_marker(self.main, pid=dead_pid())
+        p = self.edit(os.path.join(self.main, "README.md"))
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_the_fast_path_starts_python_for_an_edit_only_while_a_marker_exists(self):
+        ran = os.path.join(self.tmp.name, "ran")
+        fake = os.path.join(self.tmp.name, "fakepy.sh")
+        with open(fake, "w", newline="\n") as f:
+            f.write("#!/bin/sh\ntouch '%s'\nexit 2\n" % ran.replace("\\", "/"))
+        os.chmod(fake, 0o755)
+        env = dict(self.env, PYTHON=fake.replace("\\", "/"))
+        readme = os.path.join(self.main, "README.md")
+        self.assertEqual(self.edit(readme, env=env).returncode, 0)
+        self.assertFalse(os.path.exists(ran), "Python started for an ordinary edit with no marker")
+        plant_marker(self.main)
+        self.assertEqual(self.edit(readme, env=env).returncode, 2)
+        self.assertTrue(os.path.exists(ran))
+        os.remove(ran)
+        doc = {"tool_name": "Bash", "tool_input": {"command": "ls -la"}, "cwd": self.main}
+        p = subprocess.run([BASH, os.path.join(self.main, "scripts", "hooks", "claude_pretool.sh").replace("\\", "/")],
+                           input=json.dumps(doc), capture_output=True, text=True, cwd=self.main, env=env, timeout=60)
+        self.assertEqual(p.returncode, 0)
+        self.assertFalse(os.path.exists(ran), "a Bash call without git reached Python because of the marker")
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class PowerShellToolTest(unittest.TestCase):
+    """Sprint 17 G1 (d): the PowerShell tool is judged by the same rules as Bash -- until then every rule was a
+    sentence for it (the audit's 3.2: `git add -A` and a pathless commit passed through PowerShell)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="pwsh_")
+        subprocess.run(["git", "init", "-q", self.tmp.name], check=True, capture_output=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def hook(self, command):
+        doc = {"session_id": "t", "cwd": self.tmp.name, "hook_event_name": "PreToolUse", "tool_name": "PowerShell",
+               "tool_input": {"command": command}, "tool_use_id": "toolu_t"}
+        return subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input=json.dumps(doc), capture_output=True,
+                              text=True, cwd=self.tmp.name, timeout=60)
+
+    def test_the_settings_matcher_names_powershell(self):
+        with open(os.path.join(ROOT, ".claude", "settings.json"), encoding="utf-8") as f:
+            entries = json.load(f)["hooks"]["PreToolUse"]
+        matchers = [e["matcher"].split("|") for e in entries
+                    if any("claude_pretool.sh" in h.get("command", "") for h in e["hooks"])]
+        self.assertTrue(any("PowerShell" in m and "Bash" in m for m in matchers), matchers)
+
+    def test_planted_powershell_commands_are_judged(self):
+        self.assertEqual(pretool.decide("PowerShell", {"command": "git add -A"}, ROOT, False)[0], 2)
+        self.assertEqual(pretool.decide("PowerShell", {"command": "git commit -m 'x'"}, ROOT, False)[0], 2)
+        self.assertEqual(pretool.decide("PowerShell", {"command": "git status; Get-ChildItem"}, ROOT, False), (0, ""))
+
+    def test_set_location_is_followed_like_cd(self):
+        seen = []
+        pretool.decide("PowerShell", {"command": "Set-Location C:/x; git push origin y"}, ROOT, False,
+                       worktree_of=lambda p: seen.append(p) or True)
+        self.assertTrue(seen)
+        code, why = pretool.decide("PowerShell", {"command": "Set-Location C:/x; git push origin y"}, ROOT, False,
+                                   worktree_of=lambda p: True)
+        self.assertEqual(code, 2, why)
+
+    def ps(self, command, **kw):
+        return pretool.decide("PowerShell", {"command": command}, ROOT, False, **kw)
+
+    def test_a_backtick_continuation_is_one_command(self):
+        # review (2a): PowerShell continues a line with a trailing backtick; the flag on the next line is the same git
+        self.assertEqual(self.ps("git add `\n  -A")[0], 2)
+        self.assertEqual(self.ps("git add `\r\n  -A")[0], 2)
+        self.assertEqual(self.ps("git commit `\n  -m 'x'")[0], 2)
+        self.assertEqual(self.ps("git commit `\n  -m 'x' -- a.txt"), (0, ""))
+
+    def test_backslash_paths_are_paths(self):
+        # review (2b): `C:\x\wt` after Set-Location or cd is a path, not three escapes; a `.\` pathspec is the tree
+        seen = []
+        self.ps("Set-Location C:\\x\\wt; git push origin y", worktree_of=lambda p: seen.append(p) or False)
+        self.ps("cd C:\\x\\wt; git push origin y", worktree_of=lambda p: seen.append(p) or False)
+        self.assertEqual(len(seen), 2, seen)
+        for p in seen:
+            self.assertTrue(os.path.normcase(p).endswith(os.path.normcase(os.path.join("x", "wt"))), p)
+        self.assertEqual(self.ps("git add .\\")[0], 2)
+        self.assertEqual(self.ps("git add -- .\\docs\\KNOWN.md"), (0, ""))
+
+    def test_an_unparseable_git_write_is_refused(self):
+        # review (2c): shlex failing used to allow the call -- for PowerShell a git add/commit/push that cannot be
+        # read is refused; anything else unparseable still passes
+        for cmd in ('git add "unterminated', "git commit -m 'unterminated", 'git push origin "x'):
+            code, why = self.ps(cmd)
+            self.assertEqual(code, 2, cmd)
+            self.assertIn("cannot be parsed", why)
+        self.assertEqual(self.ps('echo "unterminated'), (0, ""))
+        self.assertEqual(self.ps('git status "unterminated'), (0, ""))
+
+    def test_the_bash_rules_are_unchanged(self):
+        # the PowerShell normalisation must not reach Bash: there a backslash escapes, and a failed parse passes
+        self.assertEqual(pretool.decide("Bash", {"command": 'git add "unterminated'}, ROOT, False), (0, ""))
+        self.assertEqual(pretool.decide("Bash", {"command": "git add -- a\\ b.txt"}, ROOT, False), (0, ""))
+        self.assertEqual(pretool.decide("Bash", {"command": "git add -A"}, ROOT, False)[0], 2)
+
+    def test_the_hook_refuses_bulk_add_and_a_pathless_commit(self):
+        p = self.hook("git add -A")
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(self.hook("git commit -m 'x'").returncode, 2)
+        self.assertEqual(self.hook("git status").returncode, 0)
 
 
 if __name__ == "__main__":

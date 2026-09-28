@@ -44,6 +44,18 @@ suite) is newer than the script, in the repository the commit works in (after `c
 exception; looked at only for a commit naming loop_lock.sh). The marker gates the commit form the loop uses, not
 every way the file can land: a glob pathspec (`-- 'scripts/*.sh'`), `git commit -i`, and `git merge` or
 `git cherry-pick` of a commit that changes it are not judged.
+
+Sprint 17 G1 adds two things. The chain's tree: while a merged chain runs, its tree's `logs/.merged_chain.running`
+names a live pid (tools_py/hooks/chainmark.py), and an editing tool's path that is a TRACKED file of that tree is
+refused (pinned_edit) -- the chain reds on any tracked file changed under it, before it looks at HEAD; untracked
+files, logs/ and every other tree pass. The shell's fast path starts Python for an editing call when such a marker
+exists in the hook's own tree or in the main tree (read from a linked worktree's `.git` file); a chain in a third
+tree is judged only when the call reaches Python for another reason. And the PowerShell tool: its `command` is
+judged by the Bash rules (`Set-Location`/`sl`/`chdir`, `Push-Location`, `Pop-Location` move the directory as
+`cd`/`pushd`/`popd` do). Before the parse (powershell_command) a backtick line continuation is joined and every
+backslash becomes a slash (a path separator in PowerShell, never an escape); a PowerShell command that still cannot
+be parsed is refused when it names `git add`, `commit` or `push`, and passes otherwise. A backtick escape inside a
+string is still read as a POSIX shell would read it.
 The rules, their homes and their tests: docs/DEVELOPING.md, "Guards".
 """
 import fnmatch
@@ -53,6 +65,8 @@ import re
 import shlex
 import subprocess
 import sys
+
+from tools_py.hooks import chainmark
 
 GIT_COMMITS = "docs/GIT_STRATEGY.md section 3 (Commits)"
 GIT_BRANCHES = "docs/GIT_STRATEGY.md section 2 (Branches)"
@@ -576,6 +590,21 @@ RULES = [rule_bulk_add, rule_commit_all, rule_no_verify, rule_commit_names_paths
          rule_force_push_shared, rule_config_in_worktree, rule_worktree_lifecycle, rule_lock_direct,
          rule_lock_script_commit, rule_gh_merge_delete_branch]
 
+# Sprint 17 G1: the PowerShell tool's command is judged by the same rules (`.claude/settings.json` matches
+# `Bash|PowerShell`); its location cmdlets move the judged directory as `cd`/`pushd`/`popd` do (any case).
+SHELL_TOOLS = ("Bash", "PowerShell")
+_LOCATION = {"set-location": "cd", "sl": "cd", "chdir": "cd", "push-location": "pushd", "pop-location": "popd"}
+_PS_CONTINUATION = re.compile(r"`[ \t]*\r?\n")
+_PS_GIT_WRITE = re.compile(r"\bgit(\.exe)?\s+(add|commit|push)\b", re.I)
+
+
+def powershell_command(command):
+    """A PowerShell tool command in the shape the POSIX parser reads (the G1 review's 2a/2b): a backtick-newline line
+    continuation joins its two lines, and every backslash becomes a slash -- in PowerShell `\\` is a path separator,
+    never an escape (the backtick is), so `Set-Location C:\\x\\wt` stays a path and `git add .\\` stays `./`. The
+    Bash path never comes through here: its rules read the command exactly as before."""
+    return _PS_CONTINUATION.sub(" ", command).replace("\\", "/")
+
 
 # ---------------------------------------------------------------------------------------------- the policy
 
@@ -609,17 +638,18 @@ def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=F
             continue
         seg = it[1]
         core = _strip_env(seg)
-        if core and core[0] in ("cd", "pushd", "popd"):
+        verb = _LOCATION.get(core[0].lower(), core[0]) if core else None
+        if verb in ("cd", "pushd", "popd"):
             if not worktree_of and not merge_probe and not slow_probe:
                 continue
-            if core[0] == "popd":
+            if verb == "popd":
                 if dirstack:
                     state = dirstack.pop()
                 continue
             args = [a for a in core[1:] if not a.startswith("-") or a == "-"]
             target = args[0] if args else "~"
             if target != "-":
-                if core[0] == "pushd":
+                if verb == "pushd":
                     dirstack.append(list(state))
                 new = _resolve(target, state[0])
                 state = [new, bool(worktree_of(new)) if worktree_of else state[1]]
@@ -761,6 +791,47 @@ def decide_edit(tool_name, tool_input, cwd, lock_holder=None, queued_blobs=(), f
     return 0, ""
 
 
+PINNED_HOME = "docs/DEVELOPING.md Guards (the chain's tree)"
+
+
+def is_tracked(root, rel):
+    """True when `rel` is in root's index (`git ls-files --error-unmatch`); any error is False (the edit passes)."""
+    try:
+        p = subprocess.run(["git", "ls-files", "--error-unmatch", "--", rel], cwd=root, capture_output=True,
+                           timeout=10)
+        return p.returncode == 0
+    except Exception:
+        return False
+
+
+def pinned_edit(tool_name, tool_input, cwd, pinned_of, tracked_of=None):
+    """Sprint 17 G1: (2, sentence) for an editing tool's path that is a TRACKED file of a tree a live merged chain
+    pins (`pinned_of(root)` -> the marker, chainmark.running in main()), else (0, ""). The tree is the edited file's
+    own (chainmark.tree_root: the nearest `.git` entry above it, by stat), not the session's; logs/ (the chain's own
+    output, never tracked) and untracked files pass. merged_chain.sh reds on `git status` before it looks at HEAD, so
+    an edit is enough to lose the chain -- the commit is the pre-commit hook's (tools_py/hooks/precommit.py)."""
+    if tool_name not in EDIT_TOOLS or not isinstance(tool_input, dict):
+        return 0, ""
+    raw = edit_path(tool_input)
+    if raw is None:
+        return 0, ""
+    full = os.path.realpath(_resolve(raw, cwd or "."))
+    root = chainmark.tree_root(full)
+    if not root:
+        return 0, ""
+    mark = pinned_of(root)
+    if not mark:
+        return 0, ""
+    rel = os.path.relpath(full, root).replace("\\", "/")
+    if rel.startswith("../") or rel.lower() == "logs" or rel.lower().startswith("logs/"):
+        return 0, ""
+    if not (tracked_of or is_tracked)(root, rel):
+        return 0, ""
+    return 2, ("the chain's tree: a merged chain runs in this tree (stamp %s, pid %s) and goes red on any tracked "
+               "file changed under it -- edit in a worktree, or when it ends; %s; home: %s"
+               % (mark.get("stamp") or "?", mark.get("pid"), chainmark.STALE_HINT, PINNED_HOME))
+
+
 def parse_holder(check_output):
     """What `loop_lock.sh check` says is using the lock: the holder id ("HELD: <owner> taken N min ago, ..."),
     "queued:<n>" when it is FREE but n waiters are QUEUED, None when exactly FREE."""
@@ -838,7 +909,7 @@ def slow_tests_green(root):
 
 def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_progress=False, lock_holder=None,
            slow_tests_ran=False, merge_probe=None, slow_probe=None, queued_blobs=(), file_exists=None, blob_of=None,
-           main_tree_of=None):
+           main_tree_of=None, pinned_of=None, tracked_of=None):
     """(0, "") to allow the call, (2, "<rule>: <sentence>; home: <file or script>") to refuse it.
 
     `is_worktree` is the session's cwd (the hook JSON's): a worktree session never pushes, wherever it `cd`s.
@@ -851,18 +922,36 @@ def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_p
     `main_tree_of(root)` default to os.path.isfile, file_blob and is_main_tree_dir (see decide_edit).
     For Bash: `slow_tests_ran` says the slow lock suite went green after scripts/loop_lock.sh was last changed (a
     commit naming the lock script needs it); `slow_probe(path) -> bool`, when given, replaces it for each such
-    commit, asked about the directory that commit works in (as merge_probe is).
+    commit, asked about the directory that commit works in (as merge_probe is). The PowerShell tool (SHELL_TOOLS) is
+    judged as Bash is. `pinned_of(root)` (Sprint 17 G1), when given, returns the live merged-chain marker of a tree
+    or None, and `tracked_of(root, rel)` says whether a file is tracked (default is_tracked): an editing tool's
+    tracked file in a pinned tree is refused (pinned_edit). Without pinned_of nothing is pinned, so the tests stay
+    hermetic when a chain runs this suite in its own tree; main() passes chainmark.running.
     """
     try:
         if not isinstance(tool_input, dict):
             return 0, ""
-        if tool_name == "Bash":
+        if tool_name in SHELL_TOOLS:
             command = tool_input.get("command")
             if not isinstance(command, str):
                 return 0, ""
+            if tool_name == "PowerShell":
+                command = powershell_command(command)
+                try:
+                    items(command)
+                except ValueError:                        # 2c: an unreadable git write is refused, not waved on
+                    if _PS_GIT_WRITE.search(command):
+                        return 2, ("unparseable git write: this PowerShell command names git add, commit or push "
+                                   "and cannot be parsed (an unbalanced quote?), so the rules cannot judge it -- "
+                                   "write it plainly; home: %s" % GIT_COMMITS)
+                    return 0, ""
             return decide_bash(command, cwd or ".", is_worktree, worktree_of, merge_in_progress,
                                slow_tests_ran=slow_tests_ran, merge_probe=merge_probe, slow_probe=slow_probe)
         if tool_name in EDIT_TOOLS:
+            if pinned_of is not None:
+                code, why = pinned_edit(tool_name, tool_input, cwd, pinned_of, tracked_of)
+                if code:
+                    return code, why
             return decide_edit(tool_name, tool_input, cwd, lock_holder, queued_blobs, file_exists, blob_of,
                                main_tree_of)
         return 0, ""
@@ -926,13 +1015,16 @@ def main():
         tool_name = doc.get("tool_name", "")
         tool_input = doc.get("tool_input") or {}
         if tool_name in EDIT_TOOLS:
-            target = edit_target(tool_name, tool_input, cwd)
-            if target is None:
-                return 0                                  # an ordinary edit: no lock check, no git beyond the root
-            check = lock_check_in(target[1])
-            code, why = decide(tool_name, tool_input, cwd, False, lock_holder=parse_holder(check),
-                               queued_blobs=parse_queued_blobs(check))
-        elif tool_name == "Bash":
+            # the chain's tree first: a stat for the marker, and git only when a live chain pins the file's tree
+            code, why = pinned_edit(tool_name, tool_input, cwd, chainmark.running)
+            if not code:
+                target = edit_target(tool_name, tool_input, cwd)
+                if target is None:
+                    return 0                              # an ordinary edit: no lock check, no git beyond the root
+                check = lock_check_in(target[1])
+                code, why = decide(tool_name, tool_input, cwd, False, lock_holder=parse_holder(check),
+                                   queued_blobs=parse_queued_blobs(check))
+        elif tool_name in SHELL_TOOLS:
             code, why = decide(tool_name, tool_input, cwd, is_worktree_dir(cwd), worktree_of=is_worktree_dir,
                                merge_probe=cached_merge_probe(), slow_probe=cached_slow_probe())
         else:
