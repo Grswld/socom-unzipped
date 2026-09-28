@@ -300,13 +300,17 @@ export function cellsCovering(grid: Grid, f: Footprint): GridCell[] {
 /**
  * How a cell's ring is numbered from the camera's cell.
  *
- * - `square` (the default): `max(|dx|, |dz|)` -- the camera's cell, then the 3 x 3 around it, the 5 x 5, as
- *   the plan reads the walk; what a neighbourhood query wants (a wall in the diagonal cell is a neighbour).
- * - `diamond`: `|dx| + |dz|`, the ring reCOM's `addOrderedCellAtom` writes (`grid_main.cpp:351`).
+ * - `diamond` (the default, W1.R8): `|dx| + |dz|`, the label reCOM's `addOrderedCellAtom` writes into each
+ *   ordered atom (`grid_main.cpp:351`) -- the camera's cell, then the four that share an edge with it, then
+ *   the eight at two steps. The function is `zdb_CGrid_addOrderedCellAtom` at `0x002d7030` (384 bytes,
+ *   `recomp/socom2_names.csv`, named by the call graph at 0.80); its body is not in this tree, so the label
+ *   is reCOM's reading, unchecked against the instruction (2026-09-28).
+ * - `square`: `max(|dx|, |dz|)` -- the 3 x 3 around the camera, the 5 x 5. Not the engine's ring; what a
+ *   neighbourhood query wants (a wall in the diagonal cell is a neighbour).
  *
- * Which one the game's draw uses is not settled: reCOM's `buildOrderedCellAtomList`, which would enumerate
- * the cells, is empty (`:357-360`), and `RenderWorld`'s bound `m_ring < 2` (`zrndr_pipe.cpp:207`) would draw
- * five cells under the diamond, nine under the square.
+ * reCOM's `buildOrderedCellAtomList`, which would enumerate the cells, is empty (`:357-360`), so neither the
+ * order the cells are listed in nor `RenderWorld`'s bound `m_ring < 2` (`zrndr_pipe.cpp:207`, five cells
+ * under the diamond) is settled by it.
  */
 export type RingMetric = 'square' | 'diamond';
 
@@ -316,10 +320,10 @@ const ringOf = (dx: number, dz: number, metric: RingMetric): number =>
 /**
  * The cells in walk order from world (x, z) out to `maxRing` (to the grid's edge by default): ring by ring,
  * and within a ring by cell index. The camera's cell is `cellAt`'s, clamped, so a ring is only the part of
- * its square that lies on the grid -- the cells `addOrderedCellAtom` would clamp onto one it has already
- * stamped this tick (`grid_main.cpp:341`, `:349`) are the ones that are not there.
+ * its diamond (or square) that lies on the grid -- the cells `addOrderedCellAtom` would clamp onto one it has
+ * already stamped this tick (`grid_main.cpp:341`, `:349`) are the ones that are not there.
  */
-export function ringCells(grid: Grid, x: number, z: number, maxRing = Infinity, metric: RingMetric = 'square'): { cell: GridCell; ring: number }[] {
+export function ringCells(grid: Grid, x: number, z: number, maxRing = Infinity, metric: RingMetric = 'diamond'): { cell: GridCell; ring: number }[] {
   const view = cellAt(grid, x, z);
   const out: { cell: GridCell; ring: number }[] = [];
   for (const cell of grid.cells) {
@@ -335,7 +339,7 @@ export function ringCells(grid: Grid, x: number, z: number, maxRing = Infinity, 
  * object covering several cells comes once per cell; the first time is its nearest ring. The engine also skips
  * a node that is not `m_active` (`:303`); every placement the viewer draws is taken as active.
  */
-export function* traverse(grid: Grid, x: number, z: number, maxRing = Infinity, metric: RingMetric = 'square'): Generator<{ atom: GridAtom; ring: number }> {
+export function* traverse(grid: Grid, x: number, z: number, maxRing = Infinity, metric: RingMetric = 'diamond'): Generator<{ atom: GridAtom; ring: number }> {
   for (const { cell, ring } of ringCells(grid, x, z, maxRing, metric)) {
     for (const atom of cell.atoms) yield { atom, ring };
   }
