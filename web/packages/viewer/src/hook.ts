@@ -5,6 +5,7 @@ import type { BodyState } from './body';
 import type { Rect } from './reticle';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
+import type { Stance } from './walk';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -53,6 +54,10 @@ export interface ViewerHook {
   reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
   /** W2.3: the stand-in body -- drawn or not, its top over the feet, its world bounds (null before it stands). */
   body(): BodyState;
+  /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */
+  stance(): Stance;
+  /** Sets the stance, walking or not; false for a name that is not a stance. */
+  setStance(stance: Stance): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

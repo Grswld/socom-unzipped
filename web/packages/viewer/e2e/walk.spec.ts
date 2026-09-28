@@ -8,7 +8,8 @@ import type {} from '../src/hook';
 /**
  * Walk mode on Frostfire (web sprint 1, W1.4 step 6): research 24 section 6.1's route from A's spawn to B's floor,
  * the mover driven through the debug hook, the floor checked at each leg's end, the door leaf between B's region
- * and the building met head on, and pictures on B's ramp and at the door.
+ * and the building met head on, and pictures on B's ramp and at the door. Web sprint 2 (W2.2b): the same route at
+ * the game's speeds, `C` and the hook's stance, and a walk off the 142 deck that falls onto the 100 floor.
  *
  * The legs are driven with `walkFor`, which runs the mover's 60 Hz ticks at once rather than over frames: under
  * SwiftShader a frame can take longer than the page's 0.1 s cap on a frame's time, and a held key would then walk
@@ -96,13 +97,19 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   await page.keyboard.down('KeyW');
   await page.waitForTimeout(600);
   await page.keyboard.up('KeyW');
-  await page.waitForTimeout(600);                  // the glide runs out
+  await page.waitForTimeout(600);                  // a full stick let go stops at once (FUN_00586c10's snap)
   const held = (await page.evaluate(() => window.__viewer.feet()))!;
   expect(Math.hypot(held[0] - SPAWN_A[0], held[2] - SPAWN_A[2])).toBeGreaterThan(2);
   expect(held[2]).toBeGreaterThan(SPAWN_A[2]);
   expect(held[1]).toBeCloseTo(100, 3);
 
-  // The route, from the spawn again.
+  // The stance (W2.2b): C cycles it while walking, and the hook reads and sets it.
+  expect(await page.evaluate(() => window.__viewer.stance())).toBe('stand');
+  await page.keyboard.press('KeyC');
+  expect(await page.evaluate(() => window.__viewer.stance())).toBe('crouch');
+  expect(await page.evaluate(() => window.__viewer.setStance('stand'))).toBe(true);
+
+  // The route, from the spawn again, at the game's 65 a second (the steer eases in over the last 10 units).
   await page.evaluate(([x, y, z, eye]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 0, pitch: 0 }), [...SPAWN_A, EYE] as const);
   for (const [i, [x, y, z]] of ROUTE.entries()) {
     const feet = await steer(page, x, z);
@@ -128,6 +135,14 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   expect(Math.abs(door![2] - 1117)).toBeLessThan(6);                 // "stops it at z ~ 1117" (the plan)
   await settle(page);
   await page.screenshot({ path: join(SCREENS, 'frostfire-walk-door.png') });
+
+  // The fall (W2.2b): the 142 deck east of A's spawn (x 630-675, z 725-815) is open on its east side over the 100
+  // floor. Walked off it facing +x, the feet fall 42 under gravity 235 and land on the floor.
+  await page.evaluate(([eye]) => window.__viewer.setCamera({ x: 660, y: 142 + eye, z: 725, yaw: 270, pitch: 0 }), [EYE] as const);
+  expect((await page.evaluate(() => window.__viewer.feet()))![1]).toBeCloseTo(142, 3);
+  const fell = await page.evaluate(() => { window.__viewer.walkFor(1.5, { forward: 1 }); return window.__viewer.feet(); });
+  expect(fell![0]).toBeGreaterThan(675);
+  expect(fell![1]).toBeCloseTo(100, 3);
 
   // Back to flying leaves the camera where the eye was.
   const eye = await page.evaluate(() => window.__viewer.pose());

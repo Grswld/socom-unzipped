@@ -4,7 +4,8 @@
  * A one-finger drag already looks around, which is the half of it the canvas gives for free; what a
  * phone has no way to do is *move*. So the left half of the screen becomes a virtual stick -- a circle
  * that appears wherever the thumb lands and follows it -- and two buttons in the bottom-right corner
- * do what Q and E do. The right half is left alone, so looking still works while the stick is held.
+ * do what Q and E do, with a third beside them for the walk's stance (C). The right half is left alone,
+ * so looking still works while the stick is held.
  *
  * Deliberately small. No sprint, no tuning, no gestures: the stick feeds an axis pair into the same
  * velocity model the keys drive (`./camera`), and the ramp and the glide come out of that for free.
@@ -76,8 +77,11 @@ export function wantsTouchControls(): boolean {
   }
 }
 
-/** Wires the stick and the two buttons to a camera. Returns nothing: there is nothing to take back. */
-export function attachTouchControls(camera: FlyCamera): void {
+/**
+ * Wires the stick and the two lift buttons to a camera, and the stance button beside them to `onStance` (the walk's
+ * `C`, W2.2b). Returns nothing: there is nothing to take back.
+ */
+export function attachTouchControls(camera: FlyCamera, onStance: () => void = () => undefined): void {
   const zone = document.getElementById('stick-zone');
   const base = document.getElementById('stick-base');
   const knob = document.getElementById('stick-knob');
@@ -144,6 +148,12 @@ export function attachTouchControls(camera: FlyCamera): void {
   };
   zone.addEventListener('pointerup', release);
   zone.addEventListener('pointercancel', release);
+
+  // The stance: a tap cycles stand, crouch, prone, as C does on a keyboard.
+  document.getElementById('touch-stance')?.addEventListener('pointerdown', (e) => {
+    onStance();
+    e.preventDefault();
+  });
 
   for (const [button, direction] of [[up, 1], [down, -1]] as [HTMLElement, number][]) {
     button.addEventListener('pointerdown', (e) => {

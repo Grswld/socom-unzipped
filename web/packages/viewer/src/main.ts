@@ -198,7 +198,7 @@ ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
 ui.onFullscreen();
-attachTouchControls(fly);
+attachTouchControls(fly, () => { if (walk.mode() === 'walk') walk.cycleStance(); });
 walk.bindKey();
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
@@ -558,5 +558,7 @@ window.__viewer = {
   feet: () => walk.feet(),
   reticle: () => reticle.state(),
   body: () => body.state(),
+  stance: () => walk.stance(),
+  setStance: (stance) => walk.setStance(stance),
   revision,
 } satisfies ViewerHook;
