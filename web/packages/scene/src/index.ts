@@ -7,4 +7,4 @@ export * from './collision';
 export * from './clutter';
 export * from './spawns';
 export * from './lod';
-export * from './lod';
+export * from './grid';

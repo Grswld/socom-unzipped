@@ -56,6 +56,11 @@ export interface PlacedModel {
    * the exporter baked, and only the odd fern, palm or flare is lit at run time.
    */
   lit: boolean;
+  /**
+   * The node's own `nparams` bbox, model space (min xyz, max xyz): what the grid files the placement by,
+   * carried through `rowMajor` (`grid.ts`, `worldFootprint`). Absent on a placement built by hand.
+   */
+  bbox?: Float32Array;
 }
 
 /** One collision polygon, placed: its points carried into the world frame. */
@@ -182,6 +187,7 @@ export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): Pl
       world: toColumnMajor(f.world),
       rowMajor: f.world,
       lit: ((f.node.flags | (modelFlags.get(f.modelName) ?? 0)) & NODE_FLAGS_LIT) !== 0,
+      bbox: f.node.bbox,
     }));
 }
 
