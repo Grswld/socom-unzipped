@@ -10,11 +10,12 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-27 06:27Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut) is CLOSED on `sprint-15`
-  without its play test (the owner's word); the PR to `main` and the tag `v0.15.0` follow. Next: Sprint 16 "ten minutes to
-  the server", opened by its own controller session on `sprint-16` off `main`; it also runs Sprint 15's carried legs as one
-  chain (the Sprint 15 plan's Outcome lists them with their bars). No cloud session from this machine's loop.
-- **Next free ruling number: R299** (R290-R297 the owner's sitting, `docs/superpowers/plans/2026-09-26-owner-sitting.md`; R298 the close's window, the Sprint 15 plan).**
+- **Where the loop is now (2026-09-28 01:24Z, LATEST) -- Sprint 16 is CLOSED on `sprint-16`; the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24).**
+  Done: V0, R1a, R2a, R3a, R5, L1a, L1b (#73), L2 (#74), F0, F2 (ADOPTED: the read-back 123 → 20 ms/s, `submit=` 568 → 541), X1, X3, X5. Carried to Sprint 17
+  (milestone 7): #70 (R1b at `3d17f192`, research/76), #71, #57, #59; to the backlog #32, #41.
+  Next: Sprint 17 "sixty and the way back" (spec agreed 2026-09-27), opened by its own seat off `main`; until then no
+  sprint branch is open. Record: the plan's Outcome.
+- **Next free ruling number: R322** (R299-R321 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -53,19 +54,17 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 15 controller** (the same session that ran Sprint 14) in the main tree on `sprint-15`; its agents in
-  `C:/projects/wt-s15-<task>`, one branch `agent/s15-<task>` each, made and removed by `scripts/agent_worktree.sh`.
-- **The Sprint 16 controller** (its own worktree under `.claude/worktrees/`, the owner's word 2026-09-27) drafts Sprint 16's
-  plan and starts once Sprint 15 is merged: `sprint-16` off `main`; the main tree moves there after the tag.
-- **Other sessions' trees:** `wt-launch-rev`, `wt-docs-review`, `wt-pad-focus`, `wt-web-viewer`; never edit them.
-- **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
-  an orphan directory, not a worktree; leave it until someone identifies it.
+- **The Sprint 16 controller** (`.claude/worktrees/sprint-16-cronjob-setup-76e59d`) closed the sprint and ends; nothing
+  of it runs. **Keep** `wt-s16-r1b` (`agent/s16-r1b` at `3d17f192`, unmerged; its `logs/` hold research/76's patch and script).
+- **Other sessions' trees, never edit:** the site/web session's `wt-doc-surfaces`, `wt-domain-socomunzipped`, `wt-web-*`,
+  `socom_pc_web`; the Sprint 17 seat's `.claude/worktrees/mission-frame-drops-7e50ea`; `wt-pad-focus`, `wt-cherry`, `wt-ci-fix`.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
 
 ## 6. What is owed
 
-- **The owner's rows:** the 8 open rows `docs/SITTING.md` lists (`docs/HUMAN_TASKS.md`). Under R271 a row unanswered
-  through two sittings closes by default at the next close (`docs/SITTING.md` marks them): nothing today.
-- **Nothing lock-free is owed by Sprint 15;** Sprint 16's Task 0 lifts the Outcome's carried legs.
-- **Lock-bound (Sprint 16's, one chain at the end of its controller's block):** the gate, the fourth leg, parity and dips,
-  T2's drag proof, T1b's capture; then T3's quiet gates and T4's builds in windows the owner names.
+- **The owner's rows** (`docs/SITTING.md`): O22 the helper as a shipped binary; O25 the persona viewer's human pass.
+- **After this close:** the PR `sprint-16 -> main` (approved 22:50Z), the three checks, the merge commit, the tag `v0.16.0` on it, `main` merged back; the push of `sprint-16` first -- the owner's hand (O24; this seat cannot move to the main tree); this session watches origin and opens the PR when it lands.
+- **Carried to Sprint 17's Task 0:** R1b (#70), R2 (#71), #57's r0004 leg, #59's fence, R3b, R3a's developer build, F1, F3
+  (#32, backlog), X2, X4 (#41, backlog).
+- 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `../scotho/apps/s2u/src/ds`.
+

@@ -175,7 +175,7 @@ exit code 75; ruling S13-R9 made it a notice, so it no longer hides a 65 or a 72
 Because it is not ours to give. SOCOM II is still the property of its rights holders. The **repository** holds none
 of it: no game code, no recompiled C++, no assets — a pull request containing any of it is closed unread
 (`../CONTRIBUTING.md`). The **download** will hold the program (`socom2.exe`) and never the disc's own files: your
-disc supplies those. Once issue #70 lands, the program image is built from your disc on first run (today's tester
+disc supplies those. Once #70 lands, the program image is built from your disc on first run (today's tester
 archive still carries it).
 
 So you need your own disc, and your own dump of it. This page will not tell you where to download one.
@@ -257,23 +257,23 @@ shifts the second copy's ports (to 3660/3661) and gives it its own card director
 
 ### Can I play on PSRewired or another community server?
 
-**No, and please do not try.**
-
-Two separate reasons, and each is enough on its own:
+**Not yet, and please do not try by hand.** That is where play is headed: the community's servers are where players
+will play, and the project's own server is a test box for checking builds. But two things stand in the way today,
+and each is enough on its own:
 
 1. **It would not work.** The community servers run SOCOM II **r0004** — a different code package from the r0001
    disc this client is built from. That is why the launcher draws the community preset but refuses to select it,
    with the line *"needs the r0004 game update -- planned"*. The launcher will fetch the community package itself
-   (#71); until then, please do not point the game at a server that is not yours or the project's. Note also
-   that r0001 and r0004 clients **cannot join each other's games**: the client's own token filter bounces the join
-   silently.
+   and build the r0004 program on your machine (#71); until that lands, please do not point the game at a server
+   that is not yours or the project's. Note also that r0001 and r0004 clients **cannot join each other's games**:
+   the client's own token filter bounces the join silently.
 2. **This client's network code has not been audited** — see `../SECURITY.md`.
 
 SOCOM Unzipped is **not affiliated with, endorsed by, or connected to** the SOCOM community servers or their
 operators. The preset row exists because a player would otherwise wonder; it is not an arrangement with anybody.
 
-The project runs its own Horizon server and the launcher already points at it. That is the supported way to play
-online.
+Until then the project's own Horizon server, which the launcher already points at, is the only server to play on
+with this build.
 
 ---
 
@@ -298,7 +298,7 @@ answer — press **SAVE DIAGNOSTICS** and send the zip.
 ### The game won't remember my online password
 
 It does. Tick **SAVE PASSWORD = YES** before **CONNECT**, and the persona and password come back from the memory
-card on the next start (`KNOWN.md` §3, issue #27).
+card on the next start (`KNOWN.md` §3, issue #27 (closed)).
 
 The launcher's **ONLINE** page lists the personas your cards have logged in with under **PERSONAS** (#73): pick
 one, press **LAUNCH**, then pick the same persona in the game's own list. A password typed there is kept in
@@ -327,5 +327,5 @@ Whatever the problem, the two things worth sending are the run log (`logs/run_<s
 (**SAVE DIAGNOSTICS** on the PLAY page). The zip is assembled with your home directory scrubbed out of every file in
 it and your ISO path cut down to its file name.
 
-Use **REPORT A BUG** in the launcher, or the same form at <https://s2u.scotho.com>. Nothing leaves your machine
+Use **REPORT A BUG** in the launcher, or the same form at <https://socomunzipped.com>. Nothing leaves your machine
 until you press SEND, and the page shows you what it would send before you do. `INSTALL.md` §10 walks through it.

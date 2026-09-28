@@ -1,5 +1,5 @@
 // Sprint 9 Goal 8: the launcher's REPORT A BUG payload and the ONLINE page's status line -- the contract of
-// s2u.scotho.com's /api/bugs and /api/stats (sites/s2u/src/report.ts, api/bugs.mjs, src/stats.ts), asserted
+// socomunzipped.com's /api/bugs and /api/stats (sites/s2u/src/report.ts, api/bugs.mjs, src/stats.ts), asserted
 // on the pure half. Nothing here opens a socket; tools_py/tests/test_launcher_bug_report.py drives the
 // transport against a loopback server.
 #include "MiniTest.h"
@@ -382,7 +382,7 @@ void register_bug_report_tests()
 
         tc.Run("apiBase: the test seam is loopback or nothing", [](TestCase &t)
         {
-            const std::string live = "https://s2u.scotho.com";
+            const std::string live = "https://socomunzipped.com";
             t.Equals(br::apiBase(nullptr), live, "unset is the live site");
             t.Equals(br::apiBase(""), live, "empty is the live site");
             t.Equals(br::apiBase("http://127.0.0.1:8123"), std::string("http://127.0.0.1:8123"), "a loopback test server is accepted");

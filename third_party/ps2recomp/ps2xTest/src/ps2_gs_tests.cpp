@@ -5,6 +5,7 @@
 #include "ps2_syscalls.h"
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/gs/gs_cpu_backend.h"
+#include "runtime/gs/gs_gl_backend.h"   // Sprint 16 F2: glUnavailableForProcess() for the planted read-back scene
 #include "runtime/ee_scheduler.h"
 #include "runtime/gs/ps2_gs_memory.h"
 #include "runtime/gs/ps2_gs_psmct32.h"
@@ -6468,6 +6469,193 @@ void register_ps2_gs_tests()
             t.IsTrue(up() == R::SameFree, "valid again after its re-upload");
             gate.decide(z, a.data(), a.size(), true, none, 6u, 1u, 1u, false, false);
             t.IsTrue(up() == R::SameRewritten, "a Z-format upload at an unaligned dbp in page 6 stamps page 7 too");
+        });
+
+        // Sprint 16 F2: the [gs-submit] line -- the submit= column of [gs-gl stats] split over EVERY
+        // flush that drew (the [gs-transfer] phases see only the flush a transfer interrupted), and
+        // the GPU->shadow read-back inside resolveTexture counted as work. Header-only arithmetic.
+        tc.Run("GsGlUploadTrace [gs-submit] reports the submit split in ms/s and the read-back as work per second", [](TestCase &t)
+        {
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 100; ++i)
+                GsGlUploadTrace::noteSubmitFlush(a, 30.0, 10.0, 200.0, 60.0);   // 300 us a flush
+            GsGlUploadTrace::noteReadback(a, 448u, 640ull * 448ull, 5000.0);
+            GsGlUploadTrace::noteReadback(a, 224u, 640ull * 224ull, 3000.0);
+            GsGlUploadTrace::noteRtDirect(a);
+            t.Equals(a.submitFlushes, 100ull, "every flush that drew is counted");
+            t.Equals(a.readbacks, 2ull, "every read-back is counted");
+            t.Equals(a.readbackRows, 672ull, "the rows the read-backs wrote add up");
+            t.Equals(a.readbackPixels, 430080ull, "the pixels the driver copied add up");
+            const std::string line = GsGlUploadTrace::formatSubmit(a, 1000.0);
+            t.IsTrue(line.rfind("[gs-submit] elapsed=1000ms flushes=100/s", 0) == 0, "the line is tagged [gs-submit] and counts flushes per second: " + line);
+            t.IsTrue(line.find(" setup=3.0ms/s dirty_rows=1.0ms/s resolve=20.0ms/s draw=6.0ms/s") != std::string::npos,
+                     "the four phases are milliseconds per second, the unit submit= is read in: " + line);
+            t.IsTrue(line.find(" readback=8.0ms/s readbacks=2.0/s readback_rows=672/s readback_px=430080/s rt_direct=1.0/s") != std::string::npos,
+                     "the read-back is time AND work, per second: " + line);
+            const std::string half = GsGlUploadTrace::formatSubmit(a, 500.0);
+            t.IsTrue(half.find(" flushes=200/s") != std::string::npos && half.find(" readbacks=4.0/s") != std::string::npos &&
+                         half.find(" resolve=40.0ms/s") != std::string::npos,
+                     "half the interval doubles every rate: " + half);
+        });
+
+        // Sprint 16 F2, the planted scene (the GL half: PS2X_CONSOLE_REPLAY_GL=1, a hidden raylib window
+        // like the console replay's, none in CI). The frame's post-process copy in the game's own shape
+        // (research/31 section 12, the dump's packet 1389): a 640x448 CT32 frame (FBW 10, scissor to 447,
+        // so GsGlTarget::choose sizes the target 640x448) copied by an FST sprite -- TEX0 at the frame's
+        // base, TBW 10, TW=10 TH=10, REPEAT/REPEAT, bilinear -- at half size into a FBW 5 target. A
+        // 640x448 buffer can only be declared with a power-of-two envelope larger than itself; the
+        // RT-as-texture fast path (PS2X_GS_RT_TEXTURE, 1c301b9b) refused that envelope once Sprint 7
+        // Task 1c (6ea95204) shrank targets to their use, and every such draw fell back to
+        // downloadRenderTargetToShadow -- a whole-target glReadPixels behind a GPU drain, once a frame
+        // in the mission (research/73 section 1; the Sprint 16 plan's Log, F2 Step 1). Red before F2's
+        // change (readbacks 1, rt_direct 0), green after (0, 1). The frame is two colours so the copy
+        // is checked as a picture, not a flat fill: a read from the wrong place (the review caught a
+        // page passed as a block) lands in the other colour. The third draw textures from a TBP0 eight
+        // blocks inside the frame's first page: not a target's origin, so the fast path must refuse
+        // it and the read-back path decode it from its true block (the F2 review's item 4).
+        tc.Run("F2: a 640x448 target sampled through its TW=10 TH=10 REPEAT bilinear TEX0 is served from the target, not read back; a mid-page TBP0 is not (PS2X_CONSOLE_REPLAY_GL=1)", [](TestCase &t)
+        {
+            if (std::getenv("PS2X_CONSOLE_REPLAY_GL") == nullptr)
+            {
+                t.Skip("PS2X_CONSOLE_REPLAY_GL unset: the GL half needs a hidden raylib window (none in CI)");
+                return;
+            }
+            auto setBackend = [](const char *which)
+            {
+#ifdef _WIN32
+                _putenv_s("PS2X_GS_BACKEND", which);
+#else
+                setenv("PS2X_GS_BACKEND", which, 1);
+#endif
+            };
+            setBackend("gpu");
+            SetConfigFlags(FLAG_WINDOW_HIDDEN);
+            InitWindow(640, 448, "f2 read-back");
+            if (!IsWindowReady())
+            {
+                setBackend("cpu");
+                t.Skip("raylib could not open a hidden window on this host");
+                return;
+            }
+            constexpr uint32_t kFrameFbp = 0u;      // pages 0..139: FBW 10, 448 rows
+            constexpr uint32_t kCopyFbp = 0x150u;   // page 336, past the 320 pages a TW=10 TH=10 texture at page 0 spans
+            constexpr uint32_t kCopy2Fbp = 0x170u;  // page 368, the mid-page draw's target
+            constexpr uint32_t kA = 0x80204080u;    // RGBAQ bytes R=0x80 G=0x40 B=0x20 A=0x80: the frame's bottom-right quadrant
+            constexpr uint32_t kB = 0x80C08010u;    // R=0x10 G=0x80 B=0xC0 A=0x80: the rest of the frame
+            uint64_t readbacks = 0u, rtDirect = 0u, readbacksMidPage = 0u, rtDirectMidPage = 0u;
+            uint32_t copiedBottomRight = 0u, copiedTopLeft = 0u, frameBottomRight = 0u, frameTopLeft = 0u, pageAsBlock = 0u;
+            bool glUnavailable = false;
+            {
+                std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+                GS gs;
+                gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+                auto frameReg = [](uint32_t fbp, uint32_t fbw) { return static_cast<uint64_t>(fbp) | (static_cast<uint64_t>(fbw) << 16) | (static_cast<uint64_t>(GS_PSM_CT32) << 24); };
+                auto scissor = [](uint32_t x1, uint32_t y1) { return (static_cast<uint64_t>(x1) << 16) | (static_cast<uint64_t>(y1) << 48); };
+                auto xyz = [](uint32_t x, uint32_t y) { return static_cast<uint64_t>(x * 16u) | (static_cast<uint64_t>(y * 16u) << 16); };
+                auto uv = [](uint32_t u, uint32_t v) { return static_cast<uint64_t>(u * 16u) | (static_cast<uint64_t>(v * 16u) << 16); };
+                // TEX0: TBW 10, CT32, TW 10, TH 10, TCC, TFX decal -- the copy's, at a given block pointer.
+                auto tex0At = [](uint32_t tbp0) { return static_cast<uint64_t>(tbp0) | (10ull << 14) | (static_cast<uint64_t>(GS_PSM_CT32) << 20) |
+                                                         (10ull << 26) | (10ull << 30) | (1ull << 34) | (1ull << 35); };
+                auto flatSprite = [&](uint32_t color, uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1)
+                {
+                    gs.writeRegister(GS_REG_PRIM, static_cast<uint64_t>(GS_PRIM_SPRITE));
+                    gs.writeRegister(GS_REG_RGBAQ, color);
+                    gs.writeRegister(GS_REG_XYZ2, xyz(x0, y0));
+                    gs.writeRegister(GS_REG_XYZ2, xyz(x1, y1));
+                };
+                auto copySprite = [&]()   // FST, TME: the frame's 0,0-640,448 onto 0,0-320,224
+                {
+                    gs.writeRegister(GS_REG_PRIM, static_cast<uint64_t>(GS_PRIM_SPRITE) | (1ull << 4) | (1ull << 8));
+                    gs.writeRegister(GS_REG_UV, uv(0u, 0u));
+                    gs.writeRegister(GS_REG_XYZ2, xyz(0u, 0u));
+                    gs.writeRegister(GS_REG_UV, uv(640u, 448u));
+                    gs.writeRegister(GS_REG_XYZ2, xyz(320u, 224u));
+                };
+                // 1. The frame: B over all of it, A over the bottom-right quadrant.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kFrameFbp, 10u));
+                gs.writeRegister(GS_REG_ZBUF_1, 0x1c0ull | (1ull << 32));   // ZBP past every target, ZMSK
+                gs.writeRegister(GS_REG_SCISSOR_1, scissor(639u, 447u));
+                gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+                gs.writeRegister(GS_REG_TEST_1, 0x30000ull);   // ZTE on, ZTST ALWAYS
+                flatSprite(kB, 0u, 0u, 640u, 448u);
+                flatSprite(kA, 320u, 224u, 640u, 448u);
+                // 2. The copy, the game's shape: REPEAT/REPEAT (CLAMP 0), bilinear (TEX1 MMAG), into a FBW 5 target.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kCopyFbp, 5u));
+                gs.writeRegister(GS_REG_SCISSOR_1, scissor(319u, 223u));
+                gs.writeRegister(GS_REG_TEX0_1, tex0At(kFrameFbp << 5));
+                gs.writeRegister(GS_REG_CLAMP_1, 0ull);
+                gs.writeRegister(GS_REG_TEX1_1, 1ull << 5);
+                copySprite();
+                const GsGlUploadTrace::Accum before = GsGlUploadTrace::live();
+                gs.hostRenderFrame();   // this thread replays: the frame's two sprites, then the copy resolves its texture
+                glUnavailable = GSGlBackend::glUnavailableForProcess();
+                {
+                    const GsGlUploadTrace::Accum &after = GsGlUploadTrace::live();
+                    readbacks = after.readbacks - before.readbacks;
+                    rtDirect = after.rtDirect - before.rtDirect;
+                }
+                // 3. The same copy from TBP0 = the frame's base + 8 blocks, into a third target. The frame is still
+                //    stale (nothing read it back), so the one path or the other must serve this draw.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kCopy2Fbp, 5u));
+                gs.writeRegister(GS_REG_TEX0_1, tex0At((kFrameFbp << 5) + 8u));
+                copySprite();
+                const GsGlUploadTrace::Accum beforeMid = GsGlUploadTrace::live();
+                gs.hostRenderFrame();
+                {
+                    const GsGlUploadTrace::Accum &after = GsGlUploadTrace::live();
+                    readbacksMidPage = after.readbacks - beforeMid.readbacks;
+                    rtDirectMidPage = after.rtDirect - beforeMid.rtDirect;
+                }
+                // 4. The frame drawn once more, the same two sprites. The third draw's read-back put the frame into the
+                //    SHADOW and cleared its GPU-row window (downloadRenderTargetToShadow, `rt.gpuRows = false`), and the
+                //    guest-visible read-back below copies only that window into the game's VRAM
+                //    (downloadRenderTargetToCpu: yEnd = gpuRows ? ... : 0) -- read then, the frame's own pixels were 0
+                //    (the F2 review's C++ proof, 21:52Z). Re-drawing re-arms the window over the whole frame; the
+                //    picture is unchanged.
+                gs.writeRegister(GS_REG_FRAME_1, frameReg(kFrameFbp, 10u));
+                gs.writeRegister(GS_REG_SCISSOR_1, scissor(639u, 447u));
+                flatSprite(kB, 0u, 0u, 640u, 448u);
+                flatSprite(kA, 320u, 224u, 640u, 448u);
+                gs.hostRenderFrame();
+                // The pictures, through the guest-visible read-back (Sync(DebugReadback) + SnapshotVram, as the console
+                // replay reads its frame). fbp is a PAGE here: the Frame helper converts it to the block the layout wants.
+                gs.refreshDisplaySnapshot();
+                uint32_t snapSize = 0u;
+                const uint8_t *snap = gs.lockDisplaySnapshot(snapSize);
+                if (snap && snapSize >= vram.size())
+                    std::memcpy(vram.data(), snap, vram.size());
+                gs.unlockDisplaySnapshot();
+                frameBottomRight = readReferenceFramePSMCT32Pixel(vram, kFrameFbp, 10u, 400u, 300u);
+                frameTopLeft = readReferenceFramePSMCT32Pixel(vram, kFrameFbp, 10u, 100u, 100u);
+                copiedBottomRight = readReferenceFramePSMCT32Pixel(vram, kCopyFbp, 5u, 200u, 150u);   // samples frame (401, 301)
+                copiedTopLeft = readReferenceFramePSMCT32Pixel(vram, kCopyFbp, 5u, 50u, 50u);          // samples frame (101, 101)
+                // The read the review caught: the page handed to the block-pointer helper. Block 0x150 is page 10 +
+                // block 16, so (200,150) at bw 5 resolves to page 33 block 25 -- frame pixels (232..239, 112..119), B.
+                pageAsBlock = readReferencePSMCT32Pixel(vram, kCopyFbp, 5u, 200u, 150u);
+            }
+            CloseWindow();
+            setBackend("cpu");
+            if (glUnavailable)
+            {
+                t.Skip("the GL backend latched unavailable on this host (no OpenGL 3.3)");
+                return;
+            }
+            // The reads and the counts, always (the F2 review asked for the coordinates and values on a failure).
+            std::printf("f2 planted scene: frame(400,300)=%08x frame(100,100)=%08x copy(200,150)=%08x copy(50,50)=%08x"
+                        " page-as-block(0x%x,bw5,200,150)=%08x [A=%08x B=%08x] copy: readbacks=%llu rt_direct=%llu"
+                        " mid-page TBP0: readbacks=%llu rt_direct=%llu\n",
+                        frameBottomRight, frameTopLeft, copiedBottomRight, copiedTopLeft, kCopyFbp, pageAsBlock, kA, kB,
+                        (unsigned long long)readbacks, (unsigned long long)rtDirect,
+                        (unsigned long long)readbacksMidPage, (unsigned long long)rtDirectMidPage);
+            t.Equals(frameBottomRight, kA, "the frame's bottom-right quadrant is A");
+            t.Equals(frameTopLeft, kB, "the rest of the frame is B");
+            t.Equals(copiedBottomRight, kA, "the copy's bottom-right quadrant is the frame's: A, whichever path served the texture");
+            t.Equals(copiedTopLeft, kB, "the copy's top-left quadrant is the frame's: B");
+            t.Equals(pageAsBlock, kB, "the page-as-block read lands in the frame's top-left quadrant (B), not in the copy: the check can fail");
+            t.Equals(readbacks, 0ull, "no GPU->shadow read-back: the frame is sampled from its own target");
+            t.Equals(rtDirect, 1ull, "the copy's one resolve was served from the target");
+            t.Equals(rtDirectMidPage, 0ull, "a texture starting eight blocks inside the target's first page is not served from the target");
+            t.Equals(readbacksMidPage, 1ull, "... it is read back and decoded from its true block, as before");
         });
 
     });

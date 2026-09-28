@@ -4,7 +4,7 @@ Goal: every SOCOM II: U.S. Navy SEALs multiplayer map, read byte for byte out of
 `RUN/MP*.ZDB` archives — container, scene graph, DMA/VIF geometry, GS textures and palettes, lighting,
 fog, collision — and drawn again with three.js as close to the console's own picture as a browser
 allows, without emulating the game. Nothing is pre-baked and no asset is committed; **you supply your
-own disc**. It runs at [s2u.scotho.com/map-viewer](https://s2u.scotho.com/map-viewer/).
+own disc**. It runs at [socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/).
 
 It is a spin-off of [**SOCOM Unzipped**](../README.md), the static recompilation of the game for PC,
 and lives in that repository's `web/` directory as **a separate project**: its own npm workspace,
@@ -16,11 +16,11 @@ An agent working on the recomp can skip this directory entirely.
 **Start here if you are a new agent or contributor:** the design and the findings recorded as the
 viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/specs/2026-09-20-web-map-viewer-design.md)
 and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
-(the plan beside them in `docs/plans/`); the byte-level format authority is the repository's
-[`docs/research/72-mp-map-archive-anatomy.md`](../docs/research/72-mp-map-archive-anatomy.md), and the
+(the plan beside them in `docs/plans/`); the byte-level format authority is the viewer's own
+[`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
-the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the repository's research
-notes and its Ghidra function names.
+the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
+and its Ghidra function names.
 
 ## How it works (one paragraph)
 

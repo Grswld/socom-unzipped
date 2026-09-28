@@ -288,7 +288,9 @@ class TestVideos(unittest.TestCase):
         doc = site.parse_document(self.with_video())
         entry = doc["eras"][0]["entries"][0]
         page = site.render_entry(entry, "https://example.test/r", "/story/img", 1)
-        self.assertRegex(page, r'<video controls preload="metadata" playsinline poster="/story/img/2026-09-21-online-kill\.png(\?v=[0-9a-f]{10})?">')
+        # the poster's width and height are written when the poster file is beside the page (it is, here), so the
+        # layout is settled before it loads -- the story page's anchor fix of 2026-09-27
+        self.assertRegex(page, r'<video controls preload="metadata" playsinline( width="\d+" height="\d+")? poster="/story/img/2026-09-21-online-kill\.png(\?v=[0-9a-f]{10})?">')
         self.assertRegex(page, r'<source src="/story/img/2026-09-21-online-kill\.mp4(\?v=[0-9a-f]{10})?" type="video/mp4">')
         self.assertIn("<figcaption>One round, both screens.</figcaption>", page)
         self.assertNotIn("<img", page)
@@ -455,10 +457,17 @@ class TestSiteRefusesAFilesystemPathAsAUrl(unittest.TestCase):
 
     def test_a_url_path_is_accepted(self):
         from tools_py.story import site
+        import tempfile
         story = os.path.join(ROOT, "docs", "STORY.md")
         if not os.path.exists(story):
             self.skipTest("docs/STORY.md not written yet")
-        rc = site.main(["--img", "/story/img", "--logo", "/img/logo.webp", "--out", os.devnull])
+        # The repository copy inlines the site's design system and refuses to render without it (site.py, 2026-09-28);
+        # the default --ds-dir is ../scotho's, which CI never has, so the test brings its own four layer files.
+        with tempfile.TemporaryDirectory() as ds:
+            for name in site.DS_FILES:
+                with open(os.path.join(ds, name), "w", encoding="utf-8") as f:
+                    f.write("/* %s */\n" % name)
+            rc = site.main(["--img", "/story/img", "--logo", "/img/logo.webp", "--out", os.devnull, "--ds-dir", ds])
         self.assertEqual(rc, 0)
 
 

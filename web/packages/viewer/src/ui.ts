@@ -1,5 +1,6 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
+import { viewerRevision } from './revision';
 import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
@@ -22,6 +23,7 @@ export class Ui {
   private readonly loading = find<HTMLElement>('loading');
   private readonly loadingWhat = find<HTMLElement>('loading-what');
   private readonly loadingBar = find<HTMLElement>('loading-bar');
+  private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
   private readonly panelTitle = find<HTMLElement>('panel-title');
   /**
@@ -169,6 +171,7 @@ export class Ui {
 
   private setPanelCollapsed(collapsed: boolean): void {
     document.body.classList.toggle('panel-collapsed', collapsed);
+    this.panel.classList.toggle('is-folded', collapsed);
     this.panelToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
   }
@@ -194,6 +197,16 @@ export class Ui {
     }
   }
 
+  /**
+   * The build's revision and stamp: on the About line's badge, so it is readable without unfolding
+   * anything, and again as the last line of the About text. Returns the label for the debug hook.
+   */
+  showRevision(label = viewerRevision()): string {
+    find<HTMLElement>('revision').textContent = label;
+    find<HTMLElement>('revision-line').textContent = label;
+    return label;
+  }
+
   /** Whether the panel is folded, for the debug hook. */
   panelCollapsed(): boolean {
     return document.body.classList.contains('panel-collapsed');
@@ -209,7 +222,7 @@ export class Ui {
    * toggles, the hook and the tests read -- and remembers the choice, so a return visit opens on it.
    */
   onLook(): void {
-    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look .look'));
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look button[data-look]'));
     const box = this.checks.ps2look;
     const show = (): void => {
       for (const b of buttons) b.setAttribute('aria-pressed', (b.dataset['look'] === 'ps2') === box.checked ? 'true' : 'false');
@@ -270,9 +283,9 @@ export class Ui {
   setLoading(on: boolean, what = '', fraction = -1): void {
     this.loading.hidden = !on;
     this.maps.disabled = on;
-    if (!on) { this.loadingBar.style.width = '0%'; return; }
+    if (!on) { this.loadingBar.style.setProperty('--s2u-progress', '0'); return; }
     if (what) this.loadingWhat.textContent = fraction >= 0 ? `${what} ${Math.round(fraction * 100)}%` : what;
-    if (fraction >= 0) this.loadingBar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+    if (fraction >= 0) this.loadingBar.style.setProperty('--s2u-progress', String(Math.max(0, Math.min(1, fraction))));
   }
 
   /** Calls `handler` with the slider that moved, and keeps its readout in step. */
@@ -343,7 +356,7 @@ export class Ui {
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {
     this.status.textContent = text;
-    this.status.classList.toggle('error', kind === 'error');
+    this.status.classList.toggle('is-bad', kind === 'error');
   }
 
   setDiagnostics(lines: string[]): void {

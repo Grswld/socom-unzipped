@@ -1,4 +1,4 @@
-// LOCAL FIX (socom_pc), Sprint 8 Goal 13: live server stats as JSON over HTTP, for s2u.scotho.com.
+// LOCAL FIX (socom_pc), Sprint 8 Goal 13: live server stats as JSON over HTTP, for socomunzipped.com.
 //
 // The snapshot is built on the tick thread (the only thread that mutates the manager's lookups), at most once
 // every PublishIntervalMs, and handed to the listener as one immutable string: the HTTP side never touches a

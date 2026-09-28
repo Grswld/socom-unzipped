@@ -34,7 +34,8 @@ namespace win32glue
         void close();
     };
 
-    // Starts <dir>/socom2.exe <dir>/socom2_game.elf with the config's environment on top of the current one,
+    // Starts the chosen GAME VERSION's pair (gameFilesFor: <dir>/socom2.exe <dir>/socom2_game.elf for r0001,
+    // <dir>/socom2_r0004.exe <dir>/socom2_game_r0004.elf for r0004) with the config's environment on top of the current one,
     // stdout+stderr to <dir>/logs/run_<stamp>.log. False with `error` set when it cannot.
     bool startGame(const std::string &dir, const launcher::Config &config, GameProcess &out);
 

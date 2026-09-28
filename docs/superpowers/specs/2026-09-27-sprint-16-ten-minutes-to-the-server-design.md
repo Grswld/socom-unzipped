@@ -2,7 +2,7 @@
 
 Date: 2026-09-27 (host clock, 05:20Z), proposed while Sprint 15 is open. **Opens at Sprint 15's close**, off `main` at
 the Sprint 15 merge; until then this is a proposal and nothing here changes an open sprint. The plan is
-`docs/superpowers/plans/2026-09-27-sprint-16.md` (written after this spec is approved). <!-- docmaint: future -->
+`docs/superpowers/plans/2026-09-27-sprint-16.md` (written 2026-09-27; its task book and the readers' facts beside it).
 Scoped with the owner on the evening of 2026-09-26/27 from the Sprint 15 controller's list, the sixteen open issues,
 `docs/LATER.md`'s 33 rows and dismissals, `docs/HUMAN_TASKS.md`'s open rows, and the owner's two asks: wrap up the
 release-ready work the previous sprints began, and improve the frame rate without degrading the standards that hold.
@@ -73,6 +73,13 @@ The host is an i7-14700K, an RTX 4070 SUPER and 32 GB. Read from the logs on 202
 | Online round, two instances on this host (`logs/run_A_20260925_194529.log`, the ladder of 2026-09-25) | 58.4–60.0 | 0–27 ms/s | ~80 | 170–350 ms/s at 125k–213k submit calls/s |
 | Single-player gate mission after the HUD (`logs/parity/gate/s14_close1/mission.game.log`) | 41.5 | 289 ms/s | 18.6 | not recorded (the gate sets no stats knob) |
 | Eight gates, `FRAME mean=` (KNOWN §2's #59 row and the s14/x51 stamps) | 30–44 (22.7–33.0 ms) | | | |
+
+> Superseded 2026-09-27 at Sprint 16's open (Task 0 Step 5): the `s14_close1` row's 41.5 / 289 ms/s / 18.6 and the
+> "29 % of wall time" below came from an every-120th-row pass over the sampler in t=240–360 windows (the author,
+> 06:20Z). The stamp's own rows (`mission.game.log:12815` at the HUD step, `:18196` at the last step) give 37.6 guest
+> VBlanks/s (the summary's `FRAME mean=26.59` agrees), 369 ms/s of back-pressure wait (37 % of wall) and 14.2 idle
+> sleeps/s over the walk; 36.3 / 391 / 15.5 over the whole post-HUD log. The ladder row was computed the same coarse
+> way over 60 s windows and is re-read from exact rows before a task cites it. The conclusion stands.
 
 What the table says, and the corpus agrees with: **the GL replay thread is the single-player limiter** (the guest
 spends 29 % of wall time waiting for it, the render-thread class of `docs/HAZARDS.md`), and **the EE thread has
@@ -174,6 +181,10 @@ judgment; every task is reviewed by a fresh agent.
   built yet: open the DISC page". Bar: the issue's points 1–4 (point 5 is moot, §1.1); the ELF built on this
   machine from the ISO with the time recorded (the belief is seconds to a minute); the digests match; the launcher's
   tests cover the container parsing and the progress states from fixtures, never a real package.
+  > Superseded 2026-09-27 at the open (Task 0 Step 5): "the DNAS self-decrypt ported straight from the 161-line
+  > Python" — `tools_py/dnas_selfdecrypt.py:10–12` reimplements no transform; it runs the overlay's four core routines
+  > (`0x4ef348`, `0x52c330`, `0x53acb8`, `0x540938`) under Unicorn, so the DNAS stage is the spike's question too (the
+  > plan's R1a), not a port.
 - **R2 #71, the r0004 package.** M, Opus, after R1's implementation. The launcher issues the one GET (the path and
   the User-Agent from KNOWN §1's row), saves the served bytes under the game folder, runs R1's decrypt on the disc
   path, merges the r0004 ELF (digest recorded), and the GAME VERSION row becomes a live toggle over two exes, two
@@ -190,6 +201,11 @@ judgment; every task is reviewed by a fresh agent.
   `docs/DEVELOPING.md`'s packaging rows rewritten to what ships. Bar: `portable_audit` and `test_make_portable*`
   green on both archives; `grep -n "no game executable" docs/FAQ.md` finds nothing; the exit-code suite on the
   release runner unchanged.
+  > Superseded 2026-09-27 at the open (Task 0 Step 5): no debugger or probe file exists — `make_portable.sh:146–151`
+  > copies three binaries and the closure. R295's words (`docs/PLAYTEST.md:138`) name the compile option
+  > `PS2X_ENABLE_DEBUG_UI` (`ps2xRuntime/CMakeLists.txt:18`, default ON, never turned off by `build.sh`'s release) and
+  > the dump/trace probes compiled in beside it: the split is a second release configuration with its own exe (the
+  > plan's R3a), and the ELF's removal is R3b's, with R1.
 - **R4 the first archives against a draft.** S, the controller, at the close. The release chain builds both
   archives on the sprint's final exe, gated 3/3 on the exe inside; the exact `gh release upload` command and the
   verify-half invocation are written into the Log and `docs/HUMAN_TASKS.md` O2. **By default the loop stops short of
@@ -249,6 +265,13 @@ ADOPTED and written down; nothing is accepted from a failed run.
   new-persona path; a card with two saved personas shows both and launching with either logs in as it
   (`online_login_ours.py --saved-password` covers the launch half); no plain password in `config.json` for a persona
   whose card holds it; the viewer's card read tested from fixtures, never a real card.
+  > Superseded 2026-09-27 at the open (Task 0 Step 5): research/38 is the OSK open routine (the UI variables and the
+  > MUIS persona calls, lines 92–108, no byte layout) and W10 is a behaviour proof; the card's persona record is an
+  > opaque block (`BASCUS-97275SOCOMII` 0x1650–0x17ad, +48 B per persona, no ASCII name) nothing in the tree decodes.
+  > D12: a sidecar beside the card, written by the runtime on a successful login. The bar's "a card with two saved
+  > personas shows both and launching with either logs in as it" is met for personas recorded through this build; a
+  > card whose personas predate it shows the "again" sentence, each appearing after its first login here; "logs in as
+  > it" is claimed only after a driven two-persona run shows which persona the game's list gives (the plan's L1b).
 - **L2 #74 tooltips.** S, Opus. Bar: the issue's: a half-second hover shows a one-line tooltip on every focusable
   CONTROLLER control, keyboard focus shows the same line in the footer, one string table per page, a `ps2xTest` case
   asserting every focusable control has a non-empty line.
@@ -259,6 +282,9 @@ ADOPTED and written down; nothing is accepted from a failed run.
   (`D:/socom_archive/tools_backup_2026-09-26`; the 2026-09-26 loss, `docs/HAZARDS.md` git): PCSX2, Ghidra and the
   reference trees come back with one flag, verified by a manifest; the toolchain path unchanged. S, Opus. Bar: a
   planted empty `tools/` restored; the manifest test red on a missing entry.
+  > Superseded 2026-09-27 at the open (Task 0 Step 5): "the reference trees" — the backup's top level is cmake,
+  > ghidra, llvm-mingw, ninja, pcsx2, pcsx2_b; nothing in the tree or the backup names a reference tree (the phrase is
+  > `bootstrap_windows.sh:14`'s); the manifest holds what the backup holds.
 - **X2 the naming future task** (R296): the matcher run across the Aug 28 2003 beta (`game/beta_scus_973_66/`), its
   placements and counterexamples recorded; the hand read of the five routines and the 148 slot-count namings stay
   parked unless the beta settles one. M, Opus. Bar: research/57's pipeline shape; a note with the counts and commands;
@@ -329,7 +355,8 @@ filing (O10).
 
 ## 6. Pointers
 
-`docs/superpowers/plans/2026-09-27-sprint-16.md` (the plan, once written) <!-- docmaint: future -->;
+`docs/superpowers/plans/2026-09-27-sprint-16.md` (the plan; `2026-09-27-sprint-16-tasks.md` the task book,
+`2026-09-27-sprint-16-tree-facts.md` the readers' facts);
 `docs/superpowers/plans/2026-09-26-sprint-15.md` (the open plan and its Log); `docs/superpowers/plans/2026-09-26-owner-sitting.md`
 (R290–R297); `docs/research/05-code-package-and-harness.md` (the decrypt layers); `docs/research/34-online-round-freeze-clut-serials.md`
 (§3 the submits table, §6 the clock); `docs/research/15-vu1-fourth-family.md` (the residual);

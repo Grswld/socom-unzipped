@@ -91,7 +91,7 @@ namespace ui
             caption(ctx, Vec2{rx, send.y + 13.0f}, "Nothing leaves this machine until you press it.");
             break;
         case ReportUi::State::Sending:
-            caption(ctx, Vec2{rx, send.y + 13.0f}, "talking to s2u.scotho.com ...");
+            caption(ctx, Vec2{rx, send.y + 13.0f}, "talking to socomunzipped.com ...");
             break;
         case ReportUi::State::Sent:
         {

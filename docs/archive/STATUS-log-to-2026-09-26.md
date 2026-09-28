@@ -62,6 +62,7 @@ the night produced. Sprint 10 is closed; what is left of it is the merge to `mai
 **Five launches, five results.** Chain 1 ran the queued runs back to back. The endpoint A/B's first attempt refused
 to score (rc=5) because the per-app routing fix had not landed yet and the capture was still on the owner's JBL --
 which is the instrument doing its job rather than a failure. W10's launch 1 came back rc=0: persona `w10test`
+  > Superseded 2026-09-27 15:58Z (the Sprint 16 L1b driver review): the persona was created as `w2-test`, not `w10test` -- the driver's on-screen-keyboard walk landed one key right on the digit row (`OSK_ROW_ORIGIN`, merged 2026-09-27); the frame `logs/parity/w10_virgin_a/03_name.png` shows it.
 created on an empty card, SAVE PASSWORD answered LEFT and read back as yes, `LOBBY class=ok`, the card left holding
 `BASCUS-97275SOCOMII/SaveGame0-6`. W10's launch 2, booting from that same card with nothing typed, came back rc=4,
 `LOBBY-FAIL login:saved-password:empty`. W7 walked twenty-one minutes and scored 47 DEVICE dips at the JBL, peak 31

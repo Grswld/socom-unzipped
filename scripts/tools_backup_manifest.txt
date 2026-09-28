@@ -1,0 +1,9 @@
+# The owner's installs under tools/, as the off-tree backup D:/socom_archive/tools_backup_2026-09-26 holds them
+# (Sprint 16 X1; the loss of 2026-09-26, docs/HAZARDS.md git). Read by `scripts/bootstrap_windows.sh
+# --restore-owner-tools`: each entry is verified in the backup by its file count and one probe file's size and
+# sha256 before anything is copied, and again after. The pinned toolchain (llvm-mingw, cmake, ninja) is NOT here:
+# the fetch path owns it. Rows computed read-only from the backup on 2026-09-27; a new backup gets new rows.
+# name|files|probe|probe_bytes|probe_sha256
+ghidra|5255|ghidraRun.bat|1531|9374c936fc8c2e4f59bd85760c7b32ca5498cad6852672dbd68162823cdb1357
+pcsx2|252|pcsx2-qt.exe|15257088|982c7c62600a999cf15a25c18349426166c785e7867b2fcc5018d733245b71a3
+pcsx2_b|248|pcsx2-qt.exe|15257088|982c7c62600a999cf15a25c18349426166c785e7867b2fcc5018d733245b71a3

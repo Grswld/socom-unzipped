@@ -62,15 +62,16 @@ Core services are created for every `IopSubsystem`:
 | LIBSD | `0x80000701` | Always active |
 | DBCMAN | `0x80001300` | Always active |
 
-The one built-in game profile is:
+The built-in game profiles are one per disc revision (PR #86, 2026-09-27):
 
 | Profile | Matcher | Services |
 | --- | --- | --- |
 | `socom2-us` | `socom2_game.elf` | 989snd, lgaud and eznetcnf |
+| `socom2-us-r0004` | `socom2_game_r0004.elf` | 989snd, lgaud and eznetcnf |
 
-It declares only the ELF basename; it does not constrain the entry point or
+Each declares only the ELF basename; neither constrains the entry point or
 CRC32. Basename matching is case-insensitive. `ps2xTest` holds the table to
-this one row.
+these two rows.
 
 If no profile matches, the subsystem still has MCSERV, LIBSD, and DBCMAN. It
 does not create any game-specific service. An unknown SID remains unhandled so

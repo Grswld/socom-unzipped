@@ -81,8 +81,11 @@ class ChatLogParsers(unittest.TestCase):
 
 # The chat keyboard as round 1 measured it (research/66 section 3): the login grid plus one row below it, the cursor
 # opening on that row's first key, clamped on a vertical move and wrapping on a horizontal one (round 1's walk went
-# right off EXIT onto SHIFT).
+# right off EXIT onto SHIFT). A vertical move keeps the cursor's column as the login grid's does (OSK_ROW_ORIGIN, Sprint
+# 16 L1b Step 0: the letter block starts one key right of the digit row); the extra row shares the letter block's
+# origin (SPACE, UP, TEAM: index 1 to index 1, as CHAT_OSK_ENTRY shows).
 CHAT_GRID = [list(r) for r in O.OSK_ROWS] + [["ACCENT", "SPACE", "MESSAGE", "IGNORE", "LEGEND"]]
+CHAT_ORIGIN = tuple(O.OSK_ROW_ORIGIN) + (O.OSK_ROW_ORIGIN[-1],)
 CHAT_OPENS_ON = (6, 0)
 
 
@@ -92,8 +95,9 @@ def simulate(presses):
     typed = []
     for p in presses:
         if p in ("up", "down"):
+            col = i + CHAT_ORIGIN[r]
             r += -1 if p == "up" else 1
-            i = min(i, len(CHAT_GRID[r]) - 1)
+            i = max(0, min(col - CHAT_ORIGIN[r], len(CHAT_GRID[r]) - 1))
         elif p in ("left", "right"):
             i = (i + (1 if p == "right" else -1)) % len(CHAT_GRID[r])
         else:

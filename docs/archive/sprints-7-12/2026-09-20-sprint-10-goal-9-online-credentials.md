@@ -34,11 +34,18 @@ with both call sites in a day, fall back to Route A of research/37 (rewrite the 
 crypto path) and file the Ghidra notes in research/38 for the next attempt.
 
 **Rulings this plan records (the controller numbers them into CURRENT_SPRINT):**
-- **R179 -- the password is stored in plain text in `config.json`, masked on screen.** Why: every launcher
+- **R179 -- the password is stored in plain text in `config.json`, masked on screen; superseded by R310 (Sprint 16 L1,
+  2026-09-27) for a persona whose card holds the password.** Why: every launcher
   of this kind does the same, the file is the player's own, and a reversible obfuscation would be theatre. The
   ABOUT page's "where things live" line says the password is in that file. Cost if wrong: a player shares
   their config.json with the password in it -- the REPORT A BUG payload never includes config.json's server
-  fields, and Task 5 asserts the password is never in a bug report or a diagnostics zip.
+  fields, and Task 5 asserts the password is never in a bug report or a diagnostics zip. **Superseded by R310
+  (Sprint 16 L1, 2026-09-27) for a persona whose card holds the password.**
+  > **Superseded by R310 (Sprint 16 L1, 2026-09-27):** Sprint 13 V6 settled that the memory card keeps the saved
+  > password (`docs/KNOWN.md` §3, the W10 row), and Sprint 16 D12 makes the launcher read a persona record the runtime
+  > writes at login; `config.json` writes `loginPassword` only while the selected persona's record says the card does
+  > not hold it and clears it once the record reads true, so the plain password this ruling allowed lives only until
+  > a persona's first saved login. The masked field stays for a persona without a saved password.
 - **R180 -- prefill, never auto-submit.** The keyboards open holding the strings; the player presses ENTER.
   Why: the game's own flow (persona list, "save to card?", the write-down notice) stays exactly as the
   console shows it, a wrong password is corrected on the spot, and a stranger who typed nothing on ONLINE

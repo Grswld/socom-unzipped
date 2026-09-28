@@ -32,7 +32,7 @@ Nothing else is installed and nothing is written outside the game's own folder.
 ## 2. Get the archive
 
 **There is no public download yet.** Builds are handed to testers by hand. The download will be the program; the game's
-image is built from your own disc on first run (#70). When there is a download, it will be announced at <https://s2u.scotho.com>, which also carries the setup guide
+image is built from your own disc on first run (#70). When there is a download, it will be announced at <https://socomunzipped.com>, which also carries the setup guide
 and the server's live status.
 
 Every archive ships with a `SHA256SUMS` file beside it. Check the archive against it before you unzip.
@@ -126,16 +126,19 @@ game exited. Every one of those sentences has an entry in `FAQ.md`.
 
 ## 8. Play online — the ONLINE page
 
-**SERVER.** The default is already the right one: **SOCOM Unzipped (project server)**, *"the project's hosted server
-(US East)"*, reached by name at `socom.scotho.com`. When the launcher can reach it, a status line from the server
-itself appears at the top right of the page; when you are offline the line is simply blank. **Custom** takes any
-address or hostname — your own Horizon server's, for instance. That server ships with no address of its own: its
-configs hold the documentation placeholder `192.0.2.1` and `server/start-servers.ps1` will not start until you give
-it this machine's address with `-PublicIp` (`server/README.md`, "Advertised address").
+**SERVER.** Where players are meant to end up is the community's servers, which run the game's later r0004
+revision. The community preset, **SOCOM Community (public Horizon)**, is drawn at the top of the list for that
+reason, and is not on offer yet; the launcher says why: *"needs the r0004 game update -- planned"*. It cannot be
+selected until the launcher can install that update on your machine, and pointing this client at a community server
+by hand is not supported — see `FAQ.md`.
 
-The community preset, **SOCOM Community (public Horizon)**, is drawn at the top of the list but is not on offer, and the launcher says why:
-*"needs the r0004 game update -- planned"*. It cannot be selected, and pointing this client at a community server is
-not supported — see `FAQ.md`.
+Until then the default is the project's own **SOCOM Unzipped (project server)**, *"the project's hosted server
+(US East)"*, reached by name at `socom.scotho.com`: a test box, where builds are checked against something known.
+When the launcher can reach it, a status line from the server itself appears at the top right of the page; when you
+are offline the line is simply blank. **Custom** takes any address or hostname — your own Horizon server's, for
+instance. That server ships with no address of its own: its configs hold the documentation placeholder `192.0.2.1`
+and `server/start-servers.ps1` will not start until you give it this machine's address with `-PublicIp`
+(`server/README.md`, "Advertised address").
 
 **GAME VERSION** is the same row as on the PLAY page (§7).
 
@@ -199,4 +202,4 @@ you press it."* On success the page prints a reference and copies it to your cli
 talk to us. If the site cannot be reached, the report is saved next to your logs instead, and the page tells you
 where.
 
-Reports also go through the **REPORT A BUG** form at <https://s2u.scotho.com>.
+Reports also go through the **REPORT A BUG** form at <https://socomunzipped.com>.

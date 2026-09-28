@@ -254,6 +254,24 @@
    "archived": false,
    "kind": "directory"
   },
+  "logs/parity/gate/s16_f0_gate3": {
+   "source": "logs/parity/gate/s16_f0_gate3",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-27",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s16_v0": {
+   "source": "logs/parity/gate/s16_v0",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-27",
+   "archived": false,
+   "kind": "directory"
+  },
   "logs/parity/gate/s3d_2x_host": {
    "source": "logs/parity/gate/s3d_2x_host",
    "text": "mission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\ntransition.game.log\n... (13 entries)",
@@ -701,6 +719,24 @@
    "bytes": 136,
    "sha256": "8e11a4f1f2e5cf7f8a1f9259d2720b82277e55c4327c99d93da4ec9c371c0efc",
    "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s16_l1b_step0b": {
+   "source": "logs/parity/s16_l1b_step0b",
+   "text": "card_after1.txt\ncard_after2.txt\ncard_after3.txt\ncard_before.txt\nlaunch1\nlaunch1.game.log\nlaunch1.stdout\nlaunch1.trace_summary.txt\nlaunch2\nlaunch2.game.log\nlaunch2.stdout\nlaunch2.trace_summary.txt\n... (19 entries)",
+   "bytes": 19,
+   "sha256": "cbb6014e78d45f57a91ed55ed94fada5f016556827d55f20a1ea7eccd6c50acb",
+   "captured": "2026-09-27",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s16_v0_t1b_dump": {
+   "source": "logs/parity/s16_v0_t1b_dump",
+   "text": ".capture_started\n.drive_started\napp_volume.log\naudio_dump.txt\naudio_scores.json\ncapture.txt\ncb_trace.csv\ndrive.stdout\nendpoint.wav\nenv_pins.json\nenv_ps2x.txt\nfinal.png\n... (171 entries)",
+   "bytes": 171,
+   "sha256": "63ba8130354317625c3f6ca4c22c2fdfa78659614f13d1d91fb549c06346589c",
+   "captured": "2026-09-27",
    "archived": false,
    "kind": "directory"
   },

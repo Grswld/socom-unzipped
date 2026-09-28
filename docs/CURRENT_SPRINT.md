@@ -9,30 +9,25 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-15 -- CLOSED 2026-09-27 06:27Z (the PR to main and the tag v0.15.0 follow; opened 2026-09-26 off main at 200f3287 (the Sprint 14 merge, PR #68, tagged v0.14.0;
-              Sprint 13 merged as v0.13.0 at 6a82caaa, PR #61). This machine's checkout is on sprint-15 (the same
-              controller session); agents work in worktrees on agent/s15-* branches. See "Sprint 15 -- OPEN" below,
-              then the Sprint 14 CLOSED block. (The Sprint 14 line read: opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
-              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
-              machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
-              agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
-              CLOSED block (12's and 11's are archived, see plans). No cloud session runs from 2026-09-26.
-spec:         docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md, re-cut 2026-09-26 on the owner's
-              word (audio first, #67, the two measurements if time allows; its acceptance bar is its section 4; the walk
-              list's other rows live in docs/LATER.md). The Sprint 14, 13, 12 and 11 specs closed with v0.14.0, v0.13.0,
-              v0.12.0 and v0.11.0.
-plans:        docs/superpowers/plans/2026-09-26-sprint-15.md (the task table, the Log newest first, the rulings R282-R289
-              from the global counter; the owner's sitting of 2026-09-26 holds R290-R297 in
-              docs/superpowers/plans/2026-09-26-owner-sitting.md). The Sprint 14 plan (R269-R281) is closed, listed in its
-              block below; the Sprint 13 plan (S13-R1..R14) too, its block in
-              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 are in
-              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older in
+branch:       sprint-16 -- CLOSED 2026-09-28 01:24Z (the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24); opened 2026-09-27 07:00Z off main at
+              d84ffbde above the Sprint 15 merge 10650369, v0.15.0). No sprint branch is open until Sprint 17 opens off
+              main (its own seat; the spec agreed 2026-09-27); until then a change goes on a topic branch
+              (docs/GIT_STRATEGY.md section 2). See "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
+spec:         docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md (four milestones R, F, L, X
+              with a bar each; the acceptance bar is its section 4; six sentences superseded at the open, the plan's
+              Task 0 Step 5). The Sprint 15, 14, 13, 12 and 11 specs closed with v0.15.0 down to v0.11.0.
+plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R321 (R314 vacant)
+              from the global counter; its task book 2026-09-27-sprint-16-tasks.md and the readers' facts
+              2026-09-27-sprint-16-tree-facts.md beside it). The Sprint 15 plan (R282-R289; R298 the close's window,
+              superseded) and the owner's sitting (R290-R297, docs/superpowers/plans/2026-09-26-owner-sitting.md) are
+              closed, listed in the block below; the Sprint 14 plan (R269-R281) too, its block in
+              docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the Sprint 13 plan's block is in
+              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 in
+              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 16 "ten minutes to the server": docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md
-              (the owner's, PROPOSED, 6f57eb1e); its plan is drafted by the Sprint 16 controller session in its own worktree
-              and it opens on sprint-16 off main once this sprint is closed and merged (its D10 carries what this sprint
-              leaves short of an outcome). Sprint 15's origin, the cloud handoff of 2026-09-25, never ran and is kept
-              under a NEVER RUN banner (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
+next sprint:  Sprint 17 "sixty and the way back" -- its spec docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md
+              agreed by the owner 2026-09-27, its plan drafted by its own seat (branch claude/mission-frame-drops-7e50ea),
+              GitHub milestone 7; it opens off main after the v0.16.0 merge. #70, #71, #57, #59 and #94 are its.
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
@@ -41,12 +36,14 @@ rulings:      indexed in docs/RULINGS.md (generated: every ruling with its statu
 baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gate: the Sprint 14
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
+              the player archive); the close gate `s16_b4g` by hand on the batch-4 exe `2430919f…` (2026-09-28 01:00Z-01:16Z: 3/3 PINS MATCH,
+              HELDOUT 12/12, FRAME mean 28.82; the chain itself red on HEAD moving under other sessions' commits); the quiet baseline F0's three gates on `4cbbb14f` (median 27.09 ms, spread 7.0 %); before them the Sprint 14
               close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
               Sprint 14 plan's Log, 16:20Z); before it (Sprint 13, 2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
               same exe (23:51Z), `s13_proof3_gate` 3/3 (r0001, 20:54Z), `s13_names_r0004_gate` 3/3 PINS MATCH (r0004,
               d027546d...); the plan's Log has each; audio parity
-              `s9_q1_parity_ours2` 31/48 (2026-09-20, unchanged since)
+              `s16_v0_t1b` 12/48 on the merged tree (2026-09-27, issue #91: the ambient bed 11 dB low; the Sprint 9 capture `s9_q1_parity_ours2` still reads 31/48 under today's compare)
 ```
 
 Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money or decision; **[B: x]** blocked on x.
@@ -55,7 +52,42 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 15 — CLOSED 2026-09-27 (the PR `sprint-15` -> `main` and the tag `v0.15.0` on its merge commit follow this close-out; closed without its play test on the owner's word; the record of the sprint is the block below)
+## Sprint 16 — CLOSED 2026-09-28 (the PR to `main` and the tag `v0.16.0` follow the owner's push; the merge hash and the PR number are written here when it lands; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-27 07:00Z, closed 2026-09-28 01:24Z: one loop day, every merged branch reviewed by a
+fresh agent. Landed -- **L**: #73 closed (the persona ledger written on a real login against our Horizon box: a per-descriptor RT
+frame walk hands the plain MAS/MLS bodies to the recorder, the login driver's keyboard rows and focus walk fixed; PR #90) and #74
+closed (the tooltips, PR #82). **R**: R1a's spike (RECOMPILE, R316, research/74), the download primitive (PR #88), the player and
+developer release kinds (PR #85), #69 closed. **F**: F0's note (research/73: three quiet gates on one exe 28.99 / 26.93 / 27.09 ms,
+median 27.09, spread 7.0 %; the GL replay thread is the wall -- the draw path's read-back inside `submit=` 568 ms/s, the harness's
+screenshots 169, the uploads 81; F4 does not fire) and F2's one measured attempt (the `[gs-submit]` split; the RT fast path's guard
+restored after Sprint 7's shrink: ADOPTED: the read-back 123 → 20 ms/s, `submit=` 568 → 541). **X**: `tools/` restored by one flag, #57's r0004 leg (PR #87), Dependabot #10.
+**V0**: the Sprint 15 legs -- the chain green, #67's drag proof, T1b's capture (12/48 and nine dips, recorded as #91 and #42's).
+Not done: R1b (the first-run helper: eight reviewed regeneration rounds to a byte-exact DNAS stage, stopped in the package stage --
+research/76; #70 carried to Sprint 17 at `3d17f192` unmerged), R2/R3b/R4 (#71 carried), F1 (not run), F3 (fired, not started; #32
+to the backlog), F5 (numbers only, no pin; #59 carried), X2, X4 (#41 to the backlog). The owner's play test (22:40Z): the drag no
+longer freezes, the audio much better, the online screens' music the one lingering defect (#94, Sprint 17), the personas working
+superficially. The close proof: the batch-4 chain's suites green in rerun 4 (`ea24b339`) and the gate and the fourth leg by hand on its exe `2430919f…` (`s16_b4g`, 01:16Z): 3/3 PASS, PINS MATCH (13), HELDOUT 12/12, `FRAME mean=28.82` -- the chain itself went red five times on causes outside the code, three of them the main tree's HEAD moving under other sessions' commits. Issues since the open: opened 4 (#91, #94, #95, #96), closed 5 (#67, #69, #73, #74, #75),
+carried 6 (#32, #41, #57, #59, #70, #71); the highest is #96. The §5 review fixed 38 findings and archived Sprint 14's block; the §7
+read found the audit clean, carried and re-titled, opened #95 and #96, closed the milestone, regenerated the backlog; R271's breaker
+closed O2, O4, O5, O7, O8, O10 and O15 by default (R321). The Outcome in the plan has the bar row by row and the numbers.
+
+**As it stood while open:**
+
+Opened by the Sprint 16 controller off `main` at `d84ffbde` (above the Sprint 15 merge `10650369`, `v0.15.0`) on the
+owner's word of 2026-09-27 (05:33Z the seat; 05:57Z cloud sessions on the credit and open tasks in the controller's
+order; 06:16Z Sprint 15 closes without its play test and this controller runs it at the end). Four milestones with a bar
+each -- **R** the exe-only release (#70's native first-run decrypt after a spike, #71's r0004 package, the player and
+developer archives under R295, the first archives against a draft), **F** the frame rate (measured on a quiet host, the
+GL thread's top phase, the -O2 A/B, the conditional levers, #59's ceiling as a refusal), **L** the launcher's face (#73
+the persona viewer, #74 the tooltips), **X** fillers (tools/ restored by one flag, the beta matcher, #57's r0004 leg,
+#41's menu frame, Dependabot #10). First: **V0**, the Sprint 15 legs the owner deferred, one chain at the end of this
+controller's first block with the desk idle. The defaults D1-D15 are ruled R299-R313 in the plan (R315-R320 followed; R314 was never issued); the bar is the spec's
+section 4; no regression (D6, R304). Before the open, on the owner's word: L2 as PR #82, L1a's design note, R3a
+re-scoped, X1 reviewed, X5 merged (`d84ffbde`). The plan's Log is the live state; this block gains its table at the
+close.
+
+## Sprint 15 — CLOSED 2026-09-27 (merged to `main` as `v0.15.0` at `10650369`, PR #81, 06:52Z; closed without its play test on the owner's word -- the legs are Sprint 16's V0; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-26 16:57Z, closed 2026-09-27 06:27Z: one loop day, every task reviewed by a fresh
 agent. Adopted #254's LLE IOP as an out-of-tree audio oracle on the owner's word (the disc's own 989SND.IRX with our provider
@@ -83,48 +115,7 @@ audio rows with numbers, #254 answered, T1 to a recorded outcome, T2 to its bar,
 green, audio parity not below 31/48, the dip count not above the register's number), LATER complete, the ceilings held. The
 plan's Log is the live state; this block gains its table at the close.
 
-## Sprint 14 — CLOSED 2026-09-26 (merged to `main` as `v0.14.0` at `200f3287`, PR #68, 16:55Z; the release waits on the owner's word; the record of the sprint is the block below)
-
-**Close-out (the PR body).** Opened 2026-09-26 05:17Z, closed 2026-09-26 16:28Z: 231 commits, 46 merges (26 agent branches, five
-of `main`, the close's three), every task reviewed by a fresh agent. No feature work (R269). Landed: the guards (a Bash and an
-Edit/Write PreToolUse hook, the watcher reaper, `build.sh`'s lock check, the memory guard, the commit-msg hook); the read-first
-set from 250 KB to 51 KB (`CLAUDE.md`, four skills, HANDOFF transient, HAZARDS split out, a budget check); four generated
-pages (rulings, changelog, sitting, flow) each held to its source; the WIP cap (a third build waiter exits 4) and the merged
-chain as the gate unit (two chains today: `s14_chain1` and `s14_close1`, both ALL GREEN, gate 3/3, the fourth leg 12/12);
-gate freshness (exit 5), the recompiler reference job (red once on a planted change, run 36237829527), PRs to `main` built
-on their heads (#61, #65, #66 observed). Rulings R269-R281. Issues since the open at 05:17Z: opened 1 (#67), closed 3
-(#51, #53, #56), carried 0; the highest is #67. The DOC_MAINTENANCE §5 review fixed 31 stale claims across nineteen files
-and archived two blocks; the §7 stack read found the audit clean, placed one evidence note, labelled four issues. The
-owner's word at the close: the release waits; upstream filings wait (`docs/UPSTREAM.md`); candidate work now lives in
-`docs/LATER.md`; Sprint 15 re-cut to value (audio first). The Outcome in the plan has the bar row by row.
-
-**As it stood while open:**
-
-
-Opened by the Sprint 14 controller off `main` at `6a82caaa` (the Sprint 13 merge, `v0.13.0`) on the owner's
-instruction of 2026-09-26 ("begin with sprint 14 once sprint 13 is finished, committed, and live on main"). The
-sprint came from the structure review `docs/audits/2026-09-26-autonomy-structure-review.md` (nine findings: the
-record is the failure surface; rules recur, tools do not; greens that were not; an unbounded ruling log; one host,
-many writers; handoffs lose state; the owner loop never closes; nothing measures cost; a thin verification
-architecture). **No feature work.** Every rule that has recurred becomes something that fails on its own, every
-document a session must read becomes small, generated or loaded on demand, and concurrency is capped until the host
-stops corrupting measurements. The owner's word of 2026-09-26 sets aside "visible defects first" for this one sprint
-(R269); the order resumes in Sprint 15.
-
-Seven milestones in order, then a filler — **G** guards (a PreToolUse hook refusing the eight recurring git and lock
-mistakes; an Edit/Write hook for running chain scripts; a session-end hook that reaps orphaned watchers; agent
-definitions; `build.sh` consults the lock; a memory guard), **I** instructions on demand (a root `CLAUDE.md` under
-sixty lines; four skills replace the prose procedures; HANDOFF transient under 6 KB; a read-first budget check;
-KNOWN's hazards to their own file), **W** the host (the queue refuses a third building agent; the merged chain is the
-gate unit, with eviction and ticket waits logged), **D** decisions with status (a generated rulings page; the scope
-rule and one counter; a generated owner's sitting page; the circuit breaker; PLAYTEST's build block written by the
-chain), **S** the record generated (the changelog; STATUS's log archived; a commit-msg hook; ceilings that ratchet
-down; one home each), **E** evidence that is hard to fake (a PR to `main` built on its head; a held-out capture leg;
-recompiler re-derivation in CI; gate freshness), **M** measurement (a generated flow page; token spend read locally,
-never committed); **X1** the external sweep for Sprint 15, filler when the host is quiet. **Every guard is fired
-against a planted violation before it counts as done.** The bar is the spec's section 4; the nine owner defaults and
-their rulings R269-R277 are the plan's "Owner decisions" and "Rulings" sections. The plan's Log is the live state;
-this block gains its table at the close.
+*Sprint 14's CLOSED block moved verbatim on 2026-09-28 (the Sprint 16 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprint-14.md`.*
 
 *Sprint 13's CLOSED block moved verbatim on 2026-09-27 (the Sprint 15 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprint-13.md`.*
 
@@ -218,7 +209,7 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R234 | "`CONTRIBUTING.md` now says **the game build is supported**, on the evidence of one disc image on one machine" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
 | R235 | "the from-nothing run **reused the toolchain archives** already in the main tree's bootstrap cache" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | **closed** by the genuine clone-to-game run recorded in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
 | R236 | "the launcher's **default window is the game's own 640x448**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R236 block | stands -- it **overturns R92**, Sprint 7's 2x default |
-| R237 | "the prefilled login leaves the player path" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R237 block | **REWRITTEN 2026-09-23 by W10**: the persona survives a virgin-card restart, the saved password does not, so **the prefill stays** until the clean-exit launch settles which side loses the write |
+| R237 | "the prefilled login leaves the player path" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R237 block | **Superseded by R310 (Sprint 16 L1, 2026-09-27)** for a persona whose card holds the password: V6 settled that the card keeps it (`docs/KNOWN.md` §3, the W10 row) and D12's persona record lets the launcher stop typing it; before that, **REWRITTEN 2026-09-23 by W10**: the persona survives a virgin-card restart, the saved password does not, so **the prefill stays** until the clean-exit launch settles which side loses the write |
 | R238 | "a failure the player can see **must never be silent**"; `setMcCommandResultLocked` prints `[mc] command <n> FAILED …` in every build | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R238 block | stands **as corrected in place** -- the first telling (reclassing two Dev knobs to Shipping) was wrong and the correction is kept beside it |
 | R239 | "the online blop was charged to bank `0x00a00000`'s one-shots" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R239 block | **withdrawn by its own A/B** -- the bank is cleared |
 | R240 | "the join driver **presses REFRESH LIST before JOIN GAME, and takes a channel**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the playthrough block | stands; landed in `00d8348`, and R244 proves its path through the ladder |
@@ -230,7 +221,8 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 
 **Below R181, kept verbatim from the index line this table replaced** (they are Sprint 9's and earlier, and no part
 of this reconciliation): R179-R180 are Sprint 10 Goal 9's, recorded in its plan -- the password plain in
-`config.json`, and prefill-never-submit; R178 is Q0's conductor grains (child sounds, registers, markers, from the
+`config.json` (R179, superseded by R310 on 2026-09-27 for a persona whose card holds the password, Sprint 16 L1),
+and prefill-never-submit; R178 is Q0's conductor grains (child sounds, registers, markers, from the
 open reference), in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`'s "Rulings made on the owner's behalf"; R177 is Q0's mix device buffer, 20 ms x 4, measured, the same block; R176 is P4's ADVANCED section --
 what went in it and what did not; R175 is P6's -- the preset switch needs no launch and the server keeps advertising
 its IP, the same block; R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10;

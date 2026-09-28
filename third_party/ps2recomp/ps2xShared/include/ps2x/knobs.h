@@ -127,7 +127,7 @@
     X("PS2X_HOST_SCREENSHOT_LATEST", Dev, Path, "", "Rewrite this PNG with the current frame twice a second; every harness capture reads it.") \
     X("PS2X_INPUT_MAPPING", Shipping, Spec, "", "The profile pad and key tables (launcher/mapping.h toEnv); unset or unreadable = the default mapping (R174).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:resolveMapping */ \
     X("PS2X_JALR_TRACE", Dev, Spec, "", "0xSRC[,...]: log the resolved target of indirect calls issued from these pcs.") \
-    X("PS2X_LAUNCHER_API_BASE", Dev, Text, "https://s2u.scotho.com", "Launcher tests only: a loopback base URL for the bug-report and stats calls.") \
+    X("PS2X_LAUNCHER_API_BASE", Dev, Text, "https://socomunzipped.com", "Launcher tests only: a loopback base URL for the bug-report and stats calls.") \
     X("PS2X_LAUNCHER_PATCH_BASE", Dev, Text, "http://patch.psrewired.com", "Launcher tests only: a loopback base URL for the r0004 package download (#71).") \
     X("PS2X_LAUNCHER_SHOT", Dev, Path, "", "Launcher: after 120 frames save the real window to this PNG and quit.") \
     X("PS2X_LOD_SCALE", Dev, Float, "0", "Experiment: force both LOD scale floats of the camera (writes guest memory).") \
@@ -163,7 +163,7 @@
     X("PS2X_SOCOM2_INPUT_TRACE", Dev, Presence, "", "Log every change of the pad state the game will read.") \
     X("PS2X_SOCOM2_LOGIN_NAME", Shipping, Text, "", "The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
     X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with: in config.json until the card holds it; blanked from reports.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
-    X("PS2X_SOCOM2_LOGIN_TRACE", Dev, Presence, "", "Log each RC4 call's state, byte counter, class, type and length, and each rekey; never a field.") \
+    X("PS2X_SOCOM2_LOGIN_TRACE", Dev, Presence, "", "Log RC4 calls, rekeys, TCP chunks, RT frame heads and the persona record's pending/answered; never a field.") \
     X("PS2X_SOCOM2_MUSIC_TRACE", Dev, Presence, "", "Log the music manager and every cue push with the mixer frame clock (music round four).") \
     X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement.") /* read: ps2xRuntime/src/lib/socom2_libnetb.cpp:netStatsEnabled */ \
     X("PS2X_SOCOM2_NET_TRACE", Dev, Presence, "", "Verbose libnetb: every RPC, socket and datagram header.") \

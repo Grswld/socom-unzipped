@@ -3,7 +3,9 @@
 
 #include "ps2_runtime.h"
 #include "ps2x/knobs.h"
+#include "runtime/ps2_memory.h"
 
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -96,9 +98,28 @@ namespace socom2_persona
         return true;
     }
 
+    static_assert((PS2_RAM_MASK & kSocketStateBit) == 0, "a socket state must never be a guest RC4 state's address");
+
     Recorder::Recorder(Context context, std::function<std::time_t()> clock)
         : m_context(std::move(context)), m_clock(std::move(clock))
     {
+    }
+
+    Recorder::~Recorder()
+    {
+        if (m_pending)
+            say("the recorder torn down with a login request pending: unanswered");
+    }
+
+    void Recorder::closeState(uint32_t state)
+    {
+        m_in.erase(state);
+        m_out.erase(state);
+        if (!m_pending)
+            return;
+        char line[96];
+        std::snprintf(line, sizeof line, "state 0x%x torn down with a login request pending: unanswered", static_cast<unsigned>(state));
+        say(line);
     }
 
     void Recorder::encrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len)
@@ -156,16 +177,30 @@ namespace socom2_persona
         // No observer, no inference: with the keyboard unwatched a typed login looks untyped, and true would drop
         // a plain password the card does not hold.
         p.record.savedPassword = m_observerLive && savedPasswordFor(m_keyboardOpened, req.password);
+        say(m_pending ? "a login request pending (it replaces one never answered)" : "a login request pending");
         m_pending = p;   // a retry replaces the one before it: the newest request is the one the server answers
     }
 
     void Recorder::onResponse(const std::vector<uint8_t> &message)
     {
         LoginResponse res;
-        if (!parseLoginResponse(message.data(), message.size(), res) || !m_pending || res.messageId != m_pending->messageId)
-            return;   // not ours: the pending record waits for its own answer
+        if (!parseLoginResponse(message.data(), message.size(), res))
+            return;
+        if (!m_pending || res.messageId != m_pending->messageId)
+        {
+            // not ours: the pending record waits for its own answer
+            say(m_pending ? "a login response for another request: unmatched, still pending" : "a login response with no request pending");
+            return;
+        }
+        const std::string answered = "answered: status " + std::to_string(res.status);
         if (res.status >= 0)
+        {
+            const int before = m_commits;
             commit();
+            say(answered + (m_commits != before ? ", committed (" + std::to_string(m_commits) + " so far)" : ", not written"));
+        }
+        else
+            say(answered + ", refused and dropped");
         m_pending.reset();   // answered: committed, or refused and dropped (the keyboard flag survives a refusal)
     }
 
@@ -202,10 +237,22 @@ namespace socom2_persona
                 c.server = server != nullptr && *server != '\0' ? server : "127.0.0.1";
                 const char *key = ps2x::knob("PS2X_SOCOM2_RSA_KEY");   // the same test socom2_RsaGenerateKeyPair makes
                 c.second = key != nullptr && (*key == 'b' || *key == 'B' || *key == '1');
+                if (ps2x::knob("PS2X_SOCOM2_LOGIN_TRACE") != nullptr)
+                    c.trace = [](const std::string &line) { std::cout << "[login-trace] persona " << line << std::endl; };
                 r = std::make_unique<Recorder>(c);
                 r->keyboardObserverWraps(g_wrapped, g_entries);
             }
             return *r;
+        }
+
+        // The caller holds g_mutex.
+        void decryptLocked(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len)
+        {
+            const int before = recorder().commits();
+            recorder().decrypt(state, counter, data, len);
+            if (recorder().commits() != before)
+                std::cout << "[socom2] persona record: a login committed to " << PS2Runtime::getIoPaths().mcRoot.filename().string()
+                          << "'s ledger" << std::endl;   // never the name or the password
         }
     }
 
@@ -218,11 +265,20 @@ namespace socom2_persona
     void onRc4Decrypt(uint32_t state, uint32_t counter, const uint8_t *data, std::size_t len)
     {
         std::lock_guard<std::mutex> lock(g_mutex);
-        const int before = recorder().commits();
-        recorder().decrypt(state, counter, data, len);
-        if (recorder().commits() != before)
-            std::cout << "[socom2] persona record: a login committed to " << PS2Runtime::getIoPaths().mcRoot.filename().string()
-                      << "'s ledger" << std::endl;   // never the name or the password
+        decryptLocked(state, counter, data, len);
+    }
+
+    void onServerApp(int fd, const uint8_t *body, std::size_t len)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        decryptLocked(socketState(fd), 0, body, len);   // one frame, one whole message: counter 0 opens it
+    }
+
+    void onSocketClosed(int fd)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_recorder)   // never made here: a close alone says nothing about a login
+            g_recorder->closeState(socketState(fd));
     }
 
     void onKeyboardObserverWraps(int wrapped, int entries)

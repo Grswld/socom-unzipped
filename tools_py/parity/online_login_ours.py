@@ -400,6 +400,7 @@ CLASS_CONNECT_PRESS = "login:connect-press"  # the form stayed up with CONNECT l
 CLASS_OSK_ENTER = "login:keyboard-enter"     # the keyboard stayed up after ENTER and OSK_ENTER_RETRIES re-presses
 CLASS_PERSONA = "login:persona"              # + ":list" / ":password-keyboard" / ":name-keyboard": that CROSS never registered
 CLASS_NEW_PERSONA = "login:persona:new-persona"  # --new-persona: the pick after the DOWNs opened no "Enter Player Name" keyboard
+CLASS_PERSONA_FOCUS = "login:persona:focus"      # --new-persona: PLAYER NAME never read lit; no list CROSS sent
 CLASS_OSK_PREFILL = "login:prefill-missing"  # --prefilled: the keyboard opened holding a different count than the string's
 # Fix wave W8 (R240, 2026-09-22). Two things the join path could not say before.
 #
@@ -1977,17 +1978,54 @@ def press_persona_list(sh):
 
 
 NEW_PERSONA_DOWN_S = 0.8   # between the list's DOWNs: the list moves one row per press (the menus' pace)
+# The UPs the focus walk may press before login:persona:focus: CONNECT is five rows below PLAYER NAME, and the same
+# three spare press_connect allows its DOWNs (a dropped press, an unread frame). One read more than UPs.
+NEW_PERSONA_FOCUS_UPS = LOGIN_ROW_ORDER.index("connect") + LOGIN_CONNECT_EXTRA_DOWNS
+
+
+def focus_player_name(sh):
+    """Put the CONNECT TO SOCOM II form's cursor on PLAYER NAME, where the persona-list CROSS opens the list.
+
+    Step 0 (2026-09-27, logs/parity/s16_l1b_step0, launch 2): a card holding a saved persona WITH its password brings
+    the form up with the cursor on CONNECT (launch2/02_persona.png; launch 3: "focus connect"), and one without its
+    password on PASSWORD (s6_ladder7) -- the list CROSS then connected as the saved persona, and the pick CROSSes
+    landed on the USER AGREEMENT. So: read the lit row (login_focus_row, the form required); while it is another
+    row, press UP and read again; an unread frame (a transition, or no form at all) is read again after a beat with
+    nothing pressed. At most NEW_PERSONA_FOCUS_UPS + 1 reads; PLAYER NAME never lit is login:persona:focus, and no
+    CROSS has been sent. Returns the UPs it took."""
+    ups = 0
+    for read in range(NEW_PERSONA_FOCUS_UPS + 1):
+        gray = lobby_gray(sh)
+        form = login_form_up(gray)
+        focus = login_focus_row(gray) if form else None
+        sh.log(f"[login] new persona: focus {focus or 'unread'} after {ups} UP(s)")
+        if focus == "player_name":
+            return ups
+        if read == NEW_PERSONA_FOCUS_UPS:
+            break
+        if focus is None:
+            sh.stage_sleep(NEW_PERSONA_DOWN_S)
+        else:
+            ups += 1
+            sh.press("up", NEW_PERSONA_DOWN_S)
+    raise lobby_fail(sh, CLASS_PERSONA_FOCUS,
+                     f"PLAYER NAME not lit after {ups} UP(s) and {NEW_PERSONA_FOCUS_UPS + 1} reads (the last reads "
+                     f"focus {focus or 'unread'}, form {'up' if form else 'not on screen'}): "
+                     f"the list CROSS was not sent")
 
 
 def press_new_persona(sh, personas):
     """Sprint 16 L1b (#73; the L1 design note, section 2): walk the game's persona list to <New Persona> on a card that
-    already holds `personas` personas on this server. The persona-list CROSS first (press_persona_list: that CROSS
-    is what opens the list -- a DOWN before it moves the form's cursor from PLAYER NAME to PASSWORD), then DOWN once
-    per saved persona, then the pick CROSS, verified by a keyboard opening; the keyboard must be "Enter Player Name"
-    (osk_title_is_name). Anything else -- the password keyboard of a saved persona the pick landed on, or no keyboard
-    at all -- is login:persona:new-persona: typing the new persona's password there would log in as the old one."""
+    already holds `personas` personas on this server. The form's cursor to PLAYER NAME first (focus_player_name: the
+    form can arrive on CONNECT or PASSWORD, and a CROSS there is not the list's), then the persona-list CROSS
+    (press_persona_list: that CROSS is what opens the list -- a DOWN before it moves the form's cursor from PLAYER NAME
+    to PASSWORD), then DOWN once per saved persona, then the pick CROSS, verified by a keyboard opening; the keyboard
+    must be "Enter Player Name" (osk_title_is_name). Anything else -- the password keyboard of a saved persona the pick
+    landed on, or no keyboard at all -- is login:persona:new-persona: typing the new persona's password there would log
+    in as the old one."""
     if personas < 1:
         raise ValueError("--new-persona N counts the personas already on the card: 1 or more")
+    focus_player_name(sh)
     press_persona_list(sh)
     for _ in range(personas):
         sh.press("down", NEW_PERSONA_DOWN_S)

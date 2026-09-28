@@ -113,7 +113,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_HOST_SCREENSHOT` | Spec | unset | <dir>[:<seconds>]: save what the window shows every n seconds (default 5). |
 | `PS2X_HOST_SCREENSHOT_LATEST` | Path | unset | Rewrite this PNG with the current frame twice a second; every harness capture reads it. |
 | `PS2X_JALR_TRACE` | Spec | unset | 0xSRC[,...]: log the resolved target of indirect calls issued from these pcs. |
-| `PS2X_LAUNCHER_API_BASE` | Text | `https://s2u.scotho.com` | Launcher tests only: a loopback base URL for the bug-report and stats calls. |
+| `PS2X_LAUNCHER_API_BASE` | Text | `https://socomunzipped.com` | Launcher tests only: a loopback base URL for the bug-report and stats calls. |
 | `PS2X_LAUNCHER_PATCH_BASE` | Text | `http://patch.psrewired.com` | Launcher tests only: a loopback base URL for the r0004 package download (#71). |
 | `PS2X_LAUNCHER_SHOT` | Path | unset | Launcher: after 120 frames save the real window to this PNG and quit. |
 | `PS2X_LOD_SCALE` | Float | `0` | Experiment: force both LOD scale floats of the camera (writes guest memory). |
@@ -141,7 +141,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_SOCOM2_INPUT_FILE` | Path | unset | Pad-state injection file polled by a sampler thread; how the harness presses buttons. |
 | `PS2X_SOCOM2_INPUT_SCRIPT` | Spec | unset | t:BTN[+BTN][:hold],...: press buttons at those seconds. |
 | `PS2X_SOCOM2_INPUT_TRACE` | Presence | unset | Log every change of the pad state the game will read. |
-| `PS2X_SOCOM2_LOGIN_TRACE` | Presence | unset | Log each RC4 call's state, byte counter, class, type and length, and each rekey; never a field. |
+| `PS2X_SOCOM2_LOGIN_TRACE` | Presence | unset | Log RC4 calls, rekeys, TCP chunks, RT frame heads and the persona record's pending/answered; never a field. |
 | `PS2X_SOCOM2_MUSIC_TRACE` | Presence | unset | Log the music manager and every cue push with the mixer frame clock (music round four). |
 | `PS2X_SOCOM2_NET_STATS` | Flag | `1` | sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement. |
 | `PS2X_SOCOM2_NET_TRACE` | Presence | unset | Verbose libnetb: every RPC, socket and datagram header. |

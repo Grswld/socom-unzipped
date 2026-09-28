@@ -155,6 +155,7 @@ ui.onChromeToggle();
 ui.onFullscreen();
 attachTouchControls(fly);
 ui.onPanelToggle();
+const revision = ui.showRevision();
 
 /**
  * The map a visitor asked for: `?map=MP7` in the URL first, then the one remembered from last time,
@@ -482,4 +483,5 @@ window.__viewer = {
   flares: () => view?.flarePositions() ?? [],
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
+  revision,
 } satisfies ViewerHook;

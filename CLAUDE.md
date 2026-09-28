@@ -45,11 +45,11 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
 - `agent-worktree` -- create, brief, review, merge and remove an agent's tree: `.claude/skills/agent-worktree/SKILL.md`.
 - `run-gate` -- a build, a game run or the gate, and its record: `.claude/skills/run-gate/SKILL.md`.
 - `sprint-close` -- the two close reviews, the PR and the tag: `.claude/skills/sprint-close/SKILL.md`.
+- `doc-maintenance` -- writing into a living document; the wiki; an announcement: `.claude/skills/doc-maintenance/SKILL.md`.
 
 ## The lock
 
-One build or game at a time, host-wide, only through `scripts/loop_lock.sh run` (or `scripts/run_detached.sh`);
-its header is the reference.
+One build or game at a time, host-wide, only through `scripts/loop_lock.sh run` (or `scripts/run_detached.sh`); its header is the reference.
 
 ## Boundaries
 

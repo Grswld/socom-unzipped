@@ -17,6 +17,8 @@
 # (three arguments or fewer) behaves exactly as before. AUDIO_DUMP=<path> in the environment is exported to the
 # launched game as PS2X_AUDIO_DUMP, so a capture can have the mixer's own pre-device WAV beside the endpoint
 # recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
+# The window offset runs from the WAV's frame 0 (the recorder's first packet) to the steps' zero (drive.py's own t0,
+# drive_t0_epoch); .capture_started and .drive_started are only what older captures have (LATER row 37).
 set -u
 # Two roots (audio-out fix round 1, I3). The game, its data and the capture directories live in the DATA root
 # (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (the agent-worktree skill). The
@@ -126,12 +128,12 @@ case "$cmd" in
     fi
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1
     powershell -NoProfile -Command 'Get-Process pcsx2-qt -ErrorAction SilentlyContinue | Stop-Process -Force' >/dev/null 2>&1
-    offset=$("$PYTHON" -c "print(round(float(open('$OUT/.drive_started').read())-float(open('$OUT/.capture_started').read()),2))")
+    read -r offset offset_from < <(pya -m tools_py.parity.capture_offset "$OUT" | sed 's/offset=//; s/from=//')
     rate=$("$PYTHON" -c "import wave; print(wave.open('$OUT/endpoint.wav').getframerate())")
     wait $MON 2>/dev/null
     # The endpoint's other sessions, with the recorder left out by pid -- or a line saying it was not (R5).
     write_sessions_verdict "$OUT" "$exe"
-    echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none} exe=${SOCOM_EXE:-dist/socom2.exe} tools=$TOOLS_ROOT" > "$OUT/capture.txt"
+    echo "target=$target script=$script drive_rc=$rc offset=${offset}s offset_from=$offset_from rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none} exe=${SOCOM_EXE:-dist/socom2.exe} tools=$TOOLS_ROOT" > "$OUT/capture.txt"
     cat "$OUT/sessions_verdict.txt"
     score_meta_args "$target" "$script"
     pya -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" "${META_ARGS[@]}" > "$OUT/scores.txt" 2>&1

@@ -1,6 +1,6 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-27 (Sprint 15 close; §5 by a read-only agent's table, 23 findings fixed and Sprint 13's block archived; §7 by a read-only agent's table, the audit clean after main's #69 row, four issues commented, the backlog regenerated).** Next: at the next sprint's close, by its controller.
+**Last full review: 2026-09-28 (Sprint 16 close; §5 by a read-only agent's table, 38 findings, the blocking ones fixed in `40defd7b` and Sprint 14's block archived; §7 by a read-only agent's table, the audit clean, four issues carried to Sprint 17 and two to the backlog, two opened, the milestone closed, the backlog regenerated, R271's breaker applied as R321).** Next: at the next sprint's close, by its controller.
 
 > **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
 > OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
@@ -79,6 +79,11 @@ Everything else is classified **by location**, and needs no row:
 - `docs/superpowers/specs/**` and `plans/**` — **S**. A spec is what was decided that day; the plan's `## Outcome`
   is where it is reconciled. Their filenames carry the date already.
 - `docs/audits/**` — **S**, dated in the filename by convention.
+- `docs/announcements/**` — **S**. A dated announcement draft (`<YYYY-MM-DD>-<slug>.md`) shaped by
+  `docs/templates/announcement.md` and posted by the owner's hand only (R319, §8); `AnnouncementsTest` in
+  `tools_py/tests/test_doc_maintenance.py` holds each to its filename date and its `**Publish:** the owner` line.
+- `docs/templates/**` — **C**. The templates (an announcement, a wiki page); `docs/story/release-entry.template.md`
+  predates the directory and keeps its row.
 - `third_party/**`, `server/horizon-server/**` — vendored. Not ours to maintain; do not edit to match our tree.
 - `tools_py/**/README.md`, `tests/fixtures/**/README.md` — **S**, owned by the fixture or tool beside them.
 
@@ -136,10 +141,13 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` | **A** | — | Cut 2026-09-26 (the Sprint 14 close, §5 step 5): the Sprint 12 and Sprint 11 CLOSED blocks with Sprint 11's rulings ledger R245-R263 and the `S12-Rn` table, verbatim. The ruling counter and check 10 read it |
 | `docs/archive/CURRENT_SPRINT-closed-sprint-13.md` | **A** | — | Cut 2026-09-27 (the Sprint 15 close, §5 step 5): the Sprint 13 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
+| `docs/archive/CURRENT_SPRINT-closed-sprint-14.md` | **A** | — | Cut 2026-09-28 (the Sprint 16 close, §5 step 5): the Sprint 14 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/2026-09-26-sprint-14-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 17 entries of `docs/superpowers/plans/2026-09-26-sprint-14.md`'s Log, verbatim; the Log points here |
+| `docs/archive/2026-09-27-sprint-16-log-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 13 entries of `docs/superpowers/plans/2026-09-27-sprint-16.md`'s Log, verbatim; the Log points here; from 2026-09-28 also the F2, L1b and R1b state cells as they stood at the close, verbatim (the rows rewritten to their outcomes) |
+| `docs/archive/HUMAN_TASKS-answered-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 when `docs/HUMAN_TASKS.md`'s ceiling fired (check 7): its ten struck rows (O1, O3, O6, O11–O14, O16, O18, O19), verbatim; the live file points here. Reopenable by number |
 
 ## 4. What is enforced mechanically
 
@@ -292,6 +300,8 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
    *wrong* is archived, never quietly deleted — things cite it. **The appending documents in particular** (R268,
    check 7): keep two CLOSED blocks in the sprint file; the third moves to the archive at the close. HANDOFF §2 keeps
    one "now" bullet and STATUS's Current state one dated bullet; the one they replace moves to the archive or the log.
+   An announcement draft (§8) posted this sprint has its `Posted:` line filled; one that has stood unposted for a
+   whole sprint is raised in the owner's row -- never posted by the loop.
 6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
    the review changed. A review that changed nothing says so explicitly; that is a result too.
 7. **The known-issue stack, in full** -- §7 below. Its result goes into the same close-out commit, in the same
@@ -310,8 +320,16 @@ knows which documents to distrust.
 - **A document that tells agents what to do is code.** It gets audited like code. The `loop-iteration` skill is opened first by
   every iteration, so it carries no state; `HANDOFF.md` must carry state, so its one dangerous number is now tested.
 - **Date anything that is a moment.** A filename date costs nothing and makes the class obvious at a glance.
-- **Supersede in place, never rewrite history.** Blockquote the old claim, say what replaced it, keep the text. The
-  archived roadmap is readable *because* its wrong turns are still in it.
+- **Revise, do not append (R320, 2026-09-27).** In a live document a fact has one row; an update rewrites that row
+  to what is true now, with the newest artefact and its date, and the old text lives in git and in the plan's Log
+  entry that made the change. A number that moved is a revision. A retraction is one row in `KNOWN.md` §3, written
+  when the belief was acted on, never a second copy of the claim it retracts. A hazard a guard now refuses is one
+  struck line in place naming the guard and the date. The procedure at the moment of writing is the
+  `doc-maintenance` skill (`.claude/skills/doc-maintenance/SKILL.md`). Blockquoted supersession — say what replaced
+  the claim, keep the text — is for the narrative documents, where the reasoning is the content: the archived
+  roadmap is readable *because* its wrong turns are still in it. A ruling is never rewritten, only amended by a new
+  one. Until 2026-09-27 this bullet read "supersede in place, never rewrite history: blockquote the old claim, keep
+  the text" for every document; `docs/audits/2026-09-27-documentation-surfaces.md` §3 shows what that produced.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
 - **A ruling is narrow, and it has one counter.** A ruling records a moved owner default, a moved acceptance bar or a
@@ -378,3 +396,27 @@ acts on it.
    column struck, the second column ending "**Closed by default under R<n>, <date>: <the default>; reopen by
    number.**"), then regenerates the page. The stamp is one line: `last sitting: <date>` after the first sitting,
    `sittings: <date>, <date>, ...` (oldest first) from the second; a sitting appends its date.
+
+## 8. The surfaces outside the tree — the wiki and Announcements (R318, R319, 2026-09-27)
+
+The repository's wiki and its Discussions were enabled by the owner on 2026-09-27. Neither is part of the tree: the
+wiki is its own git repository, created the first time a page is saved in the web UI; a Discussion is a post. Nothing
+an agent, a hook or a check reads can live on either, because an implementer in a worktree cannot see them, a change
+there cannot land in the commit that changes the code, and no guard fires on them. The decision and its evidence are
+`docs/audits/2026-09-27-documentation-surfaces.md`.
+
+**The wiki holds human prose (R318).** The test for a page: *it may go to the wiki when deleting it would change
+nothing any agent, hook or check does.* Candidates are the N documents a stranger reads once (`docs/HOW_IT_WAS_BUILT.md`,
+`docs/ROADMAP.md`) and pages the tree has never had (an architecture overview). `docs/STORY.md` is not one: the site
+builds from it and a test holds its citations. A page is shaped by `docs/templates/wiki-page.md`: no live state, no
+live numbers, no task lists — it points at the tree's owning document. A moved document leaves a one-paragraph
+pointer at its old path (things cite it; check 6) and its registry row says so. **The owner pushes**: drafts are
+written in the owner's clone of the wiki repository, and a push to it is a publication (`CLAUDE.md` Boundaries).
+
+**Announcements stand in for patch notes and site announcements for now (R319).** A draft is
+`docs/announcements/<YYYY-MM-DD>-<slug>.md`, shaped by `docs/templates/announcement.md`: what a reader can do now,
+how to try it, the honest edge from `docs/KNOWN.md` §2 and the component's own gaps, dated milestones, undated
+goals, where to report. The loop drafts and adds a row to `docs/HUMAN_TASKS.md`; **the owner posts**, in
+Discussions → Announcements; the draft's `Posted:` line then takes the URL and the date and the file stays as the
+record. `AnnouncementsTest` holds every draft to its filename date and its `**Publish:** the owner` line, so a draft
+cannot lose its gate by editing. The first draft is the map viewer's, `docs/announcements/2026-09-27-map-viewer.md`.
