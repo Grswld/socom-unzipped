@@ -138,6 +138,26 @@ class RenderedPage(unittest.TestCase):
         for anchor in ('id="2026-09-02-the-first-thing"', 'id="from-the-creator"', 'id="era-2026-09-02"'):
             self.assertIn(anchor, page, anchor)
 
+    def test_the_page_joins_with_a_slash_never_a_middle_dot_outside_code_and_chips(self):
+        # the design system's rule (phase-2 plan, Global Constraints): a stat line, a kicker, a tab's what-line
+        # and the fine print join with " / "; a middle dot survives only inside <code> or a citation chip
+        page = site.render(self.doc, _TIMELINE, "https://x/repo", "/story/img", "/img/logo.webp")
+        outside = re.sub(r"<code>.*?</code>", "", page, flags=re.S)
+        outside = re.sub(r'<div class="chips">.*?</div>', "", outside, flags=re.S)
+        for dot in ("&middot;", "&#183;", "·"):
+            self.assertNotIn(dot, outside, dot)
+        self.assertIn("Mission briefing / the story so far", page)
+        self.assertRegex(page, r'<span class="s2u-tab__what">[^<]* &ndash; [^<]* / \d+</span>')
+        self.assertRegex(page, r'id="foot-fine">generated [^<]* / \d+ entries, \d+ commit citations / checked by')
+
+    def test_the_eras_script_lights_one_tab_and_marks_it_current(self):
+        page = site.render(self.doc, _TIMELINE, "https://x/repo", "/story/img", "/img/logo.webp")
+        script = page[page.index("function current()"):]
+        script = script[:script.index("addEventListener('scroll'")]
+        self.assertIn("classList.toggle('is-on'", script)
+        self.assertIn("setAttribute('aria-current','true')", script)
+        self.assertIn("removeAttribute('aria-current')", script)
+
 
 if __name__ == "__main__":
     unittest.main()

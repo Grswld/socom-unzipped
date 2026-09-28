@@ -18,6 +18,9 @@ paths = [
   # the gate's pin standards: sha256 digests of tracked reference images and scripts, keyed by their path (an
   # image named map_enowapi.png put "api" before a 64-hex digest and generic-api-key fired, 2026-09-25)
   '''scripts/parity/pins[A-Za-z0-9_]*\.json''',
+  # the map viewer's vendored design-system manifest: sha256 content digests of five CSS files keyed by their names
+  # ("tokens.css" put "token" before a 64-hex digest and generic-api-key fired on d9dc8caa, 2026-09-28)
+  '''web/packages/viewer/src/ds/MANIFEST\.json''',
 ]
 regexTarget = "line"
 regexes = [
