@@ -180,12 +180,15 @@ namespace Server.Dme.Models
 
         #region Send
 
-        // LOCAL (socom_pc): a relayed payload over the advertised packet size is dropped with one log line (RelayCaps).
+        // LOCAL (socom_pc): a relayed payload the client cannot consume is dropped with one log line (RelayCaps).
         private bool RelayRefused(ClientObject source, byte[] payload, bool udp, string kind)
         {
             if (Server.Pipeline.RelayCaps.RelayPayloadFits(payload, udp))
                 return false;
-            Logger.Warn($"{this}: {(udp ? "udp" : "tcp")} {kind} relay refused from {source}: payload {payload.Length} bytes over the {(udp ? Server.Pipeline.RelayCaps.UdpRelayMax : Server.Pipeline.RelayCaps.TcpRelayMax)}-byte cap");
+            if (udp)
+                Logger.Warn($"{this}: udp {kind} relay refused from {source}: payload {payload.Length} bytes, relayed frame {payload.Length + Server.Pipeline.RelayCaps.RelayedFrameOverhead} bytes over the {Server.Pipeline.RelayCaps.UdpRelayMax}-byte cap");
+            else
+                Logger.Warn($"{this}: tcp {kind} relay refused from {source}: payload {payload.Length} bytes over the {Server.Pipeline.RelayCaps.TcpRelayMax}-byte cap");
             return true;
         }
 

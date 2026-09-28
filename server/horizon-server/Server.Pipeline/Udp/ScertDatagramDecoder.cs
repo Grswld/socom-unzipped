@@ -40,8 +40,8 @@ namespace Server.Pipeline.Udp
 
         protected override void Decode(IChannelHandlerContext context, DatagramPacket message, List<object> output)
         {
-            // LOCAL (socom_pc): an inbound datagram over the configured cap is refused whole.
-            if (MaxDatagramLength > 0 && message.Content.ReadableBytes > MaxDatagramLength)
+            // LOCAL (socom_pc): an inbound datagram over the configured cap is refused whole (RelayCaps decides).
+            if (!RelayCaps.InboundDatagramFits(message.Content.ReadableBytes, MaxDatagramLength))
             {
                 Logger.Warn($"scert datagram from {message.Sender} refused: {message.Content.ReadableBytes} bytes over the {MaxDatagramLength}-byte cap");
                 return;
