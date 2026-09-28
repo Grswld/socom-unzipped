@@ -65,8 +65,9 @@ texture is. `WEAP_GEO.ZED` (weapon models) and `CLIB_GEO.ZED` (the character lib
 
 **What is out of reach this sprint, said plainly.** The SEAL's own model is a `CMesh`/`CSubMesh` chain with the
 `0x70` skinned unpack (`SEMANTICS.md`'s w-lane row; research 72's `CLIB_MDL` caveat) that no decoder in the tree reads, plus a skeleton
-of 32 nodes with parent-relative transforms (the console dump: `actor+0x170` holds the instance inline, 32 nodes
-from `0x1715940`, the root's Y 5.504 and the rest fractions — local, not world) and an animation format
+of 32 nodes with parent-relative transforms (the console dump: `actor+0x170` holds the instance inline; +0x64 is a
+table of 32 node *pointers* — W2.3's §7 finding decoded it: the root's Y 5.504 is the crouched player's, the standing
+root is 11.484) and an animation format
 (`MPZANIM.ZAR`) nobody has opened. That is a sprint of its own; the owner asked for a **stand-in**, and a stand-in
 it is (**W2.R3**). The game's movement collision is not decompiled either (S1 §7, the walls are research 24's
 inference); this sprint keeps the probe and the wall slide and adds the vertical the game has.
@@ -129,8 +130,9 @@ and the mark stays, `title` and `aria-label` intact. `ds/` is not touched (the m
 ### W2.1 — The game's camera (`viewer`, M)
 
 `playerCamera.ts`: the third-person camera as `FUN_0029a950` → `FUN_00297410` → `FUN_0029bf70` → `FUN_0029bc90`
-compute it (research 17 §2-§3): the target at `rootY + ramp(rootY)` over the feet (rootY 5.504 standing; W2.2's
-stances lower it), the eye 28 behind along the facing before the pass, the lean/peek offset on x (`DAT_004161c0 ×
+compute it (research 17 §2-§3): the target at `rootY + ramp(rootY)` over the feet (rootY **11.484 standing and 5.504
+crouched** — W2.3's finding: research 17's 5.504 was the crouched player; the ramp saturates standing, so the target
+is 21.48 standing and 15.38 crouched), the eye 28 behind along the facing before the pass, the lean/peek offset on x (`DAT_004161c0 ×
 2.5 / 2.8`), the tether (`cam_tether_stiff 0.95`, `cam_net_pos_smooth`), then the camera-collision pass: four segment
 probes against the hull (`FUN_0029bf70`; the implementer reads the decompilation for the probe geometry and the
 pull-in rule, and reCOM `zcam.h` for the names), which is what turns 28 behind into the measured 24.2 at spawn. The
@@ -305,7 +307,9 @@ clean walk-off for the tests: the deck at x 630-675, z 725-815, y 142, east edge
 
 ### The SEAL is 19.6 units tall, and the console's spawn dump holds a crouched player (2026-09-28, W2.3)
 
-*(the implementer's reading, under review; the plan's Log records the verdict)* The skeleton in the console dump
+*(reviewed the same hour: every number re-derived from the dump and the frame; the crouch reading strengthened —
+the class vtable `0x6691a0` holds 37 actors with this skeleton, exactly four crouched with a knee at about 0 — the
+four-man squad kneeling at spawn — and 24 at the bind pose with the root at 11.484)* The skeleton in the console dump
 (`actor+0x170`, count 32 at +0x60) is reached through a table of 32 node **pointers** at +0x64 (26 live, 6 null), each a
 `CZBodyPart` in reCOM's field order — `+0` translation, `+0x0c` its `CNode` (the local matrix; the name at `+0x90`),
 `+0x1c` parent, `+0x20` quaternion, `+0x40` id — named `skel_root`, `hips`, `neck`, `head`, `lcalf`, `rcalf`, … (no
