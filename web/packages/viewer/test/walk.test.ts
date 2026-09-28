@@ -139,13 +139,15 @@ describe('the game\'s speeds (W2.2b, W2.R2): motion.rdr\'s bands through FUN_005
     expect(throttleStep(0, 0.5, 'forward', TICK)).toBeCloseTo((2 + 3 * (1 - 0.5 ** 8)) / 60, 9);
   });
 
-  it('releasing a full stick stops at once (the > 0.9, > 9 a second snap); half a stick runs down at 2 a second', () => {
+  it('a stick let go stops at once, from full or half (FUN_00586f00 idles it; FUN_00586570 skips the ramp at rest)', () => {
     const run = speeds(FORWARD, 60);
     expect(speeds(STILL, 1, 'stand', run.w).v[0]).toBe(0);
     const half = speeds({ forward: 0.5, right: 0, boost: false }, 60);
-    const down = speeds(STILL, 16, 'stand', half.w).v;
-    expect(down[0]).toBeCloseTo(65 * (0.5 - 2 / 60), 6);
-    expect(down[14]).toBe(0);                                   // 0.5 at 2 a second: 15 ticks
+    expect(speeds(STILL, 1, 'stand', half.w).v[0]).toBe(0);
+    // Easing off without letting go is the ramp's: from 0.5 to 0.1 the stick falls at the limit.
+    const ease = speeds({ forward: 0.1, right: 0, boost: false }, 1, 'stand', speeds({ forward: 0.5, right: 0, boost: false }, 60).w).v;
+    expect(ease[0]).toBeCloseTo(65 * (0.5 - (2 + 3 * (1 - 0.9 ** 8)) / 60), 6);
+    expect(throttleStep(0.5, 0, 'forward', TICK)).toBeCloseTo(0.5 - 2 / 60, 9);
     expect(throttleStep(1, 0, 'forward', TICK)).toBe(0);
     expect(throttleStep(1, -1, 'right', TICK)).toBe(-1);       // the lateral snap: > 0.78, > 7.8 a second
   });
@@ -158,17 +160,54 @@ describe('the stances (W2.2b): C cycles stand, crouch, prone', () => {
     expect(stanceBody('stand').bands).toEqual({ forward: band('seal_run'), back: band('seal_run_bw'), right: band('seal_rstrafe'), left: band('seal_lstrafe') });
     expect(stanceBody('crouch').bands).toEqual({ forward: 14.8, back: 13.5, right: 15, left: 15 });
     expect(stanceBody('prone').bands).toEqual({ forward: 11, back: 11, right: 5.5, left: 5.5 });
-    expect(lastSecond(speeds(FORWARD, 600, 'crouch').v)).toBeCloseTo(14.8, 1);
-    expect(lastSecond(speeds({ forward: -1, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(13.5, 1);
-    expect(lastSecond(speeds({ forward: 0, right: 1, boost: false }, 600, 'crouch').v)).toBeCloseTo(15, 1);
-    expect(lastSecond(speeds(FORWARD, 600, 'prone').v)).toBeCloseTo(11, 1);
-    expect(lastSecond(speeds({ forward: 0, right: -1, boost: false }, 600, 'prone').v)).toBeCloseTo(5.5, 1);
   });
 
-  it('the root height: standing 5.504 as measured; crouch and prone lower, prone at the camera ramp\'s floor', () => {
-    expect(rootY('stand')).toBe(5.504);                        // research 17 section 1
-    expect(rootY('crouch')).toBeLessThan(rootY('stand'));
-    expect(rootY('crouch')).toBeGreaterThan(2.169155);
+  it('the crouch walk (FUN_00584c60): under 0.838 of a stick it is rescaled to 14 / 14.8, so it runs at 14.0 whatever the push', () => {
+    const k = 14 / 14.8;
+    expect(lastSecond(speeds({ forward: 0.5, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(14.0, 1);   // not 7.4
+    expect(lastSecond(speeds({ forward: 0.2, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(14.0, 1);
+    expect(lastSecond(speeds({ forward: -0.5, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(k * 13.5, 1);
+    expect(lastSecond(speeds({ forward: 0, right: 0.5, boost: false }, 600, 'crouch').v)).toBeCloseTo(k * 15, 1);
+    // One clip set by direction class (FUN_00582d10), no blend: a shallow diagonal walks straight ahead.
+    const { w } = speeds({ forward: 0.5, right: 0.2, boost: false }, 600, 'crouch');
+    expect(Math.abs(w.state.x)).toBeLessThan(1e-6);
+    expect(w.posture).toBe('crouch');
+  });
+
+  it('the crouch at full stick (>= 0.838) with 19 units of headroom stands and runs the standing blend (FUN_0057efe0, FUN_00583030)', () => {
+    const open = speeds(FORWARD, 600, 'crouch');
+    expect(lastSecond(open.v)).toBeCloseTo(65, 1);
+    expect(open.w.stance).toBe('crouch');
+    expect(open.w.posture).toBe('stand');
+    // Under a ceiling 17 over the floor the headroom ray is cut: the crouch walk at 14.0 instead.
+    const roofed = new Walker(world([floor(-2000, -2000, 2000, 2000, 0), floor(-2000, -2000, 2000, 2000, 17)], 1000));
+    roofed.place(0, 5, 0);
+    expect(roofed.state.y).toBe(0);
+    roofed.stance = 'crouch';
+    const low = speeds(FORWARD, 600, 'crouch', roofed);
+    expect(lastSecond(low.v)).toBeCloseTo(14.0, 1);
+    expect(low.w.posture).toBe('crouch');
+    // Back under 0.838 the run drops to the crouch walk again.
+    expect(lastSecond(speeds({ forward: 0.8, right: 0, boost: false }, 120, 'crouch', open.w).v)).toBeCloseTo(14.0, 1);
+    expect(open.w.posture).toBe('crouch');
+  });
+
+  it('prone (FUN_005845c0 -> FUN_00583500): no ramp, one axis by direction class, the band times that axis', () => {
+    expect(speeds(FORWARD, 1, 'prone').v[0]).toBeCloseTo(11, 6);                                   // full on tick 1
+    expect(speeds({ forward: -1, right: 0, boost: false }, 1, 'prone').v[0]).toBeCloseTo(11, 6);   // the crawl reversed
+    expect(speeds({ forward: 0, right: -1, boost: false }, 1, 'prone').v[0]).toBeCloseTo(5.5, 6);
+    const ahead = speeds({ forward: 0.8, right: 0.6, boost: false }, 1, 'prone');
+    expect(ahead.v[0]).toBeCloseTo(0.8 * 11, 6);                                                     // max(|x|, |z|) x 11
+    expect(Math.abs(ahead.w.state.x)).toBeLessThan(1e-9);                                            // straight ahead
+    const aside = speeds({ forward: 0.6, right: 0.8, boost: false }, 1, 'prone');
+    expect(aside.v[0]).toBeCloseTo(0.8 * 5.5, 6);                                                    // the strafe, 5.5
+    expect(Math.abs(aside.w.state.z)).toBeLessThan(1e-9);
+  });
+
+  it('the root height: standing 11.484 and crouched 5.504 as the dump has them; prone at the camera ramp\'s floor', () => {
+    expect(rootY('stand')).toBe(11.484);                       // five standing actors in the console dump
+    expect(rootY('crouch')).toBe(5.504);                       // the crouched player there (research 17 section 1)
+    expect(rootY('crouch')).toBeLessThan(9);                   // FUN_00584c60's own stance test: root under 9
     expect(rootY('prone')).toBeLessThanOrEqual(2.169155);      // FUN_0029a950's ramp is flat below this
   });
 
@@ -179,7 +218,7 @@ describe('the stances (W2.2b): C cycles stand, crouch, prone', () => {
       w.place(0, 0, 0);
       w.stance = stance;
       w.state.yaw = facing(0, 0, 1, 0);
-      for (let i = 0; i < 600; i++) w.tick(FORWARD);
+      for (let i = 0; i < 600; i++) w.tick(stance === 'crouch' ? { forward: 0.5, right: 0, boost: false } : FORWARD);
       return w.state.x;
     };
     expect(x('stand')).toBeLessThan(50);
@@ -498,9 +537,28 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(mode.stance()).toBe('stand');
     expect(mode.setStance('crouch')).toBe(true);
     const at = mode.feet()!;
-    const pose = mode.walkFor(10, { forward: 1, right: 0, boost: false });
-    expect(at[2] - pose.z).toBeGreaterThan(14.8 * 10 - 3);          // the crouch band, 14.8 a second
-    expect(at[2] - pose.z).toBeLessThan(14.8 * 10);
+    const pose = mode.walkFor(10, { forward: 0.5, right: 0, boost: false });
+    expect(at[2] - pose.z).toBeGreaterThan(14 * 10 - 3);            // the crouch walk, 14.0 a second
+    expect(at[2] - pose.z).toBeLessThan(14 * 10);
+  });
+
+  it('Ctrl+C is left to the browser in fly and walk mode; a bare C while walking is the stance\'s', () => {
+    const { fly, mode } = setUp();
+    fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });
+    const press = (init: KeyboardEventInit): boolean => {
+      const e = new KeyboardEvent('keydown', { code: 'KeyC', cancelable: true, ...init });
+      globalThis.dispatchEvent(e);
+      globalThis.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyC' }));
+      return e.defaultPrevented;
+    };
+    expect(press({ ctrlKey: true })).toBe(false);
+    expect(press({ metaKey: true })).toBe(false);
+    expect(press({})).toBe(false);                                   // fly mode: C is nobody's
+    mode.setMode('walk');
+    expect(press({ ctrlKey: true })).toBe(false);
+    expect(mode.stance()).toBe('stand');
+    expect(press({})).toBe(true);
+    expect(mode.stance()).toBe('crouch');
   });
 
   it('entering walk drops the camera onto the floor under it, eye 15.4 over the feet', () => {

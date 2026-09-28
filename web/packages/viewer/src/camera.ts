@@ -79,11 +79,12 @@ const approach = (a: number, b: number, k: number, dt: number): number =>
 /**
  * Every code the camera consumes. A keydown on one of these is prevented, so the browser chords that
  * share them -- Ctrl+D bookmark, Ctrl+A select-all, Ctrl+S save, Space page-scroll -- never fire while
- * the viewer has the keyboard. `C` is the walk's stance (`./walk`, W2.2b), which `WalkMode` reads itself.
+ * the viewer has the keyboard. `C` (the walk's stance) is not here: `WalkMode` prevents a bare C while walking
+ * itself, and owning it here would take Ctrl+C / Cmd+C from the page everywhere.
  */
 const OWNED = new Set([
   'keyw', 'keya', 'keys', 'keyd', 'keyq', 'keye', 'space', 'shiftleft', 'shiftright',
-  'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'keyc',
+  'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
 ]);
 
 export interface FlyCameraOptions {

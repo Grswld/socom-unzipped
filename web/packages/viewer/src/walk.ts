@@ -1,5 +1,6 @@
 import {
-  buildGrid, cellAt, isWallSurface, probeGround, ringCells, selectFloor, upNormal, PROBE_LIFT, SEAL_LOCOMOTION, SEAL_TUNING,
+  buildGrid, cellAt, footprintDistance, isWallSurface, planeHeightAt, probeGround, ringCells, selectFloor, surfaceWord, upNormal,
+  PROBE_LIFT, SEAL_LOCOMOTION, SEAL_TUNING, SURFACE_SKIP,
   type CollisionOwner, type Grid, type GridParams, type Hit, type WorldPoly,
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
@@ -11,59 +12,83 @@ import type { GroundWish, Pose } from './camera';
  * - **The tick.** `CGame::Tick` (`FUN_001E7040`) runs the game at 60 Hz (web/docs/research/71 section 1.5). The
  *   mover steps on that clock from a fixed-step accumulator the page feeds real time into, so it takes the same
  *   steps at 30 fps and at 240 fps; the eye is drawn between the last two steps (`eye`).
- * - **The speed: the law, as read from the decompilation (W2.2b step 1).** The SEAL's ground state
- *   (`FUN_00584c60`, and `FUN_00586570` from a stand) runs, once per actor tick of `dt = actor+0x2e0`:
+ * - **The speed: the law, as read from the decompilation (W2.2b step 1 and its review).** Each actor tick
+ *   (`dt = actor+0x2e0`) `FUN_005af930` puts the pad in `actor+0x244` (lateral, controller.rdr's `Strafe`) and
+ *   `actor+0x240` (forward, `MoveLong`), and `FUN_005870e0` (decomp 445164-445169) runs the ground state by the
+ *   stance at `actor+0x174`: 0 -> `FUN_00586570` (stand), 1 -> `FUN_00584c60` (crouch), 2 -> `FUN_005845c0`
+ *   (prone). `FUN_00586f00` calls a stick within 0.03 of rest (`DAT_003f3428`) idle: no locomotion, the stop is
+ *   at once whatever the stick was.
  *
  *   ```
- *   stick = pad (lateral actor+0x244, forward actor+0x240)            FUN_005af930 fills them; controller.rdr's
- *                                                                     Strafe / MoveLong
- *   stick = FUN_005b56c0(stick)            slope and water slow-down (DAT_0044c358/35c); not modelled here
- *   stick = FUN_00586c10(stick)            the throttle ramp, per axis, against last tick's (actor+0x248/0x24c):
+ *   FUN_00586c10(stick)    the throttle ramp, per axis, against last tick's (actor+0x248/0x24c):
  *     lo, hi = lower/upper_x_accel (lateral) or lower/upper_z_accel (forward)     DAT_0044c294..2a0 = 2, 5
  *     limit  = lo + (hi - lo) * (1 - (1 - |target|)^8)                            per second, in stick units
  *     if |target - prev| / dt > limit:  target = prev +- limit * dt
  *     if |prev| > 0.9 and |raw - prev| / dt > 9   (lateral: 0.78, 7.8):  target = raw, the clip blend reset to
- *       0.2 s (FUN_0028e3e0 on actor+0x170)  -- a full stick let go or reversed takes effect at once
- *   FUN_00582d10 -> FUN_00583350(lateral, forward):
- *     forward = 0 when |forward| <= 0.03                                           DAT_003f3428
- *     m = min(1, |stick|)                                                         the throttle: throt_exp is not read
- *     w = asin(|lateral| / |stick|) * 2/pi                                        0 ahead .. 1 abeam (0.63661975)
- *     the forward/back set plays at m with weight 1 - w, the strafe set with weight w,
- *     DAT_0064fc80 = 1 / sqrt(w^2 + (1 - w)^2)                                    renormalises the blend
- *   FUN_0058bdf0: m x 100 x max_velocity (cm/s) picks the set's clip(s) by transition_speed_A..B and plays them at m
- *   FUN_0057a330: velocity (actor+0x2c) = the clips' root motion (FUN_0028c250) x DAT_0064fc80 (FUN_00309180)
+ *       0.2 s (FUN_0028e3e0 on actor+0x170)
+ *   FUN_00583350(lateral, forward)  -> m = min(1, |stick|) with forward = 0 when |forward| <= 0.03;
+ *     w = asin(|lateral| / |stick|) * 2/pi (0 ahead .. 1 abeam); DAT_0064fc80 = 1 / sqrt(w^2 + (1 - w)^2)
+ *   FUN_005858a0(lateral, forward)  -> the direction class actor+0x1338: 1 forward, 3 back, 0 right, 2 left, by the
+ *     dominant axis (|a / b| > 0.839), in the diagonal band between by quadrant and the last class (hysteresis)
+ *   FUN_0058bdf0(m, weight, set)    -> m x 100 x max_velocity (cm/s) picks the set's clip(s) by transition_speed_A..B
+ *   FUN_0057a330                    -> velocity actor+0x2c = the clips' root motion (FUN_0028c250), scaled by
+ *                                      DAT_0064fc80 in FUN_00309180
+ *
+ *   STAND  FUN_00586570: stick at rest -> no ramp (the raw 0 is kept); else FUN_00586c10, then FUN_00583030:
+ *          the forward set (+0x60, back +0x90 reversed) at m with weight 1 - w when |forward| > 0.03 and w < 1,
+ *          the strafe set (+0xf0 right, +0xc0 left) at m with weight w when |lateral| > 0.03 and w > 0,
+ *          renormalised by DAT_0064fc80
+ *   CROUCH FUN_00584c60: FUN_005858a0 on the raw stick; then
+ *          |stick| x 14.8 >= 12.4 (0.838 of a stick) and the root under 9 (the stance test) -> FUN_0057efe0's
+ *            headroom ray (from a node + 2 up to the feet + 19): clear -> state 2 and FUN_00583030, the STANDING
+ *            run sets and blend -- the SEAL stands and runs; the stance word stays crouch, so under 0.838 it is back
+ *            to the crouch walk
+ *          else: stick x 14 / (|stick| x 14.8) (magnitude 0.946 whatever the push), FUN_00586c10, FUN_00582d10:
+ *            ONE set by the class (+0x120 forward, +0x150 back and +0x180 left played at -m, +0x1b0 right) at
+ *            weight 1, no blend -- 0.946 x 14.8 = 14.0 ahead, x 13.5 back, x 15 aside
+ *   PRONE  FUN_005845c0 -> FUN_00583500: no FUN_00586c10 at all; the class keeps one axis (1/3 forward, 0/2
+ *          lateral) and zeroes the other; the crawl (forward, reversed backward) or the prone strafe plays at that
+ *          axis's |value|, so the speed is max(|x|, |z|) x the band on the first tick
  *   ```
  *
- *   So the velocity is `m x max_velocity` of the stance's forward, back, right or left band (`READERC.ZAR/
- *   motion.rdr`, at `MetersPerUnit` 0.1: 65 forward, 37 back, research 25 section 0's (0, 0, -65) and (0, 0, +37)),
- *   blended by the stick's angle; the ramp is the stick's, not the speed's: 0 to full in 1 / 5 s, 90 % on tick 11
- *   (0.18 s), a release from full at once, from half at 2 a second. `fb_accel` / `lr_accel` (`DAT_0044c360/364`,
- *   `dynamics.rdr` 0.01) and `throt_exp` have no reader in the decompilation besides the static initialiser
- *   `FUN_00400870` and the loader: they do not shape the SEAL's walk. The clips' own blend-in (0.2 s) and the root
- *   motion's shape within a stride are not modelled: the speed is the band's at the stick's magnitude from the tick
- *   the stick has it. Research 18 section 3.13's 0.9 s "lead" and its average of 40 are the orbit camera trailing
- *   the actor on our recomp at 18.7 frames a second, not this ramp. [reading of the decompilation; W2.2c measures
- *   it on the console, W2.R7]
+ *   So the velocity is `m x max_velocity` of the clip the class or the blend picks (`READERC.ZAR/motion.rdr`, at
+ *   `MetersPerUnit` 0.1: 65 forward, 37 back, research 25 section 0's (0, 0, -65) and (0, 0, +37)); the ramp is the
+ *   stick's, not the speed's: 0 to full in 1 / 5 s, 90 % on tick 11 (0.18 s). `fb_accel` / `lr_accel`
+ *   (`DAT_0044c360/364`, `dynamics.rdr` 0.01) and `throt_exp` have no reader in the decompilation besides the
+ *   static initialiser `FUN_00400870` and the loader: they do not shape the SEAL's walk. Not modelled: the slope
+ *   and water slow-down `FUN_005b56c0` (`DAT_0044c358/35c`), the clips' own blend-in (0.2 s), and the root
+ *   motion's shape within a stride. One consequence is kept as read: `FUN_00582d10` calls `FUN_00583350`, whose
+ *   `DAT_0064fc80` then scales the crouch walk's single set, so a crouch diagonal runs 1 / sqrt(w^2 + (1 - w)^2)
+ *   faster along its class's axis (19.8 at 45 degrees). Research 18 section 3.13's 0.9 s "lead" and its average of
+ *   40 are the orbit camera trailing the actor on our recomp at 18.7 frames a second, not this ramp. [reading of
+ *   the decompilation; W2.2c measures it on the console, W2.R7]
  * - **Stances.** `C` cycles stand, crouch, prone (the game's d-pad; nothing on Ctrl -- `camera.ts` says why); each
- *   has its bands, its body column and its skeleton root height (`STANCE`).
+ *   has its bands, its body column and its skeleton root height (`STANCE`). `Walker.posture` is the body in use:
+ *   `stand` while a crouch runs at full stick.
  * - **The floor.** After each sub-step `probeGround` at the new (x, z) and `selectFloor` from the origin y + 5 with
  *   the feet at y (research 23 section 1.1-1.2, research 24 section 2). A floor up to `step_height` 6.5 over the
  *   feet is stepped onto, one steeper than `max_slope` 50 degrees is not climbed, and one higher than 6.5 is refused
  *   like a wall; one down to `ground_touch_distance` 8 under them is stepped down to (`READERC.ZAR/dynamics.rdr`,
  *   reCOM `zCharacter/char_dyn.cpp:17-20`; research 17 section 8's `+0x14..+0x1c`). No floor, and the step is refused.
- * - **The fall.** Further than 8 down, the mover is airborne: `vy -= gravity x dt` at `dynamics.rdr`'s 235 units a
- *   second squared (the file's number, raw, as the console's table at `0x44c250 +0x00` holds it; `FUN_0057e770`
- *   divides it by 98.1 -- 9.81 m/s^2 in units -- so the SEAL falls at 2.4 g), `y += vy x dt`, the horizontal
- *   velocity held as it left the edge (no air control: the stick-driven velocity with `FUN_00586c10` in
- *   `FUN_0057a330` runs only in the `Jump` state, `DAT_003deae8` = "Jump" at `0x661510`), until the probe's floor is
- *   met. A 42-unit drop (Frostfire's walkway deck, research 24 section 7 item 4) takes sqrt(2 x 42 / 235) = 0.60 s.
+ *   Known gap, for W2.2c: `selectFloor` takes the highest floor at or under y + 6, so a kerb between 6 and 6.5 over
+ *   the feet with a lower floor also under the line is passed over for the lower one -- the selection's behaviour,
+ *   inherited, not the step rule's.
+ * - **The fall.** Further than 8 down, the mover is airborne. `FUN_0059b440` integrates it: the fall speed
+ *   `actor+0x133c += g x dt`, then the height `actor+0x2e4 -= speed x dt` (as here: `vy -= g x dt`, `y += vy x dt`),
+ *   with `g` the table's `0x44c250 +0x00` -- the static default `0x42c43333` = 98.1 (1 g in units), overwritten
+ *   with `dynamics.rdr`'s 235 by the loader `FUN_0059ba80`, so units a second squared and the SEAL falls at 2.4 g.
+ *   `g x 0.8` applies only in the `Ladderslide` state (`DAT_003def50`, the string at `0x6620c8`), not a walk-off or
+ *   a landing: not modelled. The horizontal velocity is held as it left the edge (no air control: the stick-driven
+ *   velocity with `FUN_00586c10` in `FUN_0057a330` runs only in the `Jump` state, `DAT_003deae8` = "Jump" at
+ *   `0x661510`), until the probe's floor is met. A 42-unit drop (Frostfire's decks, research 24 section 7 item 4)
+ *   takes sqrt(2 x 42 / 235) = 0.60 s.
  * - **The walls.** Research 24 section 2 step 3: a polygon with bit 1 set, bit 18 clear and `|n_y| < 0.7`, met by
  *   the body's column (y + 6 to y + 20 standing) at radius 3.5 (W1.R2); the mover is pushed out along the wall
  *   until it is 3.5 from it, and keeps the part of its step that runs along it. The game's movement collision is
  *   not decompiled -- that walls stop the mover is research 24's inference from the 3c trails, which stand off wall
  *   planes at 4.4-5.8 (section 4.1).
  * - **The eye.** 15.4 over the feet (W1.R2): the console's look-at target, 15.38 over the actor at rest (research
- *   17 section 1). A first-person eye at every stance; the game's camera over `rootY(stance)` is W2.1's.
+ *   17 section 1). A first-person eye at every stance; the game's camera over `rootY(posture)` is W2.1's.
  * - **No jump.** `Space` is not bound in walk mode: the game's jump is a clip (`seal_jump`, `seal_runningjump_launch`
  *   in `motion.rdr`) whose rise is root motion, not a formula of `jump_factor` -- `jump_factor x gravity x -0.4`
  *   (`FUN_0057e1b0`, `FUN_005880e0`) seeds `actor+0x1364`, the landing-speed record the fall damage reads
@@ -107,16 +132,20 @@ function band(clip: string): number {
  * The stances. The bands are `motion.rdr`'s (W2.R2); the actor's per-stance speed table at `actor+0x528` is read
  * by stance `actor+0x174` in `FUN_0058bb50` (lateral) and `FUN_0058bc00` (forward/back).
  *
- * - **Stand.** `seal_run` 65, `seal_run_bw` 37, `seal_rstrafe` / `seal_lstrafe` 65. Root 5.504, measured on the
- *   console (research 17 section 1). Column 6-20 (research 24 section 2 step 3).
- * - **Crouch.** `seal_crouchwalk` 14.8, `_bw` 13.5, `seal_crouchstrafe_right_fast` / `_left` 15. Root **3.4**
- *   [estimate, W2.2c measures]: a squat keeps about 0.62 of the standing hip height, 5.504 x 0.62 = 3.41, which sits
- *   inside `FUN_0029a950`'s camera ramp (2.169 at its floor, 5.6 at its top) -- the ramp exists to carry the camera
- *   between the stances, so the crouch's root is expected inside it. Column 6-14 [estimate]: the standing top 20
- *   x 0.7, the height a crouch keeps; it stays over `min_stand_height` 10 (`dynamics.rdr`, x10), which reads as the
- *   clearance a standing SEAL needs (`char_dyn.cpp:421-422` names it, nothing here reads it).
+ * - **Stand.** `seal_run` 65, `seal_run_bw` 37, `seal_rstrafe` / `seal_lstrafe` 65. Root **11.484**, measured:
+ *   `skel_root` of the five standing actors in the console dump `logs/parity/spawn_pcsx2.rdram` (32 node pointers at
+ *   `+0x64`, the CZBodyPart layout, the W2.3 decode). With it `FUN_0029a950`'s ramp is at its top (fVar9 = 10), a
+ *   standing look-at target 21.48 over the feet, which is where `dynamics.rdr`'s `cam_*_aim` y 20.5 sits. Column
+ *   6-20 (research 24 section 2 step 3).
+ * - **Crouch.** `seal_crouchwalk` 14.8, `_bw` 13.5, `seal_crouchstrafe_right_fast` / `_left` 15. Root **5.504**,
+ *   measured: the player at spawn in the same dump is crouched -- its root is under the game's own stance test
+ *   `node[0].y < 9.0` (`FUN_00584c60`, research 17 section 8) and its right knee is on the ground at 0.54. Research
+ *   17 section 1 called 5.504 "standing idle"; the dump's reading contradicts it (under review: W2.1 and W2.2c settle
+ *   it). Column 6-14 [estimate]: the standing top 20 x 0.7, the height a crouch keeps; it stays over
+ *   `min_stand_height` 10 (`dynamics.rdr`, x10), which reads as the clearance a standing SEAL needs
+ *   (`char_dyn.cpp:421-422` names it, nothing here reads it).
  * - **Prone.** `seal_prone_crawl` 11 each way (`motion.rdr` has no backward crawl with a positive `max_velocity`;
- *   `FUN_00582d10`'s backward classes play their set at `-m`, the crawl reversed), `seal_prone_rstrafe` /
+ *   `FUN_00583500` plays the crawl at `-|forward|` backing up, the clip reversed), `seal_prone_rstrafe` /
  *   `_lstrafe` 5.5. Root **1.8** [estimate, W2.2c measures]: under the ramp's floor 2.169155, where the camera
  *   stops lowering -- the lowest stance is the one the floor was cut for -- and about a body's half-thickness,
  *   0.18 m, over the ground. Column 6-9 [estimate]: a body lying down is about 0.9 m high with the head and rifle
@@ -125,11 +154,11 @@ function band(clip: string): number {
 export const STANCE: Readonly<Record<Stance, StanceBody>> = {
   stand: {
     bands: { forward: band('seal_run'), back: band('seal_run_bw'), right: band('seal_rstrafe'), left: band('seal_lstrafe') },
-    rootY: 5.504, bodyLow: 6, bodyHigh: 20,
+    rootY: 11.484, bodyLow: 6, bodyHigh: 20,
   },
   crouch: {
     bands: { forward: band('seal_crouchwalk'), back: band('seal_crouchwalk_bw'), right: band('seal_crouchstrafe_right_fast'), left: band('seal_crouchstrafe_left') },
-    rootY: 3.4, bodyLow: 6, bodyHigh: 14,
+    rootY: 5.504, bodyLow: 6, bodyHigh: 14,
   },
   prone: {
     bands: { forward: band('seal_prone_crawl'), back: band('seal_prone_crawl'), right: band('seal_prone_rstrafe'), left: band('seal_prone_lstrafe') },
@@ -182,10 +211,56 @@ export function locomotion(forward: number, right: number, bands: Bands): { forw
   const m = Math.min(1, length);
   const w = Math.min(1, Math.max(0, Math.asin(Math.min(1, Math.abs(right) / length)) * (2 / Math.PI)));
   const norm = 1 / Math.hypot(w, 1 - w);
-  const along = f === 0 ? 0 : Math.sign(f) * (1 - w) * m * (f > 0 ? bands.forward : bands.back) * norm;
-  const across = right === 0 ? 0 : Math.sign(right) * w * m * (right > 0 ? bands.right : bands.left) * norm;
+  const along = f === 0 || w >= 1 ? 0 : Math.sign(f) * (1 - w) * m * (f > 0 ? bands.forward : bands.back) * norm;
+  const across = Math.abs(right) <= FORWARD_DEAD || w <= 0 ? 0 : Math.sign(right) * w * m * (right > 0 ? bands.right : bands.left) * norm;
   return { forward: along, right: across };
 }
+
+/** `FUN_005858a0`'s direction classes (`actor+0x1338`): 0 right, 1 forward, 2 left, 3 back; -1 at rest. */
+export type MoveClass = -1 | 0 | 1 | 2 | 3;
+/** Where one axis counts as dominant in `FUN_005858a0`: `|a / b| > 0.839`. */
+const DOMINANT = 0.839;
+
+/**
+ * `FUN_005858a0`: the direction class of a (lateral, forward) stick, `prev` the last one. A dominant axis names it;
+ * in the diagonal band between, the quadrant and the last class do, so a stick swept across a diagonal holds its
+ * class until the other axis dominates.
+ */
+export function moveClass(right: number, forward: number, prev: MoveClass): MoveClass {
+  if (right === 0 && forward === 0) return -1;
+  if (forward !== 0 && Math.abs(right / forward) <= DOMINANT) return forward > 0 ? 1 : 3;
+  if (right !== 0 && Math.abs(forward / right) <= DOMINANT) return right > 0 ? 0 : 2;
+  if (right > 0 && forward > 0) return prev === 3 || prev === 0 ? 0 : 1;
+  if (right < 0 && forward > 0) return prev === 3 || prev === 2 ? 2 : 1;
+  if (right < 0 && forward < 0) return prev === 2 || prev === 1 ? 2 : 3;
+  return prev === 1 || prev === 0 ? 0 : 3;
+}
+
+/** A class's axis as (forward, right) unit components, and its band in a stance. */
+function classAxis(c: MoveClass, bands: Bands): { f: number; r: number; band: number } {
+  switch (c) {
+    case 0: return { f: 0, r: 1, band: bands.right };
+    case 1: return { f: 1, r: 0, band: bands.forward };
+    case 2: return { f: 0, r: -1, band: bands.left };
+    case 3: return { f: -1, r: 0, band: bands.back };
+    default: return { f: 0, r: 0, band: 0 };
+  }
+}
+
+/** `FUN_00586f00`: a stick within 0.03 of rest (`DAT_003f3428`) is idle; no locomotion runs. */
+function idle(forward: number, right: number): boolean {
+  return Math.abs(right) <= FORWARD_DEAD && Math.abs(forward) <= FORWARD_DEAD;
+}
+
+/** `FUN_00584c60`: the crouch runs from this stick magnitude: 12.4 / 14.8 (`153.76 <= |s|^2 x 219.04`). */
+const CROUCH_RUN = 12.4 / 14.8;
+/** `FUN_00584c60`'s crouch-walk rescale: the stick to 14 / 14.8 of a push, 14.0 a second in `seal_crouchwalk`. */
+const CROUCH_WALK = 14 / 14.8;
+/**
+ * `FUN_0057efe0(actor, 0)`'s headroom ray: from a skeleton node (`actor+0x304`) + 2 up to the feet + 19. The node's
+ * height is not in hand; the ray is taken from the crouch column's top, 14 [estimate, W2.2c measures].
+ */
+const HEADROOM_FROM = 14, HEADROOM_TO = 19;
 /** Ticks one `advance` may run: a stalled tab catches up this far and drops the rest (the page caps dt at 0.1 s). */
 const MAX_TICKS = 30;
 /** How many times the walls are revisited in one step, for a corner where one push leads into the next wall. */
@@ -332,10 +407,28 @@ function nearest(xz: number[], x: number, z: number): { x: number; z: number; d:
  */
 export class Walker {
   readonly state: WalkState = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, vy: 0, stickForward: 0, stickRight: 0 };
-  /** The stance the mover's bands and body column are taken from (`STANCE`). */
-  stance: Stance = 'stand';
+  private stance_: Stance = 'stand';
   /** Off the ground, falling (`fall`). */
   private inAir = false;
+  /** `FUN_005858a0`'s direction class, kept for its hysteresis. */
+  private cls: MoveClass = -1;
+  /** The body in use: the stance, but `stand` while a crouch runs at full stick. */
+  private posture_: Stance = 'stand';
+
+  /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
+  get stance(): Stance {
+    return this.stance_;
+  }
+
+  set stance(stance: Stance) {
+    this.stance_ = stance;
+    this.posture_ = stance;
+  }
+
+  /** The body in use (`STANCE[posture]` gives its root and column): `stand` while a crouch runs at full stick. */
+  get posture(): Stance {
+    return this.posture_;
+  }
   /** The feet before the last tick, for drawing the eye between ticks. */
   private prev = { x: 0, y: 0, z: 0 };
   /** Real time not yet stepped, in seconds, under one tick. */
@@ -407,15 +500,81 @@ export class Walker {
     let forward = input.forward, right = input.right;
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
-    s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
-    s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
-    const v = locomotion(s.stickForward, s.stickRight, STANCE[this.stance].bands);
+    const v = this.locomote(forward, right, dt);
     const yaw = (s.yaw * Math.PI) / 180;
     // The camera looks down its own -z (`camera.ts`): forward is (-sin, -cos), right is (cos, -sin).
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
     s.vx = fx * v.forward + rx * v.right;
     s.vz = fz * v.forward + rz * v.right;
     this.move(s.vx * dt, s.vz * dt);
+  }
+
+  /**
+   * The ground state `FUN_005870e0` runs for the stance (the header's pseudo-code): the stick ramped or not, the
+   * direction class, and the velocity (forward, right) in units a second. Sets `posture`.
+   */
+  private locomote(forward: number, right: number, dt: number): { forward: number; right: number } {
+    const s = this.state;
+    const still = { forward: 0, right: 0 };
+    if (idle(forward, right)) {                                  // FUN_00586f00: at rest, the raw stick is kept
+      s.stickForward = forward; s.stickRight = right;
+      this.cls = -1;
+      this.posture_ = this.stance;
+      return still;
+    }
+    if (this.stance === 'prone') {                               // FUN_005845c0 -> FUN_00583500: no ramp
+      s.stickForward = forward; s.stickRight = right;
+      this.cls = moveClass(right, forward, this.cls);
+      this.posture_ = 'prone';
+      const a = classAxis(this.cls, STANCE.prone.bands);
+      const speed = (a.f !== 0 ? Math.abs(forward) : Math.abs(right)) * a.band;
+      return { forward: a.f * speed, right: a.r * speed };
+    }
+    if (this.stance === 'crouch') {                              // FUN_00584c60
+      this.cls = moveClass(right, forward, this.cls);
+      const push = Math.hypot(forward, right);
+      const run = push >= CROUCH_RUN && (STANCE[this.posture_].rootY >= 9 || this.headroom());
+      if (!run) {
+        const k = CROUCH_WALK / push;
+        s.stickForward = throttleStep(s.stickForward, forward * k, 'forward', dt);
+        s.stickRight = throttleStep(s.stickRight, right * k, 'right', dt);
+        this.posture_ = 'crouch';
+        // FUN_00582d10: one set by the class at m, no blend; FUN_00583350's DAT_0064fc80 scales it all the same.
+        const f = Math.abs(s.stickForward) <= FORWARD_DEAD ? 0 : s.stickForward;
+        const len = Math.hypot(f, s.stickRight);
+        if (len === 0) return still;
+        const m = Math.min(1, len);
+        const w = Math.min(1, Math.asin(Math.min(1, Math.abs(s.stickRight) / len)) * (2 / Math.PI));
+        const a = classAxis(this.cls, STANCE.crouch.bands);
+        const speed = (m * a.band) / Math.hypot(w, 1 - w);
+        return { forward: a.f * speed, right: a.r * speed };
+      }
+      this.posture_ = 'stand';                                  // headroom: stands and runs the standing blend
+    } else {
+      this.posture_ = 'stand';
+    }
+    s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
+    s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
+    return locomotion(s.stickForward, s.stickRight, STANCE.stand.bands);   // FUN_00583030
+  }
+
+  /**
+   * `FUN_0057efe0(actor, 0)`: clear when no collision polygon (bit 18 aside) crosses the vertical line over the feet
+   * between `HEADROOM_FROM` and 19 over them.
+   */
+  private headroom(): boolean {
+    const s = this.state;
+    const lo = s.y + HEADROOM_FROM, hi = s.y + HEADROOM_TO;
+    for (const atom of cellAt(this.grid, s.x, s.z).atoms) {
+      if (atom.object.kind !== 'collision') continue;
+      for (const poly of atom.object.polys) {
+        if ((surfaceWord(poly) & SURFACE_SKIP) !== 0) continue;
+        if (footprintDistance(poly.points, s.x, s.z) > 0) continue;
+        const y = planeHeightAt(poly.points, s.x, s.z);
+        if (y !== null && y > lo && y <= hi) return false;
+      }
+    }
+    return true;
   }
 
   /** The horizontal move of a tick in sub-steps of at most `MAX_SUBSTEP`: on the ground, or in the air past an edge. */
@@ -491,7 +650,7 @@ export class Walker {
    */
   private slide(x: number, z: number, fromX: number, fromZ: number): [number, number] {
     const s = this.state;
-    const body = STANCE[this.stance];
+    const body = STANCE[this.posture_];
     const lo = s.y + body.bodyLow, hi = s.y + body.bodyHigh, r = BODY_RADIUS;
     const walls = this.wallsNear(x, z);
     for (let pass = 0; pass < WALL_PASSES; pass++) {

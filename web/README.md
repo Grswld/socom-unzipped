@@ -131,9 +131,12 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 | `C` (walking) | cycles stand, crouch and prone; on a touch screen, the **C** button beside the lift buttons |
 
-**Walking speeds are the game's own** (`READERC.ZAR/motion.rdr`, web sprint 2 W2.R2): 65 units a second at a full
-stick (6.5 m/s), 37 backing up, 65 strafing; 14.8 / 13.5 / 15 crouched; 11 / 5.5 prone; a half stick is half the
-speed, and the stick reaches full in a fifth of a second (`FUN_00586c10`). There is no boost on the ground. A kerb
+**Walking speeds are the game's own** (`READERC.ZAR/motion.rdr`, web sprint 2 W2.R2): standing, 65 units a second
+at a full stick (6.5 m/s), 37 backing up, 65 strafing, a half stick half the speed, the stick reaching full in a
+fifth of a second (`FUN_00586c10`); let go, it stops at once. Crouched, the walk is 14.0 ahead (12.8 back, 14.2
+aside) however far the stick is pushed, and a full push stands up and runs where there are 19 units of headroom
+(`FUN_00584c60`). Prone, the crawl is 11 and the side crawl 5.5 times the stick along one axis, with no ramp
+(`FUN_00583500`). There is no boost on the ground. A kerb
 up to 6.5 units is stepped onto and a higher one stops you, a slope over 50 degrees is not climbed, and a drop of
 more than 8 is a fall under the game's gravity of 235 units a second squared (`dynamics.rdr`). `Space` does not
 jump: the game's jump is an animation's root motion, not yet read.
@@ -303,7 +306,7 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   `ComputeFacadeMatrix` being a stub.
 - **The walk is the decompilation's reading, not yet measured.** The speeds, the stick's ramp and the fall are
   the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement is web
-  sprint 2's W2.2c, and the crouch and prone root heights and body columns are estimates until it runs. There is
+  sprint 2's W2.2c, and the prone root height and the crouch and prone body columns are estimates until it runs. There is
   no jump. The record's layer mask is probed
   as all layers (the literal reading contradicts research 24's own walk); and the slot outlines are drawn
   without a depth test because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more
