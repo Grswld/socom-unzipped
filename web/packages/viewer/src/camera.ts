@@ -125,6 +125,9 @@ export class FlyCamera {
   private lift = 0;
   /** The stick held at its rim: the phone's boost gesture (`./touch`). */
   private stickBoost = false;
+  /** A pad's right stick (`./gamepad`, W2.7), -1..1: x turns right, y looks up, at the arrow keys' rate scaled. */
+  private lookX = 0;
+  private lookY = 0;
   private readonly keys = new Set<string>();
   private dragging: number | null = null;
   private lastX = 0;
@@ -281,9 +284,12 @@ export class FlyCamera {
   update(dt: number): void {
     if (dt <= 0) return;
 
-    // The arrow keys turn at a steady rate; a frame's worth here, before the frame's forward is taken.
-    const turn = (this.keys.has('arrowleft') ? 1 : 0) - (this.keys.has('arrowright') ? 1 : 0);
-    const tilt = (this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('arrowdown') ? 1 : 0);
+    // The arrow keys turn at a steady rate; a frame's worth here, before the frame's forward is taken. A pad's right
+    // stick (W2.7) turns at the same rate scaled by its push, and on each axis the larger of the two is taken.
+    const arrowTurn = (this.keys.has('arrowleft') ? 1 : 0) - (this.keys.has('arrowright') ? 1 : 0);
+    const arrowTilt = (this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('arrowdown') ? 1 : 0);
+    const turn = Math.abs(this.lookX) > Math.abs(arrowTurn) ? -this.lookX : arrowTurn;
+    const tilt = Math.abs(this.lookY) > Math.abs(arrowTilt) ? this.lookY : arrowTilt;
     if (turn !== 0 || tilt !== 0) {
       this.yaw += turn * ARROW_LOOK * dt;
       this.pitch = MathUtils.clamp(this.pitch + tilt * ARROW_LOOK * dt, -PITCH_LIMIT, PITCH_LIMIT);
@@ -361,6 +367,15 @@ export class FlyCamera {
   /** The stick held at its rim: boosts while the stick is pushed, the way a double-tapped W does. */
   setStickBoost(on: boolean): void {
     this.stickBoost = on;
+  }
+
+  /**
+   * A pad's right stick (`./gamepad`, W2.7): x right, y up, in the unit disc. It turns the view at the arrow keys'
+   * `ARROW_LOOK` scaled by the push, in walk mode as in fly, and moves nothing.
+   */
+  setLook(x: number, y: number): void {
+    this.lookX = x;
+    this.lookY = y;
   }
 
   /** Double-tapped forward, still held. Released, the sprint ends. */

@@ -1,5 +1,6 @@
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
+import type { Input } from './gamepad';
 import type { Backend } from './renderer';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
@@ -47,6 +48,11 @@ export interface ViewerHook {
   walkFor(seconds: number, input?: { forward?: number; right?: number }): Pose;
   /** Walk mode: the mover's feet, or null in fly mode. */
   feet(): [number, number, number] | null;
+  /**
+   * The controller (W2.7, `./gamepad`): the connected pad's id, or null, and what the camera and the mover were fed
+   * on the last frame -- the pad's input merged with the touch stick's (`e2e/pad.spec.ts`).
+   */
+  pad(): { id: string | null; input: Input };
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
