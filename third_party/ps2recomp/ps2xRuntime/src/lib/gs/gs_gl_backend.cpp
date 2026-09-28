@@ -1943,6 +1943,9 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             std::fprintf(stderr, "%s\n", GsGlUploadTrace::formatSubmit(g_uploadTrace, elapsed).c_str());
             GsGlUploadTrace::reset(g_uploadTrace);
         }
+        // Sprint 17 F0: the present intervals of this stats interval, then a fresh histogram.
+        std::fprintf(stderr, "[gs-gl stats] %s\n", m_frameHist.line().c_str());
+        m_frameHist.reset();
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
         s_bytes = 0;
     }
@@ -3189,6 +3192,15 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
         }
     }
     ++m_frameCounter;
+    // Sprint 17 F0: the interval since the previous present, into the histogram the stats block
+    // prints. Counted whatever the knob (a clock read and a few adds a frame); only the print is gated.
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (m_lastPresentSet)
+            m_frameHist.add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_lastPresent).count()));
+        m_lastPresent = now;
+        m_lastPresentSet = true;
+    }
     // PS2X_GS_TRACE_PRESENT=<skip>: after <skip> presents, print 30 presents with the copy's
     // centre pixel (rgba) and the GL error state, to tell a black copy from a black draw.
     {

@@ -3,6 +3,7 @@
 #include "runtime/gs/gs_backend.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_upload_reasons.h"
+#include "runtime/gs/gs_frame_histogram.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_stall_coalescer.h"
@@ -10,6 +11,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
@@ -354,6 +356,11 @@ private:
     std::array<uint64_t, 512> m_shadowPageGeneration{};
     uint64_t m_generation = 1;
     uint64_t m_frameCounter = 0;
+    // Sprint 17 F0: the present-interval histogram (render thread only). executePresent stamps each
+    // present and adds the interval since the last; the [gs-gl stats] block prints and resets it.
+    GsFrameHistogram m_frameHist;
+    std::chrono::steady_clock::time_point m_lastPresent{};
+    bool m_lastPresentSet = false;
     uint64_t m_movieStartFrame = 0;   // first 16x16 movie block upload seen (trace windows are relative to it)
     uint64_t m_seamFrame = 0;         // first decode where page columns 0 and 6 of the movie frame start on different rows
     long traceSkip(const char *env) const;
