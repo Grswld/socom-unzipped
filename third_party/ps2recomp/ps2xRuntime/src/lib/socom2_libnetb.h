@@ -16,6 +16,7 @@
 //                                            Kept as an opt-out so the fix can be A/B'd on one
 //                                            binary without a rebuild.
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
