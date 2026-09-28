@@ -27,7 +27,7 @@ const map = (): LoadedMap => ({
   props: [prop('railhi', HIGH), prop('raillo', LOW)],
   textures: { 'rail.tif': { data: new Uint8ClampedArray(16).fill(255), width: 2, height: 2 } },
   textureFlags: { 'rail.tif': { bilinear: true, transparent: false, graded: false, opaque: true, gs: null } },
-  metersPerUnit: 0.1, lightRig: null, origin: [0, 0, 0],
+  metersPerUnit: 0.1, lightRig: null, origin: [0, 0, 0], detail: {},
   collision: { positions: new Float32Array(0), colors: new Uint8Array(0), polygons: 0 },
   diagnostics: [], loadMs: 0, timings: { fetch: 0, decode: 0, postedAt: 0 },
 } as LoadedMap);
