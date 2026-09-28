@@ -12,3 +12,5 @@ export * from './grid';
 export * from './probe';
 export * from './motion';
 export * from './zanim';
+export * from './skeleton';
+export * from './character';

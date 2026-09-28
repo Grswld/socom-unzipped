@@ -5,7 +5,8 @@ import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'fog', 'blendgraded', 'engineorder', 'shadows', 'alternate', 'detail', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
+  'fog', 'blendgraded', 'engineorder', 'shadows', 'alternate', 'detail', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look',
+  'body'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -56,6 +57,7 @@ export class Ui {
     billboards: find('billboards'),
     rigeverywhere: find('rigeverywhere'),
     ps2look: find('ps2look'),
+    body: find('player-body'),                        // W2.1: the player's SEAL at slot A, in its bind pose (`./bodyView`)
   };
 
   /**

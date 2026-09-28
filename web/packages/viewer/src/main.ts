@@ -16,6 +16,7 @@ import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { openingStand } from './stand';
+import { buildBody, type BodyView } from './bodyView';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -53,6 +54,8 @@ const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'modu
 
 let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
+/** W2.1: the player's body, rebuilt with every map; shown by the panel's `body` switch (`./bodyView`). */
+let body: BodyView | null = null;
 let backend: Backend = 'webgl2';
 /** The maps the index listed, so a path can be turned back into its archive for the URL. */
 let mapList: MapInfo[] = [];
@@ -236,6 +239,7 @@ function applySlider(name: SliderName, value: number): void {
   else if (name === 'fognear') { if (fogIsMine) { fog.near = value; refreshFog(); } return; }
   else if (name === 'fogfar') { if (fogIsMine) { fog.far = value; refreshFog(); } return; }
   view?.setLighting(lighting);
+  body?.setLighting(lighting);
 }
 
 function applyToggle(name: ToggleName, on: boolean): void {
@@ -253,6 +257,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else if (name === 'rigeverywhere') { lighting.rigEverywhere = on; view?.setLighting(lighting); }
+  else if (name === 'body') body?.setVisible(on);
   else if (name === 'ps2look') {
     presentation = on ? 'ps2' : 'native';
     document.body.classList.toggle('ps2-look', on);
@@ -429,6 +434,10 @@ function show(map: LoadedMap): void {
   // `AIMAPS.MPS` (W1.5b). Which slot a player gets is game logic, so the stand is not moved to one (W1.R9).
   const spawn: Spawns | undefined = spawnsFor(map.name);
   overlays.placeSpawns(spawn ?? null, map.slots);
+  // W2.1: the player's body, in its bind pose at slot A (`./body`, `./bodyView`); the switch below shows it.
+  if (body) { scene.remove(body.group); body.dispose(); }
+  body = map.body ? buildBody(map.body, map, lighting) : null;
+  if (body) scene.add(body.group);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -533,6 +542,7 @@ window.__viewer = {
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
     stand: loaded?.stand ?? null,
     slots: overlays.slotCounts(),
+    body: body ? { ...body.stats, visible: body.group.visible } : null,
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
