@@ -110,6 +110,14 @@
         <div class="row">
           <label class="s2u-check" title="The detail texture the game lays over its ground and walls close up: each texture whose mp&lt;N&gt;_lib.rdr entry names a detail texture gets a second pass over the same surface, the detail repeated uv times as often, blended as the entry's bmode says and fading out over its range from the camera."><input type="checkbox" id="detail" checked /> <span>detail pass</span></label>
         </div>
+        <!--
+          W2.1: the player's body -- the map's SEAL (seal_A_scuba on Frostfire) decoded from its character library and
+          dressed as the game's character.rdr dresses it, stood in its bind pose at spawn slot A. Off by default; the
+          play mode switches it (web sprint 2).
+        -->
+        <div class="row" id="body-row">
+          <label class="s2u-check" title="The player's SEAL, decoded from the map's character library (CLIB_MDL, CLIB_GEO) with the gear READERC.ZAR's character.rdr hangs on it, standing in its bind pose at spawn slot A, facing the slot's facing, feet on its floor."><input type="checkbox" id="player-body" /> <span>player body (bind pose, slot A)</span></label>
+        </div>
         <div class="row">
           <label class="s2u-check" title="Draw in the engine's order: the map's grid walked cell ring by cell ring outward from the camera's cell, the drop shadows in a pass after the last ring, and depth written under every blend as the console did. Recomputed when the camera crosses into another cell. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="engineorder" /> <span>engine draw order</span></label>
         </div>

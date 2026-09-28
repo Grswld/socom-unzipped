@@ -837,7 +837,7 @@ function geometryOf(
   return geometry;
 }
 
-function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
+export function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
   const texture = new DataTexture(new Uint8Array(rgba.data.buffer, rgba.data.byteOffset, rgba.data.length), rgba.width, rgba.height, RGBAFormat);
   texture.flipY = FLIP_Y;
   // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on

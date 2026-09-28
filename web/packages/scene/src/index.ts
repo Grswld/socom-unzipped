@@ -10,3 +10,5 @@ export * from './spawns';
 export * from './lod';
 export * from './grid';
 export * from './probe';
+export * from './skeleton';
+export * from './character';

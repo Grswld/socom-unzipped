@@ -2,6 +2,7 @@ import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
 import type { Stand } from './stand';
+import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 
 /**
@@ -29,6 +30,11 @@ export interface ViewerHook {
     slots: { a: number; b: number };
     /** Where the map on screen was read from: the served tree, or the player's own disc image (W1.7). */
     source: 'http' | 'iso';
+    /**
+     * The player's body (W2.1, `./bodyView`): its model, counts, gear, height and eye line, where it stands, and
+     * whether it is shown; null on a map whose body did not decode.
+     */
+    body: (BodyView['stats'] & { visible: boolean }) | null;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;

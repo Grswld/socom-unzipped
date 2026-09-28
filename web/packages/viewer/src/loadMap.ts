@@ -17,6 +17,7 @@ import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './walk';
 import { openingStand, type Stand } from './stand';
+import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -131,6 +132,12 @@ export interface LoadedMap {
    * or over A's recorded y where the probe finds none. Absent when the map has no measured spawns.
    */
   stand?: Stand;
+  /**
+   * The player's body (W2.1, `./body`): the map's player character out of `CLIB_MDL`/`CLIB_GEO`, in the gear
+   * `READERC.ZAR/character.rdr` hangs on it out of `FLIB_MDL`, in its bind pose at slot A (web/docs/research/78).
+   * Null, with a diagnostic, when it will not decode; absent on a map built by hand.
+   */
+  body?: LoadedBody | null;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -269,13 +276,17 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     });
   }
 
+  // W2.1: the player's body, decoded here so its textures join the ones decoded below (`./body`).
+  const body = loadBody(bytes, toc, await characterTableFor(source, path), (line) => notes.add(line));
+
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   const drawn = [...parts, ...props.flatMap((p) => p.parts)]
-    .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)));
+    .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
+    .concat(body ? bodyTextureNames(body) : []);
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
   const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
   const texlib = textureLibrary(bytes, toc, stem, notes);
@@ -358,6 +369,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // and the spawn slots -- so the page's thread does not pay for it; the walk builds its own when first asked.
   const probe = placement.ground ? groundGrid(placement.ground) : undefined;
   const measured = spawnsFor(name);
+  const slots = spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe);
   return {
     archive: stem,
     lines: segments.result(),
@@ -374,7 +386,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
     collision: placement.collision,
-    slots: spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe),
+    slots,
+    body: body && placeBody(body, slots),
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     diagnostics: notes.lines,
@@ -396,6 +409,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   if (map.ground) out.push(map.ground.points.buffer, map.ground.fields.buffer);
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
+  if (map.body) out.push(...bodyTransferables(map.body));
   return out;
 }
 
