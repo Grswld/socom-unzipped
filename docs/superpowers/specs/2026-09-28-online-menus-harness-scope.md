@@ -64,8 +64,8 @@ machine only. The launcher says the same sentence (`tools_py/tests/test_launcher
 
 ## When it runs and how
 
-**The gate is "when we need them"**, the owner's word: before a play test that will exercise the online menus (a
-`docs/PLAYTEST.md` sitting, `docs/HUMAN_TASKS.md` O8), after a change to the online path (`online_login_ours.py`'s
+**The gate is "when we need them"**, the owner's word: before a PLAYTEST sitting that exercises the online menus
+(`docs/PLAYTEST.md` steps 11-13), after a change to the online path (`online_login_ours.py`'s
 stages, the chat or voice wraps in the runtime, `lgaud`, the server's config or handlers), when an issue's bar names a
 row (#26 names the chat row; #94's bar, `docs/BACKLOG.md:30`, needs the MESSAGES, BRIEFING ROOM, AUTOPLAY and CLAN pages
 driven against the console), and at a sprint close whose plan names rows. Never per commit, never in the gate chain.
