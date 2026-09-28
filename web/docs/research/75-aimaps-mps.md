@@ -17,9 +17,10 @@ short hex excerpts quoted here.
   clear are **24 slots a side** (25 for side 0 on Blood Lake and Vigilance), each a cell with a side bit and one
   of eight facings. **All 44 measured positions are explained by a slot of their own side**: the 4 positions
   of `KNOWN.md` §1 (Frostfire, Vigilance) sit at a slot's centre, 0.26-0.51 units off; the 40 of the 2026-09-17
-  sweep sit 20.1-28.0 units *ahead* of a slot along its facing and 1.0-3.2 units to one side of that line, the
-  same side every time. The other side's nearest slot is 824.6 units away or more, for every position. A is
-  side 0 and B side 1 on all 22 maps.
+  sweep sit 20.1-28.0 units *behind* a slot along its facing and 1.0-3.2 units to one side of that line, the
+  same side every time -- they are the orbit camera behind an actor on the slot, not the actor (corrected
+  2026-09-28: this said *ahead*, with the facing turned 180 degrees; §11). The other side's nearest slot is
+  824.6 units away or more, for every position. A is side 0 and B side 1 on all 22 maps.
 - **So W1.R4's condition, as written, is not met, and `spawns.ts` stays the source** (§9 says what a ruling would
   need to change that). What stopped the check is the premise, not the decode: the regions the ruling names
   are cells, and the list that does match says where a side *may* start, not which slot a player *got*.
@@ -192,70 +193,75 @@ origin, so the cells are the same places). The reader takes the trailer's list a
 ## 7. The 44 measured spawns against the file (W1.R4)
 
 `tools/aimaps-spawns.ts`, all 22 maps. *PlayerStart*: the start point's cell and whether the position is in it.
-*Slot*: of the position's side's slots with `along` in [-1, 30], the one with the least `|perp|`, where `along`
+*Slot*: of the position's side's slots with `along` in [-30, 1], the one with the least `|perp|`, where `along`
 and `perp` are the position's offset from the slot's centre along and across its facing
-(`perp = dz * ux - dx * uz`); *other* is the nearest slot of the other side.
+(`perp = dz * ux - dx * uz`); *other* is the nearest slot of the other side. (Corrected 2026-09-28, §11: the
+window was [-1, 30] and every `along` and `perp` below had the other sign, under the facing turned 180 degrees;
+the slot each row fits is the same.)
 
 | map | side | measured (x, y, z) | PlayerStart cell | in? | slot | flags | along | perp | dist | other |
 |---|---|---|---|---|---|---|---|---|---|---|
-| MP1 BLIZZARD | A 0 | 2562, 272, 3113 | 0:(145,150) | no | 0:(215,217) | 0x00 | 24.2 | -1.1 | 24.2 | 1815.5 |
-| | B 1 | 1789, 75, 1385 | | no | 0:(138,49) | 0x24 | 23.8 | -1.9 | 23.9 | 1819.8 |
-| MP2 FROSTFIRE | A 0 | 796, 100, 614 | 0:(44,35) | no | 0:(74,31) | 0x04 | -0.4 | 0.3 | **0.5** | 586.7 |
-| | B 1 | 536, 143, 1254 | | no | 0:(48,95) | 0x22 | -0.3 | -0.4 | **0.5** | 589.0 |
-| MP5 ABANDONED | A 0 | 1172, 82, 2260 | 0:(44,98) | no | 0:(84,191) | 0x00 | 23.9 | -2.2 | 24.0 | 1435.7 |
-| | B 1 | 927, 168, 622 | | no | 0:(60,32) | 0x24 | 24.1 | -2.8 | 24.3 | 1331.2 |
-| MP6 DESERT GLORY | A 0 | 837, -5, 1901 | 0:(69,75) | no | 0:(15,77) | 0x02 | 23.3 | -1.3 | 23.3 | 952.0 |
-| | B 1 | 1865, 66, 1221 | | no | 0:(114,11) | 0x25 | 23.7 | -2.8 | 23.8 | 917.7 |
-| MP7 NIGHT STALKER | A 0 | 648, 124, 1675 | 0:(186,61) | no | 0:(13,57) | 0x03 | 23.3 | -2.2 | 23.4 | 1543.1 |
-| | B 1 | 2310, 163, 1458 | | no | 0:(175,34) | 0x26 | 24.0 | -2.0 | 24.1 | 1304.3 |
-| MP8 RAT'S NEST | A 0 | 1601, 166, 905 | 1:(48,123) | no | 1:(158,86) | 0x05 | 24.3 | -2.9 | 24.5 | 1262.6 |
-| | B 1 | 188, 165, 948 | | no | 1:(18,86) | 0x20 | 23.8 | -2.2 | 23.9 | 1392.5 |
-| MP9 BITTER JUNGLE | A 0 | 1065, 30, 1253 | 0:(62,75) | no | 0:(39,69) | 0x00 | 23.3 | -1.3 | 23.4 | 1533.5 |
-| | B 1 | 2749, 31, 911 | | no | 0:(206,39) | 0x25 | 24.0 | -2.4 | 24.2 | 1491.3 |
-| MP10 BLOOD LAKE | A 0 | 1098, 35, 626 | 0:(109,121) | no | 0:(113,68) | 0x04 | 24.0 | -3.2 | 24.2 | 1218.7 |
-| | B 1 | 884, 52, 2004 | | no | 0:(91,201) | 0x20 | 24.0 | -2.8 | 24.1 | 1220.0 |
-| MP11 DEATH TRAP | A 0 | 1170, 163, 1572 | 0:(143,86) | no | 0:(118,149) | 0x01 | 23.8 | -1.4 | 23.8 | 824.6 |
-| | B 1 | 1628, 1, 247 | | no | 1:(58,18) | 0x22 | 27.8 | -2.8 | 28.0 | 1358.3 |
-| MP12 THE RUINS | A 0 | 2063, 68, 1114 | 0:(172,82) | no | 0:(185,88) | 0x06 | 23.2 | -2.1 | 23.3 | 1424.2 |
-| | B 1 | 486, 69, 1309 | | no | 0:(32,107) | 0x22 | 23.8 | -2.9 | 23.9 | 1412.4 |
-| MP51 VIGILANCE | A 0 | 540, 160, 1456 | 0:(109,103) | no | 0:(71,163) | 0x00 | -0.1 | -0.2 | **0.3** | 1283.7 |
-| | B 1 | 1130, 65, 96 | | no | 0:(130,27) | 0x25 | 0.2 | 0.1 | **0.3** | 1358.5 |
-| MP52 THE MIXER | A 0 | 2254, 40, 2688 | 0:(305,205) | no | 0:(227,269) | 0x01 | 23.7 | -1.3 | 23.7 | 1478.8 |
-| | B 1 | 3802, 101, 2044 | | no | 8:(43,59) | 0x20 | 23.7 | -2.2 | 23.8 | 1280.0 |
-| MP53 FOXHUNT | A 0 | 3407, 144, 4904 | 0:(324,472) | no | 0:(342,495) | 0x00 | 23.9 | -3.0 | 24.1 | 3070.0 |
-| | B 1 | 3212, 212, 1817 | | no | 0:(323,191) | 0x24 | 23.1 | -2.0 | 23.2 | 2923.8 |
-| MP61 SUJO | A 0 | 873, 143, 279 | 0:(83,54) | no | 0:(89,50) | 0x04 | 24.5 | -3.0 | 24.6 | 1367.9 |
-| | B 1 | 658, -25, 2245 | | no | 0:(69,242) | 0x21 | 28.0 | -2.5 | 28.1 | 1681.8 |
-| MP62 ENOWAPI | A 0 | 802, 4, 340 | 0:(154,55) | no | 0:(99,53) | 0x03 | 24.0 | -1.2 | 24.0 | 1119.7 |
-| | B 1 | 1442, 277, 1231 | | no | 0:(163,142) | 0x23 | 23.2 | -1.9 | 23.3 | 942.8 |
-| MP64 SHADOW FALLS | A 0 | 1607, 36, 2160 | 0:(120,96) | no | 0:(162,223) | 0x00 | 25.0 | -1.0 | 25.0 | 1655.4 |
-| | B 1 | 445, 38, 811 | | no | 0:(46,93) | 0x24 | 24.0 | -1.0 | 24.0 | 1701.9 |
-| MP71 FISH HOOK | A 0 | 1199, 73, 1450 | 0:(196,93) | no | 0:(125,148) | 0x01 | 23.9 | -1.8 | 24.0 | 941.6 |
-| | B 1 | 1892, 175, 758 | | no | 0:(193,83) | 0x24 | 23.8 | -2.6 | 23.9 | 883.8 |
-| MP72 CROSSROADS | A 0 | 1972, 68, 2150 | 0:(87,107) | no | 0:(164,180) | 0x00 | 23.9 | -2.2 | 24.0 | 1793.4 |
-| | B 1 | 748, 93, 766 | | no | 0:(42,46) | 0x24 | 20.1 | -1.8 | 20.2 | 1734.4 |
-| MP73 SANDSTORM | A 0 | 2303, 201, 2017 | 0:(111,94) | no | 0:(232,205) | 0x07 | 23.8 | -2.3 | 23.9 | 1400.7 |
-| | B 1 | 857, 85, 1306 | | no | 0:(91,137) | 0x23 | 23.6 | -1.3 | 23.6 | 1383.9 |
-| MP81 CHAIN REACTION | A 0 | 1256, 272, 1254 | 4:(30,12) | no | 4:(28,30) | 0x00 | 23.8 | -1.4 | 23.8 | 956.7 |
-| | B 1 | 1457, 26, 2374 | | no | 1:(46,140) | 0x20 | 23.8 | -2.4 | 23.9 | 1153.9 |
-| MP82 GUIDANCE | A 0 | 900, 55, 2803 | 0:(122,172) | no | 0:(93,288) | 0x01 | 24.1 | -1.4 | 24.1 | 1238.5 |
-| | B 1 | 2011, 21, 1377 | | no | 0:(201,149) | 0x25 | 23.3 | -2.1 | 23.4 | 1637.0 |
-| MP83 REQUIEM | A 0 | 1928, 224, 2591 | 0:(120,70) | no | 0:(188,245) | 0x07 | 23.4 | -2.4 | 23.5 | 2181.5 |
-| | B 1 | 676, 187, 789 | | no | 0:(67,66) | 0x22 | 23.8 | -2.9 | 23.9 | 2171.6 |
+| MP1 BLIZZARD | A 0 | 2562, 272, 3113 | 0:(145,150) | no | 0:(215,217) | 0x00 | -24.2 | 1.1 | 24.2 | 1815.5 |
+| | B 1 | 1789, 75, 1385 | | no | 0:(138,49) | 0x24 | -23.8 | 1.9 | 23.9 | 1819.8 |
+| MP2 FROSTFIRE | A 0 | 796, 100, 614 | 0:(44,35) | no | 0:(74,31) | 0x04 | 0.4 | -0.3 | **0.5** | 586.7 |
+| | B 1 | 536, 143, 1254 | | no | 0:(48,95) | 0x22 | 0.3 | 0.4 | **0.5** | 589.0 |
+| MP5 ABANDONED | A 0 | 1172, 82, 2260 | 0:(44,98) | no | 0:(84,191) | 0x00 | -23.9 | 2.2 | 24.0 | 1435.7 |
+| | B 1 | 927, 168, 622 | | no | 0:(60,32) | 0x24 | -24.1 | 2.8 | 24.3 | 1331.2 |
+| MP6 DESERT GLORY | A 0 | 837, -5, 1901 | 0:(69,75) | no | 0:(15,77) | 0x02 | -23.3 | 1.3 | 23.3 | 952.0 |
+| | B 1 | 1865, 66, 1221 | | no | 0:(114,11) | 0x25 | -23.7 | 2.8 | 23.8 | 917.7 |
+| MP7 NIGHT STALKER | A 0 | 648, 124, 1675 | 0:(186,61) | no | 0:(13,57) | 0x03 | -23.3 | 2.2 | 23.4 | 1543.1 |
+| | B 1 | 2310, 163, 1458 | | no | 0:(175,34) | 0x26 | -24.0 | 2.0 | 24.1 | 1304.3 |
+| MP8 RAT'S NEST | A 0 | 1601, 166, 905 | 1:(48,123) | no | 1:(158,86) | 0x05 | -24.3 | 2.9 | 24.5 | 1262.6 |
+| | B 1 | 188, 165, 948 | | no | 1:(18,86) | 0x20 | -23.8 | 2.2 | 23.9 | 1392.5 |
+| MP9 BITTER JUNGLE | A 0 | 1065, 30, 1253 | 0:(62,75) | no | 0:(39,69) | 0x00 | -23.3 | 1.3 | 23.4 | 1533.5 |
+| | B 1 | 2749, 31, 911 | | no | 0:(206,39) | 0x25 | -24.0 | 2.4 | 24.2 | 1491.3 |
+| MP10 BLOOD LAKE | A 0 | 1098, 35, 626 | 0:(109,121) | no | 0:(113,68) | 0x04 | -24.0 | 3.2 | 24.2 | 1218.7 |
+| | B 1 | 884, 52, 2004 | | no | 0:(91,201) | 0x20 | -24.0 | 2.8 | 24.1 | 1220.0 |
+| MP11 DEATH TRAP | A 0 | 1170, 163, 1572 | 0:(143,86) | no | 0:(118,149) | 0x01 | -23.8 | 1.4 | 23.8 | 824.6 |
+| | B 1 | 1628, 1, 247 | | no | 1:(58,18) | 0x22 | -27.8 | 2.8 | 28.0 | 1358.3 |
+| MP12 THE RUINS | A 0 | 2063, 68, 1114 | 0:(172,82) | no | 0:(185,88) | 0x06 | -23.2 | 2.1 | 23.3 | 1424.2 |
+| | B 1 | 486, 69, 1309 | | no | 0:(32,107) | 0x22 | -23.8 | 2.9 | 23.9 | 1412.4 |
+| MP51 VIGILANCE | A 0 | 540, 160, 1456 | 0:(109,103) | no | 0:(71,163) | 0x00 | 0.1 | 0.2 | **0.3** | 1283.7 |
+| | B 1 | 1130, 65, 96 | | no | 0:(130,27) | 0x25 | -0.2 | -0.1 | **0.3** | 1358.5 |
+| MP52 THE MIXER | A 0 | 2254, 40, 2688 | 0:(305,205) | no | 0:(227,269) | 0x01 | -23.7 | 1.3 | 23.7 | 1478.8 |
+| | B 1 | 3802, 101, 2044 | | no | 8:(43,59) | 0x20 | -23.7 | 2.2 | 23.8 | 1280.0 |
+| MP53 FOXHUNT | A 0 | 3407, 144, 4904 | 0:(324,472) | no | 0:(342,495) | 0x00 | -23.9 | 3.0 | 24.1 | 3070.0 |
+| | B 1 | 3212, 212, 1817 | | no | 0:(323,191) | 0x24 | -23.1 | 2.0 | 23.2 | 2923.8 |
+| MP61 SUJO | A 0 | 873, 143, 279 | 0:(83,54) | no | 0:(89,50) | 0x04 | -24.5 | 3.0 | 24.6 | 1367.9 |
+| | B 1 | 658, -25, 2245 | | no | 0:(69,242) | 0x21 | -28.0 | 2.5 | 28.1 | 1681.8 |
+| MP62 ENOWAPI | A 0 | 802, 4, 340 | 0:(154,55) | no | 0:(99,53) | 0x03 | -24.0 | 1.2 | 24.0 | 1119.7 |
+| | B 1 | 1442, 277, 1231 | | no | 0:(163,142) | 0x23 | -23.2 | 1.9 | 23.3 | 942.8 |
+| MP64 SHADOW FALLS | A 0 | 1607, 36, 2160 | 0:(120,96) | no | 0:(162,223) | 0x00 | -25.0 | 1.0 | 25.0 | 1655.4 |
+| | B 1 | 445, 38, 811 | | no | 0:(46,93) | 0x24 | -24.0 | 1.0 | 24.0 | 1701.9 |
+| MP71 FISH HOOK | A 0 | 1199, 73, 1450 | 0:(196,93) | no | 0:(125,148) | 0x01 | -23.9 | 1.8 | 24.0 | 941.6 |
+| | B 1 | 1892, 175, 758 | | no | 0:(193,83) | 0x24 | -23.8 | 2.6 | 23.9 | 883.8 |
+| MP72 CROSSROADS | A 0 | 1972, 68, 2150 | 0:(87,107) | no | 0:(164,180) | 0x00 | -23.9 | 2.2 | 24.0 | 1793.4 |
+| | B 1 | 748, 93, 766 | | no | 0:(42,46) | 0x24 | -20.1 | 1.8 | 20.2 | 1734.4 |
+| MP73 SANDSTORM | A 0 | 2303, 201, 2017 | 0:(111,94) | no | 0:(232,205) | 0x07 | -23.8 | 2.3 | 23.9 | 1400.7 |
+| | B 1 | 857, 85, 1306 | | no | 0:(91,137) | 0x23 | -23.6 | 1.3 | 23.6 | 1383.9 |
+| MP81 CHAIN REACTION | A 0 | 1256, 272, 1254 | 4:(30,12) | no | 4:(28,30) | 0x00 | -23.8 | 1.4 | 23.8 | 956.7 |
+| | B 1 | 1457, 26, 2374 | | no | 1:(46,140) | 0x20 | -23.8 | 2.4 | 23.9 | 1153.9 |
+| MP82 GUIDANCE | A 0 | 900, 55, 2803 | 0:(122,172) | no | 0:(93,288) | 0x01 | -24.1 | 1.4 | 24.1 | 1238.5 |
+| | B 1 | 2011, 21, 1377 | | no | 0:(201,149) | 0x25 | -23.3 | 2.1 | 23.4 | 1637.0 |
+| MP83 REQUIEM | A 0 | 1928, 224, 2591 | 0:(120,70) | no | 0:(188,245) | 0x07 | -23.4 | 2.4 | 23.5 | 2181.5 |
+| | B 1 | 676, 187, 789 | | no | 0:(67,66) | 0x22 | -23.8 | 2.9 | 23.9 | 2171.6 |
 
 **Counts:** 0 of 44 inside their map's start-point cell. 44 of 44 fitted by a slot of their own side: 4 at the
-centre (<= 0.51 units, the `KNOWN.md` §1 rows), 40 ahead along its facing (`along` 20.1-28.0, median 23.8;
-`perp` -3.2 to -1.0, negative on all 40). 44 of 44 nearer their own side's slots than the other side's (by
+centre (<= 0.51 units, the `KNOWN.md` §1 rows), 40 behind it along its facing (`along` -28.0 to -20.1, median
+-23.8; `perp` 1.0 to 3.2, positive on all 40). 44 of 44 nearer their own side's slots than the other side's (by
 824.6 units at the least).
 
-**The facing.** Facing *k* points along `(-sin 45k°, cos 45k°)` in (x, z): 0 is +z, 2 is -x, 4 is -z, 6 is +x.
-That is not assumed; it is what makes `along` positive and near 24 on all 40 displaced rows, over all eight
-facings on side 0 and facings 0-6 on side 1. A wrong convention scatters them.
+**The facing.** Facing *k* points along `(sin 45k°, -cos 45k°)` in (x, z): 0 is -z, 2 is +x, 4 is +z, 6 is -x.
+That is not assumed; with the 40 sweep rows known to be the orbit camera behind the actor (§11), it is the
+one convention under which all 40 lie behind a slot of their own side, over all eight facings on side 0 and
+facings 0-6 on side 1. A wrong convention scatters them. (Corrected 2026-09-28, §11: this said
+`(-sin 45k°, cos 45k°)`, 0 is +z -- the negation, derived by taking the 40 rows for the actor ahead of its slot.)
 
-**The 20-28 units.** The 40 sweep rows were read after each side had been moved (research 33 "Method": the
-controllability holds, then alternating strafes), the two `KNOWN.md` rows at rest; a displacement of about 24
-units along the facing and 1-3 across is consistent with that and is not explained further here. It is also why
-the 40 cannot tell *which* slot's centre the game put the player on beyond "this one, then moved forward".
+**The 20-28 units.** The 40 sweep rows are the third-person orbit camera, which sits behind the actor along its
+facing (§11), and the two `KNOWN.md` rows the actor's feet; about 24 units back and 1-3 across is the camera's
+offset from an actor standing on the slot. (Corrected 2026-09-28, §11: this read them as the actor after each side
+had been moved -- research 33 "Method": the controllability holds, then alternating strafes -- "this one, then
+moved forward". The rows are read from the camera record, not the actor, and are not a movement.)
 
 ## 8. The 2D briefing overlay
 
@@ -294,7 +300,8 @@ candidate is outside this file: the loading-screen assets research 72 §0 lists 
 
 - **A stood on side 0's first slot and B on side 1's second, on all 22 maps.** Numbering each side's slots from 0
   in the trailer's order (§6; `placeSpawnSlots`' `index`), the one slot that accounts for the measured A (the spec's
-  W1.R9: at its centre, or up to 30 units ahead along its facing within 5 across) is side 0's **#0**, and for B side
+  W1.R9: at its centre, or up to 30 units behind it along its facing within 5 across -- *ahead* until §11
+  corrected the facing; the same slot either way) is side 0's **#0**, and for B side
   1's **#1** -- 44 of 44, `tools/spawn-slots.ts`. On every map exactly one slot of the side qualifies, #0 and #1 of
   a side are 22-851 units apart, and in the sub-maps' own lists (§5.5) the same slots sit at scattered positions
   (0-23), so the order that carries it is the trailer's alone. In the 2026-09-17 sweep and `KNOWN.md` §1's rows A is
@@ -312,4 +319,34 @@ candidate is outside this file: the loading-screen assets research 72 §0 lists 
   the overlay draws the slots without a depth test so that a wrong one cannot hide a slot. The same check puts
   the 40 sweep rows of `spawns.ts` 12.7-38.1 units above the only floor under their own (x, z) (median 25.0; 3
   have a surface 12-25 units above them instead), and the 4 `KNOWN.md` §1 rows 0.0-1.1: the sweep's y is not the
-  feet, as its (x, z) is not the slot (§7).
+  feet, as its (x, z) is not the slot (§7) -- §11 says what it is.
+
+## 11. Correction: the 40 sweep rows are the orbit camera, and the facing turns the other way (2026-09-28, later)
+
+**What changed.** §7 derived the facing as `(-sin 45k°, cos 45k°)` by reading the 40 rows of the 2026-09-17 sweep
+as the actor, standing 20-28 units *ahead* of its slot. They are not the actor. The sweep's spawn column is the
+`PS2X_PEEK=0x416054:3` record, which `tools_py/parity/online_match_ours.py:42-45` names "the local player's
+ORBITING CAMERA record ... the camera sits CAMERA_ORBIT_RADIUS units behind the player along its facing"; research
+18's calibration measured that orbit radius at 23.09 (three fits, 22.16-24.91). W1.4's ground probe settled it
+from the other side: the recorded y is a median 25.000 above the floor under the row (exactly 25.000 on flat
+ground), and 36 of the 40 rows have a floor at y - 25 on the 23.1-unit orbit ring behind the actor. The rough
+hull check of §10 agrees (37 of the 40 rows 12.7-38.1 above their floor, median 25.0). The 4 `KNOWN.md` §1 rows
+(Frostfire, Vigilance) are the actor's feet, 0.0-1.1 above the floor, and sit at a slot's centre.
+
+**The facing, derived again.** With the camera behind the actor, an actor on a slot faces from the camera toward
+the slot. Of the sixteen conventions "step 0 along one of eight axes, 45 degrees a step either way", exactly one
+puts all 40 camera rows behind a slot of their own side (`along` in [-30, 1], `|perp|` <= 5): step k points along
+**`(sin 45k°, -cos 45k°)`** -- 0 is -z, 2 is +x, 4 is +z, 6 is -x -- with the camera 20.1-28.0 units back
+(median 23.8) and the bearing from camera to slot 2.2-7.6 degrees off the facing, to the same side on all 40
+(mean 5.0; research 18's calibration read the camera's bearing a few degrees off the walk heading too, -3.56 on
+average). The next best convention places 22 of the 40. It is the exact negation of §7's, so every row fits the
+same slot as before and only the signs of `along` and `perp` change.
+
+**Where it was corrected** (each place says so): `facingVector`, `fitSpawn`, `fitSlot` and `accountsFor` in
+`web/packages/scene/src/aimaps.ts` (the W1.R9 oracle: an actor row at a slot's centre, a camera row up to 30 units
+*behind* one along its facing); the viewer's slot arrows, which follow `facingVector`; `tools/aimaps-spawns.ts` and
+`tools/spawn-slots.ts`; §0, §7 (the window, the table's `along` and `perp` columns negated -- checked row by row
+against the re-run tool -- the counts, "The facing" and "The 20-28 units") and §10 here; and
+`web/packages/scene/src/spawns.ts`, whose comment called the 40 rows "the actor block of both players" at "the
+players' feet". Nothing in §2-§6 depended on the facing's direction; §10's slot order (A on side 0's #0, B on side
+1's #1) is unchanged, the fitted slots being the same.

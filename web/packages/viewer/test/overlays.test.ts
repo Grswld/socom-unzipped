@@ -23,26 +23,26 @@ describe('slotSegments: a slot in game units', () => {
   it('outlines the slot\'s 10-unit cell and runs a shaft of one cell along the facing, with two barbs', () => {
     expect(SLOT_CELL).toBe(10);                              // research 75 §3: 10 x 10 on all 83 sub-maps
     expect(SLOT_ARROW).toBe(10);
-    const s = segments(slotSegments([slot(0, 100, 50, 200, 2)]));   // step 2 faces -x
+    const s = segments(slotSegments([slot(0, 100, 50, 200, 2)]));   // step 2 faces +x (75 §11)
     expect(s.length).toBe(7);
     // the cell: four sides at +-5 around the centre, at the slot's y
     const corners = new Set(s.slice(0, 4).flat().map((p) => p.join(',')));
     expect(corners).toEqual(new Set(['95,50,195', '105,50,195', '105,50,205', '95,50,205']));
-    // the shaft: centre to 10 units along -x
-    expect(s[4]).toEqual([[100, 50, 200], [90, 50, 200]]);
-    // the barbs start at the tip and fall back toward +x, one to each side
+    // the shaft: centre to 10 units along +x
+    expect(s[4]).toEqual([[100, 50, 200], [110, 50, 200]]);
+    // the barbs start at the tip and fall back toward -x, one to each side
     for (const barb of s.slice(5)) {
-      expect(barb[0]).toEqual([90, 50, 200]);
-      expect(barb[1]![0]).toBeGreaterThan(90);
+      expect(barb[0]).toEqual([110, 50, 200]);
+      expect(barb[1]![0]).toBeLessThan(110);
     }
     expect(Math.sign(s[5]![1]![2] - 200)).toBe(-Math.sign(s[6]![1]![2] - 200));
   });
 
-  it('turns the arrow with the facing: step 1 is 45 degrees from +z toward -x (75 §7)', () => {
+  it('turns the arrow with the facing: step 1 is 45 degrees from -z toward +x (75 §11)', () => {
     const s = segments(slotSegments([slot(1, 0, 0, 0, 1)]));
     const t = SLOT_ARROW * Math.SQRT1_2;
-    expect(s[4]![1]![0]).toBeCloseTo(-t, 3);
-    expect(s[4]![1]![2]).toBeCloseTo(t, 3);
+    expect(s[4]![1]![0]).toBeCloseTo(t, 3);
+    expect(s[4]![1]![2]).toBeCloseTo(-t, 3);
   });
 
   it('is empty for no slots', () => {

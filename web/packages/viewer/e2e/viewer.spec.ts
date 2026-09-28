@@ -24,7 +24,7 @@ const MAPS = [
   { name: 'CROSSROADS', archive: 'MP72', screenshot: 'crossroads-spawnA.png', top: 'crossroads-top.png', clean: false },
 ] as const;
 
-/** Eye height above a spawn's feet, as `main.ts` stands the camera up. */
+/** Eye height above a spawn's measured y (the feet or, on 20 maps, the orbit camera: `spawns.ts`), as `main.ts` stands the camera up. */
 const EYE = 20;
 /**
  * How high the top-down shot stands over the spawns. 800 units is 80 m: high enough to hold both spawns

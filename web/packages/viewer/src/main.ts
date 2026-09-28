@@ -35,7 +35,10 @@ const RATIO_FLOOR = 0.75;
 const SLOW_MS = 24, FAST_MS = 12, ADAPT_EVERY_MS = 2000;
 /** The game's own projection, framebuffer-wide: `tan(hfov) / tan(vfov)` at the authored half-angles. */
 const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
-/** Eye height above a spawn's feet: a standing player, not a floating one. */
+/**
+ * Eye height above a spawn's measured y. That y is the feet only on Frostfire and Vigilance; on the other 20
+ * maps it is the orbit camera's, 25 above the floor (`spawns.ts`), so the stand is 45 above it there.
+ */
 const EYE = 20;
 
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;

@@ -75,22 +75,23 @@ describe('parseAiMaps on a hand-built file', () => {
     expect(spawnSlots(ai).length).toBe(2);        // the twin is not a slot
   });
 
-  it('turns facing k by 45 degrees per step from +z toward -x (75 §7)', () => {
+  it('turns facing k by 45 degrees per step from -z toward +x (75 §11: the sweep rows are the camera behind)', () => {
     const r = (v: [number, number]) => v.map((c) => Math.round(c * 1000) / 1000 + 0);
-    expect(r(facingVector(0))).toEqual([0, 1]);
-    expect(r(facingVector(2))).toEqual([-1, 0]);
-    expect(r(facingVector(4))).toEqual([0, -1]);
-    expect(r(facingVector(6))).toEqual([1, 0]);
-    expect(r(facingVector(1))).toEqual([-0.707, 0.707]);
+    expect(r(facingVector(0))).toEqual([0, -1]);
+    expect(r(facingVector(2))).toEqual([1, 0]);
+    expect(r(facingVector(4))).toEqual([0, 1]);
+    expect(r(facingVector(6))).toEqual([-1, 0]);
+    expect(r(facingVector(1))).toEqual([0.707, -0.707]);
   });
 
-  it('fits a position ahead of a slot along its facing, and only on the side asked for (75 §7)', () => {
-    const fit = fitSpawn(ai, 1, 135, 191)!;
+  it('fits a position behind a slot along its facing -- the orbit camera behind an actor on it -- on the side asked for (75 §7, §11)', () => {
+    const fit = fitSpawn(ai, 1, 135, 191)!;              // side 1's slot at (135, 215) faces +z
     expect(fit.slot).toMatchObject({ x: 135, z: 215 });
-    expect(fit.along).toBeCloseTo(24, 6);
+    expect(fit.along).toBeCloseTo(-24, 6);
     expect(fit.perp).toBeCloseTo(0, 6);
     expect(fit.distance).toBeCloseTo(24, 6);
-    expect(fitSpawn(ai, 0, 135, 191)).toBeUndefined();   // side 0's slot faces +z; this is behind it
+    expect(fitSpawn(ai, 1, 135, 239)).toBeUndefined();   // 24 ahead of it: not where a camera behind would be
+    expect(fitSpawn(ai, 0, 135, 191)).toBeUndefined();   // side 0's slot faces -z; this is ahead of it
     expect(fitSpawn(ai, 0, 115, 205.5)!.distance).toBeCloseTo(0.5, 6);
   });
 
@@ -126,10 +127,10 @@ describe('placeSpawnSlots: the slots as the viewer draws them (W1.5b, the spec\'
     ]);
     expect(slots[0]!.position[0]).toBe(135);
     expect(slots[0]!.position[2]).toBe(215);
-    expect(round(slots[0]!.facing)).toEqual([0, -1]);   // step 4 is -z
+    expect(round(slots[0]!.facing)).toEqual([0, 1]);    // step 4 is +z
     expect(slots[1]!.position[0]).toBe(115);
     expect(slots[1]!.position[2]).toBe(205);
-    expect(round(slots[1]!.facing)).toEqual([0, 1]);    // step 0 is +z
+    expect(round(slots[1]!.facing)).toEqual([0, -1]);   // step 0 is -z
   });
 
   it('numbers a side\'s slots from 0 in the trailer\'s order, the other side\'s apart (75 §6)', () => {
@@ -137,7 +138,7 @@ describe('placeSpawnSlots: the slots as the viewer draws them (W1.5b, the spec\'
     expect(slots.map((s) => [s.side, s.index, s.loc.map])).toEqual([[1, 0, 0], [0, 0, 0], [0, 1, 1]]);
     expect(slots[2]!.position[0]).toBe(115);            // Ramps' cell (0, 0) from (110, 200)
     expect(slots[2]!.position[2]).toBe(205);
-    expect(round(slots[2]!.facing)).toEqual([-1, 0]);   // step 2 is -x
+    expect(round(slots[2]!.facing)).toEqual([1, 0]);    // step 2 is +x
   });
 
   it('takes y from the side\'s measured spawn, held inside the slot\'s sub-map\'s height range (75 §3)', () => {
@@ -156,17 +157,18 @@ describe('placeSpawnSlots: the slots as the viewer draws them (W1.5b, the spec\'
     expect(() => placeSpawnSlots(bad)).toThrow(/sub-map 5 of 2/);
   });
 
-  it('fitSlot and accountsFor: W1.R9\'s oracle -- at a slot\'s centre, or up to 30 ahead of it along its facing', () => {
+  it('fitSlot and accountsFor: W1.R9\'s oracle -- at a slot\'s centre (the actor), or up to 30 behind it (the orbit camera)', () => {
     const slots: SpawnSlot[] = placeSpawnSlots(ai);
-    const ahead = fitSlot(slots, 1, 135, 191)!;       // side 1 faces -z from (135, 215): 24 ahead
-    expect(ahead.slot.loc).toEqual({ map: 0, x: 3, z: 1 });
-    expect(ahead.along).toBeCloseTo(24, 6);
-    expect(ahead.perp).toBeCloseTo(0, 6);
-    expect(accountsFor(ahead)).toBe(true);
+    const behind = fitSlot(slots, 1, 135, 191)!;      // side 1 faces +z from (135, 215): 24 behind
+    expect(behind.slot.loc).toEqual({ map: 0, x: 3, z: 1 });
+    expect(behind.along).toBeCloseTo(-24, 6);
+    expect(behind.perp).toBeCloseTo(0, 6);
+    expect(accountsFor(behind)).toBe(true);
     expect(accountsFor(fitSlot(slots, 0, 115.3, 205.4))).toBe(true);        // at the centre, 0.5 off
-    expect(fitSlot(slots, 0, 135, 191)).toBeUndefined();                    // behind side 0's slot
-    expect(accountsFor(fitSlot(slots, 1, 135, 180))).toBe(false);           // 35 ahead: past 30
-    expect(accountsFor(fitSlot(slots, 1, 142, 195))).toBe(false);           // 20 ahead, 7 across: off the lane
+    expect(fitSlot(slots, 0, 135, 191)).toBeUndefined();                    // ahead of side 0's slot (it faces -z)
+    expect(accountsFor(fitSlot(slots, 1, 135, 239))).toBe(false);           // 24 ahead of side 1's: the wrong way
+    expect(accountsFor(fitSlot(slots, 1, 135, 180))).toBe(false);           // 35 behind: past 30
+    expect(accountsFor(fitSlot(slots, 1, 142, 195))).toBe(false);           // 20 behind, 7 across: off the lane
     expect(accountsFor(undefined)).toBe(false);
   });
 });
@@ -261,7 +263,7 @@ describe('AIMAPS.MPS on the fixture maps (75 §2-§7)', () => {
     expect(fb!.slot.loc).toEqual({ map: 0, x: 48, z: 95 });
   });
 
-  it.skipIf(!MP6)('Desert Glory: nine sub-maps, 16 links, a Safety zone 8 x 15 cells, 96 records, A and B 23-24 units ahead of a slot', () => {
+  it.skipIf(!MP6)('Desert Glory: nine sub-maps, 16 links, a Safety zone 8 x 15 cells, 96 records, A and B 23-24 units behind a slot', () => {
     const ai = open('MP6');
     expect(ai.maps.length).toBe(9);
     expect(ai.maps[0]!.name).toBe('Base Map');
@@ -271,14 +273,14 @@ describe('AIMAPS.MPS on the fixture maps (75 §2-§7)', () => {
     expect(ai.spawns.length).toBe(96);
     const { a, b } = SPAWNS['DESERT GLORY']!;
     const fa = fitSpawn(ai, 0, a[0], a[2])!, fb = fitSpawn(ai, 1, b[0], b[2])!;
-    expect(fa.along).toBeCloseTo(23.26, 1);
+    expect(fa.along).toBeCloseTo(-23.26, 1);
     expect(Math.abs(fa.perp)).toBeLessThan(3.5);
-    expect(fb.along).toBeCloseTo(23.66, 1);
+    expect(fb.along).toBeCloseTo(-23.66, 1);
     expect(Math.abs(fb.perp)).toBeLessThan(3.5);
     everyLocStored(ai);
   });
 
-  it.skipIf(!MP72)('Crossroads: ground and floor1, eight named points, 96 records, A and B ahead of a slot', () => {
+  it.skipIf(!MP72)('Crossroads: ground and floor1, eight named points, 96 records, A and B behind a slot', () => {
     const ai = open('MP72');
     expect(ai.maps.map((m) => [m.name, m.cellsX, m.cellsZ])).toEqual([['ground', 212, 212], ['floor1', 729, 627]]);
     expect(ai.maps[0]!.points.length).toBe(8);
@@ -286,8 +288,8 @@ describe('AIMAPS.MPS on the fixture maps (75 §2-§7)', () => {
     expect(ai.spawns.length).toBe(96);
     const { a, b } = SPAWNS.CROSSROADS!;
     const fa = fitSpawn(ai, 0, a[0], a[2])!, fb = fitSpawn(ai, 1, b[0], b[2])!;
-    expect(fa.along).toBeCloseTo(23.89, 1);
-    expect(fb.along).toBeCloseTo(20.11, 1);
+    expect(fa.along).toBeCloseTo(-23.89, 1);
+    expect(fb.along).toBeCloseTo(-20.11, 1);
     expect(Math.max(Math.abs(fa.perp), Math.abs(fb.perp))).toBeLessThan(3.5);
     everyLocStored(ai);
   });
