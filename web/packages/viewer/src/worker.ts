@@ -1,5 +1,6 @@
 import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
+import { dynamicsFromDisc, type SealTuning } from './physics';
 
 /**
  * The decode thread. A 12 MB archive, 416 VIF packets and 37 palettised textures are a few hundred
@@ -22,7 +23,9 @@ export type SourceRequest = { kind: 'http'; baseUrl: string } | { kind: 'iso'; f
  */
 export type ViewerRequest =
   | { kind: 'index'; id: number; source: SourceRequest }
-  | { kind: 'load'; id: number; source: SourceRequest; path: string };
+  | { kind: 'load'; id: number; source: SourceRequest; path: string }
+  /** The seal table (W2.3a, W2.R6): `RUN/READERC.ZAR`'s `dynamics.rdr`, asked once of each source the page uses. */
+  | { kind: 'dynamics'; id: number; source: SourceRequest };
 
 /**
  * What comes back. `error` carries the request that failed so the page can say what it was doing, and
@@ -35,6 +38,8 @@ export type ViewerResponse =
   | { kind: 'index'; id: number; maps: MapInfo[] }
   | { kind: 'map'; id: number; map: LoadedMap }
   | { kind: 'progress'; id: number; stage: LoadStage; done: number; total: number }
+  /** The table's fields the disc gave, by name and in game units, or null when the source has no READERC.ZAR. */
+  | { kind: 'dynamics'; id: number; tuning: Partial<SealTuning> | null }
   | { kind: 'error'; id: number; doing: string; message: string };
 
 /** Worker globals without pulling the WebWorker lib in beside the DOM one (they collide on `self`). */
@@ -76,6 +81,10 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         const source = sourceFor(request.source);
         const maps = source instanceof HttpAssetSource ? await source.maps() : await listMaps(source);
         ctx.postMessage({ kind: 'index', id: request.id, maps });
+      } else if (request.kind === 'dynamics') {
+        // Never an error: a served tree without the file answers 404 and the mover keeps the defaults, silently.
+        const tuning = await dynamicsFromDisc(sourceFor(request.source));
+        ctx.postMessage({ kind: 'dynamics', id: request.id, tuning });
       } else {
         // Throttled to one message per stage per 2 percent: a 13 MB archive arrives in hundreds of
         // chunks, and posting each one costs more than the bar is worth.

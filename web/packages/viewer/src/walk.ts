@@ -1,34 +1,48 @@
 import {
-  buildGrid, cellAt, isWallSurface, probeGround, ringCells, selectFloor, upNormal, PROBE_LIFT,
+  buildGrid, cellAt, isWallSurface, probeGround, ringCells, selectFloor, upNormal, PROBE_LIFT, SELECT_ABOVE,
   type CollisionOwner, type Grid, type GridParams, type Hit, type WorldPoly,
 } from '@s2u/scene';
 import { ACCEL, BRAKE, glide, type GroundWish, type Pose } from './camera';
+import {
+  alongSurfaceVy, contactSpeed, contactTime, fall, jumpImpulse, landingKind, sealTuning, slideAcceleration, standable,
+  CROUCH_EYE_PLACEHOLDER, CROUCH_SPEED_PLACEHOLDER, SEAL_TUNING_DEFAULTS, type LandingKind, type SealTuning,
+} from './physics';
 
 /**
- * Walk mode (web sprint 1, W1.4): a mover that stands on the floor the engine's probe finds, slides along the
- * walls research 24 names, and looks from the SEAL's eye height -- the first thing in `web/` that ticks.
+ * Walk mode (web sprint 1, W1.4; the seal table's physics, web sprint 2, W2.3a): a mover that stands on the floor
+ * the engine's probe finds, slides along the walls research 24 names, falls, steps, slides off steep floors, crouches
+ * and jumps by the seal tuning table (`./physics`: research 17 section 8's values, or the disc's `dynamics.rdr` read
+ * at run time over them), and looks from the SEAL's eye height. Every rule below reads the mover's own table.
  *
  * - **The tick.** `CGame::Tick` (`FUN_001E7040`) runs the game at 60 Hz (web/docs/research/71 section 1.5). The
  *   mover steps on that clock from a fixed-step accumulator the page feeds real time into, so it takes the same
  *   steps at 30 fps and at 240 fps; the eye is drawn between the last two steps (`eye`).
- * - **The motion.** The fly camera's velocity model (`camera.ts`, `glide`: a ramp up at `ACCEL`, a glide down at
- *   `BRAKE`, in closed form), on the ground plane, at the SEAL's run of about 40 units a second (research 18,
- *   Finding 3: "sustained forward speed is better estimated at ~40 units/s").
- * - **The floor.** After each step `probeGround` at the new (x, z) and `selectFloor` from the origin y + 5 with
- *   the feet at y (research 23 section 1.1-1.2, research 24 section 2), and the feet snap to it. No floor, and the
- *   step is refused.
+ * - **The motion.** On the floor, the fly camera's velocity model (`camera.ts`, `glide`: a ramp up at `ACCEL`, a
+ *   glide down at `BRAKE`, in closed form), on the ground plane, at the SEAL's run of about 40 units a second
+ *   (research 18, Finding 3: "sustained forward speed is better estimated at ~40 units/s").
+ * - **The floor.** After each step `probeGround` at the new (x, z) and `selectFloor` from the origin y + 5.5 with
+ *   the feet at y (research 23 section 1.1-1.2, research 24 section 2): the pick's "at or under the origin + 1" is
+ *   `step_height` 6.5 over the feet. A floor more than 6.5 over them refuses the step (a wall, with a face or none),
+ *   one within `ground_touch_distance` 8 under them holds them, and past that they leave the floor. No floor at all,
+ *   and the step is refused: the hull's edge is never left.
+ * - **The fall.** Off the floor, gravity 235 in closed form (`fall`), no control in the air -- the reading; the
+ *   feet meet the floor the probe picks under them on the way down, and the landing is classed by its vertical
+ *   speed against `land_fall_rate` 40 and `land_hard_fall_rate` 115 (`Landing`). Stepping off Frostfire's decks is a
+ *   fall in the game (research 24 section 7.4); sprint 1 refused a drop over 20 (`MAX_DROP`), the conservative
+ *   reading, and this replaces it.
+ * - **The slope.** A floor whose normal's y is under `max_slope` (the cosine of 50 degrees) gives no footing: the
+ *   mover slides down its tangent under gravity, the keys ignored (`slideAcceleration`, the reading).
  * - **The walls.** Research 24 section 2 step 3: a polygon with bit 1 set, bit 18 clear and `|n_y| < 0.7`, met by
- *   the body's column from y + 6 to y + 20 at radius 3.5 (W1.R2); the mover is pushed out along the wall until it
+ *   the body's column from y + 6.5 to y + 20 at radius 3.5 (W1.R2); the mover is pushed out along the wall until it
  *   is 3.5 from it, and keeps the part of its step that runs along it. The game's movement collision is not
  *   decompiled -- that walls stop the mover is research 24's inference from the 3c trails, which stand off wall
  *   planes at 4.4-5.8 (section 4.1).
  * - **The eye.** 15.4 over the feet (W1.R2): the console's look-at target, 15.38 over the actor at rest (research
- *   17 section 1). A first-person eye; the third-person camera's own offset and smoothing are not this.
- * - **Drops.** The game's selection takes a floor however far below it is -- the 20-unit window bounds a pick over
- *   the feet (research 23 section 1.1 item 9), and stepping off Frostfire's walkway deck is a 42-unit fall
- *   (research 24 section 7.4). The viewer does not model falling: a floor more than `MAX_DROP` under the feet
- *   refuses the step, the plan's conservative reading. The mirror of the 20 window is the viewer's choice, not the
- *   game's.
+ *   17 section 1); crouched, a named placeholder fraction of it. A first-person eye; the third-person camera's own
+ *   offset and smoothing are not this.
+ * - **The jump.** A named placeholder rule (`jumpImpulse`): the impulse that reaches the table's `min_jump_height`
+ *   under its gravity, a placeholder height without the disc's; the impulse the game computes is not in the bodies
+ *   on hand (W2.3b).
  */
 
 /** Seconds per tick: `CGame::Tick` at 60 Hz (web/docs/research/71 section 1.5). */
@@ -37,14 +51,21 @@ export const TICK = 1 / 60;
 export const EYE_HEIGHT = 15.4;
 /** The body's radius against walls (W1.R2; research 24 section 2 step 3, section 4.1). */
 export const BODY_RADIUS = 3.5;
-/** The body's column over the feet that a wall has to reach into (research 24 section 2 step 3: y + 6 to y + 20). */
-export const BODY_LOW = 6, BODY_HIGH = 20;
+/**
+ * The top of the body's column over the feet that a wall has to reach into (research 24 section 2 step 3: the
+ * actor's bounds). Its foot is the table's `step_height` (6.5; research 24 took y + 6 from the selection's window), so
+ * the face of a rise the step climbs is not a wall and the face of one it does not is (`Walker.slide`).
+ *
+ * The mover's probe origin rides `step_height` - 1 over its feet (`Walker.floorAt`), so the selection's "highest at
+ * or under the origin + 1" (research 23 section 1.1 item 9) is the step's own y + 6.5. Research 24 took the lift as 5
+ * (`PROBE_LIFT`, the spawn tests' and the stand's); the console's root node lifts it 5.50391 (research 17 section 1;
+ * research 23 section 1.2 reads +5.5 on the console's image), which makes the window y + 6.504 -- the step to 0.004.
+ */
+export const BODY_HIGH = 20;
 /** Units a second at a run (research 18, Finding 3). */
 export const WALK_SPEED = 40;
 /** The boost's multiple on the ground: the viewer's convenience for crossing a large map, not a game speed. */
 export const BOOST = 2.5;
-/** A floor further than this under the feet refuses the step: the game would fall, the viewer stays. */
-export const MAX_DROP = 20;
 /** No step moves further than this at once, so a wall 3.5 away cannot be stepped through at any speed. */
 const MAX_SUBSTEP = 1;
 /** Ticks one `advance` may run: a stalled tab catches up this far and drops the rest (the page caps dt at 0.1 s). */
@@ -110,8 +131,22 @@ export function groundGrid(ground: GroundData): Grid {
   return buildGrid(ground.grid, [], [], groundPolygons(ground), ground.owners);
 }
 
-/** The mover's state: feet position, look (degrees, as `Pose`), and velocity on the ground plane. */
-export interface WalkState { x: number; y: number; z: number; yaw: number; pitch: number; vx: number; vz: number }
+/** The mover's state: feet position, look (degrees, as `Pose`), velocity on the ground plane, and upward. */
+export interface WalkState {
+  x: number; y: number; z: number; yaw: number; pitch: number;
+  vx: number; vz: number;
+  /** Upward, units a second: 0 on the floor, the flight's own in the air. */
+  vy: number;
+}
+
+/**
+ * The last landing (W2.3a): its class against the table's landing rates, the vertical speed at contact (units a
+ * second, downward), and the seconds from leaving the floor to the contact -- exact, not rounded to the tick.
+ */
+export interface Landing { kind: LandingKind; speed: number; airTime: number }
+
+/** What the hook reports of the mover (W2.3a): in the air, sliding, crouched, and the last landing. */
+export interface MoverState { airborne: boolean; sliding: boolean; crouched: boolean; landing: Landing | null }
 
 /** A wall polygon with what the step needs of it computed once. */
 interface Wall {
@@ -186,7 +221,15 @@ function nearest(xz: number[], x: number, z: number): { x: number; z: number; d:
  * under a point. The page reads `eye` for the camera and writes `state.yaw` / `state.pitch` from the look.
  */
 export class Walker {
-  readonly state: WalkState = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0 };
+  readonly state: WalkState = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0, vy: 0 };
+  private airborne_ = false;
+  private sliding_ = false;
+  private crouched_ = false;
+  /** The unit normal, turned up, of the floor under the feet: what a slide runs down and a take-off leaves along. */
+  private floorNormal: readonly [number, number, number] = [0, 1, 0];
+  private landing_: Landing | null = null;
+  /** Seconds since the feet left the floor, while airborne. */
+  private airTime = 0;
   /** The feet before the last tick, for drawing the eye between ticks. */
   private prev = { x: 0, y: 0, z: 0 };
   /** Real time not yet stepped, in seconds, under one tick. */
@@ -195,7 +238,64 @@ export class Walker {
   /** The walls of the 3 x 3 cells around the mover's cell, kept until it changes cell. */
   private near: { cell: number; walls: Wall[] } | null = null;
 
-  constructor(readonly grid: Grid) {}
+  /** The table the rules read (`./physics`): the defaults, or the disc's laid over them (`setTuning`). */
+  private tuning_: Readonly<SealTuning>;
+
+  constructor(readonly grid: Grid, tuning: Readonly<SealTuning> = SEAL_TUNING_DEFAULTS) {
+    this.tuning_ = tuning;
+  }
+
+  get tuning(): Readonly<SealTuning> {
+    return this.tuning_;
+  }
+
+  /** A new table for every rule from the next step on: the disc's, once the worker has read it. */
+  setTuning(tuning: Readonly<SealTuning>): void {
+    this.tuning_ = tuning;
+  }
+
+  /** In the air: off the floor and falling (or rising), steered by nothing (`tick`). reCOM's `m_airborne`. */
+  get airborne(): boolean {
+    return this.airborne_;
+  }
+
+  /**
+   * On a floor too steep to stand on (its normal's y under `max_slope`): the feet have no footing, the keys do not
+   * steer, and the mover slides down it (`tick`) until a floor holds it or the floor falls away.
+   */
+  get sliding(): boolean {
+    return this.sliding_;
+  }
+
+  /**
+   * The crouch stance: the eye at `CROUCH_EYE_PLACEHOLDER` of 15.4 and the walk at `CROUCH_SPEED_PLACEHOLDER` of its
+   * run, both named placeholders (`./physics`). The change is at once; the stance's own motion is W2.2's.
+   */
+  get crouched(): boolean {
+    return this.crouched_;
+  }
+
+  setCrouch(on: boolean): void {
+    this.crouched_ = on;
+  }
+
+  /**
+   * The jump: from footing (on the floor, not sliding) the feet leave it now at `jumpImpulse` upward, keeping
+   * the run's velocity across the ground (no control in the air, `tick`). A crouched mover stands to jump -- the
+   * reading: reCOM's SEAL has stand, crouch and in-air as separate states (`SEAL_STATE`, `zSeal/zseal.h:57-71`) and
+   * the way from the crouch into the air is not in the bodies on hand. False, and nothing changes, without footing.
+   */
+  jump(): boolean {
+    if (this.airborne_ || this.sliding_) return false;
+    this.crouched_ = false;
+    this.takeOff(jumpImpulse(this.tuning_));
+    return true;
+  }
+
+  /** The last landing since the feet last left the floor, or null: in the air, or not yet fallen since `place`. */
+  get landing(): Landing | null {
+    return this.landing_;
+  }
 
   /**
    * Stands the mover on the floor under (x, fromY, z): the probe's highest floor at or under `fromY` + 1, else
@@ -205,9 +305,12 @@ export class Walker {
   place(x: number, fromY: number, z: number): boolean {
     const floor = selectFloor(probeGround(this.grid, x, z), fromY, fromY - PROBE_LIFT);
     if (!floor) return false;
-    Object.assign(this.state, { x, y: floor.y, z, vx: 0, vz: 0 });
+    Object.assign(this.state, { x, y: floor.y, z, vx: 0, vz: 0, vy: 0 });
     this.prev = { x, y: floor.y, z };
     this.accumulator = 0;
+    this.airborne_ = false;
+    this.landing_ = null;
+    this.standOn(floor);
     return true;
   }
 
@@ -230,20 +333,44 @@ export class Walker {
     this.accumulator = 0;
   }
 
-  /** The eye, 15.4 over the feet, drawn between the last two ticks by the time left over in the accumulator. */
+  /**
+   * The eye, 15.4 over the feet (the crouch's placeholder fraction of it crouched), drawn between the last two ticks
+   * by the time left over in the accumulator.
+   */
   eye(): [number, number, number] {
     const s = this.state, t = Math.max(0, Math.min(1, this.accumulator / TICK));
     return [
       this.prev.x + (s.x - this.prev.x) * t,
-      this.prev.y + (s.y - this.prev.y) * t + EYE_HEIGHT,
+      this.prev.y + (s.y - this.prev.y) * t + EYE_HEIGHT * (this.crouched_ ? CROUCH_EYE_PLACEHOLDER : 1),
       this.prev.z + (s.z - this.prev.z) * t,
     ];
   }
 
-  /** One 60 Hz step: the velocity model on the ground plane, then the move, the walls and the floor. */
+  /**
+   * One 60 Hz step. On the floor: the velocity model on the ground plane, then the move, the walls and the floor.
+   * In the air: no control -- the horizontal velocity is the one the feet left the floor with, the keys and the stick
+   * do nothing until they are down again (the reading: the decomp settles it; reCOM keeps an `m_inAirHorizVel` on the
+   * SEAL, `zSeal/zseal.h:774`) -- and the fall in closed form under gravity.
+   */
   tick(input: WalkInput, dt: number = TICK): void {
     const s = this.state;
     this.prev = { x: s.x, y: s.y, z: s.z };
+    if (this.airborne_) {
+      const mx = s.vx * dt, mz = s.vz * dt;
+      const parts = Math.max(1, Math.ceil(Math.hypot(mx, mz) / MAX_SUBSTEP));
+      for (let i = 0; i < parts; i++) this.step(mx / parts, mz / parts, dt / parts);
+      return;
+    }
+    if (this.sliding_) {
+      // No footing: down the floor's tangent under gravity, the keys ignored (`slideAcceleration`, the reading).
+      const [ax, az] = slideAcceleration(this.floorNormal, this.tuning_.gravity);
+      const mx = s.vx * dt + 0.5 * ax * dt * dt, mz = s.vz * dt + 0.5 * az * dt * dt;
+      s.vx += ax * dt;
+      s.vz += az * dt;
+      const parts = Math.ceil(Math.hypot(mx, mz) / MAX_SUBSTEP);
+      for (let i = 0; i < parts; i++) this.step(mx / parts, mz / parts, dt / parts);
+      return;
+    }
     const yaw = (s.yaw * Math.PI) / 180;
     // The camera looks down its own -z (`camera.ts`): forward is (-sin, -cos), right is (cos, -sin).
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -251,7 +378,7 @@ export class Walker {
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
     const moving = length > 0;
-    const cruise = WALK_SPEED * (input.boost ? BOOST : 1);
+    const cruise = WALK_SPEED * (this.crouched_ ? CROUCH_SPEED_PLACEHOLDER : 1) * (input.boost ? BOOST : 1);
     const rate = moving ? ACCEL : BRAKE;
     const gx = glide(s.vx, (fx * forward + rx * right) * cruise, rate, dt);
     const gz = glide(s.vz, (fz * forward + rz * right) * cruise, rate, dt);
@@ -261,31 +388,95 @@ export class Walker {
     const distance = Math.hypot(gx.moved, gz.moved);
     if (distance === 0) return;
     const parts = Math.ceil(distance / MAX_SUBSTEP);
-    for (let i = 0; i < parts; i++) this.step(gx.moved / parts, gz.moved / parts);
-  }
-
-  /** The floor the feet would stand on at (x, z), or null: none, or one more than `MAX_DROP` under them. */
-  private floorAt(x: number, z: number): Hit | null {
-    const s = this.state;
-    const floor = selectFloor(probeGround(this.grid, x, z), s.y + PROBE_LIFT, s.y);
-    return floor && floor.y >= s.y - MAX_DROP ? floor : null;
+    for (let i = 0; i < parts; i++) this.step(gx.moved / parts, gz.moved / parts, dt / parts);
   }
 
   /**
-   * One sub-step: move, slide off the walls, then stand on the floor there. A step with no floor is tried again as
-   * its part along x and its part along z, so a mover pressed diagonally against an edge runs along it rather
-   * than stopping dead; with no floor for either, it stays where it was.
+   * The floor the probe picks under (x, z) for feet at the mover's y, however far below, or null for none: the
+   * highest at or under y + `step_height`, else the lowest, never more than 20 over the feet (`selectFloor`; the
+   * origin rides `step_height` - 1 over the feet, see `BODY_HIGH`).
    */
-  private step(dx: number, dz: number): void {
+  private floorAt(x: number, z: number): Hit | null {
     const s = this.state;
+    return selectFloor(probeGround(this.grid, x, z), s.y + this.tuning_.step_height - SELECT_ABOVE, s.y);
+  }
+
+  /** One sub-step of `seconds`, on the floor or in the air: a mover that leaves the floor mid-tick falls the rest. */
+  private step(dx: number, dz: number, seconds: number): void {
+    if (this.airborne_) this.airStep(dx, dz, seconds);
+    else this.groundStep(dx, dz);
+  }
+
+  /**
+   * A sub-step on the floor: move, slide off the walls, then stand on the floor there. A floor more than
+   * `step_height` over the feet refuses the step (a rise the step does not climb is a wall, face or none); one more
+   * than `ground_touch_distance` under them does not hold them: the move is taken and the mover leaves the floor
+   * at its height, to fall from there. A refused step is tried again as its part along x and its part along z, so
+   * a mover pressed diagonally against an edge runs along it; refused both ways, it stays where it was.
+   */
+  private groundStep(dx: number, dz: number): void {
+    const s = this.state, t = this.tuning_;
     for (const [ax, az] of [[dx, dz], [dx, 0], [0, dz]] as const) {
       if (ax === 0 && az === 0) continue;
       const [x, z] = this.slide(s.x + ax, s.z + az, s.x, s.z);
       const floor = this.floorAt(x, z);
-      if (!floor) continue;
-      s.x = x; s.y = floor.y; s.z = z;
+      if (!floor || floor.y - s.y > t.step_height) continue;
+      s.x = x; s.z = z;
+      if (s.y - floor.y > t.ground_touch_distance) this.takeOff(alongSurfaceVy(this.floorNormal, s.vx, s.vz));
+      else { s.y = floor.y; this.standOn(floor); }
       return;
     }
+  }
+
+  /** Off the floor, moving up at `vy`: the speed along the floor it left (0 off a flat one). */
+  private takeOff(vy: number): void {
+    this.airborne_ = true;
+    this.sliding_ = false;
+    this.landing_ = null;
+    this.airTime = 0;
+    this.state.vy = vy;
+  }
+
+  /** The feet on `floor`: its normal kept, and a floor past `max_slope` is slid on rather than stood on. */
+  private standOn(floor: Hit): void {
+    this.floorNormal = floor.normal;
+    this.sliding_ = !standable(floor.normal[1], this.tuning_.max_slope);
+  }
+
+  /**
+   * A sub-step in the air: the horizontal move against the walls, over a floor no more than `step_height` over the
+   * feet (the hull's edge is never left, and a higher floor is a face), then the fall. The feet meet the floor the
+   * probe picks under them when they reach it on the way down -- lifted onto it when it is over them by a step's rise
+   * at most, as a step would be; the contact's time and vertical speed are the flight's own (`contactTime`,
+   * `contactSpeed`), not the sub-step's end.
+   */
+  private airStep(dx: number, dz: number, seconds: number): void {
+    const s = this.state, t = this.tuning_;
+    for (const [ax, az] of [[dx, dz], [dx, 0], [0, dz]] as const) {
+      if (ax === 0 && az === 0) continue;
+      const [x, z] = this.slide(s.x + ax, s.z + az, s.x, s.z);
+      const floor = this.floorAt(x, z);
+      if (!floor || floor.y - s.y > t.step_height) continue;
+      s.x = x; s.z = z;
+      break;
+    }
+    const next = fall(s.y, s.vy, seconds, t.gravity);
+    const floor = this.floorAt(s.x, s.z);
+    if (floor && next.vy <= 0 && floor.y >= next.y) {
+      const over = floor.y > s.y;                                   // met at the sub-step's start: lifted onto it
+      const at = over ? 0 : Math.min(seconds, contactTime(s.y, s.vy, floor.y, t.gravity) ?? seconds);
+      const speed = over ? Math.max(0, -s.vy) : contactSpeed(s.y, s.vy, floor.y, t.gravity);
+      this.airTime += at;
+      this.airborne_ = false;
+      this.landing_ = { kind: landingKind(speed, t), speed, airTime: this.airTime };
+      s.y = floor.y;
+      s.vy = 0;
+      this.standOn(floor);
+      return;
+    }
+    this.airTime += seconds;
+    s.y = next.y;
+    s.vy = next.vy;
   }
 
   /**
@@ -295,7 +486,7 @@ export class Walker {
    */
   private slide(x: number, z: number, fromX: number, fromZ: number): [number, number] {
     const s = this.state;
-    const lo = s.y + BODY_LOW, hi = s.y + BODY_HIGH, r = BODY_RADIUS;
+    const lo = s.y + this.tuning_.step_height, hi = s.y + BODY_HIGH, r = BODY_RADIUS;
     const walls = this.wallsNear(x, z);
     for (let pass = 0; pass < WALL_PASSES; pass++) {
       let pushed = false;
@@ -382,6 +573,9 @@ export class WalkMode {
   private spawn: [number, number, number] | null = null;
   private walking = false;
   private bound: EventTarget | null = null;
+  /** The seal table every mover runs on (W2.3a, W2.R6): the defaults until the disc's arrives (`setTuning`). */
+  private tuning: Readonly<SealTuning> = SEAL_TUNING_DEFAULTS;
+  private tuningFromDisc = false;
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
@@ -401,6 +595,21 @@ export class WalkMode {
 
   mode(): 'walk' | 'fly' {
     return this.walking ? 'walk' : 'fly';
+  }
+
+  /**
+   * The disc's table as the worker read it (`dynamicsFromDisc`), or null when the source has no `READERC.ZAR`: the
+   * mover runs on the defaults with every field the disc gave laid over them, from its next step on.
+   */
+  setTuning(disc: Partial<SealTuning> | null): void {
+    this.tuning = sealTuning(disc);
+    this.tuningFromDisc = disc !== null && Object.values(disc).some((v) => typeof v === 'number');
+    this.walker?.setTuning(this.tuning);
+  }
+
+  /** Which table the mover runs on, for the hook's `stats().tuning`. */
+  tuningSource(): 'disc' | 'defaults' {
+    return this.tuningFromDisc ? 'disc' : 'defaults';
   }
 
   /** Walk or fly. False when walk was asked for and there is no floor to stand on: the mode stays fly. */
@@ -465,7 +674,36 @@ export class WalkMode {
     return this.walking && w ? [w.state.x, w.state.y, w.state.z] : null;
   }
 
-  /** `G` on `target`, ignored with a modifier, on auto-repeat, and while a control has the keyboard. */
+  /** The mover's state while walking (W2.3a: in the air, sliding, crouched, the last landing), else null. */
+  mover(): MoverState | null {
+    const w = this.walker;
+    if (!this.walking || !w) return null;
+    return { airborne: w.airborne, sliding: w.sliding, crouched: w.crouched, landing: w.landing && { ...w.landing } };
+  }
+
+  /** Walk mode: the mover's jump (`Walker.jump`); false when flying, or with no footing to jump from. */
+  jump(): boolean {
+    const w = this.walker;
+    if (!this.walking || !w || !w.jump()) return false;
+    this.follow();
+    return true;
+  }
+
+  /** Walk mode: crouches (true), stands (false) or toggles (no argument); the stance after. False when flying. */
+  crouch(on?: boolean): boolean {
+    const w = this.walker;
+    if (!this.walking || !w) return false;
+    w.setCrouch(on ?? !w.crouched);
+    this.follow();
+    return w.crouched;
+  }
+
+  /**
+   * The mode's keys on `target`, each ignored with a modifier, on auto-repeat, and while a control has the keyboard:
+   * `G` walk or fly; in walk mode `Space` the jump (in fly mode it stays the camera's "up") and `C` the crouch
+   * (W2.3a: C rather than Ctrl, which `camera.ts` keeps free because Ctrl+W closes the tab; C is the other key PC
+   * shooters crouch on, and nothing else here uses it).
+   */
   bindKey(target: EventTarget = globalThis): void {
     this.unbindKey();
     target.addEventListener('keydown', this.onKey as EventListener);
@@ -478,16 +716,19 @@ export class WalkMode {
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
-    if (e.code !== 'KeyG' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (e.code !== 'KeyG' && !(this.walking && (e.code === 'KeyC' || e.code === 'Space'))) return;
     const target = e.target;
     if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
     e.preventDefault();
-    this.setMode(this.walking ? 'fly' : 'walk');
+    if (e.code === 'KeyC') this.crouch();
+    else if (e.code === 'Space') this.jump();
+    else this.setMode(this.walking ? 'fly' : 'walk');
   };
 
   /** The floor under the camera, else spawn A's. */
   private stand(): boolean {
-    if (!this.walker && this.ground) this.walker = new Walker(groundGrid(this.ground));
+    if (!this.walker && this.ground) this.walker = new Walker(groundGrid(this.ground), this.tuning);
     const w = this.walker;
     if (!w) return false;
     const at = this.camera.pose();

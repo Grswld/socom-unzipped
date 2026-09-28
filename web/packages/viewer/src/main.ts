@@ -151,6 +151,17 @@ function askIndex(from: SourceRequest): void {
 }
 
 /**
+ * The seal table from the disc (W2.3a, W2.R6): asked of each source once the picker has switched to it -- the served
+ * tree's `RUN/READERC.ZAR` when it has one, the disc image's always -- and handed to the walk; the mover runs on the
+ * defaults until it arrives, and on them when the source has none.
+ */
+let wantedDynamics = -1;
+function askDynamics(from: SourceRequest): void {
+  wantedDynamics = ++requests;
+  ask({ kind: 'dynamics', id: wantedDynamics, source: from });
+}
+
+/**
  * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
  * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
  * never uploaded and the page itself reads none of it.
@@ -174,6 +185,11 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id !== wantedIndex) return;
     source = wantedIndexFrom;
     showMaps(message.maps);
+    askDynamics(source);
+    return;
+  }
+  if (message.kind === 'dynamics') {
+    if (message.id === wantedDynamics) walk.setTuning(message.tuning);
     return;
   }
   if (message.kind === 'progress') {
@@ -578,6 +594,7 @@ window.__viewer = {
   setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
   stats: () => ({
+    tuning: walk.tuningSource(),
     triangles: view?.triangles ?? 0,
     backend,
     diagnostics: loaded?.diagnostics ?? [],
@@ -605,5 +622,8 @@ window.__viewer = {
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
   pad: () => ({ id: pads.id(), input: { ...padMerged } }),
+  mover: () => walk.mover(),
+  jump: () => walk.jump(),
+  crouch: (on) => walk.crouch(on),
   revision,
 } satisfies ViewerHook;

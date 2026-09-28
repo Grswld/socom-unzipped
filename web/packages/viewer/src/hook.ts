@@ -5,6 +5,7 @@ import type { Backend } from './renderer';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
+import type { MoverState } from './walk';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -36,6 +37,8 @@ export interface ViewerHook {
      * whether it is shown; null on a map whose body did not decode.
      */
     body: (BodyView['stats'] & { visible: boolean }) | null;
+    /** The seal table the walk runs on (W2.3a, W2.R6): the disc's `dynamics.rdr` over the defaults, or the defaults. */
+    tuning: 'disc' | 'defaults';
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
@@ -59,6 +62,12 @@ export interface ViewerHook {
    * on the last frame -- the pad's input merged with the touch stick's (`e2e/pad.spec.ts`).
    */
   pad(): { id: string | null; input: Input };
+  /** Walk mode (W2.3a): in the air, sliding, crouched, and the last landing's class and speed; null in fly mode. */
+  mover(): MoverState | null;
+  /** Walk mode: the jump `Space` makes (a named placeholder impulse); false when flying or with no footing. */
+  jump(): boolean;
+  /** Walk mode: crouch (true), stand (false) or toggle, as `C` does; the stance after, false when flying. */
+  crouch(on?: boolean): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
