@@ -5,7 +5,8 @@ import {
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
 import { firstPersonHeight, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
-import { jumpImpulse, landingKind, sealTuning, type LandingKind } from './physics';
+import { airBands, oneShotSeconds } from './locomotion';
+import { landingKind, sealTuning, type LandingKind } from './physics';
 
 /**
  * Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): a mover that stands on the floor the engine's probe finds,
@@ -94,12 +95,28 @@ import { jumpImpulse, landingKind, sealTuning, type LandingKind } from './physic
  *   mover's and drawn between ticks. `V` switches to first person at the head (`firstPersonHeight`). The mouse turns
  *   the body's yaw and the camera's pitch (`camera.ts`). Sprint 1's first-person eye 15.4 (`EYE_HEIGHT`, W1.R2) is
  *   retired as a view; it stays the height a pose drops the mover from.
- * - **The jump.** The game's jump is a clip (`seal_jump`, `seal_runningjump_launch` in `motion.rdr`) whose rise is
- *   root motion, not a formula of `jump_factor` -- `jump_factor x gravity x -0.4` (`FUN_0057e1b0`, `FUN_005880e0`)
- *   seeds `actor+0x1364`, the landing-speed record the fall damage reads (`FUN_005ac1f0`), not a launch speed. Until
- *   the clip's root drives it, `Walker.jump` is the cloud sprint's named placeholder (`./physics` `jumpImpulse`): the
- *   impulse that reaches `min_jump_height` under the table's gravity. Landings are classed by the contact speed
- *   against `land_fall_rate` / `land_hard_fall_rate` (`./physics` `landingKind`) for the landing clips.
+ * - **The jump** (web/docs/research/80-the-jump.md, read from the decompilation). `FUN_0057e1b0` (decomp
+ *   440776-440867) takes the press when the SEAL is on walkable ground (`actor+0x1348` >= cos `max_slope`), not prone
+ *   (`FUN_005b4340(.., 0xb)` refuses stance 2), and not within 0.4 s (`actor+0x135c`) of a running jump's take-off or
+ *   of a landing. **At 15 units a second or more** (speed^2 >= 225) it is the **running jump**: the `Jump launch` action
+ *   (`seal_runningjump_launch`), the take-off's world velocity kept at `actor+0x1350..0x1358` and carried through the
+ *   air with no stick (`FUN_0054d9a0`, 416501-416555), and `actor+0x1364 = jump_factor x gravity x -0.4` -- -79.9 --
+ *   written into the fall speed 0.1 s later (`actor+0x1360`, `FUN_005af930`): an impulse of **79.9 units a second up**
+ *   under the 235 fall, a rise of 13.6 units (1.36 m) and 0.68 s in the air after the 0.1 s wind-up. **Under 15** it is
+ *   the **standing jump**: the `Jump` action (`seal_jump`, 0.99 s), and the feet never leave the floor -- the height
+ *   comes from the clip only for `UseVelY` motions (`FUN_0059afd0`, 456328-456466), and `seal_jump` is none: the rise
+ *   is the skeleton root's, 10.5 to 15.1 over the feet, and the game's camera follows that root. While it plays the
+ *   stick drives the SEAL at each set's top speed (`FUN_0057a330` 438955-438985, the only air control: 65 ahead, 37
+ *   back, 65 aside standing, 20 crouched). **Landing** (`FUN_005af590`, 466641-466728): over `land_hard_fall_rate` 115
+ *   the `Jump land hard` action (`seal_land_hard`, 0.9 s); else, with the stick at rest or the last airborne tick's
+ *   velocity under 20 (`actor+0x38`, the fall included: `FUN_005483d0` decomp 413963), `Jump land` (`seal_land_soft`,
+ *   0.63 s); else no clip, the run going on from the stick at once (the ramp skipped: `actor+0x248 = +0x244`). Through a
+ *   landing clip the carried velocity runs down at 150 a second squared (`FUN_0054d9a0`). A walk-off plays the
+ *   in-air clip (`Jump fall`, `FUN_0057e050`) and lands by the same rule.
+ * - **The stance changes** (`FUN_005817d0`, `FUN_00581c10`, `FUN_00581540`, decomp 442170-442660): standing to crouch
+ *   plays `Stand -> Crouch` (0.60 s) unless moving over 10 a second; crouch to stand the same clip backwards unless
+ *   moving over 10; to prone `Stand -> Prone` (0.95 s) or `Crouch -> Prone` (0.85 s), and out of prone those backwards.
+ *   The ground state does not run while a transition plays (`FUN_005870e0` runs it only on a locomotion action) [reading].
  */
 
 /** Seconds per tick: `CGame::Tick` at 60 Hz (web/docs/research/71 section 1.5). */
@@ -347,7 +364,11 @@ export interface WalkState {
  * The last landing: its class against the table's landing rates, the vertical speed at contact (units a second,
  * downward), and the seconds from leaving the floor to the contact.
  */
-export interface Landing { kind: LandingKind; speed: number; airTime: number }
+export interface Landing {
+  kind: LandingKind; speed: number; airTime: number;
+  /** The clip the game plays for it (`FUN_005af590`), or null: the run goes on. */
+  clip: 'land' | 'landHard' | null;
+}
 
 /** What the hook reports of the mover: in the air, crouched (the posture), the stance, and the last landing. */
 export interface MoverState { airborne: boolean; crouched: boolean; stance: Stance; landing: Landing | null }
@@ -363,10 +384,80 @@ export interface PlaySnapshot {
   airborne: boolean; crouched: boolean; stance: Stance;
   landing: LandingKind | null;
   jumps: number;
+  /** The ground state and its stick (`GroundMotion`): what the locomotion clips play by. */
+  ground: GroundMotion;
+  /** The action holding the mover, or null. */
+  action: MoverAction | null;
+  /** The look's turn over the last frame, radians a second, left positive: what turns the prone body in place. */
+  turnRate: number;
 }
 
-/** The table's jump and landing fields (`./physics`, the cloud sprint's reader): the placeholder jump, the landings. */
+/** The table's jump and landing fields (`./physics`): `jump_factor`, `gravity` and the landing rates. */
 const JUMP_TABLE = sealTuning(null);
+
+/** `FUN_0057e1b0`: a take-off at this speed or more (`225 <= |v|^2`, the local velocity) is the running jump. */
+export const RUNNING_JUMP_SPEED = 15;
+/** `FUN_0057e1b0` -> `FUN_005af930`: the running jump's impulse lands in the fall speed this long after the take-off (`actor+0x1360 = 0x3dcccccd`). */
+export const JUMP_DELAY = 0.1;
+/** `actor+0x135c = 0x3ecccccd`: no jump this long after a running jump's take-off, or after any landing (`FUN_005af930`). */
+export const JUMP_LOCK = 0.4;
+/** `FUN_0054d9a0`: the carried velocity runs down by this many units a second, each second, through a landing clip. */
+export const CARRY_DECAY = 150;
+/** `FUN_005af590`: the soft landing's speed, units a second (`|actor+0x38|^2 <= 400`); the stick at rest also gives it. */
+export const LAND_STILL = 20;
+/** `FUN_005817d0` / `FUN_00581c10`: a stance change at more than this (`speed^2 > 100`) runs on without a transition clip. */
+export const STANCE_MOVING = 10;
+
+/**
+ * The running jump's impulse, units a second up: `actor+0x1364 = jump_factor x gravity x -0.4` (`FUN_0057e1b0`, decomp
+ * 440830), the fall speed `FUN_005af930` writes 0.1 s after the take-off -- 0.85 x 235 x 0.4 = 79.9.
+ */
+export function runningJumpSpeed(t: { jump_factor: number; gravity: number } = JUMP_TABLE): number {
+  return t.jump_factor * t.gravity * 0.4;
+}
+
+/**
+ * The clips the mover waits on -- the standing jump, the two landings and the three stance transitions -- as
+ * `motion.rdr`'s `playback` and `MOTION_P.ZAR`'s key count: transcribed (W2.R5), pinned against both files by the
+ * fixture test.
+ */
+export const ACTION_CLIPS = Object.freeze({
+  jump: { playback: 1.1, frames: 20 }, land: { playback: 0.7, frames: 20 }, landHard: { playback: 1, frames: 20 },
+  standToCrouch: { playback: 0.65, frames: 27 }, crouchToProne: { playback: 0.9, frames: 33 }, standToProne: { playback: 1, frames: 36 },
+});
+
+/**
+ * How long each holds the mover: the one-shot's run to its last key (`./locomotion` `oneShotSeconds`, `FUN_0028c4f0`):
+ * `seal_jump` 0.993 s, the landings 0.632 and 0.903, the transitions 0.603, 0.846 and 0.945.
+ */
+export const ACTION_SECONDS: Readonly<Record<keyof typeof ACTION_CLIPS, number>> = Object.freeze(Object.fromEntries(
+  Object.entries(ACTION_CLIPS).map(([k, c]) => [k, oneShotSeconds(c.playback, c.frames)]),
+) as Record<keyof typeof ACTION_CLIPS, number>);
+
+/**
+ * What the mover is doing besides the ground state (the game's action stack, `actor+0x1c0`): the standing jump
+ * (`Jump`), the running jump's take-off (`Jump launch`), the fall (`Jump fall`), the landings (`Jump land`, `Jump land
+ * hard`) and a stance transition (`Stand -> Crouch`, `Crouch -> Prone`, `Stand -> Prone`, played backwards when
+ * getting up). `serial` changes with every start, so the animator sees a restart.
+ */
+export type MoverActionName = 'jump' | 'launch' | 'fall' | 'land' | 'landHard' | 'standToCrouch' | 'crouchToProne' | 'standToProne';
+export interface MoverAction {
+  name: MoverActionName;
+  serial: number;
+  /** Seconds since it started. */
+  t: number;
+  /** How long it holds the mover, or null (the launch and the fall hold until the landing). */
+  seconds: number | null;
+  /** A transition played backwards: getting up. */
+  reversed: boolean;
+}
+
+/**
+ * The ground state as the animator needs it (`./locomotion`): which state ran (`FUN_00586570` stand -- the crouch's run
+ * too --, `FUN_00584c60` crouch, `FUN_005845c0` prone, or none: at rest), the stick values it ran on (ramped,
+ * rescaled) and the direction class.
+ */
+export interface GroundMotion { state: 'idle' | Stance; forward: number; right: number; cls: MoveClass }
 
 /** A wall polygon with what the step needs of it computed once. */
 interface Wall {
@@ -453,15 +544,67 @@ export class Walker {
   private cls: MoveClass = -1;
   /** The body in use: the stance, but `stand` while a crouch runs at full stick. */
   private posture_: Stance = 'stand';
+  /** The action holding the mover (`MoverAction`), or null. */
+  private action_: MoverAction | null = null;
+  private serial = 0;
+  /** `actor+0x135c`: seconds before the next jump may start. */
+  private jumpLock = 0;
+  /** `actor+0x1360`: seconds before the running jump's impulse; 0 when none is pending. */
+  private jumpDelay = 0;
+  /** In a running jump (`actor+0x1061` bit 1): the fall runs from the impulse, not from a walk-off. */
+  private jumping = false;
+  /** The velocity carried through the air and a landing clip (`actor+0x1350` / `+0x1358`), world x and z. */
+  private carried: [number, number] = [0, 0];
+  /** The floor's normal y under the feet (`actor+0x1348`), for the jump's slope test. */
+  private floorNormalY = 1;
+  /** The ground state as it last ran (`GroundMotion`). */
+  private ground_: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
 
   /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
   get stance(): Stance {
     return this.stance_;
   }
 
+  /** Sets the stance at once, with no transition clip (placing the mover, a new map): `changeStance` is the game's. */
   set stance(stance: Stance) {
     this.stance_ = stance;
     this.posture_ = stance;
+  }
+
+  /**
+   * The game's stance change (`FUN_005817d0` to crouch, `FUN_00581c10` to stand, `FUN_00581540` to prone; decomp
+   * 442170-442660): the stance is the new one at once, and on the floor a transition clip holds the mover while it
+   * plays -- unless the SEAL is moving over `STANCE_MOVING` between stand and crouch, which runs straight on. In the air
+   * the stance simply changes.
+   */
+  changeStance(stance: Stance): void {
+    const from = this.stance_;
+    if (stance === from) return;
+    this.stance = stance;
+    if (this.inAir || (this.action_ && this.action_.name !== 'fall')) return;
+    const moving = Math.hypot(this.state.vx, this.state.vz) > STANCE_MOVING;
+    const pair = (a: Stance, b: Stance): boolean => (from === a && stance === b) || (from === b && stance === a);
+    let name: MoverActionName;
+    if (pair('stand', 'crouch')) { if (moving) return; name = 'standToCrouch'; }
+    else if (pair('crouch', 'prone')) name = 'crouchToProne';
+    else name = 'standToProne';
+    const reversed = stance !== 'prone' && !(from === 'stand' && stance === 'crouch');
+    this.start(name, ACTION_SECONDS[name], reversed);
+    this.state.vx = 0; this.state.vz = 0;
+  }
+
+  /** The action holding the mover (`MoverAction`), or null. */
+  get action(): MoverAction | null {
+    return this.action_;
+  }
+
+  /** The ground state as it last ran (`GroundMotion`). */
+  get ground(): GroundMotion {
+    return this.ground_;
+  }
+
+  private start(name: MoverActionName, seconds: number | null, reversed = false): void {
+    this.action_ = { name, serial: ++this.serial, t: 0, seconds, reversed };
   }
 
   /** The body in use (`STANCE[posture]` gives its root and column): `stand` while a crouch runs at full stick. */
@@ -491,6 +634,10 @@ export class Walker {
     this.accumulator = 0;
     this.inAir = false;
     this.landing_ = null;
+    this.action_ = null;
+    this.jumpLock = 0; this.jumpDelay = 0; this.jumping = false; this.carried = [0, 0];
+    this.floorNormalY = floor.normal[1];
+    this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
     return true;
   }
 
@@ -505,21 +652,36 @@ export class Walker {
   }
 
   /**
-   * The jump (PLACEHOLDER, see the header): from the floor, the feet leave it at `jumpImpulse` upward keeping the
-   * run's velocity across the ground; a crouched or prone mover stands to jump. False, and nothing changes, in the air.
+   * The jump (`FUN_0057e1b0`, the header): refused in the air, prone, within `JUMP_LOCK` of a take-off or a landing,
+   * while an action other than the fall holds the mover [reading: the action stack takes the `Jump` only from a
+   * locomotion action], and off walkable ground. At `RUNNING_JUMP_SPEED` or more the running jump -- off the floor with
+   * the velocity carried, the impulse `JUMP_DELAY` later; under it the standing jump -- the `Jump` action on the floor.
+   * True when a jump started.
    */
   jump(): boolean {
-    if (this.inAir) return false;
-    if (this.stance_ !== 'stand') this.stance = 'stand';
-    this.takeOff(jumpImpulse(JUMP_TABLE));
+    if (this.inAir || this.jumpLock > 1e-9 || this.stance_ === 'prone') return false;
+    if (this.action_ && this.action_.name !== 'fall') return false;
+    if (this.floorNormalY < MAX_SLOPE_COS) return false;
+    const s = this.state;
+    if (s.vx * s.vx + s.vz * s.vz + s.vy * s.vy >= RUNNING_JUMP_SPEED * RUNNING_JUMP_SPEED) {
+      this.takeOff();
+      this.jumping = true;
+      this.jumpDelay = JUMP_DELAY;
+      this.jumpLock = JUMP_LOCK;
+      this.start('launch', null);
+    } else {
+      this.start('jump', ACTION_SECONDS.jump);
+    }
     return true;
   }
 
-  private takeOff(vy: number): void {
+  /** Leaves the floor: the velocity across it carried (`actor+0x1350 = +0x38`), the fall from 0. */
+  private takeOff(): void {
     this.inAir = true;
     this.landing_ = null;
     this.airTime = 0;
-    this.state.vy = vy;
+    this.state.vy = 0;
+    this.carried = [this.state.vx, this.state.vz];
   }
 
   /** Feeds `seconds` of real time in and runs the whole ticks it makes, `afterTick` after each; returns how many ran. */
@@ -560,24 +722,68 @@ export class Walker {
   }
 
   /**
-   * One 60 Hz step. On the ground: the stick through the throttle ramp (`throttleStep`), the velocity from the
-   * stance's bands (`locomotion`), then the move in sub-steps, each sliding off the walls and standing on the floor.
-   * Airborne: the fall (`fall`). The boost of `GroundWish` is not read: the ground has none (W2.R2).
+   * One 60 Hz step. The jump lock and the action's clock run down first. Airborne: the fall (`fall`). Holding the
+   * mover: a landing clip carries the landing's velocity down at `CARRY_DECAY`; a stance transition stands still; the
+   * standing jump moves by the stick at the stance's top speeds (`FUN_0057a330`). Otherwise the ground state: the
+   * stick through the throttle ramp (`throttleStep`), the velocity from the stance's bands (`locomotion`), then the
+   * move in sub-steps, each sliding off the walls and standing on the floor. The boost of `GroundWish` is not read:
+   * the walk has none (W2.R2; the owner's ruling of the motion workstream).
    */
   tick(input: WalkInput, dt: number = TICK): void {
     const s = this.state;
     this.prev = { x: s.x, y: s.y, z: s.z };
-    if (this.inAir) { this.fall(dt); return; }
+    this.jumpLock = Math.max(0, this.jumpLock - dt);
+    const a = this.action_;
+    if (a) {
+      a.t += dt;
+      if (a.seconds !== null && a.t >= a.seconds - 1e-9) this.action_ = null;
+    }
     let forward = input.forward, right = input.right;
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
-    const v = this.locomote(forward, right, dt);
+    if (this.inAir) { this.fall(dt, forward, right); return; }
+    const held = this.action_?.name;
+    if (held === 'land' || held === 'landHard') {             // FUN_0054d9a0: the carried velocity, running down
+      s.stickForward = forward; s.stickRight = right;          // FUN_0057a330: actor+0x248 = +0x244 each tick
+      this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
+      const [cx, cz] = this.carried, c = Math.hypot(cx, cz), cut = CARRY_DECAY * dt;
+      this.carried = c <= cut ? [0, 0] : [cx - (cx / c) * cut, cz - (cz / c) * cut];
+      [s.vx, s.vz] = this.carried;
+      this.move(s.vx * dt, s.vz * dt);
+      return;
+    }
+    if (held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne') {
+      s.stickForward = forward; s.stickRight = right;
+      this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
+      s.vx = 0; s.vz = 0;
+      return;
+    }
+    const v = held === 'jump' ? this.jumpControl(forward, right, dt) : this.locomote(forward, right, dt);
     const yaw = (s.yaw * Math.PI) / 180;
     // The camera looks down its own -z (`camera.ts`): forward is (-sin, -cos), right is (cos, -sin).
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw), rx = Math.cos(yaw), rz = -Math.sin(yaw);
     s.vx = fx * v.forward + rx * v.right;
     s.vz = fz * v.forward + rz * v.right;
     this.move(s.vx * dt, s.vz * dt);
+  }
+
+  /**
+   * The `Jump` action's stick (`FUN_0057a330` decomp 438955-438985): off rest, the ramp (`FUN_00586c10`) and then the
+   * velocity straight from it -- the lateral axis times the side sets' top speed, the forward times the forward set's
+   * or, backing up, the back set's (`FUN_0058bb50` / `FUN_0058bc00` by stance: `airBands`), no blend and no
+   * renormalisation (`DAT_0064fc80` is 1 here). At rest, the clip's root motion: `seal_jump`'s root does not travel.
+   */
+  private jumpControl(forward: number, right: number, dt: number): { forward: number; right: number } {
+    const s = this.state;
+    this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
+    if (idle(forward, right)) { s.stickForward = forward; s.stickRight = right; return { forward: 0, right: 0 }; }
+    s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
+    s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
+    const b = airBands(this.stance_ === 'crouch' ? 'crouch' : 'stand', null);
+    return {
+      forward: s.stickForward * (s.stickForward >= 0 ? b.forward : b.back),
+      right: s.stickRight * (s.stickRight >= 0 ? b.right : b.left),
+    };
   }
 
   /**
@@ -591,12 +797,14 @@ export class Walker {
       s.stickForward = forward; s.stickRight = right;
       this.cls = -1;
       this.posture_ = this.stance;
+      this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
       return still;
     }
     if (this.stance === 'prone') {                               // FUN_005845c0 -> FUN_00583500: no ramp
       s.stickForward = forward; s.stickRight = right;
       this.cls = moveClass(right, forward, this.cls);
       this.posture_ = 'prone';
+      this.ground_ = { state: 'prone', forward, right, cls: this.cls };
       const a = classAxis(this.cls, STANCE.prone.bands);
       const speed = (a.f !== 0 ? Math.abs(forward) : Math.abs(right)) * a.band;
       return { forward: a.f * speed, right: a.r * speed };
@@ -610,6 +818,7 @@ export class Walker {
         s.stickForward = throttleStep(s.stickForward, forward * k, 'forward', dt);
         s.stickRight = throttleStep(s.stickRight, right * k, 'right', dt);
         this.posture_ = 'crouch';
+        this.ground_ = { state: 'crouch', forward: s.stickForward, right: s.stickRight, cls: this.cls };
         // FUN_00582d10: one set by the class at m, no blend; FUN_00583350's DAT_0064fc80 scales it all the same.
         const f = Math.abs(s.stickForward) <= FORWARD_DEAD ? 0 : s.stickForward;
         const len = Math.hypot(f, s.stickRight);
@@ -626,6 +835,7 @@ export class Walker {
     }
     s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
     s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
+    this.ground_ = { state: 'stand', forward: s.stickForward, right: s.stickRight, cls: this.cls };
     return locomotion(s.stickForward, s.stickRight, STANCE.stand.bands);   // FUN_00583030
   }
 
@@ -660,24 +870,59 @@ export class Walker {
   }
 
   /**
-   * One airborne tick: gravity on `vy`, the horizontal velocity carried as it left the ground, the walls, and the
-   * landing on the highest floor at or under the feet as they were -- the feet on it, `vy` zero, the run on.
+   * One airborne tick. A running jump waits out `JUMP_DELAY` with the feet held on the floor [reading: the landing is
+   * off while `actor+0x1360` runs, so the collision is what holds them], then takes `runningJumpSpeed` up
+   * (`FUN_005af930`: `actor+0x133c = +0x1364`); from then on, as a walk-off, `FUN_0059b440`: gravity on `vy`, the
+   * height by `vy`, the carried velocity across the ground and the walls, and the landing on the highest floor at or
+   * under the feet as they were -- classed and given its clip by `land`. The stick reads 0 in the air (`FUN_005af930`
+   * zeroes `actor+0x240..0x244`).
    */
-  private fall(dt: number): void {
+  private fall(dt: number, forward: number, right: number): void {
     const s = this.state;
-    s.vy -= SEAL_TUNING.gravity * dt;
+    s.stickForward = 0; s.stickRight = 0;
+    this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
+    if (!this.jumping && this.action_?.name !== 'fall') this.start('fall', null);        // FUN_0057e050: `Jump fall`
+    [s.vx, s.vz] = this.carried;
     this.airTime += dt;
     this.move(s.vx * dt, s.vz * dt);
+    if (this.jumpDelay > 0) {
+      this.jumpDelay -= dt;
+      if (this.jumpDelay > 1e-9) { s.vy = 0; return; }
+      this.jumpDelay = 0;
+      s.vy = runningJumpSpeed();
+    }
+    s.vy -= SEAL_TUNING.gravity * dt;
     const from = s.y;
     s.y += s.vy * dt;
     let floor: Hit | null = null;
     for (const h of probeGround(this.grid, s.x, s.z)) if (h.y <= from + 1e-9 && (floor === null || h.y > floor.y)) floor = h;
     if (floor && s.vy <= 0 && s.y <= floor.y) {
-      const speed = Math.max(0, -s.vy);
-      this.landing_ = { kind: landingKind(speed, JUMP_TABLE), speed, airTime: this.airTime };
       s.y = floor.y;
-      s.vy = 0;
-      this.inAir = false;
+      this.floorNormalY = floor.normal[1];
+      this.land(forward, right);
+    }
+  }
+
+  /**
+   * The landing (`FUN_005af930` -> `FUN_005af590`, decomp 466641-466728): the contact speed classed for the hook
+   * (`./physics` `landingKind`); over `land_hard_fall_rate` the hard clip, else with the stick at rest or the last
+   * airborne velocity (the fall included) under `LAND_STILL` the soft one, else none -- the stick taking the run on at
+   * once (`actor+0x248 = +0x244`). No jump for `JUMP_LOCK` after (`actor+0x135c`).
+   */
+  private land(forward: number, right: number): void {
+    const s = this.state;
+    const speed = Math.max(0, -s.vy);
+    const still = idle(forward, right) || Math.hypot(s.vx, s.vy, s.vz) <= LAND_STILL;
+    const clip = speed > JUMP_TABLE.land_hard_fall_rate ? 'landHard' : still ? 'land' : null;
+    this.landing_ = { kind: landingKind(speed, JUMP_TABLE), speed, airTime: this.airTime, clip };
+    s.vy = 0;
+    this.inAir = false;
+    this.jumping = false;
+    this.jumpLock = JUMP_LOCK;
+    if (clip) this.start(clip, ACTION_SECONDS[clip]);
+    else {
+      this.action_ = null;
+      s.stickForward = forward; s.stickRight = right;
     }
   }
 
@@ -708,9 +953,11 @@ export class Walker {
       if (rise > 0 && floor.normal[1] < MAX_SLOPE_COS) continue;
       s.x = x; s.z = z;
       if (rise < -SEAL_TUNING.groundTouchDistance) {
-        this.takeOff(0);
+        this.takeOff();
+        this.start('fall', null);                                // FUN_0057e050: `Jump fall`
       } else {
         s.y = floor.y;
+        this.floorNormalY = floor.normal[1];
       }
       return;
     }
@@ -835,6 +1082,15 @@ export class WalkMode {
   private jumps = 0;
   /** The aim view held (L1, the right button): first person while held, back to `view_` on release. */
   private aiming = false;
+  /**
+   * The skeleton root's height over the feet as the body is posed (`./play` hands it over after each animator step),
+   * or null with no clips: `FUN_0029a950` reads the posed root (`FUN_002869d0` on `actor+0x2e8`, decomp 142450-142460),
+   * so the camera rises with the standing jump's root and sinks through a crouch as the clips do.
+   */
+  private posedRoot: number | null = null;
+  /** The look's yaw at the last frame, degrees, and the turn since, radians a second (left positive). */
+  private lastYaw: number | null = null;
+  private turnRate = 0;
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
@@ -843,11 +1099,17 @@ export class WalkMode {
     return this.stance_;
   }
 
-  /** Sets the stance, walking or not; false, and nothing changes, for a name that is not one. */
+  /**
+   * Sets the stance, walking or not; false, and nothing changes, for a name that is not one. Walking, it is the game's
+   * change (`Walker.changeStance`: a transition clip holds the mover while it plays).
+   */
   setStance(stance: Stance): boolean {
     if (!STANCES.includes(stance)) return false;
     this.stance_ = stance;
-    if (this.walker) this.walker.stance = stance;
+    if (this.walker) {
+      if (this.walking) this.walker.changeStance(stance);
+      else this.walker.stance = stance;
+    }
     return true;
   }
 
@@ -913,7 +1175,7 @@ export class WalkMode {
     return true;
   }
 
-  /** Walk mode: crouches (true), stands (false) or toggles stand and crouch (no argument); crouched after. */
+  /** Walk mode: crouches (true), stands (false) or toggles stand and crouch (no argument); crouched after (the stance). */
   crouch(on?: boolean): boolean {
     if (!this.walking || !this.walker) return false;
     this.setStance((on ?? this.stance_ !== 'crouch') ? 'crouch' : 'stand');
@@ -936,7 +1198,16 @@ export class WalkMode {
       feet: w.drawnFeet(), yaw: s.yaw, pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
       airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
       landing: w.landing?.kind ?? null, jumps: this.jumps,
+      ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate: this.turnRate,
     };
+  }
+
+  /**
+   * The body's posed skeleton root over the feet (`./play`, after each animator step), or null to fall back on the
+   * stance's measured root (`rootY`): what the camera stands its target on from the next tick.
+   */
+  setPosedRoot(rootY: number | null): void {
+    this.posedRoot = rootY !== null && Number.isFinite(rootY) ? rootY : null;
   }
 
   /** Sets the view, walking or not; false for a name that is not one. */
@@ -955,6 +1226,12 @@ export class WalkMode {
     const w = this.walker;
     if (!this.walking || !w) return;
     this.look(w);
+    const yaw = w.state.yaw;
+    if (this.lastYaw !== null && dt > 0) {
+      const turn = ((((yaw - this.lastYaw) % 360) + 540) % 360) - 180;
+      this.turnRate = (turn * Math.PI) / 180 / dt;
+    }
+    this.lastYaw = yaw;
     w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
     this.follow();
   }
@@ -1096,15 +1373,18 @@ export class WalkMode {
     w.state.pitch = look.pitch;
   }
 
-  /** One camera tick on the mover's last tick. */
+  /** One camera tick on the mover's last tick: on the body's posed root when there is one, else the stance's. */
   private cameraTick(): void {
     const w = this.walker!;
-    this.player?.tick([w.state.x, w.state.y, w.state.z], w.state.yaw, w.state.pitch, rootY(w.posture));
+    const posed = this.posedRoot;
+    this.player?.tick([w.state.x, w.state.y, w.state.z], w.state.yaw, w.state.pitch, posed ?? rootY(w.posture), undefined, posed !== null);
   }
 
   /** A new camera on the mover where it now stands (entering walk, a pose from the hook, a new map). */
   private restart(): void {
     const w = this.walker!;
+    this.lastYaw = null;
+    this.turnRate = 0;
     this.look(w);
     this.player?.reset();
     this.cameraTick();

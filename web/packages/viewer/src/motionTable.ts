@@ -7,7 +7,7 @@ import { parseMotionClip, type MotionClip } from '@s2u/scene';
  * - **`motion.rdr`**, in `RUN/READERC.ZAR`, the playback table (web/docs/research/77 §7): one entry a clip, by the
  *   clip's name, with `looped`, `playback`, `max_velocity`, `BlendTime`, `transition_speed_A/B`, `NoInterrupt`,
  *   `zanim_callback` and the flags beside them. The fields the animator reads are kept (`MotionEntry`), each a number
- *   or absent; the rest (the callbacks, `NoFire`, `Lateral`, ...) are left for the tasks that act on them.
+ *   or absent, and the `zanim_callback`s; the rest (`NoFire`, `Lateral`, ...) are left for the tasks that act on them.
  * - **`RUN/MOTION_P.ZAR`**, the player's pack (research 77 §12): the clips the animator asks for, by name, through
  *   `@s2u/scene`'s reader.
  *
@@ -40,6 +40,13 @@ export interface MotionEntry {
   transitionB: number | null;
   /** `NoInterrupt`: the fraction of the clip that plays before it can be cut (null when absent or bare). */
   noInterrupt: number | null;
+  /**
+   * `zanim_callback`s, in the file's order: the zAnim animation the motion fires (`name`, e.g. `seal_jump`'s
+   * `jump_whoosh`) and when (`time`, as the file has it). The loader `FUN_00287620` (decomp 131191-131653) reads every
+   * one and keeps a time over 1 as seconds, dividing it by `playback x (n - 1) / n` into the clip's phase; a time of 1
+   * or under is already a phase (`./animator` `callbackPhase`). `FUN_0028c9e0` fires each as the phase crosses it.
+   */
+  callbacks: { name: string; time: number }[];
 }
 
 /** The table, by clip name. */
@@ -51,6 +58,21 @@ function numberOf(record: RdrNode, key: string): number | null {
   if (typeof v !== 'string') return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Every `zanim_callback` of a record (the loader walks them with `FUN_0032f0d0` / `FUN_0032ef20`, the first and the
+ * next of a key): each a `name` and a `time`; one without both is skipped.
+ */
+function callbacksOf(record: RdrNode[]): { name: string; time: number }[] {
+  const out: { name: string; time: number }[] = [];
+  for (let i = 0; i + 1 < record.length; i++) {
+    if (record[i] !== 'zanim_callback') continue;
+    const body = record[i + 1]!;
+    const name = rdrGet(body, 'name'), time = Number(rdrGet(body, 'time'));
+    if (typeof name === 'string' && Number.isFinite(time)) out.push({ name, time });
+  }
+  return out;
 }
 
 /**
@@ -74,6 +96,7 @@ export function readMotionTable(rdr: RdrNode): Map<string, MotionEntry> {
       transitionA: numberOf(record, 'transition_speed_A'),
       transitionB: numberOf(record, 'transition_speed_B'),
       noInterrupt: numberOf(record, 'NoInterrupt'),
+      callbacks: callbacksOf(record),
     });
   }
   return out;

@@ -6,9 +6,9 @@ import { rdrGet, type AssetSource, type RdrNode } from '@s2u/archive';
 import { FsAssetSource } from '@s2u/archive/node';
 import {
   alongSurfaceVy, contactSpeed, contactTime, dynamicsFromArchive, dynamicsFromDisc, dynamicsRdrFromArchive,
-  dynamicsRdrFromDisc, fall, jumpImpulse, jumpSpeed,
+  dynamicsRdrFromDisc, fall, jumpSpeed,
   landingKind, readDynamics, sealTuning, slideAcceleration, standable, DYNAMICS_FIELDS, DYNAMICS_PATH,
-  JUMP_PLACEHOLDER, MIN_JUMP_HEIGHT_PLACEHOLDER, SEAL_TUNING_DEFAULTS, SEAL_TUNING_OFFSETS, WORLD_SCALE,
+  SEAL_TUNING_DEFAULTS, SEAL_TUNING_OFFSETS, WORLD_SCALE,
   type SealTuning,
 } from '../src/physics';
 
@@ -255,16 +255,12 @@ describe('the slope (W2.3a; max_slope 0.642788, the cosine of 50 degrees)', () =
 });
 
 
-describe('the jump (W2.3a; W2.3b waits on the impulse)', () => {
-  it('pins a placeholder: the impulse that reaches min_jump_height under gravity, v0 = sqrt(2 g h), h 10 with no disc', () => {
+describe('the jump (W2.3a; research 80)', () => {
+  it("the rise to a height under gravity, v0 = sqrt(2 g h); the running jump's 79.9 (./walk) tops out at 13.6", () => {
     expect(jumpSpeed(10)).toBeCloseTo(Math.sqrt(2 * 235 * 10), 12);
-    expect(MIN_JUMP_HEIGHT_PLACEHOLDER).toBe(10);                  // PLACEHOLDER: when the disc's is not read
-    expect(JUMP_PLACEHOLDER).toBe(jumpImpulse(SEAL_TUNING_DEFAULTS));
-    expect(JUMP_PLACEHOLDER).toBeCloseTo(68.56, 2);                 // PLACEHOLDER: jump_factor 0.85 is not applied
-    expect(JUMP_PLACEHOLDER ** 2 / (2 * 235)).toBeCloseTo(MIN_JUMP_HEIGHT_PLACEHOLDER, 9);
-    expect(landingKind(JUMP_PLACEHOLDER)).toBe('hard');
-    // With a min_jump_height from the disc, the same rule reaches that instead (a made-up 16 here).
-    const t = sealTuning({ min_jump_height: 16 });
-    expect(jumpImpulse(t) ** 2 / (2 * t.gravity)).toBeCloseTo(16, 9);
+    const v0 = SEAL_TUNING_DEFAULTS.jump_factor * SEAL_TUNING_DEFAULTS.gravity * 0.4;   // FUN_0057e1b0, actor+0x1364
+    expect(v0).toBeCloseTo(79.9, 9);
+    expect(jumpSpeed(v0 ** 2 / (2 * 235))).toBeCloseTo(v0, 9);
+    expect(landingKind(v0)).toBe('hard');                          // over land_fall_rate 40, under 115: no land-hard clip
   });
 });

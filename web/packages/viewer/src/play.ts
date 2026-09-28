@@ -1,12 +1,12 @@
 import type { PerspectiveCamera } from 'three';
 import { IDENTITY, multiply, Skeleton, transformPoint, type MotionClip } from '@s2u/scene';
-import { Animator, type AnimStats, type MoverSnapshot } from './animator';
+import { Animator, type AnimEvent, type AnimStats, type MoverSnapshot } from './animator';
 import { EYE_MODEL, type LoadedBody } from './body';
 import type { BodyView } from './bodyView';
 import type { Pose } from './camera';
 import { pressedSince, releasedSince, type Input } from './gamepad';
 import type { MotionEntry } from './motionTable';
-import type { WalkMode } from './walk';
+import type { MoverActionName, WalkMode } from './walk';
 
 /**
  * The play mode (web sprint 2, W2.2b; ruling W2.R1): the walk mode with the body. Entering walk (`G`, the panel's
@@ -77,7 +77,22 @@ export interface ViewStats {
 }
 
 /** The mover's snapshot at rest where it stands: what the body plays in fly mode once it has been played. */
-const at = (s: MoverSnapshot): MoverSnapshot => ({ ...s, vx: 0, vz: 0, vy: 0, airborne: false, landing: null });
+const at = (s: MoverSnapshot): MoverSnapshot => ({
+  ...s, vx: 0, vz: 0, vy: 0, airborne: false, landing: null, ground: { state: 'idle', forward: 0, right: 0, cls: -1 }, action: null,
+});
+
+/**
+ * What the play mode tells the page (`Play.onEvent`) -- for the audio, above all. The animator's (`AnimEvent`: a
+ * `motion.rdr` `zanim_callback` crossed, a footfall, a play started) with the world point of the foot for a footfall
+ * (the posed `lfoot` / `rfoot` joint, the node `FUN_005a3570` sounds at), and the mover's own: a take-off and a
+ * landing (its contact speed, units a second down, and the clip the game gives it: `FUN_005af590`; the game plays the
+ * surface's landing sound on every landing, `FUN_005ac1f0`).
+ */
+export type PlayEvent =
+  | (Extract<AnimEvent, { kind: 'footfall' }> & { position: [number, number, number] | null })
+  | Exclude<AnimEvent, { kind: 'footfall' }>
+  | { kind: 'takeoff'; running: boolean }
+  | { kind: 'land'; speed: number; clip: 'land' | 'landHard' | null };
 
 /** A camera's pose in the fly camera's convention (yaw 0 looks down -z; degrees). */
 function poseOf(camera: PerspectiveCamera): Pose {
@@ -103,6 +118,11 @@ export class Play {
   private last: (MoverSnapshot & { feet: [number, number, number] }) | null = null;
   private kind: ViewKind = 'fly';
   private drawn: PerspectiveCamera | null = null;
+  private readonly listeners = new Set<(e: PlayEvent) => void>();
+  private unhook: (() => void) | null = null;
+  /** The last action seen, by its serial: a take-off and a landing are told once. */
+  private seenAction: { name: MoverActionName; serial: number } | null = null;
+  private wasAirborne = false;
 
   /** A map's body, or none: the animator is rebuilt over its skeleton (the clips are the source's, kept). */
   setBody(view: BodyView | null, body: LoadedBody | null): void {
@@ -129,11 +149,50 @@ export class Play {
    * its pose on the bones -- shown in third person, hidden in first; in fly mode, once played, the body left standing
    * where the mover was. `camera` is the one the frame is drawn with, for `viewStats`.
    */
-  frame(dt: number, walk: Pick<WalkMode, 'snapshot' | 'view'>, camera: PerspectiveCamera): void {
+  frame(dt: number, walk: Pick<WalkMode, 'snapshot' | 'view'> & Partial<Pick<WalkMode, 'setPosedRoot' | 'mover'>>, camera: PerspectiveCamera): void {
     const snap = walk.snapshot();
     this.kind = snap === null ? 'fly' : walk.view() === 'first' ? 'aim' : 'third';
     this.bodyFrame(dt, snap);
+    if (snap) this.moverEvents(snap, walk.mover?.() ?? null);
+    // FUN_0029a950 reads the posed root: the walk's camera stands on it from its next tick.
+    walk.setPosedRoot?.(snap && this.animator ? this.animator.rootY() : null);
     this.drawn = camera;
+  }
+
+  /**
+   * Listens to the play mode's events (`PlayEvent`): the clips' callbacks and footfalls, the plays started, the take-offs
+   * and the landings. Returns the unsubscribe. The listeners outlive a new map's body and clips.
+   */
+  onEvent(listener: (e: PlayEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private emit(e: PlayEvent): void {
+    for (const l of this.listeners) l(e);
+  }
+
+  /** The mover's take-offs and landings, each once, from the snapshot's action and the hook's landing record. */
+  private moverEvents(snap: MoverSnapshot, mover: ReturnType<WalkMode['mover']>): void {
+    const a = snap.action ?? null;
+    if (a && (a.name === 'jump' || a.name === 'launch') && (this.seenAction?.serial !== a.serial)) {
+      this.emit({ kind: 'takeoff', running: a.name === 'launch' });
+    }
+    if (this.wasAirborne && !snap.airborne) {
+      const landing = mover?.landing ?? null;
+      this.emit({ kind: 'land', speed: landing?.speed ?? 0, clip: landing?.clip ?? null });
+    }
+    this.seenAction = a && { name: a.name, serial: a.serial };
+    this.wasAirborne = snap.airborne;
+  }
+
+  /** An animator event to the page's listeners, a footfall with its foot's world point. */
+  private relay(e: AnimEvent): void {
+    if (e.kind !== 'footfall') { this.emit(e); return; }
+    const part = this.skeleton?.indexOf(e.foot === 'left' ? 'lfoot' : 'rfoot') ?? -1;
+    const m = part >= 0 ? this.skeleton!.palette()[part] : undefined;
+    const last = this.last;
+    this.emit({ ...e, position: m && last ? actorToWorld(last.feet, last.yaw, [m[12]!, m[13]!, m[14]!]) : null });
   }
 
   /** What the clips are doing: the hook's `stats().anim`; null with no body, no clips, or before the first play. */
@@ -175,9 +234,12 @@ export class Play {
   }
 
   private rebuild(): void {
+    this.unhook?.();
+    this.unhook = null;
     this.animator = this.skeleton && this.clips
       ? new Animator(this.skeleton, this.clips.clips, this.clips.table && new Map(this.clips.table))
       : null;
+    if (this.animator) this.unhook = this.animator.onEvent((e) => this.relay(e));
   }
 }
 
