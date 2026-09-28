@@ -157,8 +157,9 @@ class StancePine(FakePine):
     """A fake console whose skeleton root follows a stance a firm Triangle cycles (stand/crouch -> prone -> stand);
     `swallow` presses are ignored first (a pop-up, a transition)."""
 
-    def __init__(self, stance, swallow=0):
+    def __init__(self, stance, swallow=0, prone_root=1.8):
         super().__init__()
+        self.roots = dict(ROOT_OF, prone=prone_root)
         self.node = self.mem[self.mem[ga.address("player_actor", "r0001")] + ga.offset("root_node", "r0001")]
         self.swallow = swallow
         self.presses = []
@@ -166,7 +167,7 @@ class StancePine(FakePine):
 
     def set(self, stance):
         self.stance = stance
-        self.mem[self.node + 4] = fbits(ROOT_OF[stance])
+        self.mem[self.node + 4] = fbits(self.roots[stance])
 
     def press(self, hwnd, button, target, hold_s=0.15):
         self.presses.append(button)
@@ -194,8 +195,8 @@ class SyncRecorder:
 
 
 class StanceVerifyTest(unittest.TestCase):
-    def run_one(self, start, planned, swallow=0):
-        pine = StancePine(start, swallow)
+    def run_one(self, start, planned, swallow=0, prone_root=1.8):
+        pine = StancePine(start, swallow, prone_root)
         steps = (P.Step("rest", "rest", (), 3.0), P.Step("h#1", "hold", ("W",), 6.0, planned, "fwd"))
         with redirect_stdout(io.StringIO()):
             recs = P.run_schedule(steps, SyncRecorder(pine), hwnd=None, press=pine.press, sleep=lambda s: None)
@@ -206,6 +207,12 @@ class StanceVerifyTest(unittest.TestCase):
         self.assertEqual(pine.presses, ["W"])
         self.assertEqual((rec["stance"], rec["planned_stance"], rec["stance_taps"]), ("stand", "stand", 0))
         self.assertAlmostEqual(rec["root_y_rest"], 11.484, places=3)
+
+    def test_a_prone_root_anywhere_under_the_crouch_band_is_prone_and_fires_no_tap(self):
+        for root in (1.8, 3.5):
+            pine, rec = self.run_one("prone", "prone", prone_root=root)
+            self.assertEqual(pine.presses, ["W"], root)
+            self.assertEqual((rec["stance"], rec["stance_taps"]), ("prone", 0), root)
 
     def test_a_wrong_stance_is_tapped_into_place(self):
         pine, rec = self.run_one("stand", "prone")

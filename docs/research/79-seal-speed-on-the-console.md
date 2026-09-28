@@ -26,21 +26,27 @@ stick ramp (90 % of full on tick 11, 0.18 s) -- and the skeleton root per stance
   times so the blocked rule has a group, and the pairs bring the player back towards the start.
 - **Stance.** The decompilation's Triangle handler (PlayerUpd, `game/analysis/socom2_game.elf.decomp.c`
   ~453331-453425; the wished stance is the byte at actor+0x374) reads the press's peak pressure. A **firm** press
-  (0.3 or more, every keyboard press) from stand or crouch wishes prone (when `FUN_00584b00` allows), and from
-  prone it wishes **stand** on every branch. A light press toggles stand/crouch, and from prone it goes to crouch.
-  Firm presses therefore cycle stand/crouch -> prone -> stand and never reach crouch; the order above starts from
-  the crouched spawn (design §7, W2.3) for that reason. Before every hold the probe reads the root at rest
-  (standing 11.48 ± 0.5, crouched 5.50 ± 0.5, prone under 3). A stand or prone hold found in another stance gets up
-  to two more firm taps, 3 s apart; a crouch hold gets none. The schedule records the stance the root finally read,
-  and the table shows that one, not the planned label.
+  (0.3 or more, every keyboard press) from stand or crouch wishes prone when `FUN_00584b00` allows, and from
+  prone it wishes **stand** on every branch. Two caveats from the same branches: when `FUN_00584b00` refuses prone
+  and `FUN_005857e0` != 0 with `FUN_00584c10` = 0, a firm press toggles **stand <-> crouch** (so a firm press can
+  reach crouch where prone is refused); and when `FUN_005857e0` = 0, every stance goes to stand, firm or light.
+  A light press toggles stand <-> crouch and takes prone to crouch -- only while `FUN_005857e0` != 0. What those
+  three functions test is not read here (believed: room to lie down, room to crouch). On open ground the firm
+  presses therefore cycle stand/crouch -> prone -> stand and do not reach crouch; the order above starts from the
+  crouched spawn (design §7, W2.3) for that reason. Before every hold the probe reads the root at rest (standing
+  11.48 ± 0.5, crouched 5.50 ± 0.5, prone any root under the crouch band, 5.0; a root between the bands,
+  6.0-10.98, or above 11.98 is "unknown"). A stand or prone hold found in another stance gets up to two more firm
+  taps, 3 s apart; a crouch hold gets none. The schedule records the stance the root finally read, and the table
+  shows that one, not the planned label.
 - **Fit, per hold** (research 18 §3.13's rules). Any MoveScale row not exactly 1.0 inside the hold REJECTS it,
   judged before duplicate clock rows merge. A hold shorter than max(1 s, 3 × t90) is RAMPING, with no steady
   number. The steady speed is a least-squares line through x(t), z(t) over the last 60 % of the hold's rows; it is
   NOISY when the RMS residual exceeds 1.5 rows' motion + 0.1 units (so a position that moves on every second clock
   tick still reads OK). t90 runs from the hold's start to the first smoothed speed (a local linear fit over ±2 rows)
-  at 0.9 × steady; it is NaN when rows are sparser than 0.1 s, and marked "t90?" when the per-axis noise exceeds
-  10 % of one row's motion. On synthetic 60 Hz rows t90 stays within about 0.03 s of 0.18 at 0.3 units of noise,
-  and the flag already fires there. The heading is atan2(vz, vx), with the velocity along and across the facing
+  at 0.9 × steady; it is NaN when rows are sparser than 0.1 s, and marked "t90?" -- advisory only -- when the
+  steady residual exceeds one row's motion at the fitted speed (a deterministic half-rate staircase, about half a
+  row's motion, carries no flag; 1.0 unit of Gaussian noise at 60 Hz does). On synthetic 60 Hz rows t90 stays
+  within about 0.03 s of 0.18 at 0.3 units of noise. The heading is atan2(vz, vx), with the velocity along and across the facing
   (the **fwd** holds' heading), so **back** reads about -37 along. The root Y at rest is the median over the 1 s
   before the hold. The camera record 0x416054 is not the feet and is not read; the "lead" of research 18's affine
   response is the camera's slack and does not apply to the actor's own words. A hold is BLOCKED when its distance
@@ -104,16 +110,17 @@ Output: `logs/parity/seal_speed_<stamp>.txt` (rows: guest_t x y z root_y move_sc
 and null counts) and `seal_speed_<stamp>.schedule.json`; the table is printed and can be re-made with
 `python -m tools_py.parity.seal_speed_fit <rows> <schedule>`:
 
-| hold | stance | rows | speed u/s | expected | along | across | heading deg | rel. deg | t90 s | rootY at rest | distance | resid | status |
+| hold | stance | rows | speed u/s | expected | along | across | heading deg | rel. deg | t90 s (flag advisory: residual over one row's motion) | rootY at rest | distance | resid | status |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
 
 ## 4. Acceptance
 
 - **W2.R7:** the median of each group's OK holds -- fwd, left, right within 5 % of 65 (61.75-68.25), back within
   5 % of 37 along the facing, fwd_left near 65; a measured value beyond 5 % is a KNOWN row and the measured value
-  wins. crouch_fwd and crouch_back at full push are expected near the standing 65 and 37, not the table's
-  14.0 / 12.8 (design §7: the SEAL stands and runs while the stance stays crouch -- that is the test of the claim);
-  prone_fwd near 11.
+  wins. crouch_fwd and crouch_back print their expected band as "65 (full push stands up; the 14.0 crouch walk
+  needs a light stick)" and "37 (... the 12.8 crouch walk ...)": every crouch hold is a full push, which stands
+  the SEAL up and runs while the stance stays crouch (design §7 -- that is the test of the claim); a crouch hold
+  under half the standing band reads BLOCKED. prone_fwd near 11.
 - **W2.R9:** the root Y at rest before crouch_fwd#1, prone_fwd#1 and fwd#1, to two decimals (expected 5.50,
   unknown, 11.48), each with the stance column saying the same.
 - t90 against 0.18 s (plus the latency), on OK holds only.

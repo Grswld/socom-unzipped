@@ -15,16 +15,18 @@ schedule of holds `(name, t_start, t_end[, group, stance, direction])` on the sa
   * t90: from t_start to the first row whose SMOOTHED speed (a local linear fit over +-2 rows) reaches 0.9 x
     steady and stays there for the next row, interpolated with the row before; NaN when the rows are too sparse
     to resolve a 0.2 s ramp (median spacing over 0.1 s), when the speed never gets there, or when the hold is at
-    speed on its first row. `t90_ok` is False when the per-axis position noise (the steady residual / sqrt 2)
-    exceeds 10 % of one row's motion at the fitted speed -- the t90 is then marked "t90?" in the report;
+    speed on its first row. `t90_ok` is False when the steady residual exceeds one row's motion at the fitted
+    speed -- the t90 is then marked "t90?" in the report. ADVISORY only: a deterministic staircase (exact floats
+    that move on every second clock tick, about half a row's motion of residual) carries no flag;
   * heading: atan2(vz, vx) in degrees (the xz plane, research/22's convention); with a facing (explicit, or the
     heading of the hold named or grouped `facing_hold`, "fwd" by default) also the velocity along it, across it
     (positive = +90 deg in the same atan2 sense) and the heading relative to it -- a back hold reads about -37;
   * root Y at rest: the median root_y over the 1 s before t_start; the stance is the probe's measured one when the
     schedule carries it, else the one this root reads (`stance_of`), else the one the name plans;
   * expected: the spec's band for (direction, stance) (web sprint 2 design section 7: stand fwd/left/right 65,
-    back 37; crouch fwd 14.0, back 12.8, sideways 14.2 -- at a push under 0.838 only: a full push in crouch
-    stands the SEAL up and runs; prone 11);
+    back 37; prone 11). Every crouch hold here is a FULL push, which stands the SEAL up and runs while the stance
+    stays crouch, so a crouch hold expects the STANDING band; the crouch walk (14.0 ahead, 12.8 back, 14.2
+    sideways) needs a push under 0.838, a light stick the keyboard cannot give;
   * blocked: the xz distance under half the median of its group's (research/18 section 3.13's rule; the group is
     the name before a '#', so "fwd#1".."fwd#3" are one group), OR the steady speed under half the expected band.
 
@@ -48,22 +50,25 @@ NAN = float("nan")
 STEADY_FRACTION = 0.6
 NOISY_ROWS = 1.5         # NOISY above this many rows' motion of RMS residual ...
 NOISY_FLOOR = 0.1        # ... plus this many units
-T90_NOISE = 0.1          # t90 is low-confidence above this fraction of one row's motion of per-axis noise
+T90_NOISE = 1.0          # t90 is low-confidence (advisory) above this many rows' motion of steady residual
 RESOLVE_DT = 0.1         # s: a median row spacing above this cannot resolve a 0.2 s ramp
 SMOOTH_HALF = 2          # rows each side of the local linear fit behind the t90 speed
 MIN_ROWS = 5
 MIN_HOLD_S = 1.0
 RAMP_MULTIPLE = 3.0
 
-# Standing root 11.484, crouched 5.504 (W2.R9); prone is under 3 (the design's estimate 1.8).
+# Standing root 11.484, crouched 5.504 (W2.R9), each +-0.5. Prone is ANY root under the crouch band (< 5.004): the
+# prone root is what the run measures, so no guess at it (the design's estimate 1.8) may decide the stance. What
+# fits nothing -- 6.004 < root < 10.984 between the bands, or above the stand band -- reads "unknown".
 STANCE_ROOTS = (("stand", 11.484, 0.5), ("crouch", 5.504, 0.5))
-PRONE_BELOW = 3.0
-EXPECTED = {
-    ("stand", "fwd"): 65.0, ("stand", "back"): 37.0, ("stand", "left"): 65.0, ("stand", "right"): 65.0,
-    ("stand", "fwd_left"): 65.0, ("stand", "fwd_right"): 65.0,
-    ("crouch", "fwd"): 14.0, ("crouch", "back"): 12.8, ("crouch", "left"): 14.2, ("crouch", "right"): 14.2,
-    ("prone", "fwd"): 11.0,
-}
+PRONE_BELOW = 5.504 - 0.5
+_STAND = {"fwd": 65.0, "back": 37.0, "left": 65.0, "right": 65.0, "fwd_left": 65.0, "fwd_right": 65.0}
+_CROUCH_WALK = {"fwd": 14.0, "back": 12.8, "left": 14.2, "right": 14.2}
+EXPECTED = {("stand", d): v for d, v in _STAND.items()}
+EXPECTED.update({("crouch", d): _STAND[d] for d in _CROUCH_WALK})     # a full push in crouch runs the standing band
+EXPECTED[("prone", "fwd")] = 11.0
+EXPECTED_NOTE = {("crouch", d): "full push stands up; the %.1f crouch walk needs a light stick" % v
+                 for d, v in _CROUCH_WALK.items()}
 
 
 def group_of(name):
@@ -96,6 +101,15 @@ def stance_of(root_y):
 
 def expected_speed(direction, stance):
     return EXPECTED.get((stance, direction), NAN)
+
+
+def expected_label(direction, stance):
+    """The expected band as the report prints it, with the full-push caveat on a crouch hold."""
+    v = expected_speed(direction, stance)
+    if math.isnan(v):
+        return "--"
+    note = EXPECTED_NOTE.get((stance, direction))
+    return "%.0f (%s)" % (v, note) if note else "%.1f" % v
 
 
 def as_hold(h):
@@ -220,7 +234,7 @@ def fit_hold(rows, hold, raw=None, steady_fraction=STEADY_FRACTION):
     row_motion = speed * _row_dt(inside)
     heading = math.degrees(math.atan2(vz, vx)) if speed > 1e-6 else NAN
     distance = math.hypot(inside[-1].x - inside[0].x, inside[-1].z - inside[0].z)
-    t90_ok = not math.isnan(t90) and resid / math.sqrt(2.0) <= T90_NOISE * row_motion
+    t90_ok = not math.isnan(t90) and resid <= T90_NOISE * row_motion
     status = "NOISY" if resid > NOISY_ROWS * row_motion + NOISY_FLOOR else "OK"
     return HoldFit(speed=speed, vx=vx, vz=vz, heading_deg=heading, resid_rms=resid, t90=t90, t90_ok=t90_ok,
                    distance=distance, status=status, **base)
@@ -272,9 +286,18 @@ def _num(v, fmt):
     return "--" if v is None or (isinstance(v, float) and math.isnan(v)) else fmt % v
 
 
+def _expected_cell(f):
+    if math.isnan(f.expected):
+        return "--"
+    d = next((dd for (st, dd), v in EXPECTED.items() if st == f.stance and v == f.expected
+              and dd == direction_of(f.group)), None)
+    return expected_label(d, f.stance) if d else "%.1f" % f.expected
+
+
 def report(fits):
     """A markdown table of the fits, one row per hold."""
-    lines = ["| hold | stance | rows | speed u/s | expected | along | across | heading deg | rel. deg | t90 s | "
+    lines = ["| hold | stance | rows | speed u/s | expected | along | across | heading deg | rel. deg | "
+             "t90 s (flag advisory: residual over one row's motion) | "
              "rootY at rest | distance | resid | status |",
              "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
     for f in fits:
@@ -282,7 +305,7 @@ def report(fits):
         if t90 != "--" and not f.t90_ok:
             t90 += " (t90?)"
         lines.append("| %s | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
-            f.name, f.stance, f.n, _num(f.speed, "%.2f"), _num(f.expected, "%.1f"), _num(f.along, "%.2f"),
+            f.name, f.stance, f.n, _num(f.speed, "%.2f"), _expected_cell(f), _num(f.along, "%.2f"),
             _num(f.lateral, "%.2f"), _num(f.heading_deg, "%.1f"), _num(f.rel_heading_deg, "%.1f"), t90,
             _num(f.root_y_rest, "%.3f"), _num(f.distance, "%.1f"), _num(f.resid_rms, "%.3f"), f.status))
     return "\n".join(lines)

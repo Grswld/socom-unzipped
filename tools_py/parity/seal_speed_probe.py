@@ -24,12 +24,13 @@ the pad buffer, or a PCSX2 pressure-modifier binding): a light Triangle (the sta
 
 What a FIRM Triangle does (peak pressure >= 0.3; the decompilation's PlayerUpd, socom2_game.elf.decomp.c
 ~453331-453425, the wished stance byte at actor+0x374): from stand or crouch it wishes PRONE when FUN_00584b00
-allows, and from prone it wishes STAND on every branch -- so firm presses cycle stand/crouch -> prone -> stand and
-never reach crouch (a light press from prone would). The default schedule is ordered for that: from the crouched
+allows, and from prone it wishes STAND on every branch -- so on open ground firm presses cycle stand/crouch ->
+prone -> stand and do not reach crouch. Caveats: where FUN_00584b00 refuses prone (FUN_005857e0 != 0,
+FUN_00584c10 = 0) a firm press toggles stand <-> crouch; where FUN_005857e0 = 0 every press goes to stand. The default schedule is ordered for that: from the crouched
 spawn (spec section 7, W2.3) three crouch-stance pairs, Triangle to prone, three prone holds, Triangle to stand,
 then the standing pairs -- every direction three times, so research/18's half-the-group-median rule has a group.
 Before every hold the probe reads the root at rest (seal_speed_fit.stance_of: standing 11.48 +-0.5, crouched
-5.50 +-0.5, prone under 3); a stand or prone hold found in another stance gets up to two more firm taps (3 s
+5.50 +-0.5, prone any root under the crouch band); a stand or prone hold found in another stance gets up to two more firm taps (3 s
 apart); a crouch hold gets none (no firm press reaches it). The schedule record carries the stance the root
 finally read, the planned one and the taps, and the fit reports the measured stance.
 
@@ -306,10 +307,9 @@ def plan_text(a, steps):
     total = 0.0
     for i, s in enumerate(steps):
         binding = "; ".join(PAD1_BINDING.get(b, "keys.MAPS %s" % b) for b in s.buttons) or "-"
-        exp = F.expected_speed(s.direction, s.stance) if s.kind == "hold" else math.nan
+        exp = F.expected_label(s.direction, s.stance) if s.kind == "hold" else "-"
         lines.append("| %d | %s | %s | %s | %s | %s | %s | %.2f |" % (
-            i, s.name, s.kind, "+".join(s.buttons) or "-", binding, s.stance or "-",
-            "-" if math.isnan(exp) else "%.1f" % exp, s.seconds))
+            i, s.name, s.kind, "+".join(s.buttons) or "-", binding, s.stance or "-", exp, s.seconds))
         total += s.seconds
     lines += ["", "schedule: %.1f s" % total,
               "rows -> %s" % os.path.join(a.out_dir, "seal_speed_<stamp>.txt"),

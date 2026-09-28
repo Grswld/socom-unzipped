@@ -72,11 +72,14 @@ class SteadySpeedTest(unittest.TestCase):
         self.assertAlmostEqual(fit.speed, 65.0, delta=0.5)
         self.assertAlmostEqual(fit.t90, 0.18, delta=0.1)
 
-    def test_a_crouch_hold_at_14(self):
+    def test_a_crouch_walk_at_14_is_recovered_and_flagged_under_the_full_push_band(self):
+        # Every crouch hold is a full push, which runs the standing 65; a 14.0 crouch walk under it is the
+        # unexpected case (a light stick, or the SEAL not standing up) and reads BLOCKED by the expected band.
         rows = simulate([(1.0, 7.0, 10.0, 14.0, 0.0, None)], 9.0, root_y=5.504)
         fit = F.fit_holds(rows, [("crouch_fwd", 1.0, 7.0)])[0]
         self.assertAlmostEqual(fit.speed, 14.0, delta=0.2)
-        self.assertEqual(fit.status, "OK")
+        self.assertTrue(fit.under_expected)
+        self.assertEqual(fit.status, "BLOCKED")
 
     def test_the_heading(self):
         rows = simulate([(1.0, 7.0, -120.0, 65.0, 0.2, None)], 9.0)
@@ -233,7 +236,15 @@ class RampNoiseAndStaircaseTest(unittest.TestCase):
         loud = simulate([(1.0, 7.0, 30.0, 65.0, 0.2, None)], 9.0, rate=60.0, noise=1.0)
         fit = F.fit_holds(loud, [("fwd", 1.0, 7.0)])[0]
         self.assertFalse(fit.t90_ok)
-        self.assertIn("t90?", F.report([fit]))
+        text = F.report([fit])
+        self.assertIn("t90?", text)
+        self.assertIn("advisory", text.splitlines()[0])
+
+    def test_a_staircase_carries_no_t90_flag(self):
+        rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, None)], 9.0, rate=60.0, update_every=2)
+        fit = F.fit_holds(rows, [("fwd", 1.0, 7.0)])[0]
+        self.assertTrue(fit.t90_ok, fit.resid_rms)
+        self.assertNotIn("t90?", F.report([fit]))
 
     def test_a_staircase_at_half_the_clock_rate_reads_ok(self):
         rows = simulate([(1.0, 7.0, 0.0, 65.0, 0.2, None)], 9.0, rate=60.0, update_every=2)
@@ -250,16 +261,30 @@ class StanceAndExpectedTest(unittest.TestCase):
         self.assertEqual(F.stance_of(11.9), "stand")
         self.assertEqual(F.stance_of(5.504), "crouch")
         self.assertEqual(F.stance_of(1.8), "prone")
+        self.assertEqual(F.stance_of(3.5), "prone")          # a real prone root the design did not guess
+        self.assertEqual(F.stance_of(4.9), "prone")          # anything under the crouch band
+        self.assertEqual(F.stance_of(5.9), "crouch")
+        self.assertEqual(F.stance_of(6.5), "unknown")        # between the crouch and stand bands
         self.assertEqual(F.stance_of(8.0), "unknown")
+        self.assertEqual(F.stance_of(12.5), "unknown")
         self.assertEqual(F.stance_of(float("nan")), "unknown")
 
     def test_the_expected_band_follows_direction_and_stance(self):
         self.assertEqual(F.expected_speed("fwd", "stand"), 65.0)
         self.assertEqual(F.expected_speed("back", "stand"), 37.0)
         self.assertEqual(F.expected_speed("left", "stand"), 65.0)
-        self.assertEqual(F.expected_speed("fwd", "crouch"), 14.0)
+        self.assertEqual(F.expected_speed("fwd", "crouch"), 65.0)     # every crouch hold is a full push
+        self.assertEqual(F.expected_speed("back", "crouch"), 37.0)
+        self.assertIn("14.0 crouch walk needs a light stick", F.expected_label("fwd", "crouch"))
+        self.assertEqual(F.expected_label("fwd", "stand"), "65.0")
         self.assertEqual(F.expected_speed("fwd", "prone"), 11.0)
         self.assertTrue(math.isnan(F.expected_speed("fwd", "unknown")))
+
+    def test_a_crouch_holds_expected_band_is_the_standing_one_in_the_report(self):
+        rows = simulate([(3.0, 9.0, 0.0, 65.0, 0.2, None)], 11.0, root_y=5.504)
+        fit = F.fit_holds(rows, [("crouch_fwd#1", 3.0, 9.0)])[0]
+        self.assertEqual((fit.stance, fit.expected, fit.status), ("crouch", 65.0, "OK"))
+        self.assertIn("65 (full push stands up; the 14.0 crouch walk needs a light stick)", F.report([fit]))
 
     def test_a_hold_takes_its_planned_stance_from_its_name(self):
         rows = simulate([(3.0, 9.0, 0.0, 11.0, 0.0, None)], 11.0, root_y=1.8)
