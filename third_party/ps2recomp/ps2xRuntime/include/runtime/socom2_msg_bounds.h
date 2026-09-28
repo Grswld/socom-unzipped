@@ -278,9 +278,175 @@ namespace socom2_msg_bounds
         return {};
     }
 
+    // ---- G2: class 0 ---------------------------------------------------------------------------------------------------
+    // Type 0x02: u16 length at +2, u16 count at +4, u16 index at +6, s32 total at +0xc, s32 offset at +0x10, the data
+    // at +0x14. The data lands at offset inside a buffer of total bytes; the index marks one of count flags.
+    inline Refusal checkType02(const uint8_t *rdram, uint32_t msg, uint32_t remaining)
+    {
+        const uint32_t length = detail::readU16(rdram, msg + 2u);
+        const uint32_t count = detail::readU16(rdram, msg + 4u);
+        const uint32_t index = detail::readU16(rdram, msg + 6u);
+        const int32_t total = detail::readS32(rdram, msg + 0xcu);
+        const int32_t offset = detail::readS32(rdram, msg + 0x10u);
+        if (0x14u + length > remaining)
+            return refuse(Kind::FragmentRecord, 0x14u + length);
+        if (offset < 0)
+            return refuse(Kind::FragmentOffset, static_cast<uint32_t>(offset));
+        if (total < 0 || static_cast<int64_t>(offset) + length > static_cast<int64_t>(total))
+            return refuse(Kind::FragmentSpan, static_cast<uint32_t>(offset) + length);
+        if (index >= count)
+            return refuse(Kind::FragmentIndex, index);
+        return {};
+    }
+
+    // Type 0x01: the byte at +4 selects a ping slot when the byte at +5 is 0.
+    inline Refusal checkType01(const uint8_t *rdram, uint32_t msg, uint32_t)
+    {
+        const uint8_t slot = detail::readU8(rdram, msg + 4u);
+        if (detail::readU8(rdram, msg + 5u) == 0u && slot >= kPingSlots)
+            return refuse(Kind::PingSlot, slot);
+        return {};
+    }
+
+    // Type 0x0e: the byte at +2 selects a stream callback; u16 at +10 is the data after the 0xc-byte header.
+    inline Refusal checkType0e(const uint8_t *rdram, uint32_t msg, uint32_t remaining)
+    {
+        const uint8_t callback = detail::readU8(rdram, msg + 2u);
+        if (callback >= kStreamCallbacks)
+            return refuse(Kind::StreamCallback, callback);
+        const uint32_t end = 0xcu + detail::readU16(rdram, msg + 10u);
+        if (end > remaining)
+            return refuse(Kind::StreamRecord, end);
+        return {};
+    }
+
+    // Type 0x03: u16 object at +2, a count of entries at +1, then per entry an index byte and that entry's bytes as the
+    // object class's table sizes them. The class is the object's own when the object exists, else the byte at +0.
+    inline Refusal checkType03(const uint8_t *rdram, const R5900Context *ctx, uint32_t msg, uint32_t remaining,
+                               const Sites &s)
+    {
+        const uint32_t object = detail::readU16(rdram, msg + 2u);
+        if (getRegU32(ctx, 6) >= 0x100u || object >= kObjectLimit)
+            return {};                                   // the handler refuses these itself
+        uint32_t cls = 0;
+        if (detail::readU8(rdram, s.objectState + object) == 2u)
+        {
+            const uint32_t record = detail::readU32(rdram, s.objectTable + object * 4u);
+            if (record == 0u)
+                return {};                               // the handler refuses this itself
+            cls = detail::readU8(rdram, record);
+            if (cls >= kObjectClassLimit)
+                return {};                               // the game's own object; not a message field
+        }
+        else
+        {
+            cls = detail::readU8(rdram, msg);
+            if (cls >= kObjectClassLimit)
+                return refuse(Kind::ObjectClass, cls);
+        }
+        const uint32_t entries = detail::readU8(rdram, msg + 1u);
+        const uint32_t classRecord = s.objectClassTable + cls * kObjectClassStride;
+        const int32_t known = detail::readS32(rdram, classRecord + 4u);
+        uint64_t at = 4u;
+        for (uint32_t i = 0; i < entries; ++i)
+        {
+            if (at + 1u > remaining)
+                return refuse(Kind::WalkRecord, static_cast<uint32_t>(at + 1u));
+            const uint32_t index = detail::readU8(rdram, msg + static_cast<uint32_t>(at));
+            if (static_cast<int32_t>(index) >= known)
+                return {};                               // the handler stops and refuses here itself
+            const uint32_t entry = detail::readU32(rdram, classRecord + 0x28u + index * 4u);
+            if (entry == 0u)
+                return {};                               // likewise
+            const int64_t size = static_cast<int64_t>(detail::readS32(rdram, entry + 4u)) * detail::readS32(rdram, entry + 8u);
+            at += 1u + static_cast<uint64_t>(size < 0 ? INT64_C(0x100000000) : size);
+            if (at > remaining)
+                return refuse(Kind::WalkRecord, at > 0xffffffffu ? 0xffffffffu : static_cast<uint32_t>(at));
+        }
+        return {};
+    }
+
+    // Type 0x05: the byte at +0 selects a stream slot, whose byte +3 (stored when the stream began) selects a callback.
+    inline Refusal checkType05(const uint8_t *rdram, uint32_t msg, uint32_t, const Sites &s)
+    {
+        const uint32_t base = detail::readU32(rdram, s.streamSlots);
+        if (base == 0u)
+            return {};
+        const uint32_t slot = base + detail::readU8(rdram, msg) * kStreamSlotBytes;
+        const uint8_t callback = detail::readU8(rdram, slot + 3u);
+        if (detail::readU8(rdram, slot) == 2u && callback >= kStreamCallbacks)
+            return refuse(Kind::StreamSlotCallback, callback);
+        return {};
+    }
+
+    // Type 0x0f: a name terminated inside its field [+0x16, +0x24); u16 at +10 and u16 at +0xc a range of objects.
+    inline Refusal checkType0f(const uint8_t *rdram, uint32_t msg, uint32_t)
+    {
+        const uint32_t name = msg + 0x16u;
+        if (!socom2_net_bounds::ramSpanFits(name, 0xeu) || !std::memchr(rdram + (name & PS2_RAM_MASK), 0, 0xeu))
+            return refuse(Kind::NameUnterminated, detail::readU8(rdram, name));
+        const uint32_t end = static_cast<uint32_t>(detail::readU16(rdram, msg + 10u)) + detail::readU16(rdram, msg + 0xcu);
+        if (end > kObjectLimit)
+            return refuse(Kind::ObjectSpan, end);
+        return {};
+    }
+
     // ---- the wraps -----------------------------------------------------------------------------------------------------
     namespace detail
     {
+        // The least of the record a check reads, so that a record lying across the end of guest RAM is refused whole.
+        inline uint32_t headerBytes(Site site)
+        {
+            switch (site)
+            {
+            case kType01: return 6u;
+            case kType02: return 0x14u;
+            case kType03: return 4u;
+            case kType05: return 1u;
+            case kType0e: return 0xcu;
+            case kType0f: return 0x24u;
+            default: return 0u;
+            }
+        }
+
+        inline Refusal decide(Site site, const uint8_t *rdram, const R5900Context *ctx)
+        {
+            const Sites &s = *sites();
+            const uint32_t msg = getRegU32(ctx, 7);
+            if (!ramSpanFits(msg, headerBytes(site)))
+                return refuse(Kind::OutsideRam, msg);
+            const uint32_t remaining = remainingFor(rdram, ctx, s);
+            switch (site)
+            {
+            case kType01: return checkType01(rdram, msg, remaining);
+            case kType02: return checkType02(rdram, msg, remaining);
+            case kType03: return checkType03(rdram, ctx, msg, remaining, s);
+            case kType05: return checkType05(rdram, msg, remaining, s);
+            case kType0e: return checkType0e(rdram, msg, remaining);
+            case kType0f: return checkType0f(rdram, msg, remaining);
+            default: return {};
+            }
+        }
+
+        template <Site S>
+        void handlerBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+        {
+            if (getRegU32(ctx, 7) != 0u)   // a null record is the handler's own refusal already
+            {
+                const Refusal r = decide(S, rdram, ctx);
+                if (r.refuse)
+                {
+                    count(r);
+                    setReturnU32(ctx, kHandlerRefused);
+                    ctx->pc = getRegU32(ctx, 31);
+                    return;
+                }
+            }
+            if (original(S))
+                original(S)(rdram, ctx, runtime);
+            // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+        }
+
         inline void lookupBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             const Refusal r = checkLookup(rdram, ctx, *sites());
@@ -314,6 +480,12 @@ namespace socom2_msg_bounds
         };
         const Bind binds[] = {
             {sites.dispatchLookup, "dispatchLookup", "message walk", detail::lookupBound, detail::kLookup},
+            {sites.dmeType01, "dmeType01", "message 0.01", detail::handlerBound<detail::kType01>, detail::kType01},
+            {sites.dmeType02, "dmeType02", "message 0.02", detail::handlerBound<detail::kType02>, detail::kType02},
+            {sites.dmeType03, "dmeType03", "message 0.03", detail::handlerBound<detail::kType03>, detail::kType03},
+            {sites.dmeType05, "dmeType05", "message 0.05", detail::handlerBound<detail::kType05>, detail::kType05},
+            {sites.dmeType0e, "dmeType0e", "message 0.0e", detail::handlerBound<detail::kType0e>, detail::kType0e},
+            {sites.dmeType0f, "dmeType0f", "message 0.0f", detail::handlerBound<detail::kType0f>, detail::kType0f},
         };
         int installed = 0;
         for (const Bind &b : binds)

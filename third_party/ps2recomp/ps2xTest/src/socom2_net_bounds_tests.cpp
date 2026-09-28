@@ -399,6 +399,34 @@ void register_socom2_net_bounds_tests()
             }
         });
 
+        tc.Run("an object update whose name is not terminated in its 16-byte field is refused, on both revisions", [](TestCase &t)
+        {
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->objectUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                put32(s->objectClassCount, 3u);
+                const std::string rev = s->revision;
+                objectPayload(2u, 5u);
+                std::memset(guestRam().data() + kBodyAt + 0x14u, 'N', 0x10u);
+                CallResult r = handlerCall(runtime, s->objectUpdate, kBodyAt);
+                t.IsFalse(r.ran, rev + ": sixteen characters and no terminator: the handler never runs");
+                t.Equals(r.v0, socom2_net_bounds::kHandlerRefused, rev + ": v0 is the handler's own refusal");
+                t.Equals(r.pc, kReturnTo, rev + ": the call returns to its caller");
+                objectPayload(2u, 5u);
+                std::memset(guestRam().data() + kBodyAt + 0x14u, 'N', 0xfu);
+                r = handlerCall(runtime, s->objectUpdate, kBodyAt);
+                t.IsTrue(r.ran && r.v0 == kStandInReturn, rev + ": fifteen characters and the terminator reach the handler");
+                // A payload whose name field runs past the end of guest RAM.
+                const uint32_t top = PS2_RAM_SIZE - 0x18u;
+                std::memset(guestRam().data() + top, 0, 0x18u);
+                guestRam()[top + 1u] = 2u;
+                t.IsFalse(handlerCall(runtime, s->objectUpdate, top).ran, rev + ": a name field past the end of RAM");
+                runtime.registerFunction(s->objectUpdate, nullptr);
+            }
+        });
+
         tc.Run("an object update refusal is said once per index and counted every time", [](TestCase &t)
         {
             PS2Runtime runtime;

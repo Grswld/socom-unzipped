@@ -318,7 +318,11 @@ namespace socom2_net_bounds
     constexpr uint32_t kObjectClassLimit = 0x10u;       // the object class table's entries
     constexpr uint32_t kObjectIndexLimit = 0x1000u;     // the object tables' entries
 
-    enum class PacketVerdict : uint8_t { Pass, ClassRefused, ObjectRefused, WalkRefused, IndexRefused };
+    enum class PacketVerdict : uint8_t { Pass, ClassRefused, ObjectRefused, WalkRefused, IndexRefused, NameRefused };
+
+    // The object update's name field: [+0x14, +0x24), copied into a 16-byte slot, terminator included.
+    constexpr uint32_t kObjectNameOffset = 0x14u;
+    constexpr uint32_t kObjectNameBytes = 0x10u;
 
     // Class index < the registered count (never more than the table holds); object index < the tables' size.
     inline PacketVerdict objectVerdict(uint32_t cls, uint32_t classCount, uint32_t object)
@@ -427,6 +431,14 @@ namespace socom2_net_bounds
                 return;
             default:
                 break;
+            }
+            // The name is terminated inside its field (and the field inside guest RAM).
+            const uint32_t name = payload + kObjectNameOffset;
+            if (!ramSpanFits(name, kObjectNameBytes) || !std::memchr(rdram + (name & PS2_RAM_MASK), 0, kObjectNameBytes))
+            {
+                detail::refusePacket(ctx, static_cast<uint32_t>(PacketVerdict::NameRefused),
+                                     "object update bounded: name not terminated in its field, length at least", kObjectNameBytes);
+                return;
             }
         }
         if (detail::objectOriginal())
