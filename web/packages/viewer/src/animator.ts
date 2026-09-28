@@ -58,7 +58,16 @@ export interface MoverSnapshot {
   landing: LandingKind | null;
   /** How many jumps the mover has taken: a change is a take-off, whenever between two frames it came. */
   jumps: number;
+  /** TRAVERSAL SEAM (`./traversal`): a ladder, a climb or a lean playing its own clip; absent or null otherwise. */
+  traversal?: TraversalPose | null;
 }
+
+/**
+ * TRAVERSAL SEAM: a clip a traversal move plays in place of `pickClip`'s (web research 86): the clip, where it is (keys,
+ * the move's own clock: a ladder's phase follows the climbed height), whether it loops, and the skeleton root's height
+ * over the drawn feet when the move carries the root's rise in the mover (null: the clip's own).
+ */
+export interface TraversalPose { clip: string; frame: number; loop: boolean; rootY: number | null }
 
 /** A speed band, units a second: the cycle plays from `lo` to `hi`. */
 export interface Band { lo: number; hi: number }
@@ -343,6 +352,8 @@ export class Animator {
   private layer: MotionClip | null = null;
   private lastJumps: number | null = null;
   private wasAirborne = false;
+  /** TRAVERSAL SEAM: the root's height over the feet a traversal move sets, or null for the clip's own. */
+  private rootOverride: number | null = null;
 
   constructor(private readonly skeleton: Skeleton, clips: Iterable<MotionClip>, private readonly table: MotionTable | null, options: AnimatorOptions = {}) {
     this.clips = new Map([...clips].map((c) => [c.name, c]));
@@ -364,8 +375,21 @@ export class Animator {
     const playing: Playing | null = cur && {
       name: cur.clip.name, frame: cur.frame, frames: cur.clip.frameCount, done: !cur.loop && cur.frame >= cur.clip.frameCount,
     };
-    const wanted = this.resolve(pickClip({ mover, current: playing, jumped, landed, bands: this.bands, table: this.table }));
+    const over = mover.traversal ?? null;                       // TRAVERSAL SEAM: the move's clip, at the move's key
+    const wanted = this.resolve(over ? over.clip : pickClip({ mover, current: playing, jumped, landed, bands: this.bands, table: this.table }));
     if (!wanted) return;
+    if (over) {
+      if (!cur || cur.clip !== wanted) this.change(wanted, 0, cur);
+      else this.blendElapsed += dt;
+      const c = this.current!;
+      c.loop = over.loop;
+      c.rate = 0;
+      c.frame = over.loop ? ((over.frame % c.clip.frameCount) + c.clip.frameCount) % c.clip.frameCount : Math.max(0, Math.min(over.frame, c.clip.frameCount));
+      this.rootOverride = over.rootY;
+      this.pose();
+      return;
+    }
+    this.rootOverride = null;
     const speed = Math.hypot(mover.vx, mover.vz);
     const entry = this.table?.get(wanted.name) ?? undefined;
     const rate = clipRate(wanted, entry, speed);
@@ -416,6 +440,7 @@ export class Animator {
         const i = this.skeleton.indexOf(p.name);
         if (i < 0) continue;
         target[i] = { q: [...p.rotation], t: i === this.root ? [this.bind[i]!.t[0], p.translation[1], this.bind[i]!.t[2]] : [...p.translation] };
+        if (i === this.root && this.rootOverride !== null) target[i]!.t[1] = this.rootOverride;   // TRAVERSAL SEAM
       }
     };
     put(sampleClip(cur.clip, cur.frame / cur.clip.rate, { loop: cur.loop }).parts);

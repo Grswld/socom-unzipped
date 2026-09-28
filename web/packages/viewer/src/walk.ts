@@ -6,6 +6,7 @@ import {
 import type { GroundWish, Pose } from './camera';
 import { firstPersonHeight, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
 import { jumpImpulse, landingKind, sealTuning, type LandingKind } from './physics';
+import type { TraversalPose } from './animator';
 
 /**
  * Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): a mover that stands on the floor the engine's probe finds,
@@ -290,10 +291,11 @@ export interface GroundData {
   owners: CollisionOwner[];
   /** Every polygon's points, xyz, polygon after polygon in `worldCollision` order. */
   points: Float32Array;
-  /** Per polygon, `GROUND_FIELDS` words: ptcount, ditype, material, cameratype, region. */
+  /** Per polygon, `GROUND_FIELDS` words: ptcount, ditype, material, cameratype, region, appflags. */
   fields: Uint32Array;
 }
-const GROUND_FIELDS = 5;
+/** TRAVERSAL SEAM (web research 86): the sixth word is `m_appflags`, which marks the ladders (`./traversal`). */
+const GROUND_FIELDS = 6;
 
 /** Packs a map's hull for the trip from the worker (`GroundData`). */
 export function packGround(grid: GridParams, polys: readonly WorldPoly[], owners: CollisionOwner[]): GroundData {
@@ -305,7 +307,7 @@ export function packGround(grid: GridParams, polys: readonly WorldPoly[], owners
   polys.forEach((p, i) => {
     points.set(p.points, at);
     at += p.points.length;
-    fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0], i * GROUND_FIELDS);
+    fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0, p.appflags ?? 0], i * GROUND_FIELDS);
   });
   return { grid, owners, points, fields };
 }
@@ -322,7 +324,7 @@ export function groundPolygons(ground: GroundData): WorldPoly[] {
     out.push({
       modelName: owner[i]?.modelName ?? 'worldmodel', path: owner[i]?.path ?? '',
       ptcount, ditype: ground.fields[f + 1]!, material: ground.fields[f + 2]!, cameratype: ground.fields[f + 3]!,
-      region: ground.fields[f + 4]!, points: ground.points.subarray(at, at + ptcount * 3),
+      region: ground.fields[f + 4]!, appflags: ground.fields[f + 5]!, points: ground.points.subarray(at, at + ptcount * 3),
     });
     at += ptcount * 3;
   }
@@ -363,10 +365,33 @@ export interface PlaySnapshot {
   airborne: boolean; crouched: boolean; stance: Stance;
   landing: LandingKind | null;
   jumps: number;
+  /** TRAVERSAL SEAM: the traversal move's clip, or null (`./animator` `MoverSnapshot.traversal`). */
+  traversal?: TraversalPose | null;
 }
 
 /** The table's jump and landing fields (`./physics`, the cloud sprint's reader): the placeholder jump, the landings. */
 const JUMP_TABLE = sealTuning(null);
+
+/** TRAVERSAL SEAM: what `Walker.driver` is (`./traversal`'s `Traversal`). */
+export interface TickDriver {
+  tick(walker: Walker, input: WalkInput, dt: number): boolean;
+}
+
+/**
+ * TRAVERSAL SEAM (web research 86): what `WalkMode` asks of the traversal moves (`./traversal`'s `Traversal`, made by
+ * the factory `main.ts` hands `WalkMode.useTraversal`, so this file imports none of it): the tick, the clip for the
+ * animator, the root the camera stands on, the yaw a move holds, the peek, the action and lean buttons, and a reset.
+ */
+export interface TraversalHooks extends TickDriver {
+  pose(): TraversalPose | null;
+  rootY(): number | null;
+  yaw(): number | null;
+  /** The camera's peek value `DAT_004161c0`, -1 left .. 1 right (`./playerCamera` `peekShift`). */
+  peek(): number;
+  action(): void;
+  lean(side: -1 | 0 | 1): void;
+  reset(walker?: Walker): void;
+}
 
 /** A wall polygon with what the step needs of it computed once. */
 interface Wall {
@@ -479,6 +504,22 @@ export class Walker {
   constructor(readonly grid: Grid) {}
 
   /**
+   * TRAVERSAL SEAM (web research 86, `./traversal`): a move that owns the tick while it runs -- the ladder, the
+   * climb. Its `tick` runs first each tick and returns true when it moved the mover itself; false lets the walk run.
+   */
+  driver: TickDriver | null = null;
+
+  /**
+   * TRAVERSAL SEAM: puts the mover on the floor where it is (`on` false: `vy` zeroed, no landing recorded) or in the
+   * air at `vy` -- a ladder's slide and a climb's end hand the mover back through it.
+   */
+  setAirborne(on: boolean, vy = 0): void {
+    if (on) { this.takeOff(vy); return; }
+    this.inAir = false;
+    this.state.vy = 0;
+  }
+
+  /**
    * Stands the mover on the floor under (x, fromY, z): the probe's highest floor at or under `fromY` + 1, else
    * the lowest within 20 over `fromY` - 5 -- the selection with the origin at `fromY`. Pass the camera's eye to
    * drop from where the camera is. False, and nothing moves, when there is no floor there.
@@ -567,6 +608,7 @@ export class Walker {
   tick(input: WalkInput, dt: number = TICK): void {
     const s = this.state;
     this.prev = { x: s.x, y: s.y, z: s.z };
+    if (this.driver?.tick(this, input, dt)) return;               // TRAVERSAL SEAM: a ladder or a climb has the tick
     if (this.inAir) { this.fall(dt); return; }
     let forward = input.forward, right = input.right;
     const length = Math.hypot(forward, right);
@@ -835,8 +877,43 @@ export class WalkMode {
   private jumps = 0;
   /** The aim view held (L1, the right button): first person while held, back to `view_` on release. */
   private aiming = false;
+  /** TRAVERSAL SEAM: the factory `useTraversal` set, and the moves on the current mover. */
+  private traversalFactory: ((walker: Walker, ground: GroundData) => TraversalHooks) | null = null;
+  private moves: TraversalHooks | null = null;
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
+
+  /**
+   * TRAVERSAL SEAM (web research 86): the traversal moves' factory, called for each new mover (a map's ground); the
+   * moves drive the mover (`Walker.driver`), the clip, the camera's root and peek, and the facing while they run.
+   */
+  useTraversal(factory: ((walker: Walker, ground: GroundData) => TraversalHooks) | null): void {
+    this.traversalFactory = factory;
+    this.moves = null;
+    if (this.walker) this.attachMoves(this.walker);
+  }
+
+  /** TRAVERSAL SEAM: the moves on the current mover, or null (no factory, no ground, not yet walked). */
+  traversal(): TraversalHooks | null {
+    return this.moves;
+  }
+
+  /** TRAVERSAL SEAM: the action button (the ladder's slide, the climb): false when not walking. */
+  action(): boolean {
+    if (!this.walking || !this.moves) return false;
+    this.moves.action();
+    return true;
+  }
+
+  /** TRAVERSAL SEAM: the lean buttons, held: -1 left, 1 right, 0 neither. */
+  lean(side: -1 | 0 | 1): void {
+    this.moves?.lean(this.walking ? side : 0);
+  }
+
+  private attachMoves(w: Walker): void {
+    this.moves = this.traversalFactory && this.ground ? this.traversalFactory(w, this.ground) : null;
+    w.driver = this.moves;
+  }
 
   /** The mover's stance (W2.2b): what `C` cycles and the hook reads. */
   stance(): Stance {
@@ -935,7 +1012,7 @@ export class WalkMode {
     return {
       feet: w.drawnFeet(), yaw: s.yaw, pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
       airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
-      landing: w.landing?.kind ?? null, jumps: this.jumps,
+      landing: w.landing?.kind ?? null, jumps: this.jumps, traversal: this.moves?.pose() ?? null,
     };
   }
 
@@ -970,6 +1047,7 @@ export class WalkMode {
     // A turn only: the camera keeps its pass (the distance, the hold) and its root; the next tick takes the turn.
     if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.look(w); return; }
     const at = this.camera.pose();
+    this.moves?.reset(w);                                        // TRAVERSAL SEAM: a new pose drops a move
     if (w.place(at.x, at.y, at.z)) this.restart();
     else this.leave();
   }
@@ -1071,6 +1149,7 @@ export class WalkMode {
     if (!this.walker && this.ground) {
       this.walker = new Walker(groundGrid(this.ground));
       this.player = new PlayerCamera(this.walker.grid);
+      this.attachMoves(this.walker);                              // TRAVERSAL SEAM
     }
     const w = this.walker;
     if (!w) return false;
@@ -1091,6 +1170,8 @@ export class WalkMode {
   private look(w: Walker): void {
     const [min, max] = pitchLimits(w.posture);
     this.camera.setPitchLimits(min, max);
+    const held = this.moves?.yaw() ?? null;                      // TRAVERSAL SEAM: a ladder holds the facing
+    if (held !== null) this.camera.setPose({ yaw: held });
     const look = this.camera.pose();
     w.state.yaw = look.yaw;
     w.state.pitch = look.pitch;
@@ -1099,7 +1180,8 @@ export class WalkMode {
   /** One camera tick on the mover's last tick. */
   private cameraTick(): void {
     const w = this.walker!;
-    this.player?.tick([w.state.x, w.state.y, w.state.z], w.state.yaw, w.state.pitch, rootY(w.posture));
+    if (this.player) this.player.peek = this.moves?.peek() ?? 0;  // TRAVERSAL SEAM: the lean's peek, the move's root
+    this.player?.tick([w.state.x, w.state.y, w.state.z], w.state.yaw, w.state.pitch, this.moves?.rootY() ?? rootY(w.posture));
   }
 
   /** A new camera on the mover where it now stands (entering walk, a pose from the hook, a new map). */
