@@ -1175,16 +1175,19 @@ collisions audit of 2026-09-28, sections 3.1 and 5). The chain writes `logs/.mer
 in its own tree after it fixes HEAD0 (`pid`, `start`, `head`, `stamp`, `root`, `held`; the pid is the Windows one under
 Git Bash) and removes it in an EXIT trap; `tools_py/hooks/chainmark.py` judges it live when the pid is alive and was
 created no later than the write -- in-process, no child, and the lock's state is not consulted. Two refusals key on
-it: git's `pre-commit` hook runs `tools_py/hooks/precommit.py` before the leak check and refuses any commit in that
-tree (`scripts/hooks/pre-merge-commit` runs the same for a merge that commits without stopping; a fast-forward makes
-no commit and is not seen); the Edit/Write entry refuses an edit of a TRACKED file in it (untracked files, `logs/` and other trees pass --
+it: git's `pre-commit` hook runs `tools_py/hooks/precommit.py` before the leak check, and
+`scripts/hooks/pre-merge-commit` runs the same, so they refuse `git commit` and a non-fast-forward `git merge` in that
+tree (cherry-pick, revert, rebase, am, a fast-forward, reset and checkout move HEAD unguarded -- the audit's 3.1(b),
+not this task); the Edit/Write entry refuses an edit of a TRACKED file in it (untracked files, `logs/` and other trees pass --
 an agent worktree never refuses). The shell fast path starts Python for an editing call only while a marker exists in
 the hook's own tree or the main tree (`PRETOOL_CHAIN_TREE` replaces both for tests). Test `ChainMarkerTest`,
 `PrecommitChainGuardTest`, `PrecommitWiringTest`, `PinnedTreeEditTest`, `PinnedTreeWiringTest` in
 `tools_py/tests/test_hooks.py`, and the marker's lifetime (green, red, refused, dry) in `tools_py/tests/test_merged_chain.py`;
 home this section. Limits: a tree without `tools_py/hooks/precommit.py` (a branch older than G1, whose commits run
 the main tree's hooks through an absolute `core.hooksPath`) is skipped, not refused; a hard kill (`taskkill /F`)
-leaves a marker naming a dead pid (judged not running); an
+skips the trap and leaves the marker behind -- it pins nothing once its pid is gone, or is reused (a process
+created after the marker, or one we may not open, is not the chain), and every refusal names the marker and says
+to delete it if no chain runs (`bash scripts/loop_lock.sh check` FREE); an
 edit through Bash or PowerShell (`sed -i`, `Set-Content`) is not seen; a chain in a third tree is judged only when the
 call reaches Python for another reason.
 
