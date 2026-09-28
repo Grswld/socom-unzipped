@@ -128,10 +128,15 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `F` | fullscreen, and back (also the button under the frame counter) |
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
 | the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
-| `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 | `C` (walking) | cycles stand, crouch and prone; on a touch screen, the **C** button beside the lift buttons |
+| `V` (walking) | first person (the eye at the head, the body hidden) and back to third; `Ctrl+V` stays the browser's |
 
-**Walking speeds are the game's own** (`READERC.ZAR/motion.rdr`, web sprint 2 W2.R2): standing, 65 units a second
+**Walking is seen as the game sees it** (web sprint 2 W2.1, `viewer/src/playerCamera.ts`): the camera looks at a
+point 21.5 units over the feet standing (15.4 crouched) from about 25 behind and 4 above it, pitched down 9.2 degrees
+at the start, pulled in short of any wall between -- `FUN_0029a950` and `FUN_0029bf70` read from the decompilation,
+the console's spawn camera matched to 0.001. The mouse turns the SEAL and tilts the camera (-70 to 60 degrees, the
+game's aim limits); the reticle sits where the camera aims. **Walking speeds are the game's own** (`READERC.ZAR/motion.rdr`, web sprint 2 W2.R2): standing, 65 units a second
 at a full stick (6.5 m/s), 37 backing up, 65 strafing, a half stick half the speed, the stick reaching full in a
 fifth of a second (`FUN_00586c10`); let go, it stops at once. Crouched, the walk is 14.0 ahead (12.8 back, 14.2
 aside) however far the stick is pushed, and a full push stands up and runs where there are 19 units of headroom

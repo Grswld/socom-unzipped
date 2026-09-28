@@ -20,8 +20,9 @@ import { uniform, vec4, vertexColor } from 'three/tsl';
  *   u16 id. The names are reCOM's `CSeal` parts (`research/recom/src/gamez/zSeal/zseal.h:534-567`): `skel_root`,
  *   `hips`, `spinelo`, `spinehi`, `neck`, `head`, `l/rscap`, `l/rshoulder_wgt`, `l/rbicep`, `l/rforearm`,
  *   `l/rhand`, `l/rthigh`, `l/rcalf`, `l/rfoot`, `l/rtoe`, `aimnodes`, `rifle`; no eyeball or eyelid part is live.
- *   Composing parent-first from the root (`t * R(q)` under the parent) puts, **on the five standing actors of the
- *   dump** (root Y 11.08-11.57; the SEALs' own skeleton, the bone lengths identical to the player's), the `head`
+ *   Composing parent-first from the root (`t * R(q)` under the parent) puts, **on the upright standing actors of
+ *   the dump** (root Y 11.08-11.57; the SEALs' own skeleton, the bone lengths the player's within 0.7 -- the hips
+ *   and shoulders differ that much; a fifth standing actor is bent, its head at 15.03, and is left out), the `head`
  *   joint at **17.28-17.48 (17.37 at the bind root 11.484)**, the `neck` at 16.50, the shoulder joints at 15.4-15.7
  *   and 4.0 apart, the `hips` at 11.48, the knees (`calf`) at 5.7-5.9, the ankles (`foot`) at 1.15, the toes at
  *   0.3-0.5 -- the model's origin is the soles. The player at spawn is **crouched** (root 5.504, under the 9.0
@@ -64,9 +65,10 @@ import { uniform, vec4, vertexColor } from 'three/tsl';
  * divided by the frame's brighten of 1.727 (FIX 93): pack (23.6, 26.5, 26.9), camouflage sleeve (28.5, 31.5, 25.4),
  * beanie (14.1, 13.6, 12.6), trousers (17.2, 19.9, 18.9) -- dark, as the SEAL in that shade is.
  *
- * **First person.** The walk's eye (15.4, W1.R2, until W2.1) is inside the torso, so while the eye is within the
- * body's column (the body radius 3.5 around the feet, from the feet to the crown) the upper body -- torso, neck,
- * head, arms -- is not drawn and the legs are; from outside, it is drawn whole.
+ * **First person.** W2.1's walk is seen in the third person, the body whole; its first person (`V`) puts the eye at
+ * `HEAD_HEIGHT` and hides the body (`main.ts`). Should an eye be within the body's column all the same (the body
+ * radius 3.5 around the feet, from the feet to the crown), the upper body -- torso, neck, head, arms -- is not drawn
+ * and the legs are; from outside, it is drawn whole.
  */
 
 /** The crown over the feet, standing (above: the dump's head joint 17.37 + the frame's head 2.23). */

@@ -60,12 +60,12 @@
         <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false">PS2<span class="s2u-tab__what">640&times;448 on 4:3, as the console drew it</span></button>
       </div>
       <!--
-        Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): the SEAL's eye, 15.4 over the floor the engine's ground
-        probe finds, stepping at the game's 60 Hz at motion.rdr's speeds, stopped by its walls, falling off its edges.
-        G toggles it; this box mirrors G; C cycles the stance.
+        Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
+        the floor the engine's ground probe finds, stepping at the game's 60 Hz at motion.rdr's speeds, stopped by its
+        walls, falling off its edges. G toggles it; this box mirrors G; C cycles the stance; V first person.
       -->
       <div class="row" id="walk-row">
-        <label class="s2u-check" title="Walk on the game's own floors at a SEAL's eye height, 15.4 units over the feet, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched (a full push stands up and runs where there is headroom), 11 prone, the stick ramping to full in a fifth of a second. The floor under you is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, the walls stop you at a body's radius, and the step runs at the game's 60 Hz. WASD or the stick walks, the mouse looks, C cycles stand, crouch and prone, G switches back to flying."><input type="checkbox" id="walk" /> <span>walk (G) &mdash; on the game's floors, at its speeds; C crouches</span></label>
+        <label class="s2u-check" title="Walk on the game's own floors, seen from behind as the game's camera sees you (21.5 units up at the target, about 25 behind), at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched (a full push stands up and runs where there is headroom), 11 prone, the stick ramping to full in a fifth of a second. The floor under you is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, the walls stop you at a body's radius, and the step runs at the game's 60 Hz. WASD or the stick walks, the mouse turns you and tilts the camera, C cycles stand, crouch and prone, V switches to first person and back, G switches back to flying."><input type="checkbox" id="walk" /> <span>walk (G) &mdash; the game's camera, floors and speeds; C crouches, V first person</span></label>
       </div>
       <details id="about" class="s2u-disclosure">
         <summary>Unzipped Project Map Viewer <span class="s2u-label s2u-label--warn" id="revision">dev build</span></summary>
@@ -144,7 +144,7 @@
         audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
         Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
         Entertainment.</p>
-      <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; arrows look &middot; G walk &middot; C stance &middot; F fullscreen &middot; wheel speed 1.0&times; &middot; ` hides this</p>
+      <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; arrows look &middot; G walk &middot; C stance &middot; V first person &middot; F fullscreen &middot; wheel speed 1.0&times; &middot; ` hides this</p>
       </div>
     </div>
     <!--

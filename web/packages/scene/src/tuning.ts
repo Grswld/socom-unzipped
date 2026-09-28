@@ -54,6 +54,17 @@ export interface SealTuning {
   aimPitch: [min: number, max: number];
   /** `max_aim_yaw`, degrees (`char_dyn.cpp:69`). */
   aimYaw: number;
+  /**
+   * `init_aim_pitch`, degrees (`char_dyn.cpp:59-62`): the table's `+0x54`, -0.16 rad on the console dump, and the
+   * console's spawn pitch -- the camera's rest pitch (W2.1, `FUN_00594600` holds the pitch at it in its recentre mode).
+   */
+  initAimPitch: number;
+  /**
+   * `prone_min_aim_pitch`, `prone_max_aim_pitch`, degrees: the table's `+0x68` / `+0x64`, the prone limits
+   * `FUN_00594600` takes (W2.1). reCOM's SOCOM 1 loader has the fields (`m_proneMaxAimPitch`, `char_dyn.cpp:75`)
+   * but no read by these names; SOCOM II's `dynamics.rdr` carries them.
+   */
+  proneAimPitch: [min: number, max: number];
   /** `low/med/high_climb_height`: units (metres x10, `char_dyn.cpp:412-419`). */
   climbHeights: [low: number, med: number, high: number];
   /** `min_stand_height`: units (metres x10, `char_dyn.cpp:421-422`). */
@@ -147,6 +158,8 @@ export function sealDynamics(script: RdrNode): SealTuning {
     lookYaw: n('max_look_yaw'),
     aimPitch: [n('min_aim_pitch'), n('max_aim_pitch')],
     aimYaw: n('max_aim_yaw'),
+    initAimPitch: n('init_aim_pitch'),
+    proneAimPitch: [n('prone_min_aim_pitch'), n('prone_max_aim_pitch')],
     climbHeights: [n('low_climb_height', M_SCALE), n('med_climb_height', M_SCALE), n('high_climb_height', M_SCALE)],
     minStandHeight: n('min_stand_height', M_SCALE),
     minJumpHeight: n('min_jump_height', M_SCALE),
@@ -218,6 +231,7 @@ export const SEAL_TUNING: SealTuning = {
   fbAccel: 0.01, lrAccel: 0.01, throtExp: 1, accelX: [2, 5], accelZ: [2, 5],
   turnMaxRate: 2, standTurnFactor: 2.3, pitchRate: 0.85,
   lookPitch: [-60, 80], lookYaw: 89, aimPitch: [-70, 60], aimYaw: 85,
+  initAimPitch: -9.167, proneAimPitch: [-20, 25],
   climbHeights: [13, 21.5, 26.5], minStandHeight: 10, minJumpHeight: 20,
   landFallRate: 40, landHardFallRate: 115, fallingDamage: [62, 91, 120],
   bobbing: { walkAmplitude: 6, walkRate: 15, crawlAmplitude: 4, crawlRate: 8 },

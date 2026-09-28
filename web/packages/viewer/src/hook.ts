@@ -5,7 +5,7 @@ import type { BodyState } from './body';
 import type { Rect } from './reticle';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
-import type { Stance } from './walk';
+import type { Stance, WalkCameraState, WalkView } from './walk';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -58,6 +58,13 @@ export interface ViewerHook {
   stance(): Stance;
   /** Sets the stance, walking or not; false for a name that is not a stance. */
   setStance(stance: Stance): boolean;
+  /**
+   * W2.1: the walk's camera as last drawn -- third or first person, the eye and the look-at target (world), the root
+   * height the target stands on, the camera's pitch in degrees -- or null in fly mode.
+   */
+  camera(): WalkCameraState | null;
+  /** W2.1: third person (the game's camera, the default) or first person (`V`); false for a name that is not one. */
+  setView(view: WalkView): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

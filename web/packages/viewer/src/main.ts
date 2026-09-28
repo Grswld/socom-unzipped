@@ -14,7 +14,8 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
-import { WalkMode } from './walk';
+import { stanceBody, WalkMode, type Stance } from './walk';
+import { aimPoint } from './playerCamera';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { Body } from './body';
@@ -49,13 +50,20 @@ const fly = new FlyCamera(canvas, {
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
 });
 const overlays = new Overlays(scene);
-/** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
+/**
+ * Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the game's third-person camera
+ * follows it (W2.1, `./playerCamera`), `V` for first person.
+ */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
 /** W2.3 (`./body`): the stand-in body on the walker's feet, in the world's shading (the brighten, the fog). */
 const body = new Body(() => brightenOf(lighting));
 scene.add(body.object);
+/** The body's pose last set: `setStance` re-poses the mannequin, so it is called on a change only. */
+let bodyStance: Stance | null = null;
+/** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
+const RUN_SPEED = stanceBody('stand').bands.forward;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -327,12 +335,23 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
-    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
-    body.update(walk.feet(), fly.pose().yaw, dt, fly.camera.position);
-    body.setVisible(walk.mode() === 'walk');
+    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
+    const walking = walk.mode() === 'walk';
+    if (walk.posture() !== bodyStance) { bodyStance = walk.posture(); body.setStance(bodyStance); }
+    // The body on the feet as drawn (between ticks, like the camera), facing the body's yaw, seen whole in third person.
+    body.update(walk.drawnFeet(), fly.pose().yaw, dt, fly.camera.position);
+    body.setVisible(walking && walk.view() === 'third');
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
-    reticle.setVisible(walk.mode() === 'walk');
+    const aim = walk.aim();
+    if (aim) {
+      // The reticle on the aim point (FUN_00297410's, 1000 ahead along the look): the frame's centre at rest.
+      fly.camera.updateMatrixWorld();
+      const [nx, ny] = aimPoint(fly.camera, aim);
+      reticle.setAimPoint(nx, ny);
+      reticle.setSpread(walk.speed() / RUN_SPEED);
+    }
+    reticle.setVisible(walking);
     reticle.render(created.renderer);
 
     if (dt > 0) {
@@ -560,5 +579,7 @@ window.__viewer = {
   body: () => body.state(),
   stance: () => walk.stance(),
   setStance: (stance) => walk.setStance(stance),
+  camera: () => walk.cameraState(),
+  setView: (view) => walk.setView(view),
   revision,
 } satisfies ViewerHook;

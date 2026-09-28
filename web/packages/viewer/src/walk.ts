@@ -4,6 +4,7 @@ import {
   type CollisionOwner, type Grid, type GridParams, type Hit, type WorldPoly,
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
+import { firstPersonHeight, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
 
 /**
  * Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): a mover that stands on the floor the engine's probe finds,
@@ -87,8 +88,11 @@ import type { GroundWish, Pose } from './camera';
  *   until it is 3.5 from it, and keeps the part of its step that runs along it. The game's movement collision is
  *   not decompiled -- that walls stop the mover is research 24's inference from the 3c trails, which stand off wall
  *   planes at 4.4-5.8 (section 4.1).
- * - **The eye.** 15.4 over the feet (W1.R2): the console's look-at target, 15.38 over the actor at rest (research
- *   17 section 1). A first-person eye at every stance; the game's camera over `rootY(posture)` is W2.1's.
+ * - **The view (W2.1, W2.R1).** The game's third-person camera (`playerCamera.ts`): its target `rootY + ramp` over
+ *   the feet at the posture's root, its eye behind and over, the pass against the hull, a tick at a time after the
+ *   mover's and drawn between ticks. `V` switches to first person at the head (`firstPersonHeight`). The mouse turns
+ *   the body's yaw and the camera's pitch (`camera.ts`). Sprint 1's first-person eye 15.4 (`EYE_HEIGHT`, W1.R2) is
+ *   retired as a view; it stays the height a pose drops the mover from.
  * - **No jump.** `Space` is not bound in walk mode: the game's jump is a clip (`seal_jump`, `seal_runningjump_launch`
  *   in `motion.rdr`) whose rise is root motion, not a formula of `jump_factor` -- `jump_factor x gravity x -0.4`
  *   (`FUN_0057e1b0`, `FUN_005880e0`) seeds `actor+0x1364`, the landing-speed record the fall damage reads
@@ -97,7 +101,10 @@ import type { GroundWish, Pose } from './camera';
 
 /** Seconds per tick: `CGame::Tick` at 60 Hz (web/docs/research/71 section 1.5). */
 export const TICK = 1 / 60;
-/** The eye over the feet (W1.R2; research 17 section 1, the look-at target at 15.38). */
+/**
+ * Sprint 1's eye over the feet (W1.R2): no longer a view (W2.1 retired it: W2.R1), the height `setCamera` and the
+ * spawn drop the mover from, and `Walker.eye`'s.
+ */
 export const EYE_HEIGHT = 15.4;
 /** The body's radius against walls (W1.R2; research 24 section 2 step 3, section 4.1). */
 export const BODY_RADIUS = 3.5;
@@ -459,12 +466,13 @@ export class Walker {
     return this.inAir;
   }
 
-  /** Feeds `seconds` of real time in and runs the whole ticks it makes; returns how many ran. */
-  advance(seconds: number, input: WalkInput): number {
+  /** Feeds `seconds` of real time in and runs the whole ticks it makes, `afterTick` after each; returns how many ran. */
+  advance(seconds: number, input: WalkInput, afterTick?: () => void): number {
     this.accumulator += Math.max(0, seconds);
     let ticks = 0;
     while (this.accumulator >= TICK - 1e-9 && ticks < MAX_TICKS) {
       this.tick(input);
+      afterTick?.();
       this.accumulator -= TICK;
       ticks++;
     }
@@ -480,12 +488,19 @@ export class Walker {
 
   /** The eye, 15.4 over the feet, drawn between the last two ticks by the time left over in the accumulator. */
   eye(): [number, number, number] {
-    const s = this.state, t = Math.max(0, Math.min(1, this.accumulator / TICK));
-    return [
-      this.prev.x + (s.x - this.prev.x) * t,
-      this.prev.y + (s.y - this.prev.y) * t + EYE_HEIGHT,
-      this.prev.z + (s.z - this.prev.z) * t,
-    ];
+    const [x, y, z] = this.drawnFeet();
+    return [x, y + EYE_HEIGHT, z];
+  }
+
+  /** How far the page's time is into the next tick, 0..1: what the view is drawn between the last two ticks by. */
+  alpha(): number {
+    return Math.max(0, Math.min(1, this.accumulator / TICK));
+  }
+
+  /** The feet between the last two ticks (`alpha`): where the body is drawn, so it moves with the drawn camera. */
+  drawnFeet(): [number, number, number] {
+    const s = this.state, t = this.alpha();
+    return [this.prev.x + (s.x - this.prev.x) * t, this.prev.y + (s.y - this.prev.y) * t, this.prev.z + (s.z - this.prev.z) * t];
   }
 
   /**
@@ -716,13 +731,26 @@ export class Walker {
   }
 }
 
-/** The half of `FlyCamera` walk mode drives: the look it reads, the position it writes, the wish it steps by. */
+/** The half of `FlyCamera` walk mode drives: the look it reads, the view it places, the wish it steps by. */
 export interface WalkCamera {
   pose(): Pose;
   setPose(pose: Partial<Pose>): void;
   moveTo(x: number, y: number, z: number): void;
   setWalking(on: boolean): void;
+  setPitchLimits(minDegrees: number, maxDegrees: number): void;
+  placeView(eye: readonly [number, number, number], target: readonly [number, number, number] | null): void;
   groundWish(): GroundWish;
+}
+
+/** Third person (the game's camera, the default: W2.R1) or first person (`V`). */
+export type WalkView = 'third' | 'first';
+
+/**
+ * The hook's view of the walk's camera (W2.1): which view, the eye and target drawn, the root, the pitch, and the
+ * pass's state (`FUN_0029bf70`: the distance `DAT_003de268`, the hold `cam+0x4c` in seconds).
+ */
+export interface WalkCameraState {
+  mode: WalkView; eye: Vec3; target: Vec3; rootY: number; pitch: number; pass: { distance: number; hold: number };
 }
 
 /**
@@ -740,6 +768,11 @@ export class WalkMode {
   private bound: EventTarget | null = null;
   /** The stance, kept here so a new map's mover takes it on (`setGround` makes a new `Walker`). */
   private stance_: Stance = 'stand';
+  /** The game's camera over the mover (W2.1), made with it. */
+  private player: PlayerCamera | null = null;
+  private view_: WalkView = 'third';
+  /** The view last placed: what the hook and the reticle read. */
+  private placed: { eye: Vec3; target: Vec3; far: Vec3 } | null = null;
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
@@ -770,9 +803,10 @@ export class WalkMode {
   setGround(ground: GroundData | undefined, spawn: [number, number, number] | null): void {
     this.ground = ground;
     this.walker = null;
+    this.player = null;
     this.spawn = spawn;
     if (!this.walking) return;
-    if (this.stand()) this.follow();
+    if (this.stand()) this.restart();
     else this.leave();
   }
 
@@ -790,19 +824,34 @@ export class WalkMode {
     if (!this.stand()) return false;
     this.walking = true;
     this.camera.setWalking(true);
-    this.follow();
+    this.camera.setPose({ pitch: INIT_AIM_PITCH });          // the game's spawn pitch, init_aim_pitch (W2.1)
+    this.restart();
     this.onChange(true);
     return true;
   }
 
-  /** One frame: the look goes to the mover, real time goes in, and the camera goes to the eye. */
+  /** Third or first person (`V`). */
+  view(): WalkView {
+    return this.view_;
+  }
+
+  /** Sets the view, walking or not; false for a name that is not one. */
+  setView(view: WalkView): boolean {
+    if (view !== 'third' && view !== 'first') return false;
+    this.view_ = view;
+    if (this.walking && this.walker) this.follow();
+    return true;
+  }
+
+  /**
+   * One frame: the look goes to the mover (the pitch clamped to the posture's limits), real time goes in -- the
+   * camera ticking after each of the mover's ticks -- and the view is placed between the last two.
+   */
   frame(dt: number): void {
     const w = this.walker;
     if (!this.walking || !w) return;
-    const look = this.camera.pose();
-    w.state.yaw = look.yaw;
-    w.state.pitch = look.pitch;
-    w.advance(dt, this.camera.groundWish());
+    this.look(w);
+    w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
     this.follow();
   }
 
@@ -814,9 +863,10 @@ export class WalkMode {
     this.camera.setPose(pose);
     const w = this.walker;
     if (!this.walking || !w) return;
-    if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.follow(); return; }
+    // A turn only: the camera keeps its pass (the distance, the hold) and its root; the next tick takes the turn.
+    if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.look(w); return; }
     const at = this.camera.pose();
-    if (w.place(at.x, at.y, at.z)) this.follow();
+    if (w.place(at.x, at.y, at.z)) this.restart();
     else this.leave();
   }
 
@@ -827,11 +877,10 @@ export class WalkMode {
   walkFor(seconds: number, input: WalkInput): Pose {
     const w = this.walker;
     if (!this.walking || !w) return this.camera.pose();
-    const look = this.camera.pose();
-    w.state.yaw = look.yaw;
-    w.state.pitch = look.pitch;
-    for (let i = Math.round(seconds / TICK); i > 0; i--) w.tick(input);
+    this.look(w);
+    for (let i = Math.round(seconds / TICK); i > 0; i--) { w.tick(input); this.cameraTick(); }
     w.settle();
+    this.player?.settle();
     this.follow();
     return this.camera.pose();
   }
@@ -842,9 +891,43 @@ export class WalkMode {
     return this.walking && w ? [w.state.x, w.state.y, w.state.z] : null;
   }
 
+  /** The feet as drawn this frame, between the last two ticks (the body's place), or null in fly mode. */
+  drawnFeet(): [number, number, number] | null {
+    const w = this.walker;
+    return this.walking && w ? w.drawnFeet() : null;
+  }
+
+  /** The body in use (`Walker.posture`): `stand` while a crouch runs at full stick; the stance when not walking. */
+  posture(): Stance {
+    return this.walking && this.walker ? this.walker.posture : this.stance_;
+  }
+
+  /** The mover's speed over the ground, units a second (0 in fly mode). */
+  speed(): number {
+    const w = this.walker;
+    return this.walking && w ? Math.hypot(w.state.vx, w.state.vz) : 0;
+  }
+
+  /** The walk's camera as last placed, or null in fly mode (the hook's `camera()`). */
+  cameraState(): WalkCameraState | null {
+    const w = this.walker, placed = this.placed;
+    if (!this.walking || !w || !placed) return null;
+    return {
+      mode: this.view_, eye: [...placed.eye], target: [...placed.target],
+      rootY: this.player?.rootY() ?? rootY(w.posture), pitch: this.camera.pose().pitch,
+      pass: { distance: this.player?.distance() ?? 0, hold: this.player?.hold() ?? 0 },
+    };
+  }
+
+  /** The point the reticle sits on (`FUN_00297410`'s aim, 1000 ahead along the look), or null in fly mode. */
+  aim(): Vec3 | null {
+    return this.walking && this.placed ? [...this.placed.far] : null;
+  }
+
   /**
-   * `G` (walk and fly) and `C` (the stance, while walking) on `target`, ignored with a modifier, on auto-repeat, and
-   * while a control has the keyboard.
+   * `G` (walk and fly), `C` (the stance, while walking) and `V` (first or third person, while walking) on `target`,
+   * ignored with a modifier -- so Ctrl+C and Ctrl+V stay the browser's -- on auto-repeat, and while a control has the
+   * keyboard.
    */
   bindKey(target: EventTarget = globalThis): void {
     this.unbindKey();
@@ -858,18 +941,22 @@ export class WalkMode {
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
-    if ((e.code !== 'KeyG' && e.code !== 'KeyC') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-    if (e.code === 'KeyC' && !this.walking) return;
+    if ((e.code !== 'KeyG' && e.code !== 'KeyC' && e.code !== 'KeyV') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (e.code !== 'KeyG' && !this.walking) return;
     const target = e.target;
     if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
     e.preventDefault();
     if (e.code === 'KeyC') this.cycleStance();
+    else if (e.code === 'KeyV') this.setView(this.view_ === 'third' ? 'first' : 'third');
     else this.setMode(this.walking ? 'fly' : 'walk');
   };
 
   /** The floor under the camera, else spawn A's. */
   private stand(): boolean {
-    if (!this.walker && this.ground) this.walker = new Walker(groundGrid(this.ground));
+    if (!this.walker && this.ground) {
+      this.walker = new Walker(groundGrid(this.ground));
+      this.player = new PlayerCamera(this.walker.grid);
+    }
     const w = this.walker;
     if (!w) return false;
     w.stance = this.stance_;
@@ -880,12 +967,51 @@ export class WalkMode {
 
   private leave(): void {
     this.walking = false;
+    this.placed = null;
     this.camera.setWalking(false);
     this.onChange(false);
   }
 
+  /** The look to the mover: the camera's yaw is the body's, its pitch clamped to the posture's limits. */
+  private look(w: Walker): void {
+    const [min, max] = pitchLimits(w.posture);
+    this.camera.setPitchLimits(min, max);
+    const look = this.camera.pose();
+    w.state.yaw = look.yaw;
+    w.state.pitch = look.pitch;
+  }
+
+  /** One camera tick on the mover's last tick. */
+  private cameraTick(): void {
+    const w = this.walker!;
+    this.player?.tick([w.state.x, w.state.y, w.state.z], w.state.yaw, w.state.pitch, rootY(w.posture));
+  }
+
+  /** A new camera on the mover where it now stands (entering walk, a pose from the hook, a new map). */
+  private restart(): void {
+    const w = this.walker!;
+    this.look(w);
+    this.player?.reset();
+    this.cameraTick();
+    this.follow();
+  }
+
+  /** The view to the camera: the game's, between the last two ticks, or the head's in first person. */
   private follow(): void {
-    const [x, y, z] = this.walker!.eye();
-    this.camera.moveTo(x, y, z);
+    const w = this.walker!;
+    const third = this.player?.view(w.alpha());
+    if (!third) return;
+    if (this.view_ === 'third') {
+      this.placed = third;
+      this.camera.placeView(third.eye, third.target);
+      return;
+    }
+    const [x, y, z] = w.drawnFeet();
+    const eye: Vec3 = [x, y + firstPersonHeight(w.posture), z];
+    const look = this.camera.pose(), yaw = (look.yaw * Math.PI) / 180, pitch = (look.pitch * Math.PI) / 180;
+    const ahead: Vec3 = [-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+    const far: Vec3 = [eye[0] + ahead[0] * 1000, eye[1] + ahead[1] * 1000, eye[2] + ahead[2] * 1000];
+    this.placed = { eye, target: [eye[0] + ahead[0], eye[1] + ahead[1], eye[2] + ahead[2]], far };
+    this.camera.placeView(eye, null);
   }
 }
