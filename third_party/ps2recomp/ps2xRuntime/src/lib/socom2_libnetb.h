@@ -39,6 +39,12 @@ namespace socom2_libnetb
 
     // Test only: forget the cached PS2X_SOCOM2_NET_STATS so the next call() re-reads the environment.
     void testResetKnobs();
+    // Sprint 17 Q2 (review finding 1): an in-process restart of the guest. Every cid still open is closed with its
+    // host socket (the game's own logoff closes them one by one; a route that leaves one behind would otherwise keep
+    // the server session alive), the parked receives are dropped, then the host table's strays go too
+    // (socom2_hostnet::closeAllSockets). Returns how many cids and host sockets it closed, together.
+    size_t closeAllForGuestRestart();
+    size_t openCidCount();
 
     // Receives refused so far: every receive into guest RAM (fno 4, fno 0xd, the two ring-buffer receives) must land
     // inside guest RAM, and an RPC's inside the receive buffer it states; one that does not copies nothing and logs.

@@ -409,6 +409,15 @@ void PS2AudioBackend::stopAll()
 #endif
 }
 
+void PS2AudioBackend::stopForGuestRestart()
+{
+    stopAll();
+    m_mixer.stopAll();
+    m_mixer.stopAllStreams();
+    m_mixer.pcmStreamStop();
+    m_mixer.pcmStreamClose();
+}
+
 // ---- 989snd -------------------------------------------------------------------------------------
 
 namespace

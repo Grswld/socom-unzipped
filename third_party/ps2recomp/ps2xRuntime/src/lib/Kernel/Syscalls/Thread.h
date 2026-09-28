@@ -2,8 +2,16 @@
 
 #include "ps2_syscalls.h"
 
+#include <string>
+
 namespace ps2_syscalls
 {
+    // Sprint 17 Q2: does a LoadExecPS2 request name the ELF this runtime booted? "cdrom0:\SCUS_972.75;1" is the
+    // disc's boot file, which every SOCOM II ELF the launcher knows (socom2_game.elf, socom2_game_r0004.elf;
+    // issue #69's revision table) is a copy of; a request naming the loaded file itself counts too. Anything
+    // else (rom0:OSDSYS, the network GUI) is a foreign ELF and keeps the honest exit 74. Pure: no runtime.
+    bool loadExecTargetsLoadedElf(const std::string &requestPath, const std::string &loadedElfName);
+
     void FlushCache(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void iFlushCache(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void EnableCache(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
