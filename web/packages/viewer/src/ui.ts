@@ -5,7 +5,7 @@ import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'fog', 'blendgraded', 'discorder', 'shadows', 'alternate', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
+  'fog', 'blendgraded', 'engineorder', 'shadows', 'alternate', 'detail', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -26,7 +26,10 @@ export class Ui {
   private readonly loadingBar = find<HTMLElement>('loading-bar');
   private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
-  private readonly panelTitle = find<HTMLElement>('panel-title');
+  /** The ammo box (W2.5): bottom-left, shown while walking. */
+  private readonly ammo = find<HTMLElement>('ammo');
+  /** The loaded map's name, for the cog's tooltip; null before the first load. */
+  private mapName: string | null = null;
   /**
    * The continuous controls, as [input, readout, how to word the number]. Kept as one table for the same
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
@@ -48,9 +51,10 @@ export class Ui {
     untextured: find('untextured'),
     fog: find('fog'),
     blendgraded: find('blendgraded'),
-    discorder: find('discorder'),
+    engineorder: find('engineorder'),
     shadows: find('shadows'),
     alternate: find('alternate'),
+    detail: find('detail'),
     linestrips: find('linestrips'),
     billboards: find('billboards'),
     rigeverywhere: find('rigeverywhere'),
@@ -85,6 +89,46 @@ export class Ui {
 
   onMapChange(handler: (path: string) => void): void {
     this.maps.addEventListener('change', () => handler(this.maps.value));
+  }
+
+  /**
+   * "Open your own disc (.iso)" (W1.7, milestone M5): the panel's file input, and a file dropped anywhere
+   * on the page. Both are the standard file APIs -- an `<input type=file>` and the drop's `DataTransfer`
+   * -- and not the File System Access API, which Safari does not offer. Either way the page gets a `File`,
+   * a handle the worker reads by range; nothing is uploaded. `accept=".iso"` only steers the picker: a
+   * dropped file of any name is handed on, and the ISO9660 reader says what it is not.
+   */
+  onDisc(handler: (file: File) => void): void {
+    const input = find<HTMLInputElement>('disc-file');
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      // Cleared so choosing the same image again still fires `change`.
+      input.value = '';
+      if (file) handler(file);
+    });
+    const carriesFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const over = (on: boolean): void => { document.body.classList.toggle('disc-over', on); };
+    document.addEventListener('dragover', (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();                       // what makes the page a drop target at all
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      over(true);
+    });
+    // `relatedTarget` is null only when the drag leaves the window, not when it crosses between elements.
+    document.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) over(false); });
+    document.addEventListener('drop', (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();                       // or the browser navigates to the dropped file
+      over(false);
+      const file = e.dataTransfer?.files[0];
+      if (file) handler(file);
+    });
+  }
+
+  /** No maps are served: the panel opens on the disc control, even on a phone where it starts folded. */
+  offerDisc(): void {
+    this.setPanelCollapsed(false);
+    document.body.classList.add('no-served');
   }
 
   /** The fog colour picker. `FOGCOL` is a register value, so it is handed over as 0..255 per channel. */
@@ -149,10 +193,9 @@ export class Ui {
   }
 
   /**
-   * The whole overlay folded to one bar, and back. Two ways in, because they answer different wants:
-   * the backtick takes *everything* away for a clean picture, and this leaves a bar behind that says
-   * which map is on screen and can be tapped to bring the panel back -- which is the one that works
-   * with a thumb.
+   * The panel folded away behind the cog in the site bar, and back (W2.0). Two ways in, because they
+   * answer different wants: the backtick takes *everything* away for a clean picture, and the cog
+   * takes the panel only and stays where a thumb can tap it to bring the panel back.
    *
    * The state is remembered, in `localStorage` and so best-effort: a private window, blocked site data
    * or a browser that throws on access all end up with the panel open, which is the right default
@@ -174,16 +217,23 @@ export class Ui {
     document.body.classList.toggle('panel-collapsed', collapsed);
     this.panel.classList.toggle('is-folded', collapsed);
     this.panelToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
+    this.titleCog(collapsed);
+  }
+
+  private titleCog(collapsed: boolean): void {
+    this.panelToggle.title = collapsed
+      ? (this.mapName ? `show the settings · ${this.mapName}` : 'show the settings')
+      : 'hide the settings';
   }
 
   /**
-   * The title bar's label. It is always "Settings", so the strip says what pressing it gets you, with
-   * the map's name after it when one is loaded -- that is the bit worth reading while the panel is
-   * folded, and the bit that gives way to the ellipsis when there is no room for both.
+   * The loaded map's name, which the folded panel used to show in its title bar. The panel folds to
+   * nothing now (W2.0), so the name rides on the cog's tooltip while it is folded; open, the status
+   * line says it.
    */
   setPanelTitle(map: string | null): void {
-    this.panelTitle.textContent = map ? `Settings · ${map}` : 'Settings';
+    this.mapName = map;
+    this.titleCog(this.panelCollapsed());
   }
 
   /**
@@ -336,6 +386,22 @@ export class Ui {
   }
 
   /**
+   * The walk switch (W1.4): walk on the game's floors behind the SEAL, in the game's camera (W2.1), or fly. It is not one of the
+   * overlay toggles -- it moves the camera, so `apply` must not replay it on every map load -- and it mirrors `G`
+   * through `setWalk`. The box starts as the markup has it, like the toggles.
+   */
+  onWalkSwitch(handler: (on: boolean) => void): void {
+    const box = find<HTMLInputElement>('walk');
+    box.checked = box.defaultChecked;
+    box.addEventListener('change', () => handler(box.checked));
+  }
+
+  /** Puts the walk switch where the mode is, whoever changed it. */
+  setWalk(on: boolean): void {
+    find<HTMLInputElement>('walk').checked = on;
+  }
+
+  /**
    * The camera's line. It reads differently once the mouse is captured, because the way back out —
    * Esc — is the one control a player cannot guess from the others.
    */
@@ -343,7 +409,7 @@ export class Ui {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · F fullscreen · ${speed}`
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · C stance · V first person · click fire · R reload · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
   }
@@ -357,6 +423,12 @@ export class Ui {
     // site bar's GitHub tab.
     this.fpsNumber.textContent = String(Math.round(fps));
     this.fpsRest.textContent = ` fps · ${frameMs.toFixed(1)} ms`;
+  }
+
+  /** The ammo box's line (`./fire`'s `ammoText`), or null to hide it (not walking). Written only when it changes. */
+  setAmmo(text: string | null): void {
+    this.ammo.hidden = text === null;
+    if (text !== null && this.ammo.textContent !== text) this.ammo.textContent = text;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {

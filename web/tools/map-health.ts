@@ -18,13 +18,27 @@ const only = process.argv.slice(2).map((s) => s.toUpperCase());
 const OUT = fileURLToPath(new URL('../test-fixtures/screens/health', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
-const browser = await chromium.launch();
+// The same launch the e2e uses (`playwright.config.ts`): SwiftShader for a host with no GPU, and `PW_CHROMIUM`
+// for one whose Chromium is not the build this Playwright pins.
+const browser = await chromium.launch({
+  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  executablePath: process.env.PW_CHROMIUM || undefined,
+});
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const crashes: string[] = [];
 page.on('pageerror', (e) => crashes.push(e.message));
 await page.goto(process.env.VIEWER_URL ?? 'http://localhost:5173/');
 await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('triangles'));
 await page.evaluate(() => document.body.classList.add('chrome-hidden'));
+// `HEALTH_TOGGLES=engineorder,wireframe` sets panel switches on for the whole sweep, the way the e2e sets them
+// (the property and a change event), so a switch can be swept against the default's rows.
+for (const id of (process.env.HEALTH_TOGGLES ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+  await page.evaluate((toggle) => {
+    const box = document.getElementById(toggle) as HTMLInputElement | null;
+    if (!box) throw new Error(`no toggle #${toggle}`);
+    if (!box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); }
+  }, id);
+}
 
 const options = await page.locator('#maps option').evaluateAll(
   (els) => els.map((e) => ({ value: (e as HTMLOptionElement).value, label: (e as HTMLOptionElement).textContent ?? '' })),
@@ -34,7 +48,9 @@ const settle = (p: Page): Promise<void> => p.evaluate(
   () => new Promise<void>((d) => requestAnimationFrame(() => requestAnimationFrame(() => d()))),
 );
 
-console.log('archive  name              tris    draws  untex  collis  diag  spawns  notes');
+// `detail`: draws carrying a detail pass (W1.6, `WorldView.detailDraws`), the last fixed column so every
+// earlier one reads as it did before it was added.
+console.log('archive  name              tris    draws  untex  collis  diag  spawns  detail  notes');
 for (const { value, label } of options) {
   const archive = /\(([^)]+)\)/.exec(label)?.[1] ?? value;
   if (only.length && !only.includes(archive.toUpperCase())) continue;
@@ -59,11 +75,13 @@ for (const { value, label } of options) {
 
   const s = await page.evaluate(
     () => (window as unknown as { __viewer: ViewerHook }).__viewer.stats());
-  // Stand at a spawn and look level, the way a player first sees the map.
+  // Stand at a spawn and look level, the way a player first sees the map: at the viewer's opening stand, 20 over
+  // the ground probe's floor at A (W1.4b), or 20 over A's recorded y where the page has no stand.
   await page.evaluate(() => {
-    const w = window as unknown as { __viewer: { stats(): { spawns: { a: [number, number, number] } | null }; setCamera(p: Record<string, number>): void } };
-    const a = w.__viewer.stats().spawns?.a;
-    if (a) w.__viewer.setCamera({ x: a[0], y: a[1] + 20, z: a[2], yaw: 40, pitch: -4 });
+    const w = window as unknown as { __viewer: ViewerHook };
+    const { spawns, stand } = w.__viewer.stats();
+    const at = stand?.position ?? (spawns ? [spawns.a[0], spawns.a[1] + 20, spawns.a[2]] : null);
+    if (at) w.__viewer.setCamera({ x: at[0], y: at[1], z: at[2], yaw: 40, pitch: -4 });
   });
   await settle(page);
   await settle(page);
@@ -78,7 +96,7 @@ for (const { value, label } of options) {
     `${archive.padEnd(8)} ${(s.map ?? '?').padEnd(17)} ${String(s.triangles).padStart(6)} `
     + `${String(s.diagnostics.length ? '-' : '-').padStart(6)} ${String(s.untexturedDraws).padStart(6)} `
     + `${String(s.collisionPolys).padStart(7)} ${String(s.diagnostics.length).padStart(5)} `
-    + `${(s.spawns ? 'yes' : 'NO').padStart(6)}  ${notes.join('; ')}`,
+    + `${(s.spawns ? 'yes' : 'NO').padStart(6)} ${String(s.detailDraws).padStart(7)}  ${notes.join('; ')}`,
   );
   for (const d of s.diagnostics.slice(0, 3)) console.log(`           ! ${d.slice(0, 150)}`);
   if (s.diagnostics.length > 3) console.log(`           ! ... and ${s.diagnostics.length - 3} more`);

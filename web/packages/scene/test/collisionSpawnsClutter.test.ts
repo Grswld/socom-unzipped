@@ -82,13 +82,14 @@ describe('the measured spawn table (33 lines 47-71, KNOWN section 1)', () => {
 });
 
 describe('collision in the world frame (36 section 6)', () => {
-  it.skipIf(!MP2)('Frostfire: 2,756 polygons in the graph, realised as 3,338 placements', () => {
+  it.skipIf(!MP2)('Frostfire: 2,756 polygons in the graph, realised as 3,318 placements', () => {
     const { models, collision } = open('MP2');
     // 36 section 6 counts the polygons the archive stores: 2,756 on Frostfire.
     expect(graphPolygons(models)).toBe(2756);
     // A prototype's polygons are realised once per instance context, exactly as its chunks are, so the
-    // world-frame count is larger. It has to be: an instanced crate collides where the crate stands.
-    expect(collision.length).toBe(3338);
+    // world-frame count is larger. It has to be: an instanced crate collides where the crate stands. 3,318 is the
+    // set the engine holds (research 24 section 1.1): a nested instance's own copy is not in it (`worldDi`).
+    expect(collision.length).toBe(3318);
     expect(collision.every((p) => p.points.length === p.ptcount * 3)).toBe(true);
     // Only two of the four `m_ditype` values occur on any fixture; the overlay still colours all four.
     expect(new Set(collision.map((p) => p.ditype))).toEqual(new Set([2, 3]));
@@ -113,7 +114,7 @@ describe('collision in the world frame (36 section 6)', () => {
   it.skipIf(!MP6 || !MP72)('reads the other two maps\' collision too, with the shapes 36 section 6 tabulates', () => {
     expect(graphPolygons(open('MP6').models)).toBe(5442);
     expect(graphPolygons(open('MP72').models)).toBe(8168);
-    expect(open('MP6').collision.length).toBe(5951);
+    expect(open('MP6').collision.length).toBe(5872);       // 5,951 less 79 nested instances' own copies (`worldDi`)
     expect(open('MP72').collision.length).toBe(9820);
     // 36 section 6's histograms: (3,3) leads Desert Glory, (2,4) leads Crossroads.
     const top = (polys: WorldPoly[]): string => {
@@ -129,7 +130,7 @@ describe('collision in the world frame (36 section 6)', () => {
     const { collision } = open('MP2');
     const edges = collision.reduce((n, p) => n + p.ptcount, 0);
     const lines = collisionLines(collision);
-    expect(edges).toBe(13265);
+    expect(edges).toBe(13185);
     expect(lines.positions.length).toBe(edges * 6);           // two endpoints, three floats each
     expect(lines.colors.length).toBe(edges * 6);              // rgb per endpoint
     // The first polygon's first edge runs from its first point to its second, in world space.

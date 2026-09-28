@@ -1,13 +1,27 @@
 /**
- * Where the two sides stand when a multiplayer round starts, per map, in game units.
+ * Where the two sides are when a multiplayer round starts, per map, in game units -- measured, and for 40 of
+ * the 44 positions not the player but the camera behind them.
  *
- * **These are measured actor positions, not archive data.** Nothing in `MP*_GEO.ZED` or the world root
+ * **These are measured positions, not archive data.** Nothing in `MP*_GEO.ZED` or the world root
  * matches `spawn|start|team|respawn` (36 section 6); `vehicles.rdr` carries a named `playerstart`
- * reference rather than coordinates, and the regions those names resolve to live in `AIMAPS.MPS`, whose
- * format is the one documented gap for a viewer. So until `AIMAPS.MPS` is read, these numbers come from
- * the game itself: the actor block of both players at the start of a control round, read over the
- * 2026-09-17 online sweep (`docs/research/33-online-map-coverage.md` lines 47-71) and, for the two maps
- * the sweep did not cover, `docs/KNOWN.md` section 1's Frostfire and Vigilance rows.
+ * reference rather than coordinates. The numbers come from the game itself, from two instruments:
+ *
+ * - **The orbit camera, 40 rows (20 maps).** The 2026-09-17 online sweep
+ *   (`docs/research/33-online-map-coverage.md` lines 47-71) recorded, at the start of a control round, the
+ *   `0x416054` peek -- "the local player's ORBITING CAMERA record", which "sits CAMERA_ORBIT_RADIUS units
+ *   behind the player along its facing" (`tools_py/parity/online_match_ours.py:42-45`). So these rows are the
+ *   third-person camera: about 23 units behind the actor (research 18's orbit radius, 23.09) and 25 above the
+ *   floor the actor stands on (W1.4's probe: a median 25.000, exactly 25.000 on flat ground). This comment
+ *   called them "the actor block of both players" and "at the players' feet" until 2026-09-28; that was false.
+ * - **The actor's feet, 4 rows (2 maps).** `docs/KNOWN.md` section 1's Frostfire and Vigilance rows, for
+ *   the two maps the sweep did not cover -- the two rows marked `(KNOWN section 1)` below.
+ *
+ * `AIMAPS.MPS` is read now (`aimaps.ts`, web/docs/research/75), and it does not replace this table
+ * (W1.R4, W1.R9): its `PlayerStart` is one named cell holding neither spawn on any map, and what does explain
+ * all 44 positions is its spawn list -- 24 slots a side: the 4 actor rows at a slot's centre, the 40 camera
+ * rows 20-28 units behind one along its facing (75 §7, §11) -- which says where a side may start, not which
+ * slot a player got. The viewer opens its camera at A's (x, z) as this table gives it, on the ground probe's
+ * floor there rather than at the recorded y (W1.4b, `packages/viewer/src/stand.ts`).
  *
  * A map's key is the name the game shows, which is `mission.rdr`'s `description` (36 section 0) -- the
  * same string `listMaps` puts in `MapInfo.name`, so the viewer can look a map up by what it is called.
@@ -17,16 +31,22 @@
  * unit in A's z, and the first is kept.
  */
 
-/** One map's two spawns, xyz in game units, at the players' feet. */
+/**
+ * One map's two measured spawns, xyz in game units: the actor's feet on the two `KNOWN section 1` rows, the
+ * orbit camera's position -- behind and 25 above the actor -- on the other twenty (see above).
+ */
 export interface Spawns {
   a: [number, number, number];
   b: [number, number, number];
 }
 
-/** Every MP map that has been measured: all 22 of them (36 section 0; MP3 and MP4 do not exist). */
+/**
+ * Every MP map that has been measured: all 22 of them (36 section 0; MP3 and MP4 do not exist). The two rows
+ * marked `KNOWN section 1` are the actor's feet; every unmarked row is the sweep's, the orbit camera's.
+ */
 export const SPAWNS: Record<string, Spawns> = {
   BLIZZARD:         { a: [2562, 272, 3113], b: [1789, 75, 1385] },   // MP1
-  FROSTFIRE:        { a: [796, 100, 614],   b: [536, 143, 1254] },   // MP2  (KNOWN section 1)
+  FROSTFIRE:        { a: [796, 100, 614],   b: [536, 143, 1254] },   // MP2  (KNOWN section 1: the actor's feet)
   ABANDONED:        { a: [1172, 82, 2260],  b: [927, 168, 622] },    // MP5
   'DESERT GLORY':   { a: [837, -5, 1901],   b: [1865, 66, 1221] },   // MP6
   'NIGHT STALKER':  { a: [648, 124, 1675],  b: [2310, 163, 1458] },  // MP7
@@ -35,7 +55,7 @@ export const SPAWNS: Record<string, Spawns> = {
   'BLOOD LAKE':     { a: [1098, 35, 626],   b: [884, 52, 2004] },    // MP10
   'DEATH TRAP':     { a: [1170, 163, 1572], b: [1628, 1, 247] },     // MP11
   'THE RUINS':      { a: [2063, 68, 1114],  b: [486, 69, 1309] },    // MP12
-  VIGILANCE:        { a: [540, 160, 1456],  b: [1130, 65, 96] },     // MP51 (KNOWN section 1)
+  VIGILANCE:        { a: [540, 160, 1456],  b: [1130, 65, 96] },     // MP51 (KNOWN section 1: the actor's feet)
   'THE MIXER':      { a: [2254, 40, 2688],  b: [3802, 101, 2044] },  // MP52 (pass 2)
   FOXHUNT:          { a: [3407, 144, 4904], b: [3212, 212, 1817] },  // MP53 (pass 2)
   SUJO:             { a: [873, 143, 279],   b: [658, -25, 2245] },   // MP61

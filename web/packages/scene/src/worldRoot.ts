@@ -21,6 +21,64 @@ export interface WorldRoot {
    * on the disc: `CScrollingTexture_band` holds `m_du`/`m_dv` and the engine adds them each tick.
    */
   textureScroll: TextureScrollBand[];
+  /** `grid_params`: the engine's grid of cells (`grid.ts`), or the engine's default when the key is absent. */
+  grid: GridParams;
+}
+
+/**
+ * `grid_params`, `tag_GRID_PARAMS` (`research/recom/src/gamez/zNode/znode.h:109-120`), 20 bytes, which
+ * `CGrid::Read` fetches (`zGrid/grid_main.cpp:156`) and `CGrid::Create` builds the cells from (`:35-147`).
+ * The header settles the order: `s32 m_AtomCnt; s32 m_posts; f32 m_CellDim; s32 cx; s32 cy` -- the layout
+ * research 23 section 2.1 reads live at grid +0x00 (pool 0x2000), +0x08 (dimension), +0x0c / +0x10 (wide /
+ * high), `CGrid` inheriting the struct as its head (`zGrid/zgrid.h:51`). All 22 maps carry 8192 and 16 in
+ * the first two words; Frostfire's grid is 160, 8 x 9 (research 24 section 1.1).
+ *
+ * **The origin is not in the 20 bytes.** `Create` takes the world node's bbox minimum (`grid_main.cpp:42-57`),
+ * and the grid is read before the world tree (`zNode/node_saveload.cpp:313` against `:337`), when the world
+ * is a fresh node whose bbox is zero (`zNode/node_main.cpp:49-50`). So it is (0, 0) on every map -- as research
+ * 23 section 2.1 reads it on the M51 image and research 24 section 1.1 on Frostfire -- and carried here so a
+ * caller never has to know that.
+ */
+export interface GridParams {
+  /** `m_AtomCnt`: the atom pool, 8,192 on every map (research 23 section 2.1: `0x2000`, nodes + free). */
+  atomCount: number;
+  /** `m_posts`: 16 on every map. `Create` copies it (`grid_main.cpp:40`); nothing here reads it. */
+  posts: number;
+  /** `m_CellDim`: a cell's side in world units; `Create` keeps `1 / m_CellDim` as `m_InvCellDim` (`:69`). */
+  cellDim: number;
+  /** `m_CellCount.cx`: cells along x ("wide"). */
+  cellsX: number;
+  /** `m_CellCount.cy`: cells along z ("high") -- `Create` steps a cell's z by it (`grid_main.cpp:98-110`). */
+  cellsZ: number;
+  originX: number;
+  originZ: number;
+}
+
+export const GRID_PARAMS_SIZE = 20;
+
+/**
+ * The grid the engine makes when a root has no `grid_params`: dimension 640, 8 x 8 (`FUN_002d5420`'s
+ * defaults, research 23 section 2.3; reCOM's `CGrid::Read` declares the same, `grid_main.cpp:151-154`).
+ */
+export const DEFAULT_GRID_PARAMS: GridParams = Object.freeze({
+  atomCount: 8192, posts: 16, cellDim: 640, cellsX: 8, cellsZ: 8, originX: 0, originZ: 0,
+});
+
+/** The 20 bytes of `tag_GRID_PARAMS`, or null when short or when they describe no grid at all. */
+export function decodeGridParams(bytes: Uint8Array): GridParams | null {
+  if (bytes.byteLength < GRID_PARAMS_SIZE) return null;
+  const r = new Reader(bytes);
+  const grid: GridParams = {
+    atomCount: r.i32(0), posts: r.i32(4), cellDim: r.f32(8), cellsX: r.i32(12), cellsZ: r.i32(16), originX: 0, originZ: 0,
+  };
+  const usable = Number.isFinite(grid.cellDim) && grid.cellDim > 0 && grid.cellsX > 0 && grid.cellsZ > 0;
+  return usable ? grid : null;
+}
+
+/** `grid_params` from a world root, or the engine's default grid when it is absent or unusable. */
+export function parseGridParams(zar: Zar): GridParams {
+  const key = zar.find('grid_params');
+  return (key ? decodeGridParams(zar.data(key)) : null) ?? { ...DEFAULT_GRID_PARAMS };
 }
 
 /** One `CScrollingTexture_band` (`zRender/zrender.h:241`): two 256-byte names and the uv step. */
@@ -94,6 +152,7 @@ export function parseWorldRoot(zar: Zar): WorldRoot {
     defaultMaterial: material ? new Reader(zar.data(material)).cstr(0, material.size) : '',
     lighting: parseGlobalLighting(zar),
     textureScroll: parseTextureScroll(zar),
+    grid: parseGridParams(zar),
   };
 }
 

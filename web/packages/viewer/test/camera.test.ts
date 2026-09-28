@@ -349,3 +349,32 @@ describe('FlyCamera', () => {
     expect(fly.pose().yaw).toBeCloseTo(-90, 4);
   });
 });
+
+describe('the trigger (W2.5): a left click while the mouse is captured', () => {
+  it('fires on a left press and releases on its up while locked; the click that takes the lock does not fire', () => {
+    const c = canvas();
+    const trigger: boolean[] = [];
+    const fly = new FlyCamera(c, { onFire: (down) => trigger.push(down) });
+    const mouse = (type: string, button = 0): void => {
+      c.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', button, bubbles: true }));
+    };
+    // The click that asks for the lock: not a shot.
+    mouse('pointerdown');
+    mouse('pointerup');
+    expect(trigger).toEqual([]);
+    // The browser grants it.
+    Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => c });
+    document.dispatchEvent(new Event('pointerlockchange'));
+    expect(fly.isLocked()).toBe(true);
+    mouse('pointerdown');
+    mouse('pointerup');
+    mouse('pointerdown', 2);                       // a right press is not the trigger
+    mouse('pointerup', 2);
+    expect(trigger).toEqual([true, false]);
+    // Held when the lock goes (Esc): the trigger is let go.
+    mouse('pointerdown');
+    Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => null });
+    document.dispatchEvent(new Event('pointerlockchange'));
+    expect(trigger).toEqual([true, false, true, false]);
+  });
+});

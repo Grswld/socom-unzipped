@@ -1,4 +1,5 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
+import { SEAL_TUNING } from '@s2u/scene';
 
 /** A camera pose in the game's world frame: position in game units, yaw and pitch in degrees. */
 export interface Pose { x: number; y: number; z: number; yaw: number; pitch: number }
@@ -15,6 +16,13 @@ const TOUCH_LOOK = 2;
 const ARROW_LOOK = 1.6;
 /** Straight up and straight down are singular for a yaw/pitch camera, so stop just short. */
 const PITCH_LIMIT = MathUtils.degToRad(89.9);
+/**
+ * Walking (W2.1), the mouse's y moves the camera's pitch at the pad's ratio of the two rates: `pitch_rate` 0.85 over
+ * `turn_maxrate` 2 (`dynamics.rdr`; `FUN_00594600` moves the pitch at 0.85 rad/s x axis, research 22 the yaw at
+ * 2 x axis). A mouse is not a stick -- its x keeps `LOOK` radians a pixel, the fly camera's feel -- so the pad's law
+ * reaches the mouse as this ratio, and the arrow keys (a full axis) as the two rates themselves.
+ */
+const WALK_PITCH_PER_YAW = SEAL_TUNING.pitchRate / SEAL_TUNING.turnMaxRate;
 
 /**
  * How fast velocity chases the stick, per second, as the exponent of an exponential approach.
@@ -22,8 +30,26 @@ const PITCH_LIMIT = MathUtils.degToRad(89.9);
  * Braking is slower than accelerating, which is what gives creative-mode flight its glide: you stop
  * over roughly a third of a second rather than on the frame the key comes up.
  */
-const ACCEL = 14;
-const BRAKE = 8;
+export const ACCEL = 14;
+export const BRAKE = 8;
+
+/**
+ * One axis of the velocity model over `dt` seconds, in closed form: v(t) = target + (v0 - target)e^(-rate t).
+ * Both the distance covered and the velocity at the end are taken from that curve rather than from `v * dt` at
+ * one end of it, so the distance does not depend on how the time is cut up. The fly camera steps it once a frame;
+ * the walk (`./walk`) steps it once a 60 Hz tick on the ground plane.
+ */
+export function glide(v0: number, target: number, rate: number, dt: number): { moved: number; velocity: number } {
+  const decay = Math.exp(-rate * dt);
+  const integral = (1 - decay) / rate;            // ∫e^(-rate t) dt over the step
+  return { moved: target * dt + (v0 - target) * integral, velocity: target + (v0 - target) * decay };
+}
+
+/**
+ * What the keys and the touch stick ask the walk for (`./walk`): forward and right on the ground plane, -1..1. The
+ * boost is the fly camera's gesture; the walk does not read it (W2.R2).
+ */
+export interface GroundWish { forward: number; right: number; boost: boolean }
 
 /**
  * The vertical field of view at rest before a map states its own, and how far the boost widens it.
@@ -61,7 +87,9 @@ const approach = (a: number, b: number, k: number, dt: number): number =>
 /**
  * Every code the camera consumes. A keydown on one of these is prevented, so the browser chords that
  * share them -- Ctrl+D bookmark, Ctrl+A select-all, Ctrl+S save, Space page-scroll -- never fire while
- * the viewer has the keyboard.
+ * the viewer has the keyboard. `C` (the walk's stance) and `V` (its first-person switch, W2.1) are not here:
+ * `WalkMode` prevents a bare C or V while walking itself, and owning them here would take Ctrl+C / Ctrl+V (copy,
+ * paste) from the page everywhere.
  */
 const OWNED = new Set([
   'keyw', 'keya', 'keys', 'keyd', 'keyq', 'keye', 'space', 'shiftleft', 'shiftright',
@@ -73,6 +101,11 @@ export interface FlyCameraOptions {
   onSpeedChange?: (multiplier: number) => void;
   /** Called when pointer lock is taken or released, so the page can show a hint. */
   onLockChange?: (locked: boolean) => void;
+  /**
+   * The trigger (W2.5, `./fire`): the left button pressed (true) and let go (false) **while the mouse is captured**.
+   * The click that takes the lock is not a shot; losing the lock lets a held trigger go.
+   */
+  onFire?: (down: boolean) => void;
 }
 
 /**
@@ -128,6 +161,12 @@ export class FlyCamera {
   /** When forward was last tapped, and whether the tap that is still held was the second one. */
   private lastForwardTap = 0;
   private sprinting_ = false;
+  /** Walk mode (`./walk`): the keys and the stick steer the mover, and this camera only looks. */
+  private walking = false;
+  /** Walking, the pitch's limits in radians (`setPitchLimits`: the aim pitch's, W2.1). */
+  private walkPitch: [number, number] = [-PITCH_LIMIT, PITCH_LIMIT];
+  /** The left button pressed while locked and not yet let go (`onFire`). */
+  private triggerHeld = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -213,7 +252,7 @@ export class FlyCamera {
     const now = this.pose();
     this.camera.position.set(pose.x ?? now.x, pose.y ?? now.y, pose.z ?? now.z);
     this.yaw = MathUtils.degToRad(pose.yaw ?? now.yaw);
-    this.pitch = MathUtils.clamp(MathUtils.degToRad(pose.pitch ?? now.pitch), -PITCH_LIMIT, PITCH_LIMIT);
+    this.pitch = this.clampPitch(MathUtils.degToRad(pose.pitch ?? now.pitch));
     this.velocity.set(0, 0, 0);
     this.fov = this.restFov;
     this.camera.fov = this.restFov;
@@ -227,6 +266,63 @@ export class FlyCamera {
   }
 
   /**
+   * Walk mode on or off. On, `update` still turns the view (the mouse, the arrow keys) and eases the boost's FOV,
+   * but no longer moves the camera: the keys and the stick are read by the walk through `groundWish`, and the walk
+   * places the view with `placeView` (the mouse's y then moves the pitch at the pad's ratio, clamped to
+   * `setPitchLimits`). Either way the glide is dropped.
+   */
+  setWalking(on: boolean): void {
+    this.walking = on;
+    this.velocity.set(0, 0, 0);
+    if (!on) {
+      this.walkPitch = [-PITCH_LIMIT, PITCH_LIMIT];
+      this.apply();                                  // a third-person view leaves the look where yaw and pitch put it
+    }
+  }
+
+  /**
+   * Walking, the camera's pitch limits in degrees (`playerCamera.ts`'s `pitchLimits`: -70..60, prone -20..25); the
+   * pitch is clamped into them at once. Flying they are the fly camera's own, just short of straight up and down.
+   */
+  setPitchLimits(minDegrees: number, maxDegrees: number): void {
+    if (!this.walking) return;
+    this.walkPitch = [MathUtils.degToRad(minDegrees), MathUtils.degToRad(maxDegrees)];
+    const pitch = this.clampPitch(this.pitch);
+    if (pitch !== this.pitch) { this.pitch = pitch; this.apply(); }
+  }
+
+  /**
+   * Walking, where the page puts the view (W2.1): the eye, and the target it looks at with no roll -- `FUN_0029bc90`'s
+   * placement, which is three's `lookAt` with y up -- or with no target, the look yaw and pitch give (first person).
+   * The yaw and pitch themselves are untouched: they are the body's turn and the camera's pitch.
+   */
+  placeView(eye: readonly [number, number, number], target: readonly [number, number, number] | null): void {
+    this.camera.position.set(eye[0], eye[1], eye[2]);
+    if (target) this.camera.lookAt(target[0], target[1], target[2]);
+    else this.apply();
+  }
+
+  /** Stand the camera at a point without touching the look, the FOV or anything else `setPose` resets. */
+  moveTo(x: number, y: number, z: number): void {
+    this.camera.position.set(x, y, z);
+  }
+
+  /**
+   * The ground-plane half of what `update` would steer by: W/S and the stick's y forward, D/A and the stick's x to
+   * the right, clamped into the unit disc as `update` clamps, and whether the boost is on (a double-tapped W held,
+   * or the stick held at its rim). Space and shift have no meaning on the ground.
+   */
+  groundWish(): GroundWish {
+    let forward = this.stickY + (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
+    let right = this.stickX + (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
+    const length = Math.hypot(forward, right);
+    if (length > 1) { forward /= length; right /= length; }
+    const moving = length > 0;
+    const boost = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
+    return { forward, right, boost };
+  }
+
+  /**
    * One frame of movement. `dt` is seconds, so held keys move the same distance on any refresh rate,
    * and the exponential approach below is sampled rather than iterated — 30 fps and 240 fps land the
    * camera in the same place.
@@ -235,11 +331,12 @@ export class FlyCamera {
     if (dt <= 0) return;
 
     // The arrow keys turn at a steady rate; a frame's worth here, before the frame's forward is taken.
+    // Walking, they are the pad's full axis: `turn_maxrate` and `pitch_rate` radians a second (W2.1).
     const turn = (this.keys.has('arrowleft') ? 1 : 0) - (this.keys.has('arrowright') ? 1 : 0);
     const tilt = (this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('arrowdown') ? 1 : 0);
     if (turn !== 0 || tilt !== 0) {
-      this.yaw += turn * ARROW_LOOK * dt;
-      this.pitch = MathUtils.clamp(this.pitch + tilt * ARROW_LOOK * dt, -PITCH_LIMIT, PITCH_LIMIT);
+      this.yaw += turn * (this.walking ? SEAL_TUNING.turnMaxRate : ARROW_LOOK) * dt;
+      this.pitch = this.clampPitch(this.pitch + tilt * (this.walking ? SEAL_TUNING.pitchRate : ARROW_LOOK) * dt);
       this.apply();
     }
 
@@ -264,7 +361,8 @@ export class FlyCamera {
     if (this.down() || this.keys.has('keyq')) wish.y -= 1;
 
     const moving = wish.lengthSq() > 0;
-    const boosting = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
+    // The walk has no boost (W2.R2: the game's run is 65 and nothing faster), so neither has its field of view.
+    const boosting = !this.walking && moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
     const cruise = this.speed * this.speedMultiplier * (boosting ? SPRINT : 1);
     // One key or three, the speed is the same: clamping stops diagonals being 1.7x faster. It *clamps*
     // rather than normalises so that a stick pushed half way moves at half speed -- with keys the
@@ -277,20 +375,13 @@ export class FlyCamera {
     // curve with a rectangle would make the distance depend on the frame length, and the camera would
     // quietly cover less ground on a 240 Hz monitor than on a 30 Hz one.
     const rate = moving ? ACCEL : BRAKE;
-    const decay = Math.exp(-rate * dt);
-    const integral = (1 - decay) / rate;            // ∫e^(-rate t) dt over the frame
-    const step = (v: number, t: number): number => t * dt + (v - t) * integral;
-
-    this.camera.position.set(
-      this.camera.position.x + step(this.velocity.x, target.x),
-      this.camera.position.y + step(this.velocity.y, target.y),
-      this.camera.position.z + step(this.velocity.z, target.z),
-    );
-    this.velocity.set(
-      target.x + (this.velocity.x - target.x) * decay,
-      target.y + (this.velocity.y - target.y) * decay,
-      target.z + (this.velocity.z - target.z) * decay,
-    );
+    const x = glide(this.velocity.x, target.x, rate, dt);
+    const y = glide(this.velocity.y, target.y, rate, dt);
+    const z = glide(this.velocity.z, target.z, rate, dt);
+    if (!this.walking) {
+      this.camera.position.set(this.camera.position.x + x.moved, this.camera.position.y + y.moved, this.camera.position.z + z.moved);
+      this.velocity.set(x.velocity, y.velocity, z.velocity);
+    }
 
     // Below a millimetre a second the glide is over; snapping to zero keeps a released key from
     // leaving the camera creeping forever and keeps `update` cheap when nothing is happening.
@@ -338,8 +429,12 @@ export class FlyCamera {
 
   private look(dx: number, dy: number): void {
     this.yaw -= dx * LOOK;
-    this.pitch = MathUtils.clamp(this.pitch - dy * LOOK, -PITCH_LIMIT, PITCH_LIMIT);
+    this.pitch = this.clampPitch(this.pitch - dy * LOOK * (this.walking ? WALK_PITCH_PER_YAW : 1));
     this.apply();
+  }
+
+  private clampPitch(pitch: number): number {
+    return this.walking ? MathUtils.clamp(pitch, this.walkPitch[0], this.walkPitch[1]) : MathUtils.clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT);
   }
 
   /**
@@ -355,7 +450,10 @@ export class FlyCamera {
     // has no tabindex and never takes focus by itself, so the focus is dropped by hand.
     const focused = globalThis.document?.activeElement;
     if (focused instanceof HTMLElement && focused !== this.canvas) focused.blur();
-    if (this.locked) return;
+    if (this.locked) {
+      if (e.button === 0) { this.triggerHeld = true; this.options.onFire?.(true); }
+      return;
+    }
     if (e.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
       // Raw mouse input where the browser offers it: the OS's pointer acceleration is for a cursor,
       // not for a look, and Chrome lets a page ask for the unadjusted movement. A browser that does
@@ -388,6 +486,7 @@ export class FlyCamera {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    if (e.button === 0) this.letGo();
     if (this.dragging !== e.pointerId) return;
     this.dragging = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
@@ -395,6 +494,7 @@ export class FlyCamera {
 
   private readonly onLockChange = (): void => {
     this.locked = globalThis.document?.pointerLockElement === this.canvas;
+    if (!this.locked) this.letGo();
     if (this.locked && this.dragging !== null) {
       // The click that took the lock also started a drag; the lock owns the look from here.
       if (this.canvas.hasPointerCapture(this.dragging)) this.canvas.releasePointerCapture(this.dragging);
@@ -402,6 +502,13 @@ export class FlyCamera {
     }
     this.options.onLockChange?.(this.locked);
   };
+
+  /** The trigger let go, once, if it was held (`onFire`). */
+  private letGo(): void {
+    if (!this.triggerHeld) return;
+    this.triggerHeld = false;
+    this.options.onFire?.(false);
+  }
 
   private readonly onContextMenu = (e: Event): void => {
     e.preventDefault();
@@ -440,6 +547,7 @@ export class FlyCamera {
    * The velocity goes too, or blurring mid-flight would leave it coasting behind a dead tab.
    */
   private readonly onBlur = (): void => {
+    this.letGo();
     this.keys.clear();
     this.velocity.set(0, 0, 0);
     this.sprinting_ = false;
