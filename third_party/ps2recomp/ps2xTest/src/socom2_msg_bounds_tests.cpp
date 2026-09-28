@@ -553,4 +553,115 @@ void register_socom2_msg_bounds_tests()
             expectPassed(t, call(runtime, S.appNames, fragment(11u)), "re-dispatched, to the byte");
         });
     });
+
+    // ---- G4 ----------------------------------------------------------------------------------------------------------
+    MiniTest::Case("Socom2FileTransferBound", [](TestCase &tc)
+    {
+        auto upload = [](uint32_t state, int32_t size)
+        {
+            put32(S.uploadState, state);
+            put32(S.uploadSize, static_cast<uint32_t>(size));
+        };
+        auto chunkRequest = [](int32_t start, uint32_t wants)
+        {
+            clearMsg();
+            put32(kMsg, static_cast<uint32_t>(start));
+            put32(kMsg + 8u, wants);
+        };
+
+        tc.Run("a chunk request outside the upload in progress, or with none in progress, is refused", [=](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.lobbyTypeA9);
+            upload(1u, 0x100);
+            for (int32_t start : {-1, INT32_MIN, 0x101, INT32_MAX})
+            {
+                chunkRequest(start, 1u);
+                expectRefused(t, call(runtime, S.lobbyTypeA9, walk(0x28u)), S.walkHandlerReturn, "start " + std::to_string(start));
+            }
+            upload(0u, 0x100);
+            chunkRequest(0, 1u);
+            expectRefused(t, call(runtime, S.lobbyTypeA9, walk(0x28u)), S.walkHandlerReturn, "no upload in progress");
+        });
+
+        tc.Run("a chunk request inside the upload, or one asking for nothing, reaches the handler", [=](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.lobbyTypeA9);
+            upload(1u, 0x100);
+            for (int32_t start : {0, 0x80, 0x100})
+            {
+                chunkRequest(start, 1u);
+                expectPassed(t, call(runtime, S.lobbyTypeA9, walk(0x28u)), "start " + std::to_string(start));
+            }
+            upload(0u, 0);
+            chunkRequest(-1, 0u);
+            expectPassed(t, call(runtime, S.lobbyTypeA9, walk(0x28u)), "no chunk asked for");
+        });
+
+        auto chunk = [](int32_t start, int32_t size)
+        {
+            clearMsg();
+            put32(kMsg + mb::kChunkBytes, static_cast<uint32_t>(start));
+            put32(kMsg + mb::kChunkBytes + 4u, static_cast<uint32_t>(size));
+        };
+
+        tc.Run("a file chunk whose start, size or end passes its bounds is refused", [=](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.lobbyTypeAd);
+            struct Case { int32_t start, size; const char *what; };
+            const Case refused[] = {
+                {-1, 0x10, "a negative start"}, {INT32_MIN, 0x1d0, "the least start"}, {0, -1, "a negative size"},
+                {0, 0x1d1, "a size past the data field"}, {INT32_MAX - 0x1cf, 0x1d0, "an end past an int"},
+            };
+            for (const Case &c : refused)
+            {
+                chunk(c.start, c.size);
+                expectRefused(t, call(runtime, S.lobbyTypeAd, walk(0x1fcu)), S.walkHandlerReturn, c.what);
+            }
+        });
+
+        tc.Run("a file chunk inside its bounds reaches the handler", [=](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.lobbyTypeAd);
+            chunk(0, 0);
+            expectPassed(t, call(runtime, S.lobbyTypeAd, walk(0x1fcu)), "an empty first chunk");
+            chunk(0x400, 0x1d0);
+            expectPassed(t, call(runtime, S.lobbyTypeAd, walk(0x1fcu)), "a full chunk");
+            chunk(INT32_MAX - 0x1d0, 0x1d0);
+            expectPassed(t, call(runtime, S.lobbyTypeAd, walk(0x1fcu)), "a full chunk ending at the int's top");
+        });
+
+        tc.Run("a sized record smaller than its size field or past the bytes it has is refused", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.lobbyTypeE7);
+            for (uint16_t size : {uint16_t(0), uint16_t(1), uint16_t(9)})
+            {
+                clearMsg();
+                put16(kMsg, size);
+                expectRefused(t, call(runtime, S.lobbyTypeE7, walk(8u)), S.walkHandlerReturn, "size " + std::to_string(size));
+            }
+            clearMsg();
+            put16(kMsg, 0x11u);
+            expectRefused(t, call(runtime, S.lobbyTypeE7, fragment(0x10u)), S.fragmentHandlerReturn, "re-dispatched past its record");
+            put16(kMsg, 0x601u);
+            expectRefused(t, call(runtime, S.lobbyTypeE7, other()), kOtherCaller, "past the scratch");
+        });
+
+        tc.Run("a sized record inside the bytes it has reaches the handler", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.lobbyTypeE7);
+            clearMsg();
+            put16(kMsg, 2u);
+            expectPassed(t, call(runtime, S.lobbyTypeE7, walk(8u)), "size 2");
+            put16(kMsg, 8u);
+            expectPassed(t, call(runtime, S.lobbyTypeE7, walk(8u)), "size 8, to the byte");
+            put16(kMsg, 0x10u);
+            expectPassed(t, call(runtime, S.lobbyTypeE7, fragment(0x10u)), "re-dispatched, to the byte");
+        });
+    });
 }

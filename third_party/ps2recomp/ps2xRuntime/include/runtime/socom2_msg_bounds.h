@@ -424,6 +424,45 @@ namespace socom2_msg_bounds
         return {};
     }
 
+    // ---- G4: class 1 file transfer -------------------------------------------------------------------------------------
+    // 0xa9: s32 start at +0; a nonzero word at +8 asks for a chunk of the upload in progress from start.
+    inline Refusal checkTypeA9(const uint8_t *rdram, uint32_t msg, uint32_t, const Sites &s)
+    {
+        if (detail::readU32(rdram, msg + 8u) == 0u)
+            return {};
+        const uint32_t state = detail::readU32(rdram, s.uploadState);
+        if (state != 1u)
+            return refuse(Kind::UploadIdle, state);
+        const int32_t start = detail::readS32(rdram, msg);
+        if (start < 0 || start > detail::readS32(rdram, s.uploadSize))
+            return refuse(Kind::UploadStart, static_cast<uint32_t>(start));
+        return {};
+    }
+
+    // 0xad: the data field at +0, s32 start at +0x1d0, s32 size at +0x1d4. With both non-negative, the size inside the
+    // field and their sum inside an int, the consumer's own signed check against its buffer is exact.
+    inline Refusal checkTypeAd(const uint8_t *rdram, uint32_t msg, uint32_t)
+    {
+        const int32_t start = detail::readS32(rdram, msg + kChunkBytes);
+        const int32_t size = detail::readS32(rdram, msg + kChunkBytes + 4u);
+        if (start < 0)
+            return refuse(Kind::ChunkStart, static_cast<uint32_t>(start));
+        if (size < 0 || static_cast<uint32_t>(size) > kChunkBytes)
+            return refuse(Kind::ChunkSize, static_cast<uint32_t>(size));
+        if (static_cast<int64_t>(start) + size > INT32_MAX)
+            return refuse(Kind::ChunkEnd, static_cast<uint32_t>(start) + static_cast<uint32_t>(size));
+        return {};
+    }
+
+    // 0xe7: u16 size at +0, returned as consumed.
+    inline Refusal checkTypeE7(const uint8_t *rdram, uint32_t msg, uint32_t remaining)
+    {
+        const uint32_t size = detail::readU16(rdram, msg);
+        if (size < 2u || size > remaining)
+            return refuse(Kind::RecordSize, size);
+        return {};
+    }
+
     // ---- the wraps -----------------------------------------------------------------------------------------------------
     namespace detail
     {
@@ -440,6 +479,9 @@ namespace socom2_msg_bounds
             case kType0f: return 0x24u;
             case kRadio: return 3u;
             case kNames: return 5u;
+            case kTypeA9: return 0xcu;
+            case kTypeAd: return kChunkBytes + 8u;
+            case kTypeE7: return 2u;
             default: return 0u;
             }
         }
@@ -461,6 +503,9 @@ namespace socom2_msg_bounds
             case kType0f: return checkType0f(rdram, msg, remaining);
             case kRadio: return checkRadio(rdram, msg, remaining);
             case kNames: return checkNames(rdram, msg, remaining);
+            case kTypeA9: return checkTypeA9(rdram, msg, remaining, s);
+            case kTypeAd: return checkTypeAd(rdram, msg, remaining);
+            case kTypeE7: return checkTypeE7(rdram, msg, remaining);
             default: return {};
             }
         }
@@ -525,6 +570,9 @@ namespace socom2_msg_bounds
             {sites.dmeType0f, "dmeType0f", "message 0.0f", detail::handlerBound<detail::kType0f>, detail::kType0f},
             {sites.appRadio, "appRadio", "message 2.radio", detail::handlerBound<detail::kRadio>, detail::kRadio},
             {sites.appNames, "appNames", "message 2.names", detail::handlerBound<detail::kNames>, detail::kNames},
+            {sites.lobbyTypeA9, "lobbyTypeA9", "message 1.a9", detail::handlerBound<detail::kTypeA9>, detail::kTypeA9},
+            {sites.lobbyTypeAd, "lobbyTypeAd", "message 1.ad", detail::handlerBound<detail::kTypeAd>, detail::kTypeAd},
+            {sites.lobbyTypeE7, "lobbyTypeE7", "message 1.e7", detail::handlerBound<detail::kTypeE7>, detail::kTypeE7},
         };
         int installed = 0;
         for (const Bind &b : binds)
