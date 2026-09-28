@@ -124,6 +124,7 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
 | `F` | fullscreen, and back (also the button under the frame counter) |
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
+| a pad | read as the PS2 pad by position (the W3C standard mapping): a toast names it on connect and on loss, "pad: connected" joins the hint, and the layout table appears under the hint line. Left stick moves (walk, or fly along the look), right stick looks at the arrow keys' rate scaled by the push, Cross jumps on foot and rises in the air, L3 or Triangle crouch on foot and descend in the air, Start switches walk and fly as `G` does, R3 boosts; R1/L1 (fire, aim) and L2/R2 (lean) are read and reserved. Rows the repository does not document are marked assumed in the table |
 | `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer

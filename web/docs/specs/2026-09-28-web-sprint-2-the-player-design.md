@@ -131,3 +131,38 @@ OBJECT_MOTION begin hook, not the skeletal player, and its command is at least 0
 `Tick_0` at 0x57a818-0x57a82c), with `FUN_00289bb0`, `FUN_0028d670`, `FUN_0028a100`, `CZSIObject_Read` 0x289380
 beside them -- not on hand, so `MOTION_BLEND` is slerp on the shorter arc, named. Research 25's in-memory "walk" keys
 are `seal_run`'s root byte for byte.
+
+### The character mesh, the skeleton and the gear (2026-09-28, W2.1)
+
+`CLIB_MDL`'s CMesh chain decodes on all 22 maps with no failure (411 meshes, 671,131 vertices, 485,725 triangles,
+24,061 batches; `web/docs/research/78-character-mesh-and-skeleton.md`): the head quadword's low u16 is the tag count
+(= `ref_count`); per batch one reloc-9 matrix tag whose ADDR is the palette slot, one reloc-10 bone list per bone
+(VU1 `0x52`'s input), then one reloc-11 draw packet (indices, the two GIFtag templates PRIM 125/123, uvs; no colour,
+no face normal). The bind palette reproduces every vertex's per-bone copies to 0.0017. `zdb_CSubMesh_Read`
+(0x3b8c20) reads one u32 into `this+0x68` (`matrix_id`, by elimination) and tail-calls `zdb_CVisual_Read` 0x3c3570:
+the EE reads no vertex, bone or weight lane. `CLIB_GEO`'s skeleton has 26 palette slots: the 25 parts under `skel_root`
+(`hips`, `rthigh` … `lhand`, matching research 50's 25 pointers and `character.rdr`'s `body_items`) and `body`, a
+sibling at the origin; slots 0, 10 (`aimnodes`) and 25 carry no vertex. `READERC.ZAR`'s `character.rdr` is the game's
+gear table and `chartype.rdr` names each map's player: Frostfire's `mp2_seal1` is `seal_A_scuba` in six pieces (the
+eyes on the head, the holster on `rthigh`, the assault gear on `hips`, the knife on `rcalf`, the satchel on
+`spinehi`; no goggles -- those are `mp2_seal3`'s); gear offsets turn Rz·Ry·Rx about fixed axes in the character's own
+frame. The gear (`FLIB_MDL`) and the weapons (`WEAP_MDL`) use VU1 command `0x70`'s scaled positions (ITOF15 ×
+`TOP+3.w`, `interpretScaledChain`); SEMANTICS §3 calls `0x70` "the character-model unpack", which it is not. The
+model's eye line is 18.16 over the feet in the bind pose (crown 19.43); W1.R2's 15.4 is research 17's camera target
+over a lowered root, so the walk keeps 15.4 for its view and the body's eye is 18.16. The four-influence cut is exact
+in the bind pose and drops up to 0.151 of a weight posed (1,257 vertices with five or six influences). Two named
+placeholders: the colour lane (an EE upload, data quadword 338, not on disc; unity as all 916 gear vertices store)
+and the lighting (the map's `GlobalLighting` rig). reCOM slips: `hookupMesh` fetches `mtx_count` under the `_START`
+key and indexes the buffer as u32s (`vis_main.cpp:49-51`); `CVisual::Create`'s switch has no breaks (`:253-260`).
+
+### The pad layout against the repository (2026-09-28, W2.7)
+
+Of eleven rows four are documented (the sticks, `mapping.h:25-27`, `socom2_host_input.cpp:297, :336`; L3 and
+Triangle for crouch, `docs/INSTALL.md` §6, `PLAYTEST.md` step 8, `launcher_config.cpp:568`,
+`host_crouch_shortcut.h:4-7`) and seven assumed. Two of W2.R5's readings are contradicted by the tree: the repository
+documents the game's L2 as the second-weapon swap (`launcher_config.cpp:572`, `host_crouch_shortcut.h:13-14`), not a
+lean, and the fire mode on L3, not Circle; aim on L1 has no support (`socom2_host_input.cpp:297` puts fire on L1/R1
+without saying which). The rows stay as the ruling says, marked assumed with the contradiction in the note, until the
+owner rules. The runtime's dead zone is 0.15 per axis (`host_gamepad_select.h:70-79`); the viewer's is radial at the
+same size.
+
