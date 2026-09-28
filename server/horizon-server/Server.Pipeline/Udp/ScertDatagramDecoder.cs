@@ -39,9 +39,17 @@ namespace Server.Pipeline.Udp
         {
             while (message.Content.IsReadable())
             {
+                int before = message.Content.ReaderIndex;
                 object decoded = Decode(context, message);
                 if (decoded == null)
+                {
+                    // LOCAL (socom_pc): a dropped frame was consumed, keep reading; an incomplete one ends the datagram.
+                    if (message.Content.ReaderIndex != before)
+                        continue;
+                    if (message.Content.IsReadable())
+                        Logger.Warn($"scert datagram from {message.Sender}: {message.Content.ReadableBytes} trailing bytes refused (incomplete frame)");
                     break;
+                }
 
                 output.Add(decoded);
             }
@@ -58,51 +66,15 @@ namespace Server.Pipeline.Udp
         /// <returns>The <see cref="IByteBuffer" /> which represents the frame or <c>null</c> if no frame could be created.</returns>
         protected virtual object Decode(IChannelHandlerContext context, DatagramPacket input)
         {
-            byte id = input.Content.GetByte(input.Content.ReaderIndex);
-            byte[] hash = null;
-            long frameLength = input.Content.GetShortLE(input.Content.ReaderIndex + 1);
-            int headerLength = 3;
-
-            //
             if (!context.HasAttribute(Constants.SCERT_CLIENT))
                 context.GetAttribute(Constants.SCERT_CLIENT).Set(new Attribute.ScertClientAttribute());
             var scertClient = context.GetAttribute(Constants.SCERT_CLIENT).Get();
 
-            if (frameLength <= 0)
-            {
-                input.Content.SetReaderIndex(input.Content.ReaderIndex + headerLength);
-                return BaseScertMessage.Instantiate((RT_MSG_TYPE)(id & 0x7F), null, new byte[0], scertClient.MediusVersion, scertClient.CipherService);
-            }
-
-            if (id >= 0x80)
-            {
-                hash = new byte[4];
-                input.Content.GetBytes(input.Content.ReaderIndex + 3, hash);
-                headerLength += 4;
-                id &= 0x7F;
-            }
-
-            if (frameLength < 0)
-            {
-                throw new CorruptedFrameException("negative pre-adjustment length field: " + frameLength);
-            }
-
-            // never overflows because it's less than maxFrameLength
-            int frameLengthInt = (int)frameLength;
-            if (input.Content.ReadableBytes < frameLengthInt)
-            {
-                //input.ResetReaderIndex();
+            // LOCAL (socom_pc): bounded decode (unsigned length, header counted, undecodable bodies dropped): ScertFrame.
+            if (!ScertFrame.TryDecode(input.Content, scertClient.MediusVersion, scertClient.CipherService, out var message) || message == null)
                 return null;
-            }
-
-            // extract frame
-            byte[] messageContents = new byte[frameLengthInt];
-            input.Content.GetBytes(input.Content.ReaderIndex + headerLength, messageContents);
-
-            // 
-            int totalFrameLength = headerLength + frameLengthInt;
-            input.Content.SetReaderIndex(input.Content.ReaderIndex + totalFrameLength);
-            return new ScertDatagramPacket(BaseScertMessage.Instantiate((RT_MSG_TYPE)id, hash, messageContents, scertClient.MediusVersion, scertClient.CipherService), null, input.Sender);
+            return new ScertDatagramPacket(message, null, input.Sender);
         }
+
     }
 }

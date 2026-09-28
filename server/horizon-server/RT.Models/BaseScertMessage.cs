@@ -211,7 +211,7 @@ namespace RT.Models
         {
             var id = reader.ReadByte();
             var rtId = (RT_MSG_TYPE)(id & 0x7f);
-            var len = reader.ReadInt16();
+            var len = reader.ReadUInt16(); // LOCAL (socom_pc): the length field is unsigned
             var messageBytes = reader.ReadBytes(len);
             if (id >= 0x80)
                 throw new Exception($"Unable instantiate encrypted message {id} without a cipher!");
@@ -271,8 +271,9 @@ namespace RT.Models
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Error deserializing {id} {BitConverter.ToString(plain)}");
-                        Console.WriteLine(e);
+                        // LOCAL (socom_pc): a message that does not deserialize is dropped, never forwarded half-read.
+                        Logger.Warn($"scert message refused: {id} ({plain.Length} bytes) did not deserialize: {e.GetType().Name}: {e.Message}");
+                        msg = null;
                     }
                 }
             }
