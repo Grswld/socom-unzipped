@@ -47,10 +47,7 @@ import {
 
 /** Seconds per tick: `CGame::Tick` at 60 Hz (web/docs/research/71 section 1.5). */
 export const TICK = 1 / 60;
-/**
- * Sprint 1's eye over the feet (W1.R2): no longer a view (W2.1 retired it: W2.R1), the height `setCamera` and the
- * spawn drop the mover from, and `Walker.eye`'s.
- */
+/** The eye over the feet (W1.R2; research 17 section 1, the look-at target at 15.38). */
 export const EYE_HEIGHT = 15.4;
 /** The body's radius against walls (W1.R2; research 24 section 2 step 3, section 4.1). */
 export const BODY_RADIUS = 3.5;
@@ -71,164 +68,6 @@ export const WALK_SPEED = 40;
 export const BOOST = 2.5;
 /** No step moves further than this at once, so a wall 3.5 away cannot be stepped through at any speed. */
 const MAX_SUBSTEP = 1;
-
-/** The SEAL's three stances, in the order `C` cycles them (`zSeal/zseal.h`'s `SEAL_STANCE`). */
-export type Stance = 'stand' | 'crouch' | 'prone';
-export const STANCES: readonly Stance[] = ['stand', 'crouch', 'prone'];
-
-/** A stance's four moving bands, units a second: the `max_velocity` of the clip each direction plays. */
-export interface Bands { forward: number; back: number; right: number; left: number }
-
-/** What a stance is to the mover: its bands, its skeleton root's height, and the column a wall has to reach. */
-export interface StanceBody {
-  bands: Bands;
-  /** The skeleton root node's Y over the feet (`actor+0x2e8` -> `+0x04`), W2.1's `rootY + ramp(rootY)`. */
-  rootY: number;
-  /** The body's column over the feet that a wall has to reach into. */
-  bodyLow: number;
-  bodyHigh: number;
-}
-
-/** A clip's `max_velocity` from `READERC.ZAR/motion.rdr` (`SEAL_LOCOMOTION`, units a second). */
-function band(clip: string): number {
-  const b = SEAL_LOCOMOTION.find((l) => l.clip === clip);
-  if (!b) throw new Error(`motion.rdr has no ${clip}`);
-  return b.maxVelocity;
-}
-
-/**
- * The stances. The bands are `motion.rdr`'s (W2.R2); the actor's per-stance speed table at `actor+0x528` is read
- * by stance `actor+0x174` in `FUN_0058bb50` (lateral) and `FUN_0058bc00` (forward/back).
- *
- * - **Stand.** `seal_run` 65, `seal_run_bw` 37, `seal_rstrafe` / `seal_lstrafe` 65. Root **11.484**, measured:
- *   `skel_root` of the five standing actors in the console dump `logs/parity/spawn_pcsx2.rdram` (32 node pointers at
- *   `+0x64`, the CZBodyPart layout, the W2.3 decode). With it `FUN_0029a950`'s ramp is at its top (fVar9 = 10), a
- *   standing look-at target 21.48 over the feet, which is where `dynamics.rdr`'s `cam_*_aim` y 20.5 sits. Column
- *   6-20 (research 24 section 2 step 3).
- * - **Crouch.** `seal_crouchwalk` 14.8, `_bw` 13.5, `seal_crouchstrafe_right_fast` / `_left` 15. Root **5.504**,
- *   measured: the player at spawn in the same dump is crouched -- its root is under the game's own stance test
- *   `node[0].y < 9.0` (`FUN_00584c60`, research 17 section 8) and its right knee is on the ground at 0.54. Research
- *   17 section 1 called 5.504 "standing idle"; the dump's reading contradicts it (under review: W2.1 and W2.2c settle
- *   it). Column 6-14 [estimate]: the standing top 20 x 0.7, the height a crouch keeps; it stays over
- *   `min_stand_height` 10 (`dynamics.rdr`, x10), which reads as the clearance a standing SEAL needs
- *   (`char_dyn.cpp:421-422` names it, nothing here reads it).
- * - **Prone.** `seal_prone_crawl` 11 each way (`motion.rdr` has no backward crawl with a positive `max_velocity`;
- *   `FUN_00583500` plays the crawl at `-|forward|` backing up, the clip reversed), `seal_prone_rstrafe` /
- *   `_lstrafe` 5.5. Root **1.8** [estimate, W2.2c measures]: under the ramp's floor 2.169155, where the camera
- *   stops lowering -- the lowest stance is the one the floor was cut for -- and about a body's half-thickness,
- *   0.18 m, over the ground. Column 6-9 [estimate]: a body lying down is about 0.9 m high with the head and rifle
- *   up; the column's foot stays at 6, the step's band, so a kerb a standing SEAL steps onto is a step prone too.
- */
-export const STANCE: Readonly<Record<Stance, StanceBody>> = {
-  stand: {
-    bands: { forward: band('seal_run'), back: band('seal_run_bw'), right: band('seal_rstrafe'), left: band('seal_lstrafe') },
-    rootY: 11.484, bodyLow: 6, bodyHigh: 20,
-  },
-  crouch: {
-    bands: { forward: band('seal_crouchwalk'), back: band('seal_crouchwalk_bw'), right: band('seal_crouchstrafe_right_fast'), left: band('seal_crouchstrafe_left') },
-    rootY: 5.504, bodyLow: 6, bodyHigh: 14,
-  },
-  prone: {
-    bands: { forward: band('seal_prone_crawl'), back: band('seal_prone_crawl'), right: band('seal_prone_rstrafe'), left: band('seal_prone_lstrafe') },
-    rootY: 1.8, bodyLow: 6, bodyHigh: 9,
-  },
-};
-
-/** A stance's bands, root and column (`STANCE`). */
-export function stanceBody(stance: Stance): StanceBody {
-  return STANCE[stance];
-}
-
-/** The skeleton root's height over the feet in a stance: W2.1's camera stands on `rootY + ramp(rootY)`. */
-export function rootY(stance: Stance): number {
-  return STANCE[stance].rootY;
-}
-
-/** `FUN_00586c10`'s snap: an axis past `at` whose wish jumps faster than `rate` a second takes the wish at once. */
-const SNAP = { right: { at: 0.78, rate: 7.8 }, forward: { at: 0.9, rate: 9 } } as const;
-/** `FUN_00583350`'s dead zone on the forward axis (`DAT_003f3428`, 0.03 in the ELF's data). */
-const FORWARD_DEAD = 0.03;
-/** `max_slope` as the game keeps it, a cosine: 0.642788 for 50 degrees (research 17 section 8 `+0x18`). */
-const MAX_SLOPE_COS = Math.cos((SEAL_TUNING.maxSlopeDeg * Math.PI) / 180);
-
-/**
- * One tick of `FUN_00586c10` on one stick axis: `prev` is last tick's value, `target` the pad's; the value the
- * mover uses this tick. `forward` takes `lower/upper_z_accel`, `right` `lower/upper_x_accel` (`dynamics.rdr` 2 and
- * 5; the game's x is the actor's lateral, its z the forward).
- */
-export function throttleStep(prev: number, target: number, axis: 'forward' | 'right', dt: number = TICK): number {
-  const [lo, hi] = axis === 'forward' ? SEAL_TUNING.accelZ : SEAL_TUNING.accelX;
-  const snap = SNAP[axis];
-  if (Math.abs(prev) > snap.at && Math.abs(target - prev) / dt > snap.rate) return target;
-  const rest = (1 - Math.abs(target)) ** 2;
-  const limit = lo + (hi - lo) * (1 - (rest * rest) ** 2);
-  if (Math.abs(target - prev) / dt <= limit) return target;
-  return target > prev ? prev + limit * dt : prev - limit * dt;
-}
-
-/**
- * `FUN_00583350` and the blend it sets up: the velocity on the ground plane, (forward, right) in units a second,
- * for the ramped stick in a stance's bands. The forward/back band carries `1 - w` of it, the strafe band `w`, with
- * `w` the stick's angle off straight ahead over 90 degrees, and the sum renormalised by `1 / sqrt(w^2 + (1 - w)^2)`
- * -- so a 45-degree stick in two 65 bands runs at 65 along 45 degrees.
- */
-export function locomotion(forward: number, right: number, bands: Bands): { forward: number; right: number } {
-  const f = Math.abs(forward) <= FORWARD_DEAD ? 0 : forward;
-  const length = Math.hypot(f, right);
-  if (length === 0) return { forward: 0, right: 0 };
-  const m = Math.min(1, length);
-  const w = Math.min(1, Math.max(0, Math.asin(Math.min(1, Math.abs(right) / length)) * (2 / Math.PI)));
-  const norm = 1 / Math.hypot(w, 1 - w);
-  const along = f === 0 || w >= 1 ? 0 : Math.sign(f) * (1 - w) * m * (f > 0 ? bands.forward : bands.back) * norm;
-  const across = Math.abs(right) <= FORWARD_DEAD || w <= 0 ? 0 : Math.sign(right) * w * m * (right > 0 ? bands.right : bands.left) * norm;
-  return { forward: along, right: across };
-}
-
-/** `FUN_005858a0`'s direction classes (`actor+0x1338`): 0 right, 1 forward, 2 left, 3 back; -1 at rest. */
-export type MoveClass = -1 | 0 | 1 | 2 | 3;
-/** Where one axis counts as dominant in `FUN_005858a0`: `|a / b| > 0.839`. */
-const DOMINANT = 0.839;
-
-/**
- * `FUN_005858a0`: the direction class of a (lateral, forward) stick, `prev` the last one. A dominant axis names it;
- * in the diagonal band between, the quadrant and the last class do, so a stick swept across a diagonal holds its
- * class until the other axis dominates.
- */
-export function moveClass(right: number, forward: number, prev: MoveClass): MoveClass {
-  if (right === 0 && forward === 0) return -1;
-  if (forward !== 0 && Math.abs(right / forward) <= DOMINANT) return forward > 0 ? 1 : 3;
-  if (right !== 0 && Math.abs(forward / right) <= DOMINANT) return right > 0 ? 0 : 2;
-  if (right > 0 && forward > 0) return prev === 3 || prev === 0 ? 0 : 1;
-  if (right < 0 && forward > 0) return prev === 3 || prev === 2 ? 2 : 1;
-  if (right < 0 && forward < 0) return prev === 2 || prev === 1 ? 2 : 3;
-  return prev === 1 || prev === 0 ? 0 : 3;
-}
-
-/** A class's axis as (forward, right) unit components, and its band in a stance. */
-function classAxis(c: MoveClass, bands: Bands): { f: number; r: number; band: number } {
-  switch (c) {
-    case 0: return { f: 0, r: 1, band: bands.right };
-    case 1: return { f: 1, r: 0, band: bands.forward };
-    case 2: return { f: 0, r: -1, band: bands.left };
-    case 3: return { f: -1, r: 0, band: bands.back };
-    default: return { f: 0, r: 0, band: 0 };
-  }
-}
-
-/** `FUN_00586f00`: a stick within 0.03 of rest (`DAT_003f3428`) is idle; no locomotion runs. */
-function idle(forward: number, right: number): boolean {
-  return Math.abs(right) <= FORWARD_DEAD && Math.abs(forward) <= FORWARD_DEAD;
-}
-
-/** `FUN_00584c60`: the crouch runs from this stick magnitude: 12.4 / 14.8 (`153.76 <= |s|^2 x 219.04`). */
-const CROUCH_RUN = 12.4 / 14.8;
-/** `FUN_00584c60`'s crouch-walk rescale: the stick to 14 / 14.8 of a push, 14.0 a second in `seal_crouchwalk`. */
-const CROUCH_WALK = 14 / 14.8;
-/**
- * `FUN_0057efe0(actor, 0)`'s headroom ray: from a skeleton node (`actor+0x304`) + 2 up to the feet + 19. The node's
- * height is not in hand; the ray is taken from the crouch column's top, 14 [estimate, W2.2c measures].
- */
-const HEADROOM_FROM = 14, HEADROOM_TO = 19;
 /** Ticks one `advance` may run: a stalled tab catches up this far and drops the rest (the page caps dt at 0.1 s). */
 const MAX_TICKS = 30;
 /** How many times the walls are revisited in one step, for a corner where one push leads into the next wall. */
@@ -488,18 +327,12 @@ export class Walker {
     return true;
   }
 
-  /** Whether the mover is falling. */
-  get airborne(): boolean {
-    return this.inAir;
-  }
-
-  /** Feeds `seconds` of real time in and runs the whole ticks it makes, `afterTick` after each; returns how many ran. */
-  advance(seconds: number, input: WalkInput, afterTick?: () => void): number {
+  /** Feeds `seconds` of real time in and runs the whole ticks it makes; returns how many ran. */
+  advance(seconds: number, input: WalkInput): number {
     this.accumulator += Math.max(0, seconds);
     let ticks = 0;
     while (this.accumulator >= TICK - 1e-9 && ticks < MAX_TICKS) {
       this.tick(input);
-      afterTick?.();
       this.accumulator -= TICK;
       ticks++;
     }
@@ -737,26 +570,13 @@ export class Walker {
   }
 }
 
-/** The half of `FlyCamera` walk mode drives: the look it reads, the view it places, the wish it steps by. */
+/** The half of `FlyCamera` walk mode drives: the look it reads, the position it writes, the wish it steps by. */
 export interface WalkCamera {
   pose(): Pose;
   setPose(pose: Partial<Pose>): void;
   moveTo(x: number, y: number, z: number): void;
   setWalking(on: boolean): void;
-  setPitchLimits(minDegrees: number, maxDegrees: number): void;
-  placeView(eye: readonly [number, number, number], target: readonly [number, number, number] | null): void;
   groundWish(): GroundWish;
-}
-
-/** Third person (the game's camera, the default: W2.R1) or first person (`V`). */
-export type WalkView = 'third' | 'first';
-
-/**
- * The hook's view of the walk's camera (W2.1): which view, the eye and target drawn, the root, the pitch, and the
- * pass's state (`FUN_0029bf70`: the distance `DAT_003de268`, the hold `cam+0x4c` in seconds).
- */
-export interface WalkCameraState {
-  mode: WalkView; eye: Vec3; target: Vec3; rootY: number; pitch: number; pass: { distance: number; hold: number };
 }
 
 /**
@@ -780,25 +600,6 @@ export class WalkMode {
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
-  /** The mover's stance (W2.2b): what `C` cycles and the hook reads. */
-  stance(): Stance {
-    return this.stance_;
-  }
-
-  /** Sets the stance, walking or not; false, and nothing changes, for a name that is not one. */
-  setStance(stance: Stance): boolean {
-    if (!STANCES.includes(stance)) return false;
-    this.stance_ = stance;
-    if (this.walker) this.walker.stance = stance;
-    return true;
-  }
-
-  /** `C`: stand, crouch, prone, stand (the game's d-pad cycles them). */
-  cycleStance(): Stance {
-    this.setStance(STANCES[(STANCES.indexOf(this.stance_) + 1) % STANCES.length]!);
-    return this.stance_;
-  }
-
   /**
    * A map's ground and a point on the floor at its spawn A, or none: `main.ts` passes A's (x, z) at the opening
    * stand's floor (W1.4b, `./stand`), A's recorded y where the probe found none. A mover already walking is stood
@@ -807,10 +608,9 @@ export class WalkMode {
   setGround(ground: GroundData | undefined, spawn: [number, number, number] | null): void {
     this.ground = ground;
     this.walker = null;
-    this.player = null;
     this.spawn = spawn;
     if (!this.walking) return;
-    if (this.stand()) this.restart();
+    if (this.stand()) this.follow();
     else this.leave();
   }
 
@@ -843,34 +643,19 @@ export class WalkMode {
     if (!this.stand()) return false;
     this.walking = true;
     this.camera.setWalking(true);
-    this.camera.setPose({ pitch: INIT_AIM_PITCH });          // the game's spawn pitch, init_aim_pitch (W2.1)
-    this.restart();
+    this.follow();
     this.onChange(true);
     return true;
   }
 
-  /** Third or first person (`V`). */
-  view(): WalkView {
-    return this.view_;
-  }
-
-  /** Sets the view, walking or not; false for a name that is not one. */
-  setView(view: WalkView): boolean {
-    if (view !== 'third' && view !== 'first') return false;
-    this.view_ = view;
-    if (this.walking && this.walker) this.follow();
-    return true;
-  }
-
-  /**
-   * One frame: the look goes to the mover (the pitch clamped to the posture's limits), real time goes in -- the
-   * camera ticking after each of the mover's ticks -- and the view is placed between the last two.
-   */
+  /** One frame: the look goes to the mover, real time goes in, and the camera goes to the eye. */
   frame(dt: number): void {
     const w = this.walker;
     if (!this.walking || !w) return;
-    this.look(w);
-    w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
+    const look = this.camera.pose();
+    w.state.yaw = look.yaw;
+    w.state.pitch = look.pitch;
+    w.advance(dt, this.camera.groundWish());
     this.follow();
   }
 
@@ -882,10 +667,9 @@ export class WalkMode {
     this.camera.setPose(pose);
     const w = this.walker;
     if (!this.walking || !w) return;
-    // A turn only: the camera keeps its pass (the distance, the hold) and its root; the next tick takes the turn.
-    if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.look(w); return; }
+    if (pose.x === undefined && pose.y === undefined && pose.z === undefined) { this.follow(); return; }
     const at = this.camera.pose();
-    if (w.place(at.x, at.y, at.z)) this.restart();
+    if (w.place(at.x, at.y, at.z)) this.follow();
     else this.leave();
   }
 
@@ -896,10 +680,11 @@ export class WalkMode {
   walkFor(seconds: number, input: WalkInput): Pose {
     const w = this.walker;
     if (!this.walking || !w) return this.camera.pose();
-    this.look(w);
-    for (let i = Math.round(seconds / TICK); i > 0; i--) { w.tick(input); this.cameraTick(); }
+    const look = this.camera.pose();
+    w.state.yaw = look.yaw;
+    w.state.pitch = look.pitch;
+    for (let i = Math.round(seconds / TICK); i > 0; i--) w.tick(input);
     w.settle();
-    this.player?.settle();
     this.follow();
     return this.camera.pose();
   }
@@ -984,7 +769,6 @@ export class WalkMode {
     if (!this.walker && this.ground) this.walker = new Walker(groundGrid(this.ground), this.tuning);
     const w = this.walker;
     if (!w) return false;
-    w.stance = this.stance_;
     const at = this.camera.pose();
     if (w.place(at.x, at.y, at.z)) return true;
     return this.spawn !== null && w.place(this.spawn[0], this.spawn[1] + EYE_HEIGHT, this.spawn[2]);
@@ -992,51 +776,12 @@ export class WalkMode {
 
   private leave(): void {
     this.walking = false;
-    this.placed = null;
     this.camera.setWalking(false);
     this.onChange(false);
   }
 
-  /** The look to the mover: the camera's yaw is the body's, its pitch clamped to the posture's limits. */
-  private look(w: Walker): void {
-    const [min, max] = pitchLimits(w.posture);
-    this.camera.setPitchLimits(min, max);
-    const look = this.camera.pose();
-    w.state.yaw = look.yaw;
-    w.state.pitch = look.pitch;
-  }
-
-  /** One camera tick on the mover's last tick. */
-  private cameraTick(): void {
-    const w = this.walker!;
-    this.player?.tick([w.state.x, w.state.y, w.state.z], w.state.yaw, w.state.pitch, rootY(w.posture));
-  }
-
-  /** A new camera on the mover where it now stands (entering walk, a pose from the hook, a new map). */
-  private restart(): void {
-    const w = this.walker!;
-    this.look(w);
-    this.player?.reset();
-    this.cameraTick();
-    this.follow();
-  }
-
-  /** The view to the camera: the game's, between the last two ticks, or the head's in first person. */
   private follow(): void {
-    const w = this.walker!;
-    const third = this.player?.view(w.alpha());
-    if (!third) return;
-    if (this.view_ === 'third') {
-      this.placed = third;
-      this.camera.placeView(third.eye, third.target);
-      return;
-    }
-    const [x, y, z] = w.drawnFeet();
-    const eye: Vec3 = [x, y + firstPersonHeight(w.posture), z];
-    const look = this.camera.pose(), yaw = (look.yaw * Math.PI) / 180, pitch = (look.pitch * Math.PI) / 180;
-    const ahead: Vec3 = [-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
-    const far: Vec3 = [eye[0] + ahead[0] * 1000, eye[1] + ahead[1] * 1000, eye[2] + ahead[2] * 1000];
-    this.placed = { eye, target: [eye[0] + ahead[0], eye[1] + ahead[1], eye[2] + ahead[2]], far };
-    this.camera.placeView(eye, null);
+    const [x, y, z] = this.walker!.eye();
+    this.camera.moveTo(x, y, z);
   }
 }

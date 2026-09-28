@@ -52,35 +52,10 @@ const scene = new Scene();
 const fly = new FlyCamera(canvas, {
   onSpeedChange: (m) => ui.setCameraHint(m, fly.isLocked()),
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
-  onFire: (down) => trigger(down),
 });
 const overlays = new Overlays(scene);
-/**
- * Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the game's third-person camera
- * follows it (W2.1, `./playerCamera`), `V` for first person.
- */
+/** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
-/** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
-const reticle = new Reticle();
-/** W2.3 (`./body`): the stand-in body on the walker's feet, in the world's shading (the brighten, the fog). */
-const body = new Body(() => brightenOf(lighting));
-scene.add(body.object);
-/**
- * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
- * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
- */
-const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
-scene.add(fire.object);
-fire.bindKey();
-/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
-function trigger(down: boolean): void {
-  if (down) fire.pull();
-  else fire.release();
-}
-/** The body's pose last set: `setStance` re-poses the mannequin, so it is called on a change only. */
-let bodyStance: Stance | null = null;
-/** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
-const RUN_SPEED = stanceBody('stand').bands.forward;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 /**
@@ -579,9 +554,6 @@ function show(map: LoadedMap): void {
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
   }
-  reticle.setBitmaps(map.reticle);
-  fire.reset();                                   // a new map: no marks, full magazines
-  fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
   scene.add(built.group);
@@ -637,7 +609,7 @@ function show(map: LoadedMap): void {
   shooter.setMap(map.ground, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null);
 
   ui.select(map.path);
-  ui.setPanelTitle(`${map.name} (${map.archive})`);   // the folded cog's tooltip
+  ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
   ui.setDiagnostics(map.diagnostics);
 
   // The status line is written **when the world is on screen**, not when the map is decoded. Everything

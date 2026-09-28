@@ -16,13 +16,10 @@ An agent working on the recomp can skip this directory entirely.
 **Start here if you are a new agent or contributor:** the design and the findings recorded as the
 viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/specs/2026-09-20-web-map-viewer-design.md)
 and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
-(the plan beside them in `docs/plans/`); web sprint 1, "the engine's world", is
+(the plan beside them in `docs/plans/`); the open sprint is web sprint 1, "the engine's world":
 [`docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md`](docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md)
-and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md); web sprint 2, "the
-SEAL in the world" (the player: the game's camera, speeds, fall, a stand-in body, the reticle and the rifle), is
-[`docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md`](docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md)
-and its plan [`docs/plans/2026-09-28-web-sprint-2.md`](docs/plans/2026-09-28-web-sprint-2.md), whose Outcome is the
-close and whose Log the record of every task and number; the byte-level format authority is the viewer's own
+and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md), whose Log is the
+live state; the byte-level format authority is the viewer's own
 [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
 the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
@@ -79,7 +76,7 @@ Run from `web/`:
 | command | what it does |
 |---|---|
 | `npm install` | workspace install (five packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the two shared archives `READERC.ZAR` and `ZWEAPON.ZAR` beside them, `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB` + `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the five packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
@@ -92,13 +89,8 @@ Run from `web/`:
 ### Deploying
 
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
-wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
-`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table). The archives are the game's and are never
+wrote from your own disc (`maps/index.json` and `maps/RUN/*.ZDB`). The archives are the game's and are never
 part of the build.
-
-**Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
-the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
-index. So a server moving to web sprint 2 takes `dist/viewer/` first and the re-extracted `maps/` after it.
 
 ## Layout
 
@@ -109,7 +101,7 @@ Everything below is relative to `web/`.
 | `packages/archive` | ZDB table of contents, ZAR/ZED v2, compiled `.rdr`, and the `AssetSource` the rest read through (`/node` for the file system, `http` for the browser) |
 | `packages/gs` | GS texture and palette decode, and the GS state block (`ALPHA`, `TEX1`, `TEST`, `CLAMP`) per texture |
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
-| `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`) |
+| `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
 | `docs/specs/`, `docs/plans/` | the viewer's own design specs and plan, kept here rather than in the repository's `docs/superpowers/` so the recomp's agents do not have to read past them |
@@ -117,8 +109,7 @@ Everything below is relative to `web/`.
 
 ## Controls
 
-The camera flies like a creative-mode build camera: momentum, not teleporting. `G` puts the SEAL on the ground
-instead, seen through the game's own camera; the last rows of the table are the walk's.
+The camera flies like a creative-mode build camera: momentum, not teleporting.
 
 | input | what it does |
 |---|---|
@@ -127,7 +118,7 @@ instead, seen through the game's own camera; the last rows of the table are the 
 | `W`/`S` | fly along the look direction — nose down and `W` descends |
 | `A`/`D` | strafe, always level with the horizon whatever the pitch |
 | `Space` / `Shift` | up and down in world space |
-| double-tap `W`, held | boost, with the field of view widening to match -- in flight only: the walk has no boost, the game's run being its fastest. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
+| double-tap `W`, held | boost, with the field of view widening to match. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
 | wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
@@ -153,25 +144,23 @@ constants, which are meant to be tuned.
 
 A one-finger drag looks around, which the canvas gives for free. Moving is the part a phone had no way
 to do, so the left half of the screen is a virtual stick — a circle that appears wherever the thumb
-lands and follows it — and two buttons in the bottom-right corner do what Q and E do. Beside them, for the
-walk, a **C** button cycles the stance as `C` does, and a round **fire** button is the trigger: held, the rifle
-fires at its rate. The right half is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
+lands and follows it — and two buttons in the bottom-right corner do what Q and E do. The right half
+is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
 
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
 and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
-has a phone's width to work with; the stick held at its rim for 400 ms is the flight's boost, the one gesture a
-thumb can make without leaving the stick (walking, it is simply a full stick); and a round fullscreen button sits above the lift buttons,
+has a phone's width to work with; the stick held at its rim for 400 ms is the boost, the one gesture a
+thumb can make without leaving the stick; and a round fullscreen button sits above the lift buttons,
 which on a phone also asks for a landscape lock. The canvas is `100dvh`, so the picture's centre is the
 screen's whether or not the browser bar is showing, and the pixel ratio starts at 1.5 on a coarse
 pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
 step it back up.
 
-Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link,
-the settings cog beside it, the GitHub mark, whose word drops under 480px), then the panel beneath it.
-The panel opens folded on a coarse pointer, leaving only the cog (a remembered choice still wins), its
-body scrolls inside itself, and the status line drops the draw and collision counts and
+Everything the viewer draws over the map goes in one strip along the top: the back link, then the
+panel's title bar beneath it. The panel opens folded on a coarse pointer (a remembered choice still
+wins), its body scrolls inside itself, and the status line drops the draw and collision counts and
 abbreviates the rest so it fits on one row at 360px. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 
@@ -320,37 +309,17 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 
 ## Known gaps
 
-- **The SEAL is a stand-in.** The body is a mannequin at the measured size whose legs swing by a stride model;
-  the real model (`CLIB_GEO.ZED`'s skinned `CMesh` chain, the `0x70` unpack no decoder here reads), its 32-node
-  skeleton and its animations (`MPZANIM.ZAR`, unopened) are web sprint 3's first candidate. With them would come
-  the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
-- **The shot leaves the camera's eye, not the rifle.** The game fires from the weapon model's `firepoint` toward the
-  aim point; with no weapon model the eye stands in, so the round lands under the reticle but from the wrong
-  place. An empty magazine does not reload by itself (`R` does), the 2 s reload and the reticle's kick per round
-  are estimates, and no bullet surface class was found, so every polygon stops a round.
-- **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
-  the material half of the camera's surface test is left out.
-- **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall
-  are the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement
-  (W2.2c: the instruments and the recipe are in the tree, [research 79](../docs/research/79-seal-speed-on-the-console.md))
-  waits for a window the owner names. Until it runs the prone root (1.8), the prone body (3.0), the first-person
-  heights (the eye 18.3 standing, and the crouched and prone eyes derived from it) and the crouch and prone body
-  columns are estimates, and two numbers are readings only: the crouch diagonal's speed-up along its axis (19.8 at
-  45°) and the headroom ray's start (the feet + 14). The slope and water slow-down are not modelled.
-- **A kerb between 6 and 6.5 units over a lower floor is passed over.** The floor selection takes the highest
-  floor at or under the feet + 6, so such a kerb, climbable by the step rule, is walked under for the floor below
-  (inherited from the selection, not the step rule's). The record's layer mask is probed as all layers (the
-  literal reading contradicts research 24's own walk); and the slot outlines are drawn without a depth test
-  because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more than a unit off the
-  floor under the centre).
-- **The HUD pass has not been seen under WebGPU.** The reticle's layer is pinned by the e2e, but no one has yet
-  looked at it on a WebGPU browser (W2.4's review); that look is owed.
-- **Region culling, the flares' place in the engine order, the LOD twin.** The per-node region bits (node flags
+- **Region culling, and the flares' place in the engine order.** The per-node region bits (node flags
   13-17) are on the disc on 8 maps and the collision polygons carry masks over the same bits on 6, but the
   writer of the camera's visible set (`CanSeeRegion`'s other operand) is not in the tree, so nothing is
   culled by region; and the engine draw order stays a switch until the pass that keeps a flare from cutting
-  the wall behind it is found (the sprint 1 spec's §7), the LOD twin under that order with it. The two facade
-  modes are drawn alike, reCOM's `ComputeFacadeMatrix` being a stub.
+  the wall behind it is found (the sprint spec's §7). The two facade modes are drawn alike, reCOM's
+  `ComputeFacadeMatrix` being a stub.
+- **The walk is conservative.** The mover refuses any drop over 20 units (the probe's window, read as a
+  rule), so it never falls off a deck the game would let you fall from; the record's layer mask is probed
+  as all layers (the literal reading contradicts research 24's own walk); and the slot outlines are drawn
+  without a depth test because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more
+  than a unit off the floor under the centre).
 - **Animated map objects beyond the uv scrolls are not drawn.** The door animations (`actions.rdr`,
   `MOTION_S.ZAR`), the destructible states, and the particle effects (`COMMON/EFFE_*`:
   `fire_hardedge.tif` and the smoke sprites) are driven by game code the viewer does not run; the

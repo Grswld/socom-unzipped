@@ -39,9 +39,9 @@ function wallX(x: number, z0: number, z1: number, y0: number, y1: number, camera
   };
 }
 
-/** A 4 x 4 grid of `cellDim` cells (100 by default) from (-2, -2) cells, one owner per polygon. */
-function world(polys: WorldPoly[], cellDim = 100): Grid {
-  const params: GridParams = { atomCount: 8192, posts: 16, cellDim, cellsX: 4, cellsZ: 4, originX: -2 * cellDim, originZ: -2 * cellDim };
+/** A 4 x 4 grid of 100-unit cells from (-200, -200), one owner per polygon. */
+function world(polys: WorldPoly[]): Grid {
+  const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 4, cellsZ: 4, originX: -200, originZ: -200 };
   const owners: CollisionOwner[] = polys.map((p, i) => ({ modelName: p.modelName, path: `${p.path}${i}`, first: i, count: 1 }));
   return buildGrid(params, [], [], polys, owners);
 }
@@ -85,240 +85,24 @@ describe('the mover (W1.4, W1.R2)', () => {
     expect(TICK).toBe(1 / 60);                            // CGame::Tick, web/docs/research/71 section 1.5
   });
 
-  it('a step toward a wall is still stopped when the walk is fast: 65 a second is 1.08 a tick', () => {
+  it('ramps and glides with the fly camera\'s velocity model, on the ground plane', () => {
     const w = new Walker(plain);
     w.place(0, 0, 0);
-    w.state.yaw = facing(0, 0, 0, -1);
-    for (let i = 0; i < 60; i++) w.tick(FORWARD);
-    expect(w.state.vx * w.state.vx + w.state.vz * w.state.vz).toBeGreaterThan(64 * 64);
+    w.state.yaw = facing(0, 0, 0, -1);                    // straight down -z: yaw 0
+    w.tick(FORWARD);
+    const first = -w.state.z;
+    for (let i = 0; i < 120; i++) w.tick(FORWARD);
+    const before = -w.state.z;
+    w.tick(FORWARD);
+    const steady = -w.state.z - before;
+    expect(first).toBeLessThan(steady * 0.5);
+    expect(steady).toBeCloseTo(WALK_SPEED * TICK, 3);     // research 18 Finding 3: ~40 units a second
+    const stop = -w.state.z;
+    for (let i = 0; i < 120; i++) w.tick(STILL);
+    expect(-w.state.z - stop).toBeGreaterThan(1);         // it glides on after the key comes up
+    expect(w.state.vx).toBe(0);
+    expect(w.state.vz).toBe(0);                           // and then stops for good
   });
-});
-
-/** Speeds of every tick, units a second, over `ticks` ticks of `input` on a big flat floor, facing -z. */
-function speeds(input: WalkInput, ticks: number, stance: Stance = 'stand', from?: Walker): { w: Walker; v: number[] } {
-  const w = from ?? new Walker(world([floor(-2000, -2000, 2000, 2000, 0)], 1000));
-  if (!from) { w.place(0, 0, 0); w.stance = stance; }
-  const v: number[] = [];
-  for (let i = 0; i < ticks; i++) {
-    const x = w.state.x, z = w.state.z;
-    w.tick(input);
-    v.push(Math.hypot(w.state.x - x, w.state.z - z) / TICK);
-  }
-  return { w, v };
-}
-/** The mean speed over the last second of a run: distance / time, as the brief measures it. */
-const lastSecond = (v: number[]): number => v.slice(-60).reduce((a, b) => a + b, 0) / 60;
-
-describe('the game\'s speeds (W2.2b, W2.R2): motion.rdr\'s bands through FUN_00586c10 and FUN_00583350', () => {
-  it('ten seconds of full forward holds 65.0 a second; back 37.0; the strafes 65; the boost does nothing', () => {
-    expect(lastSecond(speeds(FORWARD, 600).v)).toBeCloseTo(65, 1);                                   // seal_run 6.5 m/s
-    expect(lastSecond(speeds({ forward: -1, right: 0, boost: false }, 600).v)).toBeCloseTo(37, 1);   // seal_run_bw 3.7
-    expect(lastSecond(speeds({ forward: 0, right: 1, boost: false }, 600).v)).toBeCloseTo(65, 1);    // seal_rstrafe
-    expect(lastSecond(speeds({ forward: 0, right: -1, boost: false }, 600).v)).toBeCloseTo(65, 1);   // seal_lstrafe
-    expect(lastSecond(speeds({ forward: 1, right: 0, boost: true }, 600).v)).toBeCloseTo(65, 1);     // W2.R2: no boost
-  });
-
-  it('the throttle is linear (throt_exp 1): half a stick is 32.5', () => {
-    expect(lastSecond(speeds({ forward: 0.5, right: 0, boost: false }, 600).v)).toBeCloseTo(32.5, 1);
-    expect(lastSecond(speeds({ forward: -0.5, right: 0, boost: false }, 600).v)).toBeCloseTo(18.5, 1);
-  });
-
-  it('a diagonal blends the run and the strafe by the stick\'s angle and renormalises: 65 at 45 degrees, heading 45', () => {
-    const s = Math.SQRT1_2;
-    const { w, v } = speeds({ forward: s, right: s, boost: false }, 600);
-    expect(lastSecond(v)).toBeCloseTo(65, 1);
-    // Facing -z, right is +x: the heading is 45 degrees between them.
-    expect(Math.atan2(w.state.x, -w.state.z) * 180 / Math.PI).toBeCloseTo(45, 0);
-  });
-
-  it('the ramp: the stick moves at most upper_z_accel 5 a second, so 90 % of the run is reached on tick 11 (0.18 s)', () => {
-    const { v } = speeds(FORWARD, 30);
-    const first90 = v.findIndex((x) => x >= 0.9 * 65) + 1;
-    expect(first90).toBe(11);                                   // 0.9 / 5 = 0.18 s = 10.8 ticks, up to the next tick
-    expect(v[0]).toBeCloseTo(65 * 5 / 60, 6);                   // one tick of 5 a second
-    expect(v[11]).toBeCloseTo(65, 6);                           // full at 0.2 s
-    // The limit is lower_z_accel 2 with the stick at rest and upper 5 at full: (1 - (1 - |s|)^8) between them.
-    expect(throttleStep(0, 1, 'forward', TICK)).toBeCloseTo(5 / 60, 9);
-    expect(throttleStep(0.5, 0, 'forward', TICK)).toBeCloseTo(0.5 - 2 / 60, 9);
-    expect(throttleStep(0, 0.5, 'forward', TICK)).toBeCloseTo((2 + 3 * (1 - 0.5 ** 8)) / 60, 9);
-  });
-
-  it('a stick let go stops at once, from full or half (FUN_00586f00 idles it; FUN_00586570 skips the ramp at rest)', () => {
-    const run = speeds(FORWARD, 60);
-    expect(speeds(STILL, 1, 'stand', run.w).v[0]).toBe(0);
-    const half = speeds({ forward: 0.5, right: 0, boost: false }, 60);
-    expect(speeds(STILL, 1, 'stand', half.w).v[0]).toBe(0);
-    // Easing off without letting go is the ramp's: from 0.5 to 0.1 the stick falls at the limit.
-    const ease = speeds({ forward: 0.1, right: 0, boost: false }, 1, 'stand', speeds({ forward: 0.5, right: 0, boost: false }, 60).w).v;
-    expect(ease[0]).toBeCloseTo(65 * (0.5 - (2 + 3 * (1 - 0.9 ** 8)) / 60), 6);
-    expect(throttleStep(0.5, 0, 'forward', TICK)).toBeCloseTo(0.5 - 2 / 60, 9);
-    expect(throttleStep(1, 0, 'forward', TICK)).toBe(0);
-    expect(throttleStep(1, -1, 'right', TICK)).toBe(-1);       // the lateral snap: > 0.78, > 7.8 a second
-  });
-});
-
-describe('the stances (W2.2b): C cycles stand, crouch, prone', () => {
-  it('each stance runs at its motion.rdr bands', () => {
-    const band = (clip: string): number => SEAL_LOCOMOTION.find((b) => b.clip === clip)!.maxVelocity;
-    expect(STANCES).toEqual(['stand', 'crouch', 'prone']);
-    expect(stanceBody('stand').bands).toEqual({ forward: band('seal_run'), back: band('seal_run_bw'), right: band('seal_rstrafe'), left: band('seal_lstrafe') });
-    expect(stanceBody('crouch').bands).toEqual({ forward: 14.8, back: 13.5, right: 15, left: 15 });
-    expect(stanceBody('prone').bands).toEqual({ forward: 11, back: 11, right: 5.5, left: 5.5 });
-  });
-
-  it('the crouch walk (FUN_00584c60): under 0.838 of a stick it is rescaled to 14 / 14.8, so it runs at 14.0 whatever the push', () => {
-    const k = 14 / 14.8;
-    expect(lastSecond(speeds({ forward: 0.5, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(14.0, 1);   // not 7.4
-    expect(lastSecond(speeds({ forward: 0.2, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(14.0, 1);
-    expect(lastSecond(speeds({ forward: -0.5, right: 0, boost: false }, 600, 'crouch').v)).toBeCloseTo(k * 13.5, 1);
-    expect(lastSecond(speeds({ forward: 0, right: 0.5, boost: false }, 600, 'crouch').v)).toBeCloseTo(k * 15, 1);
-    // One clip set by direction class (FUN_00582d10), no blend: a shallow diagonal walks straight ahead.
-    const { w } = speeds({ forward: 0.5, right: 0.2, boost: false }, 600, 'crouch');
-    expect(Math.abs(w.state.x)).toBeLessThan(1e-6);
-    expect(w.posture).toBe('crouch');
-  });
-
-  it('the crouch at full stick (>= 0.838) with 19 units of headroom stands and runs the standing blend (FUN_0057efe0, FUN_00583030)', () => {
-    const open = speeds(FORWARD, 600, 'crouch');
-    expect(lastSecond(open.v)).toBeCloseTo(65, 1);
-    expect(open.w.stance).toBe('crouch');
-    expect(open.w.posture).toBe('stand');
-    // Under a ceiling 17 over the floor the headroom ray is cut: the crouch walk at 14.0 instead.
-    const roofed = new Walker(world([floor(-2000, -2000, 2000, 2000, 0), floor(-2000, -2000, 2000, 2000, 17)], 1000));
-    roofed.place(0, 5, 0);
-    expect(roofed.state.y).toBe(0);
-    roofed.stance = 'crouch';
-    const low = speeds(FORWARD, 600, 'crouch', roofed);
-    expect(lastSecond(low.v)).toBeCloseTo(14.0, 1);
-    expect(low.w.posture).toBe('crouch');
-    // Back under 0.838 the run drops to the crouch walk again.
-    expect(lastSecond(speeds({ forward: 0.8, right: 0, boost: false }, 120, 'crouch', open.w).v)).toBeCloseTo(14.0, 1);
-    expect(open.w.posture).toBe('crouch');
-  });
-
-  it('prone (FUN_005845c0 -> FUN_00583500): no ramp, one axis by direction class, the band times that axis', () => {
-    expect(speeds(FORWARD, 1, 'prone').v[0]).toBeCloseTo(11, 6);                                   // full on tick 1
-    expect(speeds({ forward: -1, right: 0, boost: false }, 1, 'prone').v[0]).toBeCloseTo(11, 6);   // the crawl reversed
-    expect(speeds({ forward: 0, right: -1, boost: false }, 1, 'prone').v[0]).toBeCloseTo(5.5, 6);
-    const ahead = speeds({ forward: 0.8, right: 0.6, boost: false }, 1, 'prone');
-    expect(ahead.v[0]).toBeCloseTo(0.8 * 11, 6);                                                     // max(|x|, |z|) x 11
-    expect(Math.abs(ahead.w.state.x)).toBeLessThan(1e-9);                                            // straight ahead
-    const aside = speeds({ forward: 0.6, right: 0.8, boost: false }, 1, 'prone');
-    expect(aside.v[0]).toBeCloseTo(0.8 * 5.5, 6);                                                    // the strafe, 5.5
-    expect(Math.abs(aside.w.state.z)).toBeLessThan(1e-9);
-  });
-
-  it('the root height: standing 11.484 and crouched 5.504 as the dump has them; prone at the camera ramp\'s floor', () => {
-    expect(rootY('stand')).toBe(11.484);                       // five standing actors in the console dump
-    expect(rootY('crouch')).toBe(5.504);                       // the crouched player there (research 17 section 1)
-    expect(rootY('crouch')).toBeLessThan(9);                   // FUN_00584c60's own stance test: root under 9
-    expect(rootY('prone')).toBeLessThanOrEqual(2.169155);      // FUN_0029a950's ramp is flat below this
-  });
-
-  it('the body column lowers with the stance: a crouch passes under a lintel at 16 that stops a standing SEAL', () => {
-    const lintel = world([floor(-200, -200, 200, 200, 0), wallX(50, -150, 150, 16, 40)]);
-    const x = (stance: Stance): number => {
-      const w = new Walker(lintel);
-      w.place(0, 0, 0);
-      w.stance = stance;
-      w.state.yaw = facing(0, 0, 1, 0);
-      for (let i = 0; i < 600; i++) w.tick(stance === 'crouch' ? { forward: 0.5, right: 0, boost: false } : FORWARD);
-      return w.state.x;
-    };
-    expect(x('stand')).toBeLessThan(50);
-    expect(x('crouch')).toBeGreaterThan(60);
-    expect(x('prone')).toBeGreaterThan(60);
-    expect(stanceBody('stand')).toMatchObject({ bodyLow: 6, bodyHigh: 20 });
-  });
-});
-
-describe('the fall and the step (W2.2b): dynamics.rdr\'s gravity, touch distance, step height and slope', () => {
-  it('stepping off a 42-unit deck falls under 235 a second squared, lands after ~0.60 s, and runs on', () => {
-    const deck = world([floor(-200, -200, 200, 200, 0), floor(-100, -100, 30, 100, 42), wallX(30, -100, 100, 0, 42)]);
-    const w = new Walker(deck);
-    expect(w.place(0, 60, 0)).toBe(true);
-    expect(w.state.y).toBe(42);
-    w.state.yaw = facing(0, 0, 1, 0);
-    let off = -1, landed = -1;
-    for (let i = 0; i < 240 && landed < 0; i++) {
-      w.tick(FORWARD);
-      if (off < 0 && w.airborne) off = i;
-      if (off >= 0 && !w.airborne) landed = i;
-    }
-    expect(off).toBeGreaterThan(0);
-    expect(w.state.y).toBe(0);
-    // sqrt(2 x 42 / 235) = 0.598 s; the fall is stepped at 60 Hz and starts on the tick after the edge, so +-2 ticks.
-    expect(SEAL_TUNING.gravity).toBe(235);
-    expect(Math.abs((landed - off) * TICK - Math.sqrt(2 * 42 / 235))).toBeLessThanOrEqual(2 * TICK);
-    expect(w.state.x).toBeGreaterThan(30 + 0.5 * 65);          // the run's 65 carried through the air
-    const x = w.state.x;
-    for (let i = 0; i < 30; i++) w.tick(FORWARD);
-    expect(w.state.x - x).toBeCloseTo(32.5, 0);                 // and on at 65 after the landing
-    expect(w.state.y).toBe(0);
-  });
-
-  it('a drop within ground_touch_distance 8 is a step down; a 13-unit crate top is a short fall to the floor', () => {
-    const steps = world([floor(-200, -200, 200, 200, 0), floor(-20, -20, 20, 20, 7.5)]);
-    const s = new Walker(steps);
-    s.place(0, 20, 0);
-    s.state.yaw = facing(0, 0, 1, 0);
-    let flew = false;
-    for (let i = 0; i < 90; i++) { s.tick(FORWARD); flew ||= s.airborne; }
-    expect(flew).toBe(false);
-    expect(s.state.y).toBe(0);
-    const crate = world([floor(-200, -200, 200, 200, 0), floor(-20, -20, 20, 20, 13)]);
-    const w = new Walker(crate);
-    w.place(0, 20, 0);
-    w.state.yaw = facing(0, 0, 1, 0);
-    flew = false;
-    for (let i = 0; i < 90; i++) { w.tick(FORWARD); flew ||= w.airborne; }
-    expect(flew).toBe(true);
-    expect(w.state.x).toBeGreaterThan(30);
-    expect(w.state.y).toBe(0);
-  });
-
-  it('step_height 6.5: a 6.5-unit kerb climbs, a 7-unit kerb stops the mover', () => {
-    const kerb = (h: number): Walker => {
-      const w = new Walker(world([floor(-200, -200, 30, 200, 0), floor(30, -200, 200, 200, h)]));
-      w.place(0, 0, 0);
-      w.state.yaw = facing(0, 0, 1, 0);
-      for (let i = 0; i < 120; i++) w.tick(FORWARD);
-      return w;
-    };
-    expect(SEAL_TUNING.stepHeight).toBe(6.5);
-    const low = kerb(6.5);
-    expect(low.state.x).toBeGreaterThan(40);
-    expect(low.state.y).toBe(6.5);
-    const high = kerb(7);
-    expect(high.state.x).toBeLessThanOrEqual(30);
-    expect(high.state.y).toBe(0);
-  });
-
-  it('max_slope 50: a 45-degree ramp is walked up, a 55-degree ramp refuses', () => {
-    const ramp = (degrees: number): Walker => {
-      const h = 100 * Math.tan(degrees * Math.PI / 180);
-      const slope: WorldPoly = {
-        modelName: 'worldmodel', path: 'worldmodel/ramp', region: 0, ditype: 1, material: 25, ptcount: 4, cameratype: 0,
-        points: Float32Array.from([30, 0, -200, 130, h, -200, 130, h, 200, 30, 0, 200]),
-      };
-      const w = new Walker(world([floor(-200, -200, 30, 200, 0), slope]));
-      w.place(0, 0, 0);
-      w.state.yaw = facing(0, 0, 1, 0);
-      for (let i = 0; i < 60; i++) w.tick(FORWARD);
-      return w;
-    };
-    expect(SEAL_TUNING.maxSlopeDeg).toBe(50);
-    const walked = ramp(45);
-    expect(walked.state.x).toBeGreaterThan(50);                 // 1 s at 65 with the 0.2 s ramp: ~59 from 0
-    expect(walked.state.y).toBeCloseTo(walked.state.x - 30, 3);
-    const refused = ramp(55);
-    expect(refused.state.x).toBeLessThanOrEqual(30);
-    expect(refused.state.y).toBe(0);
-  });
-});
-
-describe('the mover, continued (W1.4)', () => {
-  const plain = world([floor(-200, -200, 200, 200, 0)]);
 
   it('a step toward a wall ends 3.5 from it, and slides along it', () => {
     const walled = world([floor(-200, -200, 200, 200, 0), wallX(50, -150, 150, 0, 30)]);
@@ -810,25 +594,6 @@ describe.skipIf(!MP2)(`walking Frostfire${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, 
     expect(w.landing!.kind).toBe('harder');
     expect(w.state.x).toBeLessThan(520 - 20);                         // carried on at the run's 40 through the fall
   });
-
-  it('walking off the 142 deck east of A\'s spawn falls 42 onto the 100 floor in ~0.60 s (W2.2b)', async () => {
-    // B's ramp at z 1223 is walled on both sides; the open edge is the deck at x 630-675, z 725-815, y 142, whose
-    // east side at x ~675 drops to the 100 floor (found by walking every 15 units of the 142 level, 2026-09-28).
-    const map = await loadMap(new FsAssetSource(FIXTURES), 'RUN/MP2.ZDB');
-    const w = new Walker(groundGrid(map.ground!));
-    expect(w.place(660, 142 + EYE_HEIGHT, 725)).toBe(true);
-    expect(w.state.y).toBe(142);
-    w.state.yaw = facing(660, 725, 700, 725);
-    let off = -1, landed = -1;
-    for (let i = 0; i < 120 && landed < 0; i++) {
-      w.tick(FORWARD);
-      if (off < 0 && w.airborne) off = i;
-      if (off >= 0 && !w.airborne) landed = i;
-    }
-    expect(off).toBeGreaterThan(0);
-    expect(w.state.y).toBe(100);
-    expect(Math.abs((landed - off) * TICK - Math.sqrt(2 * 42 / 235))).toBeLessThanOrEqual(2 * TICK);
-  });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -886,60 +651,13 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(changes).toEqual([true, false, true]);
   });
 
-  it('C cycles the stance stand, crouch, prone, stand; not on Ctrl or a repeat; setStance for the hook', () => {
-    const { fly, mode } = setUp();
-    fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });
-    expect(mode.stance()).toBe('stand');
-    key('KeyC');
-    expect(mode.stance()).toBe('stand');                            // in fly mode C does nothing
-    mode.setMode('walk');
-    key('KeyC');
-    expect(mode.stance()).toBe('crouch');
-    key('KeyC', 'keydown', { ctrlKey: true });
-    key('KeyC', 'keydown', { repeat: true });
-    expect(mode.stance()).toBe('crouch');
-    key('KeyC');
-    expect(mode.stance()).toBe('prone');
-    key('KeyC');
-    expect(mode.stance()).toBe('stand');
-    expect(mode.setStance('crouch')).toBe(true);
-    const at = mode.feet()!;
-    mode.walkFor(10, { forward: 0.5, right: 0, boost: false });
-    const after = mode.feet()!;
-    expect(at[2] - after[2]).toBeGreaterThan(14 * 10 - 3);          // the crouch walk, 14.0 a second
-    expect(at[2] - after[2]).toBeLessThan(14 * 10);
-  });
-
-  it('Ctrl+C is left to the browser in fly and walk mode; a bare C while walking is the stance\'s', () => {
-    const { fly, mode } = setUp();
-    fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });
-    const press = (init: KeyboardEventInit): boolean => {
-      const e = new KeyboardEvent('keydown', { code: 'KeyC', cancelable: true, ...init });
-      globalThis.dispatchEvent(e);
-      globalThis.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyC' }));
-      return e.defaultPrevented;
-    };
-    expect(press({ ctrlKey: true })).toBe(false);
-    expect(press({ metaKey: true })).toBe(false);
-    expect(press({})).toBe(false);                                   // fly mode: C is nobody's
-    mode.setMode('walk');
-    expect(press({ ctrlKey: true })).toBe(false);
-    expect(mode.stance()).toBe('stand');
-    expect(press({})).toBe(true);
-    expect(mode.stance()).toBe('crouch');
-  });
-
-  it('entering walk drops the mover onto the floor under the camera, the game\'s camera behind it (W2.1)', () => {
+  it('entering walk drops the camera onto the floor under it, eye 15.4 over the feet', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 0, y: 90, z: 0, yaw: 30, pitch: -10 });
     mode.setMode('walk');
     expect(mode.feet()).toEqual([0, 42, 0]);                        // the deck, the highest floor under the camera
-    // Standing at the spawn pitch: 25.709 over the feet, 24.906 behind along the yaw (`playerCamera.ts`).
-    const pose = fly.pose(), yaw = (30 * Math.PI) / 180;
-    expect(pose.x).toBeCloseTo(24.906 * Math.sin(yaw), 3);
-    expect(pose.y).toBeCloseTo(42 + 25.709, 3);
-    expect(pose.z).toBeCloseTo(24.906 * Math.cos(yaw), 3);
-    expect(pose.yaw).toBeCloseTo(30, 9);                            // the turn is kept; the pitch is the spawn's
+    expect(fly.pose()).toMatchObject({ x: 0, y: 42 + EYE_HEIGHT, z: 0 });
+    expect(fly.pose().yaw).toBeCloseTo(30, 9);                      // the look is kept
     mode.setMode('fly');
     fly.setPose({ x: 0, y: 30, z: 0 });                             // under the deck, over the floor
     mode.setMode('walk');
@@ -957,19 +675,18 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(bare.changes).toEqual([]);
   });
 
-  it('the keys and the stick drive the mover, at 60 Hz, and the camera follows behind it', () => {
+  it('the keys and the stick drive the mover, at 60 Hz, and the camera follows at the eye', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });      // yaw 0 faces -z
     mode.setMode('walk');
     key('KeyW');
     for (let i = 0; i < 30; i++) { fly.update(1 / 30); mode.frame(1 / 30); }
     key('KeyW', 'keyup');
-    const pose = fly.pose(), feet = mode.feet()!;
-    expect(feet[2]).toBeLessThan(130);
+    const pose = fly.pose();
+    expect(pose.z).toBeLessThan(130);
     expect(pose.x).toBeCloseTo(150, 6);
-    expect(feet[1]).toBe(0);
-    expect(pose.y).toBeCloseTo(25.709, 3);                          // the game's camera standing (W2.1)
-    expect(pose.z - mode.drawnFeet()![2]).toBeCloseTo(24.906, 3);  // both drawn between the last two ticks
+    expect(mode.feet()![1]).toBe(0);
+    expect(pose.y).toBeCloseTo(EYE_HEIGHT, 9);
     // The touch stick is the same wish: pushed up the screen, forward.
     const before = mode.feet()![2];
     fly.setStick(0, 1);
@@ -989,10 +706,7 @@ describe('walk mode (W1.4 step 5)', () => {
     mode.setMode('walk');
     mode.setCamera({ x: 0, y: 60, z: 0, yaw: 90 });
     expect(mode.feet()).toEqual([0, 42, 0]);
-    // Facing -x (yaw 90), the camera behind on +x, at the spawn pitch (W2.1).
-    expect(fly.pose().x).toBeCloseTo(24.906, 3);
-    expect(fly.pose().y).toBeCloseTo(42 + 25.709, 3);
-    expect(fly.pose().z).toBeCloseTo(0, 6);
+    expect(fly.pose()).toMatchObject({ x: 0, y: 42 + EYE_HEIGHT, z: 0 });
     expect(fly.pose().yaw).toBeCloseTo(90, 9);
     mode.setCamera({ yaw: 180 });                                    // a turn only: the mover stays put
     expect(mode.feet()).toEqual([0, 42, 0]);
@@ -1006,10 +720,9 @@ describe('walk mode (W1.4 step 5)', () => {
     fly.setPose({ x: 150, y: 40, z: 150, yaw: 90, pitch: 0 });     // yaw 90 faces -x
     mode.setMode('walk');
     const pose = mode.walkFor(1, { forward: 1, right: 0, boost: false });
-    expect(mode.feet()![0]).toBeLessThan(120);
-    expect(pose.x - mode.feet()![0]).toBeCloseTo(24.906, 3);       // the camera behind, on +x (W2.1)
+    expect(pose.x).toBeLessThan(120);
     expect(pose.z).toBeCloseTo(150, 6);
-    expect(pose.y).toBeCloseTo(25.709, 3);
+    expect(pose.y).toBeCloseTo(EYE_HEIGHT, 9);
     expect(fly.pose()).toEqual(pose);
   });
 
