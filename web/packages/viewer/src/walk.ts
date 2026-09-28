@@ -148,6 +148,19 @@ export interface Landing { kind: LandingKind; speed: number; airTime: number }
 /** What the hook reports of the mover (W2.3a): in the air, sliding, crouched, and the last landing. */
 export interface MoverState { airborne: boolean; sliding: boolean; crouched: boolean; landing: Landing | null }
 
+/**
+ * The mover as the body and its clips read it each frame (W2.2b, `./animator`'s `MoverSnapshot` and where to stand):
+ * the drawn feet, the look, the velocity, the stance, the last landing's class, and the jumps taken.
+ */
+export interface PlaySnapshot {
+  feet: [number, number, number];
+  yaw: number; pitch: number;
+  vx: number; vz: number; vy: number;
+  airborne: boolean; crouched: boolean;
+  landing: LandingKind | null;
+  jumps: number;
+}
+
 /** A wall polygon with what the step needs of it computed once. */
 interface Wall {
   poly: WorldPoly;
@@ -331,6 +344,12 @@ export class Walker {
   settle(): void {
     this.prev = { x: this.state.x, y: this.state.y, z: this.state.z };
     this.accumulator = 0;
+  }
+
+  /** The feet, drawn between the last two ticks as the eye is (`eye`): where the body stands on screen (W2.2b). */
+  drawnFeet(): [number, number, number] {
+    const s = this.state, t = Math.max(0, Math.min(1, this.accumulator / TICK));
+    return [this.prev.x + (s.x - this.prev.x) * t, this.prev.y + (s.y - this.prev.y) * t, this.prev.z + (s.z - this.prev.z) * t];
   }
 
   /**
@@ -576,6 +595,8 @@ export class WalkMode {
   /** The seal table every mover runs on (W2.3a, W2.R6): the defaults until the disc's arrives (`setTuning`). */
   private tuning: Readonly<SealTuning> = SEAL_TUNING_DEFAULTS;
   private tuningFromDisc = false;
+  /** Jumps taken (W2.2b): the animator sees a take-off by the count, whenever between two frames it came. */
+  private jumps = 0;
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
@@ -685,8 +706,20 @@ export class WalkMode {
   jump(): boolean {
     const w = this.walker;
     if (!this.walking || !w || !w.jump()) return false;
+    this.jumps++;
     this.follow();
     return true;
+  }
+
+  /** The mover for the body and its clips (W2.2b), while walking; null in fly mode. */
+  snapshot(): PlaySnapshot | null {
+    const w = this.walker;
+    if (!this.walking || !w) return null;
+    const s = w.state, look = this.camera.pose();          // the look, as `frame` hands it to the mover
+    return {
+      feet: w.drawnFeet(), yaw: look.yaw, pitch: look.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
+      airborne: w.airborne, crouched: w.crouched, landing: w.landing?.kind ?? null, jumps: this.jumps,
+    };
   }
 
   /** Walk mode: crouches (true), stands (false) or toggles (no argument); the stance after. False when flying. */

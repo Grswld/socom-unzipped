@@ -37,6 +37,13 @@ export interface BodyView {
   };
   setVisible(on: boolean): void;
   setLighting(light: Lighting): void;
+  /**
+   * W2.2b: a pose on the bones -- one local matrix per part in the engine's layout (row-major, row vectors: three's
+   * column-major elements), as `@s2u/scene`'s `Skeleton.local` holds them after the animator has written it.
+   */
+  setPose(locals: readonly ArrayLike<number>[]): void;
+  /** W2.2b: stands the body with its soles at `feet`, facing the look's `yaw` (degrees, `Pose.yaw`: the model's -z along it). */
+  place(feet: readonly [number, number, number], yaw: number): void;
   dispose(): void;
 }
 
@@ -48,6 +55,8 @@ export interface BodyView {
 const CULL = true;
 /** 78 §6.2: the character's colour lane, a placeholder for the EE's quadword 338: the PS2's unity, 128. */
 const UNITY = 1;
+/** W2.2b: how far the body turns, radians, before its lit colours are worked out again (the viewer's: ten degrees). */
+const RELIGHT_STEP = Math.PI / 18;
 
 export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 'textureFlags'>, lighting: Lighting): BodyView {
   const group = new Group();
@@ -99,26 +108,34 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
     return material;
   };
 
-  /** Every lit part beside its colour buffer and the rotation its normals are lit through. */
-  const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
-  const colour = (count: number, normals: Float32Array, turn: Matrix4, material: Float32Array | null): BufferAttribute => {
-    const part: Lightable = { colors: material ?? new Float32Array(count * 4).fill(UNITY), normals: turnNormals(normals, turn), lit: true };
-    const out = new Float32Array(count * 4);
-    applyLighting(part, lighting, out);
-    const attribute = new BufferAttribute(out, 4);
-    lit.push({ part, attribute });
-    return attribute;
-  };
-
   // The rig's directions are the world's, so a normal is lit where the placement turns it.
   const yaw = body.at?.yaw ?? 0;
   const placementTurn = new Matrix4().makeRotationY(yaw);
+  /**
+   * Every lit part beside its colour buffer, its normals as decoded, and the turn they are lit through before the
+   * placement's: the identity for the skin, the part's bind and the gear's offset for a fitting. W2.2b: the body turns
+   * with the look, so `place` lights it again through the new turn (the bind pose's normals: a pose's own turn of a
+   * limb is not lit, a carry).
+   */
+  const lit: { part: Lightable; attribute: BufferAttribute; raw: Float32Array; base: Matrix4 }[] = [];
+  let lightNow = lighting;
+  let litYaw = yaw;
+  const colour = (count: number, normals: Float32Array, base: Matrix4, material: Float32Array | null): BufferAttribute => {
+    const part: Lightable = {
+      colors: material ?? new Float32Array(count * 4).fill(UNITY), normals: turnNormals(normals, placementTurn.clone().multiply(base)), lit: true,
+    };
+    const out = new Float32Array(count * 4);
+    applyLighting(part, lighting, out);
+    const attribute = new BufferAttribute(out, 4);
+    lit.push({ part, attribute, raw: normals, base });
+    return attribute;
+  };
   for (const sub of body.subMeshes) {
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(sub.positions, 3));
     geometry.setAttribute('normal', new BufferAttribute(sub.normals, 3));
     geometry.setAttribute('uv', new BufferAttribute(sub.uvs, 2));
-    geometry.setAttribute('color', colour(sub.positions.length / 3, sub.normals, placementTurn, null));
+    geometry.setAttribute('color', colour(sub.positions.length / 3, sub.normals, new Matrix4(), null));
     geometry.setAttribute('skinIndex', new Uint16BufferAttribute(sub.skinIndex, 4));
     geometry.setAttribute('skinWeight', new BufferAttribute(sub.skinWeight, 4));
     geometry.setIndex(new BufferAttribute(sub.indices, 1));
@@ -135,8 +152,7 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
     holder.name = fitting.name;
     new Matrix4().fromArray(fitting.offset).decompose(holder.position, holder.quaternion, holder.scale);
     bones[fitting.part]!.add(holder);
-    const turn = placementTurn.clone().multiply(new Matrix4().fromArray(body.parts[fitting.part]!.bindWorld))
-      .multiply(new Matrix4().fromArray(fitting.offset));
+    const turn = new Matrix4().fromArray(body.parts[fitting.part]!.bindWorld).multiply(new Matrix4().fromArray(fitting.offset));
     for (const m of fitting.meshes) {
       const mesh = new Mesh(fittingGeometry(m, colour(m.positions.length / 3, m.normals ?? new Float32Array(m.positions.length), turn, m.colors)),
         materialFor(m.textureName, m.fog, m.cull));
@@ -150,7 +166,8 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
     group.rotation.y = body.at.yaw;
   }
 
-  return {
+  const scratch = new Matrix4();
+  const view: BodyView = {
     group,
     stats: {
       ...body.stats, character: body.character, model: body.model, dressedBy: body.dressedBy,
@@ -158,7 +175,29 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
       at: body.at ? [...body.at.position] : null, yaw: body.at?.yaw ?? null,
     },
     setVisible: (on) => { group.visible = on; },
+    setPose: (locals) => {
+      locals.forEach((m, i) => {
+        const bone = bones[i];
+        if (bone) scratch.fromArray(m as ArrayLike<number> as number[]).decompose(bone.position, bone.quaternion, bone.scale);
+      });
+    },
+    place: (feet, yaw) => {
+      group.position.set(feet[0], feet[1], feet[2]);
+      group.rotation.y = (yaw * Math.PI) / 180;           // the camera's yaw is three's turn about y (`camera.ts`)
+      view.stats.at = [feet[0], feet[1], feet[2]];
+      view.stats.yaw = group.rotation.y;
+      const turned = Math.abs(Math.atan2(Math.sin(group.rotation.y - litYaw), Math.cos(group.rotation.y - litYaw)));
+      if (turned < RELIGHT_STEP) return;
+      litYaw = group.rotation.y;
+      const turn = new Matrix4().makeRotationY(litYaw);
+      for (const l of lit) {
+        l.part.normals = turnNormals(l.raw, turn.clone().multiply(l.base));
+        applyLighting(l.part, lightNow, l.attribute.array as Float32Array);
+        l.attribute.needsUpdate = true;
+      }
+    },
     setLighting: (next) => {
+      lightNow = next;
       brighten.value = brightenOf(next);
       for (const l of lit) {
         applyLighting(l.part, next, l.attribute.array as Float32Array);
@@ -172,6 +211,7 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
       skeleton.dispose();
     },
   };
+  return view;
 }
 
 /** A fitting's geometry: its own positions and uvs, and the lit colour. */

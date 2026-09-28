@@ -19,6 +19,8 @@ import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { buildBody, type BodyView } from './bodyView';
+import { Play } from './play';
+import { PLAY_CLIPS } from './animator';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -161,6 +163,19 @@ function askDynamics(from: SourceRequest): void {
   ask({ kind: 'dynamics', id: wantedDynamics, source: from });
 }
 
+// ---- W2.2b: the play mode -- the walk with the body, the game's clips on the mover (`./play`, `./animator`) ---------
+/**
+ * The body and its clips: the map's body (`show`), the source's clips (`RUN/MOTION_P.ZAR` and `motion.rdr`, asked of
+ * each source once its map list is in, as the seal table is), stepped once a frame after the walk. Without the pack
+ * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
+ */
+const play = new Play();
+let wantedPlay = -1;
+function askPlay(from: SourceRequest): void {
+  wantedPlay = ++requests;
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
+}
+
 /**
  * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
  * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
@@ -186,10 +201,15 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     source = wantedIndexFrom;
     showMaps(message.maps);
     askDynamics(source);
+    askPlay(source);
     return;
   }
   if (message.kind === 'dynamics') {
     if (message.id === wantedDynamics) walk.setTuning(message.tuning);
+    return;
+  }
+  if (message.kind === 'play') {
+    if (message.id === wantedPlay) play.setClips(message.data);
     return;
   }
   if (message.kind === 'progress') {
@@ -322,7 +342,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else if (name === 'rigeverywhere') { lighting.rigEverywhere = on; view?.setLighting(lighting); }
-  else if (name === 'body') body?.setVisible(on);
+  else if (name === 'body') play.setFlyToggle(on);        // W2.2b: the body in fly mode; in play it is always shown
   else if (name === 'ps2look') {
     presentation = on ? 'ps2' : 'native';
     document.body.classList.toggle('ps2-look', on);
@@ -392,6 +412,7 @@ async function boot(): Promise<void> {
     padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
+    play.frame(dt, walk);           // W2.2b: the body at the feet, in its clip
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
 
@@ -504,6 +525,7 @@ function show(map: LoadedMap): void {
   if (body) { scene.remove(body.group); body.dispose(); }
   body = map.body ? buildBody(map.body, map, lighting) : null;
   if (body) scene.add(body.group);
+  play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -610,6 +632,7 @@ window.__viewer = {
     stand: loaded?.stand ?? null,
     slots: overlays.slotCounts(),
     body: body ? { ...body.stats, visible: body.group.visible } : null,
+    anim: play.animStats(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),

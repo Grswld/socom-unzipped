@@ -58,7 +58,7 @@ export class Ui {
     billboards: find('billboards'),
     rigeverywhere: find('rigeverywhere'),
     ps2look: find('ps2look'),
-    body: find('player-body'),                        // W2.1: the player's SEAL at slot A, in its bind pose (`./bodyView`)
+    body: find('player-body'),                        // W2.1's SEAL; W2.2b: shown in fly mode (in play it always is, `./play`)
   };
 
   /**

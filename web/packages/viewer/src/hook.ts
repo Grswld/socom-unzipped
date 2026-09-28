@@ -6,6 +6,7 @@ import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 import type { MoverState } from './walk';
+import type { AnimStats } from './animator';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -39,6 +40,12 @@ export interface ViewerHook {
     body: (BodyView['stats'] & { visible: boolean }) | null;
     /** The seal table the walk runs on (W2.3a, W2.R6): the disc's `dynamics.rdr` over the defaults, or the defaults. */
     tuning: 'disc' | 'defaults';
+    /**
+     * The body's clips (W2.2b, `./animator`): the clip playing, its fractional key, the cross-fade's weight (1 settled)
+     * and the clip it leaves, the keys a second, the upper-body layer; null with no body, no `MOTION_P.ZAR`, or before
+     * the play mode is first entered.
+     */
+    anim: AnimStats | null;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
