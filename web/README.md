@@ -347,6 +347,13 @@ rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAG
 every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
 `EFFE_TXR.ZED`, 1 to 1.8 units wide.
 
+**The gunplay is the game's** ([research 84](docs/research/84-accuracy-and-recoil.md)): the SEAL's M4A1 SD
+(`M4A1_SD`) fires to `Maximum_Range` x 10 units; its reticle opens with the walk, the look and each round and closes
+at the weapon's own per-stance rates (`viewer/src/accuracy.ts`), halved in third person; a round climbs the whole
+reticle up the screen (the recoil you see unscoped -- the camera does not kick there) and goes inside it by the
+game's cone; semi, burst and automatic (`B`); the right button steps the view third -> first person -> the 3x scope
+and back (`viewer/src/zoom.ts`, the scope's tube and dashed cross off `HUD2_TXR`).
+
 ## Known gaps
 
 - **The SEAL is a stand-in.** The body is a mannequin at the measured size whose legs swing by a stride model;
@@ -355,8 +362,9 @@ every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rd
   the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
 - **The shot leaves the camera's eye, not the rifle.** The game fires from the weapon model's `firepoint` toward the
   aim point; with no weapon model the eye stands in, so the round lands under the reticle but from the wrong
-  place. An empty magazine does not reload by itself (`R` does), the 2 s reload and the reticle's kick per round
-  are estimates, and no bullet surface class was found, so every polygon stops a round.
+  place. An empty magazine does not reload by itself (`R` does), the 2 s reload is an estimate, and no bullet
+  surface class was found, so every polygon stops a round. The scoped sway moves the rounds but nothing on screen
+  (no reader of it that draws was found: research 84 section 8).
 - **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
   the material half of the camera's surface test is left out.
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall
