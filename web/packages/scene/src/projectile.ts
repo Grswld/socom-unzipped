@@ -281,7 +281,7 @@ export const THROW_ANIMS = {
 /** `DAT_00650578`: a crouched SEAL moving faster than 15 units a second (225 squared) throws the standing throw. */
 export const CROUCH_MOVING_SPEED_SQ = 225;
 
-/** Whether `GetThrowAnim` picks a toss: power under 0.6 and the aim's sine under 0.3 (0x57fce0, :20-23). */
+/** Whether `GetThrowAnim` picks a toss: power under 0.6 and the aim's sine under 0.3 (0x57fce0, decomp 441723-441726). */
 export const isToss = (power: number, aimSin: number): boolean =>
   power < THROW_PARAMS.tossPowerThreshold && aimSin < THROW_PARAMS.tossAimThreshold;
 
