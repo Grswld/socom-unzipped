@@ -60,9 +60,24 @@ export const SURFACE_SIDE = 1 << 1;
 /** Surface word bit 18 (`m_cameratype` bit 0): skipped by the probe, and not a wall (research 23 section 1.1, 24 section 2). */
 export const SURFACE_SKIP = 1 << 18;
 
-/** A ground candidate for the vertical probe: bit 0 set, bit 18 clear. */
+/**
+ * `m_material` of a water surface: `materials.rdr`'s SOILS entry `WATER`, the one flagged `LIQUID` (the parser sets
+ * material `+0x3c` bit 1, decomp 181411-181414). The hull stores a SOILS index two past the reader's order: 11 is
+ * `WATER`, 12 `UNDERWATER` (the beds under it), 9 `GLASS` (Frostfire's window panes, MP6's bottles), 25 `METAL_THICK`
+ * (Frostfire's `DefaultMaterial`, 1,357 of its 3,318) -- web research 86 section 5.1's census.
+ */
+export const MATERIAL_WATER = 11;
+
+/** A water surface (`MATERIAL_WATER`). */
+export const isLiquidSurface = (p: WorldPoly): boolean => p.material === MATERIAL_WATER;
+
+/**
+ * A ground candidate for the vertical probe: bit 0 set, bit 18 clear -- and not water: `FUN_005b5d40` (decomp
+ * 470160-470243) takes a LIQUID hit for the water's depth (`FUN_005b52b0`), not for a floor, so the SEAL wades on the
+ * bed (web research 86 section 5). `probeWater` finds the surface.
+ */
 export const isGroundSurface = (p: WorldPoly): boolean =>
-  (surfaceWord(p) & (SURFACE_GROUND | SURFACE_SKIP)) === SURFACE_GROUND;
+  (surfaceWord(p) & (SURFACE_GROUND | SURFACE_SKIP)) === SURFACE_GROUND && !isLiquidSurface(p);
 
 /**
  * The unit normal of a polygon's plane from Newell's sum, the way research 24 section 2 takes it, or null for a

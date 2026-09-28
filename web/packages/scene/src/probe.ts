@@ -1,4 +1,4 @@
-import { isGroundSurface, planeHeightAt, polygonNormal, type WorldPoly } from './collision';
+import { isGroundSurface, isLiquidSurface, planeHeightAt, polygonNormal, surfaceWord, SURFACE_GROUND, SURFACE_SKIP, type WorldPoly } from './collision';
 import { cellAt, type CollisionObject, type CollisionOwner, type Grid } from './grid';
 
 /**
@@ -154,6 +154,28 @@ export function selectFloor(hits: readonly Hit[], originY: number, actorY: numbe
   const pick = under ?? lowest;
   if (pick === null || pick.y > actorY + REJECT_ABOVE) return null;
   return pick;
+}
+
+/**
+ * The water surfaces over (x, z), highest first: the water polygons (`MATERIAL_WATER`, bit 0, bit 18 clear) whose
+ * footprint holds the point -- `FUN_005b52b0`'s water line (web research 86 section 5).
+ */
+export function probeWater(grid: Grid, x: number, z: number): number[] {
+  const out: number[] = [];
+  for (const atom of cellAt(grid, x, z).atoms) {
+    const object = atom.object;
+    if (object.kind !== 'collision') continue;
+    const f = object.footprint;
+    if (x < f.minX || x > f.maxX || z < f.minZ || z > f.maxZ) continue;
+    for (const poly of object.polys) {
+      if (!isLiquidSurface(poly) || (surfaceWord(poly) & (SURFACE_GROUND | SURFACE_SKIP)) !== SURFACE_GROUND) continue;
+      const normal = upNormal(poly);
+      if (normal === null || normal[1] < 1e-6 || !lineCrosses(poly.points, x, z)) continue;
+      const y = planeHeightAt(poly.points, x, z);
+      if (y !== null) out.push(y);
+    }
+  }
+  return out.sort((a, b) => b - a);
 }
 
 /** The floor an actor with its feet at (x, y, z) stands on: the probe, then the pick from the origin y + 5. */
