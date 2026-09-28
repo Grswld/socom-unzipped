@@ -17,14 +17,15 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -b packages/archive packages/gs packages/mesh packages/scene && tsc --noEmit -p packages/viewer && tsc --noEmit -p tools",
+    "typecheck": "tsc -b packages/archive packages/gs packages/mesh packages/scene packages/sound && tsc --noEmit -p packages/viewer && tsc --noEmit -p tools",
     "ds:sync": "tsx tools/ds-sync.ts",
     "extract-maps": "tsx tools/extract-maps.ts",
     "dump-textures": "tsx tools/dump-textures.ts",
     "export-gltf": "tsx tools/export-gltf.ts",
     "dev": "vite --config packages/viewer/vite.config.ts",
     "build": "vite build --config packages/viewer/vite.config.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "dump-sounds": "tsx tools/dump-sounds.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

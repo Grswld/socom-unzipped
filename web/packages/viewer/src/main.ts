@@ -2,7 +2,7 @@
 import { Scene, Timer } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { spawnsFor, type Spawns } from '@s2u/scene';
+import { SEAL_TUNING, spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -25,7 +25,9 @@ import { buildBody, type BodyView } from './bodyView';
 import { ammoText, Fire } from './fire';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
-import { PLAY_CLIPS } from './animator';
+import { isCycle, PLAY_CLIPS } from './animator';
+import { gameAudio } from './audio';
+import { WalkSounds } from './walkSounds';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -84,6 +86,27 @@ function trigger(down: boolean): void {
   if (down) fire.pull();
   else fire.release();
 }
+/**
+ * The sound (web/docs/research/81, `./audio`): the map's own banks, played on the walk's events (`./walkSounds`) --
+ * the footfalls, the jump, the landing, the rifle's rounds and reload. The first click or key press unlocks it.
+ * `gameAudio` is the API the panel and the other workstreams import from `./audio` (`setVolume`, `setMuted`,
+ * `onFootstep`, `onFire`, `onReload`, `onJump`, `onLand`, `onAnimCallback`).
+ */
+const audio = gameAudio;
+audio.unlockOn(globalThis);
+audio.setFallTable(SEAL_TUNING.gravity, SEAL_TUNING.fallingDamage);
+const walkSounds = new WalkSounds(audio, {
+  walking: () => walk.mode() === 'walk',
+  feet: () => walk.drawnFeet(),
+  mover: () => walk.snapshot(),
+  landingSpeed: () => walk.mover()?.landing?.speed ?? null,
+  wish: () => fly.groundWish(),
+  anim: () => play.animStats(),
+  isCycle,
+  grid: () => walk.grid(),
+  shots: () => fire.state().shots,
+  reloading: () => fire.state().magazine.reloading,
+});
 /** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
 const RUN_SPEED = stanceBody('stand').bands.forward;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
@@ -154,6 +177,7 @@ const load = (path: string): void => {
   askedAt = performance.now();
   wantedMap = ++requests;
   wantedMapFrom = source.kind;
+  mapSource = source;
   rememberMap(path);
   revealing?.cancel();
   revealing = null;
@@ -176,6 +200,8 @@ let wantedIndexFrom: SourceRequest = SERVED;
 /** The source the wanted map is being read from, and the one the map on screen came from, for `stats()`. */
 let wantedMapFrom: SourceRequest['kind'] = 'http';
 let shownFrom: SourceRequest['kind'] = 'http';
+/** The source the wanted map is being read from, whole: the map's sound is asked of it too. */
+let mapSource: SourceRequest = SERVED;
 
 /** Asks `from` for its map list; the answer switches the picker, and the source, over to it. */
 function askIndex(from: SourceRequest): void {
@@ -192,6 +218,12 @@ function askIndex(from: SourceRequest): void {
  */
 const play = new Play();
 let wantedPlay = -1;
+/** The map's sound, asked of the source the map came from once it is shown (`./soundData`). */
+let wantedSound = -1;
+function askSound(from: SourceRequest, path: string, archive: string): void {
+  wantedSound = ++requests;
+  ask({ kind: 'sound', id: wantedSound, source: from, path, archive });
+}
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
   ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
@@ -262,6 +294,10 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id === wantedPlay) play.setClips(message.data);
     return;
   }
+  if (message.kind === 'sound') {
+    if (message.id === wantedSound) audio.setData(message.data);
+    return;
+  }
   if (message.kind === 'progress') {
     if (message.id !== wantedMap) return;               // a stage of a load we have moved on from
     ui.setLoading(true, STAGE_WORDS[message.stage], message.total > 0 ? message.done / message.total : 0);
@@ -270,6 +306,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   if (message.id !== wantedMap) return;
   shownFrom = wantedMapFrom;
   show(message.map);
+  askSound(mapSource, message.map.path, message.map.archive);
 });
 
 ui.onMapChange((path) => {
@@ -475,6 +512,9 @@ async function boot(): Promise<void> {
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
+    fly.camera.updateMatrixWorld();
+    audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
+    walkSounds.frame();             // the footfalls, the jump, the landing, the rounds and the reload, heard
     ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
@@ -738,5 +778,11 @@ window.__viewer = {
   setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
+  audio: () => audio.stats(),
+  setAudio: (settings) => {
+    if (settings.volume !== undefined) audio.setVolume(settings.volume);
+    if (settings.muted !== undefined) audio.setMuted(settings.muted);
+    return audio.stats();
+  },
   revision,
 } satisfies ViewerHook;

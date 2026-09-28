@@ -5,6 +5,7 @@
   "dependencies": {
     "@s2u/archive": "*",
     "@s2u/gs": "*",
-    "@s2u/mesh": "*"
+    "@s2u/mesh": "*",
+    "@s2u/sound": "*"
   }
 }

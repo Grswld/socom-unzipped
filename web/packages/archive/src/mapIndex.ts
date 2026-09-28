@@ -17,9 +17,15 @@ export function mapArchiveId(path: string): string | null {
  * The archives every map shares, copied out of the disc's `RUN/` beside the map archives by
  * `tools/extract-maps.ts` (web sprint 2, W2.R5): `READERC.ZAR`, the character scripts (`dynamics.rdr`,
  * `motion.rdr`, ...), `ZWEAPON.ZAR`, the weapon table, and the player's motion packs -- `MOTION_P.ZAR`, the
- * skeletal clips (web/docs/research/77), and `MPZANIM.ZAR`, the multiplayer zAnim sets.
+ * skeletal clips (web/docs/research/77), and `MPZANIM.ZAR`, the multiplayer zAnim sets. The sound
+ * (web/docs/research/81): `SOUNDS/BNKSTORE.ZAR`, the 989snd banks -- every map's `MPn_am.bnk` (footsteps,
+ * landings, the jump), `MPn_fx.bnk` (the weapons) and `MPn_vc.bnk` -- read by range, two banks a map; and
+ * `SOUNDRDR.ZAR`, the sound script (`sounds.rdr`: each sound's distance range). `SOUNDS/VAGSTORE.ZAR`, the
+ * 576 MB of voice-over streams, is not served: nothing the walk plays is in it.
  */
-export const COMMON_ARCHIVES: readonly string[] = ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR'];
+export const COMMON_ARCHIVES: readonly string[] = [
+  'RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR', 'RUN/SOUNDRDR.ZAR', 'RUN/SOUNDS/BNKSTORE.ZAR',
+];
 
 /** `public/maps/index.json`: the maps for the picker, and the common archives served beside them. */
 export interface ServedIndex { maps: MapInfo[]; common: string[] }

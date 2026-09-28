@@ -312,6 +312,8 @@ export function writePose(skeleton: Skeleton, parts: readonly PartPose[]): void 
 export interface AnimStats {
   clip: string;
   frame: number;
+  /** The clip's key count: `frame / frames` is the cycle's phase (the audio's footfalls, web/docs/research/81 §4). */
+  frames: number;
   blend: number;
   from: string | null;
   /** Keys a second the clip advances at this frame. */
@@ -443,7 +445,7 @@ export class Animator {
     const cur = this.current;
     const blend = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     return {
-      clip: cur?.clip.name ?? '', frame: cur?.frame ?? 0, blend, from: this.from?.name ?? null, rate: cur?.rate ?? 0,
+      clip: cur?.clip.name ?? '', frame: cur?.frame ?? 0, frames: cur?.clip.frameCount ?? 0, blend, from: this.from?.name ?? null, rate: cur?.rate ?? 0,
       layer: this.layer?.name ?? null,
     };
   }
@@ -459,4 +461,4 @@ const CYCLES = new Set<string>([
   SEAL_CLIPS.walk, SEAL_CLIPS.jog, SEAL_CLIPS.run, SEAL_CLIPS.walkBack, SEAL_CLIPS.runBack, SEAL_CLIPS.strafeLeft,
   SEAL_CLIPS.strafeRight, SEAL_CLIPS.crouchWalk, SEAL_CLIPS.crouchWalkBack,
 ]);
-const isCycle = (name: string): boolean => CYCLES.has(name.replace(/^seal_p_/, 'seal_'));
+export const isCycle = (name: string): boolean => CYCLES.has(name.replace(/^seal_p_/, 'seal_'));
