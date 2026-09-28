@@ -1,0 +1,29 @@
+# Sprint 17 Q0: the offline exit route -- boot to the mission briefing, then leave toward the main menu.
+# The owner's report (2026-09-27): leaving a mission after reaching its briefing page closes the game.
+# The steps to the briefing are launch_to_mission.txt's. The exit (found 2026-09-28, the s17_q0 captures):
+# TRIANGLE on the briefing opens "Are you sure you want to leave the mission?" with NO selected;
+# LEFT moves to YES; CROSS leaves. The run log then carries [call-trace] InitExecPS2/SetArg/LoadExecPS2Wrap,
+# the [guest-fault] line if it fires, and [LoadExecPS2]'s argv.
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+next+2.0:CROSS      # main menu -> NEW GAME
+next+2.0:CROSS      # select rank
+next+2.0:CROSS      # controller presets (1)
+next+2.0:CROSS      # controller presets (2)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # cinematic -> skip
+next+2.0:DOWN       # briefing: OVERVIEW -> ... (the briefing page is on screen here)
+wait+3.0:NONE       # a settled capture of the briefing page
+wait+2.0:TRIANGLE   # "Are you sure you want to leave the mission?" (NO selected)
+wait+2.0:LEFT       # -> YES
+wait+2.0:CROSS      # leave
+wait+6.0:NONE       # the game either shows the main menu, or has left the process
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
