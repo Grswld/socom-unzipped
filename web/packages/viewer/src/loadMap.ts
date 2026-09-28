@@ -139,6 +139,7 @@ export interface LoadedMap {
    * Null, with a diagnostic, when it will not decode; absent on a map built by hand.
    */
   body?: LoadedBody | null;
+  /**
    * The held weapon (W2.4, `./shot`): the M4A1 SD (W2.R4) out of `COMMON/WEAP_GEO.ZED` and `WEAP_MDL.ZED`, its high
    * LOD's packets in the weapon's own frame (x along the barrel, y up; web/docs/research/79 §2) and its named nodes --
    * the muzzle `firepoint` among them. Its textures are in `textures` with the map's. Absent when the library will
@@ -293,11 +294,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
-  const drawn = [...parts, ...props.flatMap((p) => p.parts)]
+  // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
+  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? [])]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
     .concat(body ? bodyTextureNames(body) : []);
-  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? [])]
-    .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)));
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
   const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
   const texlib = textureLibrary(bytes, toc, stem, notes);
