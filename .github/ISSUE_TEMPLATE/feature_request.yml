@@ -1,6 +1,6 @@
 name: Feature or change request
 description: Something the project should do, or do differently. Large changes start here, before a pull request.
-labels: ["enhancement"]
+labels: ["feature"]
 body:
   - type: textarea
     id: problem

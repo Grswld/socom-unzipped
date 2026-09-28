@@ -289,7 +289,7 @@ issue is what gets corrected.
 - **Labels:** `known-issue` (the stack's marker) + **exactly one area** (`audio render online launcher input linux
   packaging docs harness server build recomp`) + the states that apply (`needs-repro`, `needs-disc-gate`),
   `from-launcher` when it came from a report, `carried` when it survived a sprint close, and `help wanted` /
-  `good first issue` when a contributor without a disc could take it. `bug` and `enhancement` are what the
+  `good first issue` when a contributor without a disc could take it. `bug` and `feature` are what the
   templates put on issues strangers open; the stack does not need them. The whole set is
   `scripts/github_labels.sh` -- add a label there and run it, never in the web page.
 - **Milestone:** one per sprint, named `Sprint N`, created when the sprint opens
