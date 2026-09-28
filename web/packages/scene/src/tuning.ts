@@ -46,6 +46,21 @@ export interface SealTuning {
   standTurnFactor: number;
   /** `pitch_rate` (`char_dyn.cpp:164-167`). */
   pitchRate: number;
+  /**
+   * `turn_throttle_a`, `turn_throttle_b` (`char_dyn.cpp:169-177`; the table's `+0xf8`/`+0xfc`, `DAT_0044c348`): the
+   * look's piecewise-linear throttle, which `FUN_005966a0` applies only when `DAT_0066b3e8` is set -- 0 on the console
+   * dump, so off (web research 83 section 1).
+   */
+  turnThrottle: [a: number, b: number];
+  /** `pitch_throttle_a`, `pitch_throttle_b` (`char_dyn.cpp:179-187`; `+0x100`/`+0x104`): the same, for the pitch. */
+  pitchThrottle: [a: number, b: number];
+  /** `camera_roll` (`char_dyn.cpp:189-192`; `+0x120`): not read by the placement `FUN_0029bc90` (no roll). */
+  cameraRoll: number;
+  /**
+   * `CAMERA_WIGGLE` (`char_dyn.cpp:194-201`; the table's `+0x18c..0x194`): reCOM's `TickCameraWiggle` reads it; in
+   * SOCOM II nothing reads it but the loader `FUN_0059ba80` -- the game's shake is `FUN_002994e0` (research 83 section 5).
+   */
+  cameraWiggle: { amplitude: number; duration: number; rate: number };
   /** `min_look_pitch`, `max_look_pitch`, degrees (`char_dyn.cpp:116-124`). */
   lookPitch: [min: number, max: number];
   /** `max_look_yaw`, degrees (`char_dyn.cpp:126`). */
@@ -54,6 +69,16 @@ export interface SealTuning {
   aimPitch: [min: number, max: number];
   /** `max_aim_yaw`, degrees (`char_dyn.cpp:69`). */
   aimYaw: number;
+  /** `prone_max_aim_yaw`, degrees: the table's `+0x6c`, the prone aim cone `FUN_005df600` clamps to. */
+  proneAimYaw: number;
+  /** `min_zoom_aim_pitch`, `max_zoom_aim_pitch`, degrees (`char_dyn.cpp:79-95`): the scoped aim limits. */
+  zoomAimPitch: [min: number, max: number];
+  /** `max_zoom_aim_yaw`, degrees. */
+  zoomAimYaw: number;
+  /** `prone_min_zoom_aim_pitch`, `prone_max_zoom_aim_pitch`, degrees (`char_dyn.cpp:97-113`). */
+  proneZoomAimPitch: [min: number, max: number];
+  /** `prone_max_zoom_aim_yaw`, degrees. */
+  proneZoomAimYaw: number;
   /**
    * `init_aim_pitch`, degrees (`char_dyn.cpp:59-62`): the table's `+0x54`, -0.16 rad on the console dump, and the
    * console's spawn pitch -- the camera's rest pitch (W2.1, `FUN_00594600` holds the pitch at it in its recentre mode).
@@ -136,6 +161,9 @@ export function sealDynamics(script: RdrNode): SealTuning {
   const bob = rdrGet(script, 'BOBBING_FIRSTPERSON');
   if (!Array.isArray(bob)) throw new Error(`${where} has no BOBBING_FIRSTPERSON`);
   const b = (key: string): number => rdrReal(bob, key, 1, `${where} BOBBING_FIRSTPERSON`);
+  const wiggle = rdrGet(script, 'CAMERA_WIGGLE');
+  if (!Array.isArray(wiggle)) throw new Error(`${where} has no CAMERA_WIGGLE`);
+  const w = (key: string): number => rdrReal(wiggle, key, 1, `${where} CAMERA_WIGGLE`);
   const cam = Object.fromEntries(CAM_VIEWS.map((view) => [view, {
     height: n(`cam_${view}_height`), dist: n(`cam_${view}_dist`), side: n(`cam_${view}_side`),
     aim: triple(script, `cam_${view}_aim`, where),
@@ -154,10 +182,19 @@ export function sealDynamics(script: RdrNode): SealTuning {
     turnMaxRate: n('turn_maxrate'),
     standTurnFactor: n('stand_turn_factor'),
     pitchRate: n('pitch_rate'),
+    turnThrottle: [n('turn_throttle_a'), n('turn_throttle_b')],
+    pitchThrottle: [n('pitch_throttle_a'), n('pitch_throttle_b')],
+    cameraRoll: n('camera_roll'),
+    cameraWiggle: { amplitude: w('Amplitude'), duration: w('Duration'), rate: w('Rate') },
     lookPitch: [n('min_look_pitch'), n('max_look_pitch')],
     lookYaw: n('max_look_yaw'),
     aimPitch: [n('min_aim_pitch'), n('max_aim_pitch')],
     aimYaw: n('max_aim_yaw'),
+    proneAimYaw: n('prone_max_aim_yaw'),
+    zoomAimPitch: [n('min_zoom_aim_pitch'), n('max_zoom_aim_pitch')],
+    zoomAimYaw: n('max_zoom_aim_yaw'),
+    proneZoomAimPitch: [n('prone_min_zoom_aim_pitch'), n('prone_max_zoom_aim_pitch')],
+    proneZoomAimYaw: n('prone_max_zoom_aim_yaw'),
     initAimPitch: n('init_aim_pitch'),
     proneAimPitch: [n('prone_min_aim_pitch'), n('prone_max_aim_pitch')],
     climbHeights: [n('low_climb_height', M_SCALE), n('med_climb_height', M_SCALE), n('high_climb_height', M_SCALE)],
@@ -230,7 +267,10 @@ export const SEAL_TUNING: SealTuning = {
   gravity: 235, jumpFactor: 0.85, groundTouchDistance: 8, maxSlopeDeg: 50, stepHeight: 6.5,
   fbAccel: 0.01, lrAccel: 0.01, throtExp: 1, accelX: [2, 5], accelZ: [2, 5],
   turnMaxRate: 2, standTurnFactor: 2.3, pitchRate: 0.85,
-  lookPitch: [-60, 80], lookYaw: 89, aimPitch: [-70, 60], aimYaw: 85,
+  turnThrottle: [0.9, 0.4], pitchThrottle: [0.9, 0.4], cameraRoll: 0.0001,
+  cameraWiggle: { amplitude: 22, duration: 0.6, rate: 0.1 },
+  lookPitch: [-60, 80], lookYaw: 89, aimPitch: [-70, 60], aimYaw: 85, proneAimYaw: 45,
+  zoomAimPitch: [-70, 65], zoomAimYaw: 85, proneZoomAimPitch: [-20, 25], proneZoomAimYaw: 45,
   initAimPitch: -9.167, proneAimPitch: [-20, 25],
   climbHeights: [13, 21.5, 26.5], minStandHeight: 10, minJumpHeight: 20,
   landFallRate: 40, landHardFallRate: 115, fallingDamage: [62, 91, 120],
