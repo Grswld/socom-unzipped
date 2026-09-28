@@ -47,7 +47,8 @@ export function glide(v0: number, target: number, rate: number, dt: number): { m
 
 /**
  * What the keys and the touch stick ask the walk for (`./walk`): forward and right on the ground plane, -1..1. The
- * boost is the fly camera's gesture; the walk does not read it (W2.R2).
+ * boost is the fly camera's gesture and is always false here: the walk has no sprint (W2.R2; the owner, 2026-09-28).
+ * The field stays so the walk's input type is unchanged.
  */
 export interface GroundWish { forward: number; right: number; boost: boolean }
 
@@ -121,6 +122,7 @@ export interface FlyCameraOptions {
  * - **Space** up, **Shift** down, both in world space. **Double-tap W and hold** to boost, which widens
  *   the view to match -- Minecraft's own sprint gesture, and the only one that is safe here: Ctrl+W
  *   closes the tab and no page can prevent it, so nothing is bound to Ctrl.
+ *   The boost is the fly camera's alone: in walk mode nothing boosts (owner, 2026-09-28).
  *   **Q/E** stay bound to down/up as they were, for anyone with the old keys in their fingers.
  * - **Wheel** trims the speed between a tenth and sixteen times, because a map is 100 m across but a
  *   prop is 30 cm.
@@ -272,11 +274,15 @@ export class FlyCamera {
    * Walk mode on or off. On, `update` still turns the view (the mouse, the arrow keys) and eases the boost's FOV,
    * but no longer moves the camera: the keys and the stick are read by the walk through `groundWish`, and the walk
    * places the view with `placeView` (the mouse's y then moves the pitch at the pad's ratio, clamped to
-   * `setPitchLimits`). Either way the glide is dropped.
+   * `setPitchLimits`). Either way the glide is dropped, and so is any boost armed: a W double-tapped or a stick held at
+   * its rim must not carry across the switch (the walk has none, and flying starts unboosted).
    */
   setWalking(on: boolean): void {
     this.walking = on;
     this.velocity.set(0, 0, 0);
+    this.sprinting_ = false;
+    this.lastForwardTap = 0;
+    this.stickBoost = false;
     if (!on) {
       this.walkPitch = [-PITCH_LIMIT, PITCH_LIMIT];
       this.apply();                                  // a third-person view leaves the look where yaw and pitch put it
@@ -312,17 +318,15 @@ export class FlyCamera {
 
   /**
    * The ground-plane half of what `update` would steer by: W/S and the stick's y forward, D/A and the stick's x to
-   * the right, clamped into the unit disc as `update` clamps, and whether the boost is on (a double-tapped W held,
-   * or the stick held at its rim). Space and shift have no meaning on the ground.
+   * the right, clamped into the unit disc as `update` clamps. The boost (a double-tapped W held, or the stick held at
+   * its rim) is the fly camera's: on the ground it is never on. Space and shift have no meaning on the ground.
    */
   groundWish(): GroundWish {
     let forward = this.stickY + (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
     let right = this.stickX + (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
-    const moving = length > 0;
-    const boost = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
-    return { forward, right, boost };
+    return { forward, right, boost: false };
   }
 
   /**
@@ -417,7 +421,7 @@ export class FlyCamera {
 
   /** The stick held at its rim: boosts while the stick is pushed, the way a double-tapped W does. */
   setStickBoost(on: boolean): void {
-    this.stickBoost = on;
+    this.stickBoost = on && !this.walking;      // no sprint on foot
   }
 
   /**
@@ -543,7 +547,7 @@ export class FlyCamera {
     const code = e.code.toLowerCase();
     if (OWNED.has(code)) e.preventDefault();
 
-    if (code === 'keyw' && !this.keys.has('keyw')) {          // the press, not the auto-repeat
+    if (code === 'keyw' && !this.keys.has('keyw') && !this.walking) {   // the press, not the auto-repeat; no sprint on foot
       const now = performance.now();
       this.sprinting_ = now - this.lastForwardTap < DOUBLE_TAP_MS;
       this.lastForwardTap = now;

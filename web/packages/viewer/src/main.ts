@@ -22,7 +22,8 @@ import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { buildBody, type BodyView } from './bodyView';
 import { ammoText, Fire } from './fire';
-import { Play, playActions } from './play';
+import { Play, playActions, StanceButton } from './play';
+import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
@@ -48,6 +49,13 @@ const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('the page has no #view canvas');
 
+/**
+ * Playing as a SEAL (walk mode, the body, the rifle) is behind `?redotcom` (`./features`, the owner 2026-09-28). Without
+ * it the play's markup is taken out of the page before the page is wired, and nothing below binds `G`, the pad's
+ * Start, `R` or the hook's walk: the page is the fly camera alone.
+ */
+const PLAY = playEnabled(globalThis.location?.search ?? '');
+if (!PLAY) removePlayUi();
 const ui = new Ui();
 const scene = new Scene();
 const fly = new FlyCamera(canvas, {
@@ -69,7 +77,7 @@ const reticle = new Reticle();
  */
 const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
 scene.add(fire.object);
-fire.bindKey();
+if (PLAY) fire.bindKey();
 /** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
 function trigger(down: boolean): void {
   if (down) fire.pull();
@@ -198,16 +206,28 @@ canvas.addEventListener('mousedown', (e) => { if (e.button === 2) mouseAim = tru
 globalThis.addEventListener('mouseup', (e) => { if (e.button === 2) mouseAim = false; });
 globalThis.addEventListener('blur', () => { mouseAim = false; });
 /**
- * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
- * (docs/PLAYTEST.md step 8), the aim while held (`playActions`). In the fly camera the same lanes are up and down.
+ * The scope (d-pad Up, owner 2026-09-28; the right mouse button too): one press a step. A STUB -- the zoom state is the
+ * accuracy workstream's (`zoom.cycle()`), wired here at the merge; until then a press does nothing.
  */
-function playLanes(before: Input, after: Input): void {
+function onZoom(): void { /* wired to the accuracy workstream's zoom.cycle() at merge */ }
+
+/**
+ * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
+ * (docs/PLAYTEST.md step 8), the aim while held (`playActions`), and the stance button's tap (crouch) and hold (prone;
+ * `StanceButton`, one step a frame). In the fly camera the same lanes are up and down.
+ */
+const stanceButton = new StanceButton();
+function playLanes(before: Input, after: Input, dt: number): void {
   const act = playActions(before, after);
-  if (walk.mode() === 'walk') {
+  const walking = walk.mode() === 'walk';
+  if (walking) {
     if (act.jump) walk.jump();
     if (act.crouch) walk.crouch();
   }
-  walk.setAiming(walk.mode() === 'walk' && (act.aim || mouseAim));
+  // Fed a released button off foot, so a press begun in the fly camera is not a tap when the walk begins.
+  const go = stanceButton.update(walking && after.stance, dt, walk.stance());
+  if (go !== null) walk.setStance(go);
+  walk.setAiming(walking && (act.aim || mouseAim));
 }
 
 /**
@@ -265,7 +285,7 @@ ui.onFullscreen();
 // ---- W2.7: the controller (`./gamepad`, ruling W2.R5) ------------------------------------------------------------
 /**
  * The touch stick's lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
- * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Cross and L3 are.
+ * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Square and L3 are.
  */
 const touchInput: Input = noInput();
 const touchLane: TouchTarget = {
@@ -295,24 +315,31 @@ let padMerged: Input = noInput();
  * the fly camera flies by and the walk's mover steps by (`groundWish`), so one mapping drives both (W2.R5). The right
  * stick turns at the arrow keys' rate, scaled (`setLook`). Up and down are the fly camera's; on foot the jump and the
  * crouch are the mover's (W2.3a), to be read from `padMerged` there -- the game's crouch acts on the release
- * (docs/PLAYTEST.md step 8; `releasedSince`). Start toggles walk and fly on its press, as `G` does on its keydown.
+ * (docs/PLAYTEST.md step 8; `releasedSince`); the stance button's tap and hold are `StanceButton`'s. Start toggles walk and fly on its press, as `G` does on its keydown.
  */
-function padFrame(): void {
+function padFrame(dt: number): void {
   const pad = padInput(pads.poll(navigator));
   const input = mergeInput(touchInput, pad);
   fly.setStick(input.moveX, input.moveY);
-  fly.setLift((input.jump ? 1 : 0) - (input.crouch ? 1 : 0));
+  fly.setLift((input.jump ? 1 : 0) - (input.crouch || input.stance ? 1 : 0));
   fly.setStickBoost(input.boost);
   fly.setLook(input.lookX, input.lookY);
-  if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
-  playLanes(padMerged, input);      // W2.6: jump, crouch and aim on foot
+  if (PLAY && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
+  // edges, so a released R1 never lets go of a mouse button or the touch button still held.
+  if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
+  if (pressedSince(padLast, pad).includes('zoom') && walk.mode() === 'walk') onZoom();
+  playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
   padLast = pad;
   padMerged = input;
 }
 attachTouchControls(touchLane, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
-walk.bindKey();
-ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
+if (PLAY) {
+  walk.bindKey();
+  ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
+}
 ui.onPanelToggle();
+ui.onControlsPopover();
 const revision = ui.showRevision();
 
 /**
@@ -439,7 +466,7 @@ async function boot(): Promise<void> {
   const frame = (): void => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
-    padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
+    padFrame(dt);                   // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
@@ -689,7 +716,7 @@ window.__viewer = {
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
   mode: () => walk.mode(),
-  setMode: (mode) => walk.setMode(mode),
+  setMode: (mode) => (mode === 'walk' && !PLAY ? false : walk.setMode(mode)),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
   pad: () => ({ id: pads.id(), input: { ...padMerged } }),

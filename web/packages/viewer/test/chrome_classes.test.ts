@@ -9,7 +9,7 @@ const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
 const css = readFileSync(resolve(here, '../src/styles.css'), 'utf-8');
 const ui = readFileSync(resolve(here, '../src/ui.ts'), 'utf-8');
 const doc = new JSDOM(html).window.document;
-const OWN = ['row', 'touch-lift', 'ps2-look', 'chrome-hidden', 'touch', 'panel-collapsed'];
+const OWN = ['row', 'checks', 'touch-lift', 'ps2-look', 'chrome-hidden', 'touch', 'panel-collapsed'];
 
 describe('the viewer chrome uses the design system', () => {
   it('links the vendored system once, before styles.css', () => {
@@ -18,7 +18,7 @@ describe('the viewer chrome uses the design system', () => {
     expect(html).not.toMatch(/googleapis|gstatic/);
   });
   it.each([
-    ['site-links', 's2u-bar'], ['panel', 's2u-overlay'], ['panel-toggle', 's2u-iconbtn'], ['panel-body', 's2u-overlay__body'],
+    ['site-links', 's2u-bar'], ['panel', 's2u-overlay'], ['panel-toggle', 's2u-tab--nav'], ['controls-toggle', 's2u-tab--nav'], ['controls', 's2u-overlay'], ['panel-body', 's2u-overlay__body'],
     ['fps', 's2u-status--pill'], ['fullscreen', 's2u-fab'], ['loading', 's2u-loading'], ['loading-bar', 's2u-loading__bar'],
     ['loading-what', 's2u-status'], ['status', 's2u-status'], ['diagnostics', 's2u-status'], ['warning', 's2u-notice--warn'],
     ['about', 's2u-disclosure'], ['advanced', 's2u-disclosure'], ['fog-box', 's2u-disclosure'], ['sliders-box', 's2u-disclosure'],
@@ -72,7 +72,7 @@ describe('the viewer chrome uses the design system', () => {
     expect(css).toMatch(/#fps\s*{[^}]*pointer-events:\s*none/);
     expect(css).toMatch(/#panel :focus-visible\s*{[^}]*outline-offset:\s*-2px/);
     expect(css).toMatch(/#panel-kicker\s*{[^}]*margin:\s*0/);
-    expect(css).toMatch(/@media \(max-width: 360px\)\s*{[^}]*#fps-rest\s*{[^}]*display:\s*none/);
+    expect(css).toMatch(/@media \(max-width: 480px\)\s*{[^}]*#fps-rest\s*{[^}]*display:\s*none/);
   });
   it('the ammo box (W2.5) is a readout bottom-left, hidden until walking, and goes with the chrome', () => {
     const ammo = doc.getElementById('ammo')!;
@@ -82,7 +82,7 @@ describe('the viewer chrome uses the design system', () => {
     expect(css).toMatch(/body\.chrome-hidden[^{]*#ammo/);
     expect(doc.getElementById('touch-fire')!.closest('#touch')).not.toBeNull();
   });
-  it('the fps pill is a number and a rest, so the rest can go at 360px', () => {
+  it('the fps pill is a number and a rest, so the rest can go on a phone', () => {
     expect(doc.querySelector('#fps > #fps-n')).not.toBeNull();
     expect(doc.querySelector('#fps > #fps-rest')).not.toBeNull();
   });
@@ -106,15 +106,41 @@ describe('the viewer chrome uses the design system', () => {
  * github an icon". The fold control leaves the panel for the site bar; a folded panel shows nothing.
  */
 describe('W2.0: the cog beside the brand, the GitHub mark', () => {
-  it('the panel toggle is a cog icon button in the site bar, right after the brand', () => {
+  it('the panel toggle is a cog tab in the end group of the bar, right before GitHub and after Controls', () => {
     const cog = doc.getElementById('panel-toggle')!;
     expect(cog.tagName).toBe('BUTTON');
-    expect(cog.parentElement!.id).toBe('site-links');
-    expect(cog.previousElementSibling!.id).toBe('home');
+    expect(cog.parentElement!.classList.contains('s2u-bar__end')).toBe(true);
+    expect(cog.parentElement!.parentElement!.id).toBe('site-links');
+    expect(cog.previousElementSibling!.id).toBe('controls-toggle');
+    expect(cog.nextElementSibling!.id).toBe('source');
     expect(cog.getAttribute('aria-label')).toBe('settings');
     expect(cog.getAttribute('aria-controls')).toBe('panel-body');
-    expect(cog.getAttribute('aria-expanded')).not.toBeNull();
+    expect(cog.getAttribute('aria-expanded')).toBe('false');                 // the panel starts folded
+    expect(cog.getAttribute('title')).toBeTruthy();
     expect(cog.querySelector('svg path')).not.toBeNull();
+  });
+  it('the three tabs of the bar are one class, each an icon before its word, so they share one size', () => {
+    for (const id of ['controls-toggle', 'panel-toggle', 'source']) {
+      const tab = doc.getElementById(id)!;
+      expect(tab.classList.contains('s2u-tab') && tab.classList.contains('s2u-tab--nav'), id).toBe(true);
+      expect(tab.firstElementChild!.tagName.toLowerCase(), id).toBe('svg');
+      expect(tab.lastElementChild!.tagName.toLowerCase(), id).toBe('span');
+      expect(tab.getAttribute('aria-label') && tab.getAttribute('title'), id).toBeTruthy();
+    }
+    expect(css).toMatch(/\.s2u-bar__end \.s2u-tab\s*{[^}]*height:\s*30px[^}]*padding:\s*0 12px/);
+  });
+  it('the controls tab opens a dialog popover after the panel, hidden, that holds the hint and the pad table', () => {
+    const tab = doc.getElementById('controls-toggle')!;
+    expect(tab.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(tab.getAttribute('aria-expanded')).toBe('false');
+    expect(tab.getAttribute('aria-controls')).toBe('controls');
+    const pop = doc.getElementById('controls')!;
+    expect(pop.getAttribute('role')).toBe('dialog');
+    expect(pop.hidden).toBe(true);
+    expect(pop.compareDocumentPosition(doc.getElementById('panel')!) & 2).toBe(2);   // the panel precedes it
+    expect(pop.querySelector('#hint')).not.toBeNull();
+    expect(pop.querySelector('#pad-box')).not.toBeNull();
+    expect(doc.querySelector('#panel #hint, #panel #pad-box')).toBeNull();
   });
   it('the panel has no title bar left in it: the kicker is its body\'s first line', () => {
     const panel = doc.getElementById('panel')!;
@@ -133,7 +159,7 @@ describe('W2.0: the cog beside the brand, the GitHub mark', () => {
     expect(source.getAttribute('title')).toBeTruthy();
     expect(doc.getElementById('source-word')!.textContent).toBe('GitHub');
     expect(css).toMatch(/#source svg\s*{[^}]*fill:\s*currentColor/);
-    expect(css).toMatch(/@media \(max-width: 480px\)\s*{[^}]*#source-word\s*{[^}]*display:\s*none/);
+    expect(css).toMatch(/@media \(max-width: 480px\)\s*{[^}]*#source-word[^}]*display:\s*none/);
   });
   it('ui.ts no longer writes a panel title', () => {
     expect(ui).not.toMatch(/panel-title/);

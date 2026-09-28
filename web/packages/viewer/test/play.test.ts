@@ -9,8 +9,8 @@ import { FlyCamera } from '../src/camera';
 import { buildBody } from '../src/bodyView';
 import { DEFAULT_LIGHTING } from '../src/lighting';
 import { loadMap, type LoadedMap } from '../src/loadMap';
-import { packGround, WalkMode, EYE_HEIGHT, type GroundData } from '../src/walk';
-import { bodySkeleton, bodyVisible, eyePoint, Play, playActions } from '../src/play';
+import { packGround, WalkMode, EYE_HEIGHT, type GroundData, type Stance } from '../src/walk';
+import { bodySkeleton, bodyVisible, eyePoint, Play, playActions, StanceButton, STANCE_HOLD_S_PLACEHOLDER, stanceOnHold, stanceOnTap } from '../src/play';
 import { noInput } from '../src/gamepad';
 import { existsSync } from 'node:fs';
 
@@ -108,6 +108,61 @@ describe('the pad\'s lanes in play (W2.R5): jump on the press, crouch on the rel
     expect(playActions(noInput(), aim).aim).toBe(true);
     expect(playActions(aim, aim).aim).toBe(true);
     expect(playActions(aim, noInput()).aim).toBe(false);
+  });
+});
+
+describe('the stance button (owner, 2026-09-28): a tap toggles crouch, a hold goes prone, a tap from prone stands', () => {
+  const FRAME = 1 / 60;
+  /** Holds the button for `seconds`, lets go, and returns every stance it asked for, in order. */
+  const press = (b: StanceButton, from: Stance, seconds: number): Stance[] => {
+    const asked: Stance[] = [];
+    let now = from;
+    for (let t = 0; t < seconds - 1e-9; t += FRAME) { const go = b.update(true, FRAME, now); if (go) { asked.push(go); now = go; } }
+    const go = b.update(false, FRAME, now);
+    if (go) asked.push(go);
+    return asked;
+  };
+
+  it('names its hold threshold, a guess of 0.4 s', () => {
+    expect(STANCE_HOLD_S_PLACEHOLDER).toBe(0.4);
+  });
+
+  it('a tap acts at the release: stand to crouch, crouch to stand, prone to stand', () => {
+    const b = new StanceButton();
+    expect(b.update(true, FRAME, 'stand')).toBeNull();             // nothing while it is down
+    expect(b.update(false, FRAME, 'stand')).toBe('crouch');
+    expect(press(new StanceButton(), 'crouch', 0.1)).toEqual(['stand']);
+    expect(press(new StanceButton(), 'prone', 0.1)).toEqual(['stand']);
+  });
+
+  it('a hold acts when the threshold is reached, still down, and its release then does nothing', () => {
+    const b = new StanceButton();
+    let asked: string | null = null;
+    let t = 0;
+    while (asked === null && t < 2) { asked = b.update(true, FRAME, 'stand'); t += FRAME; }
+    expect(asked).toBe('prone');
+    expect(t).toBeGreaterThanOrEqual(STANCE_HOLD_S_PLACEHOLDER);
+    expect(t).toBeLessThan(STANCE_HOLD_S_PLACEHOLDER + 2 * FRAME);
+    expect(b.update(true, FRAME, 'prone')).toBeNull();             // held on: once, however long
+    expect(b.update(false, FRAME, 'prone')).toBeNull();            // and the release is not a tap
+    expect(press(new StanceButton(), 'crouch', 0.6)).toEqual(['prone']);
+    expect(press(new StanceButton(), 'prone', 0.6)).toEqual(['stand']);   // a hold from prone stands, as the game's full press does
+  });
+
+  it('just short of the threshold is still a tap', () => {
+    expect(press(new StanceButton(), 'stand', STANCE_HOLD_S_PLACEHOLDER - 2 * FRAME)).toEqual(['crouch']);
+  });
+
+  it('the next press starts fresh', () => {
+    const b = new StanceButton();
+    expect(press(b, 'stand', 0.6)).toEqual(['prone']);
+    expect(press(b, 'prone', 0.1)).toEqual(['stand']);
+    expect(press(b, 'stand', 0.1)).toEqual(['crouch']);
+  });
+
+  it('the two rules as functions', () => {
+    expect(['stand', 'crouch', 'prone'].map((s) => stanceOnTap(s as Stance))).toEqual(['crouch', 'stand', 'stand']);
+    expect(['stand', 'crouch', 'prone'].map((s) => stanceOnHold(s as Stance))).toEqual(['prone', 'prone', 'stand']);
   });
 });
 

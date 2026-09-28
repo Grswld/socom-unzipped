@@ -6,7 +6,7 @@ import type { BodyView } from './bodyView';
 import type { Pose } from './camera';
 import { pressedSince, releasedSince, type Input } from './gamepad';
 import type { MotionEntry } from './motionTable';
-import type { WalkMode } from './walk';
+import type { Stance, WalkMode } from './walk';
 
 /**
  * The play mode (web sprint 2, W2.2b; ruling W2.R1): the walk mode with the body. Entering walk (`G`, the panel's
@@ -34,10 +34,54 @@ export function bodyVisible(kind: ViewKind, flyToggle: boolean): boolean {
  * The pad's lanes as the play mode acts on them (W2.R5; `./gamepad`'s `Input`, the pad and the touch buttons merged):
  * the jump on the press, the crouch on the release -- the game toggles the stance when the button comes up
  * (docs/PLAYTEST.md step 8, `host_crouch_shortcut.h:5-6`) -- and the aim view while the aim lane is held. The fire lane
- * is W2.4's.
+ * is the trigger's (`main.ts`), and the stance lane's tap and hold are `StanceButton`'s.
  */
 export function playActions(before: Input, after: Input): { jump: boolean; crouch: boolean; aim: boolean } {
   return { jump: pressedSince(before, after).includes('jump'), crouch: releasedSince(before, after).includes('crouch'), aim: after.aim };
+}
+
+/**
+ * How long Triangle is held before it means prone, seconds. A guess: the game does not time the button, it reads its
+ * pressure (a light press toggles crouch at release, a full press goes prone at once; `host_crouch_shortcut.h:4-7`,
+ * docs/KNOWN.md R139), and a browser pad's button is only on or off, so the owner's rule (2026-09-28: tap crouches,
+ * hold goes prone) needs a length, and none is in the repository. 0.4 s is a comfortable tap's ceiling.
+ */
+export const STANCE_HOLD_S_PLACEHOLDER = 0.4;
+
+/** What a tap on the stance button does: stand and crouch toggle, and from prone it stands up. */
+export function stanceOnTap(stance: Stance): Stance {
+  return stance === 'stand' ? 'crouch' : 'stand';
+}
+
+/** What a hold does: prone, or from prone up on its feet (the game's full press stands a prone SEAL). */
+export function stanceOnHold(stance: Stance): Stance {
+  return stance === 'prone' ? 'stand' : 'prone';
+}
+
+/**
+ * The stance button as a state machine, one `update` a frame: a press let go inside `STANCE_HOLD_S_PLACEHOLDER` is a
+ * tap and acts at the release, as the game's light press does; a press held that long acts at that moment (the game's
+ * full press acts at once) and its release then does nothing. Returns the stance to go to, or null.
+ */
+export class StanceButton {
+  private held = 0;
+  private was = false;
+  private acted = false;
+
+  constructor(private readonly holdSeconds = STANCE_HOLD_S_PLACEHOLDER) {}
+
+  update(down: boolean, dt: number, stance: Stance): Stance | null {
+    let go: Stance | null = null;
+    if (down) {
+      if (!this.was) { this.held = 0; this.acted = false; }
+      this.held += dt;
+      if (!this.acted && this.held >= this.holdSeconds) { this.acted = true; go = stanceOnHold(stance); }
+    } else if (this.was && !this.acted) {
+      go = stanceOnTap(stance);
+    }
+    this.was = down;
+    return go;
+  }
 }
 
 /**

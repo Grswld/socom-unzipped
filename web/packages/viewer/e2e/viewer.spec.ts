@@ -276,12 +276,12 @@ test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/
 });
 
 /**
- * W2.0: the fold control is a cog in the site bar, beside the brand; folded, nothing of the panel shows;
+ * W2.0: the fold control is a cog in the site bar, beside GitHub; folded, nothing of the panel shows;
  * the backtick hides the panel but not the bar, so the cog stays; the GitHub link wears its mark.
  */
 test('the cog in the site bar folds the panel away entirely; the backtick leaves the cog', async ({ page }) => {
   await page.goto('/');
-  const cog = page.locator('#site-links > #panel-toggle');
+  const cog = page.locator('#site-links #panel-toggle');
   await expect(cog).toBeVisible();
   await expect(page.locator('#source svg')).toHaveCount(1);
   await expect(page.locator('#panel')).toBeVisible();
@@ -300,12 +300,12 @@ test('the cog in the site bar folds the panel away entirely; the backtick leaves
 });
 
 test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, storageState: { cookies: [], origins: [] } });
   const page = await ctx.newPage();
   await page.goto('/');
   // Folded on a coarse pointer: no strip of it left, only the cog in the bar.
   await expect(page.locator('#panel')).toBeHidden();
-  await expect(page.locator('#site-links > #panel-toggle')).toBeVisible();
+  await expect(page.locator('#site-links #panel-toggle')).toBeVisible();
   await unfoldPanel(page);
   const panel = await page.locator('#panel').boundingBox();
   const fab = await page.locator('#fullscreen').boundingBox();

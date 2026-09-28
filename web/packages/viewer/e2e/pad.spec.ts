@@ -3,10 +3,12 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The controller on Frostfire (web sprint 2, W2.7; ruling W2.R5): a fake `navigator.getGamepads` hands the page one
- * pad in the standard mapping (W3C Gamepad, "Remapping"), which the test plugs in, pushes and unplugs. The toast names
- * it, the layout table appears with its assumed rows marked, the left stick walks the mover and flies the camera, Cross
- * is the jump on foot and up in the air, Start is `G`, the right stick looks.
+ * The controller on Frostfire (web sprint 2, W2.7; ruling W2.R5; the owner's layout of 2026-09-28): a fake
+ * `navigator.getGamepads` hands the page one pad in the standard mapping (W3C Gamepad, "Remapping"), which the test
+ * plugs in, pushes and unplugs. The toast names it, the layout table appears with the flying controls only (the walking
+ * ones once walking), the left stick walks the mover and flies the camera, Square is the jump on foot and up in the
+ * air, R1 fires, Triangle is the stance (a tap crouches, a hold goes prone, a tap from prone stands), d-pad Up is the
+ * scope's lane, Start is `G`, the right stick looks. The page is loaded with `?redotcom`, which walking needs.
  *
  * Held inputs are held for real time, as `walk.spec.ts` holds W: the mover's distance then depends on the host's frame
  * rate, so the checks are that it moved, the right way and on the right floor, not how far.
@@ -21,7 +23,7 @@ type FakeWindow = Window & { __fakePad: FakePad };
 
 const PAD_ID = 'Test pad (STANDARD GAMEPAD)';
 /** The standard mapping's indices the test presses (`src/gamepad.ts`, `PAD_BUTTON`). */
-const CROSS = 0, START = 9;
+const SQUARE = 2, TRIANGLE = 3, R1 = 5, START = 9, DPAD_UP = 12;
 
 /** A's spawn on Frostfire (KNOWN section 1), the feet, and the eye 15.4 over them (W1.R2), as `walk.spec.ts` has them. */
 const SPAWN_A: [number, number, number] = [796, 100, 614];
@@ -77,7 +79,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
     });
   }, PAD_ID);
 
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -88,17 +90,24 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   // Nothing plugged in: no toast, no layout, no pad.
   const toast = page.locator('#toast');
   await expect(toast).toBeHidden();
-  await expect(page.locator('#pad-box')).toBeHidden();
+  await expect(page.locator('#pad-box')).toHaveJSProperty('hidden', true);
   await expect(page.locator('#hint')).not.toContainText('pad: connected');
   expect(await page.evaluate(() => window.__viewer.pad().id)).toBeNull();
 
-  // Plugged in: the toast names it, the layout shows with its seven assumed rows marked, the hint line says so.
+  // Plugged in: the toast names it, the layout shows the flying controls (R3's boost the one assumed row of them), the
+  // hint line says so.
   await plug(page, true);
   await expect(toast).toBeVisible();
   await expect(toast).toHaveText(`Controller connected: ${PAD_ID}`);
+  await expect(page.locator('#pad-box')).toHaveJSProperty('hidden', false);
+  await page.locator('#controls-toggle').hover();                              // the table lives in the Controls popover
   await expect(page.locator('#pad-box')).toBeVisible();
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(11);
-  await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(7);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(700, 500);
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(7);
+  await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(1);
+  await expect(page.locator('#pad-layout tbody')).toContainText('boost');
+  await expect(page.locator('#pad-layout tbody')).not.toContainText('fire');
   await expect(page.locator('#hint')).toContainText('pad: connected');
   expect(await page.evaluate(() => window.__viewer.pad().id)).toBe(PAD_ID);
 
@@ -117,11 +126,59 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[2]).toBeGreaterThan(start[2]);
   expect(walked[1]).toBeCloseTo(100, 3);
 
-  // Cross is the jump on foot (assumed; the mover's jump is W2.3a's): what reaches the page is the jump.
-  await setPad(page, { press: [CROSS] });
+  // On foot the table lists the walking controls: R1's fire, no boost.
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(9);
+  await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(0);
+  await expect(page.locator('#pad-layout tbody')).toContainText('fire (held)');
+  await expect(page.locator('#pad-layout tbody')).not.toContainText('boost');
+  await expect(page.locator('#hint')).toContainText('click fire');
+
+  // Square is the jump on foot (the mover's jump is W2.3a's): what reaches the page is the jump; Cross does nothing.
+  await setPad(page, { press: [0] });
+  await page.waitForTimeout(200);
+  expect((await page.evaluate(() => window.__viewer.pad().input)).jump).toBe(false);
+  await setPad(page, { press: [SQUARE] });
   await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.jump)).toBe(true);
   await setPad(page, {});
   await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.jump)).toBe(false);
+  await page.waitForTimeout(1500);                 // the jump lands
+
+  // R1 is the trigger: held, the rifle fires at its rate; let go, it stops.
+  const shots = (): Promise<number> => page.evaluate(() => window.__viewer.fire().shots);
+  const shotsBefore = await shots();
+  await setPad(page, { press: [R1] });
+  await expect.poll(shots).toBeGreaterThan(shotsBefore);
+  await setPad(page, {});
+  await page.waitForTimeout(200);
+  const after = await shots();
+  await page.waitForTimeout(400);
+  expect(await shots()).toBe(after);
+
+  // Triangle is the stance: a tap crouches, a tap again stands, a hold goes prone, a tap from prone stands.
+  const stance = (): Promise<string> => page.evaluate(() => window.__viewer.stance());
+  expect(await stance()).toBe('stand');
+  await setPad(page, { press: [TRIANGLE] });
+  await page.waitForTimeout(120);
+  await setPad(page, {});
+  await expect.poll(stance).toBe('crouch');
+  await setPad(page, { press: [TRIANGLE] });
+  await page.waitForTimeout(120);
+  await setPad(page, {});
+  await expect.poll(stance).toBe('stand');
+  await setPad(page, { press: [TRIANGLE] });
+  await expect.poll(stance, { timeout: 5000 }).toBe('prone');      // acts at the hold's threshold, button still down
+  await setPad(page, {});
+  await page.waitForTimeout(300);
+  expect(await stance()).toBe('prone');                             // the release after a hold is not a tap
+  await setPad(page, { press: [TRIANGLE] });
+  await page.waitForTimeout(120);
+  await setPad(page, {});
+  await expect.poll(stance).toBe('stand');
+
+  // D-pad Up is the scope's lane (the zoom itself is the accuracy workstream's).
+  await setPad(page, { press: [DPAD_UP] });
+  await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.zoom)).toBe(true);
+  await setPad(page, {});
 
   // Start is G: held across frames it toggles once, walk to fly, and the panel's switch follows.
   await setPad(page, { press: [START] });
@@ -130,6 +187,8 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
   await setPad(page, {});
   await expect(page.locator('#walk')).not.toBeChecked();
+  await expect(page.locator('#mode button[data-mode="fly"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(7);         // and the table is the flying controls again
 
   // Fly: the same stick flies along the look (yaw 0 looks down -z) and does not turn it.
   await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 160, z: 614, yaw: 0, pitch: 0 }));
@@ -142,8 +201,8 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(before.z - flown.z).toBeGreaterThan(5);
   expect(flown.yaw).toBeCloseTo(before.yaw, 6);
 
-  // Cross is up in the air.
-  await setPad(page, { press: [CROSS] });
+  // Square is up in the air.
+  await setPad(page, { press: [SQUARE] });
   await page.waitForTimeout(500);
   await setPad(page, {});
   await page.waitForTimeout(600);

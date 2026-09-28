@@ -19,6 +19,10 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: `http://localhost:${PORT}`,
+    // The settings panel starts folded on a first visit (`Ui.onPanelToggle`), and most specs drive its controls, so
+    // they start from a visitor who has opened it once: the remembered choice, set here. The spec for the first-visit
+    // default asks for a clean context (`test.use({ storageState: ... })`).
+    storageState: { cookies: [], origins: [{ origin: `http://localhost:${PORT}`, localStorage: [{ name: 's2u.viewer.panelOpen', value: '1' }] }] },
     launchOptions: {
       // Headless chromium has no GPU: ANGLE over SwiftShader is what draws, and recent Chrome versions
       // refuse WebGL on SwiftShader without being told the risk is accepted.
