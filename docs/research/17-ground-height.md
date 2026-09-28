@@ -58,6 +58,16 @@ pointing here, and HANDOFF's item is renamed "Third-person camera height".
 
 ## 1. The measured numbers (both sides)
 
+> **Superseded in its reading, 2026-09-28** (web sprint 2 W2.3, ruling W2.R9;
+> `web/docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md` §7, "The SEAL is 19.6 units tall, and
+> the console's spawn dump holds a crouched player"). The numbers below stand; what changes is what they are of.
+> The console's root Y `5.50391`, read here and in §4.2 as the console's rest (resting) value, is the **crouched**
+> spawn's root: it is under the game's own stance test `node[0].y < 9.0` (§8) and the player's right knee is on the
+> ground at 0.54 on the same dump. The **standing** root is **11.484** (the 24 actors at the bind pose on the dump;
+> also where our root began in §4.1). So the camera measured here -- the target 15.378 over the feet -- is the
+> crouched player's camera; standing, `FUN_0029a950`'s ramp saturates and the target is 21.484. The sentences
+> below are left as written (`docs/HANDOFF.md` §4 rule 11).
+
 Ours: `logs/parity/rest_ours.rdram` (mission_s21, 400 s, at rest). Console:
 `logs/parity/spawn_pcsx2.rdram` (PCSX2 spawn image). Player actor `0x1a5e4b0` / `0x1713ce0`,
 `CSealCtrl` `0x1785ee0` / `0x170d510`, global camera `[0x415ff0]` → `0xd5f920` / `0xfd5cb0`.
@@ -69,7 +79,7 @@ Ours: `logs/parity/rest_ours.rdram` (mission_s21, 400 s, at rest). Console:
 | camera eye (`cam+0x2c`) | `939.241, -131.770, 832.225` | `939.439, -126.384, 832.900` | y: **5.386** |
 | camera eye, smoothed (`cam+0xd8` = `CSealCtrl+0x90`) | `939.241, -131.725, 831.951` | `939.439, -126.264, 832.160` | y: **5.461** |
 | target height above the player | **10.0000** | **15.3782** | **5.3782** |
-| **player skeleton root node Y** (`actor+0x2e8` → `+0x04`) | **0.00000** | **5.50391** | **5.50391** |
+| **player skeleton root node Y** (`actor+0x2e8` → `+0x04`) (the crouched player's; standing 11.484 — 2026-09-28) | **0.00000** | **5.50391** | **5.50391** |
 
 All console figures in this table are **measured** from `spawn_pcsx2.rdram`. The only inferred
 console figure anywhere in this note is the statement that the console's rest height equals its
