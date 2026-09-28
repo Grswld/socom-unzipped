@@ -19,6 +19,7 @@
 #include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_frame_histogram.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
+#include "runtime/gs/gs_gl_state_tags.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -6333,6 +6334,39 @@ void register_ps2_gs_tests()
             t.IsTrue(again.sourceHash == changed && again.sourceHash != walk.sourceHash,
                      "a changed source texel moves the decode-time hash exactly as it moves textureSourceHash()");
             t.Equals(again.sourceWalks, 1u, "and the second decode is one walk too");
+        });
+
+        tc.Run("S17 F1 attempt 2: the two [gs-gl stats] tags are formatted only when the stats line prints them", [](TestCase &t)
+        {
+            // setupDrawState formatted a state tag and a blend tag and searched two logs for them on every draw, but
+            // executeCommands prints (and clears) those logs only under PS2X_GS_STATS. Attempt 2 formats them only then;
+            // PS2X_GS_SETUP_FORMAT=1 restores the unconditional formatting for the A/B (docs/KNOBS.md). The GL half --
+            // setupDrawState calling these under the decision -- needs a context; the decision and the tags do not.
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, false), "no stats and no A/B knob: nothing is formatted per draw");
+            t.IsTrue(GsGlStateTags::enabled("1", false), "PS2X_GS_STATS=1: the tags are formatted, and the stats line prints them");
+            t.IsTrue(GsGlStateTags::enabled("0", false), "PS2X_GS_STATS is a Presence knob: any value, 0 too, prints the line");
+            t.IsTrue(GsGlStateTags::enabled(nullptr, true), "PS2X_GS_SETUP_FORMAT=1 restores the per-draw formatting");
+            t.IsTrue(GsGlStateTags::enabled("1", true), "both: formatted");
+
+            // The tags the stats line prints are the ones setupDrawState wrote before the move, byte for byte.
+            std::string states;
+            GsGlStateTags::noteState(states, 0x5000Dull | (1ull << 40), 0xFF000000u, 1u, true);
+            t.Equals(states, std::string(" T5000d/Mff000000/tfx1t"), "the state tag: TEST's low 19 bits, FBMSK, TFX, t when textured");
+            GsGlStateTags::noteState(states, 0x5000Dull, 0xFF000000u, 5u, true);
+            t.Equals(states, std::string(" T5000d/Mff000000/tfx1t"), "a state already in the log is not appended twice (TFX is 2 bits)");
+            GsGlStateTags::noteState(states, 0x30000ull, 0u, 0u, false);
+            t.Equals(states, std::string(" T5000d/Mff000000/tfx1t T30000/M00000000/tfx0"), "a new state is appended; untextured has no t");
+            std::string blends;
+            GsGlStateTags::noteBlend(blends, 0x5d00000069ull);   // A=1 B=2 C=2 D=1, FIX 0x5d (research/31 section 12)
+            t.Equals(blends, std::string(" A1B2C2D1/fix5d"), "the blend tag: the A, B, C, D selectors and FIX");
+            GsGlStateTags::noteBlend(blends, 0x5d00000069ull);
+            t.Equals(blends, std::string(" A1B2C2D1/fix5d"), "a blend already in the log is not appended twice");
+            std::string fullStates(600u, 'x');
+            GsGlStateTags::noteState(fullStates, 0x1ull, 0u, 0u, false);
+            t.Equals(static_cast<int>(fullStates.size()), 600, "the state log stops growing at 600 characters");
+            std::string fullBlends(400u, 'x');
+            GsGlStateTags::noteBlend(fullBlends, 0x44ull);
+            t.Equals(static_cast<int>(fullBlends.size()), 400, "the blend log stops growing at 400 characters");
         });
 
         tc.Run("R123: mix and seed are order-sensitive so row order is part of the identity", [](TestCase &t)
