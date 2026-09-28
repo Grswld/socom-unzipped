@@ -8,7 +8,7 @@ namespace Server.Pipeline
 {
     // LOCAL (socom_pc): one SCERT frame off a buffer, shared by the TCP and UDP decoders. The length is an unsigned
     // 16-bit field; a frame is complete only when its header (3 bytes, 7 with the hash) AND its body are readable; a
-    // body that fails to deserialize is consumed and dropped, never forwarded.
+    // body that fails to deserialize is consumed and dropped, never forwarded, with one log line here (the drop).
     public static class ScertFrame
     {
         public const int HeaderLength = BaseScertMessage.HEADER_SIZE;
@@ -34,7 +34,7 @@ namespace Server.Pipeline
                 input.SetReaderIndex(input.ReaderIndex + HeaderLength);
                 message = BaseScertMessage.Instantiate((RT_MSG_TYPE)(id & 0x7F), null, new byte[0], mediusVersion, cipherService);
                 if (message == null)
-                    Logger.Warn($"scert frame dropped: type {id & 0x7F} empty body refused");
+                    Logger.Warn($"scert frame dropped: {(RT_MSG_TYPE)(id & 0x7F)} (0 bytes) did not decode");
                 return true;
             }
 
@@ -60,7 +60,7 @@ namespace Server.Pipeline
             input.SetReaderIndex(input.ReaderIndex + headerLength + frameLength);
             message = BaseScertMessage.Instantiate((RT_MSG_TYPE)id, hash, messageContents, mediusVersion, cipherService);
             if (message == null)
-                Logger.Warn($"scert frame dropped: type {id} ({frameLength} bytes) did not decode");
+                Logger.Warn($"scert frame dropped: {(RT_MSG_TYPE)id} ({frameLength} bytes) did not decode");
             return true;
         }
     }

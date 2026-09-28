@@ -345,12 +345,18 @@ namespace Server.Medius.Models
             }
         }
 
+        // LOCAL (socom_pc): true once this game has logged an ignored non-host rename; the warning is logged once per game.
+        public bool NonHostRenameWarned { get; private set; }
+
         // LOCAL (socom_pc): only the host renames the game; the name is clamped like chat (MediusText).
-        private string ReportedGameName(string reported, ClientObject reporter)
+        public string ReportedGameName(string reported, ClientObject reporter)
         {
             bool fromHost = reporter != null && reporter == Host;
-            if (!fromHost && reported != GameName)
-                Logger.Warn($"Game {Id}:{GameName}: game-name update from {reporter}, not the host, ignored");
+            if (!fromHost && reported != GameName && !NonHostRenameWarned)
+            {
+                NonHostRenameWarned = true;
+                Logger.Warn($"Game {Id}:{GameName}: game-name update from {reporter}, not the host, ignored (logged once per game)");
+            }
             return MediusText.ReportedGameName(GameName, reported, fromHost);
         }
 

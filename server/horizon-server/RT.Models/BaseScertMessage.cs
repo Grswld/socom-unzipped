@@ -217,7 +217,11 @@ namespace RT.Models
                 throw new Exception($"Unable instantiate encrypted message {id} without a cipher!");
 
 
-            return Instantiate(rtId, null, messageBytes, reader.MediusVersion, null);
+            // LOCAL (socom_pc): a sub-message (RT_MSG_CLIENT_MULTI_APP_TOSERVER) that does not decode is dropped here.
+            var message = Instantiate(rtId, null, messageBytes, reader.MediusVersion, null);
+            if (message == null)
+                Logger.Warn($"scert sub-message dropped: {rtId} ({messageBytes.Length} bytes) did not decode");
+            return message;
         }
 
         public static BaseScertMessage Instantiate(RT_MSG_TYPE id, byte[] hash, byte[] messageBuffer, int mediusVersion, CipherService cipherService)
@@ -269,10 +273,10 @@ namespace RT.Models
                     {
                         msg.Deserialize(reader);
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
-                        // LOCAL (socom_pc): a message that does not deserialize is dropped, never forwarded half-read.
-                        Logger.Warn($"scert message refused: {id} ({plain.Length} bytes) did not deserialize: {e.GetType().Name}: {e.Message}");
+                        // LOCAL (socom_pc): a message that does not deserialize is dropped, never forwarded half-read;
+                        // the caller that drops it logs it once (ScertFrame, or the sub-message read above).
                         msg = null;
                     }
                 }

@@ -96,6 +96,18 @@ namespace Server.Test
         }
 
         [Fact]
+        public void ADroppedBodyLogsOnceWithItsTypeAndLength()
+        {
+            using var log = new LogCapture();
+            var buf = Unpooled.WrappedBuffer(Frame(AppSingle, 1, 1));
+            Assert.True(ScertFrame.TryDecode(buf, 0, null, out var dropped));
+            Assert.Null(dropped);
+            var line = Assert.Single(log.Warnings);
+            Assert.Contains("RT_MSG_CLIENT_APP_SINGLE", line);
+            Assert.Contains("1 bytes", line);
+        }
+
+        [Fact]
         public void InstantiateDropsAMalformedBody()
         {
             Assert.Null(BaseScertMessage.Instantiate(RT_MSG_TYPE.RT_MSG_CLIENT_APP_SINGLE, null, new byte[] { 0x01 }, 0, null));
