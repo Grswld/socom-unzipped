@@ -9,6 +9,7 @@ import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
+import type { LookOptions, LookState } from './look';
 import type { ViewStats } from './play';
 
 /**
@@ -83,6 +84,14 @@ export interface ViewerHook {
   crouch(on?: boolean): boolean;
   /** The aim view (first person while held: L1, the right mouse button), on or off; the view after. */
   setAim(on: boolean): WalkView;
+  /** The walk's look (web research 83): the body's yaw and the look's, the turn, the axes, the screen offset. */
+  look(): LookState;
+  /** The look's options (the mouse's mapping, the pitch ratio, the invert, the throttle); returns them all. */
+  setLook(opts: Partial<LookOptions>): LookOptions;
+  /** The scope's magnification for the look (1 unscoped). */
+  setZoom(magnification: number, mode4?: boolean): void;
+  /** An explosion this far from the player: the game's shake preset for it, if any (true when one started). */
+  shake(distance: number): boolean;
   /** W2.4: the reticle -- drawn or not, and its rectangle in the drawing buffer's pixels (y down) on `frame`. */
   reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
   /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */

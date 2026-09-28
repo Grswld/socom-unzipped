@@ -6,6 +6,7 @@ import { FsAssetSource } from '@s2u/archive/node';
 import { buildGrid, probeFloor, segmentHit, SEAL_TUNING, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
+import { MOUSE_RADIANS_PER_COUNT, PITCH_PER_YAW } from '../src/look';
 import { loadMap } from '../src/loadMap';
 import { HEAD_HEIGHT } from '../src/stature';
 import {
@@ -301,7 +302,7 @@ describe('walk mode\'s camera (W2.1)', () => {
     expect(press({})).toBe(false);                                           // fly mode: V is nobody's
   });
 
-  it('the mouse turns the body\'s yaw (LOOK a pixel) and the camera\'s pitch at pitch_rate / turn_maxrate of it, clamped', () => {
+  it('the mouse turns the body\'s yaw (research 83\'s raw mapping) and the pitch at pitch_rate / turn_maxrate of it, held', () => {
     const { fly, mode, c } = setUp();
     fly.setPose({ x: 0, y: 30, z: 0, yaw: 0, pitch: 0 });
     mode.setMode('walk');
@@ -313,15 +314,21 @@ describe('walk mode\'s camera (W2.1)', () => {
     const before = fly.pose();
     drag(-10, -10);                                                          // a touch drag turns twice as far (TOUCH_LOOK)
     const after = fly.pose();
-    const look = (0.0028 * 20 * 180) / Math.PI;
+    const look = (MOUSE_RADIANS_PER_COUNT * 20 * 180) / Math.PI;
+    expect(look).toBeCloseTo((0.0028 * 20 * 180) / Math.PI, 1);             // the fly camera's own feel, to 0.2 %
     expect(after.yaw - before.yaw).toBeCloseTo(look, 6);
-    expect(after.pitch - before.pitch).toBeCloseTo(look * (SEAL_TUNING.pitchRate / SEAL_TUNING.turnMaxRate), 6);
+    expect(after.pitch - before.pitch).toBeCloseTo(look * PITCH_PER_YAW, 6);
+    expect(PITCH_PER_YAW).toBeCloseTo(SEAL_TUNING.pitchRate / SEAL_TUNING.turnMaxRate, 9);
     drag(0, -10000);
     expect(fly.pose().pitch).toBeCloseTo(60, 6);
     drag(0, 10000);
     expect(fly.pose().pitch).toBeCloseTo(-70, 6);
+    // Prone: the limits are -20..25, and the pitch comes back to them at 0.5 rad/s (FUN_00594600), not at once.
     mode.setStance('prone');
     mode.frame(TICK);
+    fly.update(TICK);
+    expect(fly.pose().pitch).toBeCloseTo(-70 + (0.5 * TICK * 180) / Math.PI, 6);
+    for (let i = 0; i < 120; i++) { mode.frame(TICK); fly.update(TICK); }
     expect(fly.pose().pitch).toBeCloseTo(-20, 6);
   });
 
