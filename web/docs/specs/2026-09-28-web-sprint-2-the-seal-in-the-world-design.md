@@ -334,6 +334,31 @@ top at row 269 back-projects, at the head's own depth 29.24, to 12.39 over the f
 frame, the shoulders 5.1 (82 px at 0.0618 units/px; the joint span 3.8-4.0 plus 0.6 a side agrees); the neck at 0.84
 and the knees at 0.30 of the height (a human's 0.85 and 0.29). Estimates: the eye at 18.3 (0.936 × stature), prone 3.0.
 
+### The game's camera: the pitch pulls the eye in, there is no tether, and the console's eye falls out to 0.001 (2026-09-28, W2.1)
+
+*(the implementer's reading, under review; the plan's Log records the verdict)* `FUN_0029a950` (decomp 142412-142562): the
+target `rootY + ramp` over the feet; the vector (0, 0, 28) turned by the look quaternion at `actor+0x1070` and
+normalised, n; **the distance `28 + |n.y| × (14 − 28)`** (the function's fourth argument; `FUN_001b3620` is `fabs`) — so
+the eye is 28 behind only at pitch 0 and comes in as the camera looks down or up; the target moved ahead by `−8·n.y`
+looking down (`DAT_003de278`) or `−3·n.y` looking up (`DAT_003de288`), and below −5 (`DAT_003de280`) an 8-unit probe ahead
+for a wall; eye = target + n × distance. **The rest pitch is `dynamics.rdr`'s `init_aim_pitch` −9.167°**, and the pitch
+limits the camera obeys are the aim limits (`max/min_aim_pitch` 60 / −70; prone 25 / −20; `FUN_00594600`), not
+`max/min_look_pitch`. `FUN_00297410` (140831-141071) holds **no tether**: actor space to world, the aim point 1000 units
+along the pitched look, and `FUN_00296f10` re-places the target on the eye→aim line; `cam_tether_stiff` and
+`cam_net_pos_smooth` have no reader but the initialiser and the loader (§1's "the tether" retracted). `FUN_0029bf70`
+(143197-143660), the pass: the main probe from the target to 0.75 past the goal; the distance (`DAT_003de268`) moves in
+at once on a hit and lets back out at `DAT_003de270` = 0.03 per frame after a 1.5 s hold; on a hit the eye stops 0.75
+short; four 0.75-unit probes sideways and up/down (both of a pair hit → the midpoint; one → pushed by the overlap); the
+eye kept at least 0.75 from the target (the 0.75 scale is a reading: the argument is lost in the decompilation).
+`FUN_0029bc90` (143081-143144): a look-at with world up, no roll, no field of view. **The numbers:** unobstructed at the
+rest pitch, crouched (root 5.504): target 15.378, eye 19.603 up and 24.906 behind — the console's placed eye `cam+0xd8`
+to 0.001; the pre-pass local eye (0, 19.483, 24.166) is the console's `cam+0x2c` exactly; the console's live
+`DAT_003de268` 26.519 against 25.770 + 0.75; standing (root 11.484): 21.484 / 25.709 / 24.906; standing at pitch 0:
+21.484 / 21.484 / 28.75. §1's "24.2 behind" was the eye before the pass and its "20.107 up" the eye over the collision
+hit 0.504 under the feet. The camera's surface test in the pass: bit 19 skipped, bit 18 counts (`segment.ts`); the
+material half of that test is not modelled. The aim point projects to exactly (0.5, 0.5) at rest, so the reticle sits on
+the frame's centre as the console frame shows; the crouched head at 0.63 of the frame's height against the console's 0.64.
+
 ## 8. Rulings
 
 - **W2.R1** — "the correct height" is the game's third-person camera with the body in the frame (research 17's
