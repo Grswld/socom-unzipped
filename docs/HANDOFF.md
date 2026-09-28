@@ -70,4 +70,5 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   2026-09-27 22:50Z), the tag `v0.16.0`, the merge-back; then the notice to the Sprint 17 seat.
 - **Carried to Sprint 17's Task 0:** R1b (#70), R2 (#71), #57's r0004 leg, #59's fence, R3b, R3a's developer build, F1, F3
   (#32, backlog), X2, X4 (#41, backlog).
+- 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `../scotho/apps/s2u/src/ds`.
 

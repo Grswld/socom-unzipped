@@ -325,9 +325,9 @@ JS = r"""
   if(document.fonts){if(document.fonts.ready){document.fonts.ready.then(settle);}document.fonts.addEventListener('loadingdone',settle);}
   [].slice.call(document.querySelectorAll('.entry img')).forEach(function(img){if(!img.complete){img.addEventListener('load',settle);}});
   var tick=setInterval(function(){if(moved||Date.now()>settleUntil){clearInterval(tick);return;}settle();},250);
-  // the era bar: the tab of the era in view is lit (the system's is-on)
+  // the era bar: the tab of the era in view is lit (the system's is-on) and is the current one for a reader
   var links=[].slice.call(document.querySelectorAll('nav.eras a')),eras=[].slice.call(document.querySelectorAll('.era'));
-  function current(){var y=scrollY+140,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){a.classList.toggle('is-on',a.getAttribute('href')==='#'+on);});}
+  function current(){var y=scrollY+140,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){var lit=a.getAttribute('href')==='#'+on;a.classList.toggle('is-on',lit);if(lit){a.setAttribute('aria-current','true');}else{a.removeAttribute('aria-current');}});}
   addEventListener('scroll',current,{passive:true});current();
 })();
 """
@@ -468,7 +468,7 @@ def render(doc, timeline, repo, img_base, logo, ds_dir=None, absolute=None, base
     out.append('<img class="logo" src="%s" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">' % logo)
     out.append('<h1 class="s2u-title s2u-title--story">%s<small>Trying to turn a PlayStation 2 game into a PC game. %s days in.</small></h1>'
                % (inline(title), days))
-    out.append('<p class="s2u-kicker"><span class="s2u-blink"></span>Mission briefing &middot; the story so far</p>')
+    out.append('<p class="s2u-kicker"><span class="s2u-blink"></span>Mission briefing / the story so far</p>')
     if doc["preface"]:
         out.append('<p class="s2u-lede">%s</p>' % inline(doc["preface"][0].strip("*")))
     out.append("</header>")
@@ -491,7 +491,7 @@ def render(doc, timeline, repo, img_base, logo, ds_dir=None, absolute=None, base
         out.append("</div></section>")
     out.append('<nav class="eras" aria-label="Eras">')
     for era in doc["eras"]:
-        out.append('<a class="s2u-tab s2u-tab--nav" href="#era-%s">%s<span class="s2u-tab__what">%s &ndash; %s &middot; %d</span></a>'
+        out.append('<a class="s2u-tab s2u-tab--nav" href="#era-%s">%s<span class="s2u-tab__what">%s &ndash; %s / %d</span></a>'
                    % (era["start"], inline(era["title"]), pretty_date(era["start"]), pretty_date(era["end"]), len(era["entries"])))
     out.append("</nav>")
     out.append('<ol class="tl">')
@@ -514,8 +514,9 @@ def render(doc, timeline, repo, img_base, logo, ds_dir=None, absolute=None, base
     # copy only: the site page ends on the timeline (owner, 2026-09-26).
     del closing
     out.append("</div></main>")
-    fine = ("generated %s from docs/STORY.md at %s &middot; %d entries, %d commit citations &middot; checked by tools_py/story/cite.py "
-            "&middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;" % (generated, head_sha, len(entries), n_commits))
+    # the fine line joins with " / ", the system's separator (a middle dot only survives inside <code> or a chip)
+    fine = ("generated %s from docs/STORY.md at %s / %d entries, %d commit citations / checked by tools_py/story/cite.py "
+            "/ link to a moment: #&lt;date&gt;-&lt;slug&gt;" % (generated, head_sha, len(entries), n_commits))
     out.append(chrome_footer(base, fine, repo))
     out.append("<script>%s</script>" % JS)
     return "\n".join(out) + "\n"
