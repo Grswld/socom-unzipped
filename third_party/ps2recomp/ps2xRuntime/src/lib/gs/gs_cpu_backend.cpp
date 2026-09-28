@@ -1471,6 +1471,73 @@ void GSCpuBackend::CompleteImageTransfer()
 void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    UploadImageUnlocked(data, sizeBytes);
+}
+
+bool GSCpuBackend::UploadImageAsBlocks(const uint8_t *data, uint32_t sizeBytes, std::vector<uint8_t> &payload)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    // Only a transfer this call opens and completes: nothing of it written yet, and exactly its bytes.
+    if (!data || !m_vram || m_vramSize < GSMem::MEMORY_SIZE || m_transferState.direction != 0u ||
+        m_transferState.copiedPixels != 0u || m_transferState.totalPixels == 0u)
+        return false;
+    const uint32_t psm = m_transfer.bitbltbuf.dpsm;
+    const uint32_t dbp = m_transfer.bitbltbuf.dbp;
+    const uint32_t dbw = std::max<uint32_t>(m_transfer.bitbltbuf.dbw, 1u);
+    const uint32_t x0 = m_transfer.trxpos.dsax, y0 = m_transfer.trxpos.dsay;
+    const uint32_t w = m_transfer.trxreg.rrw, h = m_transfer.trxreg.rrh;
+    uint32_t firstBlock = 0u, blockW = 0u, blockH = 0u;
+    if (!GSMem::WholeBlockOf(psm, dbp, dbw, x0, y0, firstBlock, blockW, blockH) || blockW == 0u || blockH == 0u)
+        return false;
+    if ((x0 % blockW) != 0u || (y0 % blockH) != 0u || (w % blockW) != 0u || (h % blockH) != 0u)
+        return false;
+    const uint64_t pixelBytes = static_cast<uint64_t>(w) * h * GSInternal::bitsPerPixel(psm) / 8u;
+    if (pixelBytes != sizeBytes)
+        return false;
+
+    UploadImageUnlocked(data, sizeBytes);   // the one swizzle
+    const size_t blocks = static_cast<size_t>(w / blockW) * (h / blockH);
+    payload.resize(blocks * (4u + 256u));
+    uint8_t *const addrs = payload.data();
+    uint8_t *const bytes = payload.data() + blocks * 4u;
+    size_t i = 0u;
+    for (uint32_t y = y0; y < y0 + h; y += blockH)
+        for (uint32_t x = x0; x < x0 + w; x += blockW, ++i)
+        {
+            uint32_t addr = 0u, bw = 0u, bh = 0u;
+            GSMem::WholeBlockOf(psm, dbp, dbw, x, y, addr, bw, bh);
+            std::memcpy(addrs + i * 4u, &addr, 4u);
+            std::memcpy(bytes + i * 256u, m_vram + addr, 256u);
+        }
+    return true;
+}
+
+bool GSCpuBackend::WriteUploadBlocks(const uint8_t *payload, size_t sizeBytes)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!payload || !m_vram || sizeBytes == 0u || (sizeBytes % (4u + 256u)) != 0u)
+        return false;
+    const size_t blocks = sizeBytes / (4u + 256u);
+    const uint8_t *const bytes = payload + blocks * 4u;
+    for (size_t i = 0; i < blocks; ++i)
+    {
+        uint32_t addr = 0u;
+        std::memcpy(&addr, payload + i * 4u, 4u);
+        if (static_cast<uint64_t>(addr) + 256u <= m_vramSize)
+            std::memcpy(m_vram + addr, bytes + i * 256u, 256u);
+    }
+    // The transfer ends as the swizzle's last pixel would have ended it (CompleteImageTransfer).
+    if (m_transferState.direction == 0u)
+    {
+        m_transferState.copiedPixels = m_transferState.totalPixels;
+        m_transferState.direction = 3u;
+        m_transferState.totalPixels = 0u;
+    }
+    return true;
+}
+
+void GSCpuBackend::UploadImageUnlocked(const uint8_t *data, uint32_t sizeBytes)
+{
     if (!data || sizeBytes == 0u || !m_vram || m_transferState.direction != 0u)
         return;
     if (m_transfer.trxreg.rrw == 0u || m_transfer.trxreg.rrh == 0u || m_transferState.totalPixels == 0u)

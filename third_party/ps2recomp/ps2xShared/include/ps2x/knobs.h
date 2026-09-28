@@ -80,6 +80,7 @@
     X("PS2X_GS_BACKEND", Dev, Text, "gpu", "cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65).") \
     X("PS2X_GS_DEPTH_LEGACY", Dev, Int, "0", "1 forces the legacy depth mapping instead of clip control.") \
     X("PS2X_GS_DISABLE_EARLY_DEPTH", Dev, Presence, "", "CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B).") \
+    X("PS2X_GS_DOUBLE_SWIZZLE", Dev, Flag, "0", "1 records raw tiles and swizzles each again into the shadow, as before S17 F1 attempt 3 (A/B).") \
     X("PS2X_GS_DUMP_DISPLAY", Dev, Spec, "", "<dir>:<t0>:<t1>: every ~2 s write the displayed buffer three ways (gpu, shadow, cpu).") \
     X("PS2X_GS_DUMP_TEX", Dev, Path, "", "Directory: write every decoded texture as PPM + PGM, and the CLUT diagnostic.") \
     X("PS2X_GS_DUMP_TEX_EVERY", Dev, Int, "1", "With GS_DUMP_TEX: keep one decode in n.") \
