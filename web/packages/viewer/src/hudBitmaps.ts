@@ -58,6 +58,30 @@ export function decodeNamedTextures(
   return { textures, diagnostics };
 }
 
+/**
+ * One bitmap out of a map archive's `RUN\COMMON\EFFE_TXR.ZED` against its own `EFFE_PAL.ZED` (W2.5): the bullet mark
+ * `READERC.ZAR/decals.rdr` names for the rifle's `DecalSet` (`bullet_mark_stone.tif`, 16x16; `@s2u/scene`'s
+ * `BULLET_MARK`). The library holds 22 textures, the six `bullet_mark_*.tif` and `grenade_mark.tif` among them;
+ * `ALPH_TXR.ZED` (20) holds none. Null with a diagnostic when absent: the shot then marks with a plain dark disc.
+ */
+export function readEffectBitmap(bytes: Uint8Array, toc: ZdbEntry[], name: string): { rgba: Rgba | null; diagnostics: string[] } {
+  let txr: Zar, pal: Zar;
+  try {
+    txr = Zar.parse(zdbMember(bytes, toc, 'EFFE_TXR.ZED'));
+    pal = Zar.parse(zdbMember(bytes, toc, 'EFFE_PAL.ZED'));
+  } catch (e) {
+    return { rgba: null, diagnostics: [`bullet mark: EFFE_TXR/EFFE_PAL.ZED: ${e instanceof Error ? e.message : String(e)}`] };
+  }
+  const keys = txr.find('textures')?.children ?? [];
+  const texdat = (wanted: string): Uint8Array | null => {
+    const key = keys.find((k) => k.name.toLowerCase() === wanted);
+    const child = key ? txr.child(key, 'texdat') : undefined;
+    return key && child ? txr.data(child) : null;
+  };
+  const { textures, diagnostics } = decodeNamedTextures(texdat, PaletteTable.fromZars([pal]), [name]);
+  return { rgba: textures[name] ?? null, diagnostics: diagnostics.map((d) => `bullet mark: ${d}`) };
+}
+
 /** The rifle reticle's three bitmaps out of a map archive's `HUD2_TXR.ZED` / `HUD2_PAL.ZED`; null bitmaps with a reason when absent. */
 export function readReticle(bytes: Uint8Array, toc: ZdbEntry[]): { bitmaps: ReticleBitmaps | null; diagnostics: string[] } {
   let txr: Zar, pal: Zar;

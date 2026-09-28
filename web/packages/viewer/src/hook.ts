@@ -2,6 +2,7 @@ import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
 import type { BodyState } from './body';
+import type { FireState, Shot } from './fire';
 import type { Rect } from './reticle';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
@@ -65,6 +66,13 @@ export interface ViewerHook {
   camera(): WalkCameraState | null;
   /** W2.1: third person (the game's camera, the default) or first person (`V`); false for a name that is not one. */
   setView(view: WalkView): boolean;
+  /**
+   * W2.5 (`./fire`): the shots fired, the magazine, where the last round landed (null for a miss or before one), and
+   * the marks on the walls.
+   */
+  fire(): FireState;
+  /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
+  shoot(): Shot | null;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

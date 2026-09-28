@@ -19,6 +19,7 @@ import { aimPoint } from './playerCamera';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { Body } from './body';
+import { ammoText, Fire } from './fire';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -48,6 +49,7 @@ const scene = new Scene();
 const fly = new FlyCamera(canvas, {
   onSpeedChange: (m) => ui.setCameraHint(m, fly.isLocked()),
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
+  onFire: (down) => trigger(down),
 });
 const overlays = new Overlays(scene);
 /**
@@ -60,6 +62,18 @@ const reticle = new Reticle();
 /** W2.3 (`./body`): the stand-in body on the walker's feet, in the world's shading (the brighten, the fog). */
 const body = new Body(() => brightenOf(lighting));
 scene.add(body.object);
+/**
+ * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
+ * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
+ */
+const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
+scene.add(fire.object);
+fire.bindKey();
+/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
+function trigger(down: boolean): void {
+  if (down) fire.pull();
+  else fire.release();
+}
 /** The body's pose last set: `setStance` re-poses the mannequin, so it is called on a change only. */
 let bodyStance: Stance | null = null;
 /** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
@@ -206,7 +220,7 @@ ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
 ui.onFullscreen();
-attachTouchControls(fly, () => { if (walk.mode() === 'walk') walk.cycleStance(); });
+attachTouchControls(fly, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
 walk.bindKey();
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
@@ -341,6 +355,9 @@ async function boot(): Promise<void> {
     // The body on the feet as drawn (between ticks, like the camera), facing the body's yaw, seen whole in third person.
     body.update(walk.drawnFeet(), fly.pose().yaw, dt, fly.camera.position);
     body.setVisible(walking && walk.view() === 'third');
+    if (!walking) fire.release();  // leaving the walk lets a held trigger go
+    fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
+    ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -349,7 +366,8 @@ async function boot(): Promise<void> {
       fly.camera.updateMatrixWorld();
       const [nx, ny] = aimPoint(fly.camera, aim);
       reticle.setAimPoint(nx, ny);
-      reticle.setSpread(walk.speed() / RUN_SPEED);
+      // The run's spread (W2.4's estimate) or a round's knock (W2.5, `ZWEAPON.ZAR/zweapon.rdr`), the larger.
+      reticle.setSpread(Math.max(walk.speed() / RUN_SPEED, fire.spread()));
     }
     reticle.setVisible(walking);
     reticle.render(created.renderer);
@@ -438,6 +456,8 @@ function show(map: LoadedMap): void {
     ui.setFogEnabled(fog.enabled);
   }
   reticle.setBitmaps(map.reticle);
+  fire.reset();                                   // a new map: no marks, full magazines
+  fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
   scene.add(built.group);
@@ -581,5 +601,7 @@ window.__viewer = {
   setStance: (stance) => walk.setStance(stance),
   camera: () => walk.cameraState(),
   setView: (view) => walk.setView(view),
+  fire: () => fire.state(),
+  shoot: () => fire.shoot(),
   revision,
 } satisfies ViewerHook;

@@ -924,6 +924,16 @@ export class WalkMode {
     return this.walking && this.placed ? [...this.placed.far] : null;
   }
 
+  /** W2.5 (`./fire`): the shot's origin and aim -- the eye as placed (the firepoint's stand-in) and the aim point. */
+  fireAim(): { eye: Vec3; far: Vec3 } | null {
+    return this.walking && this.placed ? { eye: [...this.placed.eye], far: [...this.placed.far] } : null;
+  }
+
+  /** W2.5: the hull the mover stands on (the probe's grid), while walking. */
+  grid(): Grid | null {
+    return this.walking && this.walker ? this.walker.grid : null;
+  }
+
   /**
    * `G` (walk and fly), `C` (the stance, while walking) and `V` (first or third person, while walking) on `target`,
    * ignored with a modifier -- so Ctrl+C and Ctrl+V stay the browser's -- on auto-repeat, and while a control has the
