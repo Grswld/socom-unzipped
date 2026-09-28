@@ -10,6 +10,7 @@
 #include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
+#include "runtime/gs/gs_gl_state_tags.h"
 #include "ps2x/knobs.h"
 
 // raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
@@ -3980,13 +3981,11 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     // NOT dirtySinceResolve: that is set in flushBatch at the glDrawArrays, not here. See the
     // comment there -- resolveTexture runs between this point and the draw and can clear it.
 
-    {
-        char tag[64];
-        std::snprintf(tag, sizeof(tag), " T%05llx/M%08x/tfx%u%s", (unsigned long long)(ctx.test & 0x7FFFFu), ctx.frame.fbmsk,
-                      ctx.tex0.tfx & 3u, state.prim.tme ? "t" : "");
-        if (m_stateLog.find(tag) == std::string::npos && m_stateLog.size() < 600u)
-            m_stateLog += tag;
-    }
+    // Sprint 17 F1 attempt 2: the states= and blends= tags of the [gs-gl stats] line are formatted only when that line
+    // prints them (gs_gl_state_tags.h); PS2X_GS_SETUP_FORMAT=1 restores formatting them on every draw (the A/B).
+    static const bool s_formatTags = GsGlStateTags::enabled(ps2x::knob("PS2X_GS_STATS"), ps2x::knobOn("PS2X_GS_SETUP_FORMAT"));
+    if (s_formatTags)
+        GsGlStateTags::noteState(m_stateLog, ctx.test, ctx.frame.fbmsk, ctx.tex0.tfx, state.prim.tme);
     // Depth test.
     uint32_t ztst = (ctx.test >> 17) & 3u;
     if (!zte)
@@ -4017,12 +4016,8 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     {
         const uint64_t alpha = ctx.alpha;
         const uint32_t asel = alpha & 3u, bsel = (alpha >> 2) & 3u, csel = (alpha >> 4) & 3u, dsel = (alpha >> 6) & 3u;
-        {
-            char tag[48];
-            std::snprintf(tag, sizeof(tag), " A%uB%uC%uD%u/fix%02llx", asel, bsel, csel, dsel, (unsigned long long)((alpha >> 32) & 0xFFu));
-            if (m_blendLog.find(tag) == std::string::npos && m_blendLog.size() < 400u)
-                m_blendLog += tag;
-        }
+        if (s_formatTags)
+            GsGlStateTags::noteBlend(m_blendLog, alpha);
         const float fix = std::min(1.0f, static_cast<float>((alpha >> 32) & 0xFFu) / 128.0f);
         GLenum cFactor = GL_SRC1_ALPHA, cInv = GL_ONE_MINUS_SRC1_ALPHA;
         if (csel == 1u) { cFactor = GL_DST_ALPHA; cInv = GL_ONE_MINUS_DST_ALPHA; }
