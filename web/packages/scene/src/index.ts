@@ -11,3 +11,4 @@ export * from './lod';
 export * from './grid';
 export * from './probe';
 export * from './tuning';
+export * from './segment';

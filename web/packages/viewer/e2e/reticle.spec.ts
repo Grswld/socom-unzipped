@@ -58,8 +58,12 @@ test('walk mode on Frostfire draws the rifle reticle at the console frame\'s pla
   const shown = await page.evaluate(() => window.__viewer.reticle());
   expect(shown.visible).toBe(true);
   expect(shown.frame).toEqual({ width: 640, height: 448 });
-  // `reticleLayout` at 640x448, the aim point at the centre: the console's 65 x 65 at (288, 192), within a pixel.
-  expect(shown.rect).toEqual({ x: 288, y: 192, width: 64, height: 64 });
+  // `reticleLayout` at 640x448, the aim point at the centre: the console's 65 x 65 at (288, 192), within a pixel. The
+  // aim point is W2.1's projected aim (the frame's centre at rest, to float rounding), so the corner is to 0.01.
+  expect(shown.rect!.x).toBeCloseTo(288, 2);
+  expect(shown.rect!.y).toBeCloseTo(192, 2);
+  expect(shown.rect!.width).toBeCloseTo(64, 6);
+  expect(shown.rect!.height).toBeCloseTo(64, 6);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-ps2-spawn-reticle.png') });
 
   expect(await page.evaluate(() => window.__viewer.setMode('fly'))).toBe(true);

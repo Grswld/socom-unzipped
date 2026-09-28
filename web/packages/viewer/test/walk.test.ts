@@ -537,9 +537,10 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(mode.stance()).toBe('stand');
     expect(mode.setStance('crouch')).toBe(true);
     const at = mode.feet()!;
-    const pose = mode.walkFor(10, { forward: 0.5, right: 0, boost: false });
-    expect(at[2] - pose.z).toBeGreaterThan(14 * 10 - 3);            // the crouch walk, 14.0 a second
-    expect(at[2] - pose.z).toBeLessThan(14 * 10);
+    mode.walkFor(10, { forward: 0.5, right: 0, boost: false });
+    const after = mode.feet()!;
+    expect(at[2] - after[2]).toBeGreaterThan(14 * 10 - 3);          // the crouch walk, 14.0 a second
+    expect(at[2] - after[2]).toBeLessThan(14 * 10);
   });
 
   it('Ctrl+C is left to the browser in fly and walk mode; a bare C while walking is the stance\'s', () => {
@@ -561,13 +562,17 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(mode.stance()).toBe('crouch');
   });
 
-  it('entering walk drops the camera onto the floor under it, eye 15.4 over the feet', () => {
+  it('entering walk drops the mover onto the floor under the camera, the game\'s camera behind it (W2.1)', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 0, y: 90, z: 0, yaw: 30, pitch: -10 });
     mode.setMode('walk');
     expect(mode.feet()).toEqual([0, 42, 0]);                        // the deck, the highest floor under the camera
-    expect(fly.pose()).toMatchObject({ x: 0, y: 42 + EYE_HEIGHT, z: 0 });
-    expect(fly.pose().yaw).toBeCloseTo(30, 9);                      // the look is kept
+    // Standing at the spawn pitch: 25.709 over the feet, 24.906 behind along the yaw (`playerCamera.ts`).
+    const pose = fly.pose(), yaw = (30 * Math.PI) / 180;
+    expect(pose.x).toBeCloseTo(24.906 * Math.sin(yaw), 3);
+    expect(pose.y).toBeCloseTo(42 + 25.709, 3);
+    expect(pose.z).toBeCloseTo(24.906 * Math.cos(yaw), 3);
+    expect(pose.yaw).toBeCloseTo(30, 9);                            // the turn is kept; the pitch is the spawn's
     mode.setMode('fly');
     fly.setPose({ x: 0, y: 30, z: 0 });                             // under the deck, over the floor
     mode.setMode('walk');
@@ -585,18 +590,19 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(bare.changes).toEqual([]);
   });
 
-  it('the keys and the stick drive the mover, at 60 Hz, and the camera follows at the eye', () => {
+  it('the keys and the stick drive the mover, at 60 Hz, and the camera follows behind it', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });      // yaw 0 faces -z
     mode.setMode('walk');
     key('KeyW');
     for (let i = 0; i < 30; i++) { fly.update(1 / 30); mode.frame(1 / 30); }
     key('KeyW', 'keyup');
-    const pose = fly.pose();
-    expect(pose.z).toBeLessThan(130);
+    const pose = fly.pose(), feet = mode.feet()!;
+    expect(feet[2]).toBeLessThan(130);
     expect(pose.x).toBeCloseTo(150, 6);
-    expect(mode.feet()![1]).toBe(0);
-    expect(pose.y).toBeCloseTo(EYE_HEIGHT, 9);
+    expect(feet[1]).toBe(0);
+    expect(pose.y).toBeCloseTo(25.709, 3);                          // the game's camera standing (W2.1)
+    expect(pose.z - mode.drawnFeet()![2]).toBeCloseTo(24.906, 3);  // both drawn between the last two ticks
     // The touch stick is the same wish: pushed up the screen, forward.
     const before = mode.feet()![2];
     fly.setStick(0, 1);
@@ -616,7 +622,10 @@ describe('walk mode (W1.4 step 5)', () => {
     mode.setMode('walk');
     mode.setCamera({ x: 0, y: 60, z: 0, yaw: 90 });
     expect(mode.feet()).toEqual([0, 42, 0]);
-    expect(fly.pose()).toMatchObject({ x: 0, y: 42 + EYE_HEIGHT, z: 0 });
+    // Facing -x (yaw 90), the camera behind on +x, at the spawn pitch (W2.1).
+    expect(fly.pose().x).toBeCloseTo(24.906, 3);
+    expect(fly.pose().y).toBeCloseTo(42 + 25.709, 3);
+    expect(fly.pose().z).toBeCloseTo(0, 6);
     expect(fly.pose().yaw).toBeCloseTo(90, 9);
     mode.setCamera({ yaw: 180 });                                    // a turn only: the mover stays put
     expect(mode.feet()).toEqual([0, 42, 0]);
@@ -630,9 +639,10 @@ describe('walk mode (W1.4 step 5)', () => {
     fly.setPose({ x: 150, y: 40, z: 150, yaw: 90, pitch: 0 });     // yaw 90 faces -x
     mode.setMode('walk');
     const pose = mode.walkFor(1, { forward: 1, right: 0, boost: false });
-    expect(pose.x).toBeLessThan(120);
+    expect(mode.feet()![0]).toBeLessThan(120);
+    expect(pose.x - mode.feet()![0]).toBeCloseTo(24.906, 3);       // the camera behind, on +x (W2.1)
     expect(pose.z).toBeCloseTo(150, 6);
-    expect(pose.y).toBeCloseTo(EYE_HEIGHT, 9);
+    expect(pose.y).toBeCloseTo(25.709, 3);
     expect(fly.pose()).toEqual(pose);
   });
 

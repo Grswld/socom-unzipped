@@ -9,7 +9,9 @@ import type {} from '../src/hook';
  * Walk mode on Frostfire (web sprint 1, W1.4 step 6): research 24 section 6.1's route from A's spawn to B's floor,
  * the mover driven through the debug hook, the floor checked at each leg's end, the door leaf between B's region
  * and the building met head on, and pictures on B's ramp and at the door. Web sprint 2 (W2.2b): the same route at
- * the game's speeds, `C` and the hook's stance, and a walk off the 142 deck that falls onto the 100 floor.
+ * the game's speeds, `C` and the hook's stance, and a walk off the 142 deck that falls onto the 100 floor. W2.1: the
+ * poses are the game's third-person camera now, and a picture at spawn A in the PS2 presentation stands beside the
+ * console's own frame at spawn (`scripts/parity/refs/console_spawn_slot8.png`).
  *
  * The legs are driven with `walkFor`, which runs the mover's 60 Hz ticks at once rather than over frames: under
  * SwiftShader a frame can take longer than the page's 0.1 s cap on a frame's time, and a held key would then walk
@@ -18,6 +20,7 @@ import type {} from '../src/hook';
 
 /** Screenshots are evidence, not fixtures: `web/test-fixtures/` is git-ignored. */
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/walk', import.meta.url));
+const CAMERA_SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/camera', import.meta.url));
 
 /** Research 24 section 6.1: A's spawn to B's floor, the 20 waypoints, each with the floor its leg ends on. */
 const ROUTE: [number, number, number][] = [
@@ -26,14 +29,26 @@ const ROUTE: [number, number, number][] = [
   [720, 100, 1100], [715, 100, 1155], [712, 100, 1190], [705, 100, 1223], [680, 102, 1223.5], [640, 122, 1223.5],
   [600, 142, 1223.5], [565, 142, 1235],
 ];
-/** A's spawn (KNOWN section 1), the feet; the eye stands 15.4 over them (W1.R2). */
+/** A's spawn (KNOWN section 1), the feet; a pose 15.4 over them drops the mover there (`walk.ts`'s `EYE_HEIGHT`). */
 const SPAWN_A: [number, number, number] = [796, 100, 614];
 const EYE = 15.4;
+/** The game's camera standing at pitch 0 (`playerCamera.ts`): the target 21.484 over the feet, the eye 28.75 behind. */
+const TARGET_STANDING = 21.484, BEHIND_LEVEL = 28.75;
+/** At the spawn pitch `init_aim_pitch` -9.167: the eye 24.906 behind, 25.709 up standing and 19.603 crouched. */
+const INIT_PITCH = -9.167, BEHIND_REST = 24.906, UP_STANDING = 25.709, UP_CROUCHED = 19.603;
 
 /** Two frames with the pose in them before the canvas is worth photographing. */
 const settle = (page: Page): Promise<void> => page.evaluate(
   () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
 );
+
+const setToggle = (page: Page, id: string, on: boolean): Promise<void> =>
+  page.locator(`#${id}`).evaluate((el, checked) => {
+    const box = el as HTMLInputElement;
+    if (box.checked === checked) return;
+    box.checked = checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  }, on);
 
 /**
  * Steers the mover at (x, z) a tick at a time, facing it each tick and easing off as it nears, until the feet are
@@ -86,11 +101,15 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   });
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('walk');
 
-  // At A's spawn: the feet on the floor at 100, the eye 15.4 over them.
+  // At A's spawn: the feet on the floor at 100, the game's camera behind them (W2.1): at pitch 0 and yaw 0 (facing
+  // -z) the target 21.484 over the feet and the eye 28.75 behind it on +z.
   await page.evaluate(([x, y, z, eye]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 0, pitch: 0 }), [...SPAWN_A, EYE] as const);
-  const start = await page.evaluate(() => ({ feet: window.__viewer.feet(), pose: window.__viewer.pose() }));
+  const start = await page.evaluate(() => ({ feet: window.__viewer.feet(), pose: window.__viewer.pose(), camera: window.__viewer.camera() }));
   expect(start.feet).toEqual(SPAWN_A);
-  expect(start.pose.y).toBeCloseTo(SPAWN_A[1] + EYE, 3);
+  expect(start.camera?.mode).toBe('third');
+  expect(start.pose.y).toBeCloseTo(SPAWN_A[1] + TARGET_STANDING, 3);
+  expect(start.pose.z).toBeCloseTo(SPAWN_A[2] + BEHIND_LEVEL, 3);
+  expect(start.camera!.target[1]).toBeCloseTo(SPAWN_A[1] + TARGET_STANDING, 3);
 
   // The keys drive it: W held for a moment, facing waypoint 1, moves the feet toward it on the same floor.
   await page.evaluate(([x, z]) => window.__viewer.setCamera({ yaw: Math.atan2(-(x - 796), -(z - 614)) * 180 / Math.PI }), [806, 665] as const);
@@ -149,5 +168,55 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   expect(await page.evaluate(() => window.__viewer.setMode('fly'))).toBe(true);
   expect(await page.evaluate(() => window.__viewer.pose())).toEqual(eye);
 
+  expect(problems).toEqual([]);
+});
+
+test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, beside the console\'s frame at spawn (W2.1)', async ({ page }) => {
+  mkdirSync(CAMERA_SCREENS, { recursive: true });
+  const problems: string[] = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' || (m.type() === 'warning' && /GL_INVALID|WebGPU.*(error|fail)/i.test(m.text()))) {
+      problems.push(`console: ${m.text()}`);
+    }
+  });
+  await page.goto('/');
+  const status = page.locator('#status');
+  await expect(status).toContainText('triangles');
+  await page.locator('#maps').selectOption('RUN/MP2.ZDB');
+  await expect(status).toContainText('FROSTFIRE (MP2)');
+  await expect(status).toContainText('triangles');
+  await setToggle(page, 'ps2look', true);
+
+  // Walk, at A facing +z along research 24's route (yaw 180; nothing of the hull behind: the viewer's fixture test).
+  // Entering walk sets the spawn pitch, init_aim_pitch -9.167; a pose without a pitch keeps it.
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  for (const [stance, up, name] of [['crouch', UP_CROUCHED, 'crouched'], ['stand', UP_STANDING, 'standing']] as const) {
+    await page.evaluate((s) => window.__viewer.setStance(s), stance);
+    await page.evaluate(([x, y, z, e]) => window.__viewer.setCamera({ x, y: y + e, z, yaw: 180 }), [...SPAWN_A, EYE] as const);
+    await settle(page);
+    const seen = await page.evaluate(() => ({ camera: window.__viewer.camera(), reticle: window.__viewer.reticle(), body: window.__viewer.body() }));
+    expect(seen.camera!.mode).toBe('third');
+    expect(seen.camera!.pitch).toBeCloseTo(INIT_PITCH, 6);
+    expect(seen.camera!.eye[0]).toBeCloseTo(SPAWN_A[0], 3);
+    expect(seen.camera!.eye[1] - SPAWN_A[1], name).toBeCloseTo(up, 3);
+    expect(SPAWN_A[2] - seen.camera!.eye[2], name).toBeCloseTo(BEHIND_REST, 3);
+    expect(seen.body.visible).toBe(true);
+    // The aim is on the view line: the reticle at the frame's centre, the console's 65 x 65 at (288, 192).
+    expect(seen.reticle.visible).toBe(true);
+    expect(seen.reticle.rect!.x).toBeCloseTo(288, 2);
+    expect(seen.reticle.rect!.y).toBeCloseTo(192, 2);
+    await page.locator('#view').screenshot({ path: join(CAMERA_SCREENS, `frostfire-ps2-spawn-a-${name}.png`) });
+  }
+
+  // V's first person: the eye at the head, the body not drawn.
+  expect(await page.evaluate(() => window.__viewer.setView('first'))).toBe(true);
+  await settle(page);
+  const first = await page.evaluate(() => ({ camera: window.__viewer.camera(), body: window.__viewer.body() }));
+  expect(first.camera!.mode).toBe('first');
+  expect(first.camera!.eye[1] - SPAWN_A[1]).toBeCloseTo(18.3, 3);
+  expect(first.body.visible).toBe(false);
+  await page.locator('#view').screenshot({ path: join(CAMERA_SCREENS, 'frostfire-ps2-spawn-a-first-person.png') });
+  expect(await page.evaluate(() => window.__viewer.setView('third'))).toBe(true);
   expect(problems).toEqual([]);
 });
