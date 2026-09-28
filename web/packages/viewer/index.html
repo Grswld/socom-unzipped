@@ -29,8 +29,6 @@
       one at a time. Fixed, so showing it moves nothing; `role=status` so a screen reader hears it.
     -->
     <p id="toast" class="s2u-status s2u-status--pill" role="status" aria-live="polite" hidden></p>
-    <!-- The ammo box (W2.5, ./src/fire.ts): the console frame's bottom-left readout, shown while walking. -->
-    <p id="ammo" class="s2u-status s2u-status--pill" hidden aria-live="off">30/30 &middot; 2 MAGS</p>
     <button id="fullscreen" class="s2u-fab" type="button" title="fullscreen (F)" aria-label="fullscreen"><svg viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"/></svg></button>
     <!--
       The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage

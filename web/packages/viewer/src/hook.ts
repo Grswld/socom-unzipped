@@ -4,6 +4,7 @@ import type { Input } from './gamepad';
 import type { Backend } from './renderer';
 import type { FireState, Shot } from './fire';
 import type { Rect } from './reticle';
+import type { HudPatch, HudView } from './hud';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
@@ -103,6 +104,13 @@ export interface ViewerHook {
   fire(): FireState;
   /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
   shoot(): Shot | null;
+  /**
+   * The in-game HUD (`./hud`, web/docs/research/87-hud.md): drawn or not, what it shows, and each element's rectangle in
+   * the drawing buffer's pixels (y down) on `frame`.
+   */
+  hud(): HudView;
+  /** The HUD's inputs the walk does not drive yet (a prompt, a message, the fire mode, the team list), for the tests. */
+  setHud(patch: HudPatch): HudView;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

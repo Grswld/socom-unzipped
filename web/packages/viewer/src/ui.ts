@@ -28,8 +28,6 @@ export class Ui {
   private readonly loadingBar = find<HTMLElement>('loading-bar');
   private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
-  /** The ammo box (W2.5): bottom-left, shown while walking. */
-  private readonly ammo = find<HTMLElement>('ammo');
   /** The loaded map's name, for the cog's tooltip; null before the first load. */
   private mapName: string | null = null;
   /**
@@ -428,12 +426,6 @@ export class Ui {
     // site bar's GitHub tab.
     this.fpsNumber.textContent = String(Math.round(fps));
     this.fpsRest.textContent = ` fps · ${frameMs.toFixed(1)} ms`;
-  }
-
-  /** The ammo box's line (`./fire`'s `ammoText`), or null to hide it (not walking). Written only when it changes. */
-  setAmmo(text: string | null): void {
-    this.ammo.hidden = text === null;
-    if (text !== null && this.ammo.textContent !== text) this.ammo.textContent = text;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {

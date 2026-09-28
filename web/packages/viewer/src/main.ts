@@ -20,8 +20,9 @@ import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
+import { Hud, RangeFinder } from './hud';
 import { buildBody, type BodyView } from './bodyView';
-import { ammoText, Fire } from './fire';
+import { Fire } from './fire';
 import { Play, playActions } from './play';
 import { PLAY_CLIPS } from './animator';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
@@ -63,6 +64,9 @@ const overlays = new Overlays(scene);
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
+/** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
+const hud = new Hud();
+const rangeFinder = new RangeFinder();
 /**
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
@@ -446,7 +450,6 @@ async function boot(): Promise<void> {
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
-    ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -460,6 +463,12 @@ async function boot(): Promise<void> {
     }
     reticle.setVisible(walking);
     reticle.render(created.renderer);
+    hud.setVisible(walking);
+    hud.feed({
+      magazine: fire.state().magazine, yaw: fly.pose().yaw, stance: walk.posture(),
+      range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
+    });
+    hud.render(created.renderer);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -545,6 +554,7 @@ function show(map: LoadedMap): void {
     ui.setFogEnabled(fog.enabled);
   }
   reticle.setBitmaps(map.reticle);
+  hud.setBitmaps(map.hud);
   fire.reset();                                   // a new map: no marks, full magazines
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
@@ -704,5 +714,7 @@ window.__viewer = {
   setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
+  hud: () => hud.state(),
+  setHud: (patch) => { hud.patch(patch); return hud.state(); },
   revision,
 } satisfies ViewerHook;
