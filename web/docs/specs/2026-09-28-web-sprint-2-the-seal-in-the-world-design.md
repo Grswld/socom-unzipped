@@ -359,4 +359,12 @@ and the knees at 0.30 of the height (a human's 0.85 and 0.29). Estimates: the ey
 - **W2.R8** — the owner's chrome request (one cog beside the brand, GitHub's mark) is W2.0, first out, bounded to
   `index.html`, `ui.ts`, `styles.css` and the e2e; `ds/` untouched.
 
-All eight the owner can overturn by number.
+- **W2.R9** — the skeleton root per stance is the console dump's reading (W2.3, reviewed): **standing 11.484, crouched
+  5.504**, prone an estimate until W2.2c. `docs/KNOWN.md`'s row ("the root decays 11.4845 → 0 while its saved copy
+  freezes at the console's 5.50391") is consistent with it — our recomp's root began at the standing value and the
+  console's saved copy was the crouched spawn's; what is retracted is research 17 §1's label "standing idle" on 5.504
+  (the game's own stance test `node[0].y < 9.0` reads it as not standing). The corrections to research 17 §1 and the
+  KNOWN row's wording go into the PR to `main` (the main tree's documents); W2.2c measures the standing camera on the
+  console to close the question (the controller, 2026-09-28, on the W2.2b re-review's FAIL).
+
+All nine the owner can overturn by number.
