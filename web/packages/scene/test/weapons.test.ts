@@ -17,11 +17,16 @@ import {
 const rec = (...pairs: [string, RdrNode][]): RdrNode[] => pairs.flatMap(([k, v]) => [k, Array.isArray(v) ? v : [v]]);
 
 const stance = rec(['ReticuleKnock', '12'], ['ReticuleKnockReturn', '70'], ['ReticuleKnockMax', '45'], ['TargetMin', '1']);
+/** WEAPON: the standing record with its rifle kick, as the game's file spells the four keys. */
+const standing = [...stance, ...rec(
+  ['FireRifleKickRate', '0.5'], ['FireRifleKickReturnRate', '0.18'], ['FireRifleKickBaseDist', '0.09'], ['FireRifleKickRandomDist', '0.015'],
+)];
 const m4 = rec(
   ['InternalName', 'M4A1'], ['DisplayName', 'M4A1'],
-  ['Reticule_Modifiers', rec(['STANCE_STAND', stance], ['STANCE_CROUCH', stance])],
+  ['Reticule_Modifiers', rec(['STANCE_STAND', standing], ['STANCE_CROUCH', stance])],
   ['FireWait', '0.12'], ['Maximum_Range', '1000'], ['ID', '54'], ['NumMags', '3'],
   ['AMMO_TYPES', [rec(['NAME', '5.56 x 45mm'])]], ['Ammo_Capacity', '30'], ['DecalSet', 'BULLET_MARK_SMALL'],
+  ['FireAnimName', 'muzzle_m4'], ['FireSoundClose', '.M4A1'],
 );
 const m16 = rec(['InternalName', 'M16A2'], ['FireWait', '0.1'], ['ID', '51']);
 const zweapon: RdrNode = [
@@ -36,6 +41,9 @@ describe('the weapon record reader over a hand-built zweapon.rdr', () => {
       name: 'M4A1', id: 54, fireWait: 0.12, roundsPerMinute: 500, magazine: 30, mags: 3,
       ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 1000, decalSet: 'BULLET_MARK_SMALL',
       knock: { knock: 12, knockReturn: 70, knockMax: 45 },
+      rifleKick: { stand: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 }, crouch: null, prone: null },
+      fireAnim: 'muzzle_m4',
+      sounds: { close: '.M4A1', med: null, far: null, reload: null },
     });
   });
 
