@@ -105,6 +105,11 @@ bodies are supplied, else a placeholder named and the task carried; (7) nothing 
   by one mapping (the same stick is the same motion in both; jump is "up" in the air of the fly camera, crouch is
   "down"), and a toast when a controller connects or leaves, naming it. A binding the repository does not document
   is marked assumed in the mapping table.
+- **W2.R6** — a game file's values transcribed into source are extracted data (the PR template's first checklist row),
+  whatever their form: tuning tables are read from the disc at run time (`READERC.ZAR` beside the maps or in the ISO),
+  the source carries only what a research note already prints as a named default, and the page says which it runs on;
+  the controller's own instruction to embed `dynamics.rdr`'s 87 fields is withdrawn and the commit that did it is not
+  carried (the cloud controller, 2026-09-28, W2.3a).
 - **W2.R4** — the default target is the SEAL model (`seal_A_scuba` with the `seal_scuba_*` fittings) and the
   **M4A1 SD** (`m4Acarbine_sd` in `WEAP_MDL`) -- the owner's word of 2026-09-28; the other side's body `al_gman01` and
   the sidearm `baretta_m9` are the controller's defaults after it (the owner can overturn by number).
@@ -165,4 +170,24 @@ lean, and the fire mode on L3, not Circle; aim on L1 has no support (`socom2_hos
 without saying which). The rows stay as the ruling says, marked assumed with the contradiction in the note, until the
 owner rules. The runtime's dead zone is 0.15 per axis (`host_gamepad_select.h:70-79`); the viewer's is radial at the
 same size.
+
+### The seal table's file, and what the two tick bodies are (2026-09-28, W2.3a)
+
+`dynamics.rdr` in `RUN/READERC.ZAR` is the seal tuning table's source, 87 fields, and reCOM's `CharacterDynamics`
+(`zCharacter/zchar.h:145-249`) falls on research 17 §8's offsets +0x00 to +0x188 exactly; the metre fields are ×10 in
+memory (`low_climb_height` 1.3 → a 13-unit crate), `max_slope` is 50° in the file and its cosine in memory, `throt_exp`
+(+0x118) and `cam_look_dwell` / `cam_net_*` (+0x160-0x168) are not in the file, and +0x30-0x38 is `m_landSpeed[3]`
+computed from the fall distances (`char_dyn.cpp:32-35`). Research 17's nine printed values match the file. Values it
+did not print, recorded here as measurements (not in code, W2.R6): `FALLING_DAMAGE_LIGHT/HEAVY/DEATH` 6.2 / 9.1 / 12 m,
+`low/med/high_climb_height` 1.3 / 2.15 / 2.65 m, `min_stand_height` 1 m, `min_jump_height` 2 m, `turn_maxrate` 2,
+`stand_turn_factor` 2.3, the accel limits 2 / 5 / 2 / 5, `fb_accel` and `lr_accel` 0.01. **The camera triples (W2.6):**
+`cam_back` height 20.5, dist 13, side 0, aim (0, 20.5, −2); `cam_first` the same; `cam_full` 20.5 / 30 / 0;
+`cam_tether_stiff` 0.95 -- against research 18's measured 23.1-unit ring and 25 up at the spawn, so the triple is not the
+whole of the camera. `motion.rdr`'s `max_velocity` (run 6.5, run back 3.7, strafe 6.5, crouchwalk 1.48, prone strafe
+0.55) × 10 is 1.4-1.6× research 18's measured holds (40 / 25.3 / 44.3), so it is not simply the ground speed (W2.2b).
+`SealProcessAltitude` (0x5b5d40) is the probe's selection only and `Tick_0` (0x57a330-0x57b510) the SEAL's
+animation-and-look tick; neither reads a table field, and the jump, the gravity step, air control and the crouch height
+are in neither. The console's root lift (research 17 §1's 5.504) + 1 = 6.504 = `step_height` to 0.004. Under the
+speed reading every walk-off lands at 61.3 or more (at least "hard"), so the landing rates are probably not compared
+with that speed. The Bash guard misreads a `git commit` whose `-m` argument holds a newline as a commit without paths.
 
