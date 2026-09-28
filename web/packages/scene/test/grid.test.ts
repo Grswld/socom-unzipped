@@ -57,7 +57,7 @@ function tuft(x: number, z: number): PlacedModel {
 /** A flat quad polygon, world space, owned by `path`. */
 function quad(minX: number, minZ: number, maxX: number, maxZ: number, path: string, y = 0): WorldPoly {
   return {
-    modelName: 'worldmodel', path, region: 0, ditype: 2, material: 0, ptcount: 4,
+    modelName: 'worldmodel', path, region: 0, ditype: 2, material: 0, ptcount: 4, cameratype: 0,
     points: Float32Array.from([minX, y, minZ, maxX, y, minZ, maxX, y, maxZ, minX, y, maxZ]),
   };
 }
