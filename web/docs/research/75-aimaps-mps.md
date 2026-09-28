@@ -289,3 +289,27 @@ candidate is outside this file: the loading-screen assets research 72 §0 lists 
   is not in the file: the next research step is the recomp's reader of the trailer's list (a loop over 12-byte
   records testing flags bits 4 and 5).
 - **Heights:** no record has a y; a slot's floor comes from W1.4's ground probe.
+
+## 10. The trailer's order, and the slots as drawn (2026-09-28, W1.5b)
+
+- **A stood on side 0's first slot and B on side 1's second, on all 22 maps.** Numbering each side's slots from 0
+  in the trailer's order (§6; `placeSpawnSlots`' `index`), the one slot that accounts for the measured A (the spec's
+  W1.R9: at its centre, or up to 30 units ahead along its facing within 5 across) is side 0's **#0**, and for B side
+  1's **#1** -- 44 of 44, `tools/spawn-slots.ts`. On every map exactly one slot of the side qualifies, #0 and #1 of
+  a side are 22-851 units apart, and in the sub-maps' own lists (§5.5) the same slots sit at scattered positions
+  (0-23), so the order that carries it is the trailer's alone. In the 2026-09-17 sweep and `KNOWN.md` §1's rows A is
+  the host and B the joiner; that the game hands the n-th player slot n of their side's list fits all 44 and is not
+  shown here -- the recomp's reader of the list (§9) is where it would be. The viewer does not act on it: the
+  opening stand stays `spawns.ts`'s A (W1.R9).
+- **The slots as drawn.** `LoadedMap.slots` (`placeSpawnSlots`, read in the worker by `spawnSlotsOf`): 1,058 slots
+  over the 22 maps. No record holds a height (§4), so the y is the side's measured y held inside the slot's
+  sub-map's y range (§3) -- held on 101 of the 1,058: Death Trap's B, measured at y 1, has 11 slots on sub-map 1
+  (y -100 to -20) and 9 on sub-map 2 (-140 to -100.5), drawn at -20 and -100.5; Rat's Nest's 48 on `Floor1` come
+  down 11-12 units to 154.5, Chain Reaction's A 24 on `floor4` 6 to 266.1, The Mixer's B 9 on `terrw` 20 to 81.2 --
+  and the range's floor on a map with no measured spawn. A rough check against the collision hull (every hull
+  polygon whose footprint holds the point, the plane height nearest the estimate) puts that estimate within 3
+  units of a floor at 67 of the 1,058 slots, 48 of them Frostfire's: the y is a placeholder for W1.4's probe, and
+  the overlay draws the slots without a depth test so that a wrong one cannot hide a slot. The same check puts
+  the 40 sweep rows of `spawns.ts` 12.7-38.1 units above the only floor under their own (x, z) (median 25.0; 3
+  have a surface 12-25 units above them instead), and the 4 `KNOWN.md` §1 rows 0.0-1.1: the sweep's y is not the
+  feet, as its (x, z) is not the slot (§7).

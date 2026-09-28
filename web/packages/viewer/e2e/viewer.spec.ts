@@ -90,6 +90,8 @@ test('all three extracted maps render from the served archives', async ({ page }
     expect(stats.collisionPolys).toBeGreaterThan(1000);
     // The spawn table is the reason the camera knows where to stand; every fixture has one.
     expect(stats.spawns).not.toBeNull();
+    // The disc's spawn slots, read from AIMAPS.MPS in the worker and held by the spawn overlay (W1.5b).
+    expect(stats.slots).toEqual({ a: 24, b: 24 });
 
     console.log(`${map.name}: backend ${stats.backend}, ${stats.triangles} triangles, ` +
       `${stats.collisionPolys} collision polys, ${stats.untexturedDraws} untextured draws, ` +
