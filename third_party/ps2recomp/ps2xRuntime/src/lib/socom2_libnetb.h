@@ -40,6 +40,10 @@ namespace socom2_libnetb
     // Test only: forget the cached PS2X_SOCOM2_NET_STATS so the next call() re-reads the environment.
     void testResetKnobs();
 
+    // Receives refused so far: every receive into guest RAM (fno 4, fno 0xd, the two ring-buffer receives) must land
+    // inside guest RAM, and an RPC's inside the receive buffer it states; one that does not copies nothing and logs.
+    uint32_t receivesRefused();
+
     // The pc-sampler's net_wait= field (research/29 section 4 item 8): {1 while a guest thread is inside one of
     // the host-BLOCKING waits here (waitReadable's poll loop, one guest tick at most since #34; doOpen's connect poll),
     // else 0; cumulative milliseconds spent in them}. While the flag is 1 no guest instruction runs, so the

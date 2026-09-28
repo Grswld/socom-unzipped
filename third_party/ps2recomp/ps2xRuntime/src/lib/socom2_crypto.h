@@ -10,6 +10,8 @@ namespace socom2_crypto
 {
     // PS2X_SOCOM2_LOGIN_TRACE's tail for one RC4 call: a message's class and type at counter 0, "(continues)" after it.
     std::string rc4TraceTail(uint32_t counter, const uint8_t *plain, uint32_t len);
+    // Calls of the RC4 and SHA-1 hooks refused so far: a span outside guest RAM is neither read nor written.
+    uint32_t spansRefused();
     void rsaBlock(uint8_t *rdram, R5900Context *ctx, PS2Runtime *);   // FUN_0062b948
     void sha1Hash(uint8_t *rdram, R5900Context *ctx, PS2Runtime *);   // FUN_0062eec0
     void rc4SetKeyHash(uint8_t *rdram, R5900Context *ctx, PS2Runtime *); // FUN_0062a638
