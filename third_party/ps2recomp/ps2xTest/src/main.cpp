@@ -52,6 +52,7 @@ void register_socom2_pad2_hle_tests();       // Sprint 13 Task C8 (audit F8)
 void register_socom2_msifrpc_tests();        // Sprint 13 Task C8 (audit F8)
 void register_socom2_crypto_tests();         // Sprint 13 Task C8 (audit F9)
 void register_persona_record_tests();        // Sprint 16 L1b (#73)
+void register_card_save_tests();             // the persona-card plan Task 1
 void register_runtime_seams_tests();         // Sprint 13 Task C8 (audit F22)
 void register_socom2_net_bounds_tests();     // runtime/socom2_net_bounds.h
 void register_socom2_msg_bounds_tests();     // runtime/socom2_msg_bounds.h
@@ -145,6 +146,7 @@ int main()
     register_socom2_msifrpc_tests();
     register_socom2_crypto_tests();
     register_persona_record_tests();
+    register_card_save_tests();
     register_runtime_seams_tests();
     register_socom2_net_bounds_tests();
     register_socom2_msg_bounds_tests();
