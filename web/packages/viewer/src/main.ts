@@ -24,6 +24,8 @@ import { buildBody, type BodyView } from './bodyView';
 import { ammoText, Fire } from './fire';
 import { Play, playActions } from './play';
 import { PLAY_CLIPS } from './animator';
+import { TRAVERSAL_CLIPS } from './traversal';
+import { TraversalPage } from './traversalPage';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -61,6 +63,9 @@ const overlays = new Overlays(scene);
  * follows it (W2.1, `./playerCamera`), `V` for first person.
  */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
+/** Web research 86 (`./traversalPage`): the ladder, the climb, the peek and the water on the walk; X, Q and E. */
+const traversal = new TraversalPage(walk, canvas.parentElement);
+traversal.bindKeys();
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
 /**
@@ -185,7 +190,7 @@ const play = new Play();
 let wantedPlay = -1;
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...TRAVERSAL_CLIPS] });
 }
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -238,7 +243,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.kind === 'play') {
-    if (message.id === wantedPlay) play.setClips(message.data);
+    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); }
     return;
   }
   if (message.kind === 'progress') {
@@ -306,6 +311,7 @@ function padFrame(): void {
   fly.setLook(input.lookX, input.lookY);
   if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
   playLanes(padMerged, input);      // W2.6: jump, crouch and aim on foot
+  traversal.padLanes(input);        // research 86: the lean lanes
   padLast = pad;
   padMerged = input;
 }
@@ -441,6 +447,7 @@ async function boot(): Promise<void> {
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
+    traversal.input();              // research 86: the peek held (Q / E, the pad's lean lanes)
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
@@ -460,6 +467,7 @@ async function boot(): Promise<void> {
     }
     reticle.setVisible(walking);
     reticle.render(created.renderer);
+    traversal.frame(dt, created.renderer.domElement.getBoundingClientRect());   // research 86: the action icon (temporary, the HUD's to own)
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -545,6 +553,7 @@ function show(map: LoadedMap): void {
     ui.setFogEnabled(fog.enabled);
   }
   reticle.setBitmaps(map.reticle);
+  traversal.setIcons(map.actionIcons);            // web research 86: action_climb.tif / action_slide.tif off HUD_TXR
   fire.reset();                                   // a new map: no marks, full magazines
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
@@ -704,5 +713,8 @@ window.__viewer = {
   setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
+  traversal: () => traversal.stats(),
+  action: () => traversal.action(),
+  setLean: (side) => { traversal.hookLean = side; },
   revision,
 } satisfies ViewerHook;

@@ -10,6 +10,7 @@ import type { SliderName, ToggleName } from './ui';
 import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
 import type { ViewStats } from './play';
+import type { TraversalStats } from './traversalPage';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -103,6 +104,15 @@ export interface ViewerHook {
   fire(): FireState;
   /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
   shoot(): Shot | null;
+  /**
+   * Web research 86 (`./traversalPage`): the traversal move (ladder, climb, hang, slide), its clip and key, the climb
+   * prompt, the peek value, the water's depth, the map's ladder count and the last events; null in fly mode.
+   */
+  traversal(): TraversalStats | null;
+  /** The action button (Cross; X on the keyboard): the climb offered, the ladder's slide. False in fly mode. */
+  action(): boolean;
+  /** The peek held, as the d-pad (Q / E) would hold it: -1 left, 1 right, 0 off. */
+  setLean(side: -1 | 0 | 1): void;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
