@@ -98,9 +98,11 @@ brand, GitHub behind its mark.
    from.
 2. `npm run typecheck`, `npm test` and `npm run build` green on CI at every merge; the Playwright e2e green locally
    at the close, the three sprint 1 specs included.
-3. **Height:** at rest on Frostfire's spawn A the viewer's third-person eye is within **±0.5 unit** of the console's
-   (20.107 over the ground, 24.2 behind, target 15.38 over the feet: research 17 §1 table); the first-person switch's
-   eye is the measured head height (W2.3's number), cited.
+3. **Height:** at rest the viewer's third-person camera reproduces the console's placed eye at the crouched spawn
+   (research 17 §1's `cam+0xd8`: **19.603 over the feet, 24.906 behind**, the target 15.378) within **±0.5 unit**
+   from the decompilation's formula with no constant fitted *(as first written: "20.107 over the ground, 24.2 behind"
+   — those were the eye over the collision hit 0.504 under the feet and the eye before the pass; corrected 2026-09-28
+   on W2.1's finding, §7)*; the first-person switch's eye is the measured head height (W2.3's number), cited.
 4. **Speed:** the mover's steady forward speed is **65.0 units/s**, backward 37.0, the strafes 65.0, crouch 14.8 /
    13.5 / 15.0, prone 11.0 / 5.5, from the game's table read off `READERC.ZAR` by the same decoder (a fixture test),
    and the ramp is the decompilation's law; the console measurement (W2.2 step 5, lock-bound) confirms the steady
@@ -322,8 +324,9 @@ four-man squad kneeling at spawn — and 24 at the bind pose with the root at 11
 `+0x1c` parent, `+0x20` quaternion, `+0x40` id — named `skel_root`, `hips`, `neck`, `head`, `lcalf`, `rcalf`, … (no
 eyeball nodes). **The player at spawn is crouched:** its root 5.504 is under the game's own stance test `node[0].y <
 9.0` (research 17 §8), and its right knee sits on the ground at 0.54; the five standing actors in the same dump carry
-the same bone lengths with `skel_root` at **11.484** and the `head` joint composing to 17.28-17.48 (17.37 at the resting
-root). Research 17 §1's "standing idle" 5.504 is therefore the crouch, and its measured camera (target 15.38, eye
+`skel_root` at **11.484** on the 24 bind-pose actors and the `head` joint composing to 17.37 there (17.28-17.48 on
+four of the five animated standing actors; the fifth is bent over, its head at 15.03); the spine, leg and head bone
+lengths match the player's within 0.05, the hips and shoulder nodes differ by up to 0.7. Research 17 §1's "standing idle" 5.504 is therefore the crouch, and its measured camera (target 15.38, eye
 20.107 up) is the crouched player's; with the standing root 11.484 the ramp of `FUN_0029a950` saturates (fVar9 = 10) and
 the standing look-at target is **21.48** over the feet, which is where `dynamics.rdr`'s `cam_*_aim` y 20.5 sits (W2.1's
 camera takes the stance's root, so both cases fall out of one formula; W2.2c measures the standing camera on the
@@ -362,7 +365,8 @@ the frame's centre as the console frame shows; the crouched head at 0.63 of the 
 ## 8. Rulings
 
 - **W2.R1** — "the correct height" is the game's third-person camera with the body in the frame (research 17's
-  measured eye 20.107 up and 24.2 behind, target 15.38, the tether and the collision pass); the first-person eye
+  measured placed eye 19.603 up and 24.906 behind at the crouched spawn, target 15.378; `FUN_0029a950`'s pitched
+  distance and `FUN_0029bf70`'s collision pass — there is no tether, W2.1's finding in §7); the first-person eye
   stays as a switch at the measured head height, and sprint 1's 15.4 is retired (§1, W2.1).
 - **W2.R2** — the speeds are `motion.rdr`'s bands at `MetersPerUnit 0.1` (65 forward at full stick, 37 back, the
   stance bands) with the decompilation's throttle law; sprint 1's 40 and the 2.5× boost are retired; the boost stays
