@@ -307,7 +307,9 @@ once** from any push (`FUN_00586f00` reads a stick within 0.03 as idle; `FUN_005
 ×0.8 on the fall's velocity is the "Ladderslide" state's alone (`DAT_003def50`, the string at `0x6620c8`). A crouch
 diagonal is sped up along its class axis (19.8 at 45°: `FUN_00582d10` → `FUN_00583350` sets `DAT_0064fc80`, applied
 in `FUN_0057a330`) — for W2.2c to confirm. The headroom ray starts at the feet + 14 (an estimate: the height of the
-node at `actor+0x304` is not known). *(the fix round's readings, under re-review)* **No jump this sprint**: `jump_factor × gravity × −0.4` only seeds the landing-speed
+node at `actor+0x304` is not known). *(the fix round's readings, re-reviewed the same hour: the five confirmed by reading; the headroom ray's start
+and its clear test stay estimates for W2.2c; the re-review's FAIL on the standing root 11.484 was overruled by
+W2.R9)* **No jump this sprint**: `jump_factor × gravity × −0.4` only seeds the landing-speed
 record at `actor+0x1364` that fall damage reads; the rise is the jump clip's root motion in `MPZANIM.ZAR`, which nothing
 reads. Not modelled: the slope and water slow-down (`FUN_005b56c0`), the clips' 0.2 s blend-in. Estimates marked for
 W2.2c: crouch rootY 3.4 (0.62 × 5.504), prone 1.8 (under the camera ramp's floor of 2.169); body columns crouch 6-14,
@@ -339,7 +341,10 @@ and the knees at 0.30 of the height (a human's 0.85 and 0.29). Estimates: the ey
 
 ### The game's camera: the pitch pulls the eye in, there is no tether, and the console's eye falls out to 0.001 (2026-09-28, W2.1)
 
-*(the implementer's reading, under review; the plan's Log records the verdict)* `FUN_0029a950` (decomp 142412-142562): the
+*(the implementer's reading, reviewed the same hour: PASS WITH FINDINGS — the five readings confirmed with their
+decomp lines and the dump re-derived, the model within 0.0003 with nothing fitted; the one correction, added in
+the fix round: the main probe's hit filter `FUN_0029cd20`, which passes over a cameratype-1 polygon within 2.75 of
+the target for the next nearest hit)* `FUN_0029a950` (decomp 142412-142562): the
 target `rootY + ramp` over the feet; the vector (0, 0, 28) turned by the look quaternion at `actor+0x1070` and
 normalised, n; **the distance `28 + |n.y| × (14 − 28)`** (the function's fourth argument; `FUN_001b3620` is `fabs`) — so
 the eye is 28 behind only at pitch 0 and comes in as the camera looks down or up; the target moved ahead by `−8·n.y`
@@ -364,7 +369,9 @@ the frame's centre as the console frame shows; the crouched head at 0.63 of the 
 
 ### The SEAL's rifle and the game's own bullet mark (2026-09-28, W2.5)
 
-*(the implementer's reading, under review; the plan's Log records the verdict)* `RUN/ZWEAPON.ZAR`'s `zweapon.rdr` decodes
+*(the implementer's reading, reviewed the same hour: PASS WITH FINDINGS — every record number re-derived from
+`ZWEAPON.ZAR` and `READERC.ZAR`, no reading corrected; the findings are gaps — the shot from the eye, no
+auto-reload)* `RUN/ZWEAPON.ZAR`'s `zweapon.rdr` decodes
 with `Zar.parse` and `parseRdr` like `READERC.ZAR`. The default primary is the **M4A1**: every `mp_seal1` kit in
 `READERC.ZAR/character.rdr` lists it first, in every theatre (the file's first `mp_seal1` line is the inheritance
 `mp_seal1 : mp_seal`). Its record carries no rounds-per-minute key: **`FireWait` 0.12 s** between rounds (500 a minute),
