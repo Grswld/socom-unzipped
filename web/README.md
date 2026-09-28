@@ -132,22 +132,12 @@ instead, seen through the game's own camera; the last rows of the table are the 
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
 | `F` | fullscreen, and back (also the button under the frame counter) |
-| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
-| the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
-| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
-| `W`/`S`, `A`/`D` (walking) | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
-| mouse (walking, captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
-| `V` (walking) | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
-| `C` (walking) | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
-| left click (walking, captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
-| `R` (walking) | reloads; an empty magazine waits for it |
-
-**Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
-and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
-[What the picture is made of](#what-the-picture-is-made-of), "The player". In short: 65 units a second running, 37
-backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
-not jump: the game's jump is an animation's root motion, not yet read. The ammo box at the bottom left shows the
-magazine while walking.
+| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
+| a pad | read as the PS2 pad by position (the W3C standard mapping): a toast names it on connect and on loss, "pad: connected" joins the hint, and the layout table appears under the hint line. Left stick moves (walk, or fly along the look), right stick looks at the arrow keys' rate scaled by the push, Cross jumps on foot and rises in the air, L3 or Triangle crouch on foot and descend in the air, Start switches walk and fly as `G` does, R3 boosts; R1/L1 (fire, aim) and L2/R2 (lean) are read and reserved. Rows the repository does not document are marked assumed in the table |
+| `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| right button or `L1` (walking) | the aim view: first person from the SEAL's eyes; release to go back over the shoulder |
+| `Space` / `C` (walking) | jump and crouch. The jump is a named placeholder impulse that reaches the seal table's `min_jump_height`; the crouch's eye and speed are named placeholders too. Gravity, the fall and its landing classes, the 6.5-unit step and the 50° slope are the table's (web sprint 2) |
+| left button (walking, mouse captured) | one shot from the game's own fire point (`GetPutativeFirePointW`, ported) along the aim to the first hull polygon: a tracer and a hit mark. The M4A1 SD is drawn in front of the camera at a placeholder hold until the skeleton takes it; there is no recoil yet |
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -305,47 +295,28 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   per (texture, fog) with the same shading graph the meshes use. Desert Glory's power lines and lamp
   brackets, Crossroads' tent ropes and light filaments.
 
-### The player
+## The player (web sprint 2, in progress)
 
-Settled in web sprint 2 (the sprint 2 spec's §7, cited by finding):
-
-**The speeds are the game's file, the ramp and the fall its code** ("The game's movement law: the ramp is on the
-stick, the speed is linear in it, the fall is 2.4 g"). `READERC.ZAR/motion.rdr` gives each SEAL clip a
-`max_velocity` in metres a second (`scene/src/tuning.ts`, pinned against the disc's file): at `MetersPerUnit` 0.1
-that is 65 units a second forward at a full stick, 37 back, 65 strafing; the crouch bands 14.8, 13.5 and 15, which
-the crouch plays at 0.946 of them whatever the push (14.0 ahead, 12.8 back, 14.2 aside); prone 11 crawling and 5.5
-sideways, along one axis, from the first tick. The ramp is on the stick, not the speed (`FUN_00586c10`): each axis
-moves toward the pad at 2 to 5 stick units a second, so a full push is at 90 % on tick 11 and full on tick 12, a
-fifth of a second; the speed is linear in the stick (`FUN_0058bdf0`), a released stick stops at once, and a full
-push in crouch (0.838 or more, with 19 units of headroom) stands the SEAL up and runs (`FUN_00584c60`). A drop of
-more than 8 is a fall under `dynamics.rdr`'s gravity 235 units a second squared, 2.4 g (`FUN_0059b440`), the
-horizontal speed held from the edge: a 42-unit drop lands in 0.60 s (`viewer/src/walk.ts`).
-
-**The camera is `FUN_0029a950` and `FUN_0029bf70`, nothing fitted** ("The game's camera: the pitch pulls the eye
-in, there is no tether, and the console's eye falls out to 0.001"; `viewer/src/playerCamera.ts`). The target is
-the skeleton root's height plus a ramp that saturates at 10 above a root of 5.6; the eye lies along the look,
-pitched, `28 − 14 × |n.y|` from it, so it comes in as the camera looks down or up; the rest pitch is
-`init_aim_pitch`, −9.167°. There is no tether (`cam_tether_stiff` has no reader): the collision pass pulls the eye
-in at once to 0.75 short of the hull and lets it out at 3 % a frame after 1.5 s. Crouched at the spawn that puts
-the target 15.378 over the feet and the eye 19.603 over them and 24.906 behind -- the console's placed eye on the
-spawn dump, to 0.0003; standing, the target is 21.484 and the eye 25.709 up.
-
-**The stances and the body are measured on the console's dump and frame** ("The SEAL is 19.6 units tall, and the
-console's spawn dump holds a crouched player"). The skeleton root is 11.484 over the feet standing (the 24 actors at
-the bind pose) and 5.504 crouched -- the dump's player is crouched: its root under the game's own stance test of 9.0,
-a knee on the ground; prone 1.8 is an estimate. The body (`viewer/src/body.ts`) is a stand-in at 19.6 units
-standing (1.96 m: the standing head joint 17.37 plus the head's 2.23 measured on the frame), 12.4 crouched and 5.1
-across the shoulders, in the world's shading with the frame's own colours; the first-person eye, 18.3, is an
-estimate.
-
-**The reticle and the rifle are the disc's** ("The console's reticle: two bitmaps at one texel per pixel, a
-65-pixel cross on the frame's centre"; "The SEAL's rifle and the game's own bullet mark"). `HUD2_TXR.ZED`'s
-`ret_rifle_01.tif` (a 64×64 ring and dot) and `ret_rifle_02.tif` (a 32×32 arm, drawn four times) at the console
-frame's size, one texel to a PS2 pixel, scaled by the height / 448 in the Modern picture (`viewer/src/reticle.ts`).
-The rifle is `ZWEAPON.ZAR`'s M4A1, first in every `mp_seal1` kit (`scene/src/weapons.ts`): `FireWait` 0.12 s (500
-rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAGS" -- and a 1000-unit ray against
-every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
-`EFFE_TXR.ZED`, 1 to 1.8 units wide.
+- **The SEAL is decoded, drawn and moving.** `CLIB_MDL`'s skinned meshes (411 across the 22 maps, none failing), the
+  skeleton of 26 palette slots from `CLIB_GEO`, and the gear `READERC.ZAR/character.rdr` hangs on each map's player
+  (`chartype.rdr` names it: Frostfire's `mp2_seal1` is `seal_A_scuba` in six pieces). In walk mode the body stands at
+  the mover's feet and runs the game's own clips picked by what the mover does (stand, walk, jog, run, back, strafe,
+  crouch, jump, land), cross-faded over `motion.rdr`'s blend times, seen over the shoulder from the camera research 18
+  measured (25 up, 23.1 back; the disc's `cam_back` rig is a switch under Advanced once `READERC.ZAR` is read); the
+  aim view looks from the body's eyes. "player body in fly mode" under Advanced shows the body where the play left it.
+- **The motions are read.** One reader for all 341 clips: the seven victory dances in every map archive and the 334
+  player clips of `RUN/MOTION_P.ZAR` (30 keys a second, quaternion channels, the SEAL's bone lengths in the clips);
+  the playback table is `READERC.ZAR`'s `motion.rdr`.
+- **The mover is the seal table's.** `dynamics.rdr` in `READERC.ZAR` is read at load and the panel says `tuning:
+  disc` or `defaults` (research 17's nine printed numbers): gravity 235, landings at 40 and 115, step 6.5, slope 50°.
+- **The weapon and the shot.** All 59 weapons of `WEAP_MDL` decode (they use VU1 `0x70`'s scaled positions, as the
+  gear does); the M4A1 SD is the default; the fire point is the game's function with its ten stance offsets a named
+  placeholder (ELF data not on hand). No weapon table exists on the disc's readers; the recoil is not in the bodies
+  read so far.
+- **A controller works.** See the pad row above.
+- **Two files beside the maps.** The deployed `maps/RUN/` wants `READERC.ZAR` (the body's gear, the seal table, the
+  motion playback table) and `MOTION_P.ZAR` (the player's clips) as well as the 22 archives; the ISO carries both, and
+  without them the body is drawn bare, the table falls back to the defaults, and the clips do not play.
 
 ## Known gaps
 

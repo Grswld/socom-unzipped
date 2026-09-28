@@ -13,6 +13,12 @@
  */
 import type { FlyCamera } from './camera';
 
+/**
+ * What the stick and the buttons write: the camera's three touch lanes. The page may hand over its own lane instead of
+ * the camera, to merge the stick with a pad's before the camera sees either (`./gamepad`, `mergeInput`; W2.7).
+ */
+export type TouchTarget = Pick<FlyCamera, 'setStick' | 'setLift' | 'setStickBoost'>;
+
 /** How far from the centre counts as nothing, as a fraction of the base's radius. */
 export const DEAD_ZONE = 0.15;
 
@@ -79,13 +85,10 @@ export function wantsTouchControls(): boolean {
 }
 
 /**
- * Wires the stick and the two lift buttons to a camera, the stance button beside them to `onStance` (the walk's
- * `C`, W2.2b), and the fire button to `onFire` -- pressed true, let go false (W2.5, `./fire`). Returns nothing:
- * there is nothing to take back.
+ * Wires the stick and the two buttons to a camera, or to a lane that stands in for one. Returns nothing: there is
+ * nothing to take back.
  */
-export function attachTouchControls(
-  camera: FlyCamera, onStance: () => void = () => undefined, onFire: (down: boolean) => void = () => undefined,
-): void {
+export function attachTouchControls(camera: TouchTarget): void {
   const zone = document.getElementById('stick-zone');
   const base = document.getElementById('stick-base');
   const knob = document.getElementById('stick-knob');

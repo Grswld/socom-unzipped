@@ -1,0 +1,170 @@
+import { expect, test, type Page } from '@playwright/test';
+// `src/hook.ts` is types only; its `declare global` is what makes `window.__viewer` exist inside `page.evaluate`.
+import type {} from '../src/hook';
+
+/**
+ * The controller on Frostfire (web sprint 2, W2.7; ruling W2.R5): a fake `navigator.getGamepads` hands the page one
+ * pad in the standard mapping (W3C Gamepad, "Remapping"), which the test plugs in, pushes and unplugs. The toast names
+ * it, the layout table appears with its assumed rows marked, the left stick walks the mover and flies the camera, Cross
+ * is the jump on foot and up in the air, Start is `G`, the right stick looks.
+ *
+ * Held inputs are held for real time, as `walk.spec.ts` holds W: the mover's distance then depends on the host's frame
+ * rate, so the checks are that it moved, the right way and on the right floor, not how far.
+ */
+
+/** The fake: a `Gamepad`'s shape, 17 buttons and 4 axes, at rest. */
+interface FakePad {
+  id: string; index: number; connected: boolean; mapping: string; timestamp: number;
+  axes: number[]; buttons: { pressed: boolean; touched: boolean; value: number }[];
+}
+type FakeWindow = Window & { __fakePad: FakePad };
+
+const PAD_ID = 'Test pad (STANDARD GAMEPAD)';
+/** The standard mapping's indices the test presses (`src/gamepad.ts`, `PAD_BUTTON`). */
+const CROSS = 0, START = 9;
+
+/** A's spawn on Frostfire (KNOWN section 1), the feet, and the eye 15.4 over them (W1.R2), as `walk.spec.ts` has them. */
+const SPAWN_A: [number, number, number] = [796, 100, 614];
+const EYE = 15.4;
+/** Facing research 24 section 6.1's first waypoint, (806, 665), from A: the floor at 100 runs all the way. */
+const YAW_TO_1 = Math.atan2(-(806 - 796), -(665 - 614)) * 180 / Math.PI;
+
+/** Puts the pad's sticks and buttons where the test wants them; anything not named is at rest. */
+const setPad = (page: Page, state: { axes?: number[]; press?: number[] }): Promise<void> => page.evaluate(({ axes, press }) => {
+  const pad = (window as unknown as FakeWindow).__fakePad;
+  pad.axes = axes ?? [0, 0, 0, 0];
+  pad.buttons.forEach((b, i) => {
+    const on = press?.includes(i) ?? false;
+    b.pressed = on; b.touched = on; b.value = on ? 1 : 0;
+  });
+  pad.timestamp = performance.now();
+}, state);
+
+/**
+ * Plugs the pad in or out, and says so the way a browser does. A `GamepadEvent` cannot be built around a fake (its
+ * constructor wants a real `Gamepad`), so the event is a plain one carrying the pad as its `gamepad`.
+ */
+const plug = (page: Page, on: boolean): Promise<void> => page.evaluate((connected) => {
+  const pad = (window as unknown as FakeWindow).__fakePad;
+  pad.connected = connected;
+  const e = new Event(connected ? 'gamepadconnected' : 'gamepaddisconnected');
+  Object.defineProperty(e, 'gamepad', { value: pad });
+  window.dispatchEvent(e);
+}, on);
+
+const pose = (page: Page) => page.evaluate(() => window.__viewer.pose());
+const feet = (page: Page) => page.evaluate(() => window.__viewer.feet());
+
+test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camera (W2.7)', async ({ page }) => {
+  const problems: string[] = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' || (m.type() === 'warning' && /GL_INVALID|WebGPU.*(error|fail)/i.test(m.text()))) {
+      problems.push(`console: ${m.text()}`);
+    }
+  });
+
+  // The fake, before the page's own script runs: unplugged, so `getGamepads` lists nothing until the test plugs it in.
+  await page.addInitScript((id) => {
+    const pad = {
+      id, index: 0, connected: false, mapping: 'standard', timestamp: 0,
+      axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+    };
+    (window as unknown as { __fakePad: typeof pad }).__fakePad = pad;
+    Object.defineProperty(Navigator.prototype, 'getGamepads', {
+      configurable: true,
+      value: () => [pad.connected ? pad : null, null, null, null],
+    });
+  }, PAD_ID);
+
+  await page.goto('/');
+  const status = page.locator('#status');
+  await expect(status).toContainText('triangles');
+  await page.locator('#maps').selectOption('RUN/MP2.ZDB');
+  await expect(status).toContainText('FROSTFIRE (MP2)');
+  await expect(status).toContainText('triangles');
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+  // Nothing plugged in: no toast, no layout, no pad.
+  const toast = page.locator('#toast');
+  await expect(toast).toBeHidden();
+  await expect(page.locator('#pad-box')).toBeHidden();
+  await expect(page.locator('#hint')).not.toContainText('pad: connected');
+  expect(await page.evaluate(() => window.__viewer.pad().id)).toBeNull();
+
+  // Plugged in: the toast names it, the layout shows with its seven assumed rows marked, the hint line says so.
+  await plug(page, true);
+  await expect(toast).toBeVisible();
+  await expect(toast).toHaveText(`Controller connected: ${PAD_ID}`);
+  await expect(page.locator('#pad-box')).toBeVisible();
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(11);
+  await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(7);
+  await expect(page.locator('#hint')).toContainText('pad: connected');
+  expect(await page.evaluate(() => window.__viewer.pad().id)).toBe(PAD_ID);
+
+  // Walk: the left stick held forward for a second walks the feet toward the first waypoint, on the floor at 100.
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(([x, y, z, eye, yaw]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw, pitch: 0 }), [...SPAWN_A, EYE, YAW_TO_1] as const);
+  const start = (await feet(page))!;
+  expect(start).toEqual(SPAWN_A);
+  await setPad(page, { axes: [0, -1, 0, 0] });
+  await page.waitForTimeout(1000);
+  expect((await page.evaluate(() => window.__viewer.pad().input)).moveY).toBe(1);
+  await setPad(page, {});
+  await page.waitForTimeout(600);                  // the glide runs out
+  const walked = (await feet(page))!;
+  expect(Math.hypot(walked[0] - start[0], walked[2] - start[2])).toBeGreaterThan(2);
+  expect(walked[2]).toBeGreaterThan(start[2]);
+  expect(walked[1]).toBeCloseTo(100, 3);
+
+  // Cross is the jump on foot (assumed; the mover's jump is W2.3a's): what reaches the page is the jump.
+  await setPad(page, { press: [CROSS] });
+  await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.jump)).toBe(true);
+  await setPad(page, {});
+  await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.jump)).toBe(false);
+
+  // Start is G: held across frames it toggles once, walk to fly, and the panel's switch follows.
+  await setPad(page, { press: [START] });
+  await expect.poll(() => page.evaluate(() => window.__viewer.mode())).toBe('fly');
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
+  await setPad(page, {});
+  await expect(page.locator('#walk')).not.toBeChecked();
+
+  // Fly: the same stick flies along the look (yaw 0 looks down -z) and does not turn it.
+  await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 160, z: 614, yaw: 0, pitch: 0 }));
+  const before = await pose(page);
+  await setPad(page, { axes: [0, -1, 0, 0] });
+  await page.waitForTimeout(1000);
+  await setPad(page, {});
+  await page.waitForTimeout(600);
+  const flown = await pose(page);
+  expect(before.z - flown.z).toBeGreaterThan(5);
+  expect(flown.yaw).toBeCloseTo(before.yaw, 6);
+
+  // Cross is up in the air.
+  await setPad(page, { press: [CROSS] });
+  await page.waitForTimeout(500);
+  await setPad(page, {});
+  await page.waitForTimeout(600);
+  expect((await pose(page)).y - flown.y).toBeGreaterThan(5);
+
+  // The right stick looks: pushed right, the view turns right (a smaller yaw, as the right arrow gives), and stops.
+  const facing = await pose(page);
+  await setPad(page, { axes: [0, 0, 1, 0] });
+  await page.waitForTimeout(500);
+  await setPad(page, {});
+  const turned = await pose(page);
+  expect(turned.yaw).toBeLessThan(facing.yaw - 5);
+  await page.waitForTimeout(300);
+  expect((await pose(page)).yaw).toBeCloseTo(turned.yaw, 1);
+
+  // Unplugged: the toast says so, once, and the hint line lets it go.
+  await plug(page, false);
+  await expect(toast).toHaveText('Controller disconnected');
+  await expect(toast).toBeVisible();
+  await expect(page.locator('#hint')).not.toContainText('pad: connected');
+  expect(await page.evaluate(() => window.__viewer.pad().id)).toBeNull();
+
+  expect(problems).toEqual([]);
+});

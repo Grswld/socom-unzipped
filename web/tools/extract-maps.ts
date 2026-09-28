@@ -29,8 +29,12 @@ mkdirSync(fixtureRun, { recursive: true });
 for (const f of mp) copyFileSync(join(run, f), join(publicRun, f));
 for (const path of COMMON_ARCHIVES) copyFileSync(join(disc, path), join(publicMaps, path));
 for (const f of ['MP2.ZDB', 'MP6.ZDB', 'MP72.ZDB']) copyFileSync(join(run, f), join(fixtureRun, f));
+// W2.1: the character types, `READERC.ZAR/character.rdr` -- which gear the player's SEAL wears and where
+// (web/docs/research/78 §5). Not in any map archive; the viewer reads it beside them and draws the body bare without it.
+const readerc = readdirSync(run).find((f) => f.toUpperCase() === 'READERC.ZAR');
+if (readerc) for (const to of [publicRun, fixtureRun]) copyFileSync(join(run, readerc), join(to, 'READERC.ZAR'));
 
 const maps = await listMaps(new FsAssetSource(publicMaps));
-writeFileSync(join(publicMaps, 'index.json'), JSON.stringify(servedIndex(maps), null, 2));
-console.log(`copied ${mp.length} archives and ${COMMON_ARCHIVES.join(', ')} to public/maps, 3 fixtures`);
+writeFileSync(join(publicMaps, 'index.json'), JSON.stringify(maps, null, 2));
+console.log(`copied ${mp.length} archives to public/maps, 3 fixtures${readerc ? ', and READERC.ZAR to both' : '; no READERC.ZAR on the disc tree'}`);
 console.log(`indexed ${maps.length} maps: ${maps.map((m) => `${m.name} (${m.archive})`).join(', ')}`);
