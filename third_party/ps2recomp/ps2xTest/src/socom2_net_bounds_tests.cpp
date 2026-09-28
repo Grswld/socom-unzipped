@@ -163,6 +163,7 @@ void register_socom2_net_bounds_tests()
                 {"animUpdate", a.animUpdate, b.animUpdate},
                 {"animTable", a.animTable, b.animTable},
                 {"roundState", a.roundState, b.roundState},
+                {"gameChat", a.gameChat, b.gameChat},
             };
             for (const Field &f : fields)
             {
@@ -457,6 +458,99 @@ void register_socom2_net_bounds_tests()
                 r = handlerCall(runtime, s->animUpdate, kBodyAt);
                 t.IsTrue(r.ran, std::string(s->revision) + ": outside a round the game does not read the index");
                 runtime.registerFunction(s->animUpdate, nullptr);
+            }
+        });
+    });
+
+    MiniTest::Case("Socom2GameChatBound", [](TestCase &tc)
+    {
+        // The chat packet: u16 size at +0, u16 channel at +2, the text from +4.
+        auto chatPacket = [](uint32_t at, uint16_t size, const std::string &text, bool terminate)
+        {
+            std::memset(guestRam().data() + at, 0, 0x700);
+            std::memcpy(guestRam().data() + at, &size, 2);
+            std::memcpy(guestRam().data() + at + 4, text.data(), text.size());
+            if (!terminate)
+                guestRam()[at + 4 + text.size()] = 'Z';
+        };
+
+        tc.Run("a chat packet whose size or text does not fit is refused, on both revisions", [=](TestCase &t)
+        {
+            struct Case { uint16_t size; std::string text; bool terminate; const char *what; };
+            const Case refused[] = {
+                {5u, "", true, "size 5"},
+                {0x601u, "hi", true, "size 0x601"},
+                {0xffffu, "hi", true, "size 0xffff"},
+                {0x20u, std::string(0x40, 'A'), true, "no terminator inside the size"},
+                {0x20u, std::string(0x1c, 'A'), false, "the text runs to the size's end"},
+            };
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->gameChat, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                for (const Case &c : refused)
+                {
+                    chatPacket(kBodyAt, c.size, c.text, c.terminate);
+                    const CallResult r = handlerCall(runtime, s->gameChat, kBodyAt);
+                    const std::string what = std::string(s->revision) + " " + c.what;
+                    t.IsFalse(r.ran, what + ": the handler never runs");
+                    t.Equals(r.v0, socom2_net_bounds::kHandlerRefused, what + ": v0 is the handler's own refusal");
+                    t.Equals(r.pc, kReturnTo, what + ": the call returns to its caller");
+                }
+                // A packet whose size runs past the end of guest RAM.
+                const uint32_t top = PS2_RAM_SIZE - 8u;
+                std::memset(guestRam().data() + top, 0, 8);
+                const uint16_t size = 0x40u;
+                std::memcpy(guestRam().data() + top, &size, 2);
+                t.IsFalse(handlerCall(runtime, s->gameChat, top).ran, std::string(s->revision) + ": a size past the end of RAM");
+                runtime.registerFunction(s->gameChat, nullptr);
+            }
+        });
+
+        tc.Run("a chat packet whose text is longer than the line keeps is cut there and delivered", [=](TestCase &t)
+        {
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->gameChat, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                socom2_net_bounds::detail::resetPacketsForTest();
+                const std::string text(200, 'A');
+                chatPacket(kBodyAt, static_cast<uint16_t>(text.size() + 6u), text, true);
+                const CallResult r = handlerCall(runtime, s->gameChat, kBodyAt);
+                const uint32_t cut = kBodyAt + 4u + socom2_net_bounds::kChatTextMax - 1u;
+                t.IsTrue(r.ran, std::string(s->revision) + ": the handler runs");
+                t.Equals(r.v0, kStandInReturn, std::string(s->revision) + ": with its own return");
+                t.Equals(static_cast<unsigned>(guestRam()[cut]), 0u, std::string(s->revision) + ": the terminator is forced at the cut");
+                t.Equals(static_cast<unsigned>(guestRam()[cut - 1u]), static_cast<unsigned>('A'), std::string(s->revision) + ": the text before it is kept");
+                t.IsTrue(r.out.find("chat packet bounded") != std::string::npos, std::string(s->revision) + ": and said: " + r.out);
+                t.IsTrue(handlerCall(runtime, s->gameChat, kBodyAt).out.empty(), std::string(s->revision) + ": once");
+                runtime.registerFunction(s->gameChat, nullptr);
+            }
+        });
+
+        tc.Run("a chat line within its bounds reaches the handler unchanged", [=](TestCase &t)
+        {
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->gameChat, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                const std::string longest(socom2_net_bounds::kChatTextMax - 1u, 'B');
+                for (const std::string &text : {std::string("hello"), std::string(""), longest})
+                {
+                    chatPacket(kBodyAt, static_cast<uint16_t>(text.size() + 6u), text, true);
+                    const std::vector<uint8_t> before(guestRam().begin() + kBodyAt, guestRam().begin() + kBodyAt + 0x100);
+                    const CallResult r = handlerCall(runtime, s->gameChat, kBodyAt);
+                    const std::vector<uint8_t> after(guestRam().begin() + kBodyAt, guestRam().begin() + kBodyAt + 0x100);
+                    const std::string what = std::string(s->revision) + " text of " + std::to_string(text.size());
+                    t.IsTrue(r.ran, what + ": the handler runs");
+                    t.Equals(r.v0, kStandInReturn, what + ": with its own return");
+                    t.IsTrue(after == before, what + ": the packet is unchanged");
+                    t.IsTrue(r.out.empty(), what + ": nothing said: '" + r.out + "'");
+                }
+                runtime.registerFunction(s->gameChat, nullptr);
             }
         });
     });

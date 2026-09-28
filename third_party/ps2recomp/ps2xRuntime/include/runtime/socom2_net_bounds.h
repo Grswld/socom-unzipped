@@ -57,6 +57,7 @@ namespace socom2_net_bounds
         uint32_t animUpdate;         // the animation packet handler: payload in a3
         uint32_t animTable;          // DATA: the animation holder; +0x1c entry table, +0x34 its end
         uint32_t roundState;         // DATA: the pointer to the round record; its byte +0x113 is 3 in a round
+        uint32_t gameChat;           // the game's chat packet handler (lobby and round): payload in a3
     };
 
     inline constexpr Sites kR0001Sites = {
@@ -67,6 +68,7 @@ namespace socom2_net_bounds
         0x002bb7f0u,   // animUpdate
         0x00414bb0u,   // animTable
         0x00437ce8u,   // roundState
+        0x002ba9d0u,   // gameChat
     };
 
     // r0004, against game/overlays_r0004/socom2_game_r0004.elf:
@@ -80,6 +82,8 @@ namespace socom2_net_bounds
     //                     the same offset (+0x15c); 36 of 36 instructions agree.
     //   animTable         data-via-twin, 289 twins unanimous; the handler's twin loads it at the same two offsets.
     //   roundState        the handler's twin reads it at the same offset (+60).
+    //   gameChat          relinked-body unique in match.json, and the address the game-packet registration's twin
+    //                     loads at the same offset (+0x460); 156 of 156 instructions agree.
     inline constexpr Sites kR0004Sites = {
         "r0004",
         0x0063dea0u,   // rtDispatch
@@ -88,6 +92,7 @@ namespace socom2_net_bounds
         0x002bd490u,   // animUpdate
         0x00441570u,   // animTable
         0x004446f8u,   // roundState
+        0x002bc5e0u,   // gameChat
     };
 
     // The row for the address table's revision; r0001's for any other, as the table does.
@@ -450,6 +455,83 @@ namespace socom2_net_bounds
         // Nothing here: the original may leave through a scheduler checkpoint and resume later.
     }
 
+    // ---- the game's chat packet ----------------------------------------------------------------------------------------
+    // u16 size at +0, u16 channel at +2, the text from +4. The packet is refused (the handler's own -1) unless its size
+    // is at least the header and a terminator (6), at most the message buffer, inside guest RAM, and the text is
+    // terminated inside that size. A text longer than the line keeps is cut: its terminator is forced at
+    // kChatTextMax - 1, said once, counted.
+    constexpr uint32_t kChatHeaderBytes = 4u;
+    constexpr uint32_t kChatMinBytes = 6u;
+    constexpr uint32_t kChatTextMax = 0x60u;   // bytes of text kept, the terminator included
+
+    enum class ChatVerdict : uint8_t { Pass, Cut, Refuse };
+
+    // `bytes` is the packet as it lies in guest RAM, `available` how many of them are inside RAM.
+    inline ChatVerdict chatVerdict(const uint8_t *bytes, uint32_t available)
+    {
+        if (available < kChatHeaderBytes)
+            return ChatVerdict::Refuse;
+        uint16_t size = 0;
+        std::memcpy(&size, bytes, 2);
+        if (size < kChatMinBytes || size > kMessageBytes || size > available)
+            return ChatVerdict::Refuse;
+        const void *nul = std::memchr(bytes + kChatHeaderBytes, 0, size - kChatHeaderBytes);
+        if (!nul)
+            return ChatVerdict::Refuse;
+        const uint32_t textLen = static_cast<uint32_t>(static_cast<const uint8_t *>(nul) - (bytes + kChatHeaderBytes));
+        return textLen >= kChatTextMax ? ChatVerdict::Cut : ChatVerdict::Pass;
+    }
+
+    namespace detail
+    {
+        inline PS2Runtime::RecompiledFunction &chatOriginal()
+        {
+            static PS2Runtime::RecompiledFunction fn = nullptr;
+            return fn;
+        }
+        inline std::atomic<uint32_t> &chatCut()
+        {
+            static std::atomic<uint32_t> n{0};
+            return n;
+        }
+    }
+
+    inline uint32_t chatTextsCut() { return detail::chatCut().load(); }
+
+    inline void gameChatBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t payload = getRegU32(ctx, 7);
+        if (payload != 0u)
+        {
+            const uint32_t at = payload & PS2_RAM_MASK;
+            uint8_t *p = rdram + at;
+            const uint32_t available = PS2_RAM_SIZE - at;
+            switch (chatVerdict(p, available))
+            {
+            case ChatVerdict::Refuse:
+            {
+                uint16_t size = 0;
+                if (available >= 2u)
+                    std::memcpy(&size, p, 2);
+                detail::refusePacket(ctx, 20u, "chat packet bounded: size", size);
+                return;
+            }
+            case ChatVerdict::Cut:
+                p[kChatHeaderBytes + kChatTextMax - 1u] = 0;
+                detail::bump(detail::chatCut());
+                if ((detail::packetSaid().fetch_or(1u << 21) & (1u << 21)) == 0u)
+                    std::cout << "[socom2] chat packet bounded: text cut to " << (kChatTextMax - 1u)
+                              << " characters (first one; every one is)" << std::endl;
+                break;
+            case ChatVerdict::Pass:
+                break;
+            }
+        }
+        if (detail::chatOriginal())
+            detail::chatOriginal()(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
     // Install every bound on the row's sites; each is independent of the others. Returns how many were installed.
     inline int install(PS2Runtime &runtime, const Sites &sites)
     {
@@ -460,6 +542,8 @@ namespace socom2_net_bounds
         if (detail::wrapSite(runtime, sites.objectUpdate, "objectUpdate", "object update index", objectUpdateBound, detail::objectOriginal()))
             ++installed;
         if (detail::wrapSite(runtime, sites.animUpdate, "animUpdate", "animation update", animUpdateBound, detail::animOriginal()))
+            ++installed;
+        if (detail::wrapSite(runtime, sites.gameChat, "gameChat", "chat packet", gameChatBound, detail::chatOriginal()))
             ++installed;
         return installed;
     }
