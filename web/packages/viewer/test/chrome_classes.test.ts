@@ -22,7 +22,7 @@ describe('the viewer chrome uses the design system', () => {
     ['fps', 's2u-status--pill'], ['fullscreen', 's2u-fab'], ['loading', 's2u-loading'], ['loading-bar', 's2u-loading__bar'],
     ['loading-what', 's2u-status'], ['status', 's2u-status'], ['diagnostics', 's2u-status'], ['warning', 's2u-notice--warn'],
     ['about', 's2u-disclosure'], ['advanced', 's2u-disclosure'], ['fog-box', 's2u-disclosure'], ['sliders-box', 's2u-disclosure'],
-    ['diagnostics-box', 's2u-disclosure'], ['iso', 's2u-label'],
+    ['diagnostics-box', 's2u-disclosure'], ['disc', 's2u-label'],
   ])('#%s carries %s', (id, cls) => {
     const el = doc.getElementById(id);
     expect(el, id).not.toBeNull();
