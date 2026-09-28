@@ -9,25 +9,26 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-16 -- CLOSED 2026-09-28 01:24Z, merged to main as v0.16.0 at d77b58c5 (PR #97, 02:53Z); opened 2026-09-27 07:00Z off main at
-              d84ffbde above the Sprint 15 merge 10650369, v0.15.0). No sprint branch is open until Sprint 17 opens off
-              main (its own seat; the spec agreed 2026-09-27); until then a change goes on a topic branch
-              (docs/GIT_STRATEGY.md section 2). See "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
-spec:         docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md (four milestones R, F, L, X
-              with a bar each; the acceptance bar is its section 4; six sentences superseded at the open, the plan's
-              Task 0 Step 5). The Sprint 15, 14, 13, 12 and 11 specs closed with v0.15.0 down to v0.11.0.
-plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R321 (R314 vacant)
-              from the global counter; its task book 2026-09-27-sprint-16-tasks.md and the readers' facts
-              2026-09-27-sprint-16-tree-facts.md beside it). The Sprint 15 plan (R282-R289; R298 the close's window,
-              superseded) and the owner's sitting (R290-R297, docs/superpowers/plans/2026-09-26-owner-sitting.md) are
-              closed, listed in the block below; the Sprint 14 plan (R269-R281) too, its block in
-              docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the Sprint 13 plan's block is in
-              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 in
-              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
+branch:       sprint-17 -- OPEN 2026-09-28 03:05Z, cut off main at d77b58c5 (the Sprint 16 merge, PR #97, tagged v0.16.0) by the
+              main-tree controller socom-pc-e0 (the owner's ruling of 2026-09-28: one controller seated in C:\Projects\socom_pc,
+              every other session in its own worktree; the Sprint 17 seat "Mission frame drop causes" plans, briefs and
+              reviews from .claude/worktrees/mission-frame-drops-7e50ea and hands each branch to the controller, who
+              alone merges, chains, pushes). Agents work in worktrees on agent/s17-* branches. Sprint 16 CLOSED
+              2026-09-28 01:24Z: see "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
+spec:         docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md (four milestones F, Q, A, H in the
+              owner's order; approved by the owner 2026-09-27 ~23:00Z). The Sprint 16, 15, 14, 13, 12 and 11 specs closed
+              with v0.16.0 down to v0.11.0.
+plans:        docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, the rulings R322-R330 from the global counter, the
+              Outcome, the Log newest first; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
+              The Sprint 16 plan (R299-R321, R314 vacant; docs/superpowers/plans/2026-09-27-sprint-16.md) and the Sprint 15
+              plan (R282-R289; R298 the close's window, superseded) with the owner's sitting (R290-R297,
+              docs/superpowers/plans/2026-09-26-owner-sitting.md) are closed, their blocks below; the Sprint 14 plan
+              (R269-R281) too, its block in docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the
+              Sprint 13 plan's block is in docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12
+              and 11 in docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 17 "sixty and the way back" -- its spec docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md
-              agreed by the owner 2026-09-27, its plan drafted by its own seat (branch claude/mission-frame-drops-7e50ea),
-              GitHub milestone 7; it opens off main after the v0.16.0 merge. #70, #71, #57, #59 and #94 are its.
+issues:       milestone 7 -- #59, #70, #71, #57 (Milestone R, R330), #32, #41, #28, #42, #91, #94, #26 (named by H1, not
+              taken).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's

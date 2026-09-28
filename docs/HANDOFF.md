@@ -10,11 +10,9 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-28 01:24Z, LATEST) -- Sprint 16 is CLOSED, merged to `main` as `v0.16.0` at `d77b58c5` (PR #97, 2026-09-28 02:53Z). The owner's ruling of 02:35Z: ONE controller, seated in the main tree; every other session in its own worktree.**
-  Done: V0, R1a, R2a, R3a, R5, L1a, L1b (#73), L2 (#74), F0, F2 (ADOPTED: the read-back 123 → 20 ms/s, `submit=` 568 → 541), X1, X3, X5. Carried to Sprint 17
-  (milestone 7): #70 (R1b at `3d17f192`, research/76), #71, #57, #59; to the backlog #32, #41.
-  Next: Sprint 17 "sixty and the way back", opened by its own seat off `main`; until then no sprint branch is open.
-- **Next free ruling number: R322** (R299-R321 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
+- **Where the loop is now (2026-09-28 03:05Z, LATEST) -- Sprint 17 "sixty and the way back" is OPEN on `sprint-17`, cut off `main` at `d77b58c5` (v0.16.0, PR #97) by the main-tree controller `socom-pc-e0`; Task 0 done but Steps 4-5 (the seat's hand-over). The owner's ruling of 02:35Z: ONE controller, seated in the main tree; every other session in its own worktree.**
+  Sprint 16 CLOSED 01:24Z (the sprint file's CLOSED block). Next: F0, G1 and Q0's lock-free code in agent worktrees the Sprint 17 seat briefs; every merge through this seat.
+- **Next free ruling number: R331** (R322-R330 Sprint 17's Task 0; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 

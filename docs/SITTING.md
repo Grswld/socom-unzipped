@@ -2,21 +2,21 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-27, for the sitting after the one of 2026-09-27: 5 open O rows (8 answered or struck); 24 active rulings since 2026-09-27 (23 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-09-28, for the sitting after the one of 2026-09-27: 5 open O rows (8 answered or struck); 33 active rulings since 2026-09-27 (32 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-5 open, 8 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-27.
+5 open, 8 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-28.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
-| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 1 |
-| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 0 |
-| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | -1 |
-| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 0 |
-| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 0 |
+| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 2 |
+| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 1 |
+| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | 0 |
+| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 1 |
+| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 1 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
@@ -31,7 +31,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-24 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 23 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+33 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 32 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
 - **R299** (2026-09-27) the loop builds and gates the release archives and writes the exact `gh release upload` and verify-half commands into the Log and O2, and stops short of the up… -- overturn by number
@@ -57,6 +57,15 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R319** (2026-09-27) Discussions' Announcements stand in for patch notes for now, human-gated: a dated draft under `docs/announcements/` from its template, a `docs/HUMAN_TASKS.md`… -- overturn by number
 - **R320** (2026-09-27) revise, do not append: a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's. -- overturn by number
 - **R321** (2026-09-27) O2, O4, O5, O7, O8, O10 and O15 stood through the sittings of 2026-09-26 and 2026-09-27 without an answer; each closes by default on the default it carried (O8… -- overturn by number
+- **R322** (2026-09-28) "60" is `FRAME mean=` ≤ 17.0 ms and `worst1s=` ≤ 20.0 ms over the gate's walk on three quiet gates on one exe, with the screenshot cost named beside the number… -- overturn by number
+- **R323** (2026-09-28) structural pacing changes are allowed once F1–F3 leave the guest waiting over 100 ms/s, one design, one attempt, one stop rule, the fence each; paraLLEl-GS onl… -- overturn by number
+- **R324** (2026-09-28) `LoadExecPS2` is an in-process restart first; the launcher-relaunch fallback with the argv in a sidecar if the reset proves wider than the box. -- overturn by number
+- **R325** (2026-09-28) the long announcement runs on the local Horizon stack; the hosted server's configuration is the owner's hand. -- overturn by number
+- **R326** (2026-09-28) A1 runs regardless of the owner's listen; A2–A4 wait for A0's word or A1's count. -- overturn by number
+- **R327** (2026-09-28) 3x scale's frame rate is recorded beside 1x, not fenced; the launcher's DETAIL wording names the cost. -- overturn by number
+- **R328** (2026-09-28) the online menus' harness is scoped in a note this sprint and built only if time remains; the microphone row marked cannot-pass-yet. -- overturn by number
+- **R329** (2026-09-28) a frame-rate bar reached short is recorded as the number, the ranked residual and the next lever; #59 stays open with that trigger. -- overturn by number
+- **R330** (2026-09-28) the release rows on milestone 7 (#70, #71, #57) are Milestone R at the tail, after F, Q and A. -- overturn by number
 
 ## 3. The issues carried twice
 
