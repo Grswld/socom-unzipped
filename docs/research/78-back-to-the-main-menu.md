@@ -94,6 +94,13 @@ Read from the decompilation (`game/analysis/SCUS_972.75.decomp.c`, cited by addr
   if the block at the answered address holds what `SetArg` wrote. So Q2's restart keeps the block's bytes across the
   reset (or rewrites them from the decoded argv), answers syscall `0x5B` with the same address, reloads the ELF and
   restarts the game thread; the loader's `main()` then does on our runtime what it does on the console.
+
+  > **Superseded 2026-09-28 11:12Z (Q2's review, the decompilation re-read):** the crt0 does NOT read the syscall
+  > `0x5B` block. The entry (`recomp/output/entry_0x180008.cpp`, decomp lines 299-395) zeroes the bss, sets
+  > `$a3 = 0x1D5800` (its own block) for syscall `0x3C` SetupThread, then calls `main` with `a0 = *(0x1D5800)`
+  > and `a1 = 0x1D5804`; `main` stores `argc-1` options read from `argv+1` and `argv[0]` as the program name.
+  > So a restart writes the crt0's block with `argc = 1+N`, `argv[0]` the guest path, then the N arguments and a
+  > null; writing the `0x5B` block as well is harmless. Q2's `writeCrt0Arguments` does this (d8da6a47).
 - **What else the game tore down before asking:** `snd_PcmStreamStop`, `snd_StopAllSounds`, `snd_UnloadBank`,
   `snd_StopAllVAGStreams`, `snd_StopSoundSystem`, `[DBCMAN] DeleteSocket` -- so the IOP HLE modules and the mixer
   are already quiet at the request; the restart still resets them (the boot re-loads the IRXs).
@@ -105,6 +112,7 @@ Read from the decompilation (`game/analysis/SCUS_972.75.decomp.c`, cited by addr
 - **Q2 is the whole fix**, as designed (D3: the in-process restart first): its RED case plants the block and asserts
   the reloaded guest reads `argc=3` and the three strings through syscall `0x5B`'s answer; its run is `online1`'s
   route ending on the main menu with `ref_main_menu_ours.png` matched.
+  > **Superseded 2026-09-28 11:12Z:** the case asserts the crt0's block (`argc = 1+N`, see §4's note), not the `0x5B` answer.
 - **The owner's word** decides the offline report: the two scripts are the control.
 
 ## 6. Commands
