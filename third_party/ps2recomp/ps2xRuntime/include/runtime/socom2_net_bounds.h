@@ -51,20 +51,43 @@ namespace socom2_net_bounds
     struct Sites
     {
         const char *revision;
-        uint32_t rtDispatch;   // the RT message dispatcher: (conn, peer, type byte, body, length) in a0..a3, t0
+        uint32_t rtDispatch;         // the RT message dispatcher: (conn, peer, type byte, body, length) in a0..a3, t0
+        uint32_t objectUpdate;       // the network object full-update packet handler: payload in a3
+        uint32_t objectClassCount;   // DATA: how many object classes are registered (u32)
+        uint32_t animUpdate;         // the animation packet handler: payload in a3
+        uint32_t animTable;          // DATA: the animation holder; +0x1c entry table, +0x34 its end
+        uint32_t roundState;         // DATA: the pointer to the round record; its byte +0x113 is 3 in a round
     };
 
     inline constexpr Sites kR0001Sites = {
         "r0001",
         0x006364c0u,   // rtDispatch
+        0x0061e8b8u,   // objectUpdate
+        0x0067c5a0u,   // objectClassCount
+        0x002bb7f0u,   // animUpdate
+        0x00414bb0u,   // animTable
+        0x00437ce8u,   // roundState
     };
 
     // r0004, against game/overlays_r0004/socom2_game_r0004.elf:
-    //   rtDispatch  the call at +0xf4 of the frame loop's twin (0x0063dcd0, relinked-body unique in match.json); the
-    //               twin's own calls at +0x330 / +0x350 are the address table's serverMemRead / serverMemWrite.
+    //   rtDispatch        the call at +0xf4 of the frame loop's twin (0x0063dcd0, relinked-body unique in match.json);
+    //                     the twin's own calls at +0x330 / +0x350 are the address table's serverMemRead / serverMemWrite.
+    //   objectUpdate      the address its registering function's twin (0x006274b8, exact) loads at the same offset
+    //                     (+0x6c/+0x74); 292 of 292 instructions agree in opcode with r0001's.
+    //   objectClassCount  data-via-twin (one twin), 0x28 below the class table, as in r0001; the handler's twin reads
+    //                     that table (0x0067be08) at the same offset as r0001's.
+    //   animUpdate        the address the game-packet registration's twin (0x002ba1b0, relinked-body unique) loads at
+    //                     the same offset (+0x15c); 36 of 36 instructions agree.
+    //   animTable         data-via-twin, 289 twins unanimous; the handler's twin loads it at the same two offsets.
+    //   roundState        the handler's twin reads it at the same offset (+60).
     inline constexpr Sites kR0004Sites = {
         "r0004",
         0x0063dea0u,   // rtDispatch
+        0x00626190u,   // objectUpdate
+        0x0067bde0u,   // objectClassCount
+        0x002bd490u,   // animUpdate
+        0x00441570u,   // animTable
+        0x004446f8u,   // roundState
     };
 
     // The row for the address table's revision; r0001's for any other, as the table does.
@@ -263,11 +286,180 @@ namespace socom2_net_bounds
         // Nothing here: the original may leave through a scheduler checkpoint and resume later.
     }
 
+    // ---- game packets: the indexes a handler takes from its payload ------------------------------------------------
+    // These handlers are given a pointer to the message's bytes and return how many they consumed; a negative return is
+    // the game's own refusal (the game-packet dispatcher then drops the rest of the message). A payload whose index is
+    // outside the table it selects from is refused with that value before the handler runs; the first refusal of each
+    // kind is said, every one counted.
+    constexpr uint32_t kHandlerRefused = 0xFFFFFFFFu;   // -1
+    constexpr uint32_t kMessageBytes = 0x600u;          // the game-packet dispatcher's message buffer
+    constexpr uint32_t kObjectClassLimit = 0x10u;       // the object class table's entries
+    constexpr uint32_t kObjectIndexLimit = 0x1000u;     // the object tables' entries
+    constexpr uint32_t kAnimEntryBytes = 0x34u;
+
+    enum class PacketVerdict : uint8_t { Pass, ClassRefused, ObjectRefused, WalkRefused, IndexRefused };
+
+    // Class index < the registered count (never more than the table holds); object index < the tables' size.
+    inline PacketVerdict objectVerdict(uint32_t cls, uint32_t classCount, uint32_t object)
+    {
+        const uint32_t limit = classCount < kObjectClassLimit ? classCount : kObjectClassLimit;
+        if (cls >= limit)
+            return PacketVerdict::ClassRefused;
+        if (object >= kObjectIndexLimit)
+            return PacketVerdict::ObjectRefused;
+        return PacketVerdict::Pass;
+    }
+
+    // The walk length stays inside the message buffer; in a round (the only time the game reads it) the entry index
+    // is inside the entry table.
+    inline PacketVerdict animVerdict(uint32_t walk, int16_t index, uint32_t entries, bool inRound)
+    {
+        if (walk > kMessageBytes)
+            return PacketVerdict::WalkRefused;
+        if (inRound && (index < 0 || static_cast<uint32_t>(index) >= entries))
+            return PacketVerdict::IndexRefused;
+        return PacketVerdict::Pass;
+    }
+
+    // The entry table's length, as the game computes it from its start and end.
+    inline uint32_t animEntries(uint32_t start, uint32_t end)
+    {
+        return (end != 0u && end >= start) ? (end - start) / kAnimEntryBytes : 0u;
+    }
+
+    namespace detail
+    {
+        inline uint32_t readU32(const uint8_t *rdram, uint32_t addr)
+        {
+            uint32_t v = 0;
+            if (ramSpanFits(addr, 4u))
+                std::memcpy(&v, rdram + (addr & PS2_RAM_MASK), 4);
+            return v;
+        }
+
+        inline const Sites *&packetSites()
+        {
+            static const Sites *s = &kR0001Sites;
+            return s;
+        }
+        inline PS2Runtime::RecompiledFunction &objectOriginal()
+        {
+            static PS2Runtime::RecompiledFunction fn = nullptr;
+            return fn;
+        }
+        inline PS2Runtime::RecompiledFunction &animOriginal()
+        {
+            static PS2Runtime::RecompiledFunction fn = nullptr;
+            return fn;
+        }
+        inline std::atomic<uint32_t> &packetRefused()
+        {
+            static std::atomic<uint32_t> n{0};
+            return n;
+        }
+        // One bit per PacketVerdict (and one for a payload outside RAM): said once each.
+        inline std::atomic<uint32_t> &packetSaid()
+        {
+            static std::atomic<uint32_t> bits{0};
+            return bits;
+        }
+        inline void resetPacketsForTest()
+        {
+            packetRefused().store(0u);
+            packetSaid().store(0u);
+        }
+
+        inline void refusePacket(R5900Context *ctx, uint32_t kind, const char *line, uint32_t value)
+        {
+            bump(packetRefused());
+            const uint32_t bit = 1u << (kind & 31u);
+            if ((packetSaid().fetch_or(bit) & bit) == 0u)
+                std::cout << "[socom2] " << line << " " << value << " refused (first of this kind; every one is)" << std::endl;
+            setReturnU32(ctx, kHandlerRefused);
+            ctx->pc = getRegU32(ctx, 31);
+        }
+    }
+
+    inline uint32_t packetsRefused() { return detail::packetRefused().load(); }
+
+    inline void objectUpdateBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t payload = getRegU32(ctx, 7);
+        if (payload != 0u)   // a null payload is the game's own refusal already
+        {
+            if (!ramSpanFits(payload, 10u))
+            {
+                detail::refusePacket(ctx, 31u, "object update bounded: a payload outside guest RAM, length", 10u);
+                return;
+            }
+            const uint8_t *p = rdram + (payload & PS2_RAM_MASK);
+            uint16_t object = 0;
+            std::memcpy(&object, p + 8, 2);
+            const uint32_t classCount = detail::readU32(rdram, detail::packetSites()->objectClassCount);
+            switch (objectVerdict(p[1], classCount, object))
+            {
+            case PacketVerdict::ClassRefused:
+                detail::refusePacket(ctx, static_cast<uint32_t>(PacketVerdict::ClassRefused), "object update bounded: class index", p[1]);
+                return;
+            case PacketVerdict::ObjectRefused:
+                detail::refusePacket(ctx, static_cast<uint32_t>(PacketVerdict::ObjectRefused), "object update bounded: object index", object);
+                return;
+            default:
+                break;
+            }
+        }
+        if (detail::objectOriginal())
+            detail::objectOriginal()(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
+    inline void animUpdateBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t payload = getRegU32(ctx, 7);
+        if (payload != 0u)
+        {
+            if (!ramSpanFits(payload, 8u))
+            {
+                detail::refusePacket(ctx, 30u, "animation update bounded: a payload outside guest RAM, length", 8u);
+                return;
+            }
+            const uint8_t *p = rdram + (payload & PS2_RAM_MASK);
+            uint32_t walk = 0;
+            int16_t index = 0;
+            std::memcpy(&walk, p, 4);
+            std::memcpy(&index, p + 4, 2);
+            const Sites &s = *detail::packetSites();
+            const uint32_t round = detail::readU32(rdram, s.roundState);
+            const bool inRound = round != 0u && ramSpanFits(round + 0x113u, 1u) && rdram[(round + 0x113u) & PS2_RAM_MASK] == 3u;
+            const uint32_t entries = animEntries(detail::readU32(rdram, s.animTable + 0x1cu), detail::readU32(rdram, s.animTable + 0x34u));
+            switch (animVerdict(walk, index, entries, inRound))
+            {
+            case PacketVerdict::WalkRefused:
+                detail::refusePacket(ctx, static_cast<uint32_t>(PacketVerdict::WalkRefused), "animation update bounded: length", walk);
+                return;
+            case PacketVerdict::IndexRefused:
+                detail::refusePacket(ctx, static_cast<uint32_t>(PacketVerdict::IndexRefused), "animation update bounded: entry index",
+                                     static_cast<uint32_t>(static_cast<int32_t>(index)));
+                return;
+            default:
+                break;
+            }
+        }
+        if (detail::animOriginal())
+            detail::animOriginal()(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
     // Install every bound on the row's sites; each is independent of the others. Returns how many were installed.
     inline int install(PS2Runtime &runtime, const Sites &sites)
     {
+        detail::packetSites() = &sites;
         int installed = 0;
         if (detail::wrapSite(runtime, sites.rtDispatch, "rtDispatch", "rt frame length", rtDispatchBound, detail::rtOriginal()))
+            ++installed;
+        if (detail::wrapSite(runtime, sites.objectUpdate, "objectUpdate", "object update index", objectUpdateBound, detail::objectOriginal()))
+            ++installed;
+        if (detail::wrapSite(runtime, sites.animUpdate, "animUpdate", "animation update", animUpdateBound, detail::animOriginal()))
             ++installed;
         return installed;
     }

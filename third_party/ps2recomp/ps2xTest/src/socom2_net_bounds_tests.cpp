@@ -95,6 +95,56 @@ namespace
     }
 
     const socom2_net_bounds::Sites *const kAllSites[] = {&socom2_net_bounds::kR0001Sites, &socom2_net_bounds::kR0004Sites};
+
+    void put32(uint32_t at, uint32_t v) { std::memcpy(guestRam().data() + at, &v, 4); }
+    void put16(uint32_t at, uint16_t v) { std::memcpy(guestRam().data() + at, &v, 2); }
+
+    // One call of a game-packet handler's entry: (net, a1, sender, payload) in a0..a3, as the game-packet dispatcher
+    // passes them.
+    CallResult handlerCall(PS2Runtime &runtime, uint32_t entry, uint32_t payload)
+    {
+        R5900Context ctx;
+        std::memset(&ctx, 0, sizeof(ctx));
+        setReg(ctx, 4, 0u);
+        setReg(ctx, 5, 0u);
+        setReg(ctx, 6, 1u);
+        setReg(ctx, 7, payload);
+        setReg(ctx, 31, kReturnTo);
+        setReturnU32(&ctx, 0x0BADu);
+        ctx.pc = entry;
+        g_seen = StandInSeen{};
+        CallResult r;
+        r.out = captureOut([&] { runtime.lookupFunction(entry)(guestRam().data(), &ctx, &runtime); });
+        r.ran = g_seen.ran;
+        r.v0 = getRegU32(&ctx, 2);
+        r.pc = ctx.pc;
+        return r;
+    }
+
+    // The object update's two indexes: the class byte at +1 and the object number at +8.
+    void objectPayload(uint8_t cls, uint16_t object)
+    {
+        std::memset(guestRam().data() + kBodyAt, 0, 0x40);
+        guestRam()[kBodyAt + 1] = cls;
+        put16(kBodyAt + 8, object);
+    }
+
+    // The animation update: the walk length at +0 and the entry index (signed 16-bit) at +4; the entry table holds
+    // `entries` entries; `inRound` sets the state the game walks the update in.
+    constexpr uint32_t kAnimEntries = 0x00300000u, kRoundRecord = 0x00310000u;
+    void animSetup(const socom2_net_bounds::Sites &s, uint32_t entries, bool inRound)
+    {
+        put32(s.animTable + 0x1cu, kAnimEntries);
+        put32(s.animTable + 0x34u, kAnimEntries + entries * 0x34u);
+        put32(s.roundState, kRoundRecord);
+        guestRam()[kRoundRecord + 0x113u] = inRound ? 3u : 2u;
+    }
+    void animPayload(uint32_t walk, int16_t index)
+    {
+        std::memset(guestRam().data() + kBodyAt, 0, 0x40);
+        put32(kBodyAt, walk);
+        put16(kBodyAt + 4, static_cast<uint16_t>(index));
+    }
 }
 
 void register_socom2_net_bounds_tests()
@@ -105,8 +155,20 @@ void register_socom2_net_bounds_tests()
         {
             const socom2_net_bounds::Sites &a = socom2_net_bounds::kR0001Sites;
             const socom2_net_bounds::Sites &b = socom2_net_bounds::kR0004Sites;
-            t.IsTrue(socom2_addresses::available(a.rtDispatch) && socom2_addresses::available(b.rtDispatch), "rtDispatch");
-            t.IsTrue(a.rtDispatch != b.rtDispatch, "rtDispatch moved with the relink");
+            struct Field { const char *name; uint32_t a, b; };
+            const Field fields[] = {
+                {"rtDispatch", a.rtDispatch, b.rtDispatch},
+                {"objectUpdate", a.objectUpdate, b.objectUpdate},
+                {"objectClassCount", a.objectClassCount, b.objectClassCount},
+                {"animUpdate", a.animUpdate, b.animUpdate},
+                {"animTable", a.animTable, b.animTable},
+                {"roundState", a.roundState, b.roundState},
+            };
+            for (const Field &f : fields)
+            {
+                t.IsTrue(socom2_addresses::available(f.a) && socom2_addresses::available(f.b), std::string(f.name) + " established on both");
+                t.IsTrue(f.a != f.b, std::string(f.name) + " moved with the relink");
+            }
             t.Equals(std::string(a.revision), std::string("r0001"), "the r0001 row");
             t.Equals(std::string(b.revision), std::string("r0004"), "the r0004 row");
         });
@@ -251,6 +313,151 @@ void register_socom2_net_bounds_tests()
             t.IsTrue(second.out.empty(), "once: '" + second.out + "'");
             t.Equals(socom2_net_bounds::rtFramesRefused(), 0u, "not a refusal");
             runtime.registerFunction(s.rtDispatch, nullptr);
+        });
+    });
+
+    MiniTest::Case("Socom2ObjectUpdateBound", [](TestCase &tc)
+    {
+        tc.Run("an object update whose class or object index is out of its table is refused, on both revisions", [](TestCase &t)
+        {
+            struct Case { uint8_t cls; uint16_t object; const char *what; };
+            const Case refused[] = {
+                {0x10u, 5u, "class 0x10"}, {0xffu, 5u, "class 0xff"}, {3u, 5u, "class == the registered count"},
+                {2u, 0x1000u, "object 0x1000"}, {2u, 0xffffu, "object 0xffff"},
+            };
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->objectUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                put32(s->objectClassCount, 3u);
+                for (const Case &c : refused)
+                {
+                    const std::string what = std::string(s->revision) + " " + c.what;
+                    objectPayload(c.cls, c.object);
+                    const CallResult r = handlerCall(runtime, s->objectUpdate, kBodyAt);
+                    t.IsFalse(r.ran, what + ": the handler never runs");
+                    t.Equals(r.v0, socom2_net_bounds::kHandlerRefused, what + ": v0 is the handler's own refusal");
+                    t.Equals(r.pc, kReturnTo, what + ": the call returns to its caller");
+                }
+                // A registered count past the table's size does not widen the bound.
+                put32(s->objectClassCount, 0x20u);
+                objectPayload(0x10u, 5u);
+                t.IsFalse(handlerCall(runtime, s->objectUpdate, kBodyAt).ran, std::string(s->revision) + ": class 0x10 with a count of 0x20");
+                runtime.registerFunction(s->objectUpdate, nullptr);
+            }
+        });
+
+        tc.Run("an object update inside both tables reaches the handler unchanged", [](TestCase &t)
+        {
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->objectUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                put32(s->objectClassCount, 3u);
+                objectPayload(2u, 0xfffu);
+                const CallResult r = handlerCall(runtime, s->objectUpdate, kBodyAt);
+                t.IsTrue(r.ran, std::string(s->revision) + ": the handler runs");
+                t.Equals(r.v0, kStandInReturn, std::string(s->revision) + ": with its own return");
+                t.Equals(g_seen.a3, kBodyAt, std::string(s->revision) + ": and the payload as given");
+                t.IsTrue(r.out.empty(), std::string(s->revision) + ": nothing said: '" + r.out + "'");
+                runtime.registerFunction(s->objectUpdate, nullptr);
+            }
+        });
+
+        tc.Run("an object update refusal is said once per index and counted every time", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            const socom2_net_bounds::Sites &s = socom2_net_bounds::kR0001Sites;
+            runtime.registerFunction(s.objectUpdate, standIn);
+            captureOut([&] { socom2_net_bounds::install(runtime, s); });
+            socom2_net_bounds::detail::resetPacketsForTest();
+            put32(s.objectClassCount, 3u);
+            std::string out;
+            for (int i = 0; i < 3; ++i)
+            {
+                objectPayload(0x40u, 1u);
+                out += handlerCall(runtime, s.objectUpdate, kBodyAt).out;
+                objectPayload(1u, 0x2000u);
+                out += handlerCall(runtime, s.objectUpdate, kBodyAt).out;
+            }
+            t.Equals(count(out, "object update bounded"), static_cast<size_t>(2), "one line per index for six refusals: " + out);
+            t.Equals(socom2_net_bounds::packetsRefused(), 6u, "every refusal is counted");
+            runtime.registerFunction(s.objectUpdate, nullptr);
+        });
+    });
+
+    MiniTest::Case("Socom2AnimUpdateBound", [](TestCase &tc)
+    {
+        tc.Run("an animation update whose walk passes the message buffer is refused, on both revisions", [](TestCase &t)
+        {
+            const uint32_t walks[] = {0x601u, 0x10000u, 0xffffffffu};
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->animUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                for (bool inRound : {true, false})
+                {
+                    animSetup(*s, 4u, inRound);
+                    for (uint32_t walk : walks)
+                    {
+                        animPayload(walk, 1);
+                        const CallResult r = handlerCall(runtime, s->animUpdate, kBodyAt);
+                        const std::string what = std::string(s->revision) + " walk " + std::to_string(walk);
+                        t.IsFalse(r.ran, what + ": the handler never runs");
+                        t.Equals(r.v0, socom2_net_bounds::kHandlerRefused, what + ": v0 is the handler's own refusal");
+                        t.Equals(r.pc, kReturnTo, what + ": the call returns to its caller");
+                    }
+                }
+                runtime.registerFunction(s->animUpdate, nullptr);
+            }
+        });
+
+        tc.Run("in a round, an animation update whose entry index is out of the table is refused", [](TestCase &t)
+        {
+            const int16_t indexes[] = {-1, -0x8000, 4, 0x7fff};
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->animUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                animSetup(*s, 4u, true);
+                for (int16_t index : indexes)
+                {
+                    animPayload(0x10u, index);
+                    const CallResult r = handlerCall(runtime, s->animUpdate, kBodyAt);
+                    const std::string what = std::string(s->revision) + " index " + std::to_string(index);
+                    t.IsFalse(r.ran, what + ": the handler never runs");
+                    t.Equals(r.v0, socom2_net_bounds::kHandlerRefused, what + ": v0 is the handler's own refusal");
+                }
+                animSetup(*s, 0u, true);
+                animPayload(0x10u, 0);
+                t.IsFalse(handlerCall(runtime, s->animUpdate, kBodyAt).ran, std::string(s->revision) + ": an empty table has no entry 0");
+                runtime.registerFunction(s->animUpdate, nullptr);
+            }
+        });
+
+        tc.Run("an animation update inside its bounds, or its index outside a round, reaches the handler", [](TestCase &t)
+        {
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->animUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                animSetup(*s, 4u, true);
+                animPayload(0x10u, 1);
+                CallResult r = handlerCall(runtime, s->animUpdate, kBodyAt);
+                t.IsTrue(r.ran && r.v0 == kStandInReturn, std::string(s->revision) + ": walk 0x10, index 1");
+                animPayload(0x600u, 3);
+                t.IsTrue(handlerCall(runtime, s->animUpdate, kBodyAt).ran, std::string(s->revision) + ": walk 0x600, index 3");
+                animSetup(*s, 4u, false);
+                animPayload(0x10u, 0x7fff);
+                r = handlerCall(runtime, s->animUpdate, kBodyAt);
+                t.IsTrue(r.ran, std::string(s->revision) + ": outside a round the game does not read the index");
+                runtime.registerFunction(s->animUpdate, nullptr);
+            }
         });
     });
 }
