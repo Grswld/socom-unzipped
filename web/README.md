@@ -141,6 +141,9 @@ instead, seen through the game's own camera; the last rows of the table are the 
 | `C` (walking) | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
 | left click (walking, captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
 | `R` (walking) | reloads; an empty magazine waits for it |
+| walking into a ladder (walking) | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
+| `X` (walking) | the action, the pad's Cross in the game: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
+| `Q` / `E` held (walking) | peeks left / right, standing still, as the game's d-pad does |
 
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
