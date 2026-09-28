@@ -117,8 +117,20 @@ Everything below is relative to `web/`.
 
 ## Controls
 
-The camera flies like a creative-mode build camera: momentum, not teleporting. `G` puts the SEAL on the ground
-instead, seen through the game's own camera; the last rows of the table are the walk's.
+The camera flies like a creative-mode build camera: momentum, not teleporting. The page lists only the controls of the
+mode you are in, in the **Controls** popover in the top bar (hover it, focus it, or click or tap it; **Esc** closes it),
+and, once a pad is connected, the pad's layout for that mode under them.
+
+**Playing as a SEAL is behind a URL parameter.** Add `?redotcom` (its presence is enough: `?redotcom`, or
+`?map=MP2&redotcom`) and the page also has walk mode, the SEAL's body, the rifle, the ammo box and the touch stance and
+fire buttons. Without it none of that is rendered, bound or answered: no `G`, no Start, no Fly / Walk switch, no walk in
+the Controls popover, and the debug hook's `setMode('walk')` returns false. (`viewer/src/features.ts`, `playEnabled`.)
+
+The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
+**Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
+the choice is remembered. A failed load unfolds the panel so the error is seen.
+
+### Flying (always)
 
 | input | what it does |
 |---|---|
@@ -127,20 +139,47 @@ instead, seen through the game's own camera; the last rows of the table are the 
 | `W`/`S` | fly along the look direction — nose down and `W` descends |
 | `A`/`D` | strafe, always level with the horizon whatever the pitch |
 | `Space` / `Shift` | up and down in world space |
-| double-tap `W`, held | boost, with the field of view widening to match -- in flight only: the walk has no boost, the game's run being its fastest. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
-| wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
+| double-tap `W`, held | boost, with the field of view widening to match. **Flying only**: there is no sprint in walk mode from any input (double-tap `W`, the pad's R3, the touch stick's rim-hold). Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
+| wheel | trims the fly speed between 0.1x and 16x; the Controls popover shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
 | `F` | fullscreen, and back (also the button under the frame counter) |
-| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
-| the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
-| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
-| `W`/`S`, `A`/`D` (walking) | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
-| mouse (walking, captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
-| `V` (walking) | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
-| `C` (walking) | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
-| left click (walking, captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
-| `R` (walking) | reloads; an empty magazine waits for it |
+| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar stays |
+
+### Walking (`?redotcom`)
+
+| input | what it does |
+|---|---|
+| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **Fly / Walk** switch (the Modern / PS2 switch's own markup) mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `W`/`S`, `A`/`D` | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
+| mouse (captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
+| `Space` | jump |
+| `V` | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
+| `C` | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
+| right button (held) | the aim view, first person from the SEAL's eyes |
+| left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
+| `R` | reloads; an empty magazine waits for it |
+
+### The controller
+
+The Gamepad API's standard mapping, read as the PS2 pad by position. The left stick moves and the right looks, flying and
+walking alike. The layout is the owner's word of 2026-09-28 where it says so; a row marked *assumed* in the page is one
+neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LAYOUT`).
+
+| button | walking (`?redotcom`) | flying |
+|---|---|---|
+| left stick / right stick | move / look | fly along the look / look |
+| Square | jump | up |
+| R1 | fire (held fires at the rifle's rate; let go stops) | — |
+| Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
+| L1 (held) | aim view (first person) | — |
+| d-pad Up | zoom (scope): the lane is read, the zoom itself is a stub until the accuracy work merges | — |
+| Start | fly (as `G`) | walk (as `G`) |
+| L3 | crouch toggle on release (the launcher's crouch shortcut) | down |
+| R3 | — | boost |
+
+Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/play.ts`): the game reads the button's
+pressure, which a browser pad does not give.
 
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
@@ -172,17 +211,16 @@ that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, an
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
 and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
 has a phone's width to work with; the stick held at its rim for 400 ms is the flight's boost, the one gesture a
-thumb can make without leaving the stick (walking, it is simply a full stick); and a round fullscreen button sits above the lift buttons,
+thumb can make without leaving the stick (on foot, with `?redotcom`, it is simply a full stick: the walk has no boost); and a round fullscreen button sits above the lift buttons,
 which on a phone also asks for a landscape lock. The canvas is `100dvh`, so the picture's centre is the
 screen's whether or not the browser bar is showing, and the pixel ratio starts at 1.5 on a coarse
 pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
 step it back up.
 
-Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link,
-the settings cog beside it, the GitHub mark, whose word drops under 480px), then the panel beneath it.
-The panel opens folded on a coarse pointer, leaving only the cog (a remembered choice still wins), its
-body scrolls inside itself, and the status line drops the draw and collision counts and
-abbreviates the rest so it fits on one row at 360px. The lift buttons clear the browser's own bottom
+Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Controls,
+Settings and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
+panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself, and
+the status line is two dim lines whose whole text is its tooltip. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 
 ## Loading a map without freezing the page
