@@ -146,8 +146,10 @@ instead, seen through the game's own camera; the last rows of the table are the 
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
 [What the picture is made of](#what-the-picture-is-made-of), "The player". In short: 65 units a second running, 37
 backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
-not jump: the game's jump is an animation's root motion, not yet read. The ammo box at the bottom left shows the
-magazine while walking.
+not jump: the game's jump is an animation's root motion, not yet read. While walking, the game's own HUD is drawn
+over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
+compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
+the context prompt (the climb icon); hidden in flight.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -346,6 +348,13 @@ The rifle is `ZWEAPON.ZAR`'s M4A1, first in every `mp_seal1` kit (`scene/src/wea
 rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAGS" -- and a 1000-unit ray against
 every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
 `EFFE_TXR.ZED`, 1 to 1.8 units wide.
+
+**The HUD is the game's** ([`docs/research/87-hud.md`](docs/research/87-hud.md)): `CHUD`'s own rectangles read out
+of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, the weapon icon at (20, 389), "30/30" and
+"2 MAGS" at scale 0.9 on the baseline 382, the fire-mode rounds at x 10, 51, 87, the compass ring `compass_lo.tif` at
+96x96 on (565, 90) turned by the heading, the info box's health bar at (488, 396) -- drawn from `HUD_TXR`, `HUD2_TXR`,
+`HUDW_TXR` and `FONT_TXR` (the font a PSMT4 texture `@s2u/gs` now reads, every HUD bitmap stored bottom row first) with
+`fonts.rdr`'s `font_text_01` glyphs; each element's pixels within a pixel of the console frame's (`e2e/hud.spec.ts`).
 
 ## Known gaps
 
