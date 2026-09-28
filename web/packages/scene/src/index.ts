@@ -9,3 +9,4 @@ export * from './aimaps';
 export * from './spawns';
 export * from './lod';
 export * from './grid';
+export * from './probe';

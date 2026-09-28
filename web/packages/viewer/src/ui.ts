@@ -333,6 +333,22 @@ export class Ui {
   }
 
   /**
+   * The walk switch (W1.4): walk on the game's floors at the SEAL's eye height, or fly. It is not one of the
+   * overlay toggles -- it moves the camera, so `apply` must not replay it on every map load -- and it mirrors `G`
+   * through `setWalk`. The box starts as the markup has it, like the toggles.
+   */
+  onWalkSwitch(handler: (on: boolean) => void): void {
+    const box = find<HTMLInputElement>('walk');
+    box.checked = box.defaultChecked;
+    box.addEventListener('change', () => handler(box.checked));
+  }
+
+  /** Puts the walk switch where the mode is, whoever changed it. */
+  setWalk(on: boolean): void {
+    find<HTMLInputElement>('walk').checked = on;
+  }
+
+  /**
    * The camera's line. It reads differently once the mouse is captured, because the way back out —
    * Esc — is the one control a player cannot guess from the others.
    */
@@ -340,7 +356,7 @@ export class Ui {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · F fullscreen · ${speed}`
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
   }

@@ -1,4 +1,4 @@
-import { flattenScene, type PlacedModel } from './buildScene';
+import { flattenScene, worldDi, type PlacedModel } from './buildScene';
 import type { WorldPoly } from './collision';
 import { transformPoint, type SceneNode } from './sceneGraph';
 import type { GridParams } from './worldRoot';
@@ -39,7 +39,15 @@ export interface CellRange { x0: number; x1: number; z0: number; z1: number }
  * The polygons of one realised node: `count` consecutive entries of the collision list from `first`. The
  * probe's unit (first hit per model, research 23 section 1.1) and the grid's collision object.
  */
-export interface CollisionOwner { modelName: string; path: string; first: number; count: number }
+export interface CollisionOwner {
+  modelName: string; path: string; first: number; count: number;
+  /**
+   * The node's `tag_NODE_PARAMS` flag word, for the probe's per-model gate (`m_active`, `m_hasDI`,
+   * `m_region_shift`; research 23 section 1.1, `probe.ts`). Absent where the owners were inferred without the
+   * graph (`collisionRuns`), which the gate lets through.
+   */
+  flags?: number;
+}
 
 interface ObjectBase {
   /** Its index in the list it came from: `placed`, `clutter`, or the collision owners. */
@@ -196,9 +204,9 @@ export function collisionOwners(models: SceneNode[], rootName = 'worldmodel'): C
   const out: CollisionOwner[] = [];
   let first = 0;
   for (const f of flattenScene(models, rootName)) {
-    const count = f.node.collision.length;
+    const count = worldDi(f).length;
     if (count === 0) continue;
-    out.push({ modelName: f.modelName, path: f.path, first, count });
+    out.push({ modelName: f.modelName, path: f.path, first, count, flags: f.node.flags });
     first += count;
   }
   return out;
