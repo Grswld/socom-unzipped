@@ -9,9 +9,9 @@ import { Zar, parseRdr, rdrGet, type RdrNode } from '@s2u/archive';
  * Units. The game's world unit is a decimetre: a map's `MetersPerUnit` is 0.1, and reCOM scales the
  * script's metre values by `CWorld::m_scale = 1 / MetersPerUnit` = 10 (`zNode/node_saveload.cpp:291`).
  * Where `char_dyn.cpp` multiplies by `m_scale` -- the fall distances (`:28-30`), the climb, stand and
- * jump heights (`:412-425`) -- this table holds the product, in units; the console's own copy of the
- * table at `0x44c250` holds the same products (13, 21.5, 26.5, 10, 20: `docs/research/17-ground-height.md
- * §8`). `motion.rdr`'s `max_velocity` and `transition_speed_A/B` are metres a second and are held here
+ * jump heights (`:412-425`) -- this table holds the product, in units. `docs/research/17-ground-height.md
+ * §8` names the console table's offsets (`0x44c250`, `+0x178..0x188`); the values are the file's x m_scale
+ * (reCOM `char_dyn.cpp:413-425`). `motion.rdr`'s `max_velocity` and `transition_speed_A/B` are metres a second and are held here
  * in units a second (x10: `seal_run` 6.5 m/s is 65, research 25 §0's (0, 0, -65)). Everything else is
  * raw: `gravity 235`, `ground_touch_distance 8` and `step_height 6.5` are the console table's numbers
  * as they stand (research 17 §8, `+0x00`, `+0x14`, `+0x1c`), and the `cam_*` block is read unscaled

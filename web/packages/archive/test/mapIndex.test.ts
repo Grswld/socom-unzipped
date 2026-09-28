@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { FsAssetSource } from '../src/fsAssetSource';
+import { FsAssetSource, readServedIndex } from '../src/fsAssetSource';
 import { COMMON_ARCHIVES, listMaps, parseServedIndex, servedIndex } from '../src/mapIndex';
 
 const served = resolve(import.meta.dirname, '../../../public/maps');
@@ -48,6 +48,39 @@ describe('FsAssetSource', () => {
     }
   });
 
+  // Task 0 review: a link whose target is gone is skipped (it has no bytes to read), not a failed walk;
+  // a junction back to its own ancestor is walked once, not forever. Where the host refuses to make a
+  // link at all, the test has nothing to prove and returns.
+  const tryLink = (target: string, path: string): boolean => {
+    try { symlinkSync(target, path, 'junction'); return true; } catch { return false; }
+  };
+
+  it('skips a dangling link rather than failing the walk', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 's2u-fs-'));
+    try {
+      mkdirSync(join(tmp, 'gone'));
+      mkdirSync(join(tmp, 'root'));
+      writeFileSync(join(tmp, 'root', 'index.json'), '[]');
+      if (!tryLink(join(tmp, 'gone'), join(tmp, 'root', 'RUN'))) return;
+      rmSync(join(tmp, 'gone'), { recursive: true });
+      expect(await new FsAssetSource(join(tmp, 'root')).list()).toEqual(['index.json']);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('walks a junction that loops back to its own ancestor once', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 's2u-fs-'));
+    try {
+      mkdirSync(join(tmp, 'root', 'RUN'), { recursive: true });
+      writeFileSync(join(tmp, 'root', 'RUN', 'MP2.ZDB'), new Uint8Array([1]));
+      if (!tryLink(join(tmp, 'root'), join(tmp, 'root', 'RUN', 'LOOP'))) return;
+      expect(await new FsAssetSource(join(tmp, 'root')).list()).toEqual(['RUN/MP2.ZDB']);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(!existsSync(served))('lists forward-slash paths and reads bytes back', async () => {
     const source = new FsAssetSource(served);
     const paths = await source.list();
@@ -83,5 +116,22 @@ describe('the served index', () => {
     expect(parseServedIndex({ maps: MAPS })).toEqual({ maps: MAPS, common: [] });
     expect(() => parseServedIndex({ common: [] })).toThrow('index.json');
     expect(() => parseServedIndex(7)).toThrow('index.json');
+  });
+});
+
+// Task 0 review: `tools/probe-spawns.ts` read `index.json` as `MapInfo[]` and iterated it, which the
+// sprint-2 object is not; the tools read the served index through this one helper.
+describe('readServedIndex', () => {
+  it('reads the { maps, common } index off disk, and the older array', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 's2u-index-'));
+    try {
+      const maps = [{ archive: 'MP2', path: 'RUN/MP2.ZDB', name: 'FROSTFIRE' }];
+      writeFileSync(join(tmp, 'index.json'), JSON.stringify(servedIndex(maps)));
+      expect(readServedIndex(tmp)).toEqual({ maps, common: ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR'] });
+      writeFileSync(join(tmp, 'index.json'), JSON.stringify(maps));
+      expect(readServedIndex(tmp).maps).toEqual(maps);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
