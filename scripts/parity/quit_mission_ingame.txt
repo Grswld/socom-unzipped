@@ -1,8 +1,9 @@
 # Sprint 17 Q0: the in-mission exit route -- the fast path to the HUD (mission_music_fast.txt's), then the
 # pause menu (START): RESUME / REPLAY MISSION / ABORT / INVERT PITCH / HELP / AIM ASSIST / VIBRATION /
 # FIREMODE/TACMAP (s17_q0/ingame1, 2026-09-28) -- ABORT is two rows down; its confirm prompt ("Are you sure you want to abort the game?", NO
-# selected) is answered LEFT then CROSS; the MISSION FAILURE statistics page follows (s17_q0/ingame2) with
-# CIRCLE = MISSION BRIEFING and CROSS = REPLAY; CIRCLE returns to the briefing, and the briefing's exit
+# selected) is answered LEFT then CROSS; the MISSION FAILURE statistics page follows (s17_q0/ingame2) whose
+# legend is a button legend, TRIANGLE = MISSION BRIEFING and CROSS = REPLAY (s17_q0/ingame3-5, the legend crop):
+# TRIANGLE goes through a LOADING screen back to the briefing page, and the briefing's exit
 # (TRIANGLE, LEFT, CROSS -- the route quit_mission.txt found) is the owner's route out. The owner's report (2026-09-27): leaving
 # a mission after reaching its briefing page closes the game; leaving FROM the briefing page itself returns to the
 # main menu in-process (s17_q0/mission2, 2026-09-28), so the route is from inside the mission.
@@ -39,8 +40,9 @@ wait+3.0:NONE       # capture the prompt
 wait+1.5:LEFT       # -> YES
 wait+2.0:CROSS      # leave
 wait+4.0:NONE       # the MISSION FAILURE statistics page
-wait+2.0:CIRCLE     # MISSION BRIEFING
-wait+4.0:NONE       # the briefing page again
+wait+2.0:TRIANGLE   # MISSION BRIEFING: LOADING, then the briefing page
+wait+8.0:NONE       # the load
+wait+6.0:NONE       # the briefing page again, settled
 wait+2.0:TRIANGLE   # "Are you sure you want to leave the mission?" (NO selected)
 wait+1.5:LEFT       # -> YES
 wait+2.0:CROSS      # leave
