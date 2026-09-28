@@ -1,12 +1,14 @@
 #!/usr/bin/env python
-"""The memory card's SOCOM II save file, decoded -- the Python reference for launcher/card_save.h.
+"""The memory card's SOCOM II save file, decoded and encoded -- the Python reference for launcher/card_save.h.
 
 `cards/<profile>/BASCUS-97275SOCOMII/BASCUS-97275SOCOMII` (and every SaveGame<n>) is a ZAR version-2 archive
 (reCOM zar.h) passed through a fixed-seed byte scrambler (the game's sub_0033DC30 / FUN_0033de00, seed 0x96, no
 key). Inside, the key CAcctDB/AcctInfo.rdr is a serialised rdr tree holding one 16-node record per persona:
 HOST (the resolved server address), NAME, TOWN, GENDER, PORT, PASSWORD (plain), SAVEPASSWORD, PROFILES.
 docs/superpowers/plans/2026-09-28-persona-card-creator.md section 1 has the layout; this module round-trips every
-example card under logs/parity/*/mc0/ byte for byte (tools_py/tests/test_card_save.py).
+example card under logs/parity/*/mc0/ byte for byte (tools_py/tests/test_card_save.py). The encoder
+(write_personas, build_zar, write_card_file) lays the bytes out as launcher/card_save.cpp does: one record, or
+none, is the game's own AcctInfo.rdr, and ps2xTest/fixtures/cards/created.bin is the card both write for s17pc.
 
   python -m tools_py.card_save --dump <file>      the personas as JSON
   python -m tools_py.card_save --keys <file>      the archive's keys
@@ -148,6 +150,110 @@ def read_card_file(raw):
     head, keys = parse_zar(unscramble(raw))
     acct = find_key(keys, 'AcctInfo.rdr')
     return read_personas(acct if acct is not None else b'')
+
+
+# ---- the encoder: the layout launcher/card_save.cpp writes, byte for byte ----
+
+def _align16(n):
+    return (n + 15) & ~15
+
+
+class _Strings(object):
+    def __init__(self):
+        self.data = bytearray()
+        self.at = {}
+
+    def intern(self, s):
+        if s not in self.at:
+            self.at[s] = len(self.data)
+            self.data += s.encode('latin-1') + b'\0'
+        return self.at[s]
+
+
+def build_zar(tree):
+    """A version-2 archive for a (name, data, [children]) tree: appversion 14, padding 16, crc 0, flags 0 and
+    stable_ofs 0, the string table led by an empty string (the root's name_ofs 0 reads as unnamed), each key's data
+    at a 16-aligned offset. Not the game's bytes (its stable_ofs is a guest address); it re-parses to the same tree."""
+    keys = []
+
+    def walk(node):
+        keys.append(node)
+        for child in node[2]:
+            walk(child)
+    walk(tree)
+    table = _Strings()
+    table.intern('')
+    name_ofs, data_ofs, cursor = [], [], 0
+    for i, (name, data, _children) in enumerate(keys):
+        name_ofs.append(table.intern(name) if i else 0)
+        data_ofs.append(cursor if data else 0)
+        if data:
+            cursor = _align16(cursor + len(data))
+    key_ofs = HEAD_BYTES + len(table.data)
+    data0 = _align16(key_ofs + len(keys) * 16)
+    out = bytearray(data0 + cursor)
+    head = [0] * 25
+    head[1], head[2], head[4] = len(keys), len(table.data), 16
+    head[21], head[23], head[24] = cursor, 14, ZAR_VERSION_2
+    struct.pack_into('<25i', out, 0, *head)
+    out[HEAD_BYTES:HEAD_BYTES + len(table.data)] = table.data
+    for i, (name, data, children) in enumerate(keys):
+        struct.pack_into('<iIIi', out, key_ofs + i * 16, name_ofs[i], data_ofs[i], len(data), len(children))
+        if data:
+            out[data0 + data_ofs[i]:data0 + data_ofs[i] + len(data)] = data
+    return bytes(out)
+
+
+def write_personas(personas):
+    """The AcctInfo.rdr blob for records shaped as read_personas returns them. The game's layout: a list's children
+    are one block allocated when the list is reached, depth-first in child order; strings interned as reached; flags
+    0 on every node (no sharing). One record, or none, is the game's own bytes."""
+    def rec(p):
+        sums = (list(p.get('profileChecksum') or []) + [0] * 16)[:16]
+        return [('s', 'HOST'), [('s', p.get('host', ''))], ('s', 'NAME'), [('s', p.get('name', ''))],
+                ('s', 'TOWN'), [('s', p.get('town', ''))], ('s', 'GENDER'), [('i', p.get('gender', 0))],
+                ('s', 'PORT'), [('i', p.get('port', 10075))], ('s', 'PASSWORD'), [('s', p.get('password', ''))],
+                ('s', 'SAVEPASSWORD'), [('i', 1 if p.get('savePassword', 1) else 0)],
+                ('s', 'PROFILES'), [('s', 'PROFILE_CHECKSUM'), [('i', v) for v in sums], ('s', 'PROFILE_INFO'), []]]
+    root = [rec(p) for p in personas]
+    table = _Strings()
+    nodes = [None]
+
+    def fill(v, index):
+        if isinstance(v, list):
+            base = len(nodes)
+            nodes[index] = (4, len(v), base * 8)
+            nodes.extend([None] * len(v))
+            for n, child in enumerate(v):
+                fill(child, base + n)
+        elif v[0] == 'i':
+            nodes[index] = (1, 0, v[1] & 0xFFFFFFFF)
+        else:
+            nodes[index] = (3, 0, table.intern(v[1]))
+    fill(root, 0)
+    node_ofs = _align16(12 + len(table.data))
+    out = bytearray(node_ofs + len(nodes) * 8)
+    struct.pack_into('<III', out, 0, 1, len(table.data), node_ofs)
+    out[12:12 + len(table.data)] = table.data
+    for i, (t, count, value) in enumerate(nodes):
+        struct.pack_into('<BBHI', out, node_ofs + i * 8, t, 0, count, value)
+    return bytes(out)
+
+
+def write_card_file(raw, personas):
+    """`raw` (a card file) with its CAcctDB/AcctInfo.rdr replaced by write_personas(personas), rebuilt and scrambled;
+    every other key's bytes kept. launcher/card_save.h's writeCardFile starts from virgin.bin decoded when it has no
+    file, so write_card_file(virgin.bin, p) is its writeCardFile({}, p)."""
+    _head, keys = parse_zar(unscramble(raw))
+    tree = key_tree(keys)
+    acct = write_personas(personas)
+
+    def replace(node, parent):
+        name, data, children = node
+        if name == 'AcctInfo.rdr' and parent == 'CAcctDB':
+            data = acct
+        return (name, data, [replace(c, name) for c in children])
+    return scramble(build_zar(replace(tree, None)))
 
 
 def main(argv):
