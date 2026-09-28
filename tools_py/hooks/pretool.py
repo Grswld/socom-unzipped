@@ -52,7 +52,10 @@ files, logs/ and every other tree pass. The shell's fast path starts Python for 
 exists in the hook's own tree or in the main tree (read from a linked worktree's `.git` file); a chain in a third
 tree is judged only when the call reaches Python for another reason. And the PowerShell tool: its `command` is
 judged by the Bash rules (`Set-Location`/`sl`/`chdir`, `Push-Location`, `Pop-Location` move the directory as
-`cd`/`pushd`/`popd` do); PowerShell's own quoting (the backtick escape) is read as a POSIX shell would read it.
+`cd`/`pushd`/`popd` do). Before the parse (powershell_command) a backtick line continuation is joined and every
+backslash becomes a slash (a path separator in PowerShell, never an escape); a PowerShell command that still cannot
+be parsed is refused when it names `git add`, `commit` or `push`, and passes otherwise. A backtick escape inside a
+string is still read as a POSIX shell would read it.
 The rules, their homes and their tests: docs/DEVELOPING.md, "Guards".
 """
 import fnmatch
@@ -591,6 +594,16 @@ RULES = [rule_bulk_add, rule_commit_all, rule_no_verify, rule_commit_names_paths
 # `Bash|PowerShell`); its location cmdlets move the judged directory as `cd`/`pushd`/`popd` do (any case).
 SHELL_TOOLS = ("Bash", "PowerShell")
 _LOCATION = {"set-location": "cd", "sl": "cd", "chdir": "cd", "push-location": "pushd", "pop-location": "popd"}
+_PS_CONTINUATION = re.compile(r"`[ \t]*\r?\n")
+_PS_GIT_WRITE = re.compile(r"\bgit(\.exe)?\s+(add|commit|push)\b", re.I)
+
+
+def powershell_command(command):
+    """A PowerShell tool command in the shape the POSIX parser reads (the G1 review's 2a/2b): a backtick-newline line
+    continuation joins its two lines, and every backslash becomes a slash -- in PowerShell `\\` is a path separator,
+    never an escape (the backtick is), so `Set-Location C:\\x\\wt` stays a path and `git add .\\` stays `./`. The
+    Bash path never comes through here: its rules read the command exactly as before."""
+    return _PS_CONTINUATION.sub(" ", command).replace("\\", "/")
 
 
 # ---------------------------------------------------------------------------------------------- the policy
@@ -922,6 +935,16 @@ def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_p
             command = tool_input.get("command")
             if not isinstance(command, str):
                 return 0, ""
+            if tool_name == "PowerShell":
+                command = powershell_command(command)
+                try:
+                    items(command)
+                except ValueError:                        # 2c: an unreadable git write is refused, not waved on
+                    if _PS_GIT_WRITE.search(command):
+                        return 2, ("unparseable git write: this PowerShell command names git add, commit or push "
+                                   "and cannot be parsed (an unbalanced quote?), so the rules cannot judge it -- "
+                                   "write it plainly; home: %s" % GIT_COMMITS)
+                    return 0, ""
             return decide_bash(command, cwd or ".", is_worktree, worktree_of, merge_in_progress,
                                slow_tests_ran=slow_tests_ran, merge_probe=merge_probe, slow_probe=slow_probe)
         if tool_name in EDIT_TOOLS:

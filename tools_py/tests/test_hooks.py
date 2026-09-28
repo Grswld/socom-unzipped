@@ -1151,6 +1151,43 @@ class PowerShellToolTest(unittest.TestCase):
                                    worktree_of=lambda p: True)
         self.assertEqual(code, 2, why)
 
+    def ps(self, command, **kw):
+        return pretool.decide("PowerShell", {"command": command}, ROOT, False, **kw)
+
+    def test_a_backtick_continuation_is_one_command(self):
+        # review (2a): PowerShell continues a line with a trailing backtick; the flag on the next line is the same git
+        self.assertEqual(self.ps("git add `\n  -A")[0], 2)
+        self.assertEqual(self.ps("git add `\r\n  -A")[0], 2)
+        self.assertEqual(self.ps("git commit `\n  -m 'x'")[0], 2)
+        self.assertEqual(self.ps("git commit `\n  -m 'x' -- a.txt"), (0, ""))
+
+    def test_backslash_paths_are_paths(self):
+        # review (2b): `C:\x\wt` after Set-Location or cd is a path, not three escapes; a `.\` pathspec is the tree
+        seen = []
+        self.ps("Set-Location C:\\x\\wt; git push origin y", worktree_of=lambda p: seen.append(p) or False)
+        self.ps("cd C:\\x\\wt; git push origin y", worktree_of=lambda p: seen.append(p) or False)
+        self.assertEqual(len(seen), 2, seen)
+        for p in seen:
+            self.assertTrue(os.path.normcase(p).endswith(os.path.normcase(os.path.join("x", "wt"))), p)
+        self.assertEqual(self.ps("git add .\\")[0], 2)
+        self.assertEqual(self.ps("git add -- .\\docs\\KNOWN.md"), (0, ""))
+
+    def test_an_unparseable_git_write_is_refused(self):
+        # review (2c): shlex failing used to allow the call -- for PowerShell a git add/commit/push that cannot be
+        # read is refused; anything else unparseable still passes
+        for cmd in ('git add "unterminated', "git commit -m 'unterminated", 'git push origin "x'):
+            code, why = self.ps(cmd)
+            self.assertEqual(code, 2, cmd)
+            self.assertIn("cannot be parsed", why)
+        self.assertEqual(self.ps('echo "unterminated'), (0, ""))
+        self.assertEqual(self.ps('git status "unterminated'), (0, ""))
+
+    def test_the_bash_rules_are_unchanged(self):
+        # the PowerShell normalisation must not reach Bash: there a backslash escapes, and a failed parse passes
+        self.assertEqual(pretool.decide("Bash", {"command": 'git add "unterminated'}, ROOT, False), (0, ""))
+        self.assertEqual(pretool.decide("Bash", {"command": "git add -- a\\ b.txt"}, ROOT, False), (0, ""))
+        self.assertEqual(pretool.decide("Bash", {"command": "git add -A"}, ROOT, False)[0], 2)
+
     def test_the_hook_refuses_bulk_add_and_a_pathless_commit(self):
         p = self.hook("git add -A")
         self.assertEqual(p.returncode, 2, p.stderr)
