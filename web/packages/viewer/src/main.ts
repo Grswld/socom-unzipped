@@ -19,8 +19,9 @@ import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { buildBody, type BodyView } from './bodyView';
-import { Play } from './play';
+import { Play, playActions } from './play';
 import { PLAY_CLIPS } from './animator';
+import { sealTuning } from './physics';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -176,6 +177,30 @@ function askPlay(from: SourceRequest): void {
   ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
 }
 
+// ---- W2.6: the shoulder camera, the aim view, and the pad's lanes in play (`./play`, `./thirdPerson`) --------------
+/**
+ * The aim view is held: the pad's aim lane (L1, W2.R5) or the right mouse button on the canvas (a `mousedown`, which
+ * fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
+ */
+let mouseAim = false;
+canvas.addEventListener('mousedown', (e) => { if (e.button === 2) mouseAim = true; });
+globalThis.addEventListener('mouseup', (e) => { if (e.button === 2) mouseAim = false; });
+globalThis.addEventListener('blur', () => { mouseAim = false; });
+/**
+ * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
+ * (docs/PLAYTEST.md step 8), the aim while held (`playActions`). In the fly camera the same lanes are up and down.
+ */
+function playLanes(before: Input, after: Input): void {
+  const act = playActions(before, after);
+  if (walk.mode() === 'walk') {
+    if (act.jump) walk.jump();
+    if (act.crouch) walk.crouch();
+  }
+  play.setAimLane(act.aim || mouseAim);
+}
+/** The rig switch: the disc's cam_back, or research 18's measured ring (the default); the switch mirrors the refusal. */
+ui.onCameraRigSwitch((on) => { if (!play.useDiscRig(on)) ui.setCameraRigSwitch(false); });
+
 /**
  * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
  * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
@@ -205,7 +230,11 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.kind === 'dynamics') {
-    if (message.id === wantedDynamics) walk.setTuning(message.tuning);
+    if (message.id !== wantedDynamics) return;
+    walk.setTuning(message.tuning);
+    // W2.6: the same file's cam_back rig and cam_tether_stiff for the shoulder camera; the switch offers the rig when read
+    play.setCameraTable(message.camera, sealTuning(message.tuning).cam_tether_stiff);
+    ui.setCameraRigAvailable(message.camera !== null);
     return;
   }
   if (message.kind === 'play') {
@@ -276,6 +305,7 @@ function padFrame(): void {
   fly.setStickBoost(input.boost);
   fly.setLook(input.lookX, input.lookY);
   if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  playLanes(padMerged, input);      // W2.6: jump, crouch and aim on foot
   padLast = pad;
   padMerged = input;
 }
@@ -412,9 +442,11 @@ async function boot(): Promise<void> {
     padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
-    play.frame(dt, walk);           // W2.2b: the body at the feet, in its clip
-    view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
-    render(scene, fly.camera);
+    // W2.2b/W2.6: the body at the feet in its clip, and the camera the frame is drawn with -- over the shoulder in
+    // play, at the eyes when aiming, the fly camera otherwise (which stays the look and the walk's eye throughout)
+    const camera = play.frame(dt, walk, fly.camera);
+    view?.frame(camera, dt);       // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    render(scene, camera);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -633,6 +665,7 @@ window.__viewer = {
     slots: overlays.slotCounts(),
     body: body ? { ...body.stats, visible: body.group.visible } : null,
     anim: play.animStats(),
+    camera: play.viewStats(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -648,5 +681,7 @@ window.__viewer = {
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
+  setAim: (on) => play.setAimForced(on),
+  setCameraRig: (rig) => { const ok = play.useDiscRig(rig === 'disc'); ui.setCameraRigSwitch(play.viewStats().rig === 'disc'); return ok; },
   revision,
 } satisfies ViewerHook;

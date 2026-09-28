@@ -27,7 +27,7 @@ const RENDER_INFLUENCES = 4;
 /** A LOD copy's suffix on a mesh name, `_1` and `_2` (78 §4: `seal_A_scuba_1`, `seal_A_scuba_2`). */
 const LOD_SUFFIX = /_\d+$/;
 /** The eye gear's models (78 §5): `seal_A_right_eye` is `right_eye.flt`, `left_eye_blue` is `left_eye_blue.flt`. */
-const EYE_MODEL = /(^|_)(right|left)_eye/i;
+export const EYE_MODEL = /(^|_)(right|left)_eye/i;
 /** `READERC.ZAR` sits in `RUN/` beside the maps on the disc, and beside them in a served tree (78 §5). */
 const READERC = 'READERC.ZAR';
 

@@ -711,6 +711,11 @@ export class WalkMode {
     return true;
   }
 
+  /** The hull the mover walks, once walk has been asked for on this map: the shoulder camera's pull-in casts through it (W2.6). */
+  grid(): Grid | null {
+    return this.walker?.grid ?? null;
+  }
+
   /** The mover for the body and its clips (W2.2b), while walking; null in fly mode. */
   snapshot(): PlaySnapshot | null {
     const w = this.walker;

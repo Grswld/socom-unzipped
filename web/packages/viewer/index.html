@@ -75,6 +75,14 @@
       <div class="row" id="walk-row">
         <label class="s2u-check" title="Play the SEAL on the game's own floors: the floor under you is the one the engine's ground probe picks, the walls stop you at a body's radius, the step runs at the game's 60 Hz, and the body runs the game's own motion clips. WASD or the stick walks, the mouse looks, Space jumps, C crouches, G switches back to flying."><input type="checkbox" id="walk" /> <span>walk (G) &mdash; on the game's floors, at eye height</span></label>
       </div>
+      <!--
+        W2.6: the shoulder camera's rig. Off: research 18's measured ring, 23.1 behind and 25 up (the default, since the
+        disc's triple alone does not reproduce it). On: the disc's own cam_back triple, read from RUN/READERC.ZAR at run
+        time -- offered only once that file has been read. Aim (L1, the right mouse button) is first person from the eyes.
+      -->
+      <div class="row" id="cam-disc-row">
+        <label class="s2u-check" title="The camera over the SEAL's shoulder in walk mode. Off: the camera the game was measured to use online (research 18: 23.1 units behind the player and 25 over the feet, looking at a point over the head). On: the disc's own cam_back numbers from dynamics.rdr, which alone do not reproduce that measurement. Hold the right mouse button (or L1) to aim from the SEAL's eyes."><input type="checkbox" id="cam-disc" disabled /> <span>camera: the disc's cam_back triple</span></label>
+      </div>
       <details id="about" class="s2u-disclosure">
         <summary>Unzipped Project Map Viewer <span class="s2u-label s2u-label--warn" id="revision">dev build</span></summary>
         <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
@@ -172,9 +180,9 @@
           <thead><tr><th scope="col">pad</th><th scope="col">walk</th><th scope="col">fly</th><th scope="col">source</th></tr></thead>
           <tbody></tbody>
         </table>
-        <p class="s2u-fine">The left stick moves and the right looks, on foot and in the air alike. Fire, aim and lean are
-          the layout's, held for the play mode: the viewer does not do them yet. A row marked assumed is a binding the
-          repository does not document.</p>
+        <p class="s2u-fine">The left stick moves and the right looks, on foot and in the air alike. On foot Cross jumps,
+          the crouch buttons crouch on release, and L1 held aims from the SEAL's eyes; fire and lean are the layout's.
+          A row marked assumed is a binding the repository does not document.</p>
       </details>
       </div>
     </div>

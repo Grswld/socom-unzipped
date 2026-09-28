@@ -10,7 +10,9 @@ import { buildBody } from '../src/bodyView';
 import { DEFAULT_LIGHTING } from '../src/lighting';
 import { loadMap, type LoadedMap } from '../src/loadMap';
 import { packGround, WalkMode, EYE_HEIGHT, type GroundData } from '../src/walk';
-import { bodySkeleton, bodyVisible, Play } from '../src/play';
+import { bodySkeleton, bodyVisible, eyePoint, Play, playActions } from '../src/play';
+import { noInput } from '../src/gamepad';
+import { existsSync } from 'node:fs';
 
 /**
  * W2.2b: the play mode is the walk mode with the body. Entering walk shows the SEAL at the mover's feet, facing the
@@ -85,6 +87,29 @@ describe('who sees the body (W2.2b, W2.R1)', () => {
     expect(bodyVisible('aim', true)).toBe(false);
     expect(bodyVisible('fly', false)).toBe(false);
     expect(bodyVisible('fly', true)).toBe(true);
+  });
+});
+
+describe('the pad\'s lanes in play (W2.R5): jump on the press, crouch on the release, aim held', () => {
+  it('jumps when the jump lane goes down, once however long it is held', () => {
+    const up = { ...noInput(), jump: true };
+    expect(playActions(noInput(), up)).toMatchObject({ jump: true, crouch: false, aim: false });
+    expect(playActions(up, up).jump).toBe(false);
+    expect(playActions(up, noInput()).jump).toBe(false);
+  });
+
+  it('crouches when the crouch lane comes up (docs/PLAYTEST.md step 8: the game acts on the release)', () => {
+    const held = { ...noInput(), crouch: true };
+    expect(playActions(noInput(), held).crouch).toBe(false);
+    expect(playActions(held, held).crouch).toBe(false);
+    expect(playActions(held, noInput()).crouch).toBe(true);
+  });
+
+  it('aims while the aim lane is held', () => {
+    const aim = { ...noInput(), aim: true };
+    expect(playActions(noInput(), aim).aim).toBe(true);
+    expect(playActions(aim, aim).aim).toBe(true);
+    expect(playActions(aim, noInput()).aim).toBe(false);
   });
 });
 
@@ -174,6 +199,72 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     expect(view.group.position.toArray()).toEqual([5, 0, 6]);  // where the play left it
     view.dispose();
     walk.unbindKey();
+  });
+
+  it('draws the frame over the shoulder in play, from the eye when aiming, with the fly camera in fly mode (W2.6)', async () => {
+    const map = await loaded();
+    const fly = new FlyCamera(canvas());
+    fly.setClipPlanes(4, 5000);
+    const walk = new WalkMode(fly);
+    walk.setGround(GROUND, [0, 0, 0]);
+    const view = buildBody(map.body!, map, DEFAULT_LIGHTING);
+    const play = new Play();
+    play.setBody(view, map.body!);
+    play.setClips({ clips: [still('seal_stand', 10)], table: null });
+    expect(play.frame(1 / 60, walk, fly.camera)).toBe(fly.camera);
+    expect(play.viewStats()).toMatchObject({ kind: 'fly', rig: 'measured' });
+    fly.setPose({ x: 5, y: 40, z: 6, yaw: 0, pitch: 0 });
+    walk.setMode('walk');
+    const third = play.frame(1 / 60, walk, fly.camera);
+    expect(third).not.toBe(fly.camera);
+    expect(play.viewStats().kind).toBe('third');
+    expect(third.far).toBe(5000);                                        // the fly camera's projection
+    // the measured rig over the stand clip's root at 11: 25 up, 23.1 behind, riding the root's 11 - 11.4845
+    expect(third.position.x).toBeCloseTo(5, 6);
+    expect(third.position.z).toBeCloseTo(6 + 23.1, 6);
+    expect(third.position.y).toBeCloseTo(25 + 11 - 11.4845, 4);
+    expect(view.group.visible).toBe(true);
+    // the disc's rig is a switch, refused until the table is read
+    expect(play.useDiscRig(true)).toBe(false);
+    play.setCameraTable({ side: 0, height: 30, dist: 10, aim: [0, 30, -2] }, 1);
+    expect(play.useDiscRig(true)).toBe(true);
+    play.frame(1 / 60, walk, fly.camera);
+    expect(play.viewStats().rig).toBe('disc');
+    expect(third.position.z).toBeCloseTo(6 + 10, 6);
+    play.useDiscRig(false);
+    // aiming: the view from the eye (no eye gear on the bare fixture: the walk's eye), along the look; the body hidden
+    play.setAimLane(true);
+    const aim = play.frame(1 / 60, walk, fly.camera);
+    expect(play.viewStats().kind).toBe('aim');
+    expect(view.group.visible).toBe(false);
+    expect(aim.position.toArray()).toEqual(fly.camera.position.toArray());
+    play.setAimLane(false);
+    expect(play.setAimForced(true)).toBe('aim');                         // the hook's, over the lanes
+    play.frame(1 / 60, walk, fly.camera);
+    expect(play.viewStats().kind).toBe('aim');
+    expect(play.setAimForced(null)).toBe('third');
+    walk.setMode('fly');
+    expect(play.frame(1 / 60, walk, fly.camera)).toBe(fly.camera);
+    expect(play.viewStats().kind).toBe('fly');
+    view.dispose();
+    walk.unbindKey();
+  });
+});
+
+const SERVED = resolve(dirname(fileURLToPath(import.meta.url)), '../../../public/maps');
+const dressed = existsSync(resolve(SERVED, 'RUN/READERC.ZAR')) && existsSync(resolve(SERVED, 'RUN/MP2.ZDB'));
+
+describe.skipIf(!dressed)('the aim view\'s eye on the dressed SEAL (served tree)', () => {
+  it('is the eye gear through the pose: 18.16 over the feet in the bind pose (research 78 §6.3), lower crouched', async () => {
+    const map = await loadMap(new FsAssetSource(SERVED), 'RUN/MP2.ZDB');
+    const sk = bodySkeleton(map.body!);
+    const eye = eyePoint(map.body!, sk.palette())!;
+    expect(eye[1]).toBeCloseTo(map.body!.eye!, 4);
+    expect(eye[1]).toBeCloseTo(18.16, 2);
+    expect(eye[2]).toBeLessThan(0);                                       // ahead of the head joint, along -z
+    sk.setLocal('skel_root', partMatrix([0, 0, 0, 1], [0, 5.504, 0.5334]));   // the root down at the crouch's height
+    sk.update();
+    expect(eyePoint(map.body!, sk.palette())![1]).toBeCloseTo(18.16 - (11.67 - 5.504), 1);
   });
 });
 

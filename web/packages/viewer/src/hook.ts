@@ -7,6 +7,7 @@ import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 import type { MoverState } from './walk';
 import type { AnimStats } from './animator';
+import type { ViewKind, ViewStats } from './play';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -46,6 +47,12 @@ export interface ViewerHook {
      * the play mode is first entered.
      */
     anim: AnimStats | null;
+    /**
+     * The camera the frame is drawn with (W2.6, `./play`): `third` over the shoulder in play, `aim` from the body's
+     * eyes, `fly` otherwise; the rig it runs on (`measured`, research 18's ring, or the disc's `cam_back`), whether the
+     * disc's was read, the tether's stiffness, and its pose. `pose()` stays the look and the walk's eye.
+     */
+    camera: ViewStats;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
@@ -75,6 +82,10 @@ export interface ViewerHook {
   jump(): boolean;
   /** Walk mode: crouch (true), stand (false) or toggle, as `C` does; the stance after, false when flying. */
   crouch(on?: boolean): boolean;
+  /** W2.6: the aim view on or off over the lanes (L1, the right mouse button), or null to hand back; the camera kind after. */
+  setAim(on: boolean | null): ViewKind;
+  /** W2.6: the shoulder camera's rig; false, and the measurement, when the disc's `cam_back` was not read. */
+  setCameraRig(rig: 'measured' | 'disc'): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
