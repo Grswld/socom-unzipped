@@ -18,11 +18,11 @@ viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/
 and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
 (the plan beside them in `docs/plans/`); web sprint 1, "the engine's world", is
 [`docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md`](docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md)
-and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md); the open sprint is
-web sprint 2, "the SEAL in the world":
+and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md); web sprint 2, "the
+SEAL in the world" (the player: the game's camera, speeds, fall, a stand-in body, the reticle and the rifle), is
 [`docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md`](docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md)
-and its plan [`docs/plans/2026-09-28-web-sprint-2.md`](docs/plans/2026-09-28-web-sprint-2.md), whose Log is the
-live state; the byte-level format authority is the viewer's own
+and its plan [`docs/plans/2026-09-28-web-sprint-2.md`](docs/plans/2026-09-28-web-sprint-2.md), whose Outcome is the
+close and whose Log the record of every task and number; the byte-level format authority is the viewer's own
 [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
 meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
 the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
@@ -79,7 +79,7 @@ Run from `web/`:
 | command | what it does |
 |---|---|
 | `npm install` | workspace install (five packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB` + `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the two shared archives `READERC.ZAR` and `ZWEAPON.ZAR` beside them, `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the five packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
@@ -92,8 +92,13 @@ Run from `web/`:
 ### Deploying
 
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
-wrote from your own disc (`maps/index.json` and `maps/RUN/*.ZDB`). The archives are the game's and are never
+wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
+`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table). The archives are the game's and are never
 part of the build.
+
+**Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
+the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
+index. So a server moving to web sprint 2 takes `dist/viewer/` first and the re-extracted `maps/` after it.
 
 ## Layout
 
@@ -104,7 +109,7 @@ Everything below is relative to `web/`.
 | `packages/archive` | ZDB table of contents, ZAR/ZED v2, compiled `.rdr`, and the `AssetSource` the rest read through (`/node` for the file system, `http` for the browser) |
 | `packages/gs` | GS texture and palette decode, and the GS state block (`ALPHA`, `TEX1`, `TEST`, `CLAMP`) per texture |
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
-| `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table |
+| `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
 | `docs/specs/`, `docs/plans/` | the viewer's own design specs and plan, kept here rather than in the repository's `docs/superpowers/` so the recomp's agents do not have to read past them |
@@ -112,7 +117,8 @@ Everything below is relative to `web/`.
 
 ## Controls
 
-The camera flies like a creative-mode build camera: momentum, not teleporting.
+The camera flies like a creative-mode build camera: momentum, not teleporting. `G` puts the SEAL on the ground
+instead, seen through the game's own camera; the last rows of the table are the walk's.
 
 | input | what it does |
 |---|---|
@@ -121,7 +127,7 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `W`/`S` | fly along the look direction — nose down and `W` descends |
 | `A`/`D` | strafe, always level with the horizon whatever the pitch |
 | `Space` / `Shift` | up and down in world space |
-| double-tap `W`, held | boost, with the field of view widening to match. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
+| double-tap `W`, held | boost, with the field of view widening to match -- in flight only: the walk has no boost, the game's run being its fastest. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
 | wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
@@ -129,22 +135,19 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
 | the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
 | `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
-| `C` (walking) | cycles stand, crouch and prone; on a touch screen, the **C** button beside the lift buttons |
-| `V` (walking) | first person (the eye at the head, the body hidden) and back to third; `Ctrl+V` stays the browser's |
+| `W`/`S`, `A`/`D` (walking) | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
+| mouse (walking, captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
+| `V` (walking) | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
+| `C` (walking) | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
+| left click (walking, captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
+| `R` (walking) | reloads; an empty magazine waits for it |
 
-**Walking is seen as the game sees it** (web sprint 2 W2.1, `viewer/src/playerCamera.ts`): the camera looks at a
-point 21.5 units over the feet standing (15.4 crouched) from about 25 behind and 4 above it, pitched down 9.2 degrees
-at the start, pulled in short of any wall between -- `FUN_0029a950` and `FUN_0029bf70` read from the decompilation,
-the console's spawn camera matched to 0.001. The mouse turns the SEAL and tilts the camera (-70 to 60 degrees, the
-game's aim limits); the reticle sits where the camera aims. **Walking speeds are the game's own** (`READERC.ZAR/motion.rdr`, web sprint 2 W2.R2): standing, 65 units a second
-at a full stick (6.5 m/s), 37 backing up, 65 strafing, a half stick half the speed, the stick reaching full in a
-fifth of a second (`FUN_00586c10`); let go, it stops at once. Crouched, the walk is 14.0 ahead (12.8 back, 14.2
-aside) however far the stick is pushed, and a full push stands up and runs where there are 19 units of headroom
-(`FUN_00584c60`). Prone, the crawl is 11 and the side crawl 5.5 times the stick along one axis, with no ramp
-(`FUN_00583500`). There is no boost on the ground. A kerb
-up to 6.5 units is stepped onto and a higher one stops you, a slope over 50 degrees is not climbed, and a drop of
-more than 8 is a fall under the game's gravity of 235 units a second squared (`dynamics.rdr`). `Space` does not
-jump: the game's jump is an animation's root motion, not yet read.
+**Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
+and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
+[What the picture is made of](#what-the-picture-is-made-of), "The player". In short: 65 units a second running, 37
+backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
+not jump: the game's jump is an animation's root motion, not yet read. The ammo box at the bottom left shows the
+magazine while walking.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -160,15 +163,16 @@ constants, which are meant to be tuned.
 
 A one-finger drag looks around, which the canvas gives for free. Moving is the part a phone had no way
 to do, so the left half of the screen is a virtual stick — a circle that appears wherever the thumb
-lands and follows it — and two buttons in the bottom-right corner do what Q and E do. The right half
-is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
+lands and follows it — and two buttons in the bottom-right corner do what Q and E do. Beside them, for the
+walk, a **C** button cycles the stance as `C` does, and a round **fire** button is the trigger: held, the rifle
+fires at its rate. The right half is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
 
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
 and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
-has a phone's width to work with; the stick held at its rim for 400 ms is the boost, the one gesture a
-thumb can make without leaving the stick; and a round fullscreen button sits above the lift buttons,
+has a phone's width to work with; the stick held at its rim for 400 ms is the flight's boost, the one gesture a
+thumb can make without leaving the stick (walking, it is simply a full stick); and a round fullscreen button sits above the lift buttons,
 which on a phone also asks for a landscape lock. The canvas is `100dvh`, so the picture's centre is the
 screen's whether or not the browser bar is showing, and the pixel ratio starts at 1.5 on a coarse
 pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
@@ -301,21 +305,81 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   per (texture, fog) with the same shading graph the meshes use. Desert Glory's power lines and lamp
   brackets, Crossroads' tent ropes and light filaments.
 
+### The player
+
+Settled in web sprint 2 (the sprint 2 spec's §7, cited by finding):
+
+**The speeds are the game's file, the ramp and the fall its code** ("The game's movement law: the ramp is on the
+stick, the speed is linear in it, the fall is 2.4 g"). `READERC.ZAR/motion.rdr` gives each SEAL clip a
+`max_velocity` in metres a second (`scene/src/tuning.ts`, pinned against the disc's file): at `MetersPerUnit` 0.1
+that is 65 units a second forward at a full stick, 37 back, 65 strafing; the crouch bands 14.8, 13.5 and 15, which
+the crouch plays at 0.946 of them whatever the push (14.0 ahead, 12.8 back, 14.2 aside); prone 11 crawling and 5.5
+sideways, along one axis, from the first tick. The ramp is on the stick, not the speed (`FUN_00586c10`): each axis
+moves toward the pad at 2 to 5 stick units a second, so a full push is at 90 % on tick 11 and full on tick 12, a
+fifth of a second; the speed is linear in the stick (`FUN_0058bdf0`), a released stick stops at once, and a full
+push in crouch (0.838 or more, with 19 units of headroom) stands the SEAL up and runs (`FUN_00584c60`). A drop of
+more than 8 is a fall under `dynamics.rdr`'s gravity 235 units a second squared, 2.4 g (`FUN_0059b440`), the
+horizontal speed held from the edge: a 42-unit drop lands in 0.60 s (`viewer/src/walk.ts`).
+
+**The camera is `FUN_0029a950` and `FUN_0029bf70`, nothing fitted** ("The game's camera: the pitch pulls the eye
+in, there is no tether, and the console's eye falls out to 0.001"; `viewer/src/playerCamera.ts`). The target is
+the skeleton root's height plus a ramp that saturates at 10 above a root of 5.6; the eye lies along the look,
+pitched, `28 − 14 × |n.y|` from it, so it comes in as the camera looks down or up; the rest pitch is
+`init_aim_pitch`, −9.167°. There is no tether (`cam_tether_stiff` has no reader): the collision pass pulls the eye
+in at once to 0.75 short of the hull and lets it out at 3 % a frame after 1.5 s. Crouched at the spawn that puts
+the target 15.378 over the feet and the eye 19.603 over them and 24.906 behind -- the console's placed eye on the
+spawn dump, to 0.0003; standing, the target is 21.484 and the eye 25.709 up.
+
+**The stances and the body are measured on the console's dump and frame** ("The SEAL is 19.6 units tall, and the
+console's spawn dump holds a crouched player"). The skeleton root is 11.484 over the feet standing (the 24 actors at
+the bind pose) and 5.504 crouched -- the dump's player is crouched: its root under the game's own stance test of 9.0,
+a knee on the ground; prone 1.8 is an estimate. The body (`viewer/src/body.ts`) is a stand-in at 19.6 units
+standing (1.96 m: the standing head joint 17.37 plus the head's 2.23 measured on the frame), 12.4 crouched and 5.1
+across the shoulders, in the world's shading with the frame's own colours; the first-person eye, 18.3, is an
+estimate.
+
+**The reticle and the rifle are the disc's** ("The console's reticle: two bitmaps at one texel per pixel, a
+65-pixel cross on the frame's centre"; "The SEAL's rifle and the game's own bullet mark"). `HUD2_TXR.ZED`'s
+`ret_rifle_01.tif` (a 64×64 ring and dot) and `ret_rifle_02.tif` (a 32×32 arm, drawn four times) at the console
+frame's size, one texel to a PS2 pixel, scaled by the height / 448 in the Modern picture (`viewer/src/reticle.ts`).
+The rifle is `ZWEAPON.ZAR`'s M4A1, first in every `mp_seal1` kit (`scene/src/weapons.ts`): `FireWait` 0.12 s (500
+rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAGS" -- and a 1000-unit ray against
+every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
+`EFFE_TXR.ZED`, 1 to 1.8 units wide.
+
 ## Known gaps
 
-- **Region culling, and the flares' place in the engine order.** The per-node region bits (node flags
+- **The SEAL is a stand-in.** The body is a mannequin at the measured size whose legs swing by a stride model;
+  the real model (`CLIB_GEO.ZED`'s skinned `CMesh` chain, the `0x70` unpack no decoder here reads), its 32-node
+  skeleton and its animations (`MPZANIM.ZAR`, unopened) are web sprint 3's first candidate. With them would come
+  the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
+- **The shot leaves the camera's eye, not the rifle.** The game fires from the weapon model's `firepoint` toward the
+  aim point; with no weapon model the eye stands in, so the round lands under the reticle but from the wrong
+  place. An empty magazine does not reload by itself (`R` does), the 2 s reload and the reticle's kick per round
+  are estimates, and no bullet surface class was found, so every polygon stops a round.
+- **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
+  the material half of the camera's surface test is left out.
+- **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall
+  are the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement
+  (W2.2c: the instruments and the recipe are in the tree, [research 79](../docs/research/79-seal-speed-on-the-console.md))
+  waits for a window the owner names. Until it runs the prone root (1.8), the prone body (3.0), the first-person
+  heights (the eye 18.3 standing, and the crouched and prone eyes derived from it) and the crouch and prone body
+  columns are estimates, and two numbers are readings only: the crouch diagonal's speed-up along its axis (19.8 at
+  45°) and the headroom ray's start (the feet + 14). The slope and water slow-down are not modelled.
+- **A kerb between 6 and 6.5 units over a lower floor is passed over.** The floor selection takes the highest
+  floor at or under the feet + 6, so such a kerb, climbable by the step rule, is walked under for the floor below
+  (inherited from the selection, not the step rule's). The record's layer mask is probed as all layers (the
+  literal reading contradicts research 24's own walk); and the slot outlines are drawn without a depth test
+  because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more than a unit off the
+  floor under the centre).
+- **The HUD pass has not been seen under WebGPU.** The reticle's layer is pinned by the e2e, but no one has yet
+  looked at it on a WebGPU browser (W2.4's review); that look is owed.
+- **Region culling, the flares' place in the engine order, the LOD twin.** The per-node region bits (node flags
   13-17) are on the disc on 8 maps and the collision polygons carry masks over the same bits on 6, but the
   writer of the camera's visible set (`CanSeeRegion`'s other operand) is not in the tree, so nothing is
   culled by region; and the engine draw order stays a switch until the pass that keeps a flare from cutting
-  the wall behind it is found (the sprint spec's §7). The two facade modes are drawn alike, reCOM's
-  `ComputeFacadeMatrix` being a stub.
-- **The walk is the decompilation's reading, not yet measured.** The speeds, the stick's ramp and the fall are
-  the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement is web
-  sprint 2's W2.2c, and the prone root height and the crouch and prone body columns are estimates until it runs. There is
-  no jump. The record's layer mask is probed
-  as all layers (the literal reading contradicts research 24's own walk); and the slot outlines are drawn
-  without a depth test because a slot's cell is flat where its ground is not (362 of 1,058 have a corner more
-  than a unit off the floor under the centre).
+  the wall behind it is found (the sprint 1 spec's §7), the LOD twin under that order with it. The two facade
+  modes are drawn alike, reCOM's `ComputeFacadeMatrix` being a stub.
 - **Animated map objects beyond the uv scrolls are not drawn.** The door animations (`actions.rdr`,
   `MOTION_S.ZAR`), the destructible states, and the particle effects (`COMMON/EFFE_*`:
   `fire_hardedge.tif` and the smoke sprites) are driven by game code the viewer does not run; the
