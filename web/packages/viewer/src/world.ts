@@ -7,8 +7,9 @@ import {
 import type { Blending, BlendingDstFactor, BlendingSrcFactor, Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
 import { materialReference, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
-import { lodIsLast, lodVisible, type LodBand } from '@s2u/scene';
+import { lodIsLast, lodOpacity, lodVisible, type LodBand } from '@s2u/scene';
 import { drawState, materialSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
+import { fadeMaterial, fadePhase } from './lodFade';
 import type { Rgba } from '@s2u/gs';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
 import type { LoadedMap, LoadedMesh } from './loadMap';
@@ -88,8 +89,9 @@ export interface WorldView {
    * A flare on disc is a single quad on a single plane -- `lightcage`'s `lightrays.tif` node is 4
    * vertices and 2 triangles, normal (0, 0.96, -0.24) -- so a fixed quad that nearly faces the sky is
    * edge-on from a standing player. The engine turns the nodes flagged `m_facade` (`facadeOf`); so
-   * does this. `CVisual::DrawLOD` shows one copy of a LOD pair by the camera's range; so does this,
-   * at the middle of each fade. A `TextureScroll_Object` band adds its `du, dv` to a node's uvs; so does
+   * does this. `CVisual::DrawLOD` scales a LOD copy's opacity by the camera's range across its fades,
+   * so a pair crosses over rather than switching; so does this (`lodOpacity`, `./lodFade`). A
+   * `TextureScroll_Object` band adds its `du, dv` to a node's uvs; so does
    * this, at `SCROLL_TICKS_PER_SECOND` steps a second (1: the step is per second, see the constant).
    */
   frame(camera: Camera, dt: number): void;
@@ -253,6 +255,64 @@ export function buildWorld(map: LoadedMap): WorldView {
   /** The colour an untextured mesh takes when the highlight is on: nothing in the game is this. */
   const MAGENTA: ColorNode = vec4(1, 0, 1, 1);
 
+  // LOD fades (W1.3). `CVisual::DrawLOD` scales a LOD copy's opacity across its fades (`lodOpacity`,
+  // reCOM `zVisual/vis_main.cpp:305-317`), and the engine draws a copy at 1 in place and one below it in
+  // its alpha pass (`zRender/zrndr_pipe.cpp:344-364`). The copies share their texture's material, so the
+  // opacity is not a material property: it is one uniform three refreshes per object as it draws it --
+  // `uniform()` lives in the object group, whose bindings three clones per render object, and
+  // `onObjectUpdate` reads the drawn object's own value -- and it sits only in the graph of a *fading
+  // twin*, one per shared material, made the first time a copy drawn with it fades. At rest a copy is
+  // drawn with its shared material, so its draw state is `materialSpec`'s and nothing else (`./lodFade`).
+  // Cloning a material per copy would have cost a material per placement and a spec to keep in step on
+  // each; an instance attribute would have needed the copies instanced, and each is its own mesh.
+  const lodOpacityOf = new WeakMap<Object3D, number>();
+  const fadeOpacity = uniform(1).onObjectUpdate(({ object }) => (object ? lodOpacityOf.get(object) ?? 1 : 1));
+  const fades = new Map<Basic, MeshBasicNodeMaterial>();
+  /** The shared material, with what it was built from, that a LOD copy is drawn with at rest. */
+  const lodRest = new WeakMap<Object3D, Built>();
+  /** Puts a fading twin in step with its shared material, as `apply` has just left that. */
+  const applyFade = (b: Built, twin: MeshBasicNodeMaterial): void => {
+    const fade = fadeMaterial(materialSpec(b.flags, b.fog, blendGraded, b.cull), b.shadow);
+    const shared = b.material;
+    // What `apply` chose -- shaded, carrier, scroll or magenta -- each built as a `vec4` above.
+    const base = (shared.colorNode ?? SHADED) as Node<'vec4'>;
+    twin.map = shared.map;
+    twin.vertexColors = false;
+    twin.colorNode = fade.mode === 'solid' ? vec4(base.rgb, fadeOpacity)
+      : fade.mode === 'carrier' ? vec4(base.rgb.mul(fadeOpacity), base.a)
+      : vec4(base.rgb, base.a.mul(fadeOpacity));
+    twin.maskNode = fade.mask > 0 ? base.a.greaterThan(fade.mask) : null;
+    twin.alphaTest = 0;                                  // the mask tests the unfaded alpha instead
+    twin.transparent = fade.state.transparent;
+    twin.depthWrite = fade.state.depthWrite;
+    Object.assign(twin, blendFactorsFor(fade.state.factors));
+    twin.polygonOffset = shared.polygonOffset;
+    twin.polygonOffsetFactor = shared.polygonOffsetFactor;
+    twin.polygonOffsetUnits = shared.polygonOffsetUnits;
+    twin.side = shared.side;
+    twin.fog = shared.fog;
+    twin.wireframe = shared instanceof MeshBasicNodeMaterial && shared.wireframe;
+    twin.needsUpdate = true;
+  };
+  /** Draws a LOD copy at `opacity`: with its shared material at rest (and hidden), its twin while fading. */
+  const fadeTo = (object: Object3D, opacity: number): void => {
+    const rest = lodRest.get(object);
+    if (!rest || !(object instanceof Mesh)) return;
+    lodOpacityOf.set(object, opacity);
+    let want: Basic = rest.material;
+    if (fadePhase(opacity) === 'fading') {
+      let twin = fades.get(rest.material);
+      if (!twin) {
+        twin = new MeshBasicNodeMaterial();
+        twin.name = 'lod fade';
+        fades.set(rest.material, twin);
+        applyFade(rest, twin);
+      }
+      want = twin;
+    }
+    if (object.material !== want) object.material = want;
+  };
+
   /** Puts a spec on a material: the shading graph, the blend, the test, the depth write, the cull and the fog. */
   const apply = (b: Built): void => {
     const spec = materialSpec(b.flags, b.fog, blendGraded, b.cull);
@@ -279,6 +339,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     // A destination brighten reads only `As`, which the GS does not fog; fogging the carrier would fog it.
     material.fog = spec.fog && !carrier;
     material.needsUpdate = true;
+    const twin = fades.get(material);                    // a LOD fade's twin follows every change (W1.3)
+    if (twin) applyFade(b, twin);
   };
 
   /**
@@ -400,6 +462,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       if (prop.lod) {
         // A model in a LOD band is shown by the camera's range to each placement, so every placement
         // is its own mesh -- there are tens of these per map, not the hundreds instancing is for.
+        const rest = built.find((b) => b.material === material);   // what its fading twin is made from
         for (let i = 0; i < count; i++) {
           const mesh = new Mesh(geometry, material);
           mesh.name = `${prop.modelName} (lod)`;
@@ -407,6 +470,7 @@ export function buildWorld(map: LoadedMap): WorldView {
           mesh.applyMatrix4(m);
           const at = new Vector3().setFromMatrixPosition(m);
           later(revealProps, mesh, part.order, prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0), last: false });
+          if (rest) lodRest.set(mesh, rest);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
@@ -478,6 +542,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const { material } of built) {
         if (material instanceof MeshBasicNodeMaterial) { material.wireframe = on; material.needsUpdate = true; }
       }
+      for (const twin of fades.values()) { twin.wireframe = on; twin.needsUpdate = true; }
       // A line has no faces to show through, so it simply steps aside while the topology is on view.
       wireframeOn = on;
       refreshVisibility();
@@ -504,8 +569,12 @@ export function buildWorld(map: LoadedMap): WorldView {
       let lodChanged = false;
       for (const d of drawn) {
         if (d.lod === null) continue;
-        const visible = lodVisible(d.lod.band, d.lod.at.distanceTo(camera.position), d.lod.last);
+        // `DrawLOD`'s opacity at the camera's range squared: drawn where it is above zero (`lodVisible`),
+        // faded across each fade, at rest on the plateau.
+        const opacity = lodOpacity(d.lod.band, d.lod.at.distanceToSquared(camera.position), d.lod.last);
+        const visible = opacity > 0;
         if (visible !== d.lod.visible) { d.lod.visible = visible; lodChanged = true; }
+        fadeTo(d.object, opacity);
       }
       if (lodChanged) refreshVisibility();
       for (const s of scrolling) {
@@ -545,6 +614,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         if (child instanceof InstancedMesh) child.dispose();
       }
       for (const { material } of built) material.dispose();
+      for (const twin of fades.values()) twin.dispose();
       for (const texture of textures.values()) texture.dispose();
     },
   };
