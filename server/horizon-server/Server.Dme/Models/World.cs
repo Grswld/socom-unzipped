@@ -180,8 +180,20 @@ namespace Server.Dme.Models
 
         #region Send
 
+        // LOCAL (socom_pc): a relayed payload over the advertised packet size is dropped with one log line (RelayCaps).
+        private bool RelayRefused(ClientObject source, byte[] payload, bool udp, string kind)
+        {
+            if (Server.Pipeline.RelayCaps.RelayPayloadFits(payload, udp))
+                return false;
+            Logger.Warn($"{this}: {(udp ? "udp" : "tcp")} {kind} relay refused from {source}: payload {payload.Length} bytes over the {(udp ? Server.Pipeline.RelayCaps.UdpRelayMax : Server.Pipeline.RelayCaps.TcpRelayMax)}-byte cap");
+            return true;
+        }
+
         public void BroadcastTcp(ClientObject source, byte[] Payload)
         {
+            if (RelayRefused(source, Payload, udp: false, "broadcast"))
+                return;
+
             var msg = new RT_MSG_CLIENT_APP_SINGLE()
             {
                 TargetOrSource = (short)source.DmeId,
@@ -199,6 +211,9 @@ namespace Server.Dme.Models
 
         public void BroadcastUdp(ClientObject source, byte[] Payload)
         {
+            if (RelayRefused(source, Payload, udp: true, "broadcast"))
+                return;
+
             var msg = new RT_MSG_CLIENT_APP_SINGLE()
             {
                 TargetOrSource = (short)source.DmeId,
@@ -217,6 +232,9 @@ namespace Server.Dme.Models
 
         public void SendTcpAppList(ClientObject source, IEnumerable<int> targetDmeIds, byte[] Payload)
         {
+            if (RelayRefused(source, Payload, udp: false, "list"))
+                return;
+
             foreach (var targetId in targetDmeIds)
             {
                 if (Clients.TryGetValue(targetId, out var client))
@@ -235,6 +253,9 @@ namespace Server.Dme.Models
 
         public void SendUdpAppList(ClientObject source, IEnumerable<int> targetDmeIds, byte[] Payload)
         {
+            if (RelayRefused(source, Payload, udp: true, "list"))
+                return;
+
             foreach (var targetId in targetDmeIds)
             {
                 if (Clients.TryGetValue(targetId, out var client))
@@ -253,6 +274,9 @@ namespace Server.Dme.Models
 
         public void SendTcpAppSingle(ClientObject source, short targetDmeId, byte[] Payload)
         {
+            if (RelayRefused(source, Payload, udp: false, "single"))
+                return;
+
             var target = Clients.FirstOrDefault(x => x.Value.DmeId == targetDmeId).Value;
 
             if (target != null && target.IsAuthenticated && target.IsConnected && target.HasRecvFlag(RT_RECV_FLAG.RECV_SINGLE))
@@ -267,6 +291,9 @@ namespace Server.Dme.Models
 
         public void SendUdpAppSingle(ClientObject source, short targetDmeId, byte[] Payload)
         {
+            if (RelayRefused(source, Payload, udp: true, "single"))
+                return;
+
             var target = Clients.FirstOrDefault(x => x.Value.DmeId == targetDmeId).Value;
 
             if (target != null && target.IsAuthenticated && target.IsConnected && target.HasRecvFlag(RT_RECV_FLAG.RECV_SINGLE))

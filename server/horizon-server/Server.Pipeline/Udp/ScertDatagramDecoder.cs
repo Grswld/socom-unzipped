@@ -17,6 +17,9 @@ namespace Server.Pipeline.Udp
     {
         static readonly IInternalLogger Logger = InternalLoggerFactory.GetInstance<ScertDatagramDecoder>();
 
+        /// <summary>LOCAL (socom_pc): inbound datagrams longer than this are refused; 0 means no cap.</summary>
+        public int MaxDatagramLength { get; set; } = 0;
+
         readonly ICipher[] _ciphers = null;
         readonly Func<RT_MSG_TYPE, CipherContext, ICipher> _getCipher = null;
 
@@ -37,6 +40,13 @@ namespace Server.Pipeline.Udp
 
         protected override void Decode(IChannelHandlerContext context, DatagramPacket message, List<object> output)
         {
+            // LOCAL (socom_pc): an inbound datagram over the configured cap is refused whole.
+            if (MaxDatagramLength > 0 && message.Content.ReadableBytes > MaxDatagramLength)
+            {
+                Logger.Warn($"scert datagram from {message.Sender} refused: {message.Content.ReadableBytes} bytes over the {MaxDatagramLength}-byte cap");
+                return;
+            }
+
             while (message.Content.IsReadable())
             {
                 int before = message.Content.ReaderIndex;
