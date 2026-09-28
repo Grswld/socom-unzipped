@@ -38,6 +38,13 @@ describe('HttpAssetSource', () => {
     expect(await s.maps()).toEqual([{ archive: 'MP2', path: 'RUN/MP2.ZDB', name: 'MP2' }]);
   });
 
+  it('reads the sprint-2 index: the maps for the picker, the common archives in the listing (W2.R5)', async () => {
+    vi.stubGlobal('fetch', serve({ maps: INDEX, common: ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR'] }));
+    const s = new HttpAssetSource('/maps');
+    expect(await s.maps()).toEqual(INDEX);
+    expect(await s.list()).toEqual(['RUN/MP2.ZDB', 'RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR']);
+  });
+
   it('takes a base URL with or without its trailing slash', async () => {
     const fetched = serve();
     vi.stubGlobal('fetch', fetched);

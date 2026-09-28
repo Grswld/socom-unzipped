@@ -14,6 +14,40 @@ export function mapArchiveId(path: string): string | null {
 }
 
 /**
+ * The archives every map shares, copied out of the disc's `RUN/` beside the map archives by
+ * `tools/extract-maps.ts` (web sprint 2, W2.R5): `READERC.ZAR`, the character scripts (`dynamics.rdr`,
+ * `motion.rdr`, ...), and `ZWEAPON.ZAR`, the weapon table.
+ */
+export const COMMON_ARCHIVES: readonly string[] = ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR'];
+
+/** `public/maps/index.json`: the maps for the picker, and the common archives served beside them. */
+export interface ServedIndex { maps: MapInfo[]; common: string[] }
+
+/** The index `tools/extract-maps.ts` writes. */
+export function servedIndex(maps: MapInfo[], common: readonly string[] = COMMON_ARCHIVES): ServedIndex {
+  return { maps, common: [...common] };
+}
+
+/**
+ * Reads an `index.json` of any age: the sprint-2 object `{ maps, common }` (a key it does not know is
+ * ignored), the earlier array of `MapInfo`, or the first array of bare paths -- whose entries carry no
+ * name, so the archive id stands in. The two arrays have no common archives.
+ */
+export function parseServedIndex(json: unknown): ServedIndex {
+  const entry = (e: string | MapInfo): MapInfo => {
+    if (typeof e !== 'string') return e;
+    const archive = mapArchiveId(e) ?? e;
+    return { archive, path: e, name: archive };
+  };
+  if (Array.isArray(json)) return { maps: (json as (string | MapInfo)[]).map(entry), common: [] };
+  if (json !== null && typeof json === 'object' && Array.isArray((json as { maps?: unknown }).maps)) {
+    const { maps, common } = json as { maps: (string | MapInfo)[]; common?: unknown };
+    return { maps: maps.map(entry), common: Array.isArray(common) ? common.filter((c): c is string => typeof c === 'string') : [] };
+  }
+  throw new Error('index.json is neither a list of maps nor { maps, common }');
+}
+
+/**
  * Every `RUN/MP*.ZDB` in the source, named from its own `mission.rdr` rather than from a table typed out
  * of 36 §0, sorted by archive number (MP1, MP2, MP5, ... MP83; MP3 and MP4 do not exist).
  *

@@ -25,7 +25,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseZdb, zdbMember, Zar, type MapInfo } from '@s2u/archive';
+import { parseZdb, zdbMember, Zar } from '@s2u/archive';
+import { readServedIndex } from '@s2u/archive/node';
 import {
   buildGrid, collisionOwners, parseSceneGraph, parseWorldRoot, probeGround, probeFloor, spawnsFor, worldCollision,
 } from '@s2u/scene';
@@ -41,7 +42,7 @@ const ORBIT = 23.1;
 /** The camera's height over the feet the camera rows suggest: the modal offset on flat ground. */
 const CAMERA_HEIGHT = 25;
 
-const index = JSON.parse(readFileSync(resolve(maps, 'index.json'), 'utf8')) as MapInfo[];
+const index = readServedIndex(maps).maps;
 const wanted = process.argv.slice(2).map((a) => a.toUpperCase());
 const residuals: number[] = [];
 const actorResiduals: number[] = [];
