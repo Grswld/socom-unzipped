@@ -391,6 +391,39 @@ namespace socom2_msg_bounds
         return {};
     }
 
+    // ---- G3: class 2 ---------------------------------------------------------------------------------------------------
+    // Radio: the byte at +2 is the kind; kinds 1 to 4 index a channel record by the byte at +1.
+    inline Refusal checkRadio(const uint8_t *rdram, uint32_t msg, uint32_t)
+    {
+        const uint8_t kind = detail::readU8(rdram, msg + 2u);
+        const uint8_t channel = detail::readU8(rdram, msg + 1u);
+        if (kind >= 1u && kind <= 4u && channel >= kRadioChannels)
+            return refuse(Kind::RadioChannel, channel);
+        return {};
+    }
+
+    // Names: u16 size at +0 (the record's, returned as consumed), three counts at +2..+4, then that many terminated
+    // names from +5; every one ends inside the size, and the size inside what the buffer holds.
+    inline Refusal checkNames(const uint8_t *rdram, uint32_t msg, uint32_t remaining)
+    {
+        const uint32_t size = detail::readU16(rdram, msg);
+        if (size < 5u || size > remaining)
+            return refuse(Kind::NamesSize, size);
+        if (!socom2_net_bounds::ramSpanFits(msg, size))
+            return refuse(Kind::OutsideRam, msg);
+        const uint8_t *p = rdram + (msg & PS2_RAM_MASK);
+        const uint32_t names = static_cast<uint32_t>(p[2]) + p[3] + p[4];
+        uint32_t at = 5u;
+        for (uint32_t i = 0; i < names; ++i)
+        {
+            const void *nul = at < size ? std::memchr(p + at, 0, size - at) : nullptr;
+            if (!nul)
+                return refuse(Kind::NamesWalk, i);
+            at = static_cast<uint32_t>(static_cast<const uint8_t *>(nul) - p) + 1u;
+        }
+        return {};
+    }
+
     // ---- the wraps -----------------------------------------------------------------------------------------------------
     namespace detail
     {
@@ -405,6 +438,8 @@ namespace socom2_msg_bounds
             case kType05: return 1u;
             case kType0e: return 0xcu;
             case kType0f: return 0x24u;
+            case kRadio: return 3u;
+            case kNames: return 5u;
             default: return 0u;
             }
         }
@@ -424,6 +459,8 @@ namespace socom2_msg_bounds
             case kType05: return checkType05(rdram, msg, remaining, s);
             case kType0e: return checkType0e(rdram, msg, remaining);
             case kType0f: return checkType0f(rdram, msg, remaining);
+            case kRadio: return checkRadio(rdram, msg, remaining);
+            case kNames: return checkNames(rdram, msg, remaining);
             default: return {};
             }
         }
@@ -486,6 +523,8 @@ namespace socom2_msg_bounds
             {sites.dmeType05, "dmeType05", "message 0.05", detail::handlerBound<detail::kType05>, detail::kType05},
             {sites.dmeType0e, "dmeType0e", "message 0.0e", detail::handlerBound<detail::kType0e>, detail::kType0e},
             {sites.dmeType0f, "dmeType0f", "message 0.0f", detail::handlerBound<detail::kType0f>, detail::kType0f},
+            {sites.appRadio, "appRadio", "message 2.radio", detail::handlerBound<detail::kRadio>, detail::kRadio},
+            {sites.appNames, "appNames", "message 2.names", detail::handlerBound<detail::kNames>, detail::kNames},
         };
         int installed = 0;
         for (const Bind &b : binds)

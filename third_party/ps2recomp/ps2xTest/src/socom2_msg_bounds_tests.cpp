@@ -477,4 +477,80 @@ void register_socom2_msg_bounds_tests()
             t.Equals(mb::messagesRefused(), 3u, "every one counted");
         });
     });
+
+    // ---- G3 ----------------------------------------------------------------------------------------------------------
+    MiniTest::Case("Socom2AppMessageBound", [](TestCase &tc)
+    {
+        tc.Run("a radio record whose channel is past the channel records is refused", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.appRadio);
+            for (uint8_t kind : {uint8_t(1), uint8_t(2), uint8_t(3), uint8_t(4)})
+                for (uint8_t channel : {uint8_t(12), uint8_t(0xff)})
+                {
+                    clearMsg();
+                    put8(kMsg + 1u, channel);
+                    put8(kMsg + 2u, kind);
+                    expectRefused(t, call(runtime, S.appRadio, walk(3u)), S.walkHandlerReturn,
+                                  "kind " + std::to_string(kind) + " channel " + std::to_string(channel));
+                }
+        });
+
+        tc.Run("a radio record inside its channels, or of a kind that takes none, reaches the handler", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.appRadio);
+            clearMsg();
+            put8(kMsg + 1u, 11u);
+            put8(kMsg + 2u, 3u);
+            expectPassed(t, call(runtime, S.appRadio, walk(3u)), "kind 3, the last channel");
+            put8(kMsg + 1u, 0xffu);
+            put8(kMsg + 2u, 5u);
+            expectPassed(t, call(runtime, S.appRadio, walk(3u)), "kind 5 takes no channel");
+            put8(kMsg + 2u, 0u);
+            expectPassed(t, call(runtime, S.appRadio, walk(3u)), "kind 0 takes no channel");
+        });
+
+        // Names: u16 size, three counts, the names from +5.
+        auto namesMsg = [](uint16_t size, uint8_t a, uint8_t b, uint8_t c, const std::string &names)
+        {
+            clearMsg();
+            put16(kMsg, size);
+            put8(kMsg + 2u, a);
+            put8(kMsg + 3u, b);
+            put8(kMsg + 4u, c);
+            std::memcpy(at(kMsg + 5u), names.data(), names.size());
+        };
+        const std::string two("ab\0cd\0", 6);
+
+        tc.Run("a names record whose size or names pass its bounds is refused", [=](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.appNames);
+            namesMsg(4u, 0u, 0u, 0u, "");
+            expectRefused(t, call(runtime, S.appNames, walk(0x20u)), S.walkHandlerReturn, "size 4");
+            namesMsg(11u, 1u, 1u, 0u, two);
+            expectRefused(t, call(runtime, S.appNames, walk(10u)), S.walkHandlerReturn, "size past the walk's bytes");
+            namesMsg(0x601u, 0u, 0u, 0u, "");
+            expectRefused(t, call(runtime, S.appNames, other()), kOtherCaller, "size past the scratch");
+            namesMsg(10u, 1u, 1u, 0u, two);
+            expectRefused(t, call(runtime, S.appNames, walk(0x20u)), S.walkHandlerReturn, "the second name ends past the size");
+            namesMsg(11u, 1u, 1u, 1u, two);
+            expectRefused(t, call(runtime, S.appNames, walk(0x20u)), S.walkHandlerReturn, "a third name with no room");
+            namesMsg(0x20u, 0xffu, 0xffu, 0xffu, std::string(0x1b, 'X'));
+            expectRefused(t, call(runtime, S.appNames, walk(0x20u)), S.walkHandlerReturn, "unterminated names");
+        });
+
+        tc.Run("a names record inside its bounds reaches the handler", [=](TestCase &t)
+        {
+            PS2Runtime runtime;
+            installAt(runtime, S.appNames);
+            namesMsg(11u, 1u, 1u, 0u, two);
+            expectPassed(t, call(runtime, S.appNames, walk(11u)), "two names, to the byte");
+            namesMsg(5u, 0u, 0u, 0u, "");
+            expectPassed(t, call(runtime, S.appNames, walk(5u)), "no names");
+            namesMsg(11u, 0u, 2u, 0u, two);
+            expectPassed(t, call(runtime, S.appNames, fragment(11u)), "re-dispatched, to the byte");
+        });
+    });
 }
