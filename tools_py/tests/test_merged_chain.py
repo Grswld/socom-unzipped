@@ -29,6 +29,9 @@ STEPS = ["recomp", "runtime", "test", "gate", "the fourth leg", "release", "arch
 FAKE_BUILD = """#!/usr/bin/env bash
 # a fake build.sh: logs its step; FAKE_FAIL=<step> fails it, FAKE_DIRTY=<step> edits a tracked file
 echo "build $1" >> "$FAKE_LOG"
+# Sprint 17 G1: the chain's running marker as each step sees it, and (CHAIN_JUDGE_PY set) the hooks' judgement of it
+[ -f logs/.merged_chain.running ] && echo "marker $1 $(tr '[:space:]' ' ' < logs/.merged_chain.running)" >> "$FAKE_LOG"
+[ -n "${CHAIN_JUDGE_PY:-}" ] && "$CHAIN_JUDGE_PY" -m tools_py.hooks.chainmark . >> "$FAKE_LOG"
 case "$1" in runtime) mkdir -p dist dist-linux && echo exe > dist/socom2.exe && echo exe > dist-linux/socom2;; esac
 [ "${FAKE_DIRTY:-}" = "$1" ] && echo dirt >> tracked.txt
 [ "${FAKE_COMMIT:-}" = "$1" ] && git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m moved
@@ -266,6 +269,49 @@ class TestMergedChainRuns(unittest.TestCase):
         rc, out = self.run_chain(LOOP_LOCK_HELD="someone 1-1x1")
         self.assertEqual(rc, 2, out)
         self.assertEqual(self.fake_log(), [])
+
+    # --- Sprint 17 G1: logs/.merged_chain.running pins the chain's tree for the hooks (tools_py/hooks/chainmark.py)
+
+    def running_marker(self):
+        return os.path.join(self.repo, "logs", ".merged_chain.running")
+
+    def markers(self):
+        return [l for l in self.fake_log() if l.startswith("marker ")]
+
+    def test_the_running_marker_lives_exactly_as_long_as_the_chain(self):
+        head = self.git("rev-parse", "HEAD")
+        judge = shutil.which("python") or shutil.which("python3")
+        rc, out = self.run_chain(CHAIN_JUDGE_PY=fwd(judge) if judge else None, PYTHONPATH=ROOT)
+        self.assertEqual(rc, 0, out)
+        seen = self.markers()
+        self.assertEqual([l.split()[1] for l in seen], ["recomp", "runtime", "test", "release"])
+        for field in ("head=%s" % head, "stamp=stamp_x", "held=chain 100-1x1"):
+            self.assertIn(field, seen[0])
+        self.assertRegex(seen[0], r" pid=\d+ start=\d+ ")
+        self.assertRegex(seen[0], r" root=\S*/repo ")          # git's spelling of the path, not tempfile's 8.3 one
+        if judge:                                            # the hooks' own reader calls the chain alive, mid-run
+            judged = [l for l in self.fake_log() if l.startswith("running ")]
+            self.assertEqual(len(judged), 4, self.fake_log())
+            self.assertIn("stamp=stamp_x", judged[0])
+        self.assertFalse(os.path.exists(self.running_marker()), "the marker outlived a green chain")
+
+    def test_a_red_chain_removes_its_marker(self):
+        rc, out = self.run_chain(FAKE_FAIL="gate")
+        self.assertEqual(rc, 6, out)
+        self.assertEqual(len(self.markers()), 3)             # recomp, runtime, test ran under it
+        self.assertFalse(os.path.exists(self.running_marker()), "the marker outlived a red chain")
+
+    def test_a_refused_or_dry_chain_writes_no_marker(self):
+        rc, out = self.run_chain(LOOP_LOCK_HELD=None)
+        self.assertEqual(rc, 2, out)
+        _write(os.path.join(self.repo, "tracked.txt"), "someone's edit\n")
+        rc, out = self.run_chain()
+        self.assertEqual(rc, 2, out)
+        _write(os.path.join(self.repo, "tracked.txt"), "clean\n")
+        rc, out = self.run_chain(MERGED_CHAIN_DRY_RUN="1", LOOP_LOCK_HELD=None)
+        self.assertEqual(rc, 3, out)
+        self.assertEqual(self.markers(), [])
+        self.assertFalse(os.path.exists(self.running_marker()))
 
     def test_a_dry_run_prints_the_steps_runs_nothing_and_is_never_green(self):
         rc, out = self.run_chain(MERGED_CHAIN_DRY_RUN="1", LOOP_LOCK_HELD=None)

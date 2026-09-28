@@ -14,10 +14,32 @@
 #
 # It runs from its OWN repository (the script's directory, two up), not the caller's cwd: the cwd a tool call runs
 # in can be any tree, or no tree at all. The cwd that matters for the rules comes in the JSON.
+#
+# The chain's tree (Sprint 17 G1): while a merged chain runs, an edit of a tracked file in its tree is refused, and
+# such an edit names none of the words above. So an editing call (the JSON has a `file_path` or `notebook_path`)
+# also reaches Python when logs/.merged_chain.running exists in this script's own tree or in the main tree (a linked
+# worktree's `.git` file names it: `gitdir: <main>/.git/worktrees/<name>`) -- a stat or two and a builtin read, no
+# process. PRETOOL_CHAIN_TREE, when set, replaces those two trees with the one it names (empty: none) for the tests.
 input=$(cat)
+here=.
+case "$0" in */*) here="${0%/*}/../.." ;; esac
+chain=""
+if [ "${PRETOOL_CHAIN_TREE+set}" = set ]; then
+  [ -n "$PRETOOL_CHAIN_TREE" ] && [ -f "$PRETOOL_CHAIN_TREE/logs/.merged_chain.running" ] && chain=1
+elif [ -f "$here/logs/.merged_chain.running" ]; then
+  chain=1
+elif [ -f "$here/.git" ]; then
+  gitdir=""
+  { IFS= read -r gitdir < "$here/.git"; } 2>/dev/null
+  gitdir="${gitdir#gitdir: }"
+  case "$gitdir" in
+    */.git/worktrees/*) [ -f "${gitdir%/.git/worktrees/*}/logs/.merged_chain.running" ] && chain=1 ;;
+  esac
+fi
 case "$input" in
   *[Gg][Hh]' '[Pp][Rr]' '*|*[Gg][Hh].[Ee][Xx][Ee]' '[Pp][Rr]' '*) ;;   # `gh pr merge` names no git
   *[Gg][Ii][Tt]*|*[Ll][Oo][Oo][Pp]_[Ll][Oo][Cc][Kk]*|*[Ll][Oo][Gg][Ss]/*|*[Ll][Oo][Gg][Ss]'\'*) ;;
+  *'"file_path"'*|*'"notebook_path"'*) [ -n "$chain" ] || exit 0 ;;
   *) exit 0 ;;
 esac
 cd "$(dirname "$0")/../.." 2>/dev/null || exit 0

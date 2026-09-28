@@ -1087,8 +1087,8 @@ and every ticket carries a class, `build` or `run` (`--class` overrides).
 
 ## Guards
 
-Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
-wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
+Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash (and, since
+Sprint 17 G1, PowerShell) tool call, wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
 home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `gh pr`, `loop_lock` and `logs/`
 exits 0 in the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
 `|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
@@ -1168,6 +1168,30 @@ The subject cap (Sprint 14 S2): git's `commit-msg` hook, `scripts/hooks/commit-m
 live in every clone that ran `scripts/install_hooks.sh`), refuses a subject (git's first paragraph, joined as `%s`
 shows it) over 120 characters with one sentence (a default merge, revert or reapply subject with a body is exempt;
 `fixup!`/`squash!` judge the subject they wrap); test `CommitMsgTest` and `CommitMsgWiringTest` in `tools_py/tests/test_hooks.py`; home `docs/GIT_STRATEGY.md` section 3.
+
+The chain's tree (Sprint 17 G1): `scripts/parity/merged_chain.sh` reds on a tracked file changed in its tree, then on
+HEAD moved, so a peer's edit or commit there costs a 90-minute rerun (five on 2026-09-27/28; the multi-session
+collisions audit of 2026-09-28, sections 3.1 and 5). The chain writes `logs/.merged_chain.running`
+in its own tree after it fixes HEAD0 (`pid`, `start`, `head`, `stamp`, `root`, `held`; the pid is the Windows one under
+Git Bash) and removes it in an EXIT trap; `tools_py/hooks/chainmark.py` judges it live when the pid is alive and was
+created no later than the write -- in-process, no child, and the lock's state is not consulted. Two refusals key on
+it: git's `pre-commit` hook runs `tools_py/hooks/precommit.py` before the leak check and refuses any commit in that
+tree (`scripts/hooks/pre-merge-commit` runs the same for a merge that commits without stopping; a fast-forward makes
+no commit and is not seen); the Edit/Write entry refuses an edit of a TRACKED file in it (untracked files, `logs/` and other trees pass --
+an agent worktree never refuses). The shell fast path starts Python for an editing call only while a marker exists in
+the hook's own tree or the main tree (`PRETOOL_CHAIN_TREE` replaces both for tests). Test `ChainMarkerTest`,
+`PrecommitChainGuardTest`, `PrecommitWiringTest`, `PinnedTreeEditTest`, `PinnedTreeWiringTest` in
+`tools_py/tests/test_hooks.py`, and the marker's lifetime (green, red, refused, dry) in `tools_py/tests/test_merged_chain.py`;
+home this section. Limits: a tree without `tools_py/hooks/precommit.py` (a branch older than G1, whose commits run
+the main tree's hooks through an absolute `core.hooksPath`) is skipped, not refused; a hard kill (`taskkill /F`)
+leaves a marker naming a dead pid (judged not running); an
+edit through Bash or PowerShell (`sed -i`, `Set-Content`) is not seen; a chain in a third tree is judged only when the
+call reaches Python for another reason.
+
+The PowerShell tool (Sprint 17 G1): the PreToolUse matcher is `Bash|PowerShell`, and a PowerShell `command` is judged by
+every Bash rule above (`Set-Location`/`sl`/`chdir`, `Push-Location`, `Pop-Location` followed as `cd`/`pushd`/`popd`);
+until then each rule was a sentence for that tool (the audit's 3.2). Test `PowerShellToolTest` in
+`tools_py/tests/test_hooks.py`.
 
 The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
 `python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or
