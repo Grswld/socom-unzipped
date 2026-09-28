@@ -82,13 +82,13 @@ describe('materialSpec with the disc blend switched off', () => {
 });
 
 /**
- * The draw state: what a blend becomes on the GPU, in the disc's order and in three's.
+ * The draw state: what a blend becomes on the GPU, in the engine's order and in three's.
  *
- * In the disc's order every draw is in one list, sorted by its place in the scene walk, and writes
+ * In the engine's order every draw is in one list, sorted by its place in the grid walk, and writes
  * depth -- the GS state the game runs with is `ZMSK = 0` on every draw, blended or not. In three's
  * order a blended draw goes to the transparent list, is sorted back to front and writes no depth.
  */
-describe('drawState in the disc order', () => {
+describe('drawState in the engine order', () => {
   const spec = (blend: MaterialSpec['blend']): MaterialSpec => ({
     blend, alphaTest: 0, cull: false, wrapS: 'repeat', wrapT: 'repeat', bilinear: true, mipmaps: false, fog: true,
   });
@@ -192,7 +192,7 @@ describe('the detail draw state', () => {
     expect(detailDrawState(spec('source'), { transparent: true, depthWrite: false, factors: null }).transparent).toBe(true);
   });
 
-  it('is ordered right after its base draw in the disc order, and after every base in three\'s', () => {
+  it('is ordered right after its base draw in the engine order, and after every base in three\'s', () => {
     expect(detailRenderOrder(512, true)).toBeGreaterThan(512);
     expect(detailRenderOrder(512, true)).toBeLessThan(513);
     expect(detailRenderOrder(512, false)).toBeGreaterThan(0);

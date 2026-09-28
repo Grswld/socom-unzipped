@@ -5,7 +5,7 @@ import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'fog', 'blendgraded', 'discorder', 'shadows', 'alternate', 'detail', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
+  'fog', 'blendgraded', 'engineorder', 'shadows', 'alternate', 'detail', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -46,7 +46,7 @@ export class Ui {
     untextured: find('untextured'),
     fog: find('fog'),
     blendgraded: find('blendgraded'),
-    discorder: find('discorder'),
+    engineorder: find('engineorder'),
     shadows: find('shadows'),
     alternate: find('alternate'),
     detail: find('detail'),

@@ -205,7 +205,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'wireframe') view?.setWireframe(on);
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
   else if (name === 'blendgraded') view?.setBlendGraded(on);
-  else if (name === 'discorder') view?.setDiscOrder(on);
+  else if (name === 'engineorder') view?.setEngineOrder(on);
   else if (name === 'shadows') view?.setShadows(on);
   else if (name === 'alternate') view?.setAlternate(on);
   else if (name === 'detail') view?.setDetail(on);

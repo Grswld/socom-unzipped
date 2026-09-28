@@ -3,7 +3,7 @@ import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   buildGrid, cellAt, cellByCoord, cellsCovering, chopF32, collisionOwners, collisionRuns, decodeGridParams, footprintDistance,
-  parseClutter, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, placeInstances, planeHeightAt, ringCells,
+  parseClutter, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, placeInstances, placementCells, planeHeightAt, ringCells,
   transformPoint, traverse, worldCollision, worldFootprint, DEFAULT_GRID_PARAMS, IDENTITY,
   type Grid, type GridAtom, type GridParams, type PlacedModel, type SceneNode, type WorldPoly,
 } from '../src/index';
@@ -233,6 +233,25 @@ describe('cells and atoms (CGrid::Create, FUN_002d7580)', () => {
     ]);
   });
 
+  it('gives the cells buildGrid links a placement into, placement by placement, without linking it (placementCells)', () => {
+    const random = lcg(2026_09_28_2);
+    const placed = Array.from({ length: 30 }, (_, i) => {
+      const x = random() * 900 - 150, z = random() * 700 - 150;
+      return box(x, z, x + random() * 300, z + random() * 300, `b${i}`);
+    });
+    const clutter = Array.from({ length: 8 }, () => tuft(random() * 600, random() * 400));
+    const grid = buildGrid(params(6, 4), placed, clutter, []);
+    const linked = (object: unknown): number[] => grid.cells.filter((c) => c.atoms.some((a) => a.object === object)).map((c) => c.index);
+    for (const o of grid.objects) {
+      if (o.kind === 'collision') continue;
+      expect(placementCells(grid, o.placed, o.kind).map((c) => c.index), `${o.kind} ${o.index}`).toEqual(linked(o));
+    }
+    // A clutter instance is filed by its position alone; the same matrix as a placement is filed by its bbox.
+    const wide = { ...tuft(150, 150), bbox: Float32Array.from([-120, 0, -20, 120, 1, 20]) };
+    expect(placementCells(grid, wide, 'clutter').map((c) => c.index)).toEqual([7]);
+    expect(placementCells(grid, wide).map((c) => c.index)).toEqual([6, 7, 8]);
+  });
+
   it('addresses one cell three ways -- by index, by cell (x, z), by world (x, z) -- all clamped', () => {
     const grid = buildGrid(params(4, 3), [box(120, 120, 180, 180)], [], []);
     const cell = grid.cells[5]!;
@@ -252,30 +271,38 @@ describe('the ordered traversal (addOrderedCellAtom, GetNextAtomOrdered)', () =>
   /** A 5 x 5 grid with one box over all of it: every cell holds exactly one atom. */
   const five = (): Grid => buildGrid(params(5, 5), [box(0, 0, 500, 500)], [], []);
 
-  it('walks from the centre of 5 x 5 in square rings of 1, 8 and 16 cells', () => {
+  it('walks from the centre of 5 x 5 in rings of |dx| + |dz| by default, as addOrderedCellAtom labels them (grid_main.cpp:351, W1.R8): 1, 4, 8, 8, 4', () => {
     const grid = five();
-    expect(cellsPerRing(grid, 250, 250)).toEqual([1, 8, 16]);
+    expect(cellsPerRing(grid, 250, 250)).toEqual([1, 4, 8, 8, 4]);
     const walk = [...traverse(grid, 250, 250)];
     expect(walk).toHaveLength(25);
     expect(walk[0]!.atom.cell).toBe(12);
-    expect(walk.map((w) => w.ring)).toEqual([0, 1, 1, 1, 1, 1, 1, 1, 1, ...Array(16).fill(2)]);
+    expect(walk.map((w) => w.ring)).toEqual([0, 1, 1, 1, 1, ...Array(8).fill(2), ...Array(8).fill(3), 4, 4, 4, 4]);
+    // Ring 1 is the four cells that share an edge with the camera's, in cell order.
+    expect(walk.slice(1, 5).map((w) => w.atom.cell)).toEqual([7, 11, 13, 17]);
   });
 
-  it('can label rings as reCOM\'s addOrderedCellAtom does, |dx| + |dz| (grid_main.cpp:351): 1, 4, 8, 8, 4', () => {
-    expect(cellsPerRing(five(), 250, 250, 'diamond')).toEqual([1, 4, 8, 8, 4]);
-  });
-
-  it('from a corner drops the cells a ring would take outside the grid: 1, 3, 5, 7, 9', () => {
+  it('labels square rings on request, max(|dx|, |dz|), for a neighbourhood query: 1, 8, 16', () => {
     const grid = five();
-    expect(cellsPerRing(grid, 10, 10)).toEqual([1, 3, 5, 7, 9]);
-    expect(cellsPerRing(grid, 490, 10)).toEqual([1, 3, 5, 7, 9]);
+    expect(cellsPerRing(grid, 250, 250, 'square')).toEqual([1, 8, 16]);
+    expect([...traverse(grid, 250, 250, Infinity, 'square')].map((w) => w.ring))
+      .toEqual([0, 1, 1, 1, 1, 1, 1, 1, 1, ...Array(16).fill(2)]);
+    expect(ringCells(grid, 250, 250, 1, 'square')).toHaveLength(9);          // the 3 x 3 around the camera
+  });
+
+  it('from a corner drops the cells a ring would take outside the grid: 1, 2, 3, 4, 5, 4, 3, 2, 1 (square: 1, 3, 5, 7, 9)', () => {
+    const grid = five();
+    expect(cellsPerRing(grid, 10, 10)).toEqual([1, 2, 3, 4, 5, 4, 3, 2, 1]);
+    expect(cellsPerRing(grid, 490, 10)).toEqual([1, 2, 3, 4, 5, 4, 3, 2, 1]);
+    expect(cellsPerRing(grid, 10, 10, 'square')).toEqual([1, 3, 5, 7, 9]);
     // A camera off the grid starts from the cell it clamps to.
     expect(ringCells(grid, -300, 900)[0]!.cell).toBe(cellByCoord(grid, 0, 4));
   });
 
   it('stops at maxRing', () => {
     const grid = five();
-    expect([...traverse(grid, 250, 250, 1)]).toHaveLength(9);
+    expect([...traverse(grid, 250, 250, 1)]).toHaveLength(5);
+    expect([...traverse(grid, 250, 250, 1, 'square')]).toHaveLength(9);
     expect([...traverse(grid, 250, 250, 0)].map((w) => w.atom.cell)).toEqual([12]);
   });
 
