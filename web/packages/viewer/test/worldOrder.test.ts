@@ -25,7 +25,7 @@ const ramp: TextureFlags = { bilinear: true, transparent: true, graded: true, op
 const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 const map = (): LoadedMap => ({
-  archive: 'SYN', camera: null, path: 'SYN.ZDB', name: 'synthetic', lines: null, grid: GRID,
+  archive: 'SYN', camera: null, path: 'SYN.ZDB', name: 'synthetic', lines: null, grid: GRID, slots: [],
   world: [
     part('ground.tif', 0, [0, 1, 2, 3, 4, 5, 6, 7, 8]),
     part('shadow.tif', 5, [4]),
