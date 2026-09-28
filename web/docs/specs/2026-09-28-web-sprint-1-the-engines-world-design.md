@@ -205,6 +205,57 @@ unknown and the viewer uses the plain distance. The decomp names `zdb_CVisual_Dr
 defers one below it to the alpha pass (`zRender/zrndr_pipe.cpp:344-364`, down to 1/128); the viewer does the same
 with a fading twin per shared material (`viewer/src/lodFade.ts`), the 1/128 floor not copied.
 
+### The grid's record, the origin, the census and the ring (2026-09-28, W1.1)
+
+`grid_params` is reCOM's `tag_GRID_PARAMS` in `zNode/znode.h:109-120`: `s32 m_AtomCnt; s32 m_posts; f32 m_CellDim;
+s32 cx; s32 cy` -- 8192 and 16 in the first two words on all 22 maps, then the dimension and the cell counts (Frostfire
+160, 8 × 9). No origin is stored: `CGrid::Create` takes the world node's bbox minimum (`zGrid/grid_main.cpp:42-57`) and
+the grid is read before the world tree (`node_saveload.cpp:313` against `:337`), so the origin is a fresh node's zero.
+The engine's default without the key is 640, 8 × 8 (research 23 §2.3). M51, whose live grid research 23 §2.1 reads as
+180.0 and 36 × 25, is a single-player archive (research 03 lists M51-M83), not one of the 22; MP51 is 160, 12 × 10. The
+22 grids, dimension then cells x × z: MP1 160 20×26, MP2 160 8×9, MP5 160 12×16, MP6 180 14×15, MP7 180 15×15, MP8 160
+16×10, MP9 160 22×15, MP10 256 11×10, MP11 320 6×7, MP12 180 15×14, MP51 160 12×10, MP52 360 14×11, MP53 200 24×28, MP61
+160 9×16, MP62 160 18×18, MP64 160 14×19, MP71 180 16×13, MP72 170 14×16, MP73 180 19×18, MP81 160 11×16, MP82 160 16×20,
+MP83 360 7×9. Footprints are the bbox's two corners transformed, as `gridAddNodeToGrids` does (`grid_main.cpp:408-431`),
+which under-covers a turned node by up to 31 units on about a tenth of the placements; the bound is chopped to single
+precision as the EE chops (research 25), the inverse rounded to nearest, the product truncated -- so read, the 129
+type-1 world nodes spend 414 atoms without the three `ocean_*` nodes (bit 10, `m_reflective`; why they are left out is
+unknown) and the 65 type-2 nodes spend exactly research 24 §1.1's 117; rounded to nearest instead, type-2 is 115 (one
+`relieftower` bound at 799.9999981). Collision is filed per owning node (the probe's unit), not per polygon: one atom per
+polygon would spend 12,621 on MP72 and 24,514 on MP82 against a pool of 8,192. The ring label is reCOM's
+`abs(dx)+abs(dz)` (`grid_main.cpp:351`), a diamond, and `buildOrderedCellAtomList` (`:357-360`) is empty there: W1.R8.
+Research 23 §2.1's chain-cut description implies a cell's list reads newest first; the viewer keeps insertion order.
+
+### The detail pass is bound per texture, scaled by the manifest's `uv`, and the engine switches it per visual (2026-09-28, W1.6)
+
+`mp<N>_lib.rdr`'s `detail{name, uv, range, bmode}` is compiled into each visual's 28-byte `detail_buff` (range at +0,
+the `ALPHA_1` selector byte at +20, the scale at +24; `CVisual::Read`, reCOM `zVisual/vis_main.cpp:276-296`): binding
+by texture is binding by visual, 2,395 of 2,395 visuals drawn with a detail-bound texture carry a record and none
+lacks one. The S,T scale is the manifest's `uv`: **8 on Frostfire** (all 61 records; `floor_oilgrime.tif`), 2 to 10
+across the disc, 4 the most common (30 of 66) -- SEMANTICS §11.6's "4.0" was the mission dumps' value, now settled
+there. `range` is squared (90000 = 300², 250000 = 500²). `bmode` is `COLORBLEND` on 932 records, all `0x44`
+`(Cs − Cd)·As + Cd`, and `ADDITIVE` on 68 (MP1 and MP2 only), all `0x48` `(Cs − 0)·As + Cd`; the detail textures' own
+bind packets say `0x44` for both, so the blend is the visual record's, and their `TEST_1` is `ZTE=1, ZTST=GEQUAL` on all
+65 -- less-or-equal in GL terms, which the viewer uses rather than EQUAL. A name listed twice in a manifest keeps its
+first entry (MP1's 56 visuals). The engine does not fade the pass: `CPipe::RenderNode` turns it on for a whole visual
+whose centroid is within range (`zRender/zrndr_pipe.cpp:311-322`); the viewer's merged draws have no centroid, hence
+W1.R7. 22 detail blocks name 20 files; 21 of 22 maps bind a pass (all but MP7 and MP81).
+
+### `AIMAPS.MPS` is decoded; the spawn list, not `PlayerStart`, holds the 44 (2026-09-28, W1.5)
+
+The layout is in `web/docs/research/75-aimaps-mps.md`: a 0x28-byte head; per sub-map a 0xA8-byte header, 8-byte cells
+stored as row spans, and eight counted tables; a trailer with the link block and the file's spawn list; every reference
+is a stored cell addressed by `CAiMapLoc` (low 6 bits the sub-map index), and the sub-map count and order match
+`aimaps.rdr`'s `map_list` on all 22. `PlayerStart` is a single named cell, not a region (the only records with extents
+are 15 `Safety` rectangles on the 7 maps with hostage starts), and holds 0 of the 44 measured spawns. The spawn list is
+24 slots a side, each one cell with a side bit and a facing in eighth turns (step k points to (−sin 45k°, cos 45k°): 0
+is +z, 2 is −x): 4 measured positions are at a slot's centre within 0.51 (Frostfire's and Vigilance's, KNOWN §1's rows)
+and 40 are 20.1-28.0 units ahead of one along its facing (median 23.8, across −3.2 to −1.0), the other side's nearest
+slot at least 824.6 units away -- 44 of 44 accounted for; which of the 24 a player gets is game logic. Research 72 §6's
+"briefing overlay" strings (`Opacity( 0.5 )`, `Color( 87 112 176 )`) are leftover memory in an unread 32-byte header
+field at +0x88, stale text on 13 sub-maps, not records; the file's only line data is polylines on Blizzard, Frostfire
+and Bitter Jungle.
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
@@ -220,4 +271,17 @@ with a fading twin per shared material (`viewer/src/lodFade.ts`), the 1/128 floo
 - **W1.R6** — Opus implementers do the tasks, Fable reviews the documents and the two judgment calls (W1.2's region
   writer, W1.5's layout); the owner's staffing ruling of 2026-09-20.
 
-All six the owner can overturn by number.
+- **W1.R7** — the detail pass fades per fragment, linearly to zero at √`range`, where the engine switches the whole
+  pass on per visual while the visual's centroid is in range (`zrndr_pipe.cpp:311-322`): the viewer's merged draws have
+  no centroid to switch on, and a per-fragment step would draw a hard ring on the ground the engine never shows; revisit
+  on a capture that shows the pop (the cloud controller, 2026-09-28, W1.6).
+- **W1.R8** — the traversal's ring is reCOM's `abs(dx)+abs(dz)` (a diamond, `grid_main.cpp:351`), not the square the
+  plan assumed; Task 2 flips the default and checks the decomp's writer of `GRIDCELLATOM.ring`, keeping the square as
+  the neighbourhood query Task 4 uses (the cloud controller, 2026-09-28, W1.1).
+- **W1.R9** — W1.R4's condition is not the disc's structure (`PlayerStart` is one cell); the disc's source of the spawns
+  is the file's spawn list, 24 slots a side with a facing, which accounts for 44 of 44. The slots become the spawn
+  markers (W1.5b) and `spawns.ts` stays the opening stand and becomes the oracle: every measured position lies at, or
+  within 30 units ahead along the facing of, a same-side slot. Which slot a player gets is game logic outside this
+  sprint (the cloud controller, 2026-09-28, W1.5).
+
+All nine the owner can overturn by number.
