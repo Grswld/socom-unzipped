@@ -16,6 +16,11 @@ export function revisionLabel(rev: string, stamp: string): string {
   return `rev ${name} · ${minute ? `built ${minute} UTC` : 'build time unknown'}`;
 }
 
+/** `rev a1b2c3d`: the About summary's chip, which has no room for the date. */
+export function revisionBadge(rev: string): string {
+  return `rev ${rev.trim() || 'unknown'}`;
+}
+
 /**
  * The label for this build. The `typeof` guards are what keep it safe where nothing was defined --
  * vitest does not run Vite's `define`, and a bare reference to an undefined global would throw.
@@ -24,4 +29,9 @@ export function viewerRevision(): string {
   const rev = typeof __VIEWER_REV__ === 'string' ? __VIEWER_REV__ : '';
   const stamp = typeof __BUILD_STAMP__ === 'string' ? __BUILD_STAMP__ : '';
   return revisionLabel(rev, stamp);
+}
+
+/** The chip's text for this build, with the same fallback as the label. */
+export function viewerRevisionBadge(): string {
+  return revisionBadge(typeof __VIEWER_REV__ === 'string' ? __VIEWER_REV__ : '');
 }
