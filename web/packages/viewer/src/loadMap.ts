@@ -14,7 +14,7 @@ import {
 } from '@s2u/scene';
 import { parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
-import { collisionOwners, DEFAULT_GRID_PARAMS, parseGridParams, type WorldPoly } from '@s2u/scene';
+import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { packGround, type GroundData } from './walk';
 
 /**
