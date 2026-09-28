@@ -18,22 +18,30 @@ namespace Server.Common
 
         public static void Write(this Stream.MessageWriter writer, string str, int length)
         {
-            if (str == null)
-                writer.Write(new byte[length]);
-            else if (str.Length >= length)
-                writer.Write(Encoding.UTF8.GetBytes(str.Substring(0, length - 1) + "\0"));
-            else
-                writer.Write(Encoding.UTF8.GetBytes(str.PadRight(length, '\0')));
+            writer.Write(FixedWidthField(str, length));
         }
 
         public static void WriteStr(this Stream.MessageWriter writer, string str, int length)
         {
-            if (str == null)
-                writer.Write(new byte[length]);
-            else if (str.Length >= length)
-                writer.Write(Encoding.UTF8.GetBytes(str.Substring(0, length - 1) + "\0"));
-            else
-                writer.Write(Encoding.UTF8.GetBytes(str.PadRight(length, '\0')));
+            writer.Write(FixedWidthField(str, length));
+        }
+
+        // LOCAL (socom_pc): the field is bounded by ENCODED bytes, not characters: exactly `length` bytes, at most
+        // length - 1 of them content, cut on a character boundary, always zero-terminated.
+        public static byte[] FixedWidthField(string str, int length)
+        {
+            if (length <= 0)
+                return Array.Empty<byte>();
+            var field = new byte[length];
+            if (string.IsNullOrEmpty(str))
+                return field;
+            var encoded = Encoding.UTF8.GetBytes(str);
+            int n = Math.Min(encoded.Length, length - 1);
+            if (n < encoded.Length)
+                while (n > 0 && (encoded[n] & 0xC0) == 0x80)
+                    --n;
+            Buffer.BlockCopy(encoded, 0, field, 0, n);
+            return field;
         }
 
         public static void Write(this Stream.MessageWriter writer, byte[] value, int fixedLength)

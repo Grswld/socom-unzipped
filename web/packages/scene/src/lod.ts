@@ -63,15 +63,56 @@ export function farLodModels(rdr: RdrNode): Set<string> {
 }
 
 /**
- * Whether a model in a band is shown at a camera range. The engine fades one copy out while the
- * other fades in across the overlap (`DrawLOD` scales the opacity by where in the band the range
- * falls); without a fade the copy switches at the middle of each ramp, which is where the two would
- * have crossed at half opacity.
+ * The opacity of a model in a band at a camera range squared, as `CVisual::DrawLOD` scales it: 0 outside
+ * the band, 1 on its plateau, and a ramp linear in the range *squared* across each fade -- rising over the
+ * near fade, `m_minInvDeltaRangeSq * (rangeSq - m_minRangeNearSq)`, and its mirror falling over the far
+ * fade. Where a near copy's far fade is its successor's near fade (Frostfire's railings, 100-120 units)
+ * the two sum to 1 at every range; each is at half at 110.45 units, where the range squared is halfway.
+ *
+ * reCOM's `DrawLOD` (`zVisual/vis_main.cpp:305-317`), transcribed exactly, is three tests and a scale:
+ *
+ *     if (lod->m_minRangeNearSq < range || lod->m_maxRangeFarSq > range) return false;
+ *     if (!lod->m_minFade) return false;
+ *     if (lod->m_minRangeFarSq < range || lod->m_maxRangeFarSq > range) return false;
+ *     *distance *= lod->m_minInvDeltaRangeSq * (range - lod->m_minRangeNearSq);
+ *
+ * Taken as read, the comparisons are reversed (the first rejects every range inside the band), and the
+ * second range test repeats the first -- its `m_maxRangeFarSq > range` half is the first's, and its other
+ * half can only fire where the first already has -- so it is a transcription of a test that was surely
+ * the near fade's own (`range < m_minRangeFarSq`: on the ramp, else full). What is used here is the
+ * reading the band and the disc support: outside `[m_minRangeNearSq, m_maxRangeFarSq]` not drawn, the
+ * ramp across the near fade where `m_minFade` is set, and its mirror across the far fade where
+ * `m_maxFade` is. The disc's `LOD_Object` (the world root; `test/lod.test.ts`) stores
+ * `m_minInvDeltaRangeSq` as `1 / (m_minRangeFarSq - m_minRangeNearSq)` -- 1/4400 for the railings -- and
+ * at +20 a float reCOM's `CLOD_band` (`zRender/zrender.h:180-192`) lacks, the far fade's own inverse
+ * delta, with the two fade bits after it; on the three fixture maps a fade is flagged exactly where its
+ * two ends differ, so the ends alone say whether to ramp. The range is a plain distance: `CPipe::
+ * RenderVisual` passes `GetScaledRangeSquared` (`zRender/zrndr_pipe.cpp:371`), a stub in reCOM
+ * (`zCamera/zcam.h:181`), and the viewer has no zoom to scale by.
+ *
+ * `last` keeps the plateau open outward: the last copy at a spot is never faded or culled by its far
+ * edge (`lodIsLast`, `e92b071c`), though it still fades in.
+ */
+export function lodOpacity(band: LodBand, rangeSq: number, last = false): number {
+  const minNearSq = band.nearFade[0] * band.nearFade[0];
+  const minFarSq = band.nearFade[1] * band.nearFade[1];
+  const maxNearSq = band.farFade[0] * band.farFade[0];
+  const maxFarSq = band.farFade[1] * band.farFade[1];
+  if (rangeSq < minNearSq || (!last && rangeSq > maxFarSq)) return 0;
+  let opacity = 1;
+  // Divided rather than multiplied by the reciprocal the disc stores: the same ramp, without its rounding.
+  if (rangeSq < minFarSq) opacity *= (rangeSq - minNearSq) / (minFarSq - minNearSq);
+  if (!last && rangeSq > maxNearSq) opacity *= (maxFarSq - rangeSq) / (maxFarSq - maxNearSq);
+  return opacity;
+}
+
+/**
+ * Whether a model in a band is drawn at a camera range (a plain distance, not squared): wherever
+ * `lodOpacity` is above zero. Across a crossover both copies are drawn, one fading in as the other fades
+ * out, as the engine draws them; it used to switch at the middle of each fade instead.
  */
 export function lodVisible(band: LodBand, range: number, last = false): boolean {
-  const from = (band.nearFade[0] + band.nearFade[1]) / 2;
-  const to = (band.farFade[0] + band.farFade[1]) / 2;
-  return range >= from && (last || range < to);
+  return lodOpacity(band, range * range, last) > 0;
 }
 
 /**
@@ -80,7 +121,7 @@ export function lodVisible(band: LodBand, range: number, last = false): boolean 
  * fog (Frostfire's grates end at 500 units where the fog runs 200..640), so nothing is seen to go.
  * The viewer's camera goes where the game's never does and its fog can be off, and there a culled
  * last copy is a hole: a floor grate or a tank catwalk gone at 50 m. So the last copy is kept at
- * every range (`lodVisible(..., last)`), and only a copy with a successor still steps aside for it.
+ * every range (`lodOpacity(..., last)`), and only a copy with a successor still fades out for it.
  */
 export function lodIsLast(band: LodBand, others: Iterable<LodBand>): boolean {
   const from = (band.nearFade[0] + band.nearFade[1]) / 2;

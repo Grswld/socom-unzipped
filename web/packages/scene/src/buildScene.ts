@@ -32,6 +32,11 @@ export interface SceneInstance {
    * the matrix stack, so everything under a flagged node turns with it.
    */
   facade: number;
+  /**
+   * Whether the node was reached through a realised prototype -- inside an instance's model rather than in
+   * the root model's own tree. It decides whether an instance node's own `di` reaches the world (`worldDi`).
+   */
+  nested: boolean;
 }
 
 /** One drawn placement: a node's chunks and the matrix that puts them in the world. */
@@ -56,6 +61,11 @@ export interface PlacedModel {
    * the exporter baked, and only the odd fern, palm or flare is lit at run time.
    */
   lit: boolean;
+  /**
+   * The node's own `nparams` bbox, model space (min xyz, max xyz): what the grid files the placement by,
+   * carried through `rowMajor` (`grid.ts`, `worldFootprint`). Absent on a placement built by hand.
+   */
+  bbox?: Float32Array;
 }
 
 /** One collision polygon, placed: its points carried into the world frame. */
@@ -140,10 +150,11 @@ export function flattenScene(models: SceneNode[], rootName = 'worldmodel'): Scen
 
   const realise = (model: SceneNode, parent: Float32Array, path: string, instanceIndex: number | null, depth: number, inherited: number): void => {
     let nodeIndex = 0;
+    const nested = depth > 0;
     const rec = (node: SceneNode, above: Float32Array, where: string, facadeAbove: number): void => {
       const world = multiply(node.matrix, above);
       const facade = facadeOf(node.flags) || facadeAbove;
-      out.push({ modelName: model.name, node, nodeIndex: node.visuals > 0 ? nodeIndex++ : -1, instanceIndex, world, path: where, facade });
+      out.push({ modelName: model.name, node, nodeIndex: node.visuals > 0 ? nodeIndex++ : -1, instanceIndex, world, path: where, facade, nested });
       for (const child of node.children) {
         const childPath = `${where}/${child.name}`;
         if (child.type !== NODE_INSTANCE) {
@@ -152,7 +163,7 @@ export function flattenScene(models: SceneNode[], rootName = 'worldmodel'): Scen
         }
         const childWorld = multiply(child.matrix, world);
         const childFacade = facadeOf(child.flags) || facade;
-        out.push({ modelName: model.name, node: child, nodeIndex: -1, instanceIndex, world: childWorld, path: childPath, facade: childFacade });
+        out.push({ modelName: model.name, node: child, nodeIndex: -1, instanceIndex, world: childWorld, path: childPath, facade: childFacade, nested });
         const prototype = child.modelName === null ? undefined : byName.get(child.modelName);
         if (prototype && depth < MAX_DEPTH) {
           realise(prototype, childWorld, `${childPath}=${prototype.name}`, takeIndex(prototype.name), depth + 1, childFacade);
@@ -182,14 +193,35 @@ export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): Pl
       world: toColumnMajor(f.world),
       rowMajor: f.world,
       lit: ((f.node.flags | (modelFlags.get(f.modelName) ?? 0)) & NODE_FLAGS_LIT) !== 0,
+      bbox: f.node.bbox,
     }));
 }
 
-/** Every collision polygon of the scene, its points carried from model space into the world frame. */
+/**
+ * The `di` polygons a realised node contributes to the world the engine holds: its own, except on an instance
+ * node inside a realised prototype, which contributes none of its own (research 24 section 1.1's 3,318).
+ *
+ * The exporter writes a prototype's root `di` onto every node that instances it as well, and the engine keeps
+ * both copies only where it reads the instance from the world's own file: `CNode::CreateInstance(sload)` copies
+ * the model (its `di` with it) and then `ReadDataBegin` adds the node's own `di` on top (reCOM
+ * `research/recom/src/gamez/zNode/node_io.cpp:46-51`, `node_saveload.cpp:49-74`). An instance inside a prototype is
+ * not read again when the prototype is instanced: `CNode::_Copy` re-makes it from a model
+ * (`zNode/node_main.cpp:312-333`; reCOM's transcription passes the container's `m_model` there, and leaves the
+ * `di` copy itself a TODO at `:308`), so the file's copy on it never reaches the world. The prototype's own copy is
+ * still there -- the viewer realises it as the model root under the instance node (`flattenScene`'s `=`) -- so
+ * nothing is lost but a duplicate. On Frostfire that is the ten `railpostfiller` posts inside the three tank
+ * rails, 20 polygons: 3,338 before, 3,318 after, the count and bounds research 24 section 1.1 walked in the
+ * image (checked 2026-09-28; MP6 carries 79 such, MP72 none).
+ */
+export function worldDi(f: SceneInstance): CollisionPoly[] {
+  return f.nested && f.node.type === NODE_INSTANCE ? [] : f.node.collision;
+}
+
+/** Every collision polygon of the scene, its points carried from model space into the world frame (`worldDi`). */
 export function placeCollision(models: SceneNode[], rootName = 'worldmodel'): PlacedCollision[] {
   const out: PlacedCollision[] = [];
   for (const f of flattenScene(models, rootName)) {
-    for (const poly of f.node.collision) {
+    for (const poly of worldDi(f)) {
       const points = new Float32Array(poly.points.length);
       for (let i = 0; i < poly.points.length; i += 3) {
         const p = transformPoint(f.world, poly.points[i]!, poly.points[i + 1]!, poly.points[i + 2]!);
