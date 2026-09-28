@@ -16,6 +16,7 @@ import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { openingStand } from './stand';
+import { Reticle } from './reticle';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -49,6 +50,8 @@ const fly = new FlyCamera(canvas, {
 const overlays = new Overlays(scene);
 /** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
+/** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
+const reticle = new Reticle();
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -323,6 +326,8 @@ async function boot(): Promise<void> {
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
+    reticle.setVisible(walk.mode() === 'walk');
+    reticle.render(created.renderer);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -407,6 +412,7 @@ function show(map: LoadedMap): void {
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
   }
+  reticle.setBitmaps(map.reticle);
   const built = buildWorld(map);
   view = built;
   scene.add(built.group);
@@ -544,5 +550,6 @@ window.__viewer = {
   setMode: (mode) => walk.setMode(mode),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
+  reticle: () => reticle.state(),
   revision,
 } satisfies ViewerHook;

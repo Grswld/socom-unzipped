@@ -17,6 +17,7 @@ import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './walk';
 import { openingStand, type Stand } from './stand';
+import { readReticle, type ReticleBitmaps } from './hudBitmaps';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -131,6 +132,8 @@ export interface LoadedMap {
    * or over A's recorded y where the probe finds none. Absent when the map has no measured spawns.
    */
   stand?: Stand;
+  /** W2.4: the rifle reticle's bitmaps off `HUD2_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
+  reticle?: ReticleBitmaps | null;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -358,6 +361,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // and the spawn slots -- so the page's thread does not pay for it; the walk builds its own when first asked.
   const probe = placement.ground ? groundGrid(placement.ground) : undefined;
   const measured = spawnsFor(name);
+  const reticle = readReticle(bytes, toc);
+  for (const line of reticle.diagnostics) notes.add(line);
   return {
     archive: stem,
     lines: segments.result(),
@@ -377,6 +382,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     slots: spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe),
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
+    reticle: reticle.bitmaps,
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -396,6 +402,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   if (map.ground) out.push(map.ground.points.buffer, map.ground.fields.buffer);
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
+  for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy]) if (rgba) out.push(rgba.data.buffer);
   return out;
 }
 

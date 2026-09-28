@@ -1,6 +1,7 @@
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
+import type { Rect } from './reticle';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
 
@@ -47,6 +48,8 @@ export interface ViewerHook {
   walkFor(seconds: number, input?: { forward?: number; right?: number }): Pose;
   /** Walk mode: the mover's feet, or null in fly mode. */
   feet(): [number, number, number] | null;
+  /** W2.4: the reticle -- drawn or not, and its rectangle in the drawing buffer's pixels (y down) on `frame`. */
+  reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
