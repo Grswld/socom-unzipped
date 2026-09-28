@@ -254,6 +254,21 @@ textures in that library; `HUD_TXR` 37, `HUDW_TXR` 65 weapon icons). The SEAL sk
 `actor+0x170` (count 32 at `+0x60`, array at `+0x64` → `0x1715940` on the console dump), the root node at
 `0x17159d0` with Y 5.504 and the other nodes' translations parent-relative.
 
+### The console's reticle: two bitmaps at one texel per pixel, a 65-pixel cross on the frame's centre (2026-09-28, W2.4)
+
+`HUD2_TXR.ZED`'s `ret_rifle_01.tif` is 64×64: a dark see-through ring (radius 21-27, black at alpha ≤ 44) with a 2×2
+white dot at its centre — the fixed part; `ret_rifle_02.tif` is 32×32: one tapered arm pointing down, white at its outer
+end, which the game draws four times a quarter turn apart — the floating part; `ret_accuracy.tif` is 16×16 and does not
+appear at rest. The bitmaps are white; the yellow-green (about 204, 204, 31 on the frame) is applied at draw time. Their
+palette ids cite `HUD2_PAL.ZED`'s own 39 entries (`ret_rifle_01` asks for id 188), research 72's caveat holding for the
+HUD pair as for `CLIB`. Measured on `scripts/parity/refs/console_spawn_slot8.png` (yellow-green = min(R, G) − B ≥ 30 and
+|R − G| < 30, the middle third of the frame): four arms — top x 318-320 y 192-208, bottom y 240-256, left x 288-303
+y 224-226, right x 337-352 — a 65×65 box centred on (320.5, 224.5), the frame's centre to a pixel, each arm's outer end
+31 px out: both bitmaps sit on the console at one texel per PS2 pixel. The viewer's HUD layer (`reticle.ts`) draws the
+same quads at x 288-352, y 192-256 in the PS2 presentation and scales them by the canvas height / 448 in the native
+one; the arms' cores land on one column where the console's blur spread them over two, within the one-pixel bar. The
+spread between the rest size and 1.5× is an estimate: `m_minsize`/`m_maxsize` were not found in the sitting.
+
 ## 8. Rulings
 
 - **W2.R1** — "the correct height" is the game's third-person camera with the body in the frame (research 17's
