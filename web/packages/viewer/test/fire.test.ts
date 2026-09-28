@@ -3,7 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Mesh, Vector3 } from 'three';
 import { FsAssetSource } from '@s2u/archive/node';
-import { buildGrid, DEFAULT_RIFLE, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
+import { buildGrid, DEFAULT_RIFLE, UNITS_PER_METRE, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
@@ -60,7 +60,8 @@ describe('the shot on a synthetic hull (W2.5)', () => {
     const { fire } = rig(world([wallAt(-30)]), [0, 0, 1]);
     const shot = fire.shoot()!;
     expect(shot.hit).toBeNull();
-    expect(new Vector3(...shot.to).distanceTo(new Vector3(...shot.from))).toBeCloseTo(DEFAULT_RIFLE.maximumRange, 6);
+    // Maximum_Range is metres; the world is 10 units a metre (DAT_003dfe10, research 84 section 2).
+    expect(new Vector3(...shot.to).distanceTo(new Vector3(...shot.from))).toBeCloseTo(DEFAULT_RIFLE.maximumRange * UNITS_PER_METRE, 6);
     expect(fire.state()).toMatchObject({ shots: 1, decals: 0, lastHit: null });
     expect(fire.state().magazine.rounds).toBe(29);
   });
@@ -182,18 +183,33 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
     fire.unbindKey();
   });
 
-  it('kicks the reticle\'s spread on a shot by ReticuleKnock / ReticuleKnockMax, and lets it back at ReticuleKnockReturn', () => {
-    const { fire } = rig(world([wallAt(-30)]));
-    expect(fire.spread()).toBe(0);
-    fire.shoot();
-    const { knock, knockReturn, knockMax } = DEFAULT_RIFLE.knock;
-    expect(fire.spread()).toBeCloseTo(knock / knockMax, 9);          // 12 / 45
-    fire.update(0.1);
-    expect(fire.spread()).toBeCloseTo((knock - knockReturn * 0.1) / knockMax, 9);
+  it('takes its gun: the direction of each round, the rounds a pull and the wait of the mode (research 84)', () => {
+    const { fire } = rig(world([wallAt(-30)]), [0, 0, -1], { ...DEFAULT_RIFLE, magazine: 100 });
+    const calls: string[] = [];
+    let perPull = 3;
+    fire.setGun({
+      trigger: (down) => calls.push(down ? 'down' : 'up'),
+      roundsPerPull: () => perPull,
+      interval: (w) => w * 0.8,
+      round: (dir) => { calls.push('round'); return [dir[0] + 0.1, dir[1], dir[2]]; },
+    });
+    const shot = fire.pull()!;
+    // The round went off the aim by the gun's tangent: 0.1 right per unit ahead, hitting the wall 30 ahead at x 3.
+    expect(shot.hit!.point[0]).toBeCloseTo(3, 6);
+    // Burst: three rounds a pull at 0.8 x FireWait, then nothing until the trigger is let go.
+    for (let i = 0; i < 20; i++) fire.update(DEFAULT_RIFLE.fireWait * 0.8);
+    expect(fire.state().shots).toBe(3);
+    fire.release();
     fire.update(1);
-    expect(fire.spread()).toBe(0);
-    for (let i = 0; i < 10; i++) { fire.shoot(); fire.update(DEFAULT_RIFLE.fireWait); }
-    expect(fire.spread()).toBeLessThanOrEqual(1);
+    expect(fire.pull()).not.toBeNull();
+    expect(calls.filter((c) => c === 'round')).toHaveLength(4);
+    expect(calls.filter((c) => c === 'down')).toHaveLength(2);
+    perPull = 1;
+    fire.release();
+    fire.update(1);
+    fire.pull();
+    for (let i = 0; i < 20; i++) fire.update(DEFAULT_RIFLE.fireWait);
+    expect(fire.state().shots).toBe(5);                    // single: one a pull, held or not
   });
 });
 

@@ -3,7 +3,7 @@ import {
   MeshBasicMaterial, PlaneGeometry, RGBAFormat, UnsignedByteType, Vector3,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
-import { BULLET_MARK, DEFAULT_RIFLE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 
 /**
  * Simple shooting (web sprint 2, W2.5; the spec's §4 W2.5): a hitscan round along the aim, at the rifle's own rate,
@@ -31,12 +31,13 @@ import { BULLET_MARK, DEFAULT_RIFLE, segmentHit, type DecalEntry, type Grid, typ
  *   the loaded one among them, which is what the console frame's ammo box shows at spawn ("2 MAGS"). `R` reloads
  *   over `RELOAD_SECONDS` [estimate: the M4A1's record has no `ReloadTime`, so the game's reload is its animation's
  *   length, which is not in the tree]; a partly spent magazine is dropped, as a spare is a whole magazine.
- * - **The bloom.** A round adds `ReticuleKnock / ReticuleKnockMax` (12 / 45) to W2.4's 0..1 spread and it returns at
- *   `ReticuleKnockReturn / ReticuleKnockMax` (70 / 45) a second, capped at 1 -- the file's `STANCE_STAND` numbers,
- *   mapped onto the reticle's spread as a ratio [estimate: their units are not traced].
- * - **The trigger.** A press fires at once if `FireWait` has passed since the last round; held, it fires at the rate
- *   (the M4A1's `MaxFireMode 3`, read as automatic [reading]). The tracer is drawn for one frame, from a muzzle stand-in
- *   beside the eye (a line along the view's own centre line would be a point on the screen) to the hit.
+ * - **The range** is `Maximum_Range` x `UNITS_PER_METRE` (10): the file's ranges are metres (research 84 §2).
+ * - **The gun** (`setGun`, `./accuracy` through `main.ts`; research 84): where a round goes inside the reticle, the
+ *   fire mode's rounds a pull (single 1, burst 3, automatic unlimited) and its wait (`FireWait`, x 0.8 in burst and
+ *   automatic). Without one: straight down the aim, one round a `FireWait`, held for automatic.
+ * - **The trigger.** A press fires at once if the wait has passed since the last round; held, it fires at the rate
+ *   while the pull has rounds left. The tracer is drawn for one frame, from a muzzle stand-in beside the eye (a line
+ *   along the view's own centre line would be a point on the screen) to the hit.
  */
 
 type Vec3 = [number, number, number];
@@ -52,6 +53,18 @@ const MUZZLE: Vec3 = [1.2, -1.5, 3];
 
 /** Where the shot comes from and goes toward: the camera's eye and the aim point (`WalkMode.fireAim`). */
 export interface FireAim { eye: Vec3; far: Vec3 }
+/**
+ * The gunplay a round is shot through (`./accuracy`, research 84): `trigger` on each press and release (the pull's
+ * count restarts), `roundsPerPull` for the fire mode, `interval` for its wait, and `round` for the round's direction
+ * off the aim -- called once per round that leaves, which counts it.
+ */
+export interface FireGun {
+  trigger(down: boolean): void;
+  roundsPerPull(): number;
+  interval(fireWait: number): number;
+  round(dir: Vec3): Vec3;
+}
+
 /** What the shot reads from the page: the walk's hull and its aim, each null when there is none (not walking). */
 export interface FireSource { grid(): Grid | null; aim(): FireAim | null }
 export interface ShotHit { point: Vec3; normal: Vec3; distance: number }
@@ -104,8 +117,10 @@ export class Fire {
   private held = false;
   private shots = 0;
   private lastHit: ShotHit | null = null;
-  private bloom = 0;
   private bound: EventTarget | null = null;
+  private gun: FireGun | null = null;
+  /** Rounds fired since the trigger was pressed (the fire mode's limit). */
+  private pulled = 0;
 
   constructor(
     private readonly source: FireSource,
@@ -142,14 +157,30 @@ export class Fire {
     this.material.needsUpdate = true;
   }
 
+  /** The gunplay the rounds go through (`FireGun`), or null for a straight shot at `FireWait`. */
+  setGun(gun: FireGun | null): void {
+    this.gun = gun;
+  }
+
   /** The trigger pressed: a round now if the rifle is ready; held, `update` keeps firing at the rate. */
   pull(): Shot | null {
+    if (!this.held) { this.pulled = 0; this.gun?.trigger(true); }
     this.held = true;
-    return this.tryFire();
+    return this.pullRound();
   }
 
   release(): void {
+    if (this.held) this.gun?.trigger(false);
     this.held = false;
+    this.pulled = 0;
+  }
+
+  /** A round of the pull, if the fire mode has one left. */
+  private pullRound(): Shot | null {
+    if (this.gun && this.pulled >= this.gun.roundsPerPull()) return null;
+    const shot = this.tryFire();
+    if (shot) this.pulled++;
+    return shot;
   }
 
   /** One round now if the rate, the magazine and the aim allow: the hook's `shoot()`. */
@@ -173,21 +204,14 @@ export class Fire {
       this.reloadLeft -= dt;
       if (this.reloadLeft <= 1e-9) { this.reloadLeft = 0; this.rounds = this.rifle.magazine; this.spare--; }
     }
-    const { knockReturn, knockMax } = this.rifle.knock;
-    this.bloom = Math.max(0, this.bloom - (knockReturn / knockMax) * dt);
     if (this.tracerFrames > 0) this.tracerFrames--;
     else this.tracer.visible = false;
     this.wait -= dt;
     let fired = 0;
-    while (this.held && this.wait <= 1e-9 && this.tryFire()) fired++;
+    while (this.held && this.wait <= 1e-9 && this.pullRound()) fired++;
     if (this.wait < 0) this.wait = 0;
     if (fired > 0) this.tracerFrames = 0;           // lit in this frame: drawn in it, gone in the next
     return fired;
-  }
-
-  /** The reticle's bloom, 0..1 (W2.4's `setSpread`). */
-  spread(): number {
-    return this.bloom;
   }
 
   tracerVisible(): boolean {
@@ -219,7 +243,7 @@ export class Fire {
     this.wait = 0;
     this.held = false;
     this.lastHit = null;
-    this.bloom = 0;
+    this.pulled = 0;
     this.tracerFrames = 0;
     this.tracer.visible = false;
   }
@@ -248,24 +272,24 @@ export class Fire {
     if (this.wait > 1e-9 || this.reloadLeft > 0 || this.rounds <= 0) return null;
     const aim = this.source.aim(), grid = this.source.grid();
     if (!aim || !grid) return null;
-    const dir = unit(sub(aim.far, aim.eye));
+    const aimDir = unit(sub(aim.far, aim.eye));
+    const dir = this.gun ? unit(this.gun.round(aimDir)) : aimDir;   // research 84: the round inside the reticle
     const from: Vec3 = [...aim.eye];
-    const end: Vec3 = [from[0] + dir[0] * this.rifle.maximumRange, from[1] + dir[1] * this.rifle.maximumRange, from[2] + dir[2] * this.rifle.maximumRange];
+    const range = this.rifle.maximumRange * UNITS_PER_METRE;
+    const end: Vec3 = [from[0] + dir[0] * range, from[1] + dir[1] * range, from[2] + dir[2] * range];
     const h = segmentHit(grid, from, end);
     let hit: ShotHit | null = null;
     if (h) {
       // Newell's normal points either way: the mark faces the shooter.
       const d = h.normal[0] * dir[0] + h.normal[1] * dir[1] + h.normal[2] * dir[2];
       const normal: Vec3 = d > 0 ? [-h.normal[0], -h.normal[1], -h.normal[2]] : [...h.normal];
-      hit = { point: [...h.point], normal, distance: h.t * this.rifle.maximumRange };
+      hit = { point: [...h.point], normal, distance: h.t * range };
       this.place(hit);
     }
     this.rounds--;
     this.shots++;
-    this.wait += this.rifle.fireWait;
+    this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
     this.lastHit = hit;
-    const { knock, knockMax } = this.rifle.knock;
-    this.bloom = Math.min(1, this.bloom + knock / knockMax);
     this.drawTracer(from, dir, hit ? hit.point : end);
     return { from, to: hit ? [...hit.point] : end, hit };
   }
