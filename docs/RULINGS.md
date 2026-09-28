@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-365 rulings (326 global, 39 sprint-local): 357 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+366 rulings (327 global, 39 sprint-local): 358 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-326 rulings.
+327 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R332 | 2026-09-28 | active | the owner's word after the listen, "go ahead now i'll interrupt if need be": a second window opens at 15:53Z with no end named; builds and game runs may run th… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R332** |
 | R331 | 2026-09-28 | active | the owner's word at 03:20Z, "i'm going to sleep, you have all of the next 12-13h", names the window: builds and game runs may run on this machine from 03:20Z t… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R331** |
 | R330 | 2026-09-28 | active | the release rows on milestone 7 (#70, #71, #57) are Milestone R at the tail, after F, Q and A. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R330** |
 | R329 | 2026-09-28 | active | a frame-rate bar reached short is recorded as the number, the ranked residual and the next lever; #59 stays open with that trigger. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R329** |
