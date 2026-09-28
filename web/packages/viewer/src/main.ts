@@ -16,6 +16,7 @@ import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
 import { stanceBody, WalkMode } from './walk';
 import { aimPoint } from './playerCamera';
+import { explosionShake } from './look';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
@@ -467,6 +468,7 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     padFrame(dt);                   // W2.7: the pad and the touch stick into the camera's lanes, before it steps
+    fly.setBody(walk.mode() === 'walk' && walk.view() === 'first', walk.posture() === 'prone');   // the bob's (research 83)
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
@@ -481,7 +483,8 @@ async function boot(): Promise<void> {
       // The reticle on the aim point (FUN_00297410's, 1000 ahead along the look): the frame's centre at rest.
       fly.camera.updateMatrixWorld();
       const [nx, ny] = aimPoint(fly.camera, aim);
-      reticle.setAimPoint(nx, ny);
+      const [sx, sy] = fly.screenShift();   // the shake and the bob move the world, not the HUD (research 83)
+      reticle.setAimPoint(nx - sx, ny - sy);
       // The run's spread (W2.4's estimate) or a round's knock (W2.5, `ZWEAPON.ZAR/zweapon.rdr`), the larger.
       reticle.setSpread(Math.max(walk.speed() / RUN_SPEED, fire.spread()));
     }
@@ -724,6 +727,10 @@ window.__viewer = {
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
   setAim: (on) => { walk.setAiming(on); return walk.view(); },
+  look: () => fly.lookState(),
+  setLook: (opts) => { fly.setLookOptions(opts); return fly.lookOptions(); },
+  setZoom: (magnification, mode4) => fly.setZoom(magnification, mode4),
+  shake: (distance) => { const s = explosionShake(distance); if (s) fly.shakeScreen(s); return s !== null; },
   reticle: () => reticle.state(),
   stance: () => walk.stance(),
   setStance: (stance) => walk.setStance(stance),

@@ -120,6 +120,13 @@ describe.skipIf(!READERC)('the SEAL tuning off the game\'s READERC.ZAR', () => {
     expect(d.cam.peekl.side).toBe(-70);
     expect(d.tetherStiff).toBe(0.95);
     expect(d.peekDecayRate).toBe(6);
+    // The look's fields (web research 83): the throttle pair, the wiggle, the prone and scoped aim cones.
+    expect(d.turnThrottle).toEqual([0.9, 0.4]);
+    expect(d.pitchThrottle).toEqual([0.9, 0.4]);
+    expect(d.cameraWiggle).toEqual({ amplitude: 22, duration: 0.6, rate: 0.1 });
+    expect(d.proneAimYaw).toBe(45);
+    expect(d.zoomAimPitch).toEqual([-70, 65]);
+    expect(d.proneZoomAimPitch).toEqual([-20, 25]);
   });
 
   it('reads motion.rdr: the SEAL bands in units a second', () => {
