@@ -19,12 +19,16 @@ const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens', import.m
  * every earlier task was built on.
  */
 const MAPS = [
-  { name: 'FROSTFIRE', archive: 'MP2', screenshot: 'frostfire-spawnA.png', top: 'frostfire-top.png', clean: true },
-  { name: 'DESERT GLORY', archive: 'MP6', screenshot: 'desert-glory-spawnA.png', top: 'desert-glory-top.png', clean: false },
-  { name: 'CROSSROADS', archive: 'MP72', screenshot: 'crossroads-spawnA.png', top: 'crossroads-top.png', clean: false },
+  { name: 'FROSTFIRE', archive: 'MP2', screenshot: 'frostfire-spawnA.png', top: 'frostfire-top.png', clean: true, floor: 100 },
+  { name: 'DESERT GLORY', archive: 'MP6', screenshot: 'desert-glory-spawnA.png', top: 'desert-glory-top.png', clean: false, floor: -30 },
+  { name: 'CROSSROADS', archive: 'MP72', screenshot: 'crossroads-spawnA.png', top: 'crossroads-top.png', clean: false, floor: 42.5 },
 ] as const;
 
-/** Eye height above a spawn's feet, as `main.ts` stands the camera up. */
+/**
+ * The camera's height over the floor at the opening stand (`src/stand.ts`'s `EYE`, W1.4b). `floor` above is the ground
+ * probe's under spawn A (`tools/probe-spawns.ts`): Frostfire's A is the actor's feet, on it; Desert Glory's and
+ * Crossroads' A are the orbit camera, recorded 25 and 25.5 over it (`spawns.ts`).
+ */
 const EYE = 20;
 /**
  * How high the top-down shot stands over the spawns. 800 units is 80 m: high enough to hold both spawns
@@ -60,6 +64,17 @@ const settle = (page: Page): Promise<void> => page.evaluate(
   () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
 );
 
+/**
+ * The panel folds away behind the cog on a coarse pointer by design -- the map shows first on a phone --
+ * so a phone test opens it before measuring anything inside the body.
+ */
+async function unfoldPanel(page: Page): Promise<void> {
+  if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
+    await page.locator('#panel-toggle').click();
+  }
+  await expect(page.locator('#maps')).toBeVisible();
+}
+
 test('all three extracted maps render from the served archives', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
@@ -90,6 +105,8 @@ test('all three extracted maps render from the served archives', async ({ page }
     expect(stats.collisionPolys).toBeGreaterThan(1000);
     // The spawn table is the reason the camera knows where to stand; every fixture has one.
     expect(stats.spawns).not.toBeNull();
+    // The disc's spawn slots, read from AIMAPS.MPS in the worker and held by the spawn overlay (W1.5b).
+    expect(stats.slots).toEqual({ a: 24, b: 24 });
 
     console.log(`${map.name}: backend ${stats.backend}, ${stats.triangles} triangles, ` +
       `${stats.collisionPolys} collision polys, ${stats.untexturedDraws} untextured draws, ` +
@@ -101,10 +118,16 @@ test('all three extracted maps render from the served archives', async ({ page }
     // every earlier task was built on, has to be clean.
     if (map.clean) expect(stats.diagnostics).toEqual([]);
 
-    // `main.ts` stands the camera at spawn A and faces it at B whenever the map has measured spawns.
+    // `main.ts` stands the camera at spawn A and faces it at B whenever the map has measured spawns: A's (x, z),
+    // EYE over the ground probe's floor there (W1.4b) -- not over A's recorded y, the orbit camera's on two of these.
     const pose = await page.evaluate(() => window.__viewer.pose());
-    const [ax, ay, az] = stats.spawns!.a;
-    expect([pose.x, pose.y, pose.z]).toEqual([ax, ay + EYE, az]);
+    const [ax, , az] = stats.spawns!.a;
+    expect(stats.stand).not.toBeNull();
+    expect(stats.stand!.floor).not.toBeNull();
+    expect(stats.stand!.floor!).toBeCloseTo(map.floor, 3);
+    expect([pose.x, pose.z]).toEqual([ax, az]);
+    expect(pose.y).toBeCloseTo(map.floor + EYE, 3);
+    expect([pose.x, pose.y, pose.z]).toEqual(stats.stand!.position);
 
     await settle(page);
     await page.screenshot({ path: join(SCREENS, map.screenshot) });
@@ -129,16 +152,16 @@ test('all three extracted maps render from the served archives', async ({ page }
   }
 
   // The line strips and the shadows are on by default -- Desert Glory's power lines and Crossroads'
-  // guy ropes are in the two shots above -- and the alternate states and the experimental order are off.
+  // guy ropes are in the two shots above -- and the alternate states and the engine order are off (W1.R3).
   expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({
-    linestrips: true, shadows: true, alternate: false, discorder: false,
+    linestrips: true, shadows: true, alternate: false, engineorder: false,
   });
 
-  // The wireframe, on and off again, from the spawn. It used to blank the frame on the second draw --
+  // The wireframe, on and off again, from the opening stand. It used to blank the frame on the second draw --
   // the check on `problems` at the end is what catches that, the screenshot is what shows it drew.
   await page.evaluate(() => {
-    const spawns = window.__viewer.stats().spawns!;
-    window.__viewer.setCamera({ x: spawns.a[0], y: spawns.a[1] + 20, z: spawns.a[2], yaw: 0, pitch: 0 });
+    const [x, y, z] = window.__viewer.stats().stand!.position;
+    window.__viewer.setCamera({ x, y, z, yaw: 0, pitch: 0 });
   });
   await setToggle(page, 'wireframe', true);
   await settle(page);
@@ -229,4 +252,96 @@ test('the page never shows through the canvas: Requiem at night, magenta page', 
   expect(leaks.sampled).toBeGreaterThan(1000);
   expect(leaks.n).toBe(0);
   expect(problems).toEqual([]);
+});
+
+/**
+ * The fonts ship with the viewer. Live, `/map-viewer/fonts/oswald-normal-variable-latin.woff2` once
+ * answered 200 text/html: Vite rewrote the vendored `url('/fonts/…')` under `base` while
+ * `copyPublicDir: false` emitted no fonts, and nginx's try_files handed back index.html. The dev server
+ * serves `public/` itself, so the build's copy is guarded by `build_fonts.test.ts`; this is the page's
+ * side: the two families the chrome uses are `loaded`, not `error`, and the woff2 answers as a font.
+ */
+test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/woff2', async ({ page, request }) => {
+  await page.goto('/');
+  await page.evaluate(() => document.fonts.ready);
+  const faces = await page.evaluate(() => [...document.fonts].map((f) => [f.family.replace(/^["']|["']$/g, ''), f.status]));
+  for (const family of ['Oswald', 'JetBrains Mono']) {
+    const own = faces.filter(([name]) => name === family);
+    expect(own, `${family} declared`).not.toHaveLength(0);
+    expect(own.map(([, status]) => status), family).toEqual(own.map(() => 'loaded'));
+  }
+  const res = await request.get('/fonts/oswald-normal-variable-latin.woff2');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toMatch(/^font\/woff2/);
+});
+
+/**
+ * W2.0: the fold control is a cog in the site bar, beside the brand; folded, nothing of the panel shows;
+ * the backtick hides the panel but not the bar, so the cog stays; the GitHub link wears its mark.
+ */
+test('the cog in the site bar folds the panel away entirely; the backtick leaves the cog', async ({ page }) => {
+  await page.goto('/');
+  const cog = page.locator('#site-links > #panel-toggle');
+  await expect(cog).toBeVisible();
+  await expect(page.locator('#source svg')).toHaveCount(1);
+  await expect(page.locator('#panel')).toBeVisible();
+  await expect(cog).toHaveAttribute('aria-expanded', 'true');
+  await cog.click();
+  await expect(cog).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#panel')).toBeHidden();
+  expect(await page.locator('#panel').boundingBox()).toBeNull();
+  expect(await page.evaluate(() => window.__viewer.panelCollapsed())).toBe(true);
+  await cog.click();
+  await expect(page.locator('#panel')).toBeVisible();
+  await page.locator('#view').focus();
+  await page.keyboard.press('Backquote');
+  await expect(page.locator('#panel')).toBeHidden();
+  await expect(cog).toBeVisible();
+});
+
+test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  // Folded on a coarse pointer: no strip of it left, only the cog in the bar.
+  await expect(page.locator('#panel')).toBeHidden();
+  await expect(page.locator('#site-links > #panel-toggle')).toBeVisible();
+  await unfoldPanel(page);
+  const panel = await page.locator('#panel').boundingBox();
+  const fab = await page.locator('#fullscreen').boundingBox();
+  expect(Math.round(panel!.width)).toBe(390 - 16);
+  expect(Math.round(fab!.width)).toBe(44);
+  expect(Math.round(fab!.height)).toBe(44);
+  await ctx.close();
+});
+
+/**
+ * Fix round 1, item 1: the phone media query used to lift `#fullscreen` above the two 56px
+ * touch-lift buttons; the s2u-design-system rewrite dropped that override and left the fab at the
+ * system's default right/bottom 24px, which sits on top of the lower lift button on a coarse
+ * pointer. A separate `describe` block, appended at the file's end, so this does not collide with
+ * the phone test above it.
+ */
+test.describe('fix round 1: the fullscreen fab clears the touch-lift buttons', () => {
+  test('on a phone with touch controls, the fab does not overlap either lift button', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    await unfoldPanel(page);
+    const status = page.locator('#status');
+    await expect(status).toContainText('webgl2'); // a narrow status abbreviates "triangles" to "tris"
+    await page.locator('#maps').selectOption('RUN/MP2.ZDB');
+    await expect(status).toContainText('FROSTFIRE (MP2)');
+    await expect(page.locator('#touch-lift')).toBeVisible();
+    const fab = (await page.locator('#fullscreen').boundingBox())!;
+    const up = (await page.locator('#touch-up').boundingBox())!;
+    const down = (await page.locator('#touch-down').boundingBox())!;
+    const intersects = (a: { x: number; y: number; width: number; height: number }, b: typeof a): boolean =>
+      a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    mkdirSync(SCREENS, { recursive: true });
+    await page.screenshot({ path: join(SCREENS, 'fullscreen-clears-touch-lift.png') });
+    expect(intersects(fab, up)).toBe(false);
+    expect(intersects(fab, down)).toBe(false);
+    await ctx.close();
+  });
 });

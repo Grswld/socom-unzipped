@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseZdb, zdbMember } from '../src/zdb';
+import { parseZdb, zdbMember, zdbTocLength, ZDB_HEAD } from '../src/zdb';
 import { fixture } from './fixtures';
 
 interface SyntheticEntry { name: string; data: number[] }
@@ -52,6 +52,16 @@ describe('parseZdb', () => {
       { name: 'RUN\\COMMON\\A.ZED', data: [2] },
     ]);
     expect(() => zdbMember(two, parseZdb(two), 'a.zed')).toThrow(/2 matches/);
+  });
+  it('parses a table of contents read on its own, given the whole archive\'s length', () => {
+    // What `listMaps` does over a ranged source (the ISO): the 0xA0 head, then just the entries.
+    const whole = syntheticZdb();
+    const toc = whole.slice(0, zdbTocLength(whole.subarray(0, ZDB_HEAD)));
+    expect(toc.byteLength).toBe(0xa0 + 2 * 0x5c);
+    expect(parseZdb(toc, whole.byteLength)).toEqual(parseZdb(whole));
+    // Without the length, a member past the bytes in hand is still an error, not a guess.
+    expect(() => parseZdb(toc)).toThrow(/runs past/);
+    expect(() => parseZdb(toc, 4096)).toThrow(/runs past/);
   });
   const mp2 = fixture('RUN/MP2.ZDB');
   it.skipIf(!mp2)('Frostfire has 53 members, all 2048-aligned, and MP2_GEO.ZED is 445,856 bytes', () => {

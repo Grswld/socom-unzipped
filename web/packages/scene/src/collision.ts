@@ -18,12 +18,75 @@ export interface WorldPoly {
   /** The node path from the root, for saying *which* crate a polygon belongs to. */
   path: string;
   region: number;
-  /** `m_ditype`, two bits; only 2 and 3 occur on any of the three fixtures (36 section 6). */
+  /**
+   * `m_ditype`, two bits; only 2 and 3 occur on any of the three fixtures (36 section 6). They are bits 0 and 1 of
+   * the surface word (`surfaceWord`): bit 0 is what the vertical ground probe asks for, bit 1 what the column
+   * probe asks for (research 23 section 1.1, research 24 section 1.2) -- so 3 is ground, 2 is not.
+   */
   ditype: number;
   material: number;
   ptcount: number;
+  /**
+   * `m_cameratype`, bits 18-19 of the surface word. Its low bit is research 23/24's "bit 18": the probe skips a
+   * surface with it set (`FUN_002d3030` with `DAT_0044d758 == 0`) and research 24 section 2 leaves it out of the
+   * walls. On Frostfire 19 polygons carry it, the doorway volume at x 676-680 among them (research 24 section 4.1).
+   */
+  cameratype: number;
   /** xyz per point, world space, `ptcount` of them. */
   points: Float32Array;
+}
+
+/**
+ * The surface word: the packed third word of a `di`'s params (web/docs/research/72 section 6, `DI_PARAMS` in reCOM
+ * `zIntersect/zintersect.h:21-28`) -- `m_ditype:2, m_ptcount:8, m_material:8, m_cameratype:2, ...` -- which is the
+ * live `CDIPoly`'s `+8` word research 23 section 1.3 reads its bits from ("ptcount at bits 2-9, material at bits
+ * 10-17", section 8). Rebuilt from the fields `WorldPoly` keeps, up to and including `m_cameratype`, so the bits
+ * the probe tests can be named by number as the research names them.
+ */
+export function surfaceWord(p: Pick<WorldPoly, 'ditype' | 'ptcount' | 'material' | 'cameratype'>): number {
+  return ((p.ditype & 3) | ((p.ptcount & 0xff) << 2) | ((p.material & 0xff) << 10) | ((p.cameratype & 3) << 18)) >>> 0;
+}
+
+/** Surface word bit 0 (`m_ditype` bit 0): the type-1 vertical probe tests only these (research 23 section 1.1). */
+export const SURFACE_GROUND = 1 << 0;
+/** Surface word bit 1 (`m_ditype` bit 1): the type-2 column probe's; set on all 3,318 of Frostfire's (research 24 section 1.2). */
+export const SURFACE_SIDE = 1 << 1;
+/** Surface word bit 18 (`m_cameratype` bit 0): skipped by the probe, and not a wall (research 23 section 1.1, 24 section 2). */
+export const SURFACE_SKIP = 1 << 18;
+
+/** A ground candidate for the vertical probe: bit 0 set, bit 18 clear. */
+export const isGroundSurface = (p: WorldPoly): boolean =>
+  (surfaceWord(p) & (SURFACE_GROUND | SURFACE_SKIP)) === SURFACE_GROUND;
+
+/**
+ * The unit normal of a polygon's plane from Newell's sum, the way research 24 section 2 takes it, or null for a
+ * polygon of no area. Its sign follows the winding; the tests that use it (`|n_y|`) do not care.
+ */
+export function polygonNormal(points: Float32Array): [number, number, number] | null {
+  const n = points.length / 3;
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < n; i++) {
+    const a = i * 3, b = ((i + 1) % n) * 3;
+    nx += (points[a + 1]! - points[b + 1]!) * (points[a + 2]! + points[b + 2]!);
+    ny += (points[a + 2]! - points[b + 2]!) * (points[a]! + points[b]!);
+    nz += (points[a]! - points[b]!) * (points[a + 1]! + points[b + 1]!);
+  }
+  const length = Math.hypot(nx, ny, nz);
+  return length > 1e-9 ? [nx / length, ny / length, nz / length] : null;
+}
+
+/** Research 24 section 2 step 3: a wall is steeper than this in `|n_y|`. */
+export const WALL_NY = 0.7;
+
+/**
+ * A wall for the mover (research 24 section 2 step 3): bit 1 set, bit 18 clear, and `|n_y| < 0.7`. That these
+ * stop the game's mover is research 24's inference (section 7.1: the movement routine is not decompiled; the
+ * launch 3c trails stand off such planes at 4.4-5.8 and cross only bit-18 or high polygons, section 4.1).
+ */
+export function isWallSurface(p: WorldPoly): boolean {
+  if ((surfaceWord(p) & (SURFACE_SIDE | SURFACE_SKIP)) !== SURFACE_SIDE) return false;
+  const n = polygonNormal(p.points);
+  return n !== null && Math.abs(n[1]) < WALL_NY;
 }
 
 /**
@@ -36,7 +99,8 @@ export const DITYPE_COLOURS: readonly number[] = [0x7fb2ff, 0xffb347, 0x4fe08a, 
 /**
  * Every collision polygon of the scene, in world space, rooted at `rootName` the way the drawn chunks
  * are. A prototype's polygons are realised once per instance context, so a map has more placed polygons
- * than the archive stores distinct ones -- an instanced crate collides wherever the crate stands.
+ * than the archive stores distinct ones -- an instanced crate collides wherever the crate stands. The set is
+ * the one the engine holds (`worldDi`): 3,318 on Frostfire, research 24 section 1.1's count and bounds.
  */
 export function worldCollision(models: SceneNode[], rootName = 'worldmodel'): WorldPoly[] {
   return placeCollision(models, rootName).map((p) => ({
@@ -46,6 +110,7 @@ export function worldCollision(models: SceneNode[], rootName = 'worldmodel'): Wo
     ditype: p.poly.ditype,
     material: p.poly.material,
     ptcount: p.poly.ptcount,
+    cameratype: p.poly.cameratype,
     points: p.points,
   }));
 }

@@ -3,7 +3,7 @@ import {
   LineSegments, Mesh, MeshBasicMaterial, Object3D, Scene, SphereGeometry, Sprite, SpriteMaterial,
   Vector3,
 } from 'three';
-import type { Spawns } from '@s2u/scene';
+import type { SpawnSlot, Spawns } from '@s2u/scene';
 
 /** Frostfire's playable floor is y = 100; the grid sits there so heights read against something known. */
 const GRID_Y = 100;
@@ -16,10 +16,16 @@ const LABEL_ABOVE = 26;
 const LABEL_SIZE = 22;
 /** A's marker and B's, the two sides of every measured round. */
 const SPAWN_COLOURS = { a: 0x4d9bff, b: 0xff6a3d } as const;
+/** A slot's cell, in game units: 10 x 10 on all 83 sub-maps (web/docs/research/75 §3). */
+export const SLOT_CELL = 10;
+/** A slot's facing arrow, in game units: one cell long from the cell's centre, its barbs a third of that. */
+export const SLOT_ARROW = 10;
+const SLOT_BARB = SLOT_ARROW / 3, SLOT_BARB_ANGLE = Math.PI / 6;
 
 /**
  * What the viewer draws on top of a map: a grid at the floor height, the collision hull
- * as coloured line segments, and the two measured spawns as labelled spheres.
+ * as coloured line segments, and the spawns -- the two measured ones as labelled spheres, and the disc's
+ * spawn slots, 24 a side, as their cells with an arrow along the facing (W1.5b).
  *
  * Everything here is an answer to "is what I am looking at in the right place?", so all of it is off by
  * default and each piece is its own toggle. The collision hull and the spawns come from the map; the
@@ -33,6 +39,8 @@ export class Overlays {
   /** The current map's hull arrays, waiting to be made into an object -- see `placeCollision`. */
   private pendingCollision: { positions: Float32Array; colors: Uint8Array } | null = null;
   private spawnsOn = false;
+  /** The slots drawn for the current map, per side, for the debug hook (`stats().slots`). */
+  private slotsDrawn = { a: 0, b: 0 };
 
   constructor(private readonly scene: Scene) {
   }
@@ -83,19 +91,45 @@ export class Overlays {
     this.scene.add(this.collision);
   }
 
-  /** The new map's two measured spawns, or nothing when none were measured for it. */
-  placeSpawns(spawns: Spawns | null): void {
+  /**
+   * The new map's spawns, under the one spawns toggle: its two measured spawns, or none when none were
+   * measured for it, and the disc's spawn slots (`LoadedMap.slots`), which every map has.
+   */
+  placeSpawns(spawns: Spawns | null, slots: readonly SpawnSlot[] = []): void {
     this.dropSpawns();
-    if (!spawns) return;
+    if (!spawns && slots.length === 0) return;
     const group = new Object3D();
-    for (const [side, feet] of [['a', spawns.a], ['b', spawns.b]] as ['a' | 'b', [number, number, number]][]) {
+    // W1.5b: the slots, one line set per side in the side's colour -- the spec's W1.R9 makes them the
+    // spawn markers. Not depth-tested, decided again under W1.4b: the y is now the ground probe's floor under
+    // the slot's centre (`onFloor`; 1,058 of the 1,058 slots), but the outline and the arrow are drawn flat at
+    // that height -- the cell's sides 5 units out, the arrow's tip 10 -- and on 362 of the slots a corner or the
+    // tip is more than 1 unit off the floor there, or has none (slopes and steps, p90 2.5; measured 2026-09-28):
+    // depth-tested, those lines would break under the ground. A slot off the probe keeps the estimate
+    // (research 75 §4: the file has no y), which a floor could hide whole. The measured spheres keep their test.
+    for (const [side, key] of [[0, 'a'], [1, 'b']] as const) {
+      const mine = slots.filter((s) => s.side === side);
+      this.slotsDrawn[key] = mine.length;
+      if (mine.length === 0) continue;
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(slotSegments(mine), 3));
+      const drawn = new LineSegments(geometry, new LineBasicMaterial({
+        color: SPAWN_COLOURS[key], transparent: true, opacity: 0.9, depthTest: false, depthWrite: false,
+      }));
+      drawn.frustumCulled = false;                        // one object spans a side's half of the map
+      // Last of three's transparent list: in the engine order a world draw's `renderOrder` is its place in
+      // the walk (`world.ts`), and a blended one placed after the slots would paint over them.
+      drawn.renderOrder = Number.MAX_SAFE_INTEGER;
+      group.add(drawn);
+    }
+    for (const [side, feet] of (spawns ? [['a', spawns.a], ['b', spawns.b]] : []) as ['a' | 'b', [number, number, number]][]) {
       const colour = SPAWN_COLOURS[side];
       const ball = new Mesh(
         new SphereGeometry(SPAWN_RADIUS, 16, 12),
         // Depth-tested like anything else: a marker that shines through a wall would lie about where it is.
         new MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.8 }),
       );
-      ball.position.set(feet[0], feet[1] + SPAWN_RADIUS, feet[2]);   // the table's y is the feet
+      // The table's y: the feet on KNOWN section 1's two maps, the orbit camera, 25 higher, on the rest (spawns.ts).
+      ball.position.set(feet[0], feet[1] + SPAWN_RADIUS, feet[2]);
       group.add(ball);
       const label = new Sprite(new SpriteMaterial({ map: letter(side.toUpperCase()), transparent: true, depthTest: false }));
       label.position.set(feet[0], feet[1] + LABEL_ABOVE, feet[2]);
@@ -122,6 +156,11 @@ export class Overlays {
     if (this.spawns) this.spawns.visible = visible;
   }
 
+  /** How many of the disc's slots the spawn overlay holds for the current map, per side (A is side 0). */
+  slotCounts(): { a: number; b: number } {
+    return { ...this.slotsDrawn };
+  }
+
   private dropCollision(): void {
     this.pendingCollision = null;
     if (!this.collision) return;
@@ -132,12 +171,16 @@ export class Overlays {
   }
 
   private dropSpawns(): void {
+    this.slotsDrawn = { a: 0, b: 0 };
     if (!this.spawns) return;
     this.scene.remove(this.spawns);
     for (const child of this.spawns.children) {
       if (child instanceof Mesh) {
         child.geometry.dispose();
         (child.material as MeshBasicMaterial).dispose();
+      } else if (child instanceof LineSegments) {
+        child.geometry.dispose();
+        (child.material as LineBasicMaterial).dispose();
       } else if (child instanceof Sprite) {
         child.material.map?.dispose();
         child.material.dispose();
@@ -145,6 +188,37 @@ export class Overlays {
     }
     this.spawns = null;
   }
+}
+
+/**
+ * The line segments that draw spawn slots, xyz pairs at each slot's y (the probe's floor under its centre, W1.4b,
+ * or the estimate): per slot, its cell's four sides
+ * (`SLOT_CELL` square on the cell's centre, research 75 §4) and an arrow from the centre along its facing
+ * (`SLOT_ARROW`, `facingVector` as research 75 §11 corrected it), with two barbs at the tip -- seven segments.
+ */
+export function slotSegments(slots: readonly SpawnSlot[]): Float32Array {
+  const out = new Float32Array(slots.length * 7 * 6);
+  const h = SLOT_CELL / 2;
+  let o = 0;
+  const seg = (ax: number, ay: number, az: number, bx: number, by: number, bz: number): void => {
+    out[o++] = ax; out[o++] = ay; out[o++] = az; out[o++] = bx; out[o++] = by; out[o++] = bz;
+  };
+  for (const slot of slots) {
+    const [x, y, z] = slot.position;
+    const [ux, uz] = slot.facing;
+    seg(x - h, y, z - h, x + h, y, z - h);
+    seg(x + h, y, z - h, x + h, y, z + h);
+    seg(x + h, y, z + h, x - h, y, z + h);
+    seg(x - h, y, z + h, x - h, y, z - h);
+    const tx = x + ux * SLOT_ARROW, tz = z + uz * SLOT_ARROW;
+    seg(x, y, z, tx, y, tz);
+    for (const turn of [SLOT_BARB_ANGLE, -SLOT_BARB_ANGLE]) {
+      // back from the tip, the facing reversed and turned a little to either side
+      const c = Math.cos(turn), s = Math.sin(turn);
+      seg(tx, y, tz, tx - (ux * c - uz * s) * SLOT_BARB, y, tz - (ux * s + uz * c) * SLOT_BARB);
+    }
+  }
+  return out;
 }
 
 /** One character on a transparent square, for a sprite label. A canvas is the only font three.js has. */

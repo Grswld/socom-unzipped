@@ -70,6 +70,11 @@ class ChromeUsesTheSystem(unittest.TestCase):
         self.assertNotIn("s2u-iconbtn", head)
         self.assertIn('<p class="s2u-fine" id="foot-fine">fine</p>', _text(site.chrome_footer("", "fine")))
 
+    def test_footer_nav_has_map_viewer_and_data_links(self):
+        foot = _text(site.chrome_footer("https://socomunzipped.com", "fine"))
+        self.assertIn('<a href="https://socomunzipped.com/map-viewer/">Map viewer (experimental)</a>', foot)
+        self.assertIn('<a href="https://socomunzipped.com/data.html">Your data</a>', foot)
+
     def test_timeline_css_speaks_tokens(self):
         self.assertNotRegex(site.CSS, r"var\(--(gold|head|disp|mono|lit|dim|dim2|line|line2|teal|glow|bg|panel|panel2|gold2|ease)\)")
         self.assertNotRegex(site.CSS, r"#[0-9a-fA-F]{3,8}\b|rgba?\(")
