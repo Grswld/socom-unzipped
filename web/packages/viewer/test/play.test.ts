@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Matrix4 } from 'three';
+import { Group, Matrix4 } from 'three';
 import { FsAssetSource } from '@s2u/archive/node';
 import { partMatrix, type MotionClip, type MotionPart } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
@@ -280,6 +280,46 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     walk.setMode('fly');
     play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('fly');
+    view.dispose();
+    walk.unbindKey();
+  });
+
+  it('WEAPON: hangs the rifle on the hand, raises it on the trigger, plays the reload, and gives the muzzle', async () => {
+    const map = await loaded();
+    const fly = new FlyCamera(canvas());
+    const walk = new WalkMode(fly);
+    walk.setGround(GROUND, [0, 0, 0]);
+    const view = buildBody(map.body!, map, DEFAULT_LIGHTING);
+    const play = new Play();
+    play.setBody(view, map.body!);
+    const rifle = new Group();
+    play.setWeapon(rifle, [{ name: 'firepoint', at: [7.7854, 0.8338, 0] }]);
+    expect(rifle.parent?.name).toBe('rifle');
+    expect(rifle.parent?.parent?.name).toBe('rhand');
+    const hold = still('seal_fp_stand', 8);
+    play.setClips({ clips: [still('seal_stand', 10), hold, still('seal_reload', 30)], table: null });
+    let trigger = false;
+    play.setWeaponInput(() => ({ trigger, aiming: false }));
+    play.frame(1 / 60, walk, fly.camera);
+    expect(rifle.visible).toBe(false);                         // never played: the bind pose holds nothing
+    expect(play.muzzle()).toBeNull();
+    fly.setPose({ x: 5, y: 40, z: 6, yaw: 0, pitch: 0 });
+    walk.setMode('walk');
+    play.frame(1 / 60, walk, fly.camera);
+    expect(rifle.visible).toBe(true);
+    expect(play.weaponStats()).toMatchObject({ held: true, raise: { state: 'down', weight: 0 }, pose: { fire: null } });
+    const muzzle = play.muzzle()!;
+    expect(Math.hypot(muzzle[0] - 5, muzzle[2] - 6)).toBeLessThan(20);      // at the body, in the world
+    trigger = true;
+    for (let i = 0; i < 12; i++) play.frame(1 / 60, walk, fly.camera);
+    expect(play.weaponStats()).toMatchObject({ raise: { state: 'up', weight: 1 }, pose: { fire: 'seal_fp_stand', fireWeight: 1 } });
+    trigger = false;
+    expect(play.reloadSeconds()).toBe(1);                      // no table: the clip's 30 keys at 30 a second
+    play.weaponEvent({ type: 'reloadStart', weapon: { name: 'M4A1', id: 54, fireAnim: null, sounds: { close: null, med: null, far: null, reload: null } }, seconds: 1 });
+    play.frame(1 / 60, walk, fly.camera);
+    expect(play.weaponStats().pose).toMatchObject({ reload: 'seal_reload' });
+    // the bomb carrier's satchel, where the body is dressed (character.rdr beside the fixture)
+    expect(play.setGearVisible('Satchel', true)).toBe(map.body!.fittings.some((f) => f.name === 'Satchel'));
     view.dispose();
     walk.unbindKey();
   });

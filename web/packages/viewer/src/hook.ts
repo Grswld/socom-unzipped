@@ -10,7 +10,7 @@ import type { SliderName, ToggleName } from './ui';
 import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
-import type { ViewStats } from './play';
+import type { ViewStats, WeaponStats } from './play';
 import type { AudioStats } from './audio';
 
 /**
@@ -120,6 +120,15 @@ export interface ViewerHook {
   audio(): AudioStats;
   /** The sound's volume (1 the default level) and mute; the stats after. The UI's panel calls `GameAudio` itself. */
   setAudio(settings: { volume?: number; muted?: boolean }): AudioStats;
+  /**
+   * WEAPON (`./play`, `./weaponRaise`, `./weaponPose`, `./heldItem`): whether the rifle is in the SEAL's hands, its
+   * raise (the Fire set's weight, up or down, the countdown), the layers' clips and weights, and the muzzle in the world.
+   */
+  weapon(): WeaponStats;
+  /** WEAPON: the trigger held (true) or let go (false), as the mouse button and R1 hold it. */
+  trigger(down: boolean): void;
+  /** WEAPON: shows or hides a piece of the SEAL's gear by its `character.rdr` name (`Satchel`: the bomb carrier's). */
+  setGear(name: string, on: boolean): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

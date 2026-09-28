@@ -324,6 +324,31 @@ export interface AnimStats {
 
 export interface AnimatorOptions { weapon?: Weapon }
 
+/** The clip playing, as a pose layer sees it: the clip, its fractional key and its phase (0 to 1). */
+export interface LayerContext { clip: MotionClip; frame: number; phase: number }
+
+/**
+ * A pose over the clips (the WEAPON workstream's fire set and reload, `./weaponPose`): the parts to blend toward and
+ * by how much (0 none, 1 all), or null for nothing this frame. A part the layer does not carry keeps the pose below.
+ */
+export interface PoseLayer {
+  sample(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null;
+}
+
+/**
+ * A clip part's skeleton slot. The held item's node is `rifle` in most of the pack's clips and `weapon` in the few
+ * that keep SOCOM 1's name (`seal_jump`, `seal_runningjump_in_air`, `seal_prone_crawl`, `seal_crouch_recoil`: the
+ * same constant key where both exist; reCOM `zSeal/seal.cpp:150` names the node `weapon`): the viewer's reading is
+ * that a clip without `rifle` moves the rifle by its `weapon` track.
+ */
+export function partIndex(skeleton: Skeleton, parts: readonly { name: string }[], name: string): number {
+  const i = skeleton.indexOf(name);
+  if (i >= 0 || name !== HELD_ALIAS) return i;
+  return parts.some((p) => p.name === HELD_PART) ? -1 : skeleton.indexOf(HELD_PART);
+}
+/** The held item's node (`FUN_00553290` 0x553290 names it `rifle`) and SOCOM 1's name for it in the older clips. */
+export const HELD_PART = 'rifle', HELD_ALIAS = 'weapon';
+
 /**
  * The player of the clips: `step` once a frame with the mover's state. It picks (`pickClip`), advances, samples the
  * clip (and its layer), cross-fades from the pose on screen when the clip changes, and writes the skeleton. A pick the
@@ -345,6 +370,7 @@ export class Animator {
   private layer: MotionClip | null = null;
   private lastJumps: number | null = null;
   private wasAirborne = false;
+  private readonly poseLayers: PoseLayer[] = [];
 
   constructor(private readonly skeleton: Skeleton, clips: Iterable<MotionClip>, private readonly table: MotionTable | null, options: AnimatorOptions = {}) {
     this.clips = new Map([...clips].map((c) => [c.name, c]));
@@ -413,17 +439,33 @@ export class Animator {
   private pose(): void {
     const cur = this.current!;
     const target = this.bind.map((l) => ({ q: [...l.q], t: [...l.t] }) as Local);
-    const put = (parts: readonly PartPose[]): void => {
+    const put = (parts: readonly PartPose[], into: Local[] = target): void => {
       for (const p of parts) {
-        const i = this.skeleton.indexOf(p.name);
+        const i = partIndex(this.skeleton, parts, p.name);
         if (i < 0) continue;
-        target[i] = { q: [...p.rotation], t: i === this.root ? [this.bind[i]!.t[0], p.translation[1], this.bind[i]!.t[2]] : [...p.translation] };
+        into[i] = { q: [...p.rotation], t: i === this.root ? [this.bind[i]!.t[0], p.translation[1], this.bind[i]!.t[2]] : [...p.translation] };
       }
     };
     put(sampleClip(cur.clip, cur.frame / cur.clip.rate, { loop: cur.loop }).parts);
     if (this.layer) {
       const phase = cur.frame / cur.clip.frameCount;
       put(sampleClip(this.layer, (phase * this.layer.frameCount) / this.layer.rate, { loop: true }).parts);
+    }
+    // The pose layers (`addPoseLayer`: the weapon's fire set and reload, `./weaponPose`), each over what is below it.
+    for (const layer of this.poseLayers) {
+      const over = layer.sample({ clip: cur.clip, frame: cur.frame, phase: cur.frame / cur.clip.frameCount });
+      if (!over || !(over.weight > 0)) continue;
+      const to = target.map((l) => ({ q: l.q, t: l.t }) as Local);
+      put(over.parts, to);
+      const w = Math.min(1, over.weight);
+      target.forEach((from, i) => {
+        const dest = to[i]!;
+        if (dest.q === from.q && dest.t === from.t) return;     // a part the layer does not carry
+        target[i] = w >= 1 ? dest : {
+          q: slerp(from.q, dest.q, w),
+          t: [from.t[0] + (dest.t[0] - from.t[0]) * w, from.t[1] + (dest.t[1] - from.t[1]) * w, from.t[2] + (dest.t[2] - from.t[2]) * w],
+        };
+      });
     }
     const w = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     if (w >= 1) this.from = null;
@@ -438,6 +480,14 @@ export class Animator {
       this.skeleton.setLocal(i, partMatrix(shown.q, shown.t));
     });
     this.skeleton.update();
+  }
+
+  /**
+   * Adds a pose layer over the clips (additive: the picker and the cross-fade are untouched). Layers apply in the
+   * order added, each blended over the pose below it by its own weight, before the cross-fade.
+   */
+  addPoseLayer(layer: PoseLayer): void {
+    this.poseLayers.push(layer);
   }
 
   /** The clip, the frame, the blend: the hook's `stats().anim`. */

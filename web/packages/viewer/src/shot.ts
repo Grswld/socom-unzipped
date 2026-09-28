@@ -31,7 +31,11 @@ export type { WeaponPoint } from '@s2u/scene';
  *   `GetPutativeFirePointW` and the arguments they pass are not in the handoff.
  * - **`SHOT_RANGE_PLACEHOLDER`**: the weapon table's `m_maxrange` is not on hand (research 79 §1).
  * - **`RECOIL_PLACEHOLDER`**: `Recoil__10CZSealBodyFv` is unidentified and the table's kick fields are not on hand
- *   (research 79 §5): no kick, until W2.5.
+ *   (research 79 §5): no kick, until W2.5. *Superseded on the page* (the WEAPON workstream): the kick is
+ *   `./rifleKick`'s port of `FUN_005b91c0` / `FUN_005b9280` on `zweapon.rdr`'s `FireRifleKick*`, and the round leaves
+ *   the posed weapon's `firepoint` (`./heldItem`) -- `GetPutativeFirePointW`'s a1-false path, `+0x14b0` plus the
+ *   position. This file's `Shooter` is not wired into the page; the port and its placeholders stand as the a1-true
+ *   reference (the ten offsets at 0x65d038 are zero in the image's `.data`: filled at run time).
  * - **The aim point.** The shot leaves the fire point toward the point the eye's ray meets (reCOM's `m_aim_point`,
  *   `zSeal/zseal.h:785`), so it lands under the crosshair unless something is in the way; with nothing under the
  *   crosshair it runs along the aim to the range. The viewer's reading: the game's projectile path

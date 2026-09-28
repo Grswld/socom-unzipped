@@ -238,3 +238,48 @@ the hull including `m_cameratype`'s bit-18 polygons. `pose()` stays the fly came
 relighting of a pose's own limb turns (only the body's facing is relit, every 10°), the weapon in the hand (the held
 weapon is hidden in the shoulder view until then).
 
+### The rifle in the hands, the Fire set, the kick and the satchel (2026-09-28, the WEAPON workstream)
+
+*(the owner's playtest: "no weapon model visible"; "shooting should engage a second animation where the rifle goes
+up"; "the SEAL has a backpack and usually only has one when he has the bomb")* **The hand.** `CZSealBody`'s
+constructor (decomp lines 419640-419690) looks up the 25 parts in reCOM's order (`+0x2fc` spinelo, `+0x300` rhand,
+`+0x304` hips), sets `m_item` (`+0xf79`) to 1 and calls `FUN_00553290` 0x553290 for slots 1 and 2: a fresh `CNode`
+named "rifle" (0x65c498) or "pistol", added to the body (`FUN_0028ebe0`) under `rhand` when that item is in hand,
+else under its carry part (`spinelo` for the rifle, whose offset there is `character.rdr`'s "rifle" gear,
+`NONAME.flt`, found by `FUN_0058b0f0`); a "weapon" node and "rifle_out" are made beside them. The pack's clips pose
+the node: a `rifle` track (constant `(1.266, 0.258, -0.148)` from the hand in most, turned through the run) or, in
+`seal_jump`, `seal_runningjump_in_air`, `seal_prone_crawl` and `seal_crouch_recoil`, the SOCOM 1 name `weapon`
+with the same key. The M4A1 SD hung at the node's identity (its grip at the origin, research 79 §2.2) has its barrel
+along the body's forward to within 2° in `seal_fp_stand`, the sight 15.2 over the feet at the cheek and the left
+hand under the fore-end (MP2's skeleton; `viewer/test/weapon.test.ts`). **The fire point** is the posed weapon's:
+`FUN_005a60d0` looks up the model's "aimpoint"/"firepoint" into `+0x14ac`/`+0x14bc` and the body keeps their places
+at `+0x14a0`/`+0x14b0`, the second path of `GetPutativeFirePointW` (a1 false) -- so the round leaves the muzzle
+toward the point under the reticle. The ten stance offsets at 0x65d038 are zero in the image's `.data` (filled at
+run time), so the first path stays `shot.ts`'s placeholder. **The Fire set.** `FUN_005e0690` pairs twelve anim types
+with a Fire version (`FUN_005e1bf0`, entry +4 of the table at `animset+0x5c`, lines 494790-494801): Stand, Walk,
+Jog, Run, Walk/Jog backwards, Step, Crouch, Crouch walk, Crouch step, Crouch walk backwards, Prone -- `animset.rdr`
+names them `seal_fp_*` ("fp" is the fire pose, not first person); the strafes and jumps have none. `Tick_0` (lines
+438828-438860) blends the Fire version into each flagged motion slot at `FUN_00286b80(seal+0x1160)`, an eased
+envelope (in, hold, out, remaining) that `FUN_005dfe30` starts with `FUN_005dffc0`'s 0.1 s in, 100000 s hold and
+0.5 s out and cuts to a fall from its level; the player control (`FUN_00594cf0` lines 453577-453650) raises it on the
+fire button's press or hold and asks it down when a countdown -- reset to `ctrl+0x22c` = 5.0 s (`FUN_00598280`) at
+every edge and while the controller aims -- has run out. **No recoil clip**: the image holds no "recoil" type name
+(only `RecoilPct`), so `animset.rdr`'s "Rifle recoil" → `seal_recoil` is never asked for. **The kick** is on the aim:
+per round `FUN_005b91c0` seats the rest at the pitch and a goal of `FireRifleKickBaseDist` + `RandomDist` × rand;
+`FUN_005b9280` (behind `DAT_00650938`, 1 in the image's `.data`) climbs the pitch (`ctrl+0x130`, radians: the
+aim limits `FUN_00594600` clamps it to are stored ×0.017453292) at `FireRifleKickRate` and lets it back at
+`FireRifleKickReturnRate` -- the M4A1 standing 0.09-0.105 rad at 0.5 rad/s, back at 0.18; each round re-seats the
+rest, so a held trigger climbs about 0.06 rad a round at `FireWait` 0.12. **The reload** is its clip: "Rifle reload"
+`seal_reload` (`motion.rdr` playback 1.6 s), crouch 1.9, prone 1.7, "Moving rifle reload" `seal_mv_reload` 1.2 (an
+upper-body overlay); the M4A1's record has no `ReloadTime`. **The muzzle's effect** is `FireAnimName`, a CZANIM
+animation: `muzzle_m4` is `shell_eject`, `flash_fire_hider`, `shell_smoke_med`; `muzzle_m4SD` is the shell and the
+smoke, no flash; the `_zoom` variants carry `zoom_flash_fire` for the first-person view, where no weapon model is
+drawn. **The satchel** is `mp2_seal1`'s default gear, hung and then hidden: `FUN_00599f00` dresses the SEAL
+(`FUN_0058b790` per piece) and calls `FUN_0059df60(seal, 0)`, which finds the gear "Satchel" (0x65f0f8) and turns
+it off through its node's `vtbl+0x38`; the inventory's bomb pickup (`FUN_005bbf10`, item 0x9a) calls
+`FUN_0059df60(owner, 1)`, and the plant, the drop and the round's reset hide it again. Implemented in
+`viewer/src/heldItem.ts`, `weaponRaise.ts`, `weaponPose.ts`, `rifleKick.ts`, `bodyView.ts` (`HIDDEN_AT_SPAWN`,
+`setGearVisible`); named readings: the Fire clip's phase on locomotion cycles (`PHASE_SHARED`), the reload's 0.2 s
+blend (`RELOAD_BLEND_PLACEHOLDER`), the aim lane as the controller's aim (`AIM_HOLDS_RAISE`), no stick term in the
+kick's fall (`STICK_FOLLOW_PLACEHOLDER`).
+

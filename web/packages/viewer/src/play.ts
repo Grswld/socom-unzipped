@@ -1,12 +1,16 @@
-import type { PerspectiveCamera } from 'three';
-import { IDENTITY, multiply, Skeleton, transformPoint, type MotionClip } from '@s2u/scene';
+import type { Group, Object3D, PerspectiveCamera } from 'three';
+import { IDENTITY, multiply, Skeleton, transformPoint, type MotionClip, type Pnt3D, type WeaponPoint } from '@s2u/scene';
 import { Animator, type AnimStats, type MoverSnapshot } from './animator';
 import { EYE_MODEL, type LoadedBody } from './body';
 import type { BodyView } from './bodyView';
 import type { Pose } from './camera';
+import type { FireEvent } from './fire';
 import { pressedSince, releasedSince, type Input } from './gamepad';
+import { HELD_ITEM, heldSkeleton, muzzleOf, muzzlePoint } from './heldItem';
 import type { MotionEntry } from './motionTable';
 import type { Stance, WalkMode } from './walk';
+import { STILL_CLIPS, WeaponPose, type WeaponPoseStats } from './weaponPose';
+import { WeaponRaise, type RaiseStats } from './weaponRaise';
 
 /**
  * The play mode (web sprint 2, W2.2b; ruling W2.R1): the walk mode with the body. Entering walk (`G`, the panel's
@@ -114,6 +118,17 @@ export function eyePoint(body: LoadedBody, palette: readonly Float32Array[]): [n
 /** The clips and the table as the worker read them (`./motionTable`, `PlayData`). */
 export interface PlayClips { clips: MotionClip[]; table: [string, MotionEntry][] | null }
 
+/** What the weapon's trigger and aim are this frame (the page's: `Fire.triggerHeld`, the aim lane). */
+export interface WeaponInput { trigger: boolean; aiming: boolean }
+
+/** What `weapon()` on the hook reports: the raise, the layers, whether the rifle is in hand, and the muzzle. */
+export interface WeaponStats {
+  held: boolean;
+  raise: RaiseStats;
+  pose: WeaponPoseStats | null;
+  muzzle: [number, number, number] | null;
+}
+
 /** What `stats().view` reports: which view draws the frame, and the drawn camera's pose. */
 export interface ViewStats {
   kind: ViewKind;
@@ -147,14 +162,81 @@ export class Play {
   private last: (MoverSnapshot & { feet: [number, number, number] }) | null = null;
   private kind: ViewKind = 'fly';
   private drawn: PerspectiveCamera | null = null;
+  /** WEAPON: the rifle's raise (`./weaponRaise`), its layers over the clips (`./weaponPose`), the hand's node. */
+  private readonly raise = new WeaponRaise();
+  private weaponPose: WeaponPose | null = null;
+  private weaponInput: () => WeaponInput = () => ({ trigger: false, aiming: false });
+  private hand: Group | null = null;
+  private weapon: Object3D | null = null;
+  private muzzleAt: Pnt3D | null = null;
+  private stance: Stance = 'stand';
 
   /** A map's body, or none: the animator is rebuilt over its skeleton (the clips are the source's, kept). */
   setBody(view: BodyView | null, body: LoadedBody | null): void {
     this.body = view;
     this.loaded = view ? body : null;
-    this.skeleton = view && body ? bodySkeleton(body) : null;
+    this.skeleton = view && body ? heldSkeleton(bodySkeleton(body)) : null;
+    this.hand = view && this.skeleton && this.skeleton.indexOf(HELD_ITEM.name) >= 0 ? view.addProp(HELD_ITEM.name, HELD_ITEM.parent) : null;
+    if (this.weapon && this.hand) this.hand.add(this.weapon);
     this.last = null;
+    this.raise.reset();
     this.rebuild();
+  }
+
+  /**
+   * WEAPON: the map's held weapon (`WorldView.weapon`, the M4A1 SD) hung on the hand's `rifle` node at its grip, and
+   * its named points (`LoadedMap.weapon.points`) for the muzzle. Null takes it off.
+   */
+  setWeapon(object: Object3D | null, points: readonly WeaponPoint[]): void {
+    this.weapon?.removeFromParent();
+    this.weapon = object;
+    this.muzzleAt = object ? muzzlePoint(points) : null;
+    if (object) {
+      object.position.set(0, 0, 0);
+      object.quaternion.identity();
+      object.scale.set(1, 1, 1);
+      object.matrixAutoUpdate = true;
+      object.visible = true;
+      this.hand?.add(object);
+    }
+  }
+
+  /** WEAPON: where the trigger and the aim are read from each frame (the page wires `Fire` and the walk's view). */
+  setWeaponInput(read: () => WeaponInput): void {
+    this.weaponInput = read;
+  }
+
+  /** WEAPON: a round or a reload from `Fire` (`Fire.subscribe`): a reload plays the stance's reload clip. */
+  weaponEvent(e: FireEvent): void {
+    if (e.type === 'reloadStart') this.weaponPose?.startReload(this.stance, e.seconds);
+    else if (e.type === 'reloadEnd') this.weaponPose?.stopReload();
+  }
+
+  /**
+   * WEAPON: the reload's length for the stance the SEAL is in and whether it moves -- the reload clip's `playback`
+   * (`./weaponPose`) -- or null without the clips (`Fire` keeps its own estimate then).
+   */
+  reloadSeconds(): number | null {
+    const clip = this.animator && this.last ? this.animator.stats().clip : null;
+    return this.weaponPose?.reloadSeconds(this.stance, clip !== null && !STILL_CLIPS.has(clip)) ?? null;
+  }
+
+  /** WEAPON: the posed weapon's `firepoint` in the world (`./heldItem`), or null with no body, weapon or play yet. */
+  muzzle(): [number, number, number] | null {
+    const last = this.last, skeleton = this.skeleton, at = this.muzzleAt;
+    if (!last || !skeleton || !at || !this.weapon || !this.animator) return null;
+    const p = muzzleOf(skeleton, at);
+    return p ? actorToWorld(last.feet, last.yaw, p) : null;
+  }
+
+  /** WEAPON: the hook's `weapon()`. */
+  weaponStats(): WeaponStats {
+    return { held: this.weapon !== null && this.hand !== null, raise: this.raise.stats(), pose: this.weaponPose?.stats() ?? null, muzzle: this.muzzle() };
+  }
+
+  /** WEAPON: shows the gear by its `character.rdr` name -- `Satchel` for the bomb carrier (`HIDDEN_AT_SPAWN`). */
+  setGearVisible(name: string, on: boolean): boolean {
+    return this.body?.setGearVisible(name, on) ?? false;
   }
 
   /** The source's clips and table (`playFromDisc`), or none: without them the body stands in its bind pose. */
@@ -176,7 +258,17 @@ export class Play {
   frame(dt: number, walk: Pick<WalkMode, 'snapshot' | 'view'>, camera: PerspectiveCamera): void {
     const snap = walk.snapshot();
     this.kind = snap === null ? 'fly' : walk.view() === 'first' ? 'aim' : 'third';
+    // WEAPON: the rifle's raise from the trigger and the aim while walking. In fly mode the body left standing keeps
+    // the rifle where the play left it (the raise does not tick) and a reload stops.
+    if (snap) {
+      this.stance = snap.stance;
+      const w = this.raise.frame(dt, this.weaponInput());
+      if (this.weaponPose) this.weaponPose.fireWeight = w;
+      this.weaponPose?.step(dt);
+    } else this.weaponPose?.stopReload();
     this.bodyFrame(dt, snap);
+    // The rifle rides the clips' `rifle` node: in W2.1's bind pose, never played, the hand holds nothing.
+    if (this.weapon) this.weapon.visible = this.last !== null && this.animator !== null;
     this.drawn = camera;
   }
 
@@ -219,9 +311,14 @@ export class Play {
   }
 
   private rebuild(): void {
-    this.animator = this.skeleton && this.clips
-      ? new Animator(this.skeleton, this.clips.clips, this.clips.table && new Map(this.clips.table))
-      : null;
+    const table = this.clips?.table ? new Map(this.clips.table) : null;
+    this.animator = this.skeleton && this.clips ? new Animator(this.skeleton, this.clips.clips, table) : null;
+    // WEAPON: the Fire set and the reload over the clips, as pose layers (the picker is untouched).
+    this.weaponPose = this.animator && this.clips ? new WeaponPose(new Map(this.clips.clips.map((c) => [c.name, c])), table) : null;
+    if (this.animator && this.weaponPose) {
+      this.animator.addPoseLayer(this.weaponPose.fireLayer);
+      this.animator.addPoseLayer(this.weaponPose.reloadLayer);
+    }
   }
 }
 

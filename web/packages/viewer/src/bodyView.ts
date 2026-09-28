@@ -34,6 +34,8 @@ export interface BodyView {
   stats: BodyStats & {
     character: string | null; model: string; dressedBy: string; fittingNames: string[]; missing: string[];
     height: number; eye: number | null; at: [number, number, number] | null; yaw: number | null;
+    /** WEAPON: the gear built but not shown (`HIDDEN_AT_SPAWN`, `setGearVisible`). */
+    hiddenGear: string[];
   };
   setVisible(on: boolean): void;
   setLighting(light: Lighting): void;
@@ -44,8 +46,26 @@ export interface BodyView {
   setPose(locals: readonly ArrayLike<number>[]): void;
   /** W2.2b: stands the body with its soles at `feet`, facing the look's `yaw` (degrees, `Pose.yaw`: the model's -z along it). */
   place(feet: readonly [number, number, number], yaw: number): void;
+  /**
+   * WEAPON: a node the body carries that its mesh does not skin to -- the held item's `rifle` under `rhand`
+   * (`./heldItem`) -- hung under the named part at the identity. Its pose comes in `setPose` after the skeleton's
+   * own parts, in the order the props were added. Returns the node, to hang a model on.
+   */
+  addProp(name: string, parent: string): Group;
+  /** WEAPON: shows or hides a piece of gear by its `character.rdr` name; false when the body has none of that name. */
+  setGearVisible(name: string, on: boolean): boolean;
   dispose(): void;
 }
+
+/**
+ * The gear the game hides as soon as it has hung it: `FUN_00599f00` 0x599f00 (decomp line 455788) dresses the SEAL
+ * in its `default_gear` (`FUN_0058b790` per piece) and then calls `FUN_0059df60(seal, 0)`, which finds the gear
+ * named "Satchel" (the string at 0x65f0f8, `FUN_0028e880(seal+0x170, "Satchel", 0)`) and turns it off through its
+ * node's `vtbl+0x38`. It is shown only when the SEAL picks up the bomb (`FUN_005bbf10` 0x5bbf10, the inventory taking
+ * item 0x9a, then `FUN_0059df60(owner, 1)`), and hidden again when the bomb is planted or dropped (`FUN_0059dd30`,
+ * `FUN_0059ddb0`, `FUN_0059fac0`) and at the round's reset (line 76121). So a SEAL without the bomb wears no satchel.
+ */
+export const HIDDEN_AT_SPAWN: ReadonlySet<string> = new Set(['Satchel']);
 
 /**
  * `CLIB_GEO.ZED` `vparams` word 0 bit 3, the visual's backface cull (`VISUAL_FLAG_CULL`): set on every `CMesh` and
@@ -147,9 +167,12 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
   }
 
   // The fittings hang off their parts under `offset` (78 §5), so they follow the bone when a motion moves it.
+  const gear = new Map<string, Group>();
   for (const fitting of body.fittings) {
     const holder = new Group();
     holder.name = fitting.name;
+    holder.visible = !HIDDEN_AT_SPAWN.has(fitting.name);
+    gear.set(fitting.name, holder);
     new Matrix4().fromArray(fitting.offset).decompose(holder.position, holder.quaternion, holder.scale);
     bones[fitting.part]!.add(holder);
     const turn = new Matrix4().fromArray(body.parts[fitting.part]!.bindWorld).multiply(new Matrix4().fromArray(fitting.offset));
@@ -167,19 +190,35 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
   }
 
   const scratch = new Matrix4();
+  const props: Group[] = [];
+  const hiddenGear = (): string[] => body.fittings.map((f) => f.name).filter((n) => gear.get(n)?.visible === false);
   const view: BodyView = {
     group,
     stats: {
       ...body.stats, character: body.character, model: body.model, dressedBy: body.dressedBy,
       fittingNames: body.fittings.map((f) => f.name), missing: body.missing, height: body.height, eye: body.eye,
-      at: body.at ? [...body.at.position] : null, yaw: body.at?.yaw ?? null,
+      at: body.at ? [...body.at.position] : null, yaw: body.at?.yaw ?? null, hiddenGear: hiddenGear(),
     },
     setVisible: (on) => { group.visible = on; },
     setPose: (locals) => {
       locals.forEach((m, i) => {
-        const bone = bones[i];
-        if (bone) scratch.fromArray(m as ArrayLike<number> as number[]).decompose(bone.position, bone.quaternion, bone.scale);
+        const node = bones[i] ?? props[i - bones.length];
+        if (node) scratch.fromArray(m as ArrayLike<number> as number[]).decompose(node.position, node.quaternion, node.scale);
       });
+    },
+    addProp: (name, parent) => {
+      const prop = new Group();
+      prop.name = name;
+      (bones.find((b) => b.name === parent) ?? group).add(prop);
+      props.push(prop);
+      return prop;
+    },
+    setGearVisible: (name, on) => {
+      const holder = gear.get(name);
+      if (!holder) return false;
+      holder.visible = on;
+      view.stats.hiddenGear = hiddenGear();
+      return true;
     },
     place: (feet, yaw) => {
       group.position.set(feet[0], feet[1], feet[2]);

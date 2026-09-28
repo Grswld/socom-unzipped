@@ -28,6 +28,7 @@ import { playEnabled, removePlayUi } from './features';
 import { isCycle, PLAY_CLIPS } from './animator';
 import { gameAudio } from './audio';
 import { WalkSounds } from './walkSounds';
+import { WEAPON_CLIPS } from './weaponPose';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -78,7 +79,12 @@ const reticle = new Reticle();
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
  */
-const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
+const fire = new Fire({
+  grid: () => walk.grid(), aim: () => walk.fireAim(),
+  muzzle: () => play.muzzle(), reloadSeconds: () => play.reloadSeconds(),   // WEAPON: the rifle in hand (`./play`)
+  look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
+  kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
+});
 scene.add(fire.object);
 if (PLAY) fire.bindKey();
 /** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
@@ -217,6 +223,10 @@ function askIndex(from: SourceRequest): void {
  * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
  */
 const play = new Play();
+// WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
+// audio's hook (`FireEvent`: every round, every reload's start and end).
+play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
+fire.subscribe((e) => play.weaponEvent(e));
 let wantedPlay = -1;
 /** The map's sound, asked of the source the map came from once it is shown (`./soundData`). */
 let wantedSound = -1;
@@ -226,7 +236,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS] });
 }
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -644,6 +654,7 @@ function show(map: LoadedMap): void {
   body = map.body ? buildBody(map.body, map, lighting) : null;
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
+  play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -784,5 +795,8 @@ window.__viewer = {
     if (settings.muted !== undefined) audio.setMuted(settings.muted);
     return audio.stats();
   },
+  weapon: () => play.weaponStats(),
+  trigger: (down) => trigger(down),
+  setGear: (name, on) => play.setGearVisible(name, on),
   revision,
 } satisfies ViewerHook;
