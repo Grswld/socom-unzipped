@@ -496,7 +496,7 @@ closed or its next shape written.
 
 **Files:** `scripts/parity/capture_audio_out.sh`, `agent/s15-t1b` (`795c93fe` and its fix round), `ps2xTest/src/socom2_audio_tests.cpp`.
 
-- [ ] **Step 1 ([L]):** T1b's GREEN build and fresh review on its branch; merge to `sprint-17` under R294.
+- [ ] **Step 1:** T1b is merged (Sprint 16 V0, `ad5fdaef`, `b00863f7`); nothing to land -- its no-regression count is Step 2's.
 - [ ] **Step 2 ([L]):** `MINUTES=11 bash scripts/parity/capture_audio_out.sh` with nothing else on the machine (the quiet
   marker); the dip count against the bar (6 total, 2 a minute).
 - [ ] **Step 3:** if the count stays above 6/2: the T1b-revert trial KNOWN §2's T1b row names (the same capture on the
