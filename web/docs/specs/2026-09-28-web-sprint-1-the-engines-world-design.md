@@ -167,9 +167,10 @@ respected).
 
 ## 5. What is not in this batch, and why
 
-- **The ISO source (M5)** — the door stays open (`worker.ts` `sourceFor`) and is the first candidate for web sprint
-  2: it is infrastructure, and the owner's ordering puts the visible above it. Not shut: `ViewerRequest` will carry a
-  `File`, and nothing in W1 assumes a URL.
+- **The ISO source (M5)** — *superseded 2026-09-28 by W1.R11: it landed in this sprint as W1.7 under the owner's
+  instruction to use the session's budget (`ViewerRequest` carries a `File`; §7's ISO finding).* The line as written at
+  the open: the door stays open (`worker.ts` `sourceFor`) and it is the first candidate for web sprint 2: it is
+  infrastructure, and the owner's ordering puts the visible above it.
 - **Animated map objects** (`actions.rdr`, `MOTION_S.ZAR`: the doors, the fans) and **the destructible states** —
   a skeletal-motion format nobody has decoded; a sprint of its own once the grid and the tick exist (W1.1, W1.4).
 - **Particle effects** and **the `FIX` glow** — driven by game code the viewer does not run; behind the animations.
