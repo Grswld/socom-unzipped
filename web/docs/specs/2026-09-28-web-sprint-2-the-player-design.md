@@ -82,14 +82,29 @@ bodies are supplied, else a placeholder named and the task carried; (7) nothing 
 - **W2.6 — the game's camera (M).** The third-person orbit camera from the `cam_back` triple (side, height, dist) and
   `cam_tether_stiff`, `cam_look_dwell`; the aim view from `cam_first`; the sprint 1 pose e2e updated. *The triple's
   values wait on the table's file; research 18's 23.1 and 25 stand in, named.*
+- **W2.7 — the controller (M).** `viewer/src/gamepad.ts`: the Gamepad API polled each frame, dead zones, the PS2
+  layout per W2.R5 as a data table (documented vs assumed per row), one input structure the keyboard, the touch stick
+  and the pad all feed (the sprint 1 stick already does), the fly camera and the mover both driven by it; a toast
+  ("Controller connected: <id>" / "Controller disconnected") in the page's own style; the mapping table shown under
+  the panel. Tests: the mapping is pure and pinned; an e2e injects a fake `navigator.getGamepads` and sees the toast
+  and the mover move.
 - **The close (W2.9):** README, the sweep, the e2e, the Log; the PR.
 
 ## 5. Rulings
 
-- **W2.R1** — the player is drawn as SOCOM draws it: third-person orbit by default, first-person aim (§1).
+- **W2.R1** — the player is drawn as SOCOM draws it: third-person over the shoulder by default, first-person aim (§1).
+  **Confirmed by the owner, 2026-09-28.**
 - **W2.R2** — every number is the game's or a named placeholder (§1).
 - **W2.R3** — web sprint 2 continues on the cloud branch of sprint 1 (`claude/web-sprint-cloud-8wa72q`, PR #100 grows)
   unless the owner names another branch; the sprint's rulings are `W2.Rn` in this file.
+- **W2.R5** — **full controller support** (the owner's word, 2026-09-28): the Gamepad API's standard mapping read
+  as the PS2 pad the launcher maps it to (Cross, Circle, Square, Triangle, L1/R1, L2/R2, L3/R3, the two sticks, the
+  d-pad), the sticks and buttons meaning in the viewer what they mean in SOCOM II's own layout as the repository
+  documents it (`docs/INSTALL.md` §6, `socom2_host_input.cpp`: the sticks move and look; L1/R1 aim and fire; L2/R2
+  lean; Triangle the stance, a PC pad's crouch on L3 as the launcher's shortcut), the fly camera and the walk driven
+  by one mapping (the same stick is the same motion in both; jump is "up" in the air of the fly camera, crouch is
+  "down"), and a toast when a controller connects or leaves, naming it. A binding the repository does not document
+  is marked assumed in the mapping table.
 - **W2.R4** — the default target is the SEAL model (`seal_A_scuba` with the `seal_scuba_*` fittings) and the
   **M4A1 SD** (`m4Acarbine_sd` in `WEAP_MDL`) -- the owner's word of 2026-09-28; the other side's body `al_gman01` and
   the sidearm `baretta_m9` are the controller's defaults after it (the owner can overturn by number).
