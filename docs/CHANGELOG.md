@@ -2,56 +2,67 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-224 merges (60 on the first-parent line, 164 from the branches they merged) in 12 sections: 11 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+228 merges (48 on the first-parent line, 180 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
-## Since v0.15.0
+## Since v0.16.0
 
-45 merges.
+3 merges.
 
-- 2026-09-27 `48e26736` merge(sprint-16): the main tree's 279a0766 (the owner's web session: the viewer's chrome on the s2u design system) [branch not named]
-- 2026-09-27 `0f22b555` merge(sprint-16): the main tree's d9dc8caa (the owner's web session: the viewer vendors the s2u design system) [branch not named]
-- 2026-09-27 `56992b66` merge(sprint-16): the main tree's 28a131a3 (the owner's story page on the s2u design system) into the controller branch [branch not named]
-- 2026-09-27 `f5705791` merge(sprint-16): the main tree's 0cda431c (the doc-surfaces merge, R318-R320) into the controller branch [branch not named]
+- 2026-09-28 `d4863d14` the story page's readability pass and the viewer's vendored design system 1.0.3 (R294, reviewed) [agent/ds-web]
+- 2026-09-28 `d2fea276` sprint-16's close record (d7bd44c0, main merged back) into sprint-17 at its open [branch not named]
+  - 2026-09-28 `420ec617` main (v0.16.0, d77b58c5) back into sprint-16 after the close [main, main merged in]
+
+## v0.16.0
+
+Tagged 2026-09-27 on `d77b58c5`.
+
+46 merges.
+
+- 2026-09-27 `d77b58c5` Merge pull request #97 from Scotho/sprint-16 [sprint-16]
+  - 2026-09-27 `48e26736` merge(sprint-16): the main tree's 279a0766 (the owner's web session: the viewer's chrome on the s2u design system) [branch not named]
+  - 2026-09-27 `0f22b555` merge(sprint-16): the main tree's d9dc8caa (the owner's web session: the viewer vendors the s2u design system) [branch not named]
+  - 2026-09-27 `56992b66` merge(sprint-16): the main tree's 28a131a3 (the owner's story page on the s2u design system) into the controller branch [branch not named]
+  - 2026-09-27 `f5705791` merge(sprint-16): the main tree's 0cda431c (the doc-surfaces merge, R318-R320) into the controller branch [branch not named]
   - 2026-09-27 `7452b8f5` wiki + Announcements (R318-R319), revise-not-append (R320), doc-maintenance skill [agent/doc-surfaces]
-- 2026-09-27 `6702d2ab` merge(sprint-16): the main tree's 84216bcf (the owner's session's merge of origin/sprint-16) into the controller branch [branch not named]
+  - 2026-09-27 `6702d2ab` merge(sprint-16): the main tree's 84216bcf (the owner's session's merge of origin/sprint-16) into the controller branch [branch not named]
   - 2026-09-27 `84216bcf` merge(sprint-16): origin/sprint-16 at 46b6121e [branch not named]
   - 2026-09-27 `46b6121e` Merge pull request #92 from Scotho/agent/domain-socomunzipped [agent/domain-socomunzipped]
   - 2026-09-27 `65a5081d` Merge pull request #93 from Scotho/agent/web-lod-last [agent/web-lod-last]
-- 2026-09-27 `3c76db21` the [gs-submit] split and the render target served as a texture through any envelope (Sprint 16 F2) [agent/s16-f2]
-- 2026-09-27 `60e37e53` merge(sprint-16): the owner's servers ruling and story commits (c6450bcd) into the controller branch [branch not named]
-- 2026-09-27 `9f8bf567` merge(sprint-16): the main tree's web-session commits (3bb6e986) into the controller branch [branch not named]
+  - 2026-09-27 `3c76db21` the [gs-submit] split and the render target served as a texture through any envelope (Sprint 16 F2) [agent/s16-f2]
+  - 2026-09-27 `60e37e53` merge(sprint-16): the owner's servers ruling and story commits (c6450bcd) into the controller branch [branch not named]
+  - 2026-09-27 `9f8bf567` merge(sprint-16): the main tree's web-session commits (3bb6e986) into the controller branch [branch not named]
   - 2026-09-27 `06b7c3f1` the canvas stays opaque, so the page never shows through the fog (Sprint 16, web) [agent/web-alpha]
-- 2026-09-27 `cae0c692` plain RT frames from the socket to the persona recorder (Sprint 16 L1b, #73) [agent/s16-l1b-seam]
-- 2026-09-27 `500aaf5c` merge(sprint-16): the main tree's web-session commits (8166261c) into the controller branch [branch not named]
+  - 2026-09-27 `cae0c692` plain RT frames from the socket to the persona recorder (Sprint 16 L1b, #73) [agent/s16-l1b-seam]
+  - 2026-09-27 `500aaf5c` merge(sprint-16): the main tree's web-session commits (8166261c) into the controller branch [branch not named]
   - 2026-09-27 `0ac9f700` _L (dynamically lit) chunk keys resolve, so MP7/MP62/MP83's props draw (Sprint 16, web) [agent/web-lit]
   - 2026-09-27 `81db4d61` the viewer's build revision in the panel and the s2u design language (Sprint 16, web) [agent/web-ui]
-- 2026-09-27 `5d6c8f48` the keyboard's row origins and the persona-list focus walk (Sprint 16 L1b Step 0) [agent/s16-l1b-drv]
-- 2026-09-27 `494e4438` merge(sprint-16): the main tree's b8525708 (the owner's docs(web) move of research 71 and 72) into the controller branch [branch not named]
-- 2026-09-27 `1bf7150e` the capture offset from the recorder's first packet to the drive's own t0 (Sprint 16, LATER row 37) [agent/s16-l37]
-- 2026-09-27 `2b5b8ecc` merge(sprint-16): origin/main at a3e1c5db [branch not named]
-  - 2026-09-27 `a3e1c5db` Merge pull request #90 from Scotho/agent/s16-l1b (Sprint 16 L1b, #73) [agent/s16-l1b]
-- 2026-09-27 `d5126551` merge(sprint-16): origin/main at a159a19d [branch not named]
-  - 2026-09-27 `a159a19d` Merge pull request #86 from Scotho/agent/launch-rev (#69, O4, O12; Sprint 16 R5's merge) [agent/launch-rev]
+  - 2026-09-27 `5d6c8f48` the keyboard's row origins and the persona-list focus walk (Sprint 16 L1b Step 0) [agent/s16-l1b-drv]
+  - 2026-09-27 `494e4438` merge(sprint-16): the main tree's b8525708 (the owner's docs(web) move of research 71 and 72) into the controller branch [branch not named]
+  - 2026-09-27 `1bf7150e` the capture offset from the recorder's first packet to the drive's own t0 (Sprint 16, LATER row 37) [agent/s16-l37]
+  - 2026-09-27 `2b5b8ecc` merge(sprint-16): origin/main at a3e1c5db [branch not named]
+  - 2026-09-27 `d5126551` merge(sprint-16): origin/main at a159a19d [branch not named]
+  - 2026-09-27 `b3ef4d54` research/74 the first-run decrypt spike [agent/s16-r1a]
+  - 2026-09-27 `8b479265` merge(sprint-16): origin/main at c6d49773 [branch not named]
+  - 2026-09-27 `b00863f7` a stream's AutoVol target scales its play-time volume, the -4 timer tested (Sprint 15 T1b round 3) [agent/s15-t1b]
+  - 2026-09-27 `10f7cd3e` merge(sprint-16): origin/main at 039fc569 [branch not named]
+  - 2026-09-27 `7b2e76bc` R179 and R237 superseded by R310 [agent/s16-l1-r237]
+  - 2026-09-27 `ad5fdaef` snd_AutoVol steps in 7-bit integers on the IRX's schedule (Sprint 15 T1b, reviewed PASS 08:13Z) [agent/s15-t1b]
+  - 2026-09-27 `2e7b0bfa` #32's bar restated, the issues audit exits 0 again (Sprint 16 F3 Step 0, socom-pc-42) [agent/s16-f3-words]
+  - 2026-09-27 `8865602f` tools/ restored by one flag from the D: backup, verified by a manifest (Sprint 16 X1) [agent/s16-x1]
+  - 2026-09-27 `45cb1b93` merge(sprint-16): origin/main at ac173beb [branch not named]
+  - 2026-09-27 `ac61f1a4` merge(sprint-16): origin/main at fbc905b2 [branch not named]
+- 2026-09-27 `a3e1c5db` Merge pull request #90 from Scotho/agent/s16-l1b (Sprint 16 L1b, #73) [agent/s16-l1b]
+- 2026-09-27 `a159a19d` Merge pull request #86 from Scotho/agent/launch-rev (#69, O4, O12; Sprint 16 R5's merge) [agent/launch-rev]
   - 2026-09-27 `f9d9bb3d` Merge remote-tracking branch 'origin/main' into agent/launch-rev [origin/main, main merged in]
-- 2026-09-27 `b3ef4d54` research/74 the first-run decrypt spike [agent/s16-r1a]
-- 2026-09-27 `8b479265` merge(sprint-16): origin/main at c6d49773 [branch not named]
-  - 2026-09-27 `c6d49773` Merge pull request #89 from Scotho/agent/s16-l1-design (Sprint 16 L1a) [agent/s16-l1-design]
-  - 2026-09-27 `994b99ca` Merge pull request #87 from Scotho/agent/s16-x3-r0004-leg (Sprint 16 X3) [agent/s16-x3-r0004-leg]
-  - 2026-09-27 `17b8d719` Merge pull request #88 from Scotho/agent/s16-r2a-download (Sprint 16 R2a) [agent/s16-r2a-download]
-- 2026-09-27 `b00863f7` a stream's AutoVol target scales its play-time volume, the -4 timer tested (Sprint 15 T1b round 3) [agent/s15-t1b]
-- 2026-09-27 `10f7cd3e` merge(sprint-16): origin/main at 039fc569 [branch not named]
-  - 2026-09-27 `039fc569` Merge pull request #85 from Scotho/agent/s16-r3a-archives [agent/s16-r3a-archives]
-  - 2026-09-27 `bb675dbd` Merge pull request #82 from Scotho/agent/s16-l2-tooltips [agent/s16-l2-tooltips]
-  - 2026-09-27 `1d78ce01` Merge pull request #80 from Scotho/agent/web-viewer [agent/web-viewer]
-- 2026-09-27 `7b2e76bc` R179 and R237 superseded by R310 [agent/s16-l1-r237]
-- 2026-09-27 `ad5fdaef` snd_AutoVol steps in 7-bit integers on the IRX's schedule (Sprint 15 T1b, reviewed PASS 08:13Z) [agent/s15-t1b]
-- 2026-09-27 `2e7b0bfa` #32's bar restated, the issues audit exits 0 again (Sprint 16 F3 Step 0, socom-pc-42) [agent/s16-f3-words]
-- 2026-09-27 `8865602f` tools/ restored by one flag from the D: backup, verified by a manifest (Sprint 16 X1) [agent/s16-x1]
-- 2026-09-27 `45cb1b93` merge(sprint-16): origin/main at ac173beb [branch not named]
-  - 2026-09-27 `ac173beb` Merge pull request #84 from Scotho/agent/docs-review [agent/docs-review]
+- 2026-09-27 `c6d49773` Merge pull request #89 from Scotho/agent/s16-l1-design (Sprint 16 L1a) [agent/s16-l1-design]
+- 2026-09-27 `994b99ca` Merge pull request #87 from Scotho/agent/s16-x3-r0004-leg (Sprint 16 X3) [agent/s16-x3-r0004-leg]
+- 2026-09-27 `17b8d719` Merge pull request #88 from Scotho/agent/s16-r2a-download (Sprint 16 R2a) [agent/s16-r2a-download]
+- 2026-09-27 `039fc569` Merge pull request #85 from Scotho/agent/s16-r3a-archives [agent/s16-r3a-archives]
+- 2026-09-27 `bb675dbd` Merge pull request #82 from Scotho/agent/s16-l2-tooltips [agent/s16-l2-tooltips]
+- 2026-09-27 `1d78ce01` Merge pull request #80 from Scotho/agent/web-viewer [agent/web-viewer]
+- 2026-09-27 `ac173beb` Merge pull request #84 from Scotho/agent/docs-review [agent/docs-review]
   - 2026-09-27 `82324b19` Merge remote-tracking branch 'origin/main' into agent/docs-review [origin/main, main merged in]
-- 2026-09-27 `ac61f1a4` merge(sprint-16): origin/main at fbc905b2 [branch not named]
-  - 2026-09-27 `fbc905b2` Merge pull request #83 from Scotho/agent/hook-delete-branch [agent/hook-delete-branch]
+- 2026-09-27 `fbc905b2` Merge pull request #83 from Scotho/agent/hook-delete-branch [agent/hook-delete-branch]
 - 2026-09-27 `d84ffbde` Merge pull request #10 from Scotho/dependabot/github_actions/actions/cache-6.1.0 [dependabot/github_actions/actions/cache-6.1.0]
 
 ## v0.15.0
