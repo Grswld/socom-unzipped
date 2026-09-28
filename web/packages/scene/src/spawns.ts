@@ -3,11 +3,15 @@
  *
  * **These are measured actor positions, not archive data.** Nothing in `MP*_GEO.ZED` or the world root
  * matches `spawn|start|team|respawn` (36 section 6); `vehicles.rdr` carries a named `playerstart`
- * reference rather than coordinates, and the regions those names resolve to live in `AIMAPS.MPS`, whose
- * format is the one documented gap for a viewer. So until `AIMAPS.MPS` is read, these numbers come from
- * the game itself: the actor block of both players at the start of a control round, read over the
- * 2026-09-17 online sweep (`docs/research/33-online-map-coverage.md` lines 47-71) and, for the two maps
- * the sweep did not cover, `docs/KNOWN.md` section 1's Frostfire and Vigilance rows.
+ * reference rather than coordinates. The numbers come from the game itself: the actor block of both
+ * players at the start of a control round, read over the 2026-09-17 online sweep
+ * (`docs/research/33-online-map-coverage.md` lines 47-71) and, for the two maps the sweep did not cover,
+ * `docs/KNOWN.md` section 1's Frostfire and Vigilance rows.
+ *
+ * `AIMAPS.MPS` is read now (`aimaps.ts`, web/docs/research/75), and it does not replace this table
+ * (W1.R4): its `PlayerStart` is one named cell holding neither spawn on any map, and what does explain
+ * all 44 positions is its spawn list -- 24 slots a side, each position at a slot's centre or 20-28 units
+ * ahead of one along its facing (75 §7) -- which says where a side may start, not which slot a player got.
  *
  * A map's key is the name the game shows, which is `mission.rdr`'s `description` (36 section 0) -- the
  * same string `listMaps` puts in `MapInfo.name`, so the viewer can look a map up by what it is called.
