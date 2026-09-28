@@ -19,6 +19,8 @@ export interface ViewerHook {
     collisionPolys: number; untexturedDraws: number; shadowDraws: number; alternateDraws: number; spawns: Spawns | null;
     /** Draws carrying a detail pass (W1.6), the column `tools/map-health.ts` lists. */
     detailDraws: number;
+    /** The disc's spawn slots the spawn overlay holds, per side: 24 a side on 20 maps, 25/24 on two (W1.5b). */
+    slots: { a: number; b: number };
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;

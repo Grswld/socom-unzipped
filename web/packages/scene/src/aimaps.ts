@@ -1,4 +1,5 @@
 import { parseZdb, Reader, zdbMember } from '@s2u/archive';
+import type { Spawns } from './spawns';
 
 /**
  * `AIMAPS.MPS`, the AI map file each `RUN/MP*.ZDB` carries beside its ZARs. It is not a ZAR
@@ -277,4 +278,87 @@ export function fitSpawn(ai: AiMaps, side: 0 | 1, x: number, z: number, maxAlong
     if (!best || Math.abs(perp) < Math.abs(best.perp)) best = { slot, along, perp, distance: Math.hypot(dx, dz) };
   }
   return best;
+}
+
+/**
+ * A spawn slot as the viewer draws it (W1.5b; the spec's W1.R9 makes the slots the spawn markers): the flat
+ * form of `AiSpawnSlot`, plain numbers only, so it crosses the worker's `postMessage` as it is.
+ */
+export interface SpawnSlot {
+  /** 0 is A's side and 1 is B's: bit 5 of the record's flags (75 §5.5); A is side 0 on all 22 maps (75 §0). */
+  side: 0 | 1;
+  /**
+   * The slot's place among its side's slots in the trailer's list, from 0 (75 §6): a name for the slot,
+   * not the game's choice of it -- which slot a player gets is game logic outside the file (W1.R9).
+   */
+  index: number;
+  /**
+   * World (x, y, z). x and z are the cell's centre (75 §4); the y is not in the file (no record carries a
+   * height, 75 §4, §9) and is `placeSpawnSlots`'s estimate, until W1.4's ground probe can settle it.
+   */
+  position: [number, number, number];
+  /** The facing in eighth turns, bits 0-2 of the flags (75 §5.5). */
+  step: number;
+  /** The same facing as a unit (x, z): step k points along (-sin 45k deg, cos 45k deg) (`facingVector`, 75 §7). */
+  facing: [number, number];
+  /** The cell: sub-map index and grid (x, z) (`CAiMapLoc`, 75 §4). */
+  loc: AiLoc;
+}
+
+/**
+ * Every slot of the file's spawn list, both sides, placed for drawing (W1.5b).
+ *
+ * The y, which the file does not hold (75 §4): the measured spawn of the slot's side (`spawns.ts`) where the
+ * map has one, held inside the height range of the slot's sub-map -- the header's bounding box, the only
+ * heights the file has (75 §3) -- and that range's floor where the map has none. The measured height is the
+ * one the side is known to have stood at, 20-28 units from a slot of the side on all 44 rows (75 §7); the
+ * hold brings down the slots of a lower sub-map (9 of Death Trap's B on one spanning y -140 to -100.5, where B
+ * was measured at 1). A slot's floor is W1.4's to find.
+ */
+export function placeSpawnSlots(ai: AiMaps, measured?: Spawns): SpawnSlot[] {
+  const count = [0, 0];
+  return spawnSlots(ai).map((slot) => {
+    const floor = slot.sub.min[1], ceiling = slot.sub.max[1];
+    const table = measured ? (slot.side === 0 ? measured.a : measured.b)[1] : undefined;
+    const y = table === undefined ? floor : Math.min(ceiling, Math.max(floor, table));
+    return {
+      side: slot.side, index: count[slot.side]!++, position: [slot.x, y, slot.z], step: slot.facing,
+      facing: facingVector(slot.facing), loc: { ...slot.record.loc },
+    };
+  });
+}
+
+/** How a position (x, z) sits against a placed slot: along its facing, across it, and straight-line. */
+export interface SlotFit { slot: SpawnSlot; along: number; perp: number; distance: number }
+
+/**
+ * `fitSpawn` over placed slots: of `side`'s slots with the position's `along` in `[-1, maxAlong]`, the one
+ * with the least `|perp|` (`perp = dz * ux - dx * uz`, 75 §7), or undefined when none qualifies.
+ */
+export function fitSlot(slots: readonly SpawnSlot[], side: 0 | 1, x: number, z: number, maxAlong = 30): SlotFit | undefined {
+  let best: SlotFit | undefined;
+  for (const slot of slots) {
+    if (slot.side !== side) continue;
+    const [ux, uz] = slot.facing;
+    const dx = x - slot.position[0], dz = z - slot.position[2];
+    const along = dx * ux + dz * uz, perp = dz * ux - dx * uz;
+    if (along < -1 || along > maxAlong) continue;
+    if (!best || Math.abs(perp) < Math.abs(best.perp)) best = { slot, along, perp, distance: Math.hypot(dx, dz) };
+  }
+  return best;
+}
+
+/** At a slot's centre: the 4 `KNOWN.md` rows are 0.26-0.51 units off theirs (75 §7). */
+const AT_SLOT = 1;
+/** Ahead of a slot: up to 30 units along its facing (W1.R9) and within half a cell of the line (75 §3: cells are 10). */
+const AHEAD_ALONG = 30, AHEAD_ACROSS = 5;
+
+/**
+ * The spec's W1.R9 oracle: a measured position is accounted for when it lies at its fitted slot's centre, or
+ * ahead of it along its facing, up to 30 units, within half a cell of the line. 75 §7 found all 44: 4 at a
+ * centre, 40 at 20.1-28.0 along and 1.0-3.2 across.
+ */
+export function accountsFor(fit: SlotFit | undefined): boolean {
+  if (!fit) return false;
+  return fit.distance <= AT_SLOT || (fit.along >= 0 && fit.along <= AHEAD_ALONG && Math.abs(fit.perp) <= AHEAD_ACROSS);
 }

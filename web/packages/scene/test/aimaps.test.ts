@@ -2,86 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   aiCellCentre, aiCellIndex, aiCellMarker, aiMapsFromZdb, aiZoneRect, decodeAiLoc, dosDateTime, facingVector,
-  fitSpawn, namedPoint, parseAiMaps, spawnSlots, SPAWNS, type AiMaps,
+  accountsFor, fitSlot, fitSpawn, namedPoint, parseAiMaps, placeSpawnSlots, spawnSlots, SPAWNS, type AiMaps,
+  type AiSpawnRecord, type SpawnSlot,
 } from '../src/index';
+import { loc, syntheticAiMaps as synthetic } from './syntheticAiMaps';
 
 /**
  * `AIMAPS.MPS` read to its last byte (web/docs/research/75): a hand-built file first, which is what CI runs,
  * then the three fixture maps, whose numbers the note's tables were read off.
  */
-
-/** Little-endian writer for the synthetic file. */
-class Out {
-  private readonly bytes: number[] = [];
-  u32(v: number): this { const x = v >>> 0; this.bytes.push(x & 0xff, (x >>> 8) & 0xff, (x >>> 16) & 0xff, x >>> 24); return this; }
-  f32(v: number): this {
-    const b = new Uint8Array(4);
-    new DataView(b.buffer).setFloat32(0, v, true);
-    this.bytes.push(...b);
-    return this;
-  }
-  text(s: string, n: number): this {
-    for (let i = 0; i < n; i++) this.bytes.push(i < s.length ? s.charCodeAt(i) : 0);
-    return this;
-  }
-  get length(): number { return this.bytes.length; }
-  done(): Uint8Array { return Uint8Array.from(this.bytes); }
-}
-
-/** CAiMapLoc as the file stores it: map in the low 6 bits, then x (13), then z (13) -- 75 §4. */
-const loc = (map: number, x: number, z: number): number => (map | (x << 6) | (z << 19)) >>> 0;
-
-const STAMP = 0x2f2d8537;   // Frostfire BaseMap's word at +0x7c: 2003-09-13 16:41:46 as an MS-DOS date-time
-
-/** A sub-map header, 0xA8 bytes (75 §3), with the pad at +0x88 holding text the reader must ignore. */
-function head(o: Out, name: string, min: number[], max: number[], cellsX: number, cellsZ: number, id: number, cells: number): void {
-  const at = o.length;
-  o.u32(0x17);
-  for (const v of min) o.f32(v);
-  for (const v of max) o.f32(v);
-  o.u32(cellsX).u32(cellsZ).f32(10).f32(10).f32(0.1).f32(0.1).u32(id).text(name, 32);
-  o.f32(0.5).u32(2).f32(Math.PI / 4).u32(4).u32(0).u32(0).u32(1).u32(cells);
-  o.u32(0x20280920).u32(STAMP).u32(STAMP).u32(0).text('lor( 87 112 176 )\tOpacity( 0.5 )', 32);
-  if (o.length - at !== 0xa8) throw new Error(`test header is ${o.length - at} bytes`);
-}
-
-/**
- * Two sub-maps. BaseMap: 4 x 3 cells of 10 units from (100, 200); row 0 stores x 1-2, row 1 x 0-3, row 2
- * nothing; one named point, one marker, one link to Ramps, one zone, three spawn records, one polyline.
- * Ramps: one cell. Then the trailer: the link block (one link word) and the spawn list again.
- */
-function synthetic(): Uint8Array {
-  const o = new Out();
-  o.u32(2).u32(2).text('', 32);
-
-  head(o, 'BaseMap', [100, 0, 200], [140, 50, 230], 4, 3, 0, 6);
-  // cells: row 0 x 1..2, row 1 x 0..3; (2,1) is the named point's cell, marker 3 in bits 5-7.
-  for (const w of [0x8000000a, 0x80000001, 0x80000001, 0x80000001, 0x80000061, 0x80000001]) o.u32(w).u32(0xffffffff);
-  o.u32(1 | (3 << 16)).u32(0).u32(0xaac9e8);
-  o.u32(0 | (4 << 16)).u32(2).u32(0xaacba0);
-  o.u32(4 | (4 << 16)).u32(6).u32(0xaacd58);                 // an empty row: x0 == x1 == cellsX
-  o.u32(1).u32(loc(0, 2, 1)).text('PlayerStart', 16).u32(0x00990208);
-  o.u32(1).u32(loc(0, 1, 0)).u32(0x608ffff0).text('(sat', 32);
-  o.u32(1).u32(loc(0, 3, 1)).u32(loc(1, 0, 0)).u32(8);
-  o.u32(1).u32(loc(0, 0, 1)).u32(2 | (1 << 16)).u32(1).text('Safety', 16);
-  const spawns = [[loc(0, 1, 0), 0x00, 0x0012f97c], [loc(0, 2, 0), 0x10, 0x0012f97c], [loc(0, 3, 1), 0x24, 0x00dd020a]];
-  o.u32(3);
-  for (const s of spawns) o.u32(s[0]!).u32(s[1]!).u32(s[2]!);
-  o.u32(1).u32(2).u32(loc(0, 0, 0)).u32(loc(0, 3, 2)).u32(0);
-  o.u32(0).u32(0);
-  for (let i = 0; i < 6; i++) o.u32(0x197fff7f);
-
-  head(o, 'Ramps', [110, 20, 200], [130, 20, 210], 2, 1, 3, 1);
-  o.u32(0x80000001).u32(0xffffffff);
-  o.u32(0 | (1 << 16)).u32(0).u32(0);
-  for (let t = 0; t < 8; t++) o.u32(0);
-  o.u32(0x007fff7f);
-
-  o.u32(1).u32(16 + 4).u32(1).u32(0).u32(0x000e8090);
-  o.u32(3);
-  for (const s of [spawns[2]!, spawns[0]!, spawns[1]!]) o.u32(s[0]!).u32(s[1]!).u32(s[2]!);
-  return o.done();
-}
 
 describe('decodeAiLoc (CAiMapLoc, reCOM zAI/zai.h:302-307; 75 §4)', () => {
   it('takes the map from the low 6 bits, then x, then the grid\'s second axis', () => {
@@ -177,6 +106,71 @@ describe('parseAiMaps on a hand-built file', () => {
   });
 });
 
+describe('placeSpawnSlots: the slots as the viewer draws them (W1.5b, the spec\'s W1.R9)', () => {
+  const ai = parseAiMaps(synthetic());
+  /** The synthetic file plus records the hand-built one lacks: a second side-0 slot on Ramps, a Ramps twin. */
+  const more = (): AiMaps => {
+    const base = ai.spawns.find((s) => s.side === 0 && !s.twin)!;
+    const extra: AiSpawnRecord[] = [
+      { ...base, loc: { map: 1, x: 0, z: 0 }, flags: 0x02, facing: 2 },
+      { ...base, loc: { map: 1, x: 1, z: 0 }, flags: 0x12, facing: 2, twin: true },
+    ];
+    return { ...ai, spawns: [...ai.spawns, ...extra] };
+  };
+  const round = (v: number[]): number[] => v.map((c) => Math.round(c * 1000) / 1000 + 0);
+
+  it('puts each slot at its cell\'s centre with its side, its facing and its cell; twins are not slots (75 §4, §5.5, §7)', () => {
+    const slots = placeSpawnSlots(ai);
+    expect(slots.map((s) => [s.side, s.index, s.step, s.loc])).toEqual([
+      [1, 0, 4, { map: 0, x: 3, z: 1 }], [0, 0, 0, { map: 0, x: 1, z: 0 }],
+    ]);
+    expect(slots[0]!.position[0]).toBe(135);
+    expect(slots[0]!.position[2]).toBe(215);
+    expect(round(slots[0]!.facing)).toEqual([0, -1]);   // step 4 is -z
+    expect(slots[1]!.position[0]).toBe(115);
+    expect(slots[1]!.position[2]).toBe(205);
+    expect(round(slots[1]!.facing)).toEqual([0, 1]);    // step 0 is +z
+  });
+
+  it('numbers a side\'s slots from 0 in the trailer\'s order, the other side\'s apart (75 §6)', () => {
+    const slots = placeSpawnSlots(more());
+    expect(slots.map((s) => [s.side, s.index, s.loc.map])).toEqual([[1, 0, 0], [0, 0, 0], [0, 1, 1]]);
+    expect(slots[2]!.position[0]).toBe(115);            // Ramps' cell (0, 0) from (110, 200)
+    expect(slots[2]!.position[2]).toBe(205);
+    expect(round(slots[2]!.facing)).toEqual([-1, 0]);   // step 2 is -x
+  });
+
+  it('takes y from the side\'s measured spawn, held inside the slot\'s sub-map\'s height range (75 §3)', () => {
+    // BaseMap spans y 0..50, Ramps 20..20; A was measured at y 30, B at y 80.
+    const slots = placeSpawnSlots(more(), { a: [0, 30, 0], b: [0, 80, 0] });
+    expect(slots.map((s) => s.position[1])).toEqual([50, 30, 20]);
+  });
+
+  it('with no measured spawn, takes the floor of the sub-map\'s height range', () => {
+    expect(placeSpawnSlots(more()).map((s) => s.position[1])).toEqual([0, 0, 20]);
+  });
+
+  it('refuses a slot whose cell names a sub-map the file does not hold', () => {
+    const bad = more();
+    bad.spawns.push({ ...bad.spawns[0]!, loc: { map: 5, x: 0, z: 0 } });
+    expect(() => placeSpawnSlots(bad)).toThrow(/sub-map 5 of 2/);
+  });
+
+  it('fitSlot and accountsFor: W1.R9\'s oracle -- at a slot\'s centre, or up to 30 ahead of it along its facing', () => {
+    const slots: SpawnSlot[] = placeSpawnSlots(ai);
+    const ahead = fitSlot(slots, 1, 135, 191)!;       // side 1 faces -z from (135, 215): 24 ahead
+    expect(ahead.slot.loc).toEqual({ map: 0, x: 3, z: 1 });
+    expect(ahead.along).toBeCloseTo(24, 6);
+    expect(ahead.perp).toBeCloseTo(0, 6);
+    expect(accountsFor(ahead)).toBe(true);
+    expect(accountsFor(fitSlot(slots, 0, 115.3, 205.4))).toBe(true);        // at the centre, 0.5 off
+    expect(fitSlot(slots, 0, 135, 191)).toBeUndefined();                    // behind side 0's slot
+    expect(accountsFor(fitSlot(slots, 1, 135, 180))).toBe(false);           // 35 ahead: past 30
+    expect(accountsFor(fitSlot(slots, 1, 142, 195))).toBe(false);           // 20 ahead, 7 across: off the lane
+    expect(accountsFor(undefined)).toBe(false);
+  });
+});
+
 const MP2 = fixture('RUN/MP2.ZDB');
 const MP6 = fixture('RUN/MP6.ZDB');
 const MP72 = fixture('RUN/MP72.ZDB');
@@ -250,6 +244,21 @@ describe('AIMAPS.MPS on the fixture maps (75 §2-§7)', () => {
     // and each is far from the other side's slots
     expect(Math.min(...spawnSlots(ai, 1).map((s) => Math.hypot(s.x - a[0], s.z - a[2])))).toBeGreaterThan(500);
     expect(Math.min(...spawnSlots(ai, 0).map((s) => Math.hypot(s.x - b[0], s.z - b[2])))).toBeGreaterThan(500);
+  });
+
+  it.skipIf(!MP2)('Frostfire: 24 slots a side placed, y from the measured spawns, A and B each accounted for (W1.R9)', () => {
+    const measured = SPAWNS.FROSTFIRE!;
+    const slots = placeSpawnSlots(open('MP2'), measured);
+    for (const side of [0, 1] as const) {
+      expect(slots.filter((s) => s.side === side).map((s) => s.index)).toEqual([...Array(24).keys()]);
+    }
+    // BaseMap spans y 100 to 229.34, so both measured heights stand as they are.
+    expect(new Set(slots.filter((s) => s.side === 0).map((s) => s.position[1]))).toEqual(new Set([100]));
+    expect(new Set(slots.filter((s) => s.side === 1).map((s) => s.position[1]))).toEqual(new Set([143]));
+    const fa = fitSlot(slots, 0, measured.a[0], measured.a[2]), fb = fitSlot(slots, 1, measured.b[0], measured.b[2]);
+    expect(accountsFor(fa) && accountsFor(fb)).toBe(true);
+    expect(fa!.slot.loc).toEqual({ map: 0, x: 74, z: 31 });
+    expect(fb!.slot.loc).toEqual({ map: 0, x: 48, z: 95 });
   });
 
   it.skipIf(!MP6)('Desert Glory: nine sub-maps, 16 links, a Safety zone 8 x 15 cells, 96 records, A and B 23-24 units ahead of a slot', () => {

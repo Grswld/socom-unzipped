@@ -12,6 +12,7 @@ import {
   type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
   type SceneNode,
 } from '@s2u/scene';
+import { parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
 
 /**
@@ -95,6 +96,13 @@ export interface LoadedMap {
   origin: [number, number, number];
   /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
   collision: CollisionLines;
+  /**
+   * The disc's spawn slots (W1.5b): `AIMAPS.MPS`'s spawn list, 24 a side with their facing, placed by
+   * `placeSpawnSlots` (web/docs/research/75 §5.5-§7). Drawn as the spawn overlay; the camera's opening stand
+   * stays the measured spawn A of `spawns.ts` (the spec's W1.R9). Empty, with a diagnostic, when the file
+   * will not read.
+   */
+  slots: SpawnSlot[];
   diagnostics: string[];
   loadMs: number;
   /**
@@ -312,12 +320,13 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     scroll: list[0]!.scroll,
   })).sort((a, b) => a.order - b.order);
 
+  const name = missionName(bytes, toc, notes) ?? stem;
   return {
     archive: stem,
     lines: segments.result(),
     camera: cameraParams(bytes, toc, stem, notes),
     path,
-    name: missionName(bytes, toc, notes) ?? stem,
+    name,
     world,
     props,
     textures,
@@ -327,6 +336,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
     collision: placement.collision,
+    slots: spawnSlotsOf(bytes, toc, spawnsFor(name), (line) => notes.add(line)),
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -418,6 +428,21 @@ function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes:
     return null;
   }
   return { palettes: PaletteTable.fromZars(pals), keys, libs: stems.length };
+}
+
+/**
+ * W1.5b: the map's spawn slots, read out of its `AIMAPS.MPS` (web/docs/research/75) and placed, the y from
+ * the side's measured spawn (`placeSpawnSlots`). A file that is missing or will not read -- the reader
+ * refuses any file its layout does not account for to the last byte -- costs one diagnostic and an empty
+ * list, never the load: the slots are an overlay, and the map draws without them.
+ */
+export function spawnSlotsOf(bytes: Uint8Array, toc: ZdbEntry[], measured: Spawns | undefined, note: (line: string) => void): SpawnSlot[] {
+  try {
+    return placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), measured);
+  } catch (e) {
+    note(`spawn slots: ${say(e)}`);
+    return [];
+  }
 }
 
 /** 36 section 6: the shown name is `READERM.ZAR/mission.rdr`'s `description`, as `listMaps` reads it. */

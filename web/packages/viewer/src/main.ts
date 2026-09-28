@@ -379,10 +379,11 @@ function show(map: LoadedMap): void {
   // Held rather than built: the hull is tens of thousands of segments on the larger maps and the
   // checkbox is off by default, so `overlays` makes the object the first time it is switched on.
   overlays.placeCollision(map.collision);
-  // 36 section 6: spawns are not on the disc. `@s2u/scene` holds the measured table, keyed by the name
-  // `mission.rdr` shows, which is the name this map was just loaded under.
+  // The measured table (`@s2u/scene`'s `spawnsFor`, keyed by the name `mission.rdr` shows) stays the
+  // camera's stand; the overlay draws it beside the disc's spawn slots, read in the worker from
+  // `AIMAPS.MPS` (W1.5b). Which slot a player gets is game logic, so the stand is not moved (W1.R9).
   const spawn: Spawns | undefined = spawnsFor(map.name);
-  overlays.placeSpawns(spawn ?? null);
+  overlays.placeSpawns(spawn ?? null, map.slots);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -478,6 +479,7 @@ window.__viewer = {
     alternateDraws: view?.alternateDraws ?? 0,
     detailDraws: view?.detailDraws ?? 0,
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
+    slots: overlays.slotCounts(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
