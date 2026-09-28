@@ -141,6 +141,19 @@ body.panel-collapsed #panel-chevron { transform: rotate(-90deg); }
 #panel select:hover:not([disabled]), #panel .row button:hover:not([disabled]) { border-color: var(--line-lit); }
 #panel .row button { text-transform: uppercase; color: var(--dim); }
 #panel button[disabled], #panel select[disabled] { opacity: 0.55; cursor: not-allowed; }
+/*
+ * The disc control (W1.7): a label drawn as one of the tabs, the file input inside it kept in the
+ * accessibility tree and the tab order but out of sight. Lit when no maps are served, and while a file
+ * is dragged over the page.
+ */
+#panel #disc {
+  font: 600 11.5px/1.2 var(--head); letter-spacing: 1.2px; padding: 6px 8px; cursor: pointer;
+  background: var(--tab); color: var(--dim); border: 1px solid var(--line); text-shadow: var(--shadow);
+}
+#panel #disc:hover, #panel #disc:focus-within, body.no-served #panel #disc, body.disc-over #panel #disc {
+  border-color: var(--line-lit); color: var(--gold);
+}
+#disc-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* Labels are spaced caps; the checkboxes and sliders take the site's gold as their lit colour. */
 #panel label { font: 500 11.5px/1.4 var(--head); letter-spacing: 0.9px; text-transform: uppercase; color: var(--ink); }
 #panel label input[type="checkbox"] { accent-color: var(--gold); margin: 0 4px 0 0; vertical-align: -2px; }

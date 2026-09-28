@@ -14,7 +14,7 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
-import type { ViewerRequest, ViewerResponse } from './worker';
+import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
 // The maps directory sits beside the page: `/maps` in dev, `/map-viewer/maps` when served under a prefix.
@@ -112,25 +112,60 @@ let revealing: Spread | null = null;
 const load = (path: string): void => {
   askedAt = performance.now();
   wantedMap = ++requests;
+  wantedMapFrom = source.kind;
   rememberMap(path);
   revealing?.cancel();
   revealing = null;
   // The old map stays on screen and the camera stays live while this runs; what is taken away is the
   // picker, because a second load started over the first is how two maps end up half drawn together.
   ui.setLoading(true, 'fetching the archive', 0);
-  ask({ kind: 'load', id: wantedMap, baseUrl: MAPS, path });
+  ask({ kind: 'load', id: wantedMap, source, path });
 };
+
+/**
+ * Where the archives come from (W1.7). The served tree is the default whenever `maps/index.json` answers;
+ * the player's own disc image replaces it once opened. `source` is what the picker's paths are read from,
+ * and it changes only when that source's map list arrives, so a map picked from the old list in the
+ * meantime is still read from the source that listed it.
+ */
+const SERVED: SourceRequest = { kind: 'http', baseUrl: MAPS };
+let source: SourceRequest = SERVED;
+/** The source the wanted map list was asked of; it becomes `source` when that list arrives. */
+let wantedIndexFrom: SourceRequest = SERVED;
+/** The source the wanted map is being read from, and the one the map on screen came from, for `stats()`. */
+let wantedMapFrom: SourceRequest['kind'] = 'http';
+let shownFrom: SourceRequest['kind'] = 'http';
+
+/** Asks `from` for its map list; the answer switches the picker, and the source, over to it. */
+function askIndex(from: SourceRequest): void {
+  wantedIndexFrom = from;
+  wantedIndex = ++requests;
+  ask({ kind: 'index', id: wantedIndex, source: from });
+}
+
+/**
+ * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
+ * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
+ * never uploaded and the page itself reads none of it.
+ */
+function openDisc(file: File): void {
+  ui.setStatus(`reading the disc image ${file.name} ...`);
+  askIndex({ kind: 'iso', file });
+}
+ui.onDisc(openDisc);
 
 worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   const message = event.data;
   if (message.kind === 'error') {
     if (message.id !== wantedIndex && message.id !== wantedMap) return;
+    if (message.id === wantedIndex) wantedIndexFrom = source;   // a disc that will not open changes nothing
     ui.setLoading(false);
     ui.setStatus(`failed while ${message.doing}: ${message.message}`, 'error');
     return;
   }
   if (message.kind === 'index') {
     if (message.id !== wantedIndex) return;
+    source = wantedIndexFrom;
     showMaps(message.maps);
     return;
   }
@@ -140,6 +175,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.id !== wantedMap) return;
+  shownFrom = wantedMapFrom;
   show(message.map);
 });
 
@@ -296,16 +332,19 @@ async function boot(): Promise<void> {
   };
   requestAnimationFrame(frame);
 
-  if (await served()) {
+  const hasServed = await served();
+  if (wantedIndexFrom.kind === 'iso') return;     // a disc was opened while the page came up: it wins
+  if (hasServed) {
     ui.setStatus(`${backend}: indexing the archives ...`);
-    wantedIndex = ++requests;
-    ask({ kind: 'index', id: wantedIndex, baseUrl: MAPS });
+    askIndex(SERVED);
   } else {
-    ui.setStatus(`no maps served at ${MAPS}/index.json -- run the extractor, or open an ISO (milestone M5)`, 'error');
+    // A site with no maps of its own (W1.7): the disc is the way in, so the panel is opened on it.
+    ui.offerDisc();
+    ui.setStatus('no maps are served here: open your own SOCOM II disc image (.iso) -- it is read in this browser, never uploaded');
   }
 }
 
-/** The served source answers only when the disc tree has been extracted; the ISO source is M5. */
+/** The served source answers only when the disc tree has been extracted; otherwise the disc is the source. */
 async function served(): Promise<boolean> {
   try {
     return (await fetch(`${MAPS}/index.json`)).ok;
@@ -322,7 +361,8 @@ function showMaps(maps: MapInfo[]): void {
     ?? ordered.find((m) => m.archive === DEFAULT_ARCHIVE) ?? ordered[0];
   ui.setMaps(ordered, first?.path ?? null);
   if (!first) {
-    ui.setStatus('the served index lists no MP archives', 'error');
+    ui.setStatus(source.kind === 'iso' ? 'the disc image holds no RUN/MP*.ZDB archives: is it SOCOM II?'
+      : 'the served index lists no MP archives', 'error');
     return;
   }
   ui.setStatus(`loading ${first.name} ...`);
@@ -473,6 +513,7 @@ window.__viewer = {
     diagnostics: loaded?.diagnostics ?? [],
     loadMs: loaded?.loadMs ?? 0,
     map: loaded?.name ?? null,
+    source: shownFrom,
     collisionPolys: loaded?.collision.polygons ?? 0,
     untexturedDraws: view?.untextured ?? 0,
     shadowDraws: view?.shadowDraws ?? 0,

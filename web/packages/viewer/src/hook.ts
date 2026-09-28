@@ -21,6 +21,8 @@ export interface ViewerHook {
     detailDraws: number;
     /** The disc's spawn slots the spawn overlay holds, per side: 24 a side on 20 maps, 25/24 on two (W1.5b). */
     slots: { a: number; b: number };
+    /** Where the map on screen was read from: the served tree, or the player's own disc image (W1.7). */
+    source: 'http' | 'iso';
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;

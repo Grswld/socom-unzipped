@@ -1,4 +1,4 @@
-import { HttpAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
+import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 
 /**
@@ -8,14 +8,21 @@ import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMa
  */
 
 /**
+ * Where a request's archives come from (design spec §3.1): the served disc tree under a base URL, or the
+ * player's own disc image (W1.7, milestone M5). A `File` crosses to the worker by structured clone as a
+ * handle on the file, not a copy of its bytes, so posting it with every request costs nothing.
+ */
+export type SourceRequest = { kind: 'http'; baseUrl: string } | { kind: 'iso'; file: File };
+
+/**
  * What the page asks of this worker. Every request carries an `id` that its answer repeats: two loads can
  * be in flight at once (the boot auto-load and a map the player picked a moment later), they finish in
  * whatever order their archives decode in, and the page must be able to tell the answer it still wants
  * from the one it has moved on from.
  */
 export type ViewerRequest =
-  | { kind: 'index'; id: number; baseUrl: string }
-  | { kind: 'load'; id: number; baseUrl: string; path: string };
+  | { kind: 'index'; id: number; source: SourceRequest }
+  | { kind: 'load'; id: number; source: SourceRequest; path: string };
 
 /**
  * What comes back. `error` carries the request that failed so the page can say what it was doing, and
@@ -36,12 +43,24 @@ const ctx = self as unknown as {
   addEventListener(type: 'message', handler: (event: MessageEvent<ViewerRequest>) => void): void;
 };
 
-const sources = new Map<string, AssetSource>();
-const sourceFor = (baseUrl: string): AssetSource => {
-  const known = sources.get(baseUrl);
+const served = new Map<string, AssetSource>();
+/**
+ * The disc image last opened, kept so its directories are walked once rather than once a request. Each
+ * request's `File` is a fresh clone, so it is recognised by what the page's file carries -- name, size and
+ * modification time -- and a different disc replaces it.
+ */
+let disc: { key: string; source: IsoAssetSource } | null = null;
+const sourceFor = (request: SourceRequest): AssetSource => {
+  if (request.kind === 'iso') {
+    const { file } = request;
+    const key = `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+    if (disc?.key !== key) disc = { key, source: new IsoAssetSource(file) };
+    return disc.source;
+  }
+  const known = served.get(request.baseUrl);
   if (known) return known;
-  const made = new HttpAssetSource(baseUrl);
-  sources.set(baseUrl, made);
+  const made = new HttpAssetSource(request.baseUrl);
+  served.set(request.baseUrl, made);
   return made;
 };
 
@@ -51,16 +70,17 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
     try {
       if (request.kind === 'index') {
         // The served index already carries every map's name (`extract-maps.ts` read each `mission.rdr`
-        // once), so filling the picker costs one small fetch. `listMaps` -- which reads all 22 archives,
-        // 224 MB -- is what a source with no such index needs, and that is the ISO of M5.
-        const source = sourceFor(request.baseUrl);
+        // once), so filling the picker costs one small fetch. A disc image has no such index, so
+        // `listMaps` names its maps -- by range, each archive's table of contents and `READERM.ZAR`, tens
+        // of kilobytes apiece rather than the 224 MB of all 22.
+        const source = sourceFor(request.source);
         const maps = source instanceof HttpAssetSource ? await source.maps() : await listMaps(source);
         ctx.postMessage({ kind: 'index', id: request.id, maps });
       } else {
         // Throttled to one message per stage per 2 percent: a 13 MB archive arrives in hundreds of
         // chunks, and posting each one costs more than the bar is worth.
         let last = -1;
-        const map = await loadMap(sourceFor(request.baseUrl), request.path, (stage, done, total) => {
+        const map = await loadMap(sourceFor(request.source), request.path, (stage, done, total) => {
           const step = total > 0 ? Math.floor((done / total) * 50) : done;
           const mark = stage.charCodeAt(0) * 1000 + step;
           if (mark === last) return;
@@ -70,7 +90,8 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         ctx.postMessage({ kind: 'map', id: request.id, map }, transferables(map));
       }
     } catch (e) {
-      const doing = request.kind === 'index' ? 'listing the maps' : `loading ${request.path}`;
+      const doing = request.kind === 'load' ? `loading ${request.path}`
+        : request.source.kind === 'iso' ? `reading the disc image ${request.source.file.name}` : 'listing the maps';
       ctx.postMessage({ kind: 'error', id: request.id, doing, message: e instanceof Error ? e.message : String(e) });
     }
   })();

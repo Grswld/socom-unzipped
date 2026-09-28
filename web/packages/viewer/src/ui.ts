@@ -86,6 +86,46 @@ export class Ui {
     this.maps.addEventListener('change', () => handler(this.maps.value));
   }
 
+  /**
+   * "Open your own disc (.iso)" (W1.7, milestone M5): the panel's file input, and a file dropped anywhere
+   * on the page. Both are the standard file APIs -- an `<input type=file>` and the drop's `DataTransfer`
+   * -- and not the File System Access API, which Safari does not offer. Either way the page gets a `File`,
+   * a handle the worker reads by range; nothing is uploaded. `accept=".iso"` only steers the picker: a
+   * dropped file of any name is handed on, and the ISO9660 reader says what it is not.
+   */
+  onDisc(handler: (file: File) => void): void {
+    const input = find<HTMLInputElement>('disc-file');
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      // Cleared so choosing the same image again still fires `change`.
+      input.value = '';
+      if (file) handler(file);
+    });
+    const carriesFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const over = (on: boolean): void => { document.body.classList.toggle('disc-over', on); };
+    document.addEventListener('dragover', (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();                       // what makes the page a drop target at all
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      over(true);
+    });
+    // `relatedTarget` is null only when the drag leaves the window, not when it crosses between elements.
+    document.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) over(false); });
+    document.addEventListener('drop', (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();                       // or the browser navigates to the dropped file
+      over(false);
+      const file = e.dataTransfer?.files[0];
+      if (file) handler(file);
+    });
+  }
+
+  /** No maps are served: the panel opens on the disc control, even on a phone where it starts folded. */
+  offerDisc(): void {
+    this.setPanelCollapsed(false);
+    document.body.classList.add('no-served');
+  }
+
   /** The fog colour picker. `FOGCOL` is a register value, so it is handed over as 0..255 per channel. */
   onFogColour(handler: (rgb: [number, number, number]) => void): void {
     const input = find<HTMLInputElement>('fogcolour');

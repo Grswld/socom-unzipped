@@ -45,9 +45,15 @@
       <p id="panel-kicker"><span class="mark" aria-hidden="true"></span>Map viewer &middot; SOCOM II multiplayer</p>
       <div class="row">
         <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
-        <button id="iso" type="button" disabled title="the browser reads your own disc image: milestone M5">
-          ISO source: milestone M5
-        </button>
+        <!--
+          The player's own disc (W1.7, milestone M5): a plain file input, and a drop anywhere on the page
+          (`./src/ui.ts`, `onDisc`). Not the File System Access API, which Safari does not offer. The image
+          is read in the browser, by range, and never leaves it.
+        -->
+        <label id="disc" title="Your own SOCOM II disc image (.iso, 2048-byte sectors). It is read here, in this browser, a piece at a time, and never uploaded.">
+          Open your own disc (.iso)
+          <input type="file" id="disc-file" accept=".iso" />
+        </label>
       </div>
       <p id="status">booting</p>
       <!--
