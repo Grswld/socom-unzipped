@@ -55,9 +55,13 @@ namespace socom2_net_bounds
         uint32_t objectUpdate;       // the network object full-update packet handler: payload in a3
         uint32_t objectClassCount;   // DATA: how many object classes are registered (u32)
         uint32_t animUpdate;         // the animation packet handler: payload in a3
-        uint32_t animTable;          // DATA: the animation holder; +0x1c entry table, +0x34 its end
+        uint32_t animTable;          // DATA: the animation holder; +0x1c the entry array, +0x20 how many entries it
+                                     // holds (the count the game grows it by and bounds its own lookups with); +0x34
+                                     // is the entry currently active, a pointer into the array, not its end
         uint32_t roundState;         // DATA: the pointer to the round record; its byte +0x113 is 3 in a round
         uint32_t gameChat;           // the game's chat packet handler (lobby and round): payload in a3
+        uint32_t playerNames;        // DATA: the player slot table the chat handler takes the sender's name from: 24
+                                     // slots of 8 bytes, a slot's first word the player record, its name at +0xe
     };
 
     inline constexpr Sites kR0001Sites = {
@@ -69,6 +73,7 @@ namespace socom2_net_bounds
         0x00414bb0u,   // animTable
         0x00437ce8u,   // roundState
         0x002ba9d0u,   // gameChat
+        0x004414c4u,   // playerNames
     };
 
     // r0004, against game/overlays_r0004/socom2_game_r0004.elf:
@@ -84,6 +89,9 @@ namespace socom2_net_bounds
     //   roundState        the handler's twin reads it at the same offset (+60).
     //   gameChat          relinked-body unique in match.json, and the address the game-packet registration's twin
     //                     loads at the same offset (+0x460); 156 of 156 instructions agree.
+    //   playerNames       the chat handler's twin calls the sender-name lookup's twin (0x002c56e0) at the same offset
+    //                     (+0xb8); that twin's lui/addiu pair loads this table where r0001's loads 0x004414c4, and adds
+    //                     the same +0xe; the twin formats into the same 144-byte stack line with the same two formats.
     inline constexpr Sites kR0004Sites = {
         "r0004",
         0x0063dea0u,   // rtDispatch
@@ -93,6 +101,7 @@ namespace socom2_net_bounds
         0x00441570u,   // animTable
         0x004446f8u,   // roundState
         0x002bc5e0u,   // gameChat
+        0x0044dee4u,   // playerNames
     };
 
     // The row for the address table's revision; r0001's for any other, as the table does.
@@ -159,14 +168,17 @@ namespace socom2_net_bounds
     }
 
     // ---- RT frames: the length each message type may carry --------------------------------------------------------
-    // The dispatcher is handed one whole frame; its handlers each read a fixed record, or pass the body on. A frame whose
-    // length is outside its type's bound is refused before the dispatcher runs: the handler is skipped, the walk
-    // consumes the frame and goes on (kRtSkipped), the first refusal of each type is said, every one is counted. A type
-    // with no bound here passes through unchanged, said once. Types 0x1d and 0x1e are refused at any length (their
-    // handlers are refused by runtime/socom2_server_records.h as well).
+    // The dispatcher is handed one whole frame; its handlers each read a fixed record, or pass the body on. Only what a
+    // handler can hold is bounded: a type whose handler passes the body on by its length (Length) is refused above its
+    // bound; a type whose handler reads a fixed record and checks the length itself (Record) is refused only below the
+    // record it reads without checking, and a longer frame passes, said once per type (a server that is not ours may pad
+    // them). A refused frame is skipped before the dispatcher runs: the handler is skipped, the walk consumes the frame
+    // and goes on (kRtSkipped), the first refusal of each type is said, every one is counted. A type with no bound here
+    // passes through unchanged, said once. Types 0x1d and 0x1e are refused at any length (their handlers are refused by
+    // runtime/socom2_server_records.h as well).
     constexpr uint32_t kRtSkipped = 0u;
 
-    enum class RtCheck : uint8_t { Unmapped, Length, Echo, Refused };
+    enum class RtCheck : uint8_t { Unmapped, Length, Record, Refused };
     struct RtRule
     {
         RtCheck check;
@@ -178,21 +190,23 @@ namespace socom2_net_bounds
     {
         switch (type)
         {
+        // Handlers that pass the body on by its length.
         case 0x02: case 0x03: return {RtCheck::Length, 0, 0x602};
         case 0x0a: return {RtCheck::Length, 0, 0x600};
-        case 0x05: return {RtCheck::Echo, 0, 1};
-        case 0x06: return {RtCheck::Length, 0, 0x16};
-        case 0x07: return {RtCheck::Length, 0, 0x17};
-        case 0x08: return {RtCheck::Length, 0, 0x52};
-        case 0x09: return {RtCheck::Length, 0, 0x12};
-        case 0x11: return {RtCheck::Length, 0, 1};
-        case 0x13: return {RtCheck::Length, 0, 0x40};
-        case 0x14: return {RtCheck::Length, 0x40, 0x40};
-        case 0x18: return {RtCheck::Length, 0, 0x12};
-        case 0x19: return {RtCheck::Length, 0, 0x19};
-        case 0x1a: return {RtCheck::Length, 0, 2};
-        case 0x1b: return {RtCheck::Length, 0, 0x42};
         case 0x1c: return {RtCheck::Length, 4, 0x104};   // the upper bound is provisional
+        // Handlers that read a fixed record: {the least they read unchecked, the record}.
+        case 0x05: return {RtCheck::Record, 0, 1};
+        case 0x06: return {RtCheck::Record, 0, 0x16};
+        case 0x07: return {RtCheck::Record, 0, 0x17};
+        case 0x08: return {RtCheck::Record, 0, 0x52};
+        case 0x09: return {RtCheck::Record, 0, 0x12};
+        case 0x11: return {RtCheck::Record, 0, 1};
+        case 0x13: return {RtCheck::Record, 0, 0x40};
+        case 0x14: return {RtCheck::Record, 0x40, 0x40};   // its handler reads the whole record with no length check
+        case 0x18: return {RtCheck::Record, 0, 0x12};
+        case 0x19: return {RtCheck::Record, 0, 0x19};
+        case 0x1a: return {RtCheck::Record, 0, 2};
+        case 0x1b: return {RtCheck::Record, 0, 0x42};
         case 0x1d: case 0x1e: return {RtCheck::Refused, 0, 0};
         default: return {RtCheck::Unmapped, 0, 0xffff};
         }
@@ -213,7 +227,10 @@ namespace socom2_net_bounds
         switch (rule.check)
         {
         case RtCheck::Unmapped: return RtVerdict::Unmapped;
-        case RtCheck::Echo: return length > rule.max ? RtVerdict::PassLong : RtVerdict::Pass;
+        case RtCheck::Record:
+            if (length < rule.min)
+                return RtVerdict::Refuse;
+            return length > rule.max ? RtVerdict::PassLong : RtVerdict::Pass;
         default: return (length < rule.min || length > rule.max) ? RtVerdict::Refuse : RtVerdict::Pass;
         }
     }
@@ -300,7 +317,6 @@ namespace socom2_net_bounds
     constexpr uint32_t kMessageBytes = 0x600u;          // the game-packet dispatcher's message buffer
     constexpr uint32_t kObjectClassLimit = 0x10u;       // the object class table's entries
     constexpr uint32_t kObjectIndexLimit = 0x1000u;     // the object tables' entries
-    constexpr uint32_t kAnimEntryBytes = 0x34u;
 
     enum class PacketVerdict : uint8_t { Pass, ClassRefused, ObjectRefused, WalkRefused, IndexRefused };
 
@@ -326,10 +342,10 @@ namespace socom2_net_bounds
         return PacketVerdict::Pass;
     }
 
-    // The entry table's length, as the game computes it from its start and end.
-    inline uint32_t animEntries(uint32_t start, uint32_t end)
+    // The entry table's length: the holder's count, read as the game reads it (a signed int; a negative one holds none).
+    inline uint32_t animEntries(uint32_t count)
     {
-        return (end != 0u && end >= start) ? (end - start) / kAnimEntryBytes : 0u;
+        return static_cast<int32_t>(count) > 0 ? count : 0u;
     }
 
     namespace detail
@@ -436,7 +452,7 @@ namespace socom2_net_bounds
             const Sites &s = *detail::packetSites();
             const uint32_t round = detail::readU32(rdram, s.roundState);
             const bool inRound = round != 0u && ramSpanFits(round + 0x113u, 1u) && rdram[(round + 0x113u) & PS2_RAM_MASK] == 3u;
-            const uint32_t entries = animEntries(detail::readU32(rdram, s.animTable + 0x1cu), detail::readU32(rdram, s.animTable + 0x34u));
+            const uint32_t entries = animEntries(detail::readU32(rdram, s.animTable + 0x20u));
             switch (animVerdict(walk, index, entries, inRound))
             {
             case PacketVerdict::WalkRefused:
@@ -457,17 +473,33 @@ namespace socom2_net_bounds
 
     // ---- the game's chat packet ----------------------------------------------------------------------------------------
     // u16 size at +0, u16 channel at +2, the text from +4. The packet is refused (the handler's own -1) unless its size
-    // is at least the header and a terminator (6), at most the message buffer, inside guest RAM, and the text is
-    // terminated inside that size. A text longer than the line keeps is cut: its terminator is forced at
-    // kChatTextMax - 1, said once, counted.
+    // is at least the header and a terminator (5), at most the message buffer, inside guest RAM, and the text is
+    // terminated inside that size. The handler formats the sender's name and the text into one stack line of
+    // kChatLineBytes, whose fixed characters and terminator take at most kChatFormatBytes: a text longer than
+    // kChatTextMax - 1, or than the line leaves beside the sender's name, is cut there (its terminator forced), said
+    // once, counted. A name that leaves no room empties the text, and the game then formats nothing.
     constexpr uint32_t kChatHeaderBytes = 4u;
-    constexpr uint32_t kChatMinBytes = 6u;
-    constexpr uint32_t kChatTextMax = 0x60u;   // bytes of text kept, the terminator included
+    constexpr uint32_t kChatMinBytes = 5u;
+    constexpr uint32_t kChatTextMax = 0x60u;       // bytes of text kept, the terminator included
+    constexpr uint32_t kChatLineBytes = 144u;      // the handler's stack line
+    constexpr uint32_t kChatFormatBytes = 16u;     // the longer format's fixed characters and the terminator
+    constexpr uint32_t kChatNameAndText = kChatLineBytes - kChatFormatBytes;
+    constexpr uint32_t kChatPlayerSlots = 0x18u;
+    constexpr uint32_t kChatNameOffset = 0xeu;
+    constexpr uint32_t kChatDefaultName = 7u;      // the game's own name for a slot with no record ("Unknown")
 
     enum class ChatVerdict : uint8_t { Pass, Cut, Refuse };
 
-    // `bytes` is the packet as it lies in guest RAM, `available` how many of them are inside RAM.
-    inline ChatVerdict chatVerdict(const uint8_t *bytes, uint32_t available)
+    // The characters of text the line keeps beside a name of `nameLen`.
+    inline uint32_t chatTextRoom(uint32_t nameLen)
+    {
+        const uint32_t room = nameLen < kChatNameAndText ? kChatNameAndText - nameLen : 0u;
+        return room < kChatTextMax - 1u ? room : kChatTextMax - 1u;
+    }
+
+    // `bytes` is the packet as it lies in guest RAM, `available` how many of them are inside RAM; `room` how many
+    // characters of text the line keeps. On Cut, `*cutAt` is the text offset the terminator goes to.
+    inline ChatVerdict chatVerdict(const uint8_t *bytes, uint32_t available, uint32_t room, uint32_t *cutAt = nullptr)
     {
         if (available < kChatHeaderBytes)
             return ChatVerdict::Refuse;
@@ -479,7 +511,11 @@ namespace socom2_net_bounds
         if (!nul)
             return ChatVerdict::Refuse;
         const uint32_t textLen = static_cast<uint32_t>(static_cast<const uint8_t *>(nul) - (bytes + kChatHeaderBytes));
-        return textLen >= kChatTextMax ? ChatVerdict::Cut : ChatVerdict::Pass;
+        if (textLen <= room)
+            return ChatVerdict::Pass;
+        if (cutAt)
+            *cutAt = room;
+        return ChatVerdict::Cut;
     }
 
     namespace detail
@@ -494,6 +530,24 @@ namespace socom2_net_bounds
             static std::atomic<uint32_t> n{0};
             return n;
         }
+
+        // The length of the name the handler will format for `sender`, as its name lookup finds it; a name not
+        // terminated within the line (or within guest RAM) measures past the line.
+        inline uint32_t chatNameLength(const uint8_t *rdram, uint32_t sender)
+        {
+            const int32_t slot = static_cast<int32_t>(sender);
+            if (slot < 0 || slot >= static_cast<int32_t>(kChatPlayerSlots))
+                return kChatDefaultName;
+            const uint32_t record = readU32(rdram, packetSites()->playerNames + static_cast<uint32_t>(slot) * 8u);
+            if (record == 0u)
+                return kChatDefaultName;
+            const uint32_t name = record + kChatNameOffset;   // wraps as the game's address does; masked below
+            const uint32_t at = name & PS2_RAM_MASK;
+            const uint32_t inRam = PS2_RAM_SIZE - at;
+            const uint32_t look = inRam < kChatNameAndText + 1u ? inRam : kChatNameAndText + 1u;
+            const void *nul = std::memchr(rdram + at, 0, look);
+            return nul ? static_cast<uint32_t>(static_cast<const uint8_t *>(nul) - (rdram + at)) : kChatNameAndText + 1u;
+        }
     }
 
     inline uint32_t chatTextsCut() { return detail::chatCut().load(); }
@@ -506,7 +560,9 @@ namespace socom2_net_bounds
             const uint32_t at = payload & PS2_RAM_MASK;
             uint8_t *p = rdram + at;
             const uint32_t available = PS2_RAM_SIZE - at;
-            switch (chatVerdict(p, available))
+            const uint32_t room = chatTextRoom(detail::chatNameLength(rdram, getRegU32(ctx, 6)));
+            uint32_t cutAt = 0u;
+            switch (chatVerdict(p, available, room, &cutAt))
             {
             case ChatVerdict::Refuse:
             {
@@ -517,10 +573,10 @@ namespace socom2_net_bounds
                 return;
             }
             case ChatVerdict::Cut:
-                p[kChatHeaderBytes + kChatTextMax - 1u] = 0;
+                p[kChatHeaderBytes + cutAt] = 0;
                 detail::bump(detail::chatCut());
                 if ((detail::packetSaid().fetch_or(1u << 21) & (1u << 21)) == 0u)
-                    std::cout << "[socom2] chat packet bounded: text cut to " << (kChatTextMax - 1u)
+                    std::cout << "[socom2] chat packet bounded: text cut to " << cutAt
                               << " characters (first one; every one is)" << std::endl;
                 break;
             case ChatVerdict::Pass:

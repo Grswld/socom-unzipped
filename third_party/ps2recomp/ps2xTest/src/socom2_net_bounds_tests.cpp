@@ -129,13 +129,17 @@ namespace
         put16(kBodyAt + 8, object);
     }
 
-    // The animation update: the walk length at +0 and the entry index (signed 16-bit) at +4; the entry table holds
-    // `entries` entries; `inRound` sets the state the game walks the update in.
+    // The animation update: the walk length at +0 and the entry index (signed 16-bit) at +4. The holder is built the way
+    // the game grows it: +0x1c the entry array (reallocated as it grows), +0x20 how many entries it holds, +0x34 the
+    // entry currently active (0 for none) -- a pointer into the array, not its end. `inRound` sets the state the game
+    // walks the update in.
     constexpr uint32_t kAnimEntries = 0x00300000u, kRoundRecord = 0x00310000u;
-    void animSetup(const socom2_net_bounds::Sites &s, uint32_t entries, bool inRound)
+    constexpr uint32_t kNoActive = 0xFFFFFFFFu;
+    void animSetup(const socom2_net_bounds::Sites &s, uint32_t entries, bool inRound, uint32_t active = kNoActive)
     {
         put32(s.animTable + 0x1cu, kAnimEntries);
-        put32(s.animTable + 0x34u, kAnimEntries + entries * 0x34u);
+        put32(s.animTable + 0x20u, entries);
+        put32(s.animTable + 0x34u, active == kNoActive ? 0u : kAnimEntries + active * 0x34u);
         put32(s.roundState, kRoundRecord);
         guestRam()[kRoundRecord + 0x113u] = inRound ? 3u : 2u;
     }
@@ -164,6 +168,7 @@ void register_socom2_net_bounds_tests()
                 {"animTable", a.animTable, b.animTable},
                 {"roundState", a.roundState, b.roundState},
                 {"gameChat", a.gameChat, b.gameChat},
+                {"playerNames", a.playerNames, b.playerNames},
             };
             for (const Field &f : fields)
             {
@@ -198,10 +203,8 @@ void register_socom2_net_bounds_tests()
         {
             struct Frame { uint32_t type; uint32_t length; };
             const Frame refused[] = {
-                {0x14u, 3u}, {0x14u, 0x41u}, {0x07u, 0x18u}, {0x06u, 0x17u}, {0x08u, 0x53u}, {0x09u, 0x13u},
-                {0x11u, 2u}, {0x13u, 0x41u}, {0x1bu, 0x43u}, {0x18u, 0x13u}, {0x19u, 0x1au}, {0x1au, 3u},
-                {0x1cu, 3u}, {0x1cu, 0x105u}, {0x02u, 0x603u}, {0x03u, 0x603u}, {0x0au, 0x601u},
-                {0x83u, 1u}, {0x9bu, 0u}, {0x94u, 3u}, {0x14u, 0xffffu},
+                {0x14u, 3u}, {0x14u, 0x3fu}, {0x94u, 3u}, {0x1cu, 3u}, {0x1cu, 0x105u}, {0x02u, 0x603u},
+                {0x03u, 0x603u}, {0x0au, 0x601u}, {0x0au, 0xffffu}, {0x83u, 1u}, {0x9bu, 0u},
             };
             for (const socom2_net_bounds::Sites *s : kAllSites)
             {
@@ -295,7 +298,7 @@ void register_socom2_net_bounds_tests()
             t.IsTrue(out.find("type 0x14") != std::string::npos && out.find("length 3") != std::string::npos,
                      "the line names the type and the length: " + out);
             t.Equals(socom2_net_bounds::rtFramesRefused(), 3u, "every refusal is counted");
-            const std::string next = rtCall(runtime, s.rtDispatch, 0x18u, 0x13u).out;
+            const std::string next = rtCall(runtime, s.rtDispatch, 0x1cu, 0x105u).out;
             t.Equals(count(next, "rt frame bounded"), static_cast<size_t>(1), "another type's first refusal is said: " + next);
             runtime.registerFunction(s.rtDispatch, nullptr);
         });
@@ -314,6 +317,35 @@ void register_socom2_net_bounds_tests()
             t.IsTrue(second.out.empty(), "once: '" + second.out + "'");
             t.Equals(socom2_net_bounds::rtFramesRefused(), 0u, "not a refusal");
             runtime.registerFunction(s.rtDispatch, nullptr);
+        });
+
+        tc.Run("a fixed-record frame longer than its record reaches the handler, said once per type", [](TestCase &t)
+        {
+            // These handlers read a fixed record and never copy by the frame's length: a longer frame is passed.
+            struct Frame { uint32_t type; uint32_t length; };
+            const Frame longer[] = {
+                {0x14u, 0x41u}, {0x07u, 0x18u}, {0x06u, 0x17u}, {0x08u, 0x53u}, {0x09u, 0x13u}, {0x11u, 2u},
+                {0x13u, 0x41u}, {0x1bu, 0x43u}, {0x18u, 0x13u}, {0x19u, 0x1au}, {0x1au, 3u}, {0x94u, 0xffffu},
+            };
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->rtDispatch, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                socom2_net_bounds::detail::resetRtForTest();
+                for (const Frame &f : longer)
+                {
+                    const std::string what = std::string(s->revision) + " type " + std::to_string(f.type) + " length " + std::to_string(f.length);
+                    const CallResult r = rtCall(runtime, s->rtDispatch, f.type, f.length);
+                    t.IsTrue(r.ran, what + ": the handler runs");
+                    t.Equals(r.v0, kStandInReturn, what + ": with its own return");
+                    t.Equals(g_seen.t0, f.length, what + ": the length as given");
+                }
+                const CallResult again = rtCall(runtime, s->rtDispatch, 0x07u, 0x30u);
+                t.IsTrue(again.ran && again.out.empty(), std::string(s->revision) + ": the second of a type is silent: '" + again.out + "'");
+                t.Equals(socom2_net_bounds::rtFramesRefused(), 0u, std::string(s->revision) + ": none is a refusal");
+                runtime.registerFunction(s->rtDispatch, nullptr);
+            }
         });
     });
 
@@ -460,6 +492,45 @@ void register_socom2_net_bounds_tests()
                 runtime.registerFunction(s->animUpdate, nullptr);
             }
         });
+
+        tc.Run("the entry bound is the holder's count, whichever entry is active", [](TestCase &t)
+        {
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->animUpdate, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                const std::string rev = s->revision;
+                // No entry active: every index under the count is the game's to take.
+                animSetup(*s, 4u, true, kNoActive);
+                for (int16_t index : {int16_t(0), int16_t(1), int16_t(3)})
+                {
+                    animPayload(0x10u, index);
+                    t.IsTrue(handlerCall(runtime, s->animUpdate, kBodyAt).ran, rev + ": none active, index " + std::to_string(index));
+                }
+                // Entry 1 active: an index at or past it is still inside the table.
+                animSetup(*s, 4u, true, 1u);
+                for (int16_t index : {int16_t(1), int16_t(2), int16_t(3)})
+                {
+                    animPayload(0x10u, index);
+                    t.IsTrue(handlerCall(runtime, s->animUpdate, kBodyAt).ran, rev + ": entry 1 active, index " + std::to_string(index));
+                }
+                // An active pointer left far past the array (the array moved when it grew) does not widen the bound.
+                animSetup(*s, 4u, true, 0x100u);
+                for (int16_t index : {int16_t(4), int16_t(0x40), int16_t(0xff)})
+                {
+                    animPayload(0x10u, index);
+                    const CallResult r = handlerCall(runtime, s->animUpdate, kBodyAt);
+                    t.IsFalse(r.ran, rev + ": stale active pointer, index " + std::to_string(index) + " refused");
+                    t.Equals(r.v0, socom2_net_bounds::kHandlerRefused, rev + ": with the handler's own refusal");
+                }
+                // A count the game could not hold (negative as the game reads it) holds nothing.
+                animSetup(*s, 0x80000000u, true);
+                animPayload(0x10u, 0);
+                t.IsFalse(handlerCall(runtime, s->animUpdate, kBodyAt).ran, rev + ": a negative count holds no entry 0");
+                runtime.registerFunction(s->animUpdate, nullptr);
+            }
+        });
     });
 
     MiniTest::Case("Socom2GameChatBound", [](TestCase &tc)
@@ -478,7 +549,7 @@ void register_socom2_net_bounds_tests()
         {
             struct Case { uint16_t size; std::string text; bool terminate; const char *what; };
             const Case refused[] = {
-                {5u, "", true, "size 5"},
+                {4u, "", true, "size 4 (no room for a terminator)"},
                 {0x601u, "hi", true, "size 0x601"},
                 {0xffffu, "hi", true, "size 0xffff"},
                 {0x20u, std::string(0x40, 'A'), true, "no terminator inside the size"},
@@ -550,6 +621,65 @@ void register_socom2_net_bounds_tests()
                     t.IsTrue(after == before, what + ": the packet is unchanged");
                     t.IsTrue(r.out.empty(), what + ": nothing said: '" + r.out + "'");
                 }
+                // The smallest packet the game takes: the header and an empty text's terminator.
+                chatPacket(kBodyAt, 5u, "", true);
+                const CallResult r = handlerCall(runtime, s->gameChat, kBodyAt);
+                t.IsTrue(r.ran && r.v0 == kStandInReturn, std::string(s->revision) + ": size 5, an empty text, reaches the handler");
+                runtime.registerFunction(s->gameChat, nullptr);
+            }
+        });
+
+        // The sender's name and the text share one formatted line: the text is cut so that the two stay inside it.
+        // The handler call passes sender slot 1; its slot in the player table points at a record whose name is at +0xe.
+        constexpr uint32_t kPlayerRecord = 0x00320000u;
+        auto playerName = [](const socom2_net_bounds::Sites &s, const std::string &name, bool terminate)
+        {
+            std::memset(guestRam().data() + kPlayerRecord, 0, 0x400);
+            std::memcpy(guestRam().data() + kPlayerRecord + 0xeu, name.data(), name.size());
+            if (!terminate)
+                std::memset(guestRam().data() + kPlayerRecord + 0xeu + name.size(), 'N', 0x400 - 0xeu - name.size());
+            put32(s.playerNames + 1u * 8u, kPlayerRecord);
+        };
+
+        tc.Run("a chat text is cut so that the sender's name and it fit the line together, on both revisions", [=](TestCase &t)
+        {
+            const uint32_t line = socom2_net_bounds::kChatLineBytes - socom2_net_bounds::kChatFormatBytes;
+            for (const socom2_net_bounds::Sites *s : kAllSites)
+            {
+                PS2Runtime runtime;
+                runtime.registerFunction(s->gameChat, standIn);
+                captureOut([&] { socom2_net_bounds::install(runtime, *s); });
+                const std::string rev = s->revision;
+                const std::string text(socom2_net_bounds::kChatTextMax - 1u, 'T');
+
+                // A 40-character name: the text keeps what the line has left.
+                playerName(*s, std::string(40, 'N'), true);
+                chatPacket(kBodyAt, static_cast<uint16_t>(text.size() + 6u), text, true);
+                CallResult r = handlerCall(runtime, s->gameChat, kBodyAt);
+                t.IsTrue(r.ran, rev + ": a long name: the handler runs");
+                t.Equals(static_cast<uint32_t>(std::strlen(reinterpret_cast<const char *>(guestRam().data() + kBodyAt + 4u))),
+                         line - 40u, rev + ": the text is cut to the line less the name");
+
+                // A name that is not terminated for longer than the line: nothing of the text is kept.
+                playerName(*s, std::string(0x20, 'N'), false);
+                chatPacket(kBodyAt, static_cast<uint16_t>(text.size() + 6u), text, true);
+                r = handlerCall(runtime, s->gameChat, kBodyAt);
+                t.IsTrue(r.ran, rev + ": an unterminated name: the handler runs");
+                t.Equals(static_cast<unsigned>(guestRam()[kBodyAt + 4u]), 0u, rev + ": and the text is emptied");
+
+                // A short name leaves the longest text whole.
+                playerName(*s, "Craig", true);
+                chatPacket(kBodyAt, static_cast<uint16_t>(text.size() + 6u), text, true);
+                r = handlerCall(runtime, s->gameChat, kBodyAt);
+                t.Equals(static_cast<uint32_t>(std::strlen(reinterpret_cast<const char *>(guestRam().data() + kBodyAt + 4u))),
+                         static_cast<uint32_t>(text.size()), rev + ": a short name keeps the text whole");
+
+                // A slot with no record: the game's own default name, which fits.
+                put32(s->playerNames + 1u * 8u, 0u);
+                chatPacket(kBodyAt, static_cast<uint16_t>(text.size() + 6u), text, true);
+                r = handlerCall(runtime, s->gameChat, kBodyAt);
+                t.Equals(static_cast<uint32_t>(std::strlen(reinterpret_cast<const char *>(guestRam().data() + kBodyAt + 4u))),
+                         static_cast<uint32_t>(text.size()), rev + ": no record keeps the text whole");
                 runtime.registerFunction(s->gameChat, nullptr);
             }
         });
