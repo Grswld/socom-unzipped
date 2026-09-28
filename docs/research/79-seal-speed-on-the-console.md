@@ -110,7 +110,15 @@ The same with the light-stick groups appended (§5; it swaps and restores the ow
 `--slot`, and only with no pcsx2-qt running):
 
 ```
-bash scripts/loop_lock.sh run agent-web-s2c --purpose "W2.2c console speed, light stick" --   python -m tools_py.parity.seal_speed_probe --slot 8 --turn-first 1.4 --light
+bash scripts/loop_lock.sh run agent-web-s2c --purpose "W2.2c console speed, light stick" -- \
+  python -m tools_py.parity.seal_speed_probe --slot 8 --turn-first 1.4 --light
+```
+
+and the second light level, when half_fwd misses 32.5 (§4):
+
+```
+bash scripts/loop_lock.sh run agent-web-s2c --purpose "W2.2c console speed, light stick 0.75" -- \
+  python -m tools_py.parity.seal_speed_probe --slot 8 --turn-first 1.4 --light 0.75
 ```
 
 Output: `logs/parity/seal_speed_<stamp>.txt` (rows: guest_t x y z root_y move_scale host_t; a header with the torn
@@ -133,8 +141,14 @@ and null counts) and `seal_speed_<stamp>.schedule.json`; the table is printed an
 - t90 against 0.18 s (plus the latency), on OK holds only.
 
 - **The light groups** (`--light`, §5): **half_fwd** -- the median of the OK holds within 5 % of 32.5
-  (30.9-34.1). A half_fwd outside ±5 % means the throttle law is **not linear** in the stick (design §7 says
-  speed = m × max_velocity), a KNOWN-grade finding that the measured value wins. **crouch_walk** -- within 5 % of
+  (30.9-34.1). A miss is **first read against the stick's dead zone and calibration, not the throttle law**: the
+  game's pad layer shapes the raw byte before the locomotion sees it (reCOM `zInput/zinput.h` 45-56 and 141-147:
+  `CStickType`'s `m_absoluteDeadZone`, `m_velocityDeadZone`, `m_minStickVelocity`, and the per-axis
+  `m_maxStick`/`m_minstick` a pad learns), so a dead zone rescaled out of the push reads as a slower half stick
+  under a linear law. A second light level separates the two: `--light 0.75` (ly 32 = 0x20, expected
+  0.75 × 65 = 48.75, crouch_walk still 14.0). A dead zone moves both levels by the same offset in push; a
+  non-linear law does not. Only a run at **two** light levels that both miss the linear law (design §7:
+  speed = m × max_velocity) is the KNOWN-grade finding, the measured values winning. **crouch_walk** -- within 5 % of
   14.0 (13.3-14.7), the stance column reading crouch; a crouch_walk near 32.5 or 65 means the push reached the
   standing run (the 0.838 threshold or the push is not what §5 says). Both the push and the Triangle pressure are
   printed by `--dry-run --light` and carried in the rows header and the schedule.
@@ -173,7 +187,16 @@ checked against the strings in `tools/pcsx2/pcsx2-qt.exe` (`Macro{}Binds`, `Macr
   (every other line byte for byte), launches, and after PCSX2 is killed and waited for puts the original back: in
   a `finally`, on SIGTERM/SIGBREAK/SIGHUP (raised as SystemExit), at interpreter exit, and -- if a run died past
   all of those -- at the start of the next `--light` run, which restores a left-behind backup before it reads.
+  Any exception or signal once PCSX2 is spawned (a failed state load, a Ctrl+C in the PINE wait or the boot
+  sleep) kills PCSX2 and waits for it before the restore (`guarded_launch`), and the restore **refuses** while a
+  pcsx2-qt still runs -- a PCSX2 holding the macros would write them back into the owner's file at its next
+  settings save. A refused or failed restore prints the ini's and the backup's paths and "the owner's PCSX2.ini
+  is STILL the modified copy", keeps the backup and the exit hook, and raises.
   `--pcsx2-ini` points it elsewhere (the tests use temporary copies of a sample ini, never the owner's file).
+- **Levels.** `--light <push>` takes any push in [0.05, 0.838): with d = round(128 × push), ly = 128 - d,
+  raw = 2d - 1 and pressure = (raw + 0.5) / (AxisScale × 255). 0.5 -> raw 127, ly 64, `Macro16Pressure =
+  0.375940`; 0.75 -> raw 191, ly 32, `0.564647`. The groups keep their names at every level; the report's expected column and the
+  rows header carry the push.
 - **The schedule** (appended to the default, from standing): half_fwd#1-3 (W_LIGHT, stand, expected 32.5),
   a light Triangle to crouch, crouch_walk#1-3 (W_LIGHT, crouch, expected 14.0), a light Triangle to stand. Each
   hold is followed by a full back hold of kind `return` (played, not fitted: 5.3 s after half_fwd, 2.3 s after

@@ -4,6 +4,7 @@
 binds; one sample must walk the pointer chains through a fake PINE and refuse a torn read. No game, no PINE
 socket, no window: the fake below is a dict of guest words.
 """
+import atexit
 import collections
 import io
 import json
@@ -15,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 
 from tools_py.parity import guest_addresses as ga
@@ -568,6 +570,125 @@ class LightMainTest(unittest.TestCase):
 
         with self.assertRaises(RuntimeError), redirect_stdout(io.StringIO()):
             P.main(["--slot", "8", "--light", "--pcsx2-ini", p], launch=launch)
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+
+
+class FakeProc:
+    """A spawned PCSX2 stand-in: alive until killed."""
+
+    def __init__(self):
+        self.alive = True
+
+
+class LightFixRoundTest(unittest.TestCase):
+    """The review of fcdc516a: the kill before the restore, a refused or failed restore is loud and keeps the
+    backup, the stance warning, a push hold without a stance, a second light level."""
+
+    def test_a_launch_that_raises_after_the_spawn_kills_before_the_restore(self):
+        p = temp_ini()
+        proc = FakeProc()
+        events = []
+
+        def kill(pr):
+            with open(p) as f:
+                events.append(("kill", "Macro" in f.read()))
+            pr.alive = False
+
+        def boot(pr):
+            events.append(("boot", pr.alive))
+            raise KeyboardInterrupt      # a Ctrl+C in the PINE wait
+
+        with self.assertRaises(KeyboardInterrupt):
+            with P.LightIni(p, 0.5, 0.2, alive=lambda: proc.alive):
+                P.guarded_launch(lambda: proc, boot, kill)
+        self.assertEqual(events, [("boot", True), ("kill", True)], "PCSX2 is killed while the macros are in")
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+        self.assertEqual(os.listdir(os.path.dirname(p)), ["PCSX2.ini"])
+
+    def test_a_good_launch_returns_a_cleanup_that_kills(self):
+        proc = FakeProc()
+        killed = []
+        pine, hwnd, cleanup = P.guarded_launch(lambda: proc, lambda pr: ("pine", 7), killed.append)
+        self.assertEqual((pine, hwnd, killed), ("pine", 7, []))
+        cleanup()
+        self.assertEqual(killed, [proc])
+
+    def test_a_restore_while_pcsx2_lives_is_refused_loudly_and_keeps_the_backup(self):
+        p = temp_ini()
+        err = io.StringIO()
+        li = P.LightIni(p, 0.5, 0.2, alive=lambda: True)
+        try:
+            with self.assertRaises(RuntimeError), redirect_stderr(err):
+                with li:
+                    pass
+            self.assertIn("still running", err.getvalue())
+            self.assertIn(p + P.LIGHT_BACKUP_SUFFIX, err.getvalue())
+            with open(p + P.LIGHT_BACKUP_SUFFIX) as f:
+                self.assertEqual(f.read(), SAMPLE_INI, "the backup is kept")
+            with open(p) as f:
+                self.assertIn("Macro", f.read())
+        finally:
+            li.alive = lambda: False
+            li.restore()
+            atexit.unregister(li.restore)
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+
+    def test_a_failed_restore_is_loud_reraises_and_keeps_the_backup_and_the_exit_hook(self):
+        p = temp_ini()
+        err = io.StringIO()
+        li = P.LightIni(p, 0.5, 0.2)
+        try:
+            with mock.patch.object(P.os, "replace", side_effect=OSError("locked")):
+                with self.assertRaises(OSError), redirect_stderr(err):
+                    with li:
+                        pass
+            msg = err.getvalue()
+            self.assertIn("STILL the modified copy", msg)
+            self.assertIn(p + P.LIGHT_BACKUP_SUFFIX, msg)
+            self.assertIn("copy %s over it" % (p + P.LIGHT_BACKUP_SUFFIX), msg)
+            self.assertTrue(os.path.exists(p + P.LIGHT_BACKUP_SUFFIX))
+            self.assertFalse(li.restored)
+        finally:
+            li.restore()
+            atexit.unregister(li.restore)
+        with open(p) as f:
+            self.assertEqual(f.read(), SAMPLE_INI)
+
+    def test_a_full_push_hold_in_the_wrong_stance_still_warns(self):
+        pine = StancePine("stand")
+        steps = (P.Step("rest", "rest", (), 3.0), P.Step("h#1", "hold", ("W",), 6.0, "crouch", "fwd"))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            P.run_schedule(steps, SyncRecorder(pine), hwnd=None, press=pine.press, sleep=lambda s: None)
+        self.assertIn("stance stand where crouch was planned", buf.getvalue())
+
+    def test_a_push_hold_without_a_stance_plays(self):
+        pine = StancePine("stand")
+        steps = (P.Step("h#1", "hold", ("W_LIGHT",), 6.0, None, "fwd", 0.5),)
+        with redirect_stdout(io.StringIO()):
+            recs = P.run_schedule(steps, SyncRecorder(pine), hwnd=None, press=pine.press, sleep=lambda s: None)
+        self.assertEqual(recs[0]["push"], 0.5)
+        self.assertNotIn("stance", recs[0])
+        self.assertEqual(pine.presses, ["W_LIGHT"])
+
+    def test_a_second_light_level_at_0_75(self):
+        plan = P.light_plan(SAMPLE_INI, stick=0.75, triangle=0.2)
+        self.assertEqual((plan["stick_raw"], plan["ly"], plan["push"]), (191, 32, 0.75))
+        pad = ini_section(P.light_ini_text(SAMPLE_INI, 0.75, 0.2), "Pad1")
+        n = P.LIGHT_MACROS["W_LIGHT"][2]
+        self.assertEqual(pcsx2_stick_byte(float(pad["Macro%dPressure" % n]), 1.33), (191, 32))
+        self.assertEqual(F.expected_speed("fwd", "stand", 0.75), 48.75)
+        self.assertEqual(F.expected_speed("fwd", "crouch", 0.75), 14.0)
+        p = temp_ini()
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(P.main(["--dry-run", "--light", "0.75", "--pcsx2-ini", p]), 0)
+        self.assertIn("light stick 0.75", buf.getvalue())
+        self.assertIn("ly 32 (0x20)", buf.getvalue())
+        self.assertIn("14.0 (crouch walk, push 0.75)", buf.getvalue())
         with open(p) as f:
             self.assertEqual(f.read(), SAMPLE_INI)
 

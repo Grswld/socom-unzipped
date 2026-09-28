@@ -253,17 +253,31 @@ class LightIni:
     """The owner's PCSX2.ini swapped for --light's copy while the block runs, and put back after: the original is
     backed up beside it first (PCSX2.ini + LIGHT_BACKUP_SUFFIX), and restored on the block's exit (normal or an
     exception), on SIGTERM/SIGBREAK/SIGHUP (raised as SystemExit), at interpreter exit, and -- if a run died past all
-    of those -- by the next LightIni before it reads the file."""
+    of those -- by the next LightIni before it reads the file. `alive` (a callable, main passes "is a pcsx2-qt
+    running") makes the restore REFUSE while PCSX2 lives: a PCSX2 that loaded the macros and outlives the restore
+    would write them back into the owner's file at its next settings save, with no backup left. A refused or
+    failed restore says so on stderr, keeps the backup and the exit hook, and raises."""
 
-    def __init__(self, path, stick=LIGHT_STICK, triangle=LIGHT_TRIANGLE):
+    def __init__(self, path, stick=LIGHT_STICK, triangle=LIGHT_TRIANGLE, alive=None):
         self.path = path
         self.backup = path + LIGHT_BACKUP_SUFFIX
         self.stick = stick
         self.triangle = triangle
+        self.alive = alive
         self.original = None
         self.plan = None
         self._restored = True
         self._old = {}
+
+    @property
+    def restored(self):
+        return self._restored
+
+    def _still_modified(self, why):
+        print("LIGHT RESTORE %s: %s -- the owner's PCSX2.ini is STILL the modified copy (the backup is %s); the next "
+              "--light run restores it, or restore by hand: copy %s over it" % (why, self.path, self.backup,
+                                                                               self.backup),
+              file=sys.stderr, flush=True)
 
     def __enter__(self):
         if os.path.exists(self.backup):
@@ -292,12 +306,20 @@ class LightIni:
     def restore(self):
         if self._restored:
             return
-        if os.path.exists(self.backup):
-            os.replace(self.backup, self.path)
-        else:
-            with open(self.path, "wb") as f:
-                f.write(self.original)
+        if self.alive is not None and self.alive():
+            self._still_modified("REFUSED, pcsx2-qt is still running")
+            raise RuntimeError("pcsx2-qt is still running: the light ini was not restored (backup %s)" % self.backup)
+        try:
+            if os.path.exists(self.backup):
+                os.replace(self.backup, self.path)
+            else:
+                with open(self.path, "wb") as f:
+                    f.write(self.original)
+        except OSError as e:
+            self._still_modified("FAILED (%s)" % e)
+            raise
         self._restored = True
+        atexit.unregister(self.restore)
 
     def __exit__(self, *exc):
         try:
@@ -306,7 +328,6 @@ class LightIni:
             for sig, old in self._old.items():
                 signal.signal(sig, old)
             self._old = {}
-            atexit.unregister(self.restore)
         return False
 
 
@@ -483,11 +504,11 @@ def run_schedule(steps, recorder, hwnd, press=None, sleep=time.sleep, light=Fals
             actual, root, taps = ensure_stance(recorder, hwnd, s.stance, press, sleep, light)
             extra = {"stance": actual, "planned_stance": s.stance, "stance_taps": taps, "root_y_rest": root,
                      "direction": s.direction}
-        if s.kind == "hold" and s.push is not None:
-            extra["push"] = s.push
             if actual != s.stance:
                 print("%-12s stance %s where %s was planned (root %.3f, %d taps): the hold is marked %s"
                       % (s.name, actual, s.stance, root, taps, actual), flush=True)
+        if s.kind == "hold" and s.push is not None:
+            extra["push"] = s.push
         t0, h0 = recorder.latest_t(), time.time()
         if s.kind == "rest":
             sleep(s.seconds)
@@ -578,6 +599,25 @@ def default_attach(a):
     return Pine(port=_pine_port()), hwnd, (lambda: None)
 
 
+def guarded_launch(spawn, boot, kill):
+    """(pine, hwnd, cleanup): spawn() starts PCSX2 and returns its process, boot(proc) brings it to the slot and
+    returns (pine, hwnd). ANY exception or signal (KeyboardInterrupt, SystemExit from --light's handlers) once the
+    process exists kills it -- kill(proc) waits for the exit -- before it propagates, so --light's ini restore never
+    runs under a live PCSX2 that loaded the macros. cleanup() is kill(proc), the one way out."""
+    proc = spawn()
+    try:
+        pine, hwnd = boot(proc)
+    except BaseException:
+        kill(proc)
+        raise
+    return pine, hwnd, lambda: kill(proc)
+
+
+def _pcsx2_alive():
+    from tools_py.parity import hostplatform
+    return hostplatform.process_running("pcsx2-qt")
+
+
 def default_launch(a):
     """(pine, hwnd, cleanup): state_poll's path -- PCSX2 -batch -nogui -fastboot on the disc, PINE, load the slot."""
     import subprocess
@@ -587,34 +627,37 @@ def default_launch(a):
     if hostplatform.process_running("pcsx2-qt"):
         raise SystemExit("pcsx2-qt is already running; refusing to start a second instance (attach instead)")
     winshot = hostplatform.shot_module()
-    proc = subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", hostplatform.iso_path()],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def cleanup():
+    def spawn():
+        return subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", hostplatform.iso_path()],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def kill(proc):
         proc.terminate()
         hostplatform.kill_process_by_name("pcsx2-qt")
         try:
-            proc.wait(10)    # gone before --light puts the owner's ini back
+            proc.wait(10)    # gone before --light puts the owner's ini back (its restore refuses otherwise)
         except subprocess.TimeoutExpired:
             pass
 
-    t0, pine = time.time(), None
-    while pine is None and time.time() - t0 < 120:
-        try:
-            pine = Pine(port=_pine_port())
-        except OSError:
-            time.sleep(1.0)
-    if pine is None:
-        cleanup()
-        raise SystemExit("no PINE after 120 s")
-    time.sleep(a.boot)
-    pine.load_state(a.slot)
-    time.sleep(4.0)
-    hwnd = winshot.find_window(keys.WINDOW_TITLES["pcsx2"], pid=proc.pid)
-    if hwnd is None:
-        cleanup()
-        raise SystemExit("no PCSX2 window for pid %d" % proc.pid)
-    return pine, hwnd, cleanup
+    def boot(proc):
+        t0, pine = time.time(), None
+        while pine is None and time.time() - t0 < 120:
+            try:
+                pine = Pine(port=_pine_port())
+            except OSError:
+                time.sleep(1.0)
+        if pine is None:
+            raise SystemExit("no PINE after 120 s")
+        time.sleep(a.boot)
+        pine.load_state(a.slot)
+        time.sleep(4.0)
+        hwnd = winshot.find_window(keys.WINDOW_TITLES["pcsx2"], pid=proc.pid)
+        if hwnd is None:
+            raise SystemExit("no PCSX2 window for pid %d" % proc.pid)
+        return pine, hwnd
+
+    return guarded_launch(spawn, boot, kill)
 
 
 def build_parser():
@@ -661,13 +704,12 @@ def main(argv=None, launch=None, attach=None):
         print("--light needs --slot: PCSX2 reads the [Pad1] macros at launch, so a running PCSX2 has none",
               file=sys.stderr)
         return 2
-    if a.light is not None and launch is None:
-        from tools_py.parity import hostplatform
-        if hostplatform.process_running("pcsx2-qt"):
-            print("pcsx2-qt is already running: --light swaps its ini only for a PCSX2 it launches", file=sys.stderr)
-            return 2
-    light = LightIni(a.pcsx2_ini, a.light, a.light_triangle) if a.light is not None else contextlib.nullcontext()
-    with light:                         # the owner's ini comes back after cleanup() has killed PCSX2
+    if a.light is not None and launch is None and _pcsx2_alive():
+        print("pcsx2-qt is already running: --light swaps its ini only for a PCSX2 it launches", file=sys.stderr)
+        return 2
+    light = (LightIni(a.pcsx2_ini, a.light, a.light_triangle, alive=_pcsx2_alive if launch is None else None)
+             if a.light is not None else contextlib.nullcontext())
+    with light:     # the owner's ini comes back after PCSX2 is killed: cleanup(), or guarded_launch on a failed boot
         pine, hwnd, cleanup = (launch or default_launch)(a) if a.slot is not None else (attach or default_attach)(a)
         try:
             rec = Recorder(Sampler(pine, a.revision))
