@@ -30,11 +30,11 @@ for arg in "$@"; do
 done
 
 # name|colour|description -- the two kinds in the first block, the areas in the second. The colours are the
-# GitHub defaults' family: red for a defect, blue for a request, yellow for "we cannot act yet", grey for area.
+# GitHub defaults' family: red for a defect, green for a request, yellow for "we cannot act yet", grey for area.
 LABELS=(
   "bug|d73a4a|Something does not work. A launcher report's BR- id may be quoted in the body."
   "from-launcher|d73a4a|Opened from a report sent through the launcher or socomunzipped.com; the BR- id is the reference."
-  "enhancement|a2eeef|A new behaviour or a deliberate change to an existing one."
+  "feature|0e8a16|Something the project should do, or do differently. Not something broken: that is a bug."
   "needs-repro|fbca04|Not yet reproduced from our own code and harness. Not a confirmed defect until it is."
   "needs-disc-gate|fbca04|Cannot be checked without a disc: needs a run of the parity gate on real game data."
   "audio|c5def5|Sound: the 989snd path, streams, music, voice."
