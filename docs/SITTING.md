@@ -15,7 +15,7 @@ The page as of 2026-09-27, for the sitting after the one of 2026-09-27: 6 open O
 | O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 1 |
 | O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 0 |
 | O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | -1 |
-| O24 | One `git push origin sprint-16` from the main tree, right before the PR to `main` | the PR waits for that push; the close-out commits stay local until then | 2026-09-27 | 0 |
+| O24 | One `git push origin sprint-16` from the main tree, right before the PR to `main` | the close-out is committed and both trees stand at `ff390365` (2026-09-28 01:29Z); the controller's seat cannot move to the main tree (the desktop app refused… | 2026-09-27 | 0 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 0 |
 | O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 0 |
 
