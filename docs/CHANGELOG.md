@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-263 merges (57 on the first-parent line, 206 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+264 merges (58 on the first-parent line, 206 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-38 merges.
+39 merges.
 
+- 2026-09-28 `14eb8a52` F1 attempt 1 [agent/s17-f1a]
 - 2026-09-28 `bca50477` LoadExecPS2 of the game's own ELF restarts the guest in-process (Sprint 17 Q2 Steps 1-2, reviewed) [agent/s17-q2]
   - 2026-09-28 `b662e816` sprint-17 (the network bounds) into agent/s17-q2 [branch not named]
   - 2026-09-28 `1eb169f4` sprint-17 (F0 5b's shot queue) into agent/s17-q2 [branch not named]
