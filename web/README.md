@@ -126,6 +126,8 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
 | a pad | read as the PS2 pad by position (the W3C standard mapping): a toast names it on connect and on loss, "pad: connected" joins the hint, and the layout table appears under the hint line. Left stick moves (walk, or fly along the look), right stick looks at the arrow keys' rate scaled by the push, Cross jumps on foot and rises in the air, L3 or Triangle crouch on foot and descend in the air, Start switches walk and fly as `G` does, R3 boosts; R1/L1 (fire, aim) and L2/R2 (lean) are read and reserved. Rows the repository does not document are marked assumed in the table |
 | `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `Space` / `C` (walking) | jump and crouch. The jump is a named placeholder impulse that reaches the seal table's `min_jump_height`; the crouch's eye and speed are named placeholders too. Gravity, the fall and its landing classes, the 6.5-unit step and the 50° slope are the table's (web sprint 2) |
+| left button (walking, mouse captured) | one shot from the game's own fire point (`GetPutativeFirePointW`, ported) along the aim to the first hull polygon: a tracer and a hit mark. The M4A1 SD is drawn in front of the camera at a placeholder hold until the skeleton takes it; there is no recoil yet |
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -280,6 +282,27 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   gouraud, fogged and blended — `PRIM = IIP|TME|FGE|ABE` on all 194 packets — as one `LineSegments`
   per (texture, fog) with the same shading graph the meshes use. Desert Glory's power lines and lamp
   brackets, Crossroads' tent ropes and light filaments.
+
+## The player (web sprint 2, in progress)
+
+- **The SEAL is decoded and drawn.** `CLIB_MDL`'s skinned meshes (411 across the 22 maps, none failing), the
+  skeleton of 26 palette slots from `CLIB_GEO`, and the gear `READERC.ZAR/character.rdr` hangs on each map's player
+  (`chartype.rdr` names it: Frostfire's `mp2_seal1` is `seal_A_scuba` in six pieces). "player body" under Advanced
+  shows it in the bind pose at spawn slot A; the play mode animates it (see the sprint 2 spec's Log for where that
+  stands).
+- **The motions are read.** One reader for all 341 clips: the seven victory dances in every map archive and the 334
+  player clips of `RUN/MOTION_P.ZAR` (30 keys a second, quaternion channels, the SEAL's bone lengths in the clips);
+  the playback table is `READERC.ZAR`'s `motion.rdr`.
+- **The mover is the seal table's.** `dynamics.rdr` in `READERC.ZAR` is read at load and the panel says `tuning:
+  disc` or `defaults` (research 17's nine printed numbers): gravity 235, landings at 40 and 115, step 6.5, slope 50°.
+- **The weapon and the shot.** All 59 weapons of `WEAP_MDL` decode (they use VU1 `0x70`'s scaled positions, as the
+  gear does); the M4A1 SD is the default; the fire point is the game's function with its ten stance offsets a named
+  placeholder (ELF data not on hand). No weapon table exists on the disc's readers; the recoil is not in the bodies
+  read so far.
+- **A controller works.** See the pad row above.
+- **Two files beside the maps.** The deployed `maps/RUN/` wants `READERC.ZAR` (the body's gear, the seal table, the
+  motion playback table) and `MOTION_P.ZAR` (the player's clips) as well as the 22 archives; the ISO carries both, and
+  without them the body is drawn bare, the table falls back to the defaults, and the clips do not play.
 
 ## Known gaps
 
