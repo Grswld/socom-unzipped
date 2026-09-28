@@ -169,3 +169,4 @@ is the player's); `docs/LATER.md` row 46 closed by R-C; `docs/HUMAN_TASKS.md` no
 ## Log
 
 - 2026-09-28 19:55Z plan written; fixtures and `tools_py/card_save.py` copied in; Task 1 dispatched next.
+- 2026-09-28 20:20Z Task 4 drafted: KNOWN's ledger row rewritten as the card-is-the-store row (it said the ledger was the persona record, written at the socket seam) and the per-server row settled to the address; LATER row 46 left the file (R-C); SECURITY's sentence; INSTALL's PERSONAS section and two table rows; research/80. Task 1 (Opus) is writing the codec; its build is held until the controller's "chain done" (~21:15Z) because a queued lock taker flips the chain's loop-lock smoke test.
