@@ -21,6 +21,8 @@
 #include "Kernel/Stubs/Audio.h"
 #include "Kernel/Syscalls/System.h"   // Sprint 17 Q2: the boot-argument block a restart hands the crt0
 #include "Kernel/Syscalls/RPC.h"      // Sprint 17 Q2: the IOP reboot model (the RPC queues, the module table)
+#include "Kernel/Syscalls/FileIO.h"   // Sprint 17 Q2 review: the guest's open files closed by a restart
+#include "socom2_libnetb.h"           // Sprint 17 Q2 review: the guest's sockets closed by a restart
 #include "Kernel/Stubs/GS.h"
 #include "Kernel/Stubs/MPEG.h"
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"   // Sprint 11 Task 8b
@@ -2792,6 +2794,19 @@ bool PS2Runtime::restartGuest()
     // table), then the rest of the machine as run() prepares it below.
     ps2_syscalls::SifResetRpcState();
     ps2_syscalls::SifResetModuleState();
+    // The old guest's host handles (Q2 review findings 1 and 5): every socket in the libnetb cid table and the
+    // host socket table (a logoff route that left one open would keep the server session alive, or use up the
+    // 64 slots), and every FILE the fio table still holds. One line with the counts.
+    {
+        const size_t sockets = socom2_libnetb::closeAllForGuestRestart();
+        const size_t files = ps2_syscalls::closeAllGuestFiles();
+        std::cerr << "[LoadExecPS2] restart closed " << sockets << " guest socket(s) and " << files
+                  << " guest file(s) the old guest left open" << std::endl;
+    }
+    // The hardware state (Q2 review finding 3): the I/O registers, the DMA/VIF/GS registers, the pending
+    // GIF/VIF transfers, the EE timers, the pending INTC and completed DMAC causes -- a cause the old guest
+    // queued never reaches the new guest's handlers.
+    m_memory.resetHardwareState();
     // The mixer: every sound, stream and the PCM ring stopped -- the game tore its sound system down before
     // asking (research/78 section 4), the reset makes it so whatever it left.
     m_audioBackend.stopForGuestRestart();
@@ -2812,7 +2827,9 @@ bool PS2Runtime::restartGuest()
     uint8_t *rdram = m_memory.getRDRAM();
     if (!rdram)
     {
-        std::cerr << "[LoadExecPS2] the restart has no guest RAM to reload into" << std::endl;
+        std::cerr << "[LoadExecPS2] the restart has no guest RAM to reload into; the run ends with exit "
+                  << ExitCodes::kRebootRequested << " (reboot-requested)" << std::endl;
+        setPs2ProcessExitCode(ExitCodes::kRebootRequested);
         return false;
     }
     std::memset(rdram, 0, PS2_RAM_SIZE);
@@ -2837,7 +2854,11 @@ bool PS2Runtime::restartGuest()
     // The ELF, through the same loader main() uses (the IOP profile and the game overrides re-applied with it).
     if (!loadELF(request.elfPath))
     {
-        std::cerr << "[LoadExecPS2] the restart could not reload " << request.elfPath << "; the run ends" << std::endl;
+        // The game asked to restart and this build could not carry it out: the run ends with the honest code
+        // (Q2 review finding 2: main() exits with ps2ProcessExitCode(), which would otherwise read 0).
+        std::cerr << "[LoadExecPS2] the restart could not reload " << request.elfPath << "; the run ends with exit "
+                  << ExitCodes::kRebootRequested << " (reboot-requested)" << std::endl;
+        setPs2ProcessExitCode(ExitCodes::kRebootRequested);
         return false;
     }
     // The kernel's boot-argument area, in SetArg's layout at the address syscall 0x5B answers for entry 3, and
