@@ -2,12 +2,14 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-230 merges (50 on the first-parent line, 180 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+232 merges (52 on the first-parent line, 180 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-5 merges.
+7 merges.
 
+- 2026-09-28 `7098c334` submit_split.py scores the [gs-submit] line over a walk window (Sprint 17 F1 Step 0, PASS) [agent/s17-f1]
+- 2026-09-28 `d0b68e5b` the chain guard [agent/s17-g1]
 - 2026-09-28 `6e4236ba` the three instruments [agent/s17-f0]
 - 2026-09-28 `0d498a7e` the online menus' harness scoped, one row per screen (Sprint 17 H1, reviewed PASS) [agent/s17-h1]
 - 2026-09-28 `d4863d14` the story page's readability pass and the viewer's vendored design system 1.0.3 (R294, reviewed) [agent/ds-web]
