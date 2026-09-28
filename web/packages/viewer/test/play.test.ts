@@ -232,12 +232,27 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     expect(play.viewStats().rig).toBe('disc');
     expect(third.position.z).toBeCloseTo(6 + 10, 6);
     play.useDiscRig(false);
-    // aiming: the view from the eye (no eye gear on the bare fixture: the walk's eye), along the look; the body hidden
+    // aiming: the view from the eye, along the look; the body hidden. A bare fixture has no eye gear: the walk's eye.
+    // A fixture that carries READERC.ZAR is dressed (as body.test.ts allows): the eye gear through the stand pose.
     play.setAimLane(true);
     const aim = play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('aim');
     expect(view.group.visible).toBe(false);
-    expect(aim.position.toArray()).toEqual(fly.camera.position.toArray());
+    if (map.body!.eye === null) {
+      expect(aim.position.toArray()).toEqual(fly.camera.position.toArray());
+    } else {
+      const sk = bodySkeleton(map.body!);
+      // the stand clip's root: its bind x and z, the clip's 11 for y
+      const bind = map.body!.parts.find((p) => p.name === 'skel_root')!.bindLocal;
+      sk.setLocal('skel_root', partMatrix([0, 0, 0, 1], [bind[12]!, 11, bind[14]!]));
+      sk.update();
+      const eye = eyePoint(map.body!, sk.palette())!;
+      const feet = fly.camera.position.toArray();
+      feet[1] -= EYE_HEIGHT;
+      expect(aim.position.x).toBeCloseTo(feet[0]! + eye[0], 4);             // yaw 0: the actor's axes are the world's
+      expect(aim.position.y).toBeCloseTo(feet[1]! + eye[1], 4);
+      expect(aim.position.z).toBeCloseTo(feet[2]! + eye[2], 4);
+    }
     play.setAimLane(false);
     expect(play.setAimForced(true)).toBe('aim');                         // the hook's, over the lanes
     play.frame(1 / 60, walk, fly.camera);
