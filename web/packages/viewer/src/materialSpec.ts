@@ -236,3 +236,25 @@ export function drawState(spec: MaterialSpec, engineOrder: boolean): DrawState {
     ? { transparent: false, depthWrite: true, factors }
     : { transparent: true, depthWrite: false, factors };
 }
+
+/**
+ * The GS's mip selection for a mipmapped texture: `LOD = (log2(1 / |Q|) << L) + K` (`TEX1`, `LCM = 0`),
+ * clamped to `0..MXL`, where `Q` is `1 / clip.w` (VU1 command `0x08`'s perspective divide, research 13) --
+ * a function of the depth alone, read per pixel from the interpolated `Q`, not of how fast the uvs move
+ * across the screen as a GPU's derivatives are. The corpus's `K` runs from -12 to about -6.5 with `L` 0,
+ * so most mipmapped textures never leave their base level inside the far clip: Vigilance's `rockwall.tif`
+ * (K -12) is the base level to 4,096 units, where a derivative LOD had it two levels down at 150.
+ *
+ * `scale` is `2^L`. Null for a texture that asks for no mipmaps, or a state without `K` (built by hand).
+ */
+export interface GsMipLod { k: number; scale: number; max: number }
+
+export function gsMipLod(gs: GsState | null | undefined): GsMipLod | null {
+  if (!gs?.mipmaps || gs.lodK === undefined) return null;
+  return { k: gs.lodK, scale: 2 ** (gs.lodL ?? 0), max: gs.levels };
+}
+
+/** The level `gsMipLod` gives at a depth (the clip `w`, in world units): what the shader computes per fragment. */
+export function gsMipLevel(lod: GsMipLod, depth: number): number {
+  return Math.min(lod.max, Math.max(0, Math.log2(depth) * lod.scale + lod.k));
+}
