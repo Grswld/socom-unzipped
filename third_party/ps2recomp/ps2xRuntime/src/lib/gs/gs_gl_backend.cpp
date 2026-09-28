@@ -1460,7 +1460,10 @@ bool GSGlBackend::HostRenderFrame()
     // queue it is parked behind is already drained.
     m_queueCv.notify_all();
     if (!buffer.commands.empty())
+    {
+        recordReplayBatch(buffer);   // Sprint 17 F: PS2X_GS_RECORD; one cached knob read when unset
         executeCommands(buffer);
+    }
     m_backpressure.framesReplayed(framesTaken);
     // Restore raylib's expectations.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1487,6 +1490,233 @@ uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height, uint32
     textureWidth = m_presentTexWidth;
     textureHeight = m_presentTexHeight;
     return m_presentTexture;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sprint 17 F: the replay bench. PS2X_GS_RECORD writes what HostRenderFrame replays (the file:
+// gs_gl_replay_file.h); gs_replay_bench.exe replays it here with no game, the draw path timed.
+// ---------------------------------------------------------------------------------------------
+namespace
+{
+    constexpr size_t kReplayPayloadMax = sizeof(uint32_t) * 5u + sizeof(GSPresentationRequest) + sizeof(GSContext) +
+                                         sizeof(GSTransferCommand);
+    static_assert(kReplayPayloadMax <= GsReplayFile::kMaxPayloadBytes, "a command's fields must fit a 'C' record");
+}
+
+uint32_t GSGlBackend::packReplayPayload(const Cmd &cmd, uint8_t *out)
+{
+    uint32_t n = 0u;
+    std::memcpy(out, cmd.args, sizeof(cmd.args));
+    n += sizeof(cmd.args);
+    switch (cmd.type)
+    {
+    case CmdType::BeginTransfer:
+        std::memcpy(out + n, &cmd.transfer, sizeof(cmd.transfer));
+        n += sizeof(cmd.transfer);
+        break;
+    case CmdType::Present:
+        std::memcpy(out + n, &cmd.present, sizeof(cmd.present));
+        n += sizeof(cmd.present);
+        break;
+    case CmdType::Clear:
+        std::memcpy(out + n, &cmd.context, sizeof(cmd.context));
+        n += sizeof(cmd.context);
+        break;
+    default:
+        break;
+    }
+    return n;
+}
+
+void GSGlBackend::unpackReplayPayload(Cmd &cmd, const uint8_t *in, uint32_t size)
+{
+    if (size < sizeof(cmd.args))
+        return;
+    std::memcpy(cmd.args, in, sizeof(cmd.args));
+    const uint8_t *rest = in + sizeof(cmd.args);
+    const uint32_t restSize = size - static_cast<uint32_t>(sizeof(cmd.args));
+    if (cmd.type == CmdType::BeginTransfer && restSize >= sizeof(cmd.transfer))
+        std::memcpy(&cmd.transfer, rest, sizeof(cmd.transfer));
+    else if (cmd.type == CmdType::Present && restSize >= sizeof(cmd.present))
+        std::memcpy(&cmd.present, rest, sizeof(cmd.present));
+    else if (cmd.type == CmdType::Clear && restSize >= sizeof(cmd.context))
+        std::memcpy(&cmd.context, rest, sizeof(cmd.context));
+}
+
+// PS2X_GS_RECORD=<file>[:<start>[:<frames>]]: from the first batch at or past <start> (a present index, t<seconds>
+// since the first replayed batch, or trig), write every batch HostRenderFrame replays -- with the shadow VRAM and
+// the palettes as they stand before the first -- until <frames> presents are in the file, then close it. Render
+// thread only. Recording adds the file's cost to the frames it spans; the recording, not their timing, is the point.
+void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
+{
+    static const char *const s_env = ps2x::knob("PS2X_GS_RECORD");
+    if (!s_env || m_recDone)
+        return;
+    static GsReplayFile::RecordSpec s_spec;
+    static const bool s_specOk = GsReplayFile::parseRecordSpec(s_env, s_spec);
+    if (!s_specOk)
+    {
+        std::fprintf(stderr, "[gs-record] PS2X_GS_RECORD=%s: not <file>[:<present>|t<seconds>|trig[:<presents>]]; nothing recorded\n", s_env);
+        m_recDone = true;
+        return;
+    }
+    if (!m_recWriter)
+    {
+        static const auto s_epoch = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count();
+        bool due = false;
+        switch (s_spec.mode)
+        {
+        case GsReplayFile::StartMode::Frame:
+            due = static_cast<double>(m_frameCounter) >= s_spec.start;
+            break;
+        case GsReplayFile::StartMode::Seconds:
+            due = elapsed >= s_spec.start;
+            break;
+        case GsReplayFile::StartMode::Trigger:
+        {
+            extern std::atomic<bool> g_ps2xTraceArmed;
+            due = g_ps2xTraceArmed.load();
+            break;
+        }
+        }
+        if (!due)
+            return;
+        std::vector<GSClutLoad> cluts;
+        cluts.reserve(m_cluts.size());
+        for (const auto &kv : m_cluts)
+            cluts.push_back(kv.second);
+        auto writer = std::make_unique<GsReplayFile::Writer>();
+        if (!writer->open(s_spec.file, m_frameCounter, m_shadowMemory.data(), static_cast<uint32_t>(m_shadowMemory.size()), cluts))
+        {
+            std::fprintf(stderr, "[gs-record] cannot write %s; nothing recorded\n", s_spec.file.c_str());
+            m_recDone = true;
+            return;
+        }
+        std::fprintf(stderr, "[gs-record] armed at present %llu (%.1f s) -> %s: %u presents, shadow VRAM %zu bytes, %zu palettes\n",
+                     (unsigned long long)m_frameCounter, elapsed, s_spec.file.c_str(), s_spec.frames, m_shadowMemory.size(), cluts.size());
+        m_recWriter = std::move(writer);
+        m_recPresents = 0u;
+    }
+    GsReplayFile::Writer &w = *m_recWriter;
+    w.beginBatch(m_frameCounter);
+    uint8_t payload[kReplayPayloadMax];
+    for (const Cmd &cmd : buffer.commands)
+    {
+        if (cmd.type == CmdType::Submit)
+        {
+            w.submit(cmd.batch);
+            continue;
+        }
+        const uint32_t n = packReplayPayload(cmd, payload);
+        const uint8_t *data = (cmd.dataSize && cmd.dataOffset + cmd.dataSize <= buffer.data.size()) ? buffer.data.data() + cmd.dataOffset : nullptr;
+        w.command(static_cast<uint8_t>(cmd.type), payload, n, data, data ? cmd.dataSize : 0u);
+        if (cmd.type == CmdType::Present)
+            ++m_recPresents;
+    }
+    w.endBatch();
+    if (m_recPresents >= s_spec.frames || !w.ok())
+    {
+        const uint64_t batches = w.batches(), bytes = w.bytes(), stored = w.blobsStored(), refs = w.blobRefs();
+        const bool ok = w.close(m_recPresents);
+        std::fprintf(stderr, "[gs-record] %s: %llu presents in %llu batches, %.1f MB (%llu distinct data blobs for %llu references) -> %s\n",
+                     ok ? "done" : "FAILED (a write error; the file is incomplete)", (unsigned long long)m_recPresents,
+                     (unsigned long long)batches, static_cast<double>(bytes) / (1024.0 * 1024.0), (unsigned long long)stored,
+                     (unsigned long long)refs, s_spec.file.c_str());
+        m_recWriter.reset();
+        m_recDone = true;
+    }
+}
+
+bool GSGlBackend::BenchBegin(const std::vector<GSClutLoad> &cluts)
+{
+    if (!ensureGl())
+        return false;
+    for (const GSClutLoad &c : cluts)
+    {
+        m_cluts[c.id] = c;
+        m_clutUse[c.id] = ++m_clutLoadSeq;
+    }
+    m_benchOn = true;
+    BenchResetTotals();
+    return true;
+}
+
+uint64_t GSGlBackend::BenchReplay(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader)
+{
+    if (!m_benchOn)
+        return 0u;
+    CommandBuffer &buffer = m_executing;
+    buffer.clear();
+    buffer.commands.reserve(batch.events.size());
+    for (const GsReplayFile::Event &e : batch.events)
+    {
+        Cmd cmd;
+        if (e.submit)
+        {
+            cmd.type = CmdType::Submit;
+            cmd.batch = e.prim;
+        }
+        else
+        {
+            if (e.type > static_cast<uint8_t>(CmdType::ClutLoad))
+                continue;   // a type this build does not know: the layout guard makes this unreachable
+            cmd.type = static_cast<CmdType>(e.type);
+            if (e.payloadSize && e.payloadOffset + e.payloadSize <= batch.payload.size())
+                unpackReplayPayload(cmd, batch.payload.data() + e.payloadOffset, e.payloadSize);
+            if (e.blob != GsReplayFile::kNoBlob)
+            {
+                const std::vector<uint8_t> &bytes = reader.blob(e.blob);
+                cmd.dataOffset = buffer.data.size();
+                cmd.dataSize = bytes.size();
+                buffer.data.insert(buffer.data.end(), bytes.begin(), bytes.end());
+            }
+        }
+        buffer.commands.push_back(cmd);
+    }
+    const uint64_t before = m_benchPresents;
+    const auto t0 = std::chrono::steady_clock::now();
+    // Present to present is replay time only: the reading and unpacking above is carried out of the interval.
+    if (m_lastPresentSet)
+        m_lastPresent = t0 - m_benchCarry;
+    if (!buffer.commands.empty())
+        executeCommands(buffer);
+    glFinish();   // the GPU's share lands in this batch, as the swap would take it in the game
+    const auto t1 = std::chrono::steady_clock::now();
+    m_benchElapsed += t1 - t0;
+    if (m_lastPresentSet)
+        m_benchCarry = t1 - m_lastPresent;
+    return m_benchPresents - before;
+}
+
+void GSGlBackend::BenchResetTotals()
+{
+    GsGlUploadTrace::reset(m_benchTrace);
+    GsGlUploadTrace::reset(g_uploadTrace);
+    for (int i = 0; i < 8; ++i)
+    {
+        m_benchCmdMs[i] = 0.0;
+        m_benchCmdCount[i] = 0u;
+    }
+    m_benchHist.reset();
+    m_benchPresents = 0u;
+    m_benchElapsed = std::chrono::steady_clock::duration{};
+}
+
+GSGlBackend::BenchTotals GSGlBackend::BenchTotalsNow() const
+{
+    BenchTotals t;
+    t.trace = m_benchTrace;
+    GsGlUploadTrace::accumulate(t.trace, g_uploadTrace);   // the part the stats cadence has not folded in yet
+    for (int i = 0; i < 8; ++i)
+    {
+        t.cmdMs[i] = m_benchCmdMs[i];
+        t.cmdCount[i] = m_benchCmdCount[i];
+    }
+    t.hist = m_benchHist;
+    t.presents = m_benchPresents;
+    t.elapsedMs = std::chrono::duration<double, std::milli>(m_benchElapsed).count();
+    return t;
 }
 
 // PS2X_GS_TRACE_PRESENT / PS2X_GS_TRACE_CMDS=<n>: trace after present n; a negative n counts from
@@ -1891,12 +2121,21 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             break;
         }
         m_executedToken.store(cmd.token, std::memory_order_release);
-        if (s_stats)
+        if (s_stats || m_benchOn)
         {
             const auto t1 = std::chrono::steady_clock::now();
             const int idx = static_cast<int>(cmd.type) & 7;
-            s_time[idx] += std::chrono::duration<double, std::milli>(t1 - t0).count();
-            ++s_count[idx];
+            const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            if (s_stats)
+            {
+                s_time[idx] += ms;
+                ++s_count[idx];
+            }
+            if (m_benchOn)   // Sprint 17 F: the bench's own total, never reset by the cadence below
+            {
+                m_benchCmdMs[idx] += ms;
+                ++m_benchCmdCount[idx];
+            }
         }
     }
     flushBatch();
@@ -1941,6 +2180,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             // Sprint 16 F2: the third line -- the submit= column split over every flush, and the
             // GPU->shadow read-back inside it counted as work. Same knob, same cadence, same interval.
             std::fprintf(stderr, "%s\n", GsGlUploadTrace::formatSubmit(g_uploadTrace, elapsed).c_str());
+            if (m_benchOn)   // Sprint 17 F: keep the interval in the bench's total before the reset drops it
+                GsGlUploadTrace::accumulate(m_benchTrace, g_uploadTrace);
             GsGlUploadTrace::reset(g_uploadTrace);
         }
         // Sprint 17 F0: the present intervals of this stats interval, then a fresh histogram.
@@ -3197,9 +3438,16 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     {
         const auto now = std::chrono::steady_clock::now();
         if (m_lastPresentSet)
-            m_frameHist.add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_lastPresent).count()));
+        {
+            const uint64_t intervalNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_lastPresent).count());
+            m_frameHist.add(intervalNs);
+            if (m_benchOn)   // Sprint 17 F: the bench's histogram, which the stats cadence does not reset
+                m_benchHist.add(intervalNs);
+        }
         m_lastPresent = now;
         m_lastPresentSet = true;
+        if (m_benchOn)
+            ++m_benchPresents;
     }
     // PS2X_GS_TRACE_PRESENT=<skip>: after <skip> presents, print 30 presents with the copy's
     // centre pixel (rgba) and the GL error state, to tell a black copy from a black draw.

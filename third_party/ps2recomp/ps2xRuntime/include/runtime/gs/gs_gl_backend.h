@@ -4,6 +4,8 @@
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_frame_histogram.h"
+#include "runtime/gs/gs_gl_replay_file.h"
+#include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_stall_coalescer.h"
@@ -79,6 +81,25 @@ public:
     std::string glMissing() const { return m_glCapsLatch.report().missing; }
     static bool glUnavailableForProcess();
     static std::string glMissingForProcess();
+
+    // Sprint 17 F, the replay bench (src/tools/gs_replay_bench.cpp): replay a PS2X_GS_RECORD recording through
+    // executeCommands on the CALLING thread, which must own a current GL context (a hidden raylib window).
+    // Initialize() first with the recording's VRAM (it seeds the shadow); BenchBegin() brings GL up and loads the
+    // palettes; BenchReplay() replays one recorded batch and returns the presents in it; BenchResetTotals() ends a
+    // warm-up; BenchTotalsNow() reads the span since. Nothing in a running title calls these.
+    struct BenchTotals
+    {
+        GsGlUploadTrace::Accum trace;   // the [gs-submit], [gs-transfer] and [gs-upload] accumulators, summed
+        double cmdMs[8] = {};           // the [gs-gl stats] buckets (CmdType & 7: submit transfer upload wvram clear
+        uint64_t cmdCount[8] = {};      // present readback reset; a palette load lands in submit's, as there)
+        GsFrameHistogram hist;          // the replay's time from present to present (glFinish at each batch's end)
+        uint64_t presents = 0;
+        double elapsedMs = 0.0;         // the batches' replay wall: executeCommands + glFinish, no file reading
+    };
+    bool BenchBegin(const std::vector<GSClutLoad> &cluts);
+    uint64_t BenchReplay(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader);
+    void BenchResetTotals();
+    BenchTotals BenchTotalsNow() const;
 
 private:
     enum class CmdType : uint8_t
@@ -260,6 +281,12 @@ private:
     void markRtDirtyFromFrame(const GSContext &context);
 
     // render-thread side
+    // Sprint 17 F: PS2X_GS_RECORD -- write the batch HostRenderFrame is about to replay (gs_gl_replay_file.h).
+    void recordReplayBatch(const CommandBuffer &buffer);
+    // A non-Submit command's fields for the file ('C' payload): args, then the transfer, present or context the
+    // type carries. Returns the bytes written; unpack is the inverse.
+    static uint32_t packReplayPayload(const Cmd &cmd, uint8_t *out);
+    static void unpackReplayPayload(Cmd &cmd, const uint8_t *in, uint32_t size);
     void executeCommands(CommandBuffer &buffer);
     void executeSubmit(const GSPrimitiveBatch &batch);
     void executeTransfer(const GSTransferCommand &command);
@@ -361,6 +388,19 @@ private:
     GsFrameHistogram m_frameHist;
     std::chrono::steady_clock::time_point m_lastPresent{};
     bool m_lastPresentSet = false;
+    // Sprint 17 F: the recorder (render thread only; null until PS2X_GS_RECORD's start is reached) and the bench's
+    // totals (m_benchOn only in gs_replay_bench: every added line below is behind it).
+    std::unique_ptr<GsReplayFile::Writer> m_recWriter;
+    bool m_recDone = false;
+    uint64_t m_recPresents = 0;
+    bool m_benchOn = false;
+    GsGlUploadTrace::Accum m_benchTrace;
+    double m_benchCmdMs[8] = {};
+    uint64_t m_benchCmdCount[8] = {};
+    GsFrameHistogram m_benchHist;
+    uint64_t m_benchPresents = 0;
+    std::chrono::steady_clock::duration m_benchElapsed{};
+    std::chrono::steady_clock::duration m_benchCarry{};   // replay time since the last present, across batches
     uint64_t m_movieStartFrame = 0;   // first 16x16 movie block upload seen (trace windows are relative to it)
     uint64_t m_seamFrame = 0;         // first decode where page columns 0 and 6 of the movie frame start on different rows
     long traceSkip(const char *env) const;
