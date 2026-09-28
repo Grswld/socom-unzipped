@@ -17,6 +17,8 @@ export interface ViewerHook {
   stats(): {
     triangles: number; backend: Backend; diagnostics: string[]; loadMs: number; map: string | null;
     collisionPolys: number; untexturedDraws: number; shadowDraws: number; alternateDraws: number; spawns: Spawns | null;
+    /** Draws carrying a detail pass (W1.6), the column `tools/map-health.ts` lists. */
+    detailDraws: number;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;

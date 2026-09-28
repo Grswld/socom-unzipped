@@ -104,6 +104,9 @@
           <label title="The states a map holds but does not open in: a destructible's remains and debris (whats_left, parts), a lamp's unlit copy (nolight), the pulsing objective ribbon (terrorist_pulse), the far level-of-detail copies named by lod.rdr. The game switches them by play and by range; drawn on top of the intact, lit, near ones they z-fight, so they are hidden unless you ask."><input type="checkbox" id="alternate" /> alternate states</label>
         </div>
         <div class="row">
+          <label title="The detail texture the game lays over its ground and walls close up: each texture whose mp&lt;N&gt;_lib.rdr entry names a detail texture gets a second pass over the same surface, the detail repeated uv times as often, blended as the entry's bmode says and fading out over its range from the camera."><input type="checkbox" id="detail" checked /> detail pass</label>
+        </div>
+        <div class="row">
           <label title="Experimental. Draw every surface in scene-graph order with depth written by every draw, blended or not. The engine really walked its grid outward from the camera, with decals and shadows in passes of their own, so this is not its order either -- a glow or a shadow drawn before the wall behind it shows the sky through itself. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="discorder" /> scene-graph draw order (experimental)</label>
         </div>
       <details id="sliders-box">
