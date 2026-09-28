@@ -200,6 +200,18 @@ export class Shooter {
     this.marker.visible = false;
   }
 
+  /** W2.6: the drawn camera's kind this frame -- the held weapon is hidden in the shoulder view (`third`). */
+  private viewKind: 'third' | 'aim' | 'fly' = 'fly';
+
+  /**
+   * What the frame is drawn with (W2.6, `./play`): in the shoulder view the body carries no weapon yet (the hand is
+   * the carry), so the held weapon -- placed at the fire point for the first-person hold -- would float at the
+   * SEAL's head; it is hidden there and shown again in the aim view and the walk's own view.
+   */
+  follow(_camera: unknown, kind: 'third' | 'aim' | 'fly'): void {
+    this.viewKind = kind;
+  }
+
   /** One frame: `m_velM` from the actor's motion, and the weapon at the fire point along the aim; hidden in fly mode. */
   frame(dt: number, mover: Mover): void {
     const feet = actorPosition(mover);
@@ -223,7 +235,7 @@ export class Shooter {
     const m = heldWeaponMatrix(from, [from[0] + dir[0], from[1] + dir[1], from[2] + dir[2]], pointOf(weapon.points, 'firepoint'));
     weapon.object.matrix.fromArray(m);
     weapon.object.matrixWorldNeedsUpdate = true;
-    weapon.object.visible = true;
+    weapon.object.visible = this.viewKind !== 'third';
   }
 
   /** One shot from the mover's fire point, or null when not walking or before a map. */

@@ -122,7 +122,7 @@ export const PAD_LAYOUT: readonly PadRow[] = [
   },
   {
     control: 'L1', action: 'aim', documented: 'assumed',
-    note: 'the other shoulder of socom2_host_input.cpp:297\'s pair; the aim view is W2.6\'s',
+    note: 'the other shoulder of socom2_host_input.cpp:297\'s pair; held on foot, the first-person aim view (W2.6)',
   },
   {
     control: 'L2', action: 'leanLeft', documented: 'assumed',

@@ -58,7 +58,7 @@ export class Ui {
     billboards: find('billboards'),
     rigeverywhere: find('rigeverywhere'),
     ps2look: find('ps2look'),
-    body: find('player-body'),                        // W2.1: the player's SEAL at slot A, in its bind pose (`./bodyView`)
+    body: find('player-body'),                        // W2.1's SEAL; W2.2b: shown in fly mode (in play it always is, `./play`)
   };
 
   /**
@@ -393,6 +393,26 @@ export class Ui {
   /** Puts the walk switch where the mode is, whoever changed it. */
   setWalk(on: boolean): void {
     find<HTMLInputElement>('walk').checked = on;
+  }
+
+  // ---- W2.6: the shoulder camera's rig switch (not a toggle: `apply` must not replay it on every map load) ----------
+
+  /** The switch between research 18's measured ring (off, the default) and the disc's `cam_back` triple (on). */
+  onCameraRigSwitch(handler: (disc: boolean) => void): void {
+    const box = find<HTMLInputElement>('cam-disc');
+    box.checked = box.defaultChecked;
+    box.addEventListener('change', () => handler(box.checked));
+  }
+
+  setCameraRigSwitch(disc: boolean): void {
+    find<HTMLInputElement>('cam-disc').checked = disc;
+  }
+
+  /** The switch is offered once the disc's table has been read with a `cam_back` in it (W2.R6: the page says which). */
+  setCameraRigAvailable(on: boolean): void {
+    const box = find<HTMLInputElement>('cam-disc');
+    box.disabled = !on;
+    if (!on) box.checked = false;
   }
 
   /**

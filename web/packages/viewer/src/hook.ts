@@ -7,6 +7,8 @@ import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 import type { MoverState } from './walk';
+import type { AnimStats } from './animator';
+import type { ViewKind, ViewStats } from './play';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -43,6 +45,18 @@ export interface ViewerHook {
     /** W2.4 (`./shot`): the shots fired on this map, and the last one -- its fire point, its end, whether it hit the hull. */
     shots: number;
     lastShot: ShotRecord | null;
+    /**
+     * The body's clips (W2.2b, `./animator`): the clip playing, its fractional key, the cross-fade's weight (1 settled)
+     * and the clip it leaves, the keys a second, the upper-body layer; null with no body, no `MOTION_P.ZAR`, or before
+     * the play mode is first entered.
+     */
+    anim: AnimStats | null;
+    /**
+     * The camera the frame is drawn with (W2.6, `./play`): `third` over the shoulder in play, `aim` from the body's
+     * eyes, `fly` otherwise; the rig it runs on (`measured`, research 18's ring, or the disc's `cam_back`), whether the
+     * disc's was read, the tether's stiffness, and its pose. `pose()` stays the look and the walk's eye.
+     */
+    camera: ViewStats;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
@@ -74,6 +88,10 @@ export interface ViewerHook {
   crouch(on?: boolean): boolean;
   /** W2.4: one shot from the current pose, as the left button fires it; null in fly mode (`./shot`). */
   fire(): ShotRecord | null;
+  /** W2.6: the aim view on or off over the lanes (L1, the right mouse button), or null to hand back; the camera kind after. */
+  setAim(on: boolean | null): ViewKind;
+  /** W2.6: the shoulder camera's rig; false, and the measurement, when the disc's `cam_back` was not read. */
+  setCameraRig(rig: 'measured' | 'disc'): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

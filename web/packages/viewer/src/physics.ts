@@ -72,6 +72,11 @@ export interface SealTuning {
   lr_accel: number | null;
   /** +0x118 `throt_exp` (reCOM's loader reads it, `char_dyn.cpp:41`). */
   throt_exp: number | null;
+  /**
+   * +0x15c `cam_tether_stiff` (research 17 section 8; reCOM's `m_cameraTetherStiffness`, `char_dyn.cpp:381-383`): the
+   * shoulder camera's follow (W2.6, `./thirdPerson`); what the engine does with it is not in the bodies on hand.
+   */
+  cam_tether_stiff: number | null;
   /** +0x178 `low_climb_height`, units. */
   low_climb_height: number | null;
   /** +0x17c `med_climb_height`, units. */
@@ -98,7 +103,7 @@ export const SEAL_TUNING_DEFAULTS: Readonly<SealTuning> = Object.freeze({
   FALLING_DAMAGE_LIGHT: null, FALLING_DAMAGE_HEAVY: null, FALLING_DAMAGE_DEATH: null,
   stand_turn_factor: null, turn_maxrate: null,
   lower_x_accel: null, upper_x_accel: null, lower_z_accel: null, upper_z_accel: null,
-  fb_accel: null, lr_accel: null, throt_exp: null,
+  fb_accel: null, lr_accel: null, throt_exp: null, cam_tether_stiff: null,
   low_climb_height: null, med_climb_height: null, high_climb_height: null,
   min_stand_height: null, min_jump_height: null,
 });
@@ -110,7 +115,7 @@ export const SEAL_TUNING_OFFSETS: Readonly<Record<keyof SealTuning, number>> = O
   FALLING_DAMAGE_LIGHT: 0x24, FALLING_DAMAGE_HEAVY: 0x28, FALLING_DAMAGE_DEATH: 0x2c,
   stand_turn_factor: 0x3c, turn_maxrate: 0x40,
   lower_x_accel: 0x44, upper_x_accel: 0x48, lower_z_accel: 0x4c, upper_z_accel: 0x50,
-  fb_accel: 0x110, lr_accel: 0x114, throt_exp: 0x118,
+  fb_accel: 0x110, lr_accel: 0x114, throt_exp: 0x118, cam_tether_stiff: 0x15c,
   low_climb_height: 0x178, med_climb_height: 0x17c, high_climb_height: 0x180,
   min_stand_height: 0x184, min_jump_height: 0x188,
 });
@@ -129,7 +134,7 @@ export const DYNAMICS_FIELDS: Readonly<Record<keyof SealTuning, DynamicsUnit>> =
   FALLING_DAMAGE_LIGHT: 'metres', FALLING_DAMAGE_HEAVY: 'metres', FALLING_DAMAGE_DEATH: 'metres',
   stand_turn_factor: 'as-is', turn_maxrate: 'as-is',
   lower_x_accel: 'as-is', upper_x_accel: 'as-is', lower_z_accel: 'as-is', upper_z_accel: 'as-is',
-  fb_accel: 'as-is', lr_accel: 'as-is', throt_exp: 'as-is',
+  fb_accel: 'as-is', lr_accel: 'as-is', throt_exp: 'as-is', cam_tether_stiff: 'as-is',
   low_climb_height: 'metres', med_climb_height: 'metres', high_climb_height: 'metres',
   min_stand_height: 'metres', min_jump_height: 'metres',
 });
@@ -159,9 +164,27 @@ export function readDynamics(rdr: RdrNode): Partial<SealTuning> {
 
 /** The table out of a `READERC.ZAR`'s bytes, or null when the archive has no `dynamics.rdr`. */
 export function dynamicsFromArchive(bytes: Uint8Array): Partial<SealTuning> | null {
+  const rdr = dynamicsRdrFromArchive(bytes);
+  return rdr ? readDynamics(rdr) : null;
+}
+
+/**
+ * `dynamics.rdr` decoded, for the readers of its other records -- the camera rigs (W2.6, `./thirdPerson`), whose
+ * three-number aims are no field of this table -- or null when the archive has no such reader.
+ */
+export function dynamicsRdrFromArchive(bytes: Uint8Array): RdrNode | null {
   const zar = Zar.parse(bytes);
   const key = zar.find(DYNAMICS_READER);
-  return key ? readDynamics(parseRdr(zar.data(key))) : null;
+  return key ? parseRdr(zar.data(key)) : null;
+}
+
+/** `dynamics.rdr` decoded from `source`'s `RUN/READERC.ZAR`, or null, silently, as `dynamicsFromDisc`. */
+export async function dynamicsRdrFromDisc(source: AssetSource): Promise<RdrNode | null> {
+  try {
+    return dynamicsRdrFromArchive(await source.read(DYNAMICS_PATH));
+  } catch {
+    return null;
+  }
 }
 
 /**

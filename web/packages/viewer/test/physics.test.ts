@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AssetSource, RdrNode } from '@s2u/archive';
+import { rdrGet, type AssetSource, type RdrNode } from '@s2u/archive';
 import { FsAssetSource } from '@s2u/archive/node';
 import {
-  alongSurfaceVy, contactSpeed, contactTime, dynamicsFromArchive, dynamicsFromDisc, fall, jumpImpulse, jumpSpeed,
+  alongSurfaceVy, contactSpeed, contactTime, dynamicsFromArchive, dynamicsFromDisc, dynamicsRdrFromArchive,
+  dynamicsRdrFromDisc, fall, jumpImpulse, jumpSpeed,
   landingKind, readDynamics, sealTuning, slideAcceleration, standable, DYNAMICS_FIELDS, DYNAMICS_PATH,
   JUMP_PLACEHOLDER, MIN_JUMP_HEIGHT_PLACEHOLDER, SEAL_TUNING_DEFAULTS, SEAL_TUNING_OFFSETS, WORLD_SCALE,
   type SealTuning,
@@ -30,12 +31,12 @@ describe('the seal tuning table (research 17 section 8, W2.R2, W2.R6)', () => {
     expect(Object.entries(SEAL_TUNING_DEFAULTS).filter(([, v]) => v === null).map(([k]) => k)).toEqual([
       'FALLING_DAMAGE_LIGHT', 'FALLING_DAMAGE_HEAVY', 'FALLING_DAMAGE_DEATH', 'stand_turn_factor', 'turn_maxrate',
       'lower_x_accel', 'upper_x_accel', 'lower_z_accel', 'upper_z_accel', 'fb_accel', 'lr_accel', 'throt_exp',
-      'low_climb_height', 'med_climb_height', 'high_climb_height', 'min_stand_height', 'min_jump_height',
+      'cam_tether_stiff', 'low_climb_height', 'med_climb_height', 'high_climb_height', 'min_stand_height', 'min_jump_height',
     ]);
     expect(Object.keys(SEAL_TUNING_OFFSETS)).toEqual(Object.keys(SEAL_TUNING_DEFAULTS));
     expect(Object.values(SEAL_TUNING_OFFSETS)).toEqual([
       0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20, 0x24, 0x28, 0x2c, 0x3c, 0x40, 0x44, 0x48, 0x4c, 0x50,
-      0x110, 0x114, 0x118, 0x178, 0x17c, 0x180, 0x184, 0x188,
+      0x110, 0x114, 0x118, 0x15c, 0x178, 0x17c, 0x180, 0x184, 0x188,
     ]);
     expect(Object.isFrozen(SEAL_TUNING_DEFAULTS)).toBe(true);
     // max_slope is the cosine of 50 degrees: the loader keeps the cosine of the file's degrees (reCOM
@@ -171,6 +172,24 @@ describe.skipIf(noReaderc)(`dynamics.rdr on the disc${noReaderc ? ' (READERC.ZAR
     // The mover's table from it: the nine as research 17 prints them, the rest filled.
     const tuning = sealTuning(disc);
     expect(Object.entries(tuning).filter(([, v]) => v === null).map(([k]) => k)).toEqual(['throt_exp']);
+  });
+});
+
+describe('the camera\'s field of the table (W2.6)', () => {
+  it('carries cam_tether_stiff at +0x15c (research 17 section 8), read by name, null until the disc gives it', () => {
+    expect(SEAL_TUNING_OFFSETS.cam_tether_stiff).toBe(0x15c);
+    expect(DYNAMICS_FIELDS.cam_tether_stiff).toBe('as-is');
+    expect(SEAL_TUNING_DEFAULTS.cam_tether_stiff).toBeNull();
+    expect(readDynamics(['cam_tether_stiff', ['0.3']])).toEqual({ cam_tether_stiff: 0.3 });   // a made-up value
+  });
+
+  it('hands the decoded dynamics.rdr to the camera\'s own reader: the same archive, or null', async () => {
+    const rdr = rdrBytes([['cam_tether_stiff', 0.25]]);
+    const zar = zarBytes([['dynamics.rdr', rdr]]);
+    expect(rdrGet(dynamicsRdrFromArchive(zar)!, 'cam_tether_stiff')).toBe('0.25');
+    expect(dynamicsRdrFromArchive(zarBytes([['other.rdr', rdr]]))).toBeNull();
+    expect(await dynamicsRdrFromDisc(sourceOf({ [DYNAMICS_PATH]: zar }))).not.toBeNull();
+    expect(await dynamicsRdrFromDisc(sourceOf({}))).toBeNull();
   });
 });
 

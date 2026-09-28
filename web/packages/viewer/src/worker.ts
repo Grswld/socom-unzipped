@@ -1,6 +1,8 @@
 import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
-import { dynamicsFromDisc, type SealTuning } from './physics';
+import { dynamicsRdrFromDisc, readDynamics, type SealTuning } from './physics';
+import { readCameraRig, type CameraRig } from './thirdPerson';
+import { playFromDisc, playTransferables, type PlayData } from './motionTable';
 
 /**
  * The decode thread. A 12 MB archive, 416 VIF packets and 37 palettised textures are a few hundred
@@ -25,7 +27,9 @@ export type ViewerRequest =
   | { kind: 'index'; id: number; source: SourceRequest }
   | { kind: 'load'; id: number; source: SourceRequest; path: string }
   /** The seal table (W2.3a, W2.R6): `RUN/READERC.ZAR`'s `dynamics.rdr`, asked once of each source the page uses. */
-  | { kind: 'dynamics'; id: number; source: SourceRequest };
+  | { kind: 'dynamics'; id: number; source: SourceRequest }
+  /** The play mode's clips (W2.2b): `RUN/MOTION_P.ZAR`'s named clips and `motion.rdr`'s entries for them, once a source. */
+  | { kind: 'play'; id: number; source: SourceRequest; clips: string[] };
 
 /**
  * What comes back. `error` carries the request that failed so the page can say what it was doing, and
@@ -38,8 +42,13 @@ export type ViewerResponse =
   | { kind: 'index'; id: number; maps: MapInfo[] }
   | { kind: 'map'; id: number; map: LoadedMap }
   | { kind: 'progress'; id: number; stage: LoadStage; done: number; total: number }
-  /** The table's fields the disc gave, by name and in game units, or null when the source has no READERC.ZAR. */
-  | { kind: 'dynamics'; id: number; tuning: Partial<SealTuning> | null }
+  /**
+   * The table's fields the disc gave, by name and in game units, or null when the source has no READERC.ZAR; and
+   * the same file's `cam_back` rig (W2.6, `./thirdPerson`), or null.
+   */
+  | { kind: 'dynamics'; id: number; tuning: Partial<SealTuning> | null; camera: CameraRig | null }
+  /** The clips and their table entries, or null when the source has no `MOTION_P.ZAR` (the body keeps its bind pose). */
+  | { kind: 'play'; id: number; data: PlayData | null }
   | { kind: 'error'; id: number; doing: string; message: string };
 
 /** Worker globals without pulling the WebWorker lib in beside the DOM one (they collide on `self`). */
@@ -83,8 +92,13 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         ctx.postMessage({ kind: 'index', id: request.id, maps });
       } else if (request.kind === 'dynamics') {
         // Never an error: a served tree without the file answers 404 and the mover keeps the defaults, silently.
-        const tuning = await dynamicsFromDisc(sourceFor(request.source));
-        ctx.postMessage({ kind: 'dynamics', id: request.id, tuning });
+        const rdr = await dynamicsRdrFromDisc(sourceFor(request.source));
+        const tuning = rdr === null ? null : readDynamics(rdr), camera = rdr === null ? null : readCameraRig(rdr, 'cam_back');
+        ctx.postMessage({ kind: 'dynamics', id: request.id, tuning, camera });
+      } else if (request.kind === 'play') {
+        // Never an error either: without the owner's pack the body stands in its bind pose.
+        const data = await playFromDisc(sourceFor(request.source), request.clips);
+        ctx.postMessage({ kind: 'play', id: request.id, data }, data ? playTransferables(data) : []);
       } else {
         // Throttled to one message per stage per 2 percent: a 13 MB archive arrives in hundreds of
         // chunks, and posting each one costs more than the bar is worth.

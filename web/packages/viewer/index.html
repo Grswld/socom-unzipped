@@ -69,10 +69,19 @@
       </div>
       <!--
         Walk mode (web sprint 1, W1.4): the SEAL's eye, 15.4 over the floor the engine's ground probe finds, stepping
-        at the game's 60 Hz and stopped by its walls. G toggles it; this box mirrors G.
+        at the game's 60 Hz and stopped by its walls. G toggles it; this box mirrors G. W2.2b: the play mode -- the
+        SEAL is drawn at the mover's feet, running the game's clips.
       -->
       <div class="row" id="walk-row">
-        <label class="s2u-check" title="Walk on the game's own floors at a SEAL's eye height, 15.4 units over the feet: the floor under you is the one the engine's ground probe picks, the walls stop you at a body's radius, and the step runs at the game's 60 Hz. WASD or the stick walks, the mouse looks, Space jumps, C crouches, G switches back to flying."><input type="checkbox" id="walk" /> <span>walk (G) &mdash; on the game's floors, at eye height</span></label>
+        <label class="s2u-check" title="Play the SEAL on the game's own floors: the floor under you is the one the engine's ground probe picks, the walls stop you at a body's radius, the step runs at the game's 60 Hz, and the body runs the game's own motion clips. WASD or the stick walks, the mouse looks, Space jumps, C crouches, G switches back to flying."><input type="checkbox" id="walk" /> <span>walk (G) &mdash; on the game's floors, at eye height</span></label>
+      </div>
+      <!--
+        W2.6: the shoulder camera's rig. Off: research 18's measured ring, 23.1 behind and 25 up (the default, since the
+        disc's triple alone does not reproduce it). On: the disc's own cam_back triple, read from RUN/READERC.ZAR at run
+        time -- offered only once that file has been read. Aim (L1, the right mouse button) is first person from the eyes.
+      -->
+      <div class="row" id="cam-disc-row">
+        <label class="s2u-check" title="The camera over the SEAL's shoulder in walk mode. Off: the camera the game was measured to use online (research 18: 23.1 units behind the player and 25 over the feet, looking at a point over the head). On: the disc's own cam_back numbers from dynamics.rdr, which alone do not reproduce that measurement. Hold the right mouse button (or L1) to aim from the SEAL's eyes."><input type="checkbox" id="cam-disc" disabled /> <span>camera: the disc's cam_back triple</span></label>
       </div>
       <details id="about" class="s2u-disclosure">
         <summary>Unzipped Project Map Viewer <span class="s2u-label s2u-label--warn" id="revision">dev build</span></summary>
@@ -117,11 +126,12 @@
         </div>
         <!--
           W2.1: the player's body -- the map's SEAL (seal_A_scuba on Frostfire) decoded from its character library and
-          dressed as the game's character.rdr dresses it, stood in its bind pose at spawn slot A. Off by default; the
-          play mode switches it (web sprint 2).
+          dressed as the game's character.rdr dresses it. W2.2b: in the play mode (walk) it is always shown, at the
+          mover's feet in the game's clips; this switch shows it in fly mode -- where the play left it, or in its bind
+          pose at spawn slot A until the play mode is first entered. Off by default.
         -->
         <div class="row" id="body-row">
-          <label class="s2u-check" title="The player's SEAL, decoded from the map's character library (CLIB_MDL, CLIB_GEO) with the gear READERC.ZAR's character.rdr hangs on it, standing in its bind pose at spawn slot A, facing the slot's facing, feet on its floor."><input type="checkbox" id="player-body" /> <span>player body (bind pose, slot A)</span></label>
+          <label class="s2u-check" title="The player's SEAL, decoded from the map's character library (CLIB_MDL, CLIB_GEO) with the gear READERC.ZAR's character.rdr hangs on it. Walking (G) it is always shown, running the game's own motion clips (RUN/MOTION_P.ZAR) as the mover walks, runs, crouches and jumps. This shows it in fly mode too: where the walk left it, or standing in its bind pose at spawn slot A, facing the slot's facing, until the walk is first entered."><input type="checkbox" id="player-body" /> <span>player body in fly mode</span></label>
         </div>
         <div class="row">
           <label class="s2u-check" title="Draw in the engine's order: the map's grid walked cell ring by cell ring outward from the camera's cell, the drop shadows in a pass after the last ring, and depth written under every blend as the console did. Recomputed when the camera crosses into another cell. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="engineorder" /> <span>engine draw order</span></label>
@@ -170,9 +180,9 @@
           <thead><tr><th scope="col">pad</th><th scope="col">walk</th><th scope="col">fly</th><th scope="col">source</th></tr></thead>
           <tbody></tbody>
         </table>
-        <p class="s2u-fine">The left stick moves and the right looks, on foot and in the air alike. Fire, aim and lean are
-          the layout's, held for the play mode: the viewer does not do them yet. A row marked assumed is a binding the
-          repository does not document.</p>
+        <p class="s2u-fine">The left stick moves and the right looks, on foot and in the air alike. On foot Cross jumps,
+          the crouch buttons crouch on release, and L1 held aims from the SEAL's eyes; fire and lean are the layout's.
+          A row marked assumed is a binding the repository does not document.</p>
       </details>
       </div>
     </div>

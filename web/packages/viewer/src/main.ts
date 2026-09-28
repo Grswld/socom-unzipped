@@ -20,6 +20,9 @@ import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { buildBody, type BodyView } from './bodyView';
 import { RECOIL_PLACEHOLDER, Shooter, type Mover, type ShotRecord } from './shot';
+import { Play, playActions } from './play';
+import { PLAY_CLIPS } from './animator';
+import { sealTuning } from './physics';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -182,6 +185,43 @@ function askDynamics(from: SourceRequest): void {
   ask({ kind: 'dynamics', id: wantedDynamics, source: from });
 }
 
+// ---- W2.2b: the play mode -- the walk with the body, the game's clips on the mover (`./play`, `./animator`) ---------
+/**
+ * The body and its clips: the map's body (`show`), the source's clips (`RUN/MOTION_P.ZAR` and `motion.rdr`, asked of
+ * each source once its map list is in, as the seal table is), stepped once a frame after the walk. Without the pack
+ * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
+ */
+const play = new Play();
+let wantedPlay = -1;
+function askPlay(from: SourceRequest): void {
+  wantedPlay = ++requests;
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
+}
+
+// ---- W2.6: the shoulder camera, the aim view, and the pad's lanes in play (`./play`, `./thirdPerson`) --------------
+/**
+ * The aim view is held: the pad's aim lane (L1, W2.R5) or the right mouse button on the canvas (a `mousedown`, which
+ * fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
+ */
+let mouseAim = false;
+canvas.addEventListener('mousedown', (e) => { if (e.button === 2) mouseAim = true; });
+globalThis.addEventListener('mouseup', (e) => { if (e.button === 2) mouseAim = false; });
+globalThis.addEventListener('blur', () => { mouseAim = false; });
+/**
+ * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
+ * (docs/PLAYTEST.md step 8), the aim while held (`playActions`). In the fly camera the same lanes are up and down.
+ */
+function playLanes(before: Input, after: Input): void {
+  const act = playActions(before, after);
+  if (walk.mode() === 'walk') {
+    if (act.jump) walk.jump();
+    if (act.crouch) walk.crouch();
+  }
+  play.setAimLane(act.aim || mouseAim);
+}
+/** The rig switch: the disc's cam_back, or research 18's measured ring (the default); the switch mirrors the refusal. */
+ui.onCameraRigSwitch((on) => { if (!play.useDiscRig(on)) ui.setCameraRigSwitch(false); });
+
 /**
  * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
  * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
@@ -207,10 +247,19 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     source = wantedIndexFrom;
     showMaps(message.maps);
     askDynamics(source);
+    askPlay(source);
     return;
   }
   if (message.kind === 'dynamics') {
-    if (message.id === wantedDynamics) walk.setTuning(message.tuning);
+    if (message.id !== wantedDynamics) return;
+    walk.setTuning(message.tuning);
+    // W2.6: the same file's cam_back rig and cam_tether_stiff for the shoulder camera; the switch offers the rig when read
+    play.setCameraTable(message.camera, sealTuning(message.tuning).cam_tether_stiff);
+    ui.setCameraRigAvailable(message.camera !== null);
+    return;
+  }
+  if (message.kind === 'play') {
+    if (message.id === wantedPlay) play.setClips(message.data);
     return;
   }
   if (message.kind === 'progress') {
@@ -277,6 +326,7 @@ function padFrame(): void {
   fly.setStickBoost(input.boost);
   fly.setLook(input.lookX, input.lookY);
   if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  playLanes(padMerged, input);      // W2.6: jump, crouch and aim on foot
   padLast = pad;
   padMerged = input;
 }
@@ -343,7 +393,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else if (name === 'rigeverywhere') { lighting.rigEverywhere = on; view?.setLighting(lighting); }
-  else if (name === 'body') body?.setVisible(on);
+  else if (name === 'body') play.setFlyToggle(on);        // W2.2b: the body in fly mode; in play it is always shown
   else if (name === 'ps2look') {
     presentation = on ? 'ps2' : 'native';
     document.body.classList.toggle('ps2-look', on);
@@ -414,8 +464,12 @@ async function boot(): Promise<void> {
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
     shooter.frame(dt, mover());     // W2.4: the held weapon at the fire point, along the aim
-    view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
-    render(scene, fly.camera);
+    // W2.2b/W2.6: the body at the feet in its clip, and the camera the frame is drawn with -- over the shoulder in
+    // play, at the eyes when aiming, the fly camera otherwise (which stays the look and the walk's eye throughout)
+    const camera = play.frame(dt, walk, fly.camera);
+    shooter.follow(camera, play.viewStats().kind);   // the held weapon rides the drawn camera in the aim view only
+    view?.frame(camera, dt);       // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    render(scene, camera);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -526,6 +580,7 @@ function show(map: LoadedMap): void {
   if (body) { scene.remove(body.group); body.dispose(); }
   body = map.body ? buildBody(map.body, map, lighting) : null;
   if (body) scene.add(body.group);
+  play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -636,6 +691,8 @@ window.__viewer = {
     body: body ? { ...body.stats, visible: body.group.visible } : null,
     shots: shooter.stats().shots,
     lastShot: shooter.stats().lastShot,
+    anim: play.animStats(),
+    camera: play.viewStats(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -652,5 +709,7 @@ window.__viewer = {
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
   fire: () => fire(),
+  setAim: (on) => play.setAimForced(on),
+  setCameraRig: (rig) => { const ok = play.useDiscRig(rig === 'disc'); ui.setCameraRigSwitch(play.viewStats().rig === 'disc'); return ok; },
   revision,
 } satisfies ViewerHook;
