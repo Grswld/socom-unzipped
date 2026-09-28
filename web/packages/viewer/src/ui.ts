@@ -1,6 +1,7 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
 import { viewerRevision } from './revision';
+import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -157,10 +158,10 @@ export class Ui {
    * anyway. Nothing here fails if storage does.
    */
   onPanelToggle(): void {
-    // Open to start on every device -- the map picker is what a first visit is for, phone included --
-    // and a remembered fold, from an earlier visit's tap, beats that default.
+    // Folded to start with on a phone, where the open panel is most of the screen, and open on a
+    // desktop, where it is the thing you came for. A remembered choice beats both.
     const stored = read(PANEL_KEY);
-    this.setPanelCollapsed(stored === '1');
+    this.setPanelCollapsed(stored === null ? wantsTouchControls() : stored === '1');
     this.panelToggle.addEventListener('click', () => {
       const collapsed = !document.body.classList.contains('panel-collapsed');
       this.setPanelCollapsed(collapsed);

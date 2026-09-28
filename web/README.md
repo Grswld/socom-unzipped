@@ -149,9 +149,8 @@ pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75,
 step it back up.
 
 Everything the viewer draws over the map goes in one strip along the top: the back link, then the
-panel's title bar beneath it. The panel opens the same as on a desktop -- open, the map picker being
-what a first visit is for -- and a fold from an earlier visit's tap on the title bar is remembered;
-its body scrolls inside itself, and the status line drops the draw and collision counts and
+panel's title bar beneath it. The panel opens folded on a coarse pointer (a remembered choice still
+wins), its body scrolls inside itself, and the status line drops the draw and collision counts and
 abbreviates the rest so it fits on one row at 360px. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 
