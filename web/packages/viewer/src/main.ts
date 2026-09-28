@@ -17,6 +17,7 @@ import { attachTouchControls, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
+import { Body } from './body';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -52,6 +53,9 @@ const overlays = new Overlays(scene);
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
+/** W2.3 (`./body`): the stand-in body on the walker's feet, in the world's shading (the brighten, the fog). */
+const body = new Body(() => brightenOf(lighting));
+scene.add(body.object);
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -324,6 +328,8 @@ async function boot(): Promise<void> {
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
+    body.update(walk.feet(), fly.pose().yaw, dt, fly.camera.position);
+    body.setVisible(walk.mode() === 'walk');
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     reticle.setVisible(walk.mode() === 'walk');
@@ -551,5 +557,6 @@ window.__viewer = {
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
   reticle: () => reticle.state(),
+  body: () => body.state(),
   revision,
 } satisfies ViewerHook;

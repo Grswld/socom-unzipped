@@ -1,6 +1,7 @@
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
+import type { BodyState } from './body';
 import type { Rect } from './reticle';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
@@ -50,6 +51,8 @@ export interface ViewerHook {
   feet(): [number, number, number] | null;
   /** W2.4: the reticle -- drawn or not, and its rectangle in the drawing buffer's pixels (y down) on `frame`. */
   reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
+  /** W2.3: the stand-in body -- drawn or not, its top over the feet, its world bounds (null before it stands). */
+  body(): BodyState;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }
