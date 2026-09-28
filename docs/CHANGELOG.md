@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-258 merges (54 on the first-parent line, 204 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+259 merges (55 on the first-parent line, 204 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-33 merges.
+34 merges.
 
+- 2026-09-28 `862cec03` the network receive path bounded [agent/medusa-rt]
 - 2026-09-28 `8790bea0` main (b324dc50, web sprints 1 and 2) back into sprint-17 [main, main merged in]
   - 2026-09-28 `b324dc50` Merge pull request #102: web sprint 2, the SEAL in the world (with web sprint 1; reviewed; CI green) [branch not named]
   - 2026-09-28 `0b0ac0af` the close's documents; web sprint 2 CLOSED (W2.9) [agent/web-s2-close]
