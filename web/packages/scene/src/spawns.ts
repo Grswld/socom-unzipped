@@ -20,7 +20,8 @@
  * (W1.R4, W1.R9): its `PlayerStart` is one named cell holding neither spawn on any map, and what does explain
  * all 44 positions is its spawn list -- 24 slots a side: the 4 actor rows at a slot's centre, the 40 camera
  * rows 20-28 units behind one along its facing (75 §7, §11) -- which says where a side may start, not which
- * slot a player got. The viewer stands its opening camera on A as this table gives it.
+ * slot a player got. The viewer opens its camera at A's (x, z) as this table gives it, on the ground probe's
+ * floor there rather than at the recorded y (W1.4b, `packages/viewer/src/stand.ts`).
  *
  * A map's key is the name the game shows, which is `mission.rdr`'s `description` (36 section 0) -- the
  * same string `listMaps` puts in `MapInfo.name`, so the viewer can look a map up by what it is called.

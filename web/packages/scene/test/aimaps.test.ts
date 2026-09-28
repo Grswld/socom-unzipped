@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   aiCellCentre, aiCellIndex, aiCellMarker, aiMapsFromZdb, aiZoneRect, decodeAiLoc, dosDateTime, facingVector,
-  accountsFor, fitSlot, fitSpawn, namedPoint, parseAiMaps, placeSpawnSlots, spawnSlots, SPAWNS, type AiMaps,
-  type AiSpawnRecord, type SpawnSlot,
+  accountsFor, buildGrid, fitSlot, fitSpawn, namedPoint, parseAiMaps, placeSpawnSlots, spawnSlots, SPAWNS, type AiMaps,
+  type AiSpawnRecord, type CollisionOwner, type Grid, type GridParams, type SpawnSlot, type WorldPoly,
 } from '../src/index';
 import { loc, syntheticAiMaps as synthetic } from './syntheticAiMaps';
 
@@ -149,6 +149,52 @@ describe('placeSpawnSlots: the slots as the viewer draws them (W1.5b, the spec\'
 
   it('with no measured spawn, takes the floor of the sub-map\'s height range', () => {
     expect(placeSpawnSlots(more()).map((s) => s.position[1])).toEqual([0, 0, 20]);
+    expect(placeSpawnSlots(more()).map((s) => s.onFloor)).toEqual([false, false, false]);   // no ground given
+  });
+
+  /** A flat ground polygon over x0-x1, z0-z1 at `y`, one owner each, on a 2 x 3 grid of 100-unit cells. */
+  const ground = (...slabs: [number, number, number, number, number][]): Grid => {
+    const polys: WorldPoly[] = slabs.map(([x0, z0, x1, z1, y]) => ({
+      modelName: 'worldmodel', path: 'worldmodel/slab', region: 0, ditype: 3, material: 25, ptcount: 4, cameratype: 0,
+      points: Float32Array.from([x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1]),
+    }));
+    const owners: CollisionOwner[] = polys.map((p, i) => ({ modelName: p.modelName, path: `${p.path}${i}`, first: i, count: 1 }));
+    const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 2, cellsZ: 3, originX: 0, originZ: 0 };
+    return buildGrid(params, [], [], polys, owners);
+  };
+  // The synthetic slots: side 1 at (135, 215) and side 0 at (115, 205), both on BaseMap (y 0..50); with `more`,
+  // side 0's #1 on Ramps (y 20..20) at (115, 205) too.
+
+  it('W1.4b: with the ground, the y is the probe\'s floor at the slot\'s centre, from the estimate + 5, and says so', () => {
+    const flat = ground([100, 200, 140, 230, 10]);
+    const slots = placeSpawnSlots(ai, { a: [0, 30, 0], b: [0, 40, 0] }, flat);
+    expect(slots.map((s) => [s.side, s.position])).toEqual([[1, [135, 10, 215]], [0, [115, 10, 205]]]);
+    expect(slots.map((s) => s.onFloor)).toEqual([true, true]);
+    // The pick is the selection's (research 24 section 2): the highest floor at or under the estimate + 5 + 1.
+    const decked = ground([100, 200, 140, 230, 10], [110, 200, 120, 210, 35]);
+    expect(placeSpawnSlots(ai, { a: [0, 30, 0], b: [0, 40, 0] }, decked).map((s) => s.position[1])).toEqual([10, 35]);
+    expect(placeSpawnSlots(ai, { a: [0, 20, 0], b: [0, 40, 0] }, decked).map((s) => s.position[1])).toEqual([10, 10]);
+  });
+
+  it('W1.4b: a floor far over the estimate is still the slot\'s: a slot has no feet for the 20-unit window to bound', () => {
+    // B measured at 0; the only floor under side 1's slot is 45 over it. An actor's pick would reject it; a slot takes it.
+    const slots = placeSpawnSlots(ai, { a: [0, 0, 0], b: [0, 0, 0] }, ground([130, 210, 140, 220, 45], [110, 200, 120, 210, 5]));
+    expect(slots.map((s) => [s.position[1], s.onFloor])).toEqual([[45, true], [5, true]]);
+  });
+
+  it('W1.4b: a floor outside the slot\'s sub-map\'s height range gives way to one inside it (75 §3)', () => {
+    // Under side 0's slot, a floor at -20 (under BaseMap's 0..50) and one at 15. From the estimate 0 the selection
+    // would take -20; inside the range there is only 15.
+    const slots = placeSpawnSlots(ai, { a: [0, 0, 0], b: [0, 40, 0] }, ground([110, 200, 120, 210, -20], [110, 200, 120, 210, 15]));
+    expect(slots.map((s) => [s.side, s.position[1], s.onFloor])).toEqual([[1, 40, false], [0, 15, true]]);
+    // With nothing inside the range, the candidates outside it are still the probe's: Ramps (20..20) over a floor at 10.
+    const ramps = placeSpawnSlots(more(), { a: [0, 30, 0], b: [0, 40, 0] }, ground([110, 200, 120, 210, 10]));
+    expect(ramps.map((s) => [s.side, s.index, s.position[1], s.onFloor])).toEqual([[1, 0, 40, false], [0, 0, 10, true], [0, 1, 10, true]]);
+  });
+
+  it('W1.4b: where the probe finds nothing under the slot, the estimate stays and the slot says so', () => {
+    const slots = placeSpawnSlots(ai, { a: [0, 30, 0], b: [0, 40, 0] }, ground([0, 0, 50, 50, 0]));
+    expect(slots.map((s) => [s.position[1], s.onFloor])).toEqual([[40, false], [30, false]]);
   });
 
   it('refuses a slot whose cell names a sub-map the file does not hold', () => {

@@ -100,8 +100,12 @@ export class Overlays {
     if (!spawns && slots.length === 0) return;
     const group = new Object3D();
     // W1.5b: the slots, one line set per side in the side's colour -- the spec's W1.R9 makes them the
-    // spawn markers. Not depth-tested: the y is the viewer's estimate, not the file's (research 75 §4), and
-    // one that falls under a floor would hide a slot the disc has. The measured spheres keep their test.
+    // spawn markers. Not depth-tested, decided again under W1.4b: the y is now the ground probe's floor under
+    // the slot's centre (`onFloor`; 1,058 of the 1,058 slots), but the outline and the arrow are drawn flat at
+    // that height -- the cell's sides 5 units out, the arrow's tip 10 -- and on 362 of the slots a corner or the
+    // tip is more than 1 unit off the floor there, or has none (slopes and steps, p90 2.5; measured 2026-09-28):
+    // depth-tested, those lines would break under the ground. A slot off the probe keeps the estimate
+    // (research 75 §4: the file has no y), which a floor could hide whole. The measured spheres keep their test.
     for (const [side, key] of [[0, 'a'], [1, 'b']] as const) {
       const mine = slots.filter((s) => s.side === side);
       this.slotsDrawn[key] = mine.length;
@@ -187,7 +191,8 @@ export class Overlays {
 }
 
 /**
- * The line segments that draw spawn slots, xyz pairs at each slot's y: per slot, its cell's four sides
+ * The line segments that draw spawn slots, xyz pairs at each slot's y (the probe's floor under its centre, W1.4b,
+ * or the estimate): per slot, its cell's four sides
  * (`SLOT_CELL` square on the cell's centre, research 75 §4) and an arrow from the centre along its facing
  * (`SLOT_ARROW`, `facingVector` as research 75 §11 corrected it), with two barbs at the tip -- seven segments.
  */

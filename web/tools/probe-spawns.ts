@@ -16,6 +16,10 @@
  * `ring` column tests that reading: of 72 points on a circle of research 18's orbit radius (23.1) round the row,
  * how many stand on a floor at the recorded y - 25 (within 1.5) -- where the camera's player would be.
  *
+ * **The opening stand** (W1.4b): the `stand` column, on A's row, is the y the viewer's fly camera opens at --
+ * `openingStand` (`packages/viewer/src/stand.ts`), `EYE` (20) over this row's floor, or over the recorded y where
+ * the probe found none.
+ *
  *   npx tsx tools/probe-spawns.ts            all 22, from public/maps/
  *   npx tsx tools/probe-spawns.ts MP2 MP6    just these
  */
@@ -25,6 +29,7 @@ import { parseZdb, zdbMember, Zar, type MapInfo } from '@s2u/archive';
 import {
   buildGrid, collisionOwners, parseSceneGraph, parseWorldRoot, probeGround, probeFloor, spawnsFor, worldCollision,
 } from '@s2u/scene';
+import { openingStand } from '../packages/viewer/src/stand';
 
 const maps = resolve(import.meta.dirname, '../public/maps');
 /** Research 24 section 3's window: a floor this far under or over the actor's y is the actor's floor. */
@@ -43,7 +48,7 @@ const actorResiduals: number[] = [];
 const cameraOffsets: number[] = [];
 let points = 0, inside = 0, actorPoints = 0, actorInside = 0, ringed = 0;
 
-console.log('archive  name              spawn  src     x        y       z        polys  cands  floor     residual  in   ring');
+console.log('archive  name              spawn  src     x        y       z        polys  cands  floor     residual  in   ring   stand');
 for (const map of index) {
   if (wanted.length && !wanted.includes(map.archive)) continue;
   const bytes = readFileSync(resolve(maps, map.path));
@@ -78,7 +83,8 @@ for (const map of index) {
       + `${String(x).padEnd(8)} ${String(y).padEnd(7)} `
       + `${String(z).padEnd(8)} ${String(polys.length).padStart(5)}  ${String(candidates).padStart(5)}  `
       + `${(floor === null ? '-' : floor.y.toFixed(3)).padStart(8)}  ${(residual === null ? '-' : residual.toFixed(3)).padStart(8)}  ${(ok ? 'yes' : 'NO').padEnd(3)}`
-      + `  ${String(ring).padStart(2)}/72`;
+      + `  ${String(ring).padStart(2)}/72`
+      + `  ${label === 'A' ? openingStand([x, y, z], grid).position[1].toFixed(3).padStart(8) : '       -'}`;
     console.log(row);
   }
 }

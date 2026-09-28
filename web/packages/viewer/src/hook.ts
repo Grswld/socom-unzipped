@@ -1,6 +1,7 @@
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
+import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
 
 /**
@@ -19,6 +20,11 @@ export interface ViewerHook {
     collisionPolys: number; untexturedDraws: number; shadowDraws: number; alternateDraws: number; spawns: Spawns | null;
     /** Draws carrying a detail pass (W1.6), the column `tools/map-health.ts` lists. */
     detailDraws: number;
+    /**
+     * Where the camera opened on this map (W1.4b, `./stand`): spawn A's (x, z), `EYE` over the ground probe's
+     * floor there (`floor`), or over A's recorded y where `floor` is null. Null for a map with no measured spawns.
+     */
+    stand: Stand | null;
     /** The disc's spawn slots the spawn overlay holds, per side: 24 a side on 20 maps, 25/24 on two (W1.5b). */
     slots: { a: number; b: number };
     /** Where the map on screen was read from: the served tree, or the player's own disc image (W1.7). */
