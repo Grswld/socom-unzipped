@@ -14,3 +14,6 @@ export * from './motion';
 export * from './zanim';
 export * from './skeleton';
 export * from './character';
+export * from './firePoint';
+export * from './ray';
+export * from './weapon';

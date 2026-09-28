@@ -18,6 +18,7 @@ import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './walk';
 import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
+import { DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -138,6 +139,12 @@ export interface LoadedMap {
    * Null, with a diagnostic, when it will not decode; absent on a map built by hand.
    */
   body?: LoadedBody | null;
+   * The held weapon (W2.4, `./shot`): the M4A1 SD (W2.R4) out of `COMMON/WEAP_GEO.ZED` and `WEAP_MDL.ZED`, its high
+   * LOD's packets in the weapon's own frame (x along the barrel, y up; web/docs/research/79 §2) and its named nodes --
+   * the muzzle `firepoint` among them. Its textures are in `textures` with the map's. Absent when the library will
+   * not read, with a diagnostic.
+   */
+  weapon?: { name: string; parts: LoadedMesh[]; points: WeaponPoint[] };
   diagnostics: string[];
   loadMs: number;
   /**
@@ -278,6 +285,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
 
   // W2.1: the player's body, decoded here so its textures join the ones decoded below (`./body`).
   const body = loadBody(bytes, toc, await characterTableFor(source, path), (line) => notes.add(line));
+  // W2.4: the held weapon, decoded here with the map so its textures come out of the same asset-library chain.
+  const weapon = heldWeapon(bytes, toc, notes);
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
@@ -287,6 +296,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const drawn = [...parts, ...props.flatMap((p) => p.parts)]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
     .concat(body ? bodyTextureNames(body) : []);
+  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? [])]
+    .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)));
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
   const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
   const texlib = textureLibrary(bytes, toc, stem, notes);
@@ -390,6 +401,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     body: body && placeBody(body, slots),
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
+    ...(weapon ? { weapon } : {}),
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -399,7 +411,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
 /** Every typed array in a `LoadedMap`, for the worker's transfer list: no copies cross the boundary. */
 export function transferables(map: LoadedMap): Transferable[] {
   const out: Transferable[] = [];
-  for (const mesh of [...map.world, ...map.props.flatMap((p) => p.parts)]) {
+  for (const mesh of [...map.world, ...map.props.flatMap((p) => p.parts), ...(map.weapon?.parts ?? [])]) {
     out.push(mesh.positions.buffer, mesh.uvs.buffer, mesh.colors.buffer, mesh.indices.buffer);
     if (mesh.normals) out.push(mesh.normals.buffer);
     if (mesh.faceNormals) out.push(mesh.faceNormals.buffer);
@@ -411,6 +423,27 @@ export function transferables(map: LoadedMap): Transferable[] {
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   if (map.body) out.push(...bodyTransferables(map.body));
   return out;
+}
+
+/**
+ * W2.4: the held weapon (`LoadedMap.weapon`), the M4A1 SD's high LOD out of the map's own `WEAP_GEO`/`WEAP_MDL`
+ * (`@s2u/scene`'s `weaponLibrary`, web/docs/research/79 §2). A library that will not read costs one diagnostic and
+ * the weapon, never the load; a chunk that will not decode costs its own line and nothing else.
+ */
+function heldWeapon(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): LoadedMap['weapon'] {
+  try {
+    const library = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
+    const decoded = library.decode(DEFAULT_WEAPON, 'high');
+    for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
+    const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
+      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
+      order: 0, orderEnd: 0, alternate: false, scroll: null,
+    })));
+    return { name: decoded.name, parts, points: decoded.points };
+  } catch (e) {
+    notes.add(`weapon ${DEFAULT_WEAPON}: ${say(e)}`);
+    return undefined;
+  }
 }
 
 /**

@@ -2,6 +2,7 @@ import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Input } from './gamepad';
 import type { Backend } from './renderer';
+import type { ShotRecord } from './shot';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
@@ -39,6 +40,9 @@ export interface ViewerHook {
     body: (BodyView['stats'] & { visible: boolean }) | null;
     /** The seal table the walk runs on (W2.3a, W2.R6): the disc's `dynamics.rdr` over the defaults, or the defaults. */
     tuning: 'disc' | 'defaults';
+    /** W2.4 (`./shot`): the shots fired on this map, and the last one -- its fire point, its end, whether it hit the hull. */
+    shots: number;
+    lastShot: ShotRecord | null;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
@@ -68,6 +72,8 @@ export interface ViewerHook {
   jump(): boolean;
   /** Walk mode: crouch (true), stand (false) or toggle, as `C` does; the stance after, false when flying. */
   crouch(on?: boolean): boolean;
+  /** W2.4: one shot from the current pose, as the left button fires it; null in fly mode (`./shot`). */
+  fire(): ShotRecord | null;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

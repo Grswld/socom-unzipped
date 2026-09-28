@@ -19,6 +19,7 @@ import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { buildBody, type BodyView } from './bodyView';
+import { RECOIL_PLACEHOLDER, Shooter, type Mover, type ShotRecord } from './shot';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -53,6 +54,26 @@ const overlays = new Overlays(scene);
 /** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+/**
+ * W2.4 (`./shot`): the held weapon, the fire point and the shot. The left button fires in walk mode once the mouse
+ * is captured -- the click that captures it is the camera's (`camera.ts`), so it is not a shot; the hook's `fire`
+ * is the same shot for Playwright, which has no pointer lock. The kick is `RECOIL_PLACEHOLDER`'s: none until W2.5.
+ */
+const shooter = new Shooter();
+scene.add(shooter.group);
+const mover = (): Mover => {
+  const pose = fly.pose();
+  return { mode: walk.mode(), feet: walk.feet(), eye: [pose.x, pose.y, pose.z], yaw: pose.yaw, pitch: pose.pitch };
+};
+const fire = (): ShotRecord | null => {
+  const shot = shooter.fire(mover());
+  if (shot && RECOIL_PLACEHOLDER.kickPitchDegrees !== 0) fly.setPose({ pitch: fly.pose().pitch + RECOIL_PLACEHOLDER.kickPitchDegrees });
+  return shot;
+};
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button === 0 && e.pointerType === 'mouse' && fly.isLocked() && walk.mode() === 'walk') fire();
+});
 
 let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
@@ -392,6 +413,7 @@ async function boot(): Promise<void> {
     padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
+    shooter.frame(dt, mover());     // W2.4: the held weapon at the fire point, along the aim
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
 
@@ -528,6 +550,8 @@ function show(map: LoadedMap): void {
   // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
   // just placed, or at spawn A's (x, z) on the stand's floor (A's recorded y where the probe found none).
   walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
+  // W2.4: the shot's hull and the held weapon; the count starts again on every map.
+  shooter.setMap(map.ground, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null);
 
   ui.select(map.path);
   ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
@@ -610,6 +634,8 @@ window.__viewer = {
     stand: loaded?.stand ?? null,
     slots: overlays.slotCounts(),
     body: body ? { ...body.stats, visible: body.group.visible } : null,
+    shots: shooter.stats().shots,
+    lastShot: shooter.stats().lastShot,
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -625,5 +651,6 @@ window.__viewer = {
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
+  fire: () => fire(),
   revision,
 } satisfies ViewerHook;

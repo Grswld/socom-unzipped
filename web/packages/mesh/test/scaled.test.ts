@@ -38,7 +38,7 @@ function scaledPacket(scale: number, verts: [number, number, number][]): Uint8Ar
 describe("interpretPacket's scaled form (VU1 0x70, research 15 §2)", () => {
   it('reads a position as int16 / 32768 times TOP+3.w, and leaves the offset form alone', () => {
     const packet = unpackVifStream(scaledPacket(2.5, [[32767, 0, -16384], [0, 16384, 0], [0, 0, 32767]]))[0]!;
-    const scaled = interpretPacket(packet, 'scaled');
+    const scaled = interpretPacket(packet, 'scale');
     expect(scaled.positions[0]).toBeCloseTo(2.5 * 32767 / 32768, 5);
     expect(scaled.positions[2]).toBeCloseTo(-1.25, 5);
     expect(scaled.positions[4]).toBeCloseTo(1.25, 5);
