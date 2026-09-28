@@ -7,5 +7,10 @@
     "fonts.css": "c08282bf55c5480e51864d46234d05b9af0db2a3af9997e8297dde670d890b58",
     "base.css": "c39410187929b6c761434678f4a2dc0c9e87132644b39c2abd3a7842cd9430f0",
     "components.css": "f8b3eb1ff9be1005323b7be3e6feb67a3ba426670b4b5c5d7181c1523fce22c5"
+  },
+  "fonts": {
+    "jetbrains-mono-normal-variable-latin.woff2": "83c005d49d8a6a50474c73a5a36ac0468076e9c4a29da7bdb14995d80560a5be",
+    "oswald-normal-variable-latin.woff2": "571f3457dab507b6f2ce5394d593ca015251b69fea81ab7a546bd2368e9fc3ed",
+    "saira-italic-800-latin.woff2": "19854245094a5d16e005ccdc43eac71b305700270d0c344d7dd2e623e582e84b"
   }
 }
