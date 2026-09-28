@@ -65,6 +65,28 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #diagnostics { max-height: 30vh; }
 
 /*
+ * The controller (W2.7). The toast is the system's status pill -- the frame counter's -- moved to the top centre:
+ * fixed, so showing it shifts nothing, and a readout, so a drag that starts on it reaches the canvas. The backtick's
+ * clean look takes it with the rest of the chrome. The layout table under the hint line is set in the panel's
+ * readout type; its assumed rows carry the system's warn label.
+ */
+#toast {
+  left: 50%; right: auto; transform: translateX(-50%); pointer-events: none;
+  max-width: min(560px, calc(100vw - 24px)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--s2u-gold);
+}
+#toast[hidden], body.chrome-hidden #toast { display: none; }
+#pad-layout { border-collapse: collapse; margin-top: var(--s2u-space-1); font: var(--s2u-type-readout-caption); color: var(--s2u-text); }
+#pad-layout th { text-align: left; font-weight: 500; color: var(--s2u-text-dim); }
+#pad-layout th, #pad-layout td { padding: 2px var(--s2u-space-2) 2px 0; vertical-align: top; }
+#pad-layout td:first-child { white-space: nowrap; color: var(--s2u-text-strong); }
+#pad-layout .s2u-hint__glyph { vertical-align: -2px; margin-right: var(--s2u-space-1); }
+#pad-layout .s2u-label { margin: 0; }
+@media (max-width: 480px), (pointer: coarse) {
+  #toast { top: 8px; max-width: calc(100vw - 16px); }
+}
+
+/*
  * Touch movement. Nothing here exists until `body.touch` is set: on a mouse these would only be four
  * things in the way. The stick takes the left half and the bottom two thirds -- the part of a phone a
  * thumb reaches -- and the right half is left to the look drag. Not a system component: there is no

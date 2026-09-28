@@ -15,6 +15,8 @@ import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
+import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
+import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { buildBody, type BodyView } from './bodyView';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
@@ -194,7 +196,54 @@ ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
 ui.onFullscreen();
-attachTouchControls(fly);
+
+// ---- W2.7: the controller (`./gamepad`, ruling W2.R5) ------------------------------------------------------------
+/**
+ * The touch stick's lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
+ * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Cross and L3 are.
+ */
+const touchInput: Input = noInput();
+const touchLane: TouchTarget = {
+  setStick: (x, y) => { touchInput.moveX = x; touchInput.moveY = y; },
+  setLift: (v) => { touchInput.jump = v > 0; touchInput.crouch = v < 0; },
+  setStickBoost: (on) => { touchInput.boost = on; },
+};
+/** The pads, from the events and the poll: a toast names each that comes, and says when one goes (W2.R5). */
+const pads = new PadWatch({
+  connected: (id) => {
+    ui.toast(`Controller connected: ${id}`);
+    ui.showPadLayout(PAD_LAYOUT);                 // the first connect shows the layout; a later one finds it there
+    ui.setPadConnected(true);
+  },
+  disconnected: () => {
+    ui.toast('Controller disconnected');
+    ui.setPadConnected(pads.count() > 0);
+  },
+});
+pads.attach(globalThis);
+/** The pad's own input last frame, for its edges; and what the camera and the mover were fed, for the hook. */
+let padLast: Input = noInput();
+let padMerged: Input = noInput();
+/**
+ * One frame of the controller, before the camera's: the pad read through the layout (`padInput`), merged with the
+ * touch stick (the larger push on each axis, the buttons OR-ed; `mergeInput`) and fed to the camera's lanes -- which
+ * the fly camera flies by and the walk's mover steps by (`groundWish`), so one mapping drives both (W2.R5). The right
+ * stick turns at the arrow keys' rate, scaled (`setLook`). Up and down are the fly camera's; on foot the jump and the
+ * crouch are the mover's (W2.3a), to be read from `padMerged` there -- the game's crouch acts on the release
+ * (docs/PLAYTEST.md step 8; `releasedSince`). Start toggles walk and fly on its press, as `G` does on its keydown.
+ */
+function padFrame(): void {
+  const pad = padInput(pads.poll(navigator));
+  const input = mergeInput(touchInput, pad);
+  fly.setStick(input.moveX, input.moveY);
+  fly.setLift((input.jump ? 1 : 0) - (input.crouch ? 1 : 0));
+  fly.setStickBoost(input.boost);
+  fly.setLook(input.lookX, input.lookY);
+  if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  padLast = pad;
+  padMerged = input;
+}
+attachTouchControls(touchLane);
 walk.bindKey();
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
@@ -324,6 +373,7 @@ async function boot(): Promise<void> {
   const frame = (): void => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
+    padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
@@ -554,5 +604,6 @@ window.__viewer = {
   setMode: (mode) => walk.setMode(mode),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
+  pad: () => ({ id: pads.id(), input: { ...padMerged } }),
   revision,
 } satisfies ViewerHook;

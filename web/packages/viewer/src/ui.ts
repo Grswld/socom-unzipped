@@ -2,6 +2,7 @@ import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
 import { viewerRevision, viewerRevisionBadge } from './revision';
 import { wantsTouchControls } from './touch';
+import { ACTION_WORDS, shortSource, type PadRow } from './gamepad';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -399,12 +400,14 @@ export class Ui {
    * Esc — is the one control a player cannot guess from the others.
    */
   setCameraHint(multiplier: number, locked: boolean): void {
+    this.hintArgs = [multiplier, locked];     // W2.7: kept, so a pad's connecting can rebuild the line
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
     const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · G walk · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
+    if (this.padConnected) this.hint.textContent += ' · pad: connected';
   }
 
   /**
@@ -431,6 +434,97 @@ export class Ui {
       return li;
     }));
   }
+
+  // ---- the controller (W2.7, ruling W2.R5: a toast when a pad connects or leaves, naming it; the layout shown) ----
+
+  private readonly toastEl = find<HTMLElement>('toast');
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** What the hint line was last built from, and whether it carries the pad's note. */
+  private hintArgs: [number, boolean] = [1, false];
+  private padConnected = false;
+
+  /**
+   * A short line in the frame counter's pill, top centre, for `TOAST_MS`. One at a time: a second replaces the first
+   * and has its own few seconds. The pill is fixed, so nothing on the page moves when it comes or goes.
+   */
+  toast(text: string): void {
+    this.toastEl.textContent = text;
+    this.toastEl.hidden = false;
+    if (this.toastTimer !== null) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      this.toastEl.hidden = true;
+      this.toastTimer = null;
+    }, TOAST_MS);
+  }
+
+  /** "pad: connected" at the end of the hint line while a pad is, however the line is rebuilt. */
+  setPadConnected(on: boolean): void {
+    this.padConnected = on;
+    this.setCameraHint(...this.hintArgs);
+  }
+
+  /**
+   * The layout table under the hint line (`index.html`, `#pad-box`), filled the first time and shown: a row per
+   * control, what it does on foot and in the fly camera, and its source -- or the system's warn label, "assumed",
+   * on a row the repository does not document. The row's note is its tooltip.
+   */
+  showPadLayout(rows: readonly PadRow[]): void {
+    const box = find<HTMLElement>('pad-box');
+    const body = box.querySelector('#pad-layout tbody');
+    if (!body) return;
+    if (body.childElementCount === 0) body.replaceChildren(...rows.map(padRow));
+    box.hidden = false;
+  }
+}
+
+/** How long a toast stays: long enough to read a pad's id, short enough not to sit over the map. */
+export const TOAST_MS = 3500;
+
+/**
+ * The four face buttons' glyphs, in the system's own colours (`.s2u-hint__glyph--*`, the site's hint bar): the
+ * PlayStation shapes on a 14-unit box.
+ */
+const FACE_GLYPHS: Partial<Record<PadRow['control'], { kind: string; d: string }>> = {
+  Cross: { kind: 'cross', d: 'M3 3 11 11M11 3 3 11' },
+  Circle: { kind: 'circle', d: 'M12 7a5 5 0 1 1-10 0a5 5 0 1 1 10 0' },
+  Square: { kind: 'square', d: 'M2.5 2.5h9v9h-9z' },
+  Triangle: { kind: 'triangle', d: 'M7 2 12.5 11.5h-11z' },
+};
+
+function padRow(row: PadRow): HTMLTableRowElement {
+  const tr = document.createElement('tr');
+  tr.classList.toggle('is-assumed', row.documented === 'assumed');
+  tr.title = row.note;
+  const cell = (...content: (Node | string)[]): HTMLTableCellElement => {
+    const td = document.createElement('td');
+    td.append(...content);
+    tr.append(td);
+    return td;
+  };
+  const glyph = FACE_GLYPHS[row.control];
+  if (glyph) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', `s2u-hint__glyph s2u-hint__glyph--${glyph.kind}`);
+    svg.setAttribute('viewBox', '0 0 14 14');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', glyph.d);
+    svg.append(path);
+    cell(svg, row.control);
+  } else {
+    cell(row.control);
+  }
+  cell(ACTION_WORDS[row.action].walk);
+  cell(ACTION_WORDS[row.action].fly);
+  if (row.documented === 'assumed') {
+    const label = document.createElement('span');
+    label.className = 's2u-label s2u-label--warn';
+    label.textContent = 'assumed';
+    cell(label);
+  } else {
+    cell(shortSource(row.documented)).title = row.documented;
+  }
+  return tr;
 }
 
 function find<T extends HTMLElement>(id: string): T {

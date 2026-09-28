@@ -19,6 +19,11 @@
       <div class="s2u-bar__end"><a id="source" class="s2u-tab s2u-tab--nav" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub">GitHub</a></div>
     </nav>
     <p id="fps" class="s2u-status s2u-status--pill" aria-live="off"><span id="fps-n">--</span><span id="fps-rest"> fps</span></p>
+    <!--
+      The controller's toast (W2.7, `./src/ui.ts` `toast`): the frame counter's pill, top centre, for a few seconds,
+      one at a time. Fixed, so showing it moves nothing; `role=status` so a screen reader hears it.
+    -->
+    <p id="toast" class="s2u-status s2u-status--pill" role="status" aria-live="polite" hidden></p>
     <button id="fullscreen" class="s2u-fab" type="button" title="fullscreen (F)" aria-label="fullscreen"><svg viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"/></svg></button>
     <!--
       The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
@@ -155,6 +160,20 @@
         Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
         Entertainment.</p>
       <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; arrows look &middot; G walk &middot; F fullscreen &middot; wheel speed 1.0&times; &middot; ` hides this</p>
+      <!--
+        The controller's layout (W2.7, ruling W2.R5): SOCOM II's own, as the repository documents it, the viewer's
+        bindings beside it marked "assumed". Hidden until a pad first connects; `./src/ui.ts` `showPadLayout` fills it.
+      -->
+      <details id="pad-box" class="s2u-disclosure" hidden>
+        <summary>controller layout</summary>
+        <table id="pad-layout">
+          <thead><tr><th scope="col">pad</th><th scope="col">walk</th><th scope="col">fly</th><th scope="col">source</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p class="s2u-fine">The left stick moves and the right looks, on foot and in the air alike. Fire, aim and lean are
+          the layout's, held for the play mode: the viewer does not do them yet. A row marked assumed is a binding the
+          repository does not document.</p>
+      </details>
       </div>
     </div>
     <!--
