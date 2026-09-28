@@ -30,6 +30,15 @@ page.on('pageerror', (e) => crashes.push(e.message));
 await page.goto(process.env.VIEWER_URL ?? 'http://localhost:5173/');
 await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('triangles'));
 await page.evaluate(() => document.body.classList.add('chrome-hidden'));
+// `HEALTH_TOGGLES=engineorder,wireframe` sets panel switches on for the whole sweep, the way the e2e sets them
+// (the property and a change event), so a switch can be swept against the default's rows.
+for (const id of (process.env.HEALTH_TOGGLES ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+  await page.evaluate((toggle) => {
+    const box = document.getElementById(toggle) as HTMLInputElement | null;
+    if (!box) throw new Error(`no toggle #${toggle}`);
+    if (!box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); }
+  }, id);
+}
 
 const options = await page.locator('#maps option').evaluateAll(
   (els) => els.map((e) => ({ value: (e as HTMLOptionElement).value, label: (e as HTMLOptionElement).textContent ?? '' })),
