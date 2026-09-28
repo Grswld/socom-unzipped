@@ -97,6 +97,9 @@ for (const [id, value] of sliders) {
 }
 await page.evaluate((p) => {
   document.body.classList.add('chrome-hidden');
+  // The site bar stays under `chrome-hidden`; a comparison wants the frame alone.
+  const bar = document.getElementById('site-links');
+  if (bar) bar.style.display = 'none';
   (window as unknown as { __viewer: { setCamera(v: Record<string, number>): void } }).__viewer.setCamera(p);
 }, pose);
 // The props arrive a few per frame (scheduler.ts); give them time to land.
