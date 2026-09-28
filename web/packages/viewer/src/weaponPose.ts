@@ -1,5 +1,6 @@
 import { sampleClip, type MotionClip, type PartPose } from '@s2u/scene';
-import { clipRate, loops, type LayerContext, type PoseLayer } from './animator';
+import type { LayerContext, PoseLayer } from './animator';
+import { entryOf } from './locomotion';
 import type { MotionEntry, MotionTable } from './motionTable';
 
 /**
@@ -148,13 +149,16 @@ export class WeaponPose {
     const fire = name ? this.clips.get(name) : undefined;
     if (!fire || !(this.fireWeight > 0)) return null;
     if (fire.name !== this.fireClip) { this.fireClip = fire.name; this.fireClock = 0; }
-    const entry = this.table?.get(fire.name) ?? undefined;
+    const entry = entryOf(fire.name, this.table);
+    // A still Fire clip plays over its `playback` seconds (the one-shot rule, research 77 §7); a moving one shares the
+    // base clip's phase (PHASE_SHARED).
+    const playback = entry?.playback !== null && entry?.playback !== undefined && entry.playback > 0 ? entry.playback : null;
     const time = PHASE_SHARED && isLocomotion(entry)
       ? current.phase * fire.duration
-      : (this.fireClock * clipRate(fire, entry, 0)) / fire.rate;
+      : this.fireClock * (playback ? fire.duration / playback : 1);
     this.now.fire = fire.name;
     this.now.fireWeight = this.fireWeight;
-    return { parts: sampleClip(fire, time, { loop: loops(fire.name, this.table) }).parts, weight: this.fireWeight };
+    return { parts: sampleClip(fire, time, { loop: entry?.looped ?? true }).parts, weight: this.fireWeight };
   }
 
   private sampleReload(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null {

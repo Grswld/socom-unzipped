@@ -188,8 +188,12 @@ pressure, which a browser pad does not give.
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
 [What the picture is made of](#what-the-picture-is-made-of), "The player". In short: 65 units a second running, 37
-backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
-not jump: the game's jump is an animation's root motion, not yet read. While walking, the game's own HUD is drawn
+backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` jumps
+as the game does ([research 80](docs/research/80-the-jump.md)): under 15 units a second the standing jump, a clip on the
+floor (`seal_jump`, 0.99 s, the body's root and the camera rising 3.6); from 15 the running jump, 79.9 up 0.1 s after
+the take-off under the 235 fall -- 12.9 units (1.3 m) high, 0.78 s in the air, the take-off's speed carried; prone cannot. The
+clips are the game's pick and blend: the stick's speed picks each set's clip by its transition band, the forward and
+strafe sets share the stick's angle, every clip plays at the rate its root needs. While walking, the game's own HUD is drawn
 over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
 compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
 the context prompt (the climb icon); hidden in flight.

@@ -90,9 +90,13 @@ import type { Stance } from './walk';
  * (`+0x68`, `+0x64`; the prone limits also lean with the ground's slope, not modelled) -- the **aim** limits, not
  * `min/max_look_pitch` -60/80, which this routine does not read. The spawn pitch is `init_aim_pitch`.
  *
+ * **The root** is the body's skeleton root as posed (`FUN_002869d0` on `actor+0x2e8`, decomp 142450-142460): the walk
+ * hands the animator's over (`WalkMode.setPosedRoot`), so the target rises with the standing jump's root (10.5 to
+ * 15.1) and sinks through a crouch's transition clip; a running jump lifts the feet themselves. With no clips the
+ * stance's measured root stands in, eased over 0.2 s [estimate].
+ *
  * **Not modelled:** the peek (`DAT_004161c0`, `cam_peek_decay_rate`), the skeleton root's own x and z (0 here), the
- * two camera modes above, and the material half of the camera's surface test. The root's height changes over 0.2 s
- * when the stance does (the clips' blend-in, `FUN_0028e3e0`) [estimate]; in the game it is the animation's.
+ * two camera modes above, and the material half of the camera's surface test.
  */
 
 export type Vec3 = [number, number, number];
@@ -123,7 +127,10 @@ const LEAD_DOWN = -8, LEAD_UP = -3;
 const LEAD_PROBE = -5;
 /** The spawn's pitch, degrees: `dynamics.rdr`'s `init_aim_pitch` (the header). */
 export const INIT_AIM_PITCH = SEAL_TUNING.initAimPitch;
-/** How fast the root moves to a new stance's, units a second: the stand-crouch span in 0.2 s [estimate]. */
+/**
+ * How fast the root moves to a new stance's, units a second, when no posed root is on hand (no clips): the
+ * stand-crouch span in 0.2 s [estimate]. With the body's clips the camera takes the posed root as it is.
+ */
 const ROOT_RATE = (11.484 - 5.504) / 0.2;
 
 const DEG = Math.PI / 180;
@@ -260,9 +267,13 @@ export class PlayerCamera {
     this.cur = null;
   }
 
-  /** One tick: the actor's feet, its yaw and the camera's pitch (degrees), its skeleton root's height over the feet. */
-  tick(feet: readonly number[], yawDegrees: number, pitchDegrees: number, rootY: number, dt: number = TICK): void {
-    const root = this.root === null ? rootY
+  /**
+   * One tick: the actor's feet, its yaw and the camera's pitch (degrees), its skeleton root's height over the feet.
+   * `posed`: the root is the body's as posed this frame, which `FUN_0029a950` reads as it stands (the clips' own
+   * blends move it); otherwise it is a stance's measured root, eased to over `ROOT_RATE` [estimate].
+   */
+  tick(feet: readonly number[], yawDegrees: number, pitchDegrees: number, rootY: number, dt: number = TICK, posed = false): void {
+    const root = this.root === null || posed ? rootY
       : Math.abs(rootY - this.root) <= ROOT_RATE * dt ? rootY : this.root + Math.sign(rootY - this.root) * ROOT_RATE * dt;
     this.root = root;
     const local = localCamera(root, pitchDegrees);

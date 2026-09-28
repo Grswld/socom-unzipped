@@ -1,48 +1,60 @@
 import { partMatrix, sampleClip, type MotionClip, type PartPose, type Skeleton } from '@s2u/scene';
-import type { MotionEntry, MotionTable } from './motionTable';
-import { WORLD_SCALE, type LandingKind } from './physics';
+import {
+  BLEND_TIME_DEFAULT, CROUCH_IDLES, MOTION_CLIPS, SEAL_ANIMS, SEAL_SETS, crouchPlay, entryOf, motionOf, nodeSpeed,
+  phaseRate, pronePlay, standPlay, type DirectionClass, type Motion, type MotionSets, type PlayNode, type SetName,
+} from './locomotion';
+import type { MotionTable } from './motionTable';
+import type { LandingKind } from './physics';
+import type { GroundMotion, MoverAction, Stance } from './walk';
 
 /**
- * The SEAL's clips on the mover (web sprint 2, W2.2b): each frame the mover's state picks a clip of the player's pack
- * (web/docs/research/77 §12) by name, the clip advances at its own 30 keys a second as `motion.rdr` says (§7), a new
- * clip cross-fades in over its `BlendTime`, and the pose goes into the skeleton part by part (`Skeleton.setLocal`),
- * which the page's bones and the skinned mesh follow.
+ * The SEAL's clips on the mover, played the game's way (web sprint 2 W2.2b; the motion workstream's port, web/docs/
+ * research/80-the-jump.md): each frame the mover's state -- its action (the jumps, the landings, the stance
+ * transitions) or its ground state and stick -- names a **play**, the game's `FUN_0028dc90` play on the skeleton at
+ * `actor+0x170`: a list of nodes (a motion, a weight, a speed) sharing one phase (`./locomotion`).
  *
- * **What is the game's and what is the viewer's.** The clips, their parts, rates and keys are the disc's (77). The
- * table's fields are the disc's, read at run time (`./motionTable`, W2.R6). How the game *chooses* a clip is in
- * `CZSealBody_Tick_0` (0x57a330), whose model velocity comes from the throttles and per-stance limits (decomp
- * `CZSealBody_Tick_0_0x57a330` lines 4999-5255, through `func_58BB50` / `func_58BC00`, bodies not supplied) or from
- * the clip's own root displacement over the tick (lines 7792-7898: the root's travel at `$s1+0x14c0` differenced and
- * divided by the tick into the velocity at `+0x2c..+0x34`); neither rule is ported. So the picker below is **the
- * viewer's reading**, every threshold named: the speed bands (the table's transition speeds when read, else
- * `BAND_PLACEHOLDERS`), the direction split, the running jump, the interrupt rule.
+ * - **Locomotion** is the game's pick and blend, rebuilt every tick with no cross-fade inside it (`FUN_0028bef0` swaps
+ *   the node list): standing, the forward/back set and the strafe set shared by the stick's angle (`FUN_00583030`),
+ *   each set's clips chosen and split by their transition bands at the stick's speed (`FUN_0058bdf0`); crouched the
+ *   one set of the direction class (`FUN_00582d10`); prone the crawl or the prone strafe (`FUN_00583500`). Every clip
+ *   plays at the speed that makes its root travel the mover's speed, whatever that is -- no clamp.
+ * - **A new play** (a new action, locomotion starting or stopping, a crouch or prone class change) cross-fades from the
+ *   pose on screen over the new motion's `BlendTime` (0.4 when `motion.rdr` gives none, `FUN_00287620`), keeping the
+ *   phase when both are loops (`FUN_0028dc90`); a stance transition played backwards starts at its end (`FUN_0028c160`).
+ * - **One-shots** play keys 0 to n - 1 in `playback x ((n - 1) / n)^2` seconds and hold there (`FUN_0028c4f0`,
+ *   `FUN_0028d670`; `./locomotion` `oneShotSeconds`).
+ * - **Events** for the page (the audio): each `zanim_callback` as the phase crosses it (`FUN_0028c9e0`), and each
+ *   footfall -- the left foot as a moving locomotion phase enters (0, 0.5), the right as it enters (0.5, 1)
+ *   (`FUN_005a3570`, decomp 460266-460382) -- and each play started (`onEvent`).
  *
- * **The root.** The mover owns the position: the clip's root travel is not applied to it -- the decomp's root motion
- * (lines 7792-7898) is the carry -- and the body's root is stood over the feet at the bind's x and z. The root's
- * height is the clip's, so a crouch lowers the body and a jump's clip lifts it where the clip lifts it.
+ * **The root.** The mover owns the position: the clip's root travel is not applied to it, and the body's root is stood
+ * over the feet at the bind's x and z. The root's height is the clips', blended, so a crouch lowers the body and the
+ * standing jump's clip lifts it -- and the camera reads it (`rootY`, `WalkMode.setPosedRoot`).
  */
-
-/** The cycles a mover plays, by what they are for (research 77 §12's list). */
-export const SEAL_CLIPS = {
-  stand: 'seal_stand', walk: 'seal_walk', jog: 'seal_jog', run: 'seal_run', walkBack: 'seal_walk_bw', runBack: 'seal_run_bw',
-  strafeLeft: 'seal_lstrafe', strafeRight: 'seal_rstrafe', crouch: 'seal_crouch', crouchWalk: 'seal_crouchwalk',
-  crouchWalkBack: 'seal_crouchwalk_bw', jump: 'seal_jump', launch: 'seal_runningjump_launch',
-  inAir: 'seal_runningjump_in_air', landSoft: 'seal_land_soft', landHard: 'seal_land_hard',
-} as const;
 
 /** What the SEAL holds. W2.R4's default is the M4A1 SD, a rifle, which the full-body clips hold. */
 export type Weapon = 'rifle' | 'pistol';
 
 /**
- * The pistol's version of a cycle: `seal_p_<name>` (research 77 §12: `seal_p_*` 79, the pistol). Most carry the
+ * The pistol's version of a clip: `seal_p_<name>` (research 77 §12: `seal_p_*` 79, the pistol). Most carry the
  * spine, the arms, the head and the pistol and no root or legs -- an upper-body layer; a few are whole bodies.
  */
 export function layerName(clip: string): string {
   return clip.replace(/^seal_/, 'seal_p_');
 }
 
-/** Every clip the page asks the worker for: the sixteen, then each one's pistol version (the pack lacks some). */
-export const PLAY_CLIPS: readonly string[] = [...Object.values(SEAL_CLIPS), ...Object.values(SEAL_CLIPS).map(layerName)];
+/** The locomotion clips: every set's, and the prone crawl and strafes (a pistol version counts as its rifle clip's). */
+const CYCLES = new Set<string>([
+  ...Object.values(SEAL_SETS).flat(), SEAL_ANIMS.proneCrawl, SEAL_ANIMS.proneRight, SEAL_ANIMS.proneLeft,
+]);
+
+/** Whether a clip is a locomotion cycle: one a locomotion play's footfalls come from (`FUN_005a3570`). */
+export function isCycle(name: string): boolean {
+  return CYCLES.has(name.replace(/^seal_p_/, 'seal_'));
+}
+
+/** Every clip the page asks the worker for: the plays' (`./locomotion` `MOTION_CLIPS`), then each one's pistol version. */
+export const PLAY_CLIPS: readonly string[] = [...MOTION_CLIPS, ...MOTION_CLIPS.map(layerName)];
 
 /** The mover as the animator reads it each frame (`WalkMode.snapshot`). */
 export interface MoverSnapshot {
@@ -56,177 +68,80 @@ export interface MoverSnapshot {
   crouched: boolean;
   /** The last landing's class, null in the air or before the first. */
   landing: LandingKind | null;
-  /** How many jumps the mover has taken: a change is a take-off, whenever between two frames it came. */
+  /** How many jumps the mover has taken. */
   jumps: number;
+  /** The body in use (`Walker.posture`): what the idle plays by. Absent: `crouched` says crouch or stand. */
+  stance?: Stance;
+  /** The ground state and its stick (`Walker.ground`); absent or `idle`: no locomotion. */
+  ground?: GroundMotion;
+  /** The action holding the mover, or none. */
+  action?: MoverAction | null;
+  /**
+   * The turn, radians a second, left positive (the look's yaw growing; web research 83's `LookState.turnRate`): prone
+   * and still, a turn plays `seal_prone_turn` (`FUN_0054aa30`, decomp 415110, while `actor+0x48` is not 0); standing
+   * and crouched a turn plays no clip -- the body pivots.
+   */
+  turnRate?: number;
 }
 
-/** A speed band, units a second: the cycle plays from `lo` to `hi`. */
-export interface Band { lo: number; hi: number }
+/** An event for the page: `onEvent`'s listeners get each as the animator steps past it. */
+export type AnimEvent =
+  /** A `motion.rdr` `zanim_callback` crossed: `name` is the zAnim animation the game fires (e.g. `jump_whoosh`). */
+  | { kind: 'callback'; clip: string; name: string; phase: number }
+  /** A footfall (`FUN_005a3570`): which foot came down, in which clip. */
+  | { kind: 'footfall'; foot: 'left' | 'right'; clip: string }
+  /** A new play: its main clip and what started it (`play` key, e.g. `jump`, `land`, `loco:stand`, `idle:crouch`). */
+  | { kind: 'play'; clip: string; play: string };
 
-/**
- * PLACEHOLDER (W2.R2): the speed bands, units a second, when `motion.rdr` is not read. Round numbers of the viewer's,
- * no source: the stand and the crouch under 2; walk to 20, jog 15 to 45, run from 40, overlapping so a clip is kept
- * across the overlap (`pickClip`); back, the walk to 20 and the run from 15; the strafes and the crouch walks at any
- * speed. With them the mover's 40 (research 18, Finding 3) is a jog and the boost a run.
- */
-export const BAND_PLACEHOLDERS: Readonly<Record<string, Band>> = Object.freeze({
-  seal_stand: { lo: 0, hi: 2 }, seal_crouch: { lo: 0, hi: 2 },
-  seal_walk: { lo: 0, hi: 20 }, seal_jog: { lo: 15, hi: 45 }, seal_run: { lo: 40, hi: Infinity },
-  seal_walk_bw: { lo: 0, hi: 20 }, seal_run_bw: { lo: 15, hi: Infinity },
-  seal_lstrafe: { lo: 0, hi: Infinity }, seal_rstrafe: { lo: 0, hi: Infinity },
-  seal_crouchwalk: { lo: 0, hi: Infinity }, seal_crouchwalk_bw: { lo: 0, hi: Infinity },
-});
-
-/**
- * The bands the picker runs on: each clip's `transition_speed_A` to `_B` where the table gives both -- metres a
- * second, times `WORLD_SCALE` as `dynamics.rdr`'s metre fields are kept (`physics.ts`) -- else its placeholder. The
- * reading: the transition speeds are the speeds a cycle covers (77 §7). With the table the stand's top is the
- * stand's own `_B`.
- */
-export function bandsFrom(table: MotionTable | null): Record<string, Band> {
-  const out: Record<string, Band> = { ...BAND_PLACEHOLDERS };
-  if (!table) return out;
-  for (const name of Object.keys(out)) {
-    const e = table.get(name);
-    if (e && e.transitionA !== null && e.transitionB !== null) out[name] = { lo: e.transitionA * WORLD_SCALE, hi: e.transitionB * WORLD_SCALE };
-  }
-  return out;
+/** What `stats().anim` reports: the main clip, the fractional key, the cross-fade's weight (1 settled) and from what. */
+export interface AnimStats {
+  clip: string;
+  frame: number;
+  /** The main clip's key count: `frame / frames` is its phase. */
+  frames: number;
+  blend: number;
+  from: string | null;
+  /** Keys a second the main clip advances at this frame (negative: backwards). */
+  rate: number;
+  /** The upper-body layer over it, or null. */
+  layer: string | null;
+  /** The play's nodes: each clip, its weight and speed (`+0x24`). */
+  nodes: { clip: string; weight: number; speed: number }[];
+  /** The play's key (`AnimEvent`'s `play`). */
+  play: string;
 }
 
-/** The reading: within this many degrees of the facing a move is forward, within it of the back a move back; between, a strafe. */
-export const DIRECTION_SPLIT_DEG = 45;
+/** The play's main clip, as a pose layer sees it: the clip, its fractional key and its phase (0 to 1). */
+export interface LayerContext { clip: MotionClip; frame: number; phase: number }
 
 /**
- * The clips that play once when the table is not read: the jump, the launch, the flight and the landings. Research
- * 77 §7 prints `seal_jump` and `seal_land_hard` as `looped (0)`; the other three are taken the same, the reading.
+ * A pose over the clips (the WEAPON workstream's fire set and reload, `./weaponPose`): the parts to blend toward and
+ * by how much (0 none, 1 all), or null for nothing this frame. A part the layer does not carry keeps the pose below.
  */
-const ONE_SHOTS_UNREAD = new Set<string>([
-  SEAL_CLIPS.jump, SEAL_CLIPS.launch, SEAL_CLIPS.inAir, SEAL_CLIPS.landSoft, SEAL_CLIPS.landHard,
-]);
-
-/** Whether a clip loops: the table's `looped`, else the reading above. */
-export function loops(name: string, table: MotionTable | null): boolean {
-  return table?.get(name)?.looped ?? !ONE_SHOTS_UNREAD.has(name);
+export interface PoseLayer {
+  sample(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null;
 }
 
-/** The clip playing, as the picker sees it: where it is (a fractional key), how many keys, and whether a one-shot ended. */
-export interface Playing { name: string; frame: number; frames: number; done: boolean }
-
-export interface PickInput {
-  mover: MoverSnapshot;
-  current: Playing | null;
-  /** A take-off since the last pick (`MoverSnapshot.jumps` changed). */
-  jumped: boolean;
-  /** On the floor now, in the air at the last pick. */
-  landed: boolean;
-  bands: Readonly<Record<string, Band>>;
-  table: MotionTable | null;
-}
-
-/** The first band of `family` holding `speed`; the one playing while it still holds it; past the top, the fastest. */
-function bandPick(family: readonly string[], speed: number, current: Playing | null, bands: Readonly<Record<string, Band>>): string {
-  const holds = (name: string): boolean => {
-    const b = bands[name];
-    return b !== undefined && speed >= b.lo && speed <= b.hi;
-  };
-  if (current && family.includes(current.name) && holds(current.name)) return current.name;
-  for (const name of family) if (holds(name)) return name;
-  const top = family[family.length - 1]!;
-  return speed > (bands[top]?.hi ?? Infinity) ? top : family[0]!;
-}
+/** The held item's node (`FUN_00553290` 0x553290 names it `rifle`) and SOCOM 1's name for it in the older clips. */
+export const HELD_PART = 'rifle', HELD_ALIAS = 'weapon';
 
 /**
- * The clip for the mover's state (the viewer's reading, the rules in order):
- *
- * 1. **A take-off**: a jump from faster than the walk band's top is the running jump's launch, else the standing jump.
- * 2. **In the air**: the jump or the launch plays to its end, then (and after a fall) the in-air clip.
- * 3. **A landing**: soft under `land_fall_rate`, hard from it (the mover's class, `physics.ts`) -- after the standing
- *    jump too: the mover's placeholder impulse (`physics.ts` `jumpImpulse`) lands before the jump clip's own landing,
- *    whose tail would hold the soles units over the floor.
- * 4. **A one-shot on the floor** (the jump, the landings) plays to its end; moving cuts it once its `NoInterrupt`
- *    fraction has played (at once without one).
- * 5. **Crouched**: the crouch under its band, else the crouch walk, back when moving back.
- * 6. **Standing**: the stand under its band; else by direction (`DIRECTION_SPLIT_DEG`) the forward cycles by speed
- *    (walk, jog, run), the back ones (walk, run) or the strafe to that side.
+ * A clip part's skeleton slot. The held item's node is `rifle` in most of the pack's clips and `weapon` in the few
+ * that keep SOCOM 1's name (`seal_jump`, `seal_runningjump_in_air`, `seal_prone_crawl`, `seal_crouch_recoil`: the
+ * same constant key where both exist; reCOM `zSeal/seal.cpp:150` names the node `weapon`): the viewer's reading is
+ * that a clip without `rifle` moves the rifle by its `weapon` track.
  */
-export function pickClip(input: PickInput): string {
-  const { mover, current, bands, table } = input;
-  const speed = Math.hypot(mover.vx, mover.vz);
-  const yaw = (mover.yaw * Math.PI) / 180;
-  const forward = mover.vx * -Math.sin(yaw) + mover.vz * -Math.cos(yaw);
-  const right = mover.vx * Math.cos(yaw) + mover.vz * -Math.sin(yaw);
-  const playingOneShot = current !== null && !current.done && ONE_SHOT_PICKS.has(current.name);
-
-  if (input.jumped) return speed > (bands[SEAL_CLIPS.walk]?.hi ?? Infinity) ? SEAL_CLIPS.launch : SEAL_CLIPS.jump;
-  if (mover.airborne) {
-    if (playingOneShot && (current!.name === SEAL_CLIPS.jump || current!.name === SEAL_CLIPS.launch)) return current!.name;
-    return SEAL_CLIPS.inAir;
-  }
-  if (input.landed) return mover.landing === 'soft' ? SEAL_CLIPS.landSoft : SEAL_CLIPS.landHard;
-  const standTop = bands[mover.crouched ? SEAL_CLIPS.crouch : SEAL_CLIPS.stand]?.hi ?? 0;
-  const still = speed <= standTop;
-  if (playingOneShot && current!.name !== SEAL_CLIPS.launch && current!.name !== SEAL_CLIPS.inAir) {
-    const cut = table?.get(current!.name)?.noInterrupt ?? 0;
-    if (still || current!.frame < cut * current!.frames) return current!.name;
-  }
-  if (mover.crouched) {
-    if (still) return SEAL_CLIPS.crouch;
-    return forward < 0 && -forward >= Math.abs(right) ? SEAL_CLIPS.crouchWalkBack : SEAL_CLIPS.crouchWalk;
-  }
-  if (still) return SEAL_CLIPS.stand;
-  const split = Math.tan((DIRECTION_SPLIT_DEG * Math.PI) / 180) * Math.abs(right);
-  if (forward >= split) return bandPick([SEAL_CLIPS.walk, SEAL_CLIPS.jog, SEAL_CLIPS.run], speed, current, bands);
-  if (-forward >= split) return bandPick([SEAL_CLIPS.walkBack, SEAL_CLIPS.runBack], speed, current, bands);
-  return right > 0 ? SEAL_CLIPS.strafeRight : SEAL_CLIPS.strafeLeft;
+export function partIndex(skeleton: Skeleton, parts: readonly { name: string }[], name: string): number {
+  const i = skeleton.indexOf(name);
+  if (i >= 0 || name !== HELD_ALIAS) return i;
+  return parts.some((p) => p.name === HELD_PART) ? -1 : skeleton.indexOf(HELD_PART);
 }
 
-/** The picks that play once whatever the table says of looping (the rules of `pickClip` hold them to their end). */
-const ONE_SHOT_PICKS = ONE_SHOTS_UNREAD;
-
-/**
- * A clip's root travel, units a second in the model's frame (x to its right, z behind; its forward is -z): the root
- * translation's change from key 0 to the last key before the closing one (77 §5: key n is key 0), over that time.
- * 0 for a clip whose root is constant or absent. seal_run's is 57.7 forward (77 §6).
- */
-export function rootVelocity(clip: MotionClip): [number, number] {
-  const root = clip.parts.find((p) => p.name === ROOT);
-  if (!root || root.translations.length <= 3 || clip.frameCount < 2) return [0, 0];
-  const t = root.translations, last = 3 * (clip.frameCount - 1), seconds = (clip.frameCount - 1) / clip.rate;
-  return [(t[last]! - t[0]!) / seconds + 0, (t[last + 2]! - t[2]!) / seconds + 0];
+export interface AnimatorOptions {
+  weapon?: Weapon;
+  /** The random draw for the crouch's three idles (`CROUCH_IDLES`), [0, 1): `Math.random` by default. */
+  random?: () => number;
 }
-
-/**
- * PLACEHOLDER (W2.R2): the bounds on a cycle's speed factor (`clipRate`): a quarter and three times its own rate, so a
- * nearly stopped mover still steps and the strafes (whose roots travel slowly) are not flailed. No source.
- */
-export const RATE_MIN_PLACEHOLDER = 0.25;
-export const RATE_MAX_PLACEHOLDER = 3;
-
-/**
- * Keys a second a clip advances at (77 §7's reading of `playback`):
- * - no entry: the clip's own rate, 30 keys a second;
- * - a clip that is no locomotion (`max_velocity` < 0, or none): its `frameCount` keys over `playback` seconds
- *   (`seal_crouch_step`'s 0.4 is the duration research 25 read in memory);
- * - a locomotion cycle (`max_velocity` > 0; `playback` 1 on all of them): its own rate times `playback` times the
- *   mover's speed over the clip's root travel -- **the viewer's reading**, so the root would travel the mover's
- *   distance (the game takes the model's velocity from that same root displacement, decomp lines 7792-7898) --
- *   between `RATE_MIN_PLACEHOLDER` and `RATE_MAX_PLACEHOLDER`.
- */
-export function clipRate(clip: MotionClip, entry: MotionEntry | undefined, speed: number): number {
-  if (!entry) return clip.rate;
-  const playback = entry.playback !== null && entry.playback > 0 ? entry.playback : null;
-  if (entry.maxVelocity === null || entry.maxVelocity <= 0) return playback ? clip.frameCount / playback : clip.rate;
-  const [rx, rz] = rootVelocity(clip);
-  const travel = Math.hypot(rx, rz);
-  const factor = travel > 0 ? Math.min(RATE_MAX_PLACEHOLDER, Math.max(RATE_MIN_PLACEHOLDER, speed / travel)) : 1;
-  return clip.rate * (playback ?? 1) * factor;
-}
-
-/**
- * PLACEHOLDER (W2.R2): the cross-fade's length, seconds, into a clip whose `motion.rdr` entry has no `BlendTime` (the
- * cycles have none) or when the table is not read. No source.
- */
-export const BLEND_TIME_PLACEHOLDER = 0.2;
 
 /**
  * The cross-fade's weight at `s` of its length: the ease the game's node blend traced (research 17 §4.2, `FUN_0028e040`
@@ -238,6 +153,21 @@ export function blendWeight(s: number): number {
   if (!(s > 0)) return 0;
   if (s >= 1) return 1;
   return s < 0.5 ? 2 * s * s : 1 - 2 * (1 - s) * (1 - s);
+}
+
+/**
+ * `FUN_0028c7c0(t, from, to)`: whether a callback at phase `t` fires on a step from `from` to `to`: forward, `from <= t
+ * <= to`; a loop that wrapped (`to < from`), `from - 1 <= t <= to`; a one-shot played backwards, `to <= t <= from`.
+ * No step, no fire.
+ */
+export function crosses(t: number, from: number, to: number, looped: boolean, backwards: boolean): boolean {
+  if (from === to) return false;
+  if (!backwards) {
+    if (from <= to) return from <= t && t <= to;
+    return looped && from - 1 <= t && t <= to;
+  }
+  if (to <= from) return to <= t && t <= from;
+  return looped && to - 1 <= t && t <= from;
 }
 
 /** A part's local pose: a unit quaternion (x, y, z, w) and a translation. */
@@ -308,164 +238,285 @@ export function writePose(skeleton: Skeleton, parts: readonly PartPose[]): void 
   skeleton.update();
 }
 
-/** What `stats().anim` reports: the clip, the fractional key, the cross-fade's weight (1 settled) and from what. */
-export interface AnimStats {
-  clip: string;
-  frame: number;
-  /** The clip's key count: `frame / frames` is the cycle's phase (the audio's footfalls, web/docs/research/81 §4). */
-  frames: number;
-  blend: number;
-  from: string | null;
-  /** Keys a second the clip advances at this frame. */
-  rate: number;
-  /** The upper-body layer over it, or null. */
-  layer: string | null;
+/** A play: its key, its nodes, its phase, and whether it loops or runs backwards. */
+interface Play {
+  key: string;
+  nodes: PlayNode[];
+  phase: number;
+  looped: boolean;
+  backwards: boolean;
+  /** The crouch idle drawn for this play (`CROUCH_IDLES`), kept while it lasts. */
+  pick?: Motion;
 }
 
-export interface AnimatorOptions { weapon?: Weapon }
-
-/** The clip playing, as a pose layer sees it: the clip, its fractional key and its phase (0 to 1). */
-export interface LayerContext { clip: MotionClip; frame: number; phase: number }
-
-/**
- * A pose over the clips (the WEAPON workstream's fire set and reload, `./weaponPose`): the parts to blend toward and
- * by how much (0 none, 1 all), or null for nothing this frame. A part the layer does not carry keeps the pose below.
- */
-export interface PoseLayer {
-  sample(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null;
+/** What the mover asks to be played: a key, and how to build (and rebuild) its nodes. */
+interface Wanted {
+  key: string;
+  nodes: () => PlayNode[];
+  /** A stance transition played backwards (`FUN_0028c160`). */
+  backwards?: boolean;
+  /** A locomotion play: footfalls count. */
+  locomotion?: boolean;
 }
 
 /**
- * A clip part's skeleton slot. The held item's node is `rifle` in most of the pack's clips and `weapon` in the few
- * that keep SOCOM 1's name (`seal_jump`, `seal_runningjump_in_air`, `seal_prone_crawl`, `seal_crouch_recoil`: the
- * same constant key where both exist; reCOM `zSeal/seal.cpp:150` names the node `weapon`): the viewer's reading is
- * that a clip without `rifle` moves the rifle by its `weapon` track.
- */
-export function partIndex(skeleton: Skeleton, parts: readonly { name: string }[], name: string): number {
-  const i = skeleton.indexOf(name);
-  if (i >= 0 || name !== HELD_ALIAS) return i;
-  return parts.some((p) => p.name === HELD_PART) ? -1 : skeleton.indexOf(HELD_PART);
-}
-/** The held item's node (`FUN_00553290` 0x553290 names it `rifle`) and SOCOM 1's name for it in the older clips. */
-export const HELD_PART = 'rifle', HELD_ALIAS = 'weapon';
-
-/**
- * The player of the clips: `step` once a frame with the mover's state. It picks (`pickClip`), advances, samples the
- * clip (and its layer), cross-fades from the pose on screen when the clip changes, and writes the skeleton. A pick the
- * pack lacks falls back to the stand, and without the stand the skeleton keeps its bind pose.
+ * The player of the clips: `step` once a frame with the mover's state. It works out the play the mover's state asks
+ * for, starts it (a cross-fade from the pose on screen) when that is a new one, rebuilds a locomotion play's nodes,
+ * advances the shared phase, fires the events it passed, samples and blends the nodes, and writes the skeleton. A
+ * clip the pack lacks is left out of its play; with nothing to play the skeleton keeps its bind pose.
  */
 export class Animator {
-  private readonly clips: Map<string, MotionClip>;
-  private readonly bands: Record<string, Band>;
+  private readonly motions = new Map<string, Motion>();
+  private readonly sets: MotionSets;
   private readonly bind: Local[];
   private readonly root: number;
   private readonly weapon: Weapon;
+  private readonly random: () => number;
   /** The pose on screen, per skeleton part. */
   private readonly shown: Local[];
-  /** The pose the cross-fade leaves, frozen when the clip changed (`FUN_0028e370`'s snapshot, research 17 §4.2). */
+  /** The pose the cross-fade leaves, frozen when the play changed (`FUN_0028e3e0`'s snapshot, research 17 §4.2). */
   private from: { name: string; pose: Local[] } | null = null;
   private blendElapsed = 0;
-  private blendLength = BLEND_TIME_PLACEHOLDER;
-  private current: { clip: MotionClip; frame: number; rate: number; loop: boolean } | null = null;
+  private blendLength = BLEND_TIME_DEFAULT;
+  private play: Play | null = null;
   private layer: MotionClip | null = null;
-  private lastJumps: number | null = null;
-  private wasAirborne = false;
+  private lastRate = 0;
+  /** `actor+0x211` / `+0x210`: the left and the right foot already struck this half cycle. */
+  private feet = { left: false, right: false };
+  private readonly listeners = new Set<(e: AnimEvent) => void>();
   private readonly poseLayers: PoseLayer[] = [];
 
   constructor(private readonly skeleton: Skeleton, clips: Iterable<MotionClip>, private readonly table: MotionTable | null, options: AnimatorOptions = {}) {
-    this.clips = new Map([...clips].map((c) => [c.name, c]));
-    this.bands = bandsFrom(table);
+    for (const c of clips) this.motions.set(c.name, motionOf(c, entryOf(c.name, table)));
+    this.sets = Object.fromEntries((Object.keys(SEAL_SETS) as SetName[]).map((k) => [k, SEAL_SETS[k].flatMap((n) => {
+      const m = this.motions.get(n);
+      return m ? [m] : [];
+    })])) as MotionSets;
     this.bind = bindLocals(skeleton);
     this.shown = this.bind.map((l) => ({ q: [...l.q], t: [...l.t] }));
     this.root = skeleton.indexOf(ROOT);
     this.weapon = options.weapon ?? 'rifle';
+    this.random = options.random ?? Math.random;
+  }
+
+  /**
+   * Adds a pose layer over the clips (additive: the plays and the cross-fade are untouched). Layers apply in the order
+   * added, each blended over the pose below it by its own weight, after the nodes and the pistol layer and before the
+   * cross-fade; each sees the play's main clip.
+   */
+  addPoseLayer(layer: PoseLayer): void {
+    this.poseLayers.push(layer);
+  }
+
+  /** Listens to the animator's events (`AnimEvent`); returns the unsubscribe. */
+  onEvent(listener: (e: AnimEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** The motion a clip plays as (`./locomotion` `Motion`), or undefined when the pack lacks it. */
+  motion(name: string): Motion | undefined {
+    return this.motions.get(name);
   }
 
   /** One frame of `dt` seconds with the mover as it now stands. */
   step(dt: number, mover: MoverSnapshot): void {
-    const jumped = this.lastJumps !== null && mover.jumps !== this.lastJumps;
-    const landed = this.wasAirborne && !mover.airborne;
-    this.lastJumps = mover.jumps;
-    this.wasAirborne = mover.airborne;
-
-    const cur = this.current;
-    const playing: Playing | null = cur && {
-      name: cur.clip.name, frame: cur.frame, frames: cur.clip.frameCount, done: !cur.loop && cur.frame >= cur.clip.frameCount,
-    };
-    const wanted = this.resolve(pickClip({ mover, current: playing, jumped, landed, bands: this.bands, table: this.table }));
+    const wanted = this.wanted(mover);
     if (!wanted) return;
-    const speed = Math.hypot(mover.vx, mover.vz);
-    const entry = this.table?.get(wanted.name) ?? undefined;
-    const rate = clipRate(wanted, entry, speed);
-    if (!cur || cur.clip !== wanted) this.change(wanted, rate, cur);
-    else {
-      cur.rate = rate;
-      cur.frame += rate * dt;
-      if (cur.loop) cur.frame %= cur.clip.frameCount;
-      else cur.frame = Math.min(cur.frame, cur.clip.frameCount);
-      this.blendElapsed += dt;
-    }
+    let play = this.play;
+    if (!play || play.key !== wanted.key) play = this.start(wanted);
+    else if (play.key.startsWith('loco:')) play.nodes = wanted.nodes();
+    if (!play.nodes.length) return;
+    if (play !== this.play) this.play = play;
+    else this.blendElapsed += dt;
+
+    const before = play.phase;
+    const rate = phaseRate(play.nodes);
+    let after = before + rate * dt;
+    const end = play.looped ? 1 : play.nodes[0]!.motion.end;
+    if (play.looped) after = ((after % 1) + 1) % 1;
+    else after = Math.min(end, Math.max(0, after));
+    play.phase = after;
+    const main = this.main(play);
+    this.lastRate = rate * main.motion.frames;
     this.pose();
+    this.fire(play, before, after, rate < 0, wanted.locomotion === true && !mover.airborne && Math.hypot(mover.vx, mover.vz, mover.vy) > 0.5);
   }
 
-  /** The pick as a clip on hand, the pistol's whole-body version standing in for it where there is one; else the stand. */
-  private resolve(name: string): MotionClip | null {
-    const own = this.clips.get(name) ?? this.clips.get(SEAL_CLIPS.stand) ?? null;
-    this.layer = null;
-    if (!own || this.weapon !== 'pistol') return own;
-    const pistol = this.clips.get(layerName(own.name));
-    if (!pistol) return own;
-    if (pistol.parts.some((p) => p.name === ROOT)) return pistol;
-    this.layer = pistol;
-    return own;
-  }
-
-  /** Starts `clip`: the pose on screen is the cross-fade's start, and a cycle following a cycle keeps its phase. */
-  private change(clip: MotionClip, rate: number, previous: { clip: MotionClip; frame: number } | null): void {
-    const loop = loops(clip.name, this.table);
-    let frame = 0;
-    if (previous && loop && loops(previous.clip.name, this.table) && isCycle(previous.clip.name) && isCycle(clip.name)) {
-      frame = (previous.frame / previous.clip.frameCount) * clip.frameCount;     // the viewer's: the legs keep their step
+  /** The play the mover asks for (the header's rules), or null when there is nothing to play it with. */
+  private wanted(mover: MoverSnapshot): Wanted | null {
+    const one = (key: string, name: string, backwards = false): Wanted => ({
+      key, backwards, nodes: () => {
+        const m = this.motions.get(name);
+        return m ? [{ motion: m, weight: 1, speed: nodeSpeed(m, 1) * (backwards ? -1 : 1), offset: 0 }] : [];
+      },
+    });
+    const a = mover.action;
+    if (a) {
+      const name = a.name === 'fall' ? SEAL_ANIMS.inAir : a.name === 'launch' ? SEAL_ANIMS.launch : SEAL_ANIMS[a.name];
+      return one(`${a.name}#${a.serial}`, name, a.reversed);
     }
-    if (previous) {
-      this.from = { name: previous.clip.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
+    const g = mover.ground;
+    const stance: Stance = mover.stance ?? (mover.crouched ? 'crouch' : 'stand');
+    if (g && g.state === 'stand') return { key: 'loco:stand', locomotion: true, nodes: () => standPlay(g.forward, g.right, this.sets) };
+    if (g && g.state !== 'idle' && g.cls !== -1) {
+      const cls = g.cls as DirectionClass;
+      if (g.state === 'crouch') return { key: `loco:crouch:${cls}`, locomotion: true, nodes: () => crouchPlay(g.forward, g.right, cls, this.sets) };
+      const motions = { crawl: this.motions.get(SEAL_ANIMS.proneCrawl), right: this.motions.get(SEAL_ANIMS.proneRight), left: this.motions.get(SEAL_ANIMS.proneLeft) };
+      return { key: `loco:prone:${cls}`, locomotion: true, nodes: () => pronePlay(g.forward, g.right, cls, motions) };
+    }
+    if (stance === 'crouch') {
+      return {
+        key: 'idle:crouch', nodes: () => {
+          const pick = this.play?.key === 'idle:crouch' && this.play.pick ? this.play.pick : this.crouchIdle();
+          return pick ? [{ motion: pick, weight: 1, speed: nodeSpeed(pick, 1), offset: 0 }] : [];
+        },
+      };
+    }
+    if (stance === 'prone' && (mover.turnRate ?? 0) !== 0 && this.motions.has(SEAL_ANIMS.proneTurn)) return one('turn:prone', SEAL_ANIMS.proneTurn);
+    return stance === 'prone' ? one('idle:prone', SEAL_ANIMS.prone) : one('idle:stand', SEAL_ANIMS.stand);
+  }
+
+  /** `CROUCH_IDLES`: one of the crouch's three, by their chances; the plain crouch when the others are not on hand. */
+  private crouchIdle(): Motion | undefined {
+    const on = CROUCH_IDLES.filter((c) => this.motions.has(c.clip));
+    const total = on.reduce((t, c) => t + c.chance, 0);
+    let r = this.random() * total;
+    for (const c of on) {
+      r -= c.chance;
+      if (r < 0) return this.motions.get(c.clip);
+    }
+    return on.length ? this.motions.get(on[on.length - 1]!.clip) : undefined;
+  }
+
+  /**
+   * A new play (`FUN_0028dc90`): the pose on screen frozen for the cross-fade over the new main motion's `BlendTime`;
+   * the phase kept from a looped play into a looped one, a backwards one-shot started at its end.
+   */
+  private start(wanted: Wanted): Play {
+    const nodes = wanted.nodes();
+    const prev = this.play;
+    const main = nodes[0]?.motion;
+    const looped = main?.looped ?? true;
+    const backwards = wanted.backwards === true;
+    let phase = 0;
+    if (backwards && main) phase = main.end;
+    else if (prev && prev.looped && looped) phase = prev.phase;
+    const play: Play = { key: wanted.key, nodes, phase, looped, backwards };
+    if (wanted.key === 'idle:crouch' && main) play.pick = main;
+    if (!nodes.length) return play;
+    if (prev) {
+      this.from = { name: this.main(prev).motion.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
       this.blendElapsed = 0;
-      this.blendLength = this.table?.get(clip.name)?.blendTime ?? BLEND_TIME_PLACEHOLDER;
+      this.blendLength = main!.blendTime;
     }
-    this.current = { clip, frame, rate, loop };
+    this.feet = { left: false, right: false };
+    this.emit({ kind: 'play', clip: main!.name, play: wanted.key });
+    return play;
   }
 
-  /** Samples the clip (and the layer at the same phase), blends from the frozen pose, and writes the skeleton. */
+  /** The play's heaviest node: its clip names the play in the stats. */
+  private main(play: Play): PlayNode {
+    let best = play.nodes[0]!;
+    for (const n of play.nodes) if (n.weight > best.weight) best = n;
+    return best;
+  }
+
+  /** The callbacks each node's motion crosses on this step, then the footfalls of a moving locomotion play. */
+  private fire(play: Play, before: number, after: number, backwards: boolean, stepping: boolean): void {
+    for (const n of play.nodes) {
+      for (const c of n.motion.callbacks) {
+        if (crosses(c.phase, before, after, play.looped, backwards)) this.emit({ kind: 'callback', clip: n.motion.name, name: c.name, phase: c.phase });
+      }
+    }
+    if (!stepping) return;
+    const frac = after - Math.floor(after), clip = this.main(play).motion.name;
+    if (frac > 0 && frac < 0.5) {
+      if (!this.feet.left) { this.feet.left = true; this.emit({ kind: 'footfall', foot: 'left', clip }); }
+    } else this.feet.left = false;
+    if (frac > 0.5 && frac < 1) {
+      if (!this.feet.right) { this.feet.right = true; this.emit({ kind: 'footfall', foot: 'right', clip }); }
+    } else this.feet.right = false;
+  }
+
+  private emit(e: AnimEvent): void {
+    for (const l of this.listeners) l(e);
+  }
+
+  /** The node's clip, the pistol's whole-body version standing in for it where there is one. */
+  private clipOf(motion: Motion): MotionClip {
+    if (this.weapon !== 'pistol') return motion.clip;
+    const pistol = this.motions.get(layerName(motion.name));
+    return pistol && pistol.clip.parts.some((p) => p.name === ROOT) ? pistol.clip : motion.clip;
+  }
+
+  /** Samples every node at the shared phase, blends them by weight, cross-fades from the frozen pose, writes the skeleton. */
   private pose(): void {
-    const cur = this.current!;
-    const target = this.bind.map((l) => ({ q: [...l.q], t: [...l.t] }) as Local);
-    const put = (parts: readonly PartPose[], into: Local[] = target): void => {
+    const play = this.play!;
+    const n = this.bind.length;
+    const acc: { q: [number, number, number, number]; t: [number, number, number]; w: number }[] =
+      Array.from({ length: n }, () => ({ q: [0, 0, 0, 0], t: [0, 0, 0], w: 0 }));
+    const add = (parts: readonly PartPose[], weight: number): void => {
       for (const p of parts) {
         const i = partIndex(this.skeleton, parts, p.name);
         if (i < 0) continue;
-        into[i] = { q: [...p.rotation], t: i === this.root ? [this.bind[i]!.t[0], p.translation[1], this.bind[i]!.t[2]] : [...p.translation] };
+        const a = acc[i]!;
+        let [x, y, z, w] = p.rotation;
+        if (a.w > 0 && a.q[0] * x + a.q[1] * y + a.q[2] * z + a.q[3] * w < 0) { x = -x; y = -y; z = -z; w = -w; }
+        a.q = [a.q[0] + x * weight, a.q[1] + y * weight, a.q[2] + z * weight, a.q[3] + w * weight];
+        a.t = [a.t[0] + p.translation[0] * weight, a.t[1] + p.translation[1] * weight, a.t[2] + p.translation[2] * weight];
+        a.w += weight;
       }
     };
-    put(sampleClip(cur.clip, cur.frame / cur.clip.rate, { loop: cur.loop }).parts);
-    if (this.layer) {
-      const phase = cur.frame / cur.clip.frameCount;
-      put(sampleClip(this.layer, (phase * this.layer.frameCount) / this.layer.rate, { loop: true }).parts);
+    for (const node of play.nodes) {
+      if (!(node.weight > 0)) continue;
+      const clip = this.clipOf(node.motion);
+      let frame: number;
+      if (play.looped) frame = (((play.phase + node.offset) % 1) + 1) % 1 * clip.frameCount;
+      else frame = Math.min(play.phase, node.motion.end) * clip.frameCount;
+      add(sampleClip(clip, frame / clip.rate, { loop: play.looped }).parts, node.weight);
     }
+    this.layer = null;
+    if (this.weapon === 'pistol') {
+      const main = this.main(play).motion;
+      const pistol = this.motions.get(layerName(main.name));
+      if (pistol && !pistol.clip.parts.some((p) => p.name === ROOT)) {
+        this.layer = pistol.clip;
+        const phase = play.looped ? play.phase : Math.min(play.phase, main.end);
+        const parts = sampleClip(pistol.clip, (phase * pistol.clip.frameCount) / pistol.clip.rate, { loop: true }).parts;
+        for (const p of parts) {
+          const i = partIndex(this.skeleton, parts, p.name);
+          if (i >= 0) acc[i] = { q: [...p.rotation], t: [...p.translation], w: 1 };
+        }
+      }
+    }
+    const target: Local[] = acc.map((a, i) => {
+      if (!(a.w > 0)) return { q: [...this.bind[i]!.q], t: [...this.bind[i]!.t] } as Local;
+      const len = Math.hypot(...a.q) || 1;
+      const t: [number, number, number] = [a.t[0] / a.w, a.t[1] / a.w, a.t[2] / a.w];
+      if (i === this.root) { t[0] = this.bind[i]!.t[0]; t[2] = this.bind[i]!.t[2]; }
+      return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
+    });
     // The pose layers (`addPoseLayer`: the weapon's fire set and reload, `./weaponPose`), each over what is below it.
-    for (const layer of this.poseLayers) {
-      const over = layer.sample({ clip: cur.clip, frame: cur.frame, phase: cur.frame / cur.clip.frameCount });
-      if (!over || !(over.weight > 0)) continue;
-      const to = target.map((l) => ({ q: l.q, t: l.t }) as Local);
-      put(over.parts, to);
-      const w = Math.min(1, over.weight);
-      target.forEach((from, i) => {
-        const dest = to[i]!;
-        if (dest.q === from.q && dest.t === from.t) return;     // a part the layer does not carry
-        target[i] = w >= 1 ? dest : {
-          q: slerp(from.q, dest.q, w),
-          t: [from.t[0] + (dest.t[0] - from.t[0]) * w, from.t[1] + (dest.t[1] - from.t[1]) * w, from.t[2] + (dest.t[2] - from.t[2]) * w],
-        };
-      });
+    if (this.poseLayers.length) {
+      const main = this.main(play);
+      const phase = play.looped ? (((play.phase + main.offset) % 1) + 1) % 1 : Math.min(play.phase, main.motion.end);
+      const context: LayerContext = { clip: main.motion.clip, frame: phase * main.motion.frames, phase };
+      for (const layer of this.poseLayers) {
+        const over = layer.sample(context);
+        if (!over || !(over.weight > 0)) continue;
+        const w = Math.min(1, over.weight);
+        for (const p of over.parts) {
+          const i = partIndex(this.skeleton, over.parts, p.name);
+          if (i < 0) continue;
+          const from = target[i]!;
+          const t: [number, number, number] = i === this.root ? [this.bind[i]!.t[0], p.translation[1], this.bind[i]!.t[2]] : [...p.translation];
+          target[i] = w >= 1 ? { q: [...p.rotation], t } : {
+            q: slerp(from.q, p.rotation, w),
+            t: [from.t[0] + (t[0] - from.t[0]) * w, from.t[1] + (t[1] - from.t[1]) * w, from.t[2] + (t[2] - from.t[2]) * w],
+          };
+        }
+      }
     }
     const w = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     if (w >= 1) this.from = null;
@@ -482,33 +533,24 @@ export class Animator {
     this.skeleton.update();
   }
 
-  /**
-   * Adds a pose layer over the clips (additive: the picker and the cross-fade are untouched). Layers apply in the
-   * order added, each blended over the pose below it by its own weight, before the cross-fade.
-   */
-  addPoseLayer(layer: PoseLayer): void {
-    this.poseLayers.push(layer);
-  }
-
   /** The clip, the frame, the blend: the hook's `stats().anim`. */
   stats(): AnimStats {
-    const cur = this.current;
+    const play = this.play;
     const blend = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
+    if (!play || !play.nodes.length) {
+      return { clip: '', frame: 0, frames: 0, blend, from: this.from?.name ?? null, rate: 0, layer: null, nodes: [], play: play?.key ?? '' };
+    }
+    const main = this.main(play);
+    const phase = play.looped ? (((play.phase + main.offset) % 1) + 1) % 1 : Math.min(play.phase, main.motion.end);
     return {
-      clip: cur?.clip.name ?? '', frame: cur?.frame ?? 0, frames: cur?.clip.frameCount ?? 0, blend, from: this.from?.name ?? null, rate: cur?.rate ?? 0,
-      layer: this.layer?.name ?? null,
+      clip: main.motion.name, frame: phase * main.motion.frames, frames: main.motion.frames, blend, from: this.from?.name ?? null, rate: this.lastRate,
+      layer: this.layer?.name ?? null, play: play.key,
+      nodes: play.nodes.map((n) => ({ clip: n.motion.name, weight: n.weight, speed: n.speed })),
     };
   }
 
-  /** The root's height over the feet as posed (the clip's, blended), or null for a skeleton without a root. */
+  /** The root's height over the feet as posed (the clips', blended), or null for a skeleton without a root. */
   rootY(): number | null {
     return this.root < 0 ? null : this.shown[this.root]!.t[1];
   }
 }
-
-/** The locomotion cycles, whose phase carries from one to the next. */
-const CYCLES = new Set<string>([
-  SEAL_CLIPS.walk, SEAL_CLIPS.jog, SEAL_CLIPS.run, SEAL_CLIPS.walkBack, SEAL_CLIPS.runBack, SEAL_CLIPS.strafeLeft,
-  SEAL_CLIPS.strafeRight, SEAL_CLIPS.crouchWalk, SEAL_CLIPS.crouchWalkBack,
-]);
-export const isCycle = (name: string): boolean => CYCLES.has(name.replace(/^seal_p_/, 'seal_'));

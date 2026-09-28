@@ -152,6 +152,14 @@ describe('the placed camera on open ground (FUN_0029bf70 with no hit, FUN_0029bc
     settle(cam, ORIGIN, 0, 0, CROUCH, 12);
     expect(cam.rootY()).toBe(CROUCH);
   });
+
+  it("the body's posed root is taken as it stands (FUN_0029a950 reads the posed skel_root): the jump's 15.08 at once", () => {
+    const cam = new PlayerCamera(open);
+    cam.tick(ORIGIN, 0, 0, STAND, 1 / 60, true);
+    cam.tick(ORIGIN, 0, 0, 15.08, 1 / 60, true);
+    expect(cam.rootY()).toBe(15.08);
+    expect(cam.view(1).target[1]).toBeCloseTo(15.08 + 10, 6);            // the ramp is at its top over 5.6
+  });
 });
 
 describe('the pass against the hull (FUN_0029bf70)', () => {

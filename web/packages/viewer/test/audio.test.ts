@@ -119,34 +119,27 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(audio.stats().dropped.unknown).toBe(1);
   });
 
-  it('turns the walk into footfalls, a jump, a landing, rounds and a reload', async () => {
+  it('turns the body events and the rifle events into footfalls, the whoosh, a landing, rounds and a reload', async () => {
     const out = new Recorder(), audio = new GameAudio(out, seeded(9));
     audio.setData(await mp2());
     audio.setFallTable(235, [62, 91, 120]);
     out.unlock();
-    const state = {
-      frame: 0, jumps: 0, airborne: false, landing: null as number | null,
-    };
     const signals: WalkSignals = {
       walking: () => true,
       feet: () => [0, 0, 0],
-      mover: () => ({ vx: 0, vz: -65, airborne: state.airborne, stance: 'stand', jumps: state.jumps }),
-      landingSpeed: () => state.landing,
+      stance: () => 'stand',
       wish: () => ({ forward: 1, right: 0 }),
-      anim: () => ({ clip: 'seal_run', frame: state.frame, frames: 20, blend: 1, from: null, rate: 30, layer: null } as AnimStats),
-      isCycle: (clip) => clip === 'seal_run',
       grid: () => null,                                                // no hull: material 0, silent steps
     };
     const sounds = new WalkSounds(audio, signals);
     sounds.material = () => STONE;                                     // stone under the feet
-    for (let f = 0; f < 40; f++) { state.frame = (f * 2) % 20 + 0.5; sounds.frame(); }
-    expect(sounds.counts.footfalls).toBe(8);                          // two a cycle, four cycles
-    state.jumps = 1; state.airborne = true; sounds.frame();
-    state.airborne = false; state.landing = 90; sounds.frame();
+    for (let i = 0; i < 8; i++) sounds.playEvent({ kind: 'footfall', foot: i % 2 ? 'right' : 'left', clip: 'seal_run', position: [0, 0.5, 0] });
+    sounds.playEvent({ kind: 'callback', clip: 'seal_jump', name: 'jump_whoosh', phase: 0.42 });
+    sounds.playEvent({ kind: 'land', speed: 90, clip: 'land' });
     const weapon = { name: 'M4A1 SD', id: 62, fireAnim: 'muzzle_m4SD', sounds: { close: '.M4A1_SIL', med: null, far: null, reload: '.M4A1_SIL_RLD' } };
     for (let i = 0; i < 3; i++) sounds.fireEvent({ type: 'round', weapon, from: [0, 15, -3], to: [0, 15, -100], hit: false, rounds: 29 - i });
     sounds.fireEvent({ type: 'reloadStart', weapon, seconds: 1.6 });
-    expect(sounds.counts).toEqual({ footfalls: 8, jumps: 1, landings: 1, rounds: 3, reloads: 1 });
+    expect(sounds.counts).toEqual({ footfalls: 8, callbacks: 1, landings: 1, rounds: 3, reloads: 1 });
     const s = audio.stats();
     expect(s.byName['.STEP_STONE']).toBe(8);
     expect(s.byName['.JUMP_WHOOSH']).toBe(1);

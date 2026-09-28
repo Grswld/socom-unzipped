@@ -46,7 +46,7 @@ function skeleton(): Skeleton {
 }
 
 const entry = (e: Partial<MotionEntry>): MotionEntry => ({
-  looped: null, playback: null, maxVelocity: null, blendTime: null, transitionA: null, transitionB: null, noInterrupt: null, ...e,
+  looped: null, playback: null, maxVelocity: null, blendTime: null, transitionA: null, transitionB: null, noInterrupt: null, callbacks: [], ...e,
 });
 const REST: MoverSnapshot = { vx: 0, vz: 0, vy: 0, yaw: 0, airborne: false, crouched: false, landing: null, jumps: 0 };
 

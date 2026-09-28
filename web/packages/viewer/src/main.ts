@@ -27,7 +27,7 @@ import { Fire } from './fire';
 import { HELD_RIFLE } from '@s2u/scene';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
-import { isCycle, PLAY_CLIPS } from './animator';
+import { PLAY_CLIPS } from './animator';
 import { gameAudio } from './audio';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
@@ -109,11 +109,8 @@ audio.setFallTable(SEAL_TUNING.gravity, SEAL_TUNING.fallingDamage);
 const walkSounds = new WalkSounds(audio, {
   walking: () => walk.mode() === 'walk',
   feet: () => walk.drawnFeet(),
-  mover: () => walk.snapshot(),
-  landingSpeed: () => walk.mover()?.landing?.speed ?? null,
+  stance: () => walk.posture(),
   wish: () => fly.groundWish(),
-  anim: () => play.animStats(),
-  isCycle,
   grid: () => walk.grid(),
 });
 /** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
@@ -229,7 +226,8 @@ const play = new Play();
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
-fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
+fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });
+play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard   // the pose and the sound, per round and reload
 let wantedPlay = -1;
 /** The map's sound, asked of the source the map came from once it is shown (`./soundData`). */
 let wantedSound = -1;
@@ -263,6 +261,8 @@ function onZoom(): void { /* wired to the accuracy workstream's zoom.cycle() at 
  * `StanceButton`, one step a frame). In the fly camera the same lanes are up and down.
  */
 const stanceButton = new StanceButton();
+/** The hook's aim (`setAim(true)`), over the lanes until `setAim(false)` hands it back: Playwright holds no button. */
+let aimForced = false;
 function playLanes(before: Input, after: Input, dt: number): void {
   const act = playActions(before, after);
   const walking = walk.mode() === 'walk';
@@ -273,7 +273,7 @@ function playLanes(before: Input, after: Input, dt: number): void {
   // Fed a released button off foot, so a press begun in the fly camera is not a tap when the walk begins.
   const go = stanceButton.update(walking && after.stance, dt, walk.stance());
   if (go !== null) walk.setStance(go);
-  walk.setAiming(walking && (act.aim || mouseAim));
+  walk.setAiming(walking && (aimForced || act.aim || mouseAim));
 }
 
 /**
@@ -527,7 +527,6 @@ async function boot(): Promise<void> {
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
-    walkSounds.frame();             // the footfalls, the jump and the landing, heard (the rounds: `fire.subscribe`)
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -786,7 +785,7 @@ window.__viewer = {
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
-  setAim: (on) => { walk.setAiming(on); return walk.view(); },
+  setAim: (on) => { aimForced = on; walk.setAiming(walk.mode() === 'walk' && on); return walk.view(); },
   look: () => fly.lookState(),
   setLook: (opts) => { fly.setLookOptions(opts); return fly.lookOptions(); },
   setZoom: (magnification, mode4) => fly.setZoom(magnification, mode4),
