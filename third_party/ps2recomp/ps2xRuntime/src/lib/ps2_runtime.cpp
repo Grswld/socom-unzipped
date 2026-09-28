@@ -3030,6 +3030,13 @@ void PS2Runtime::run()
     // the join below cannot wait out the cap.
     gs().releaseHostBackpressure();
     shotQueue.stop();   // the frames still waiting are written, then the worker joins (Sprint 17 F0 Step 5b)
+    // The one trace of the screenshot writes since raylib's per-export FILEIO line went: a failed write or rename
+    // shows as failed=, and a reader counts the exports from written= (F0 Step 5b review).
+    std::fprintf(stderr, "[shot-queue] pushed=%llu replaced=%llu written=%llu failed=%llu\n",
+                 static_cast<unsigned long long>(shotQueue.pushed()),
+                 static_cast<unsigned long long>(shotQueue.replaced()),
+                 static_cast<unsigned long long>(shotQueue.written()),
+                 static_cast<unsigned long long>(shotQueue.failed()));
     requestStop();
     if (gameThread.joinable())
     {
