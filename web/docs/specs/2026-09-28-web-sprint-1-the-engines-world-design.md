@@ -256,6 +256,46 @@ slot at least 824.6 units away -- 44 of 44 accounted for; which of the 24 a play
 field at +0x88, stale text on 13 sub-maps, not records; the file's only line data is polylines on Blizzard, Frostfire
 and Bitter Jungle.
 
+### The spawn slots' order, and the sweep's y is not the feet (2026-09-28, W1.5b)
+
+In the trailer's order of the spawn list, the one slot that accounts for the measured A is side 0's #0 and for B side
+1's #1, on all 22 maps (44 of 44; exactly one slot of the side qualifies each time, and #0 and #1 of a side are 22-851
+units apart; in the sub-maps' own lists the same slots sit at scattered positions, so only the trailer's order carries
+the pattern). A was the host and B the joiner in those rounds; "player n gets slot n of their side" fits all 44 and is
+not proven. The slot's y is not in the file. A rough check against the collision hull at each measured position's own
+(x, z): 37 of the 40 online-sweep rows (research 33) sit 12.7-38.1 units above the only floor there (median 25.0), 3
+have a surface 12-25 units above them, none is inside [−3, +1] of a floor; the 4 KNOWN §1 rows (Frostfire's and
+Vigilance's) sit 0.0-1.1 above the floor. With the same 40 rows also 20-28 units displaced horizontally from their
+slot, the sweep's actor block may have been read at the third-person camera rather than the feet -- in which case the
+facing convention W1.5 derived from "ahead" is turned 180° -- which W1.4's probe decides (W1.R10). The hull check is a
+scratch approximation, not the probe.
+
+### The engine's draw order lands; the camera's region set is not in the tree (2026-09-28, W1.2)
+
+The order walks Task 1's rings from the camera's cell over `world.ts`'s draw records; a merged world part sits at the
+ring of its nearest node (Frostfire's median part covers 5 cells, the largest all 72; Crossroads' median 27, Desert
+Glory's 6), draws with no cell go after the last ring and before the shadows, and the walk runs to the grid's edge (reCOM's
+`m_ring < 2` bound would stop at five cells and drop draws). Frostfire's 453 draws by ring from spawn A: 11, 181, 88, 46,
+80, 39, 5; from spawn B: 58, 49, 80, 47, 92, 55, 69. The ring label's writer is `zdb_CGrid_addOrderedCellAtom` at
+`0x002d7030` (`recomp/socom2_names.csv`, call-graph round 1, score 0.80; 384 bytes), its body not in the tree; reCOM's
+`buildOrderedCellAtomList` is empty, so "near to far" is the spec's reading. Landmarks (`m_landmarks`, drawn after the
+walk in `RenderWorld` :250-266; Frostfire has `skyhorizon`, `drilltower`, `boom`; MP6 `f18s`) are not held back.
+**Regions.** On the disc: `tag_NODE_PARAMS.m_region_shift` (node flag bits 13-17, `znode.h:90`) is non-zero on 8 maps;
+on six of them (MP2, MP11, MP52, MP61, MP62, MP81) the `di` polygons' `m_region` words are masks over exactly those
+maps' shift bits (Frostfire: shifts 1 and 5, `0x22` on 279 polygons, all on the `deck*` nodes; the floor under both
+Frostfire spawns is `0x22`), bit 0 never set; MP6 and MP82 have shifts but all-zero polygon words; the GEO `regionmask`
+key appears only on Frostfire's 22 light instances. In reCOM: `CanSeeRegion` (`zcam_main.cpp:136-145`, a zero mask
+counts as 1, `m_do_region_test` static true), the three camera fields `m_PlayerCanSeeRegions`, `m_CameraCanSeeRegions`,
+`m_SeeRegions` (`zcam.h:213-218`; research 50 §4b reads them as three 4-byte masks at `0x2a0-0x2a8`, unchanged from
+SOCOM 1), `InheritRegionMasks` (`node_main.cpp:583-597`, its two arguments swapping at every level as transcribed), and
+the script commands `SET/GET_CAMERA_REGION_TEST` whose parse and tick are stubs. In the decomp's names: nothing for
+`CanSeeRegion`, `InheritRegionMasks` or `RenderWorld`; `CAppCamera_Tick` at `0x002998f0` the likeliest home of a camera
+probe, `anon_fts_mission_LoadMissionMapVisibilities` at `0x002af550` (508 bytes, reads a `CRdrFile`; name only),
+`CZSealBody_CheckForRegionTrigger` at `0x005a2f90`. "The camera's set is the region word of the polygon under it" fits
+the data but is not the game's code: taken literally at Frostfire's spawn A (`0x22`) it hides nearly all 409 shift-0
+placements, with bit 0 added it hides nothing; the missing rule is which polygon (the player's or the camera's) and how
+a zero word and bit 0 are read. Not wired; the README's gap line stays.
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
@@ -284,4 +324,9 @@ and Bitter Jungle.
   within 30 units ahead along the facing of, a same-side slot. Which slot a player gets is game logic outside this
   sprint (the cloud controller, 2026-09-28, W1.5).
 
-All nine the owner can overturn by number.
+- **W1.R10** — bar item 3 is re-read on W1.5b's finding: the probe lands within [−3, +1] of the recorded y at the 4
+  KNOWN §1 rows and at Frostfire's walkway column, and at the 40 online-sweep rows it reports its floor's offset from the
+  recorded y (median, p99, max) and whether that offset is consistent, with a reading of what the sweep recorded; the 44
+  positions still all return a floor (the cloud controller, 2026-09-28, W1.4).
+
+All ten the owner can overturn by number.
