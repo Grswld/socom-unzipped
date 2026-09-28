@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-28 03:05Z, LATEST) -- Sprint 17 "sixty and the way back" is OPEN on `sprint-17`, cut off `main` at `d77b58c5` (v0.16.0, PR #97) by the main-tree controller `socom-pc-e0`; Task 0 done but Steps 4-5 (the seat's hand-over). The owner's ruling of 02:35Z: ONE controller, seated in the main tree; every other session in its own worktree.**
-  Sprint 16 CLOSED 01:24Z (the sprint file's CLOSED block). Next: F0, G1 and Q0's lock-free code in agent worktrees the Sprint 17 seat briefs; every merge through this seat.
+- **Where the loop is now (2026-09-28 07:15Z, LATEST) -- Sprint 17 day one, `sprint-17` at fbed9734: batch 1 proved (chain `s17_b1` green on `0627373f`, SYNCV 18.7/s), G1 and F1 Step 0 merged, Q0 answered (research/78: Q2 is the fix, in an agent). PR #100 merged and deployed to /map-viewer. The hardening workflow (owner's priority; `vm/security/`, ignored) runs in wt-medusa-*. One controller in the main tree (the owner, 02:35Z); every other session in its worktree.**
+  Next: Q2 and F0 5b builds, batch 2's chain, the morning report ~15:00Z.
 - **Next free ruling number: R332** (R322-R331 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
