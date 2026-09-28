@@ -214,3 +214,27 @@ The ten offsets and the zero point at 0x3f64c0 are ELF data (176 bytes) not in t
 0.1); `Recoil__10CZSealBodyFv` is among the demo's twelve largest functions (research 49 §5), so it is not a small
 helper, and its r0001 twin is unnamed.
 
+### The clips on the mover, the camera rig, and the crouched target behind 15.4 (2026-09-28, W2.2b, W2.6)
+
+`viewer/src/animator.ts` picks the clip from the mover's state and blends over `motion.rdr`'s `BlendTime` (a 2s²
+cross-fade that matches research 17 §4.2's traced weights to the third decimal for the first seven samples); the speed
+bands are `motion.rdr`'s `transition_speed_A/B` × 10 when read, else `BAND_PLACEHOLDERS`; cycles are rate-matched so
+the root travels the mover's distance, other clips play in `playback` seconds; `seal_p_*` layers over the legs when the
+weapon is a pistol (`seal_p_stand` carries 27 parts and replaces the whole clip). The clips' own root speeds (units/s):
+`seal_walk` 17.9, `seal_jog` 30.8, `seal_run` 57.7, `seal_walk_bw` 32.5, `seal_run_bw` 33.7, the strafes 14.8 / 14.6,
+`seal_crouchwalk` 13.0, `seal_crouchwalk_bw` 10.1 -- each inside its `transition_speed` band × 10; research 18's
+measured 44.3 strafe is three times the strafe clips' own speed. The landing clips move their roots about 3.3 forward.
+Root motion is not applied to the mover (`Tick_0` lines 7792-7898 are the carry). **Research 17's 15.38 is a crouched
+camera target:** its root 5.50391 is exactly 1409/256, the crouch clips' constant root height, and its "bind height"
+11.4845 is `seal_stand`'s root (2940/256); research 17 §4.1's standing target is 21.485 = root + 10. The walk keeps
+its 15.4 eye (W1.R2 stands as the walk's view); the shoulder rig rides the posed root and the aim view uses the posed
+body's eyes (18.16 in the bind pose, 17.81 in `seal_stand`). **The camera rigs:** the measured rig (`CAM_BACK_MEASURED`,
+25 up and 23.1 back, the aim point 21.485 up and 1.273 ahead per research 17 §4.1 row 0) orbits its aim point at
+24.6, near research 18's 24.9, and is the default; the disc's `cam_back` (20.5 up, 13 back, side 0) is a panel switch
+offered once `dynamics.rdr` is read, with `cam_tether_stiff` 0.95 (at +0x15c) read as the part of the gap closed each
+60 Hz tick; `cam_first` on this disc is identical to `cam_back`, so the aim view is not it. The camera ray collides with
+the hull including `m_cameratype`'s bit-18 polygons. `pose()` stays the fly camera (the look and the walk's eye);
+`stats().camera` reports the drawn one (`third` / `aim` / `fly`). Not done: the first-person arms (`seal_fp_*`), the
+relighting of a pose's own limb turns (only the body's facing is relit, every 10°), the weapon in the hand (the held
+weapon is hidden in the shoulder view until then).
+

@@ -126,6 +126,7 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
 | a pad | read as the PS2 pad by position (the W3C standard mapping): a toast names it on connect and on loss, "pad: connected" joins the hint, and the layout table appears under the hint line. Left stick moves (walk, or fly along the look), right stick looks at the arrow keys' rate scaled by the push, Cross jumps on foot and rises in the air, L3 or Triangle crouch on foot and descend in the air, Start switches walk and fly as `G` does, R3 boosts; R1/L1 (fire, aim) and L2/R2 (lean) are read and reserved. Rows the repository does not document are marked assumed in the table |
 | `G` | walk and fly. Walk stands on the game's own collision hull at the SEAL's eye height (15.4 units over the feet), at 40 units a second, sliding along walls at a body radius of 3.5; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| right button or `L1` (walking) | the aim view: first person from the SEAL's eyes; release to go back over the shoulder |
 | `Space` / `C` (walking) | jump and crouch. The jump is a named placeholder impulse that reaches the seal table's `min_jump_height`; the crouch's eye and speed are named placeholders too. Gravity, the fall and its landing classes, the 6.5-unit step and the 50° slope are the table's (web sprint 2) |
 | left button (walking, mouse captured) | one shot from the game's own fire point (`GetPutativeFirePointW`, ported) along the aim to the first hull polygon: a tracer and a hit mark. The M4A1 SD is drawn in front of the camera at a placeholder hold until the skeleton takes it; there is no recoil yet |
 
@@ -285,11 +286,13 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 
 ## The player (web sprint 2, in progress)
 
-- **The SEAL is decoded and drawn.** `CLIB_MDL`'s skinned meshes (411 across the 22 maps, none failing), the
+- **The SEAL is decoded, drawn and moving.** `CLIB_MDL`'s skinned meshes (411 across the 22 maps, none failing), the
   skeleton of 26 palette slots from `CLIB_GEO`, and the gear `READERC.ZAR/character.rdr` hangs on each map's player
-  (`chartype.rdr` names it: Frostfire's `mp2_seal1` is `seal_A_scuba` in six pieces). "player body" under Advanced
-  shows it in the bind pose at spawn slot A; the play mode animates it (see the sprint 2 spec's Log for where that
-  stands).
+  (`chartype.rdr` names it: Frostfire's `mp2_seal1` is `seal_A_scuba` in six pieces). In walk mode the body stands at
+  the mover's feet and runs the game's own clips picked by what the mover does (stand, walk, jog, run, back, strafe,
+  crouch, jump, land), cross-faded over `motion.rdr`'s blend times, seen over the shoulder from the camera research 18
+  measured (25 up, 23.1 back; the disc's `cam_back` rig is a switch under Advanced once `READERC.ZAR` is read); the
+  aim view looks from the body's eyes. "player body in fly mode" under Advanced shows the body where the play left it.
 - **The motions are read.** One reader for all 341 clips: the seven victory dances in every map archive and the 334
   player clips of `RUN/MOTION_P.ZAR` (30 keys a second, quaternion channels, the SEAL's bone lengths in the clips);
   the playback table is `READERC.ZAR`'s `motion.rdr`.
