@@ -28,8 +28,8 @@ def check(root, alive=None):
     mark = chainmark.running(root, alive)
     if not mark:
         return 0, ""
-    return 1, ("a merged chain runs in this tree (stamp %s, pid %s) -- no commit here until it ends "
-               "(Sprint 17 G1; home: %s)" % (mark.get("stamp") or "?", mark["pid"], HOME))
+    return 1, ("a merged chain runs in this tree (stamp %s, pid %s) -- no commit here until it ends; %s "
+               "(Sprint 17 G1; home: %s)" % (mark.get("stamp") or "?", mark["pid"], chainmark.STALE_HINT, HOME))
 
 
 def main():

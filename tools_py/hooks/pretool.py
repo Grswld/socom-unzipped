@@ -815,8 +815,8 @@ def pinned_edit(tool_name, tool_input, cwd, pinned_of, tracked_of=None):
     if not (tracked_of or is_tracked)(root, rel):
         return 0, ""
     return 2, ("the chain's tree: a merged chain runs in this tree (stamp %s, pid %s) and goes red on any tracked "
-               "file changed under it -- edit in a worktree, or when it ends; home: %s"
-               % (mark.get("stamp") or "?", mark.get("pid"), PINNED_HOME))
+               "file changed under it -- edit in a worktree, or when it ends; %s; home: %s"
+               % (mark.get("stamp") or "?", mark.get("pid"), chainmark.STALE_HINT, PINNED_HOME))
 
 
 def parse_holder(check_output):

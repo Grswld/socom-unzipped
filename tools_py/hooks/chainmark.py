@@ -14,8 +14,11 @@ than the marker's `start` (plus a 5 s slack) -- a pid created after the write is
 lock's state is not part of it (a chain always holds the lock, but a HELD lock says nothing about which tree).
 Liveness is judged IN-PROCESS -- OpenProcess/GetExitCodeProcess/GetProcessTimes through ctypes on Windows,
 os.kill(pid, 0) and /proc/<pid>/stat elsewhere -- never by starting a child: at the memory floor children fail
-(0xC0000142), and the guards must still answer. A marker that cannot be read, has no pid, or names a dead pid is not a
-running chain, and nothing here ever deletes it.
+(0xC0000142), and the guards must still answer. Every doubt is "not running": a marker that cannot be read, has no
+pid, or names a dead pid; a process we may not open (ACCESS_DENIED -- the chain's bash is our own user's, so that is a
+service that reused a hard-killed chain's pid) or whose creation time cannot be read; a probe that raises. Nothing
+here ever deletes the marker; every refusal names it and says when deleting it by hand is right (STALE_HINT). A pid
+reused by a process of our own user is created after the marker, so the start check rejects it.
 
 Readers: tools_py/hooks/precommit.py (no commit in the chain's tree) and tools_py/hooks/pretool.py (no Edit/Write of a
 tracked file in it). `python -m tools_py.hooks.chainmark [<tree>]` prints `running pid=<p> stamp=<s>` (exit 0) or
@@ -49,7 +52,24 @@ def read(root):
     return rec
 
 
-def _alive_windows(pid, start):
+STILL_ACTIVE = 259
+
+
+def windows_verdict(opened, error, exit_code, created, start):
+    """Whether a Windows process is the chain, from what the probe could learn: `opened` (OpenProcess succeeded),
+    `error` (its last error when not), `exit_code` (GetExitCodeProcess, None when unread), `created` (epoch seconds
+    from GetProcessTimes, None when unread). Every doubt is NOT alive: the chain's bash runs as our own user and always
+    opens and reads, so ACCESS_DENIED (a service that reused the pid of a hard-killed chain: 163 of 438 processes on
+    the host answer it) or unreadable times must not pin the tree until a reboot (the G1 review's blocking finding)."""
+    if not opened or exit_code != STILL_ACTIVE:
+        return False
+    if start is None:
+        return True
+    return created is not None and created <= start + SLACK
+
+
+def _windows_api(pid):
+    """(opened, error, exit_code, created) of `pid` through kernel32 -- in-process, no child."""
     import ctypes
     from ctypes import wintypes
     k32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -60,32 +80,29 @@ def _alive_windows(pid, start):
     k32.CloseHandle.argtypes = (wintypes.HANDLE,)
     handle = k32.OpenProcess(0x1000, False, pid)          # PROCESS_QUERY_LIMITED_INFORMATION
     if not handle:
-        return ctypes.get_last_error() == 5               # ACCESS_DENIED: it exists, and is not ours to read
+        return False, ctypes.get_last_error(), None, None
     try:
         code = wintypes.DWORD()
-        if not k32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:   # STILL_ACTIVE
-            return False
-        if start is None:
-            return True
+        exit_code = code.value if k32.GetExitCodeProcess(handle, ctypes.byref(code)) else None
         times = [wintypes.FILETIME() for _ in range(4)]
-        if not k32.GetProcessTimes(handle, *[ctypes.byref(t) for t in times]):
-            return True
-        ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
-        created = (ticks - 116444736000000000) / 1e7     # FILETIME (100 ns since 1601) -> epoch seconds
-        return created <= start + SLACK
+        created = None
+        if k32.GetProcessTimes(handle, *[ctypes.byref(t) for t in times]):
+            ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+            created = (ticks - 116444736000000000) / 1e7  # FILETIME (100 ns since 1601) -> epoch seconds
+        return True, 0, exit_code, created
     finally:
         k32.CloseHandle(handle)
+
+
+def _alive_windows(pid, start, api=None):
+    return windows_verdict(*(api or _windows_api)(pid), start)
 
 
 def _alive_posix(pid, start):
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        pass                                              # it exists, owned by someone else
-    except OSError:
-        return False
+    except OSError:                                       # gone, or another user's (the chain's bash is ours):
+        return False                                      # not the chain, as windows_verdict judges it
     if start is None:
         return True
     try:                                                  # Linux: the process's start, from boot time + ticks
@@ -113,7 +130,15 @@ def running(root, alive=None):
     rec = read(root)
     if not rec or not rec.get("pid"):
         return None
-    return rec if (alive or pid_alive)(rec["pid"], rec.get("start")) else None
+    try:
+        live = (alive or pid_alive)(rec["pid"], rec.get("start"))
+    except Exception:                                     # a probe that cannot answer pins nothing
+        return None
+    return rec if live else None
+
+
+# What every refusal says after the reason: where the marker is, and when deleting it by hand is right.
+STALE_HINT = "marker logs/.merged_chain.running; delete it if no chain runs (`bash scripts/loop_lock.sh check` FREE)"
 
 
 def tree_root(path):

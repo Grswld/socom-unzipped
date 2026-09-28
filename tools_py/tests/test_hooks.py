@@ -765,9 +765,14 @@ def plant_marker(root, pid=None, start=None, stamp="s17_b1"):
     return path
 
 
+STALE_HINT = ("marker logs/.merged_chain.running; delete it if no chain runs "
+              "(`bash scripts/loop_lock.sh check` FREE)")
+
+
 def chain_reason(stamp="s17_b1", pid=None):
-    return ("a merged chain runs in this tree (stamp %s, pid %d) -- no commit here until it ends "
-            "(Sprint 17 G1; home: docs/DEVELOPING.md Guards)" % (stamp, os.getpid() if pid is None else pid))
+    return ("a merged chain runs in this tree (stamp %s, pid %d) -- no commit here until it ends; %s "
+            "(Sprint 17 G1; home: docs/DEVELOPING.md Guards)"
+            % (stamp, os.getpid() if pid is None else pid, STALE_HINT))
 
 
 def plant_hook_modules(tree):
@@ -812,6 +817,33 @@ class ChainMarkerTest(unittest.TestCase):
         import time
         plant_marker(self.root, start=int(time.time()) - 86400 * 400)   # this process began long after that
         self.assertIsNone(chainmark.running(self.root))
+
+    def test_a_denied_or_unreadable_process_is_not_the_chain(self):
+        # review (1): a hard-killed chain's pid reused by a service answers ACCESS_DENIED (163 of 438 processes on the
+        # host); the chain's bash is our own user's and always opens, so denied is NOT alive -- else the main tree is
+        # refused until a reboot
+        start = 1790000000
+        verdict = chainmark.windows_verdict
+        self.assertFalse(verdict(False, 5, None, None, start))                  # OpenProcess: ACCESS_DENIED
+        self.assertFalse(verdict(False, 87, None, None, start))                 # no such process
+        self.assertFalse(verdict(True, 0, 0, start - 60, start))                # exited
+        self.assertFalse(verdict(True, 0, 259, None, start))                    # GetProcessTimes failed
+        self.assertFalse(verdict(True, 0, 259, start + 60, start))              # created after the marker: reused
+        self.assertTrue(verdict(True, 0, 259, start - 60, start))
+        self.assertTrue(verdict(True, 0, 259, None, None))                      # no start recorded: alive suffices
+
+    def test_the_windows_probe_takes_the_denied_shape(self):
+        denied = lambda pid: (False, 5, None, None)                             # noqa: E731
+        self.assertFalse(chainmark._alive_windows(4242, 1790000000, api=denied))
+        unreadable = lambda pid: (True, 0, 259, None)                           # noqa: E731
+        self.assertFalse(chainmark._alive_windows(4242, 1790000000, api=unreadable))
+
+    def test_a_probe_that_raises_is_not_running(self):
+        plant_marker(self.root, pid=4242)
+
+        def boom(pid, start):
+            raise OSError(5, "Access is denied")
+        self.assertIsNone(chainmark.running(self.root, alive=boom))
 
     def test_the_alive_probe_is_injectable(self):
         plant_marker(self.root, pid=4242)
@@ -978,6 +1010,7 @@ class PinnedTreeEditTest(unittest.TestCase):
             code, why = self.decide(tool, "README.md", key=key)
             self.assertEqual(code, 2, tool)
             self.assertIn("a merged chain runs in this tree (stamp s17_b1, pid 4242)", why)
+            self.assertIn(STALE_HINT, why)
             self.assertIn("home: docs/DEVELOPING.md Guards", why)
 
     def test_untracked_logs_and_unpinned_pass(self):
