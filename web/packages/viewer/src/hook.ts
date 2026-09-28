@@ -9,7 +9,7 @@ import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
-import type { ViewStats } from './play';
+import type { ViewStats, WeaponStats } from './play';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -103,6 +103,15 @@ export interface ViewerHook {
   fire(): FireState;
   /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
   shoot(): Shot | null;
+  /**
+   * WEAPON (`./play`, `./weaponRaise`, `./weaponPose`, `./heldItem`): whether the rifle is in the SEAL's hands, its
+   * raise (the Fire set's weight, up or down, the countdown), the layers' clips and weights, and the muzzle in the world.
+   */
+  weapon(): WeaponStats;
+  /** WEAPON: the trigger held (true) or let go (false), as the mouse button and R1 hold it. */
+  trigger(down: boolean): void;
+  /** WEAPON: shows or hides a piece of the SEAL's gear by its `character.rdr` name (`Satchel`: the bomb carrier's). */
+  setGear(name: string, on: boolean): boolean;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

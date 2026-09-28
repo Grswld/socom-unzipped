@@ -263,6 +263,15 @@ export class FlyCamera {
     this.apply();
   }
 
+  /**
+   * WEAPON: turns the look's pitch by `radians` (up positive), clamped to the pitch limits, the rest of the pose kept:
+   * the rifle's kick (`./rifleKick`, through `Fire`).
+   */
+  addPitch(radians: number): void {
+    const pitch = this.clampPitch(this.pitch + radians);
+    if (pitch !== this.pitch) { this.pitch = pitch; this.apply(); }
+  }
+
   pose(): Pose {
     const p = this.camera.position;
     return { x: p.x, y: p.y, z: p.z, yaw: MathUtils.radToDeg(this.yaw), pitch: MathUtils.radToDeg(this.pitch) };

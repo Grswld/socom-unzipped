@@ -55,10 +55,17 @@ test('walk mode on Frostfire: one round marks the container west of spawn A and 
   await settle(page);
   await expect(page.locator('#ammo')).toHaveText('30/30 · 2 MAGS');
 
+  // WEAPON: the round leaves the rifle's muzzle in the SEAL's right hand (`./heldItem`), not the eye, toward the point
+  // under the reticle -- the container's side 37.379 along the eye's ray, where it lands.
+  const eye = (await page.evaluate(() => window.__viewer.camera()))!.eye;
   const shot = await page.evaluate(() => window.__viewer.shoot());
   expect(shot).not.toBeNull();
   expect(shot!.hit).not.toBeNull();
-  expect(shot!.hit!.distance).toBeCloseTo(37.379, 1);
+  const muzzle = (await page.evaluate(() => window.__viewer.weapon())).muzzle!;
+  expect(muzzle).not.toBeNull();
+  expect(Math.hypot(shot!.from[0] - eye[0], shot!.from[1] - eye[1], shot!.from[2] - eye[2])).toBeGreaterThan(3);
+  expect(Math.hypot(shot!.from[0] - SPAWN_A[0], shot!.from[2] - SPAWN_A[2])).toBeLessThan(12);   // at the body
+  expect(Math.hypot(shot!.hit!.point[0] - eye[0], shot!.hit!.point[1] - eye[1], shot!.hit!.point[2] - eye[2])).toBeCloseTo(37.379, 1);
   const state = await page.evaluate(() => window.__viewer.fire());
   expect(state.shots).toBe(1);
   expect(state.decals).toBe(1);
