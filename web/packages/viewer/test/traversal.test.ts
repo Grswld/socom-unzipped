@@ -191,3 +191,253 @@ describe.skipIf(!MP2)(`Frostfire's ladders${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`
     expect((w.state.x - l.x) * l.nx + (w.state.z - l.z) * l.nz).toBeLessThan(0);   // on the deck's side
   });
 });
+
+// ---- the climb (research 86 section 3) ---------------------------------------------------------------------------
+
+/** A box from (x0, z0) to (x1, z1), `h` tall on the 0 floor, its four sides of `appflags`, its top a floor. */
+function box(x0: number, z0: number, x1: number, z1: number, h: number, appflags: number): WorldPoly[] {
+  return [
+    quad([x0, 0, z1, x1, 0, z1, x1, h, z1, x0, h, z1], 2, appflags),
+    quad([x0, 0, z0, x1, 0, z0, x1, h, z0, x0, h, z0], 2, appflags),
+    quad([x0, 0, z0, x0, 0, z1, x0, h, z1, x0, h, z0], 2, appflags),
+    quad([x1, 0, z0, x1, 0, z1, x1, h, z1, x1, h, z0], 2, appflags),
+    floor(x0, z0, x1, z1, h),
+  ];
+}
+
+function climbWorld(h: number, appflags: number): { grid: Grid; polys: WorldPoly[] } {
+  const polys = [floor(-100, -100, 100, 100, 0), ...box(-10, -30, 10, 0, h, appflags)];
+  return { grid: world(polys), polys };
+}
+
+/** A walker and its traversal on a hull, stood at (0, 0, z) facing -z, the box's near side at z 0. */
+function climber(polys: WorldPoly[], grid: Grid, z = 12): { w: Walker; t: Traversal; events: TraversalEvent[] } {
+  const w = new Walker(grid);
+  const t = new Traversal(grid, polys);
+  w.driver = t;
+  const events: TraversalEvent[] = [];
+  t.on((e) => events.push(e));
+  w.place(0, 10, z);
+  w.state.yaw = 0;
+  return { w, t, events };
+}
+
+describe('the climb on a synthetic box (research 86 section 3)', () => {
+  it('shows the climb prompt once the climbable side is touched, and the action climbs the crate onto its top', () => {
+    const { grid, polys } = climbWorld(12, 4);
+    const { w, t, events } = climber(polys, grid);
+    expect(t.climbPrompt()).toBeNull();
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    expect(t.climbPrompt()).toEqual({ visible: true, kind: 'low', automatic: false });
+    // The contact is kept stepping back (within 24, in front, facing it).
+    for (let i = 0; i < 10; i++) w.tick(BACK);
+    expect(t.climbPrompt()?.kind).toBe('low');
+    t.action();
+    w.tick(STILL);
+    expect(events[0]).toEqual({ type: 'climbStart', kind: 'low' });
+    const ticks = run(w, STILL, () => t.state().kind === 'none', 400);
+    expect(ticks * TICK).toBeGreaterThan(1.25);                      // the clip's playback, after the steering
+    expect(events.map((e) => e.type)).toEqual(['climbStart', 'climbUp', 'climbEnd']);
+    expect(w.state.y).toBeCloseTo(12, 6);
+    expect(w.state.z).toBeLessThan(0);                                // on the top, past the edge
+    expect(w.airborne).toBe(false);
+  });
+
+  it('picks the clip by the height (FUN_00580b70): step, crate, medium, hang; nothing over 32 or on a plain wall', () => {
+    const kind = (h: number, app: number): string | null => {
+      const { grid, polys } = climbWorld(h, app);
+      const { w, t } = climber(polys, grid, 5);
+      run(w, FORWARD, () => false, 30);
+      return t.climbPrompt()?.kind ?? null;
+    };
+    expect(kind(8, 1)).toBe('step');
+    expect(kind(11, 1)).toBe('low');
+    expect(kind(18, 1)).toBe('low');                                  // crate weight 1 - 6 / 14.5 = 0.59
+    expect(kind(20, 1)).toBe('med');                                  // 0.45
+    expect(kind(27, 3)).toBe('med');
+    expect(kind(30, 1)).toBe('high');
+    expect(kind(34, 1)).toBeNull();
+    expect(kind(12, 0)).toBeNull();                                   // an ordinary wall is never climbed
+    expect(kind(4, 4)).toBeNull();                                    // a crate under 5
+  });
+
+  it('steps onto a low crate with no press (appflags 4, 5 < h <= 10)', () => {
+    const { grid, polys } = climbWorld(8, 4);
+    const { w, t, events } = climber(polys, grid);
+    run(w, FORWARD, () => events.length > 0, 200);
+    expect(events[0]).toEqual({ type: 'climbStart', kind: 'step' });
+    run(w, STILL, () => t.state().kind === 'none', 400);
+    expect(w.state.y).toBeCloseTo(8, 6);
+  });
+
+  it('climbs over appflags 5 whatever its height, landing on the far side', () => {
+    const polys = [floor(-100, -100, 100, 100, 0), ...box(-10, -2, 10, 0, 10, 5).slice(0, 4)];
+    const grid = world(polys);
+    const { w, t, events } = climber(polys, grid);
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    expect(t.climbPrompt()?.kind).toBe('over');
+    t.action();
+    run(w, STILL, () => events.at(-1)?.type === 'climbEnd', 400);
+    expect(w.state.y).toBe(0);
+    expect(w.state.z).toBeLessThan(-2);                               // over the wall
+  });
+
+  it('hangs from a 30-high ledge, and the stick ahead pulls up onto it', () => {
+    const { grid, polys } = climbWorld(30, 1);
+    const { w, t, events } = climber(polys, grid);
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    t.action();
+    run(w, STILL, () => t.state().kind === 'hang', 400);
+    expect(w.state.y).toBeGreaterThan(5);
+    expect(w.airborne).toBe(false);                                   // held by the hang, not falling
+    run(w, FORWARD, () => t.state().kind === 'none', 400);
+    expect(events.map((e) => e.type)).toEqual(['climbStart', 'jumpWhoosh', 'pullUp', 'climbEnd']);
+    expect(w.state.y).toBeCloseTo(30, 6);
+  });
+
+  it('the jump-grab: a 36 ledge is out of reach from the floor, and in reach at the top of a jump', () => {
+    const { grid, polys } = climbWorld(36, 1);
+    const { w, t, events } = climber(polys, grid);
+    run(w, FORWARD, () => false, 60);
+    expect(t.climbPrompt()).toBeNull();                               // h 36 > 32
+    w.setAirborne(true, 60);                                         // a jump's rise
+    run(w, STILL, () => t.climbPrompt() !== null, 60);
+    expect(w.airborne).toBe(true);
+    expect(t.climbPrompt()?.kind).toBe('high');
+    t.action();
+    w.tick(FORWARD);
+    run(w, FORWARD, () => t.state().kind === 'none', 800);
+    expect(events[0]).toEqual({ type: 'climbStart', kind: 'high' });
+    expect(w.state.y).toBeCloseTo(36, 6);
+  });
+
+  it('does not climb prone, or facing away', () => {
+    const { grid, polys } = climbWorld(12, 4);
+    const { w, t } = climber(polys, grid);
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    w.stance = 'prone';
+    w.tick(STILL);
+    expect(t.climbPrompt()).toBeNull();
+    w.stance = 'stand';
+    w.state.yaw = 180;
+    w.tick(STILL);
+    expect(t.climbPrompt()).toBeNull();
+  });
+});
+
+describe.skipIf(!MP2)(`Frostfire climbables${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+  it('climbs the 11.9 crate at x 922.8-940.6, z 761-778.1 (appflags 4) from x 938 and hangs onto the 30 container at x 680-720, z 640-680', async () => {
+    const map = await loadMap(new FsAssetSource(FIXTURES), 'RUN/MP2.ZDB');
+    const grid = groundGrid(map.ground!);
+    const polys = groundPolygons(map.ground!);
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    expect(w.place(938, 115, 790)).toBe(true);
+    expect(w.state.y).toBe(100);
+    w.state.yaw = 0;                                                 // facing -z, the crate side at z 778.1
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    expect(t.climbPrompt()?.kind).toBe('low');
+    t.action();
+    w.tick(STILL);
+    run(w, STILL, () => t.state().kind === 'none', 400);
+    expect(w.state.y).toBeCloseTo(111.85, 2);
+    expect(w.state.z).toBeLessThan(778.1);
+
+    expect(w.place(700, 115, 700)).toBe(true);
+    w.state.yaw = 0;
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    expect(t.climbPrompt()?.kind).toBe('high');
+    t.action();
+    w.tick(FORWARD);
+    run(w, FORWARD, () => t.state().kind === 'none', 800);
+    expect(w.state.y).toBeCloseTo(130, 3);
+  });
+});
+
+// ---- the peek (research 86 section 4) and the water (section 5) --------------------------------------------------
+
+describe('the peek (research 86 section 4)', () => {
+  const plain = (): { grid: Grid; polys: WorldPoly[] } => { const polys = [floor(-100, -100, 100, 100, 0)]; return { grid: world(polys), polys }; };
+
+  it('eases the camera peek to the side at cam_peek_decay_rate 6, holds the lean clip, and holds the mover still', () => {
+    const { grid, polys } = plain();
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 10, 0);
+    t.lean(1);
+    for (let i = 0; i < 30; i++) w.tick(STILL);                      // half a second
+    expect(t.peek()).toBeCloseTo(1 - Math.exp(-6 * 30 * TICK), 6);   // 0.95
+    expect(t.pose()?.clip).toBe('seal_stand2rlean');
+    const at = [w.state.x, w.state.z];
+    for (let i = 0; i < 30; i++) w.tick(FORWARD);                    // no locomotion while peeking (FUN_005870e0 case 3)
+    expect([w.state.x, w.state.z]).toEqual(at);
+    t.lean(0);
+    for (let i = 0; i < 60; i++) w.tick(STILL);
+    expect(t.peek()).toBeLessThan(0.01);
+    expect(t.pose()).toBeNull();
+    t.lean(-1);
+    w.stance = 'crouch';
+    w.tick(STILL);
+    expect(t.pose()?.clip).toBe('seal_crouch2llean');
+    w.stance = 'prone';
+    for (let i = 0; i < 30; i++) w.tick(STILL);
+    expect(t.pose()?.clip).toBe('seal_prone2llean');
+    expect(t.peek()).toBeLessThan(-0.9);                             // prone peeks shift the camera too (state 3)
+  });
+
+  it('does not start a peek on the move, or into a wall within the side ray (9.5 right, 7.8375 left)', () => {
+    const polys = [floor(-100, -100, 100, 100, 0), quad([8, 0, -50, 8, 0, 50, 8, 30, 50, 8, 30, -50], 2)];
+    const grid = world(polys);
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 10, 0);
+    w.state.yaw = 0;                                                 // right is +x: the wall 8 away
+    t.lean(1);
+    w.tick(STILL);
+    expect(t.pose()).toBeNull();
+    t.lean(-1);                                                      // left is clear
+    w.tick(FORWARD);
+    expect(t.pose()).toBeNull();                                     // moving: no peek
+    w.tick(STILL);
+    expect(t.pose()?.clip).toBe('seal_stand2llean');
+  });
+});
+
+describe('the water (research 86 section 5)', () => {
+  /** The bed at 0, a water surface (material 11) over it at `depth`, x in -50..50. */
+  const pool = (depth: number): { grid: Grid; polys: WorldPoly[] } => {
+    const water = { ...floor(-50, -50, 50, 50, depth), material: 11 };
+    const polys = [floor(-100, -100, 100, 100, 0), water];
+    return { grid: world(polys), polys };
+  };
+
+  it('wades on the bed, the stick at clamp(1 - 0.05 depth, 0.75, 1), and stands the SEAL up in deep water', () => {
+    const { grid, polys } = pool(6);
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    const events: TraversalEvent[] = [];
+    t.on((e) => events.push(e));
+    expect(w.place(0, 20, 0)).toBe(true);
+    expect(w.state.y).toBe(0);                                       // the water is no floor
+    w.state.yaw = 90;
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    expect(t.depth()).toBeCloseTo(6, 6);
+    expect(events[0]).toEqual({ type: 'waterEnter', depth: 6 });
+    expect(t.stickFactor(w)).toBeCloseTo(0.75, 6);                   // 1 - 0.3 = 0.7, floored at 0.75
+    expect(Math.hypot(w.state.vx, w.state.vz)).toBeCloseTo(65 * 0.75, 1);
+    w.stance = 'prone';
+    w.tick(STILL);
+    expect(w.stance).toBe('crouch');                                 // prone only to 2 deep
+    const shallow = pool(1);
+    const v = new Walker(shallow.grid);
+    const u = new Traversal(shallow.grid, shallow.polys);
+    v.driver = u;
+    v.place(0, 20, 0);
+    v.tick(STILL);
+    expect(u.stickFactor(v)).toBeCloseTo(0.95, 6);
+  });
+});

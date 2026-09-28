@@ -4,7 +4,7 @@ import {
   type CollisionOwner, type Grid, type GridParams, type Hit, type WorldPoly,
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
-import { firstPersonHeight, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
+import { firstPersonHeight, firstPersonPeekShift, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
 import { jumpImpulse, landingKind, sealTuning, type LandingKind } from './physics';
 import type { TraversalPose } from './animator';
 
@@ -375,6 +375,8 @@ const JUMP_TABLE = sealTuning(null);
 /** TRAVERSAL SEAM: what `Walker.driver` is (`./traversal`'s `Traversal`). */
 export interface TickDriver {
   tick(walker: Walker, input: WalkInput, dt: number): boolean;
+  /** The stick's factor this tick (web research 86 section 5: the water's `FUN_005b56c0`), 1 when absent. */
+  stickFactor?(walker: Walker): number;
 }
 
 /**
@@ -613,6 +615,8 @@ export class Walker {
     let forward = input.forward, right = input.right;
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
+    const wade = this.driver?.stickFactor?.(this) ?? 1;          // TRAVERSAL SEAM: the water's slow-down
+    forward *= wade; right *= wade;
     const v = this.locomote(forward, right, dt);
     const yaw = (s.yaw * Math.PI) / 180;
     // The camera looks down its own -z (`camera.ts`): forward is (-sin, -cos), right is (cos, -sin).
@@ -1204,8 +1208,11 @@ export class WalkMode {
       return;
     }
     const [x, y, z] = w.drawnFeet();
-    const eye: Vec3 = [x, y + firstPersonHeight(w.posture), z];
     const look = this.camera.pose(), yaw = (look.yaw * Math.PI) / 180, pitch = (look.pitch * Math.PI) / 180;
+    const side = firstPersonPeekShift(this.moves?.peek() ?? 0);  // TRAVERSAL SEAM: the peek moves the eye across
+    const moveRoot = this.moves?.rootY() ?? null;                // a move's root carries the head with it
+    const height = moveRoot === null ? firstPersonHeight(w.posture) : firstPersonHeight('stand') + moveRoot - rootY('stand');
+    const eye: Vec3 = [x + Math.cos(yaw) * side, y + height, z - Math.sin(yaw) * side];
     const ahead: Vec3 = [-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
     const far: Vec3 = [eye[0] + ahead[0] * 1000, eye[1] + ahead[1] * 1000, eye[2] + ahead[2] * 1000];
     this.placed = { eye, target: [eye[0] + ahead[0], eye[1] + ahead[1], eye[2] + ahead[2]], far };

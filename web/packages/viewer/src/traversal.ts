@@ -1,9 +1,10 @@
 import {
-  findLadders, ladderFrame, probeGround, segmentHits, APP_LADDER, SEAL_TUNING,
+  findLadders, ladderFrame, probeGround, probeWater, segmentHits, surfaceWord, APP_LADDER, SEAL_TUNING, SURFACE_SIDE, SURFACE_SKIP,
   type Grid, type Ladder, type MotionClip, type WorldPoly,
 } from '@s2u/scene';
 import type { TraversalPose } from './animator';
 import { ClipPath, clipShape, reverseShape, rootAt, shapeTravel, straightShape, type ClipShape } from './clipPath';
+import { contactHolds, floorUnder, planClimb, topFloor, touchClimbable, type ClimbClass, type ClimbContact, type ClimbPlan } from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './walk';
 
@@ -49,8 +50,8 @@ import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHoo
 export const TRAVERSAL_CLIP = {
   toLadder: 'seal_stand2ladder', ladder: 'seal_climbladder', offLadder: 'seal_climboffladder',
   toSlide: 'seal_ladder2slide', slide: 'seal_ladderslide', slideLand: 'seal_ladderslide_land',
-  climbLow: 'seal_climbcrate', climbMed: 'seal_climb_medium', toHang: 'seal_stand2hang', hang: 'seal_hang',
-  hangUp: 'seal_hang2climbup', over: 'seal_climb_over',
+  stepUp: 'seal_step_up', climbLow: 'seal_climbcrate', climbMed: 'seal_climb_medium', toHang: 'seal_stand2hang',
+  hang: 'seal_hang', hangUp: 'seal_hang2climbup', hangDown: 'seal_hang_jumpdown', over: 'seal_climb_over',
   stand2llean: 'seal_stand2llean', stand2rlean: 'seal_stand2rlean', crouch2llean: 'seal_crouch2llean',
   crouch2rlean: 'seal_crouch2rlean', prone2llean: 'seal_prone2llean', prone2rlean: 'seal_prone2rlean',
   lleanStep: 'seal_llean_rstep', rleanStep: 'seal_rlean_rstep',
@@ -71,7 +72,10 @@ const FALLBACK: Record<string, [seconds: number, rootY: number, rise: number, ah
   [TRAVERSAL_CLIP.toSlide]: [0.5, 20.39, -2.99, -2.14, 13],
   [TRAVERSAL_CLIP.slide]: [0.2, 18.26, 0, 0, 7],
   [TRAVERSAL_CLIP.slideLand]: [1.3, 11.44, 0.4, -4.7, 37],
+  [TRAVERSAL_CLIP.stepUp]: [0.75, 11.5, 8.17, 10.46, 13],
   [TRAVERSAL_CLIP.climbLow]: [1.25, 11.52, 12.88, 11.34, 30],
+  [TRAVERSAL_CLIP.toHang]: [1.4, 11.52, 6.81, 3.49, 25],
+  [TRAVERSAL_CLIP.hang]: [2.2, 18.14, 0, 0, 2],
   [TRAVERSAL_CLIP.climbMed]: [1.5, 11.52, 21.48, 11.44, 32],
   [TRAVERSAL_CLIP.hangUp]: [2.8, 18.14, 22.56, 5.1, 63],
   [TRAVERSAL_CLIP.over]: [1, 10.96, -0.96, 16.28, 19],
@@ -121,6 +125,14 @@ const IN_FRONT = 0.3, FACING = 0.02;
 const SHORT_QUAD = 15;
 /** `motion.rdr`'s `refPt` of the climb off, the slide and its landing: the rungs are 5.565 ahead of the root. */
 export const LADDER_STANDOFF = 5.565;
+/** `FUN_00596d60`: the peek's side ray, 9.5 right (`0x41180000`) and 7.8375 left (`0x40facccd`), at most 8 up. */
+const PEEK_RIGHT = 9.5, PEEK_LEFT = 7.8375, PEEK_RAY_TOP = 8;
+/** The movement's surfaces (`DAT_0044d758 == 0`): bit 1 set, bit 18 clear -- the walls the peek's ray meets. */
+const isMoveSurface = (p: WorldPoly): boolean => (surfaceWord(p) & (SURFACE_SIDE | SURFACE_SKIP)) === SURFACE_SIDE;
+/** `dynamics.rdr`'s `water_factor_slope` 0.05 and `min_water_factor` 0.75 (`FUN_005b56c0`; the ELF's static 0.066 / 0.6 are overwritten). */
+const WATER_SLOPE = 0.05, WATER_FLOOR = 0.75;
+/** `FUN_00581660` / `FUN_00581990` / `FUN_00583500`: prone to 2 deep, crouched to 8.5, the crawl moving to 1.5. */
+const WATER_PRONE = 2, WATER_CROUCH = 8.5, WATER_CRAWL = 1.5;
 /** `FUN_0059b870`: the root's height through the slide. */
 const SLIDE_ROOT = 11.44;
 /** `FUN_0059b440`: the slide falls at gravity x 0.8. */
@@ -135,7 +147,7 @@ const STAND_ROOT = stanceRootY('stand');
 /** What a move is doing: the hook's `traversal()` and the audio's `TraversalEvent` read it. */
 export type TraversalKind =
   | 'none' | 'ladderMount' | 'ladderMountTop' | 'ladder' | 'ladderOffTop' | 'ladderOffBottom' | 'ladderSlide' | 'ladderSlideLand'
-  | 'climb';
+  | 'climbAlign' | 'climb' | 'hang' | 'hangUp';
 
 /**
  * What the audio (and anything else) hears (research 86 section 6): `ladderRung` is `motion.rdr`'s `ladder_rung`
@@ -148,13 +160,30 @@ export type TraversalEvent =
   | { type: 'ladderDismount'; at: 'top' | 'bottom' }
   | { type: 'ladderSlide'; on: boolean }
   | { type: 'ladderSlideLand' }
-  | { type: 'climbStart'; kind: ClimbKind }
+  | { type: 'climbStart'; kind: ClimbClass }
   | { type: 'climbUp' }
   | { type: 'pullUp' }
-  | { type: 'climbEnd'; kind: ClimbKind };
+  | { type: 'jumpWhoosh' }
+  | { type: 'climbEnd'; kind: ClimbClass }
+  | { type: 'waterEnter'; depth: number }
+  | { type: 'waterLand'; depth: number }
+  | { type: 'waterLeave' };
 
-/** The climb's height classes (research 86 section 3): `low/med/high_climb_height`, and the vault over. */
-export type ClimbKind = 'low' | 'med' | 'high' | 'over';
+/** What the HUD's climb icon reads (`action_climb.tif`, research 86 section 3.4): shown, and for which climb. */
+export interface ClimbPrompt { visible: boolean; kind: ClimbClass; automatic: boolean }
+
+/**
+ * `motion.rdr`'s `refPt` z of each climb: the ledge's edge this far ahead of the root at the clip's start -- where
+ * `FUN_005b2d20` (439017) steers the mover before the rise (research 86 section 3.3).
+ */
+const REF_AHEAD: Record<string, number> = {
+  seal_step_up: 8, seal_climbcrate: 8.92, seal_climb_medium: 8.92, seal_climb_over: 10.28, seal_stand2hang: 5.65,
+};
+/**
+ * `FUN_005b2d20`'s steering: at most 30 a second on each axis and 4.712 radians a second of turn, for at most 46 ticks;
+ * done inside 1 and facing within 0.993; not begun past 30.
+ */
+const ALIGN_SPEED = 30, ALIGN_TURN = 4.712, ALIGN_TICKS = 46, ALIGN_NEAR = 1, ALIGN_FACING = 0.993, ALIGN_ABORT = 30;
 
 /** A clip-driven move under way: its path, the clip and its time, what comes after. */
 interface Running {
@@ -213,6 +242,9 @@ export class Traversal implements TraversalHooks {
   private readonly listeners = new Set<(e: TraversalEvent) => void>();
   /** The yaw a move holds the body to, or null. */
   private lock: number | null = null;
+  /** The water line over the feet (`actor+0xf88`), and whether the mover was in the air last tick. */
+  private depth_ = 0;
+  private wasAirborne = false;
   /** The slide's clock, for its loop's key. */
   private slideTime = 0;
   /** The lean button held (-1 left, 1 right), the peek value it drives, the lean clip's clock and stance. */
@@ -220,6 +252,10 @@ export class Traversal implements TraversalHooks {
   private peekValue = 0;
   private leanTime = 0;
   private leanOn: { side: -1 | 1; stance: Stance } | null = null;
+  /** The climbable wall last touched (`actor+0x1090`), the plan a press would run, and the one running. */
+  private contact: ClimbContact | null = null;
+  private plan: ClimbPlan | null = null;
+  private climbing: { plan: ClimbPlan; start: [number, number, number]; ticks: number } | null = null;
 
   constructor(readonly grid: Grid, polys: readonly WorldPoly[]) {
     this.ladders = findLadders(polys, grid);
@@ -268,6 +304,8 @@ export class Traversal implements TraversalHooks {
       return { clip: r.clip, frame: this.key(r), loop: false, rootY: p.rootY };
     }
     if (this.kind_ === 'ladder') return { clip: TRAVERSAL_CLIP.ladder, frame: this.phase, loop: true, rootY: this.ladderRoot() };
+    if (this.kind_ === 'climbAlign' && this.climbing) return { clip: this.climbing.plan.clip, frame: 0, loop: false, rootY: null };
+    if (this.kind_ === 'hang') return { clip: TRAVERSAL_CLIP.hang, frame: 0, loop: true, rootY: rootAt(this.shapes.get(TRAVERSAL_CLIP.hangUp), 0)[1] };
     if (this.kind_ === 'ladderSlide') {
       const shape = this.shapes.get(TRAVERSAL_CLIP.slide);
       return { clip: TRAVERSAL_CLIP.slide, frame: (this.slideTime / shape.seconds) * shape.keys, loop: true, rootY: SLIDE_ROOT };
@@ -291,20 +329,49 @@ export class Traversal implements TraversalHooks {
   }
 
   /**
-   * `FUN_002998f0`: the peek value eases to its target at `cam_peek_decay_rate` (`DAT_0044c3bc`, 6 a second):
-   * `peek = target + (peek - target) x exp(-6 dt)`; the target is the lean's side, and 0 lying prone (stance 2) or in
-   * a move. The body plays the stance's lean clip to its end and holds it while the button is (`LEAN_CLIPS`).
+   * `FUN_002998f0` (decomp 141962-141976): the peek value eases to its target at `cam_peek_decay_rate`
+   * (`DAT_0044c3bc`, 6 a second): `peek = target + (peek - target) x exp(-6 dt)`; the target is the peek's side
+   * (-1 left, 1 right) while peeking, whatever the stance, and 0 otherwise.
    */
-  private leanTick(w: Walker, dt: number): void {
-    const stance = w.posture;
-    const can = this.kind_ === 'none' && !w.airborne && this.leanSide !== 0;
-    const target = can && stance !== 'prone' ? this.leanSide : 0;
+  private easePeek(dt: number): void {
+    const target = this.leanOn ? this.leanOn.side : 0;
     this.peekValue = target + (this.peekValue - target) * Math.exp(-SEAL_TUNING.peekDecayRate * dt);
     if (Math.abs(this.peekValue - target) < 1e-4) this.peekValue = target;
-    if (!can) { this.leanOn = null; return; }
+  }
+
+  /**
+   * The peek (state 3, research 86 section 4): `FUN_00594cf0` (decomp 453431-453457) reads the d-pad's right and left
+   * as held buttons; `FUN_0057d810` (440451-440530) takes it from a standing, crouched or prone SEAL that is still
+   * (`FUN_00587c20`), on the ground (`FUN_005b4340(seal, 1)`), with room to the side (`FUN_00596d60`: a ray 9.5 to the
+   * right, 7.8375 to the left, at the root's height up to 8), and plays the stance's lean clip, held on its last key.
+   * While it holds, no locomotion runs (`FUN_005870e0`: `case 3: break`). True while peeking: the mover stays put.
+   */
+  private leanTick(w: Walker, input: WalkInput, dt: number): boolean {
+    const stance = w.posture;
+    const held = this.leanSide !== 0 && !w.airborne;
+    if (!held) { this.leanOn = null; return false; }
     const side = this.leanSide as -1 | 1;
-    if (!this.leanOn || this.leanOn.side !== side || this.leanOn.stance !== stance) { this.leanOn = { side, stance }; this.leanTime = 0; }
-    else this.leanTime += dt;
+    if (this.leanOn && this.leanOn.side === side && this.leanOn.stance === stance) {
+      this.leanTime += dt;
+    } else {
+      const still = Math.abs(input.forward) <= DEAD && Math.abs(input.right) <= DEAD;
+      if (!this.leanOn && !still) return false;               // a peek starts from a SEAL standing still
+      if (!this.sideClear(w, side)) { this.leanOn = null; return false; }
+      this.leanOn = { side, stance };
+      this.leanTime = 0;
+    }
+    const s = w.state;
+    s.vx = 0; s.vz = 0; s.stickForward = 0; s.stickRight = 0;
+    return true;
+  }
+
+  /** `FUN_00596d60`: the side ray -- 9.5 to the right (`0x41180000`), 7.8375 to the left, at min(8, the root). */
+  private sideClear(w: Walker, side: -1 | 1): boolean {
+    const s = w.state, a = axes(s.yaw);
+    const y = s.y + Math.min(PEEK_RAY_TOP, stanceRootY(w.posture));
+    const reach = side > 0 ? PEEK_RIGHT : PEEK_LEFT;
+    const to: [number, number, number] = [s.x + a.rx * reach * side, y, s.z + a.rz * reach * side];
+    return segmentHits(this.grid, [s.x, y, s.z], to, isMoveSurface).length === 0;
   }
 
   /** The root's height over the feet the camera should stand on while a move runs, or null for the stance's. */
@@ -327,18 +394,189 @@ export class Traversal implements TraversalHooks {
   // ---- the tick ----
 
   tick(w: Walker, input: WalkInput, dt: number = TICK): boolean {
+    const owned = this.step(w, input, dt);
+    this.easePeek(dt);                                           // the camera's, after the actor's tick
+    return owned;
+  }
+
+  private step(w: Walker, input: WalkInput, dt: number): boolean {
     const pressed = this.actionPressed;
     this.actionPressed = false;
-    this.leanTick(w, dt);
+    this.water(w);
     if (this.running) { this.advance(w, dt); return true; }
     switch (this.kind_) {
       case 'ladder': this.climbLadder(w, input, dt, pressed); return true;
       case 'ladderSlide': this.slide(w, dt); return true;
+      case 'climbAlign': this.align(w, dt); return true;
+      case 'hang': this.hang(w, input, pressed); return true;
       default: break;
     }
-    if (!w.airborne) return this.touchLadder(w, input);
+    if (this.leanTick(w, input, dt)) return true;
+    if (!w.airborne && this.touchLadder(w, input)) return true;
+    this.keepContact(w);
+    const plan = this.plan;
+    if (plan && (pressed || (plan.automatic && this.pushing(w, input, plan.contact)))) { this.startClimb(w, plan); return true; }
     return false;
   }
+
+  // ---- the water (research 86 section 5) ----
+
+  /** The water over the feet, units (`actor+0xf88`), 0 out of it. */
+  depth(): number {
+    return this.depth_;
+  }
+
+  /**
+   * `FUN_005b52b0` (469852): the depth, the water line over the feet, from the water surface over them
+   * (`probeWater`); on entering and leaving, `waterEnter` / `waterLeave`, and a fall landing in it `waterLand`
+   * (`seal_fall_in_water`, 469892-469896). `FUN_005b56c0`'s stances: prone only to 2 deep (`FUN_00581660`), crouched
+   * only to 8.5 (`FUN_00581990`); deeper, the SEAL is stood up a stance.
+   */
+  private water(w: Walker): void {
+    const s = w.state;
+    const line = probeWater(this.grid, s.x, s.z).find((y) => y >= s.y) ?? null;
+    const depth = line === null ? 0 : line - s.y;
+    const was = this.depth_;
+    this.depth_ = depth;
+    if (depth > 0 && was <= 0) this.emit(w.airborne || this.wasAirborne ? { type: 'waterLand', depth } : { type: 'waterEnter', depth });
+    if (depth <= 0 && was > 0) this.emit({ type: 'waterLeave' });
+    this.wasAirborne = w.airborne;
+    if (w.airborne || this.kind_ !== 'none') return;
+    if (w.stance === 'prone' && depth > WATER_PRONE) w.stance = 'crouch';
+    if (w.stance === 'crouch' && depth > WATER_CROUCH) w.stance = 'stand';
+  }
+
+  /**
+   * `FUN_005b56c0` (469966-469975): the stick's factor in water, `clamp(1 - depth x water_factor_slope,
+   * min_water_factor, 1)` -- `dynamics.rdr`'s 0.05 and 0.75, so 0.75 from 5 deep -- standing and crouched; prone, the
+   * crawl moves only to 1.5 deep (`FUN_00583500`, 443387). The walk's seam (`Walker.driver.stickFactor`).
+   */
+  stickFactor(w: Walker): number {
+    const d = this.depth_;
+    if (d <= 0) return 1;
+    if (w.stance === 'prone') return d <= WATER_CRAWL ? 1 : 0;
+    return Math.max(WATER_FLOOR, Math.min(1, 1 - d * WATER_SLOPE));
+  }
+
+  // ---- the climb (research 86 section 3; the geometry in ./climb) ----
+
+  /** The HUD's climb icon (`action_climb.tif`): shown while a press would climb, and which climb; null when not. */
+  climbPrompt(): ClimbPrompt | null {
+    const p = this.plan;
+    return p && this.kind_ === 'none' ? { visible: true, kind: p.kind, automatic: p.automatic } : null;
+  }
+
+  /** Whether the stick pushes into the contact's wall. */
+  private pushing(w: Walker, input: WalkInput, c: ClimbContact): boolean {
+    const a = axes(w.state.yaw);
+    const mx = a.fx * input.forward + a.rx * input.right, mz = a.fz * input.forward + a.rz * input.right;
+    return Math.hypot(mx, mz) > DEAD && mx * c.nx + mz * c.nz < 0;
+  }
+
+  /**
+   * The contact (`FUN_005483d0`, `FUN_005b3890`): a climbable wall touched now replaces it; it is dropped past 24,
+   * behind the face, or faced away from; then the plan a press would run (none prone, `FUN_005b4340`).
+   */
+  private keepContact(w: Walker): void {
+    const s = w.state, a = axes(s.yaw);
+    const touched = touchClimbable(this.grid, s.x, s.y, s.z, TOUCH);
+    if (touched) this.contact = touched;
+    if (this.contact && !contactHolds(this.contact, s.x, s.z, a.fx, a.fz)) this.contact = null;
+    this.plan = this.contact && w.stance !== 'prone' ? planClimb(this.grid, this.contact, s.x, s.y, s.z, a.fx, a.fz) : null;
+  }
+
+  /** Starts a climb: the steering onto the clip's `refPt` first (`FUN_005b2d20`), the clip after (`climbClip`). */
+  private startClimb(w: Walker, plan: ClimbPlan): void {
+    const s = w.state, c = plan.contact;
+    const back = REF_AHEAD[plan.clip] ?? 8.92;
+    const start: [number, number, number] = [plan.target[0] + c.nx * back, s.y, plan.target[2] + c.nz * back];
+    if (Math.hypot(start[0] - s.x, start[2] - s.z) > ALIGN_ABORT) return;
+    w.stance = 'stand';
+    this.climbing = { plan, start, ticks: 0 };
+    this.plan = null;
+    this.kind_ = 'climbAlign';
+    this.lock = s.yaw;
+    this.emit({ type: 'climbStart', kind: plan.kind });
+  }
+
+  /** `FUN_005b2d20`: steer the feet to the aligned start (30 a second an axis) and the yaw to the wall (4.712 rad/s). */
+  private align(w: Walker, dt: number): void {
+    const k = this.climbing!, s = w.state;
+    k.ticks++;
+    const dx = k.start[0] - s.x, dz = k.start[2] - s.z, step = ALIGN_SPEED * dt;
+    s.x += Math.max(-step, Math.min(step, dx));
+    s.z += Math.max(-step, Math.min(step, dz));
+    let turn = ((k.plan.yaw - s.yaw + 540) % 360) - 180;
+    const most = ((ALIGN_TURN * 180) / Math.PI) * dt;
+    turn = Math.max(-most, Math.min(most, turn));
+    s.yaw += turn;
+    this.lock = s.yaw;
+    s.vx = 0; s.vz = 0; s.vy = 0;
+    const a = axes(s.yaw);
+    const facing = -(a.fx * k.plan.contact.nx + a.fz * k.plan.contact.nz);
+    if ((Math.hypot(k.start[0] - s.x, k.start[2] - s.z) < ALIGN_NEAR && facing > ALIGN_FACING) || k.ticks >= ALIGN_TICKS) this.climbClip(w);
+  }
+
+  /** The climb's clip from the aligned start: onto the top (or over, for appflags 5), `climb_up` at 0.1. */
+  private climbClip(w: Walker): void {
+    const k = this.climbing!, s = w.state, plan = k.plan, c = plan.contact;
+    const shape = this.shapes.get(plan.clip);
+    const travel = shapeTravel(shape);
+    const from: [number, number, number] = [s.x, s.y, s.z];
+    const ahead = (d: number): [number, number] => [s.x - c.nx * d, s.z - c.nz * d];
+    const startRoot = stanceRootY(w.posture);
+    if (plan.kind === 'high') {
+      // "Stand -> Hang": its share of the height (6.81 of the two clips' 29.4), the whoosh at 0.5.
+      const hangUp = shapeTravel(this.shapes.get(TRAVERSAL_CLIP.hangUp));
+      const share = travel.rise / (travel.rise + hangUp.rise);
+      const [x, z] = ahead(travel.ahead);
+      const path = new ClipPath(shape, from, [x, s.y + plan.h * share, z], startRoot, rootAt(this.shapes.get(TRAVERSAL_CLIP.hangUp), 0)[1]);
+      this.run('climb', plan.clip, path, false, () => { this.kind_ = 'hang'; }, [{ at: 0.5, event: { type: 'jumpWhoosh' }, fired: false }]);
+      return;
+    }
+    let to: [number, number, number];
+    const [x, z] = ahead(travel.ahead);
+    if (plan.kind === 'over') {
+      const y = floorUnder(this.grid, x, s.y, z, SEAL_TUNING.stepHeight);
+      to = [x, y ?? s.y, z];
+    } else {
+      const past = Math.max(0.5, travel.ahead - (REF_AHEAD[plan.clip] ?? 8.92));
+      to = [x, topFloor(this.grid, plan.target, c, past) ?? c.top, z];
+    }
+    const path = new ClipPath(shape, from, to, startRoot, STAND_ROOT);
+    this.run('climb', plan.clip, path, false, (m) => this.endClimb(m), [{ at: 0.1, event: { type: 'climbUp' }, fired: false }]);
+  }
+
+  /** The hang (state 4, `FUN_00581c10`): the stick ahead or the action button pulls up, the stick back lets go. */
+  private hang(w: Walker, input: WalkInput, pressed: boolean): void {
+    const k = this.climbing!, s = w.state, c = k.plan.contact;
+    s.vx = 0; s.vz = 0; s.vy = 0;
+    if (pressed || input.forward > DEAD) {
+      const shape = this.shapes.get(TRAVERSAL_CLIP.hangUp);
+      const t = shapeTravel(shape);
+      const top = topFloor(this.grid, k.plan.target, c, Math.max(0.5, t.ahead)) ?? c.top;
+      const to: [number, number, number] = [s.x - c.nx * t.ahead, top, s.z - c.nz * t.ahead];
+      const path = new ClipPath(shape, [s.x, s.y, s.z], to, rootAt(shape, 0)[1], STAND_ROOT);
+      this.run('hangUp', TRAVERSAL_CLIP.hangUp, path, false, (m) => this.endClimb(m), [{ at: 0.01, event: { type: 'pullUp' }, fired: false }]);
+    } else if (input.forward < -DEAD) {
+      // "Hang jump down" (not played: a named simplification): the mover lets go a step off the wall and falls.
+      s.x += c.nx * 2; s.z += c.nz * 2;
+      this.emit({ type: 'climbEnd', kind: k.plan.kind });
+      this.climbing = null;
+      this.kind_ = 'none';
+      this.lock = null;
+      w.setAirborne(true, 0);
+    }
+  }
+
+  private endClimb(w: Walker): void {
+    const kind = this.climbing?.plan.kind ?? 'low';
+    this.climbing = null;
+    this.contact = null;
+    this.emit({ type: 'climbEnd', kind });
+    this.finish(w);
+  }
+
 
   /** Runs the clip-driven move a tick: the feet along its path, its callbacks, and what follows at its end. */
   private advance(w: Walker, dt: number): void {
@@ -576,6 +814,9 @@ export class Traversal implements TraversalHooks {
     this.actionPressed = false;
     this.leanOn = null;
     this.peekValue = 0;
+    this.contact = null;
+    this.plan = null;
+    this.climbing = null;
     if (w) w.setAirborne(false);
   }
 }
