@@ -248,10 +248,13 @@ stored as row spans, and eight counted tables; a trailer with the link block and
 is a stored cell addressed by `CAiMapLoc` (low 6 bits the sub-map index), and the sub-map count and order match
 `aimaps.rdr`'s `map_list` on all 22. `PlayerStart` is a single named cell, not a region (the only records with extents
 are 15 `Safety` rectangles on the 7 maps with hostage starts), and holds 0 of the 44 measured spawns. The spawn list is
-24 slots a side, each one cell with a side bit and a facing in eighth turns (step k points to (−sin 45k°, cos 45k°): 0
-is +z, 2 is −x): 4 measured positions are at a slot's centre within 0.51 (Frostfire's and Vigilance's, KNOWN §1's rows)
-and 40 are 20.1-28.0 units ahead of one along its facing (median 23.8, across −3.2 to −1.0), the other side's nearest
-slot at least 824.6 units away -- 44 of 44 accounted for; which of the 24 a player gets is game logic. Research 72 §6's
+24 slots a side, each one cell with a side bit and a facing in eighth turns (step k points to (sin 45k°, −cos 45k°): 0
+is −z, 2 is +x -- *corrected 2026-09-28, later: the first reading, (−sin 45k°, cos 45k°), was derived assuming the 40
+sweep rows lay ahead of the slot; W1.4 showed they are the orbit camera behind the actor, and of sixteen conventions only
+this one places all 40 behind a same-side slot, research 75 §11*): 4 measured positions are at a slot's centre within
+0.51 (Frostfire's and Vigilance's, KNOWN §1's rows) and 40 are 20.1-28.0 units *behind* one along its facing (median
+23.8, across 1.0 to 3.2, the same side for all 40; the sentence read "ahead" until the correction), the other side's
+nearest slot at least 824.6 units away -- 44 of 44 accounted for; which of the 24 a player gets is game logic. Research 72 §6's
 "briefing overlay" strings (`Opacity( 0.5 )`, `Color( 87 112 176 )`) are leftover memory in an unread 32-byte header
 field at +0x88, stale text on 13 sub-maps, not records; the file's only line data is polylines on Blizzard, Frostfire
 and Bitter Jungle.
@@ -333,6 +336,20 @@ nodes sit on layers 0 and 1), so the mover probes all layers. **Data facts, all 
 inside its own node's bbox in x and z, and every node carrying polygons is active with `m_hasDI` set. The walk runs at
 40 units/s (research 18, finding 3); the 2.5× boost is the viewer's own.
 
+### The ISO reads the disc by ranges; 0.34 % of it names every map (2026-09-28, W1.7)
+
+`IsoAssetSource` reads ISO9660's primary volume descriptor at sector 16 (scanning past a boot record to the terminator),
+walks the directory tree lazily, strips `;1` and a bare trailing `.` (ECMA-119 §7.5.1; `tools_py/iso_lbn.py` keeps the
+dot), and reads files by LBN through `Blob.slice`. A `RangedAssetSource` lets `listMaps` read each archive's 0xA0-byte
+head, its table of contents and `READERM.ZAR` only: over an in-memory ISO of all 22 served archives, 66 ranged reads,
+788 KiB of 224 MiB (0.34 %), 23 ms under node, name every map. The fixture archives come back sha256-identical to the
+served tree per archive and per ZDB member (M5's bar). No SOCOM II image was on the host; images written by pycdlib in
+four flavours (plain, Joliet with Rock Ridge, a UDF 2.60 bridge, El Torito) each read 65 of 65 files byte-identical.
+Refused by name: a raw 2352-byte `.bin` (CD001 at 16 × 2352 + 16 or + 24), a logical block size other than 2048, a
+multi-extent or interleaved file. The page offers `Open your own disc (.iso)` and drag-and-drop through the standard
+file APIs (Safari lacks the File System Access API); a 404 on `maps/index.json` opens the panel on that control instead
+of "booting" forever.
+
 ## 8. Rulings
 
 - **W1.R1** — the sprint reads "engine reconstruction in JavaScript" as the viewer acquiring the engine's runtime
@@ -358,12 +375,18 @@ inside its own node's bbox in x and z, and every node carrying polygons is activ
 - **W1.R9** — W1.R4's condition is not the disc's structure (`PlayerStart` is one cell); the disc's source of the spawns
   is the file's spawn list, 24 slots a side with a facing, which accounts for 44 of 44. The slots become the spawn
   markers (W1.5b) and `spawns.ts` stays the opening stand and becomes the oracle: every measured position lies at, or
-  within 30 units ahead along the facing of, a same-side slot. Which slot a player gets is game logic outside this
-  sprint (the cloud controller, 2026-09-28, W1.5).
+  within 30 units *behind* along the facing of, a same-side slot (the ruling read "ahead" until W1.4 showed the sweep
+  rows are the orbit camera; corrected 2026-09-28, later). Which slot a player gets is game logic outside this sprint
+  (the cloud controller, 2026-09-28, W1.5).
 
 - **W1.R10** — bar item 3 is re-read on W1.5b's finding: the probe lands within [−3, +1] of the recorded y at the 4
   KNOWN §1 rows and at Frostfire's walkway column, and at the 40 online-sweep rows it reports its floor's offset from the
   recorded y (median, p99, max) and whether that offset is consistent, with a reading of what the sweep recorded; the 44
   positions still all return a floor (the cloud controller, 2026-09-28, W1.4).
 
-All ten the owner can overturn by number.
+- **W1.R11** — the ISO source (M5) is pulled into this sprint as W1.7 under the owner's instruction to use the session's
+  budget; the plan's §5 line deferring it is superseded. The served tree stays the default where it exists; the disc is
+  read with the browser's file APIs (a `File`'s ranges, nothing uploaded), ISO9660's primary volume only (the cloud
+  controller, 2026-09-28, W1.7).
+
+All eleven the owner can overturn by number.
