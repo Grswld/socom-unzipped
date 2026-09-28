@@ -2,12 +2,37 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-233 merges (53 on the first-parent line, 180 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+258 merges (54 on the first-parent line, 204 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-8 merges.
+33 merges.
 
+- 2026-09-28 `8790bea0` main (b324dc50, web sprints 1 and 2) back into sprint-17 [main, main merged in]
+  - 2026-09-28 `b324dc50` Merge pull request #102: web sprint 2, the SEAL in the world (with web sprint 1; reviewed; CI green) [branch not named]
+  - 2026-09-28 `0b0ac0af` the close's documents; web sprint 2 CLOSED (W2.9) [agent/web-s2-close]
+  - 2026-09-28 `69be57cc` simple shooting [agent/web-s2-fire]
+  - 2026-09-28 `1a4d8278` the light stick for W2.2c by PCSX2 macros in a restored ini swap; half_fwd and crouch_walk [agent/web-s2-light]
+  - 2026-09-28 `f160529b` the game's third-person camera [agent/web-s2-cam]
+  - 2026-09-28 `054668df` the SEAL speed probe, its fit and research 79's recipe for W2.2c (no run yet) [agent/web-s2-probe]
+  - 2026-09-28 `8f17492a` the walk at the game's speeds, ramp, stances and fall (W2.2b; W2.R9 on the stance roots) [agent/web-s2-move]
+  - 2026-09-28 `de94b2f9` the stand-in body [agent/web-s2-body]
+  - 2026-09-28 `49096c47` the reticle [agent/web-s2-ret]
+  - 2026-09-28 `dcc6ca38` the open (Task 0) and the SEAL's tuning table off READERC.ZAR (web sprint 2, W2.2a) [agent/web-s2-tuning]
+  - 2026-09-28 `f3cca14c` the panel folds behind a cog beside the brand; GitHub wears its mark (web sprint 2, W2.0) [agent/web-s2-chrome]
+  - 2026-09-28 `e052c109` Merge pull request #100: web sprint 1 'the engine's world' (main and the design system 1.0.3 merged in; reviewed; CI green) [branch not named]
+  - 2026-09-28 `75ada21a` agent/ds-web (design system 1.0.3, shipped fonts) into web sprint 1 so the deployed viewer keeps tonight's fixes [branch not named]
+  - 2026-09-28 `481e161d` main (v0.16.0, d77b58c5) into web sprint 1 [main, main merged in]
+  - 2026-09-28 `2fcef1e4` the opening stand and the spawn slots on the probe's floor (web sprint 1, W1.4b) [agent/web-s1-stand]
+  - 2026-09-28 `0a3c2b70` the spawn facing turned 180 degrees [agent/web-s1-slots]
+  - 2026-09-28 `016baa4b` the ISO source [agent/web-s1-iso]
+  - 2026-09-28 `1135b3cc` the ground probe and walk mode [agent/web-s1-walk]
+  - 2026-09-28 `f12ea9bf` the engine's draw order behind a switch, regions deferred; the diamond ring (W1.2, W1.R8) [agent/web-s1-order]
+  - 2026-09-28 `459e18f5` the disc's spawn slots drawn as the spawn overlay (web sprint 1, W1.5b) [agent/web-s1-slots]
+  - 2026-09-28 `4ba90ca3` AIMAPS.MPS decoded to its spawn list; research 75 (web sprint 1, W1.5) [agent/web-s1-aimaps]
+  - 2026-09-28 `9e271cac` the engine's grid [agent/web-s1-grid]
+  - 2026-09-28 `79e00a84` the detail texture pass bound by mp<N>_lib.rdr (web sprint 1, W1.6) [agent/web-s1-detail]
+  - 2026-09-28 `2580b72e` LOD copies fade across their bands as DrawLOD scales them (web sprint 1, W1.3) [agent/web-s1-lod]
 - 2026-09-28 `9df70d17` the screenshot encode off the GL thread, a shot queue (Sprint 17 F0 Step 5b, PASS) [agent/s17-f0b]
 - 2026-09-28 `7098c334` submit_split.py scores the [gs-submit] line over a walk window (Sprint 17 F1 Step 0, PASS) [agent/s17-f1]
 - 2026-09-28 `d0b68e5b` the chain guard [agent/s17-g1]
