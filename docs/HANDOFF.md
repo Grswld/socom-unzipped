@@ -12,7 +12,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 - **Where the loop is now (2026-09-28 03:05Z, LATEST) -- Sprint 17 "sixty and the way back" is OPEN on `sprint-17`, cut off `main` at `d77b58c5` (v0.16.0, PR #97) by the main-tree controller `socom-pc-e0`; Task 0 done but Steps 4-5 (the seat's hand-over). The owner's ruling of 02:35Z: ONE controller, seated in the main tree; every other session in its own worktree.**
   Sprint 16 CLOSED 01:24Z (the sprint file's CLOSED block). Next: F0, G1 and Q0's lock-free code in agent worktrees the Sprint 17 seat briefs; every merge through this seat.
-- **Next free ruling number: R331** (R322-R330 Sprint 17's Task 0; R299-R321 Sprint 16's; R298 superseded).**
+- **Next free ruling number: R332** (R322-R331 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
