@@ -154,8 +154,8 @@ def size_attrs(name):
 
 def render_entry(e, repo, img_base, index):
     anchor = "%s-%s" % (e["date"], slug(e["title"]))
+    # the spine dot and its connector are drawn by the <time> (CSS), so they centre on the date's line at every width
     parts = ['<li class="node" id="%s" style="--i:%d">' % (anchor, index),
-             '<div class="dot" aria-hidden="true"></div>',
              '<article class="s2u-panel__body entry">',
              '<header><time datetime="%s">%s<span class="yr"> %s</span></time>'
              '<h3><a href="#%s">%s</a></h3></header>' % (e["date"], pretty_date(e["date"]), e["date"][:4], anchor, inline(e["title"]))]
@@ -248,33 +248,42 @@ nav.eras{position:sticky;top:calc(48px + env(safe-area-inset-top,0px));z-index:5
 background:var(--s2u-ground);box-shadow:inset 0 -1px 0 var(--s2u-panel-edge);scrollbar-width:none}
 nav.eras::-webkit-scrollbar{display:none}
 nav.eras a{flex:none}
-.tl{--spine:2px;--rail:64px;position:relative;margin:24px 0 0;padding:0;list-style:none}
+/* The timeline's type scale (owner's review 2026-09-28): the era's span and the entry's date in the readout token,
+   the era h2 26px/1.15 and the entry h3 22px/1.2 in the label face with no added tracking, the hook 19px/1.45 in
+   the body face italic (the system's lede: the display face is one 800 file, a headline weight that cannot carry
+   a two-line sentence), the body the system's body, How and But the small body. */
+.tl{--spine:2px;--rail:64px;--pad:var(--s2u-space-4);position:relative;margin:24px 0 0;padding:0;list-style:none}
 .tl::before{content:"";position:absolute;left:calc(var(--rail)/2 - var(--spine)/2);top:0;bottom:0;width:var(--spine);
 background:linear-gradient(180deg,transparent 0,var(--s2u-glyph-cross) 40px,var(--s2u-glyph-cross) calc(100% - 40px),transparent 100%);opacity:.7}
-.era{position:relative;padding:38px 0 6px var(--rail);margin:0}
-.era .mark{position:absolute;left:calc(var(--rail)/2 - 15px);top:44px;width:30px;height:30px;border:2px solid var(--s2u-gold);
-background:var(--s2u-ground);transform:rotate(45deg);box-shadow:0 0 0 6px var(--s2u-ground)}
+/* an era's head: the span line over the h2; the mark, the spine's diamond, centres on the h2's first line (the
+   era's top padding + the span's 18px line + its margin + half the h2's line), at both widths */
+.era{--era-top:38px;position:relative;padding:var(--era-top) 0 6px var(--rail);margin:0}
+.era .mark{position:absolute;left:calc(var(--rail)/2 - 15px);top:calc(var(--era-top) + 18px + var(--s2u-space-2) + 26px*0.575);margin-top:-15px;width:30px;height:30px;
+border:2px solid var(--s2u-gold);background:var(--s2u-ground);transform:rotate(45deg)}
 .era .mark::after{content:"";position:absolute;inset:7px;background:var(--s2u-gold)}
-.era .span{font:var(--s2u-type-readout);letter-spacing:1.4px;color:var(--s2u-gold);display:block;margin:0 0 6px}
-.era h2{font:600 clamp(22px,3.6vw,30px)/1.15 var(--s2u-font-label);letter-spacing:.8px;color:var(--s2u-text-strong);margin:0;text-wrap:balance}
-.era .standing{color:var(--s2u-text-dim);font-style:italic;margin:10px 0 0;max-width:66ch}
-.node{position:relative;padding:22px 0 0 var(--rail);margin:0}
-.dot{position:absolute;left:calc(var(--rail)/2 - 7px);top:36px;width:14px;height:14px;border-radius:50%;background:var(--s2u-ground);
-border:2px solid var(--s2u-glyph-cross);box-shadow:0 0 0 5px var(--s2u-ground);transition:border-color var(--s2u-dur-base),background-color var(--s2u-dur-base)}
-.node.pic .dot{border-color:var(--s2u-gold)}
-.node:target .dot{border-color:var(--s2u-gold);background:var(--s2u-gold)}
-/* an entry is a system panel body; the story adds the arrow to the spine, the picture mark and the :target frame */
-.entry{position:relative}
-.entry::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--s2u-panel);border-left:0}
+.era .span{font:var(--s2u-type-readout);letter-spacing:var(--s2u-tracking-readout);color:var(--s2u-gold);display:block;margin:0 0 var(--s2u-space-2)}
+.era h2{font:600 26px/1.15 var(--s2u-font-label);letter-spacing:0;color:var(--s2u-text-strong);margin:0;text-wrap:balance}
+.era .standing{color:var(--s2u-text-dim);font-style:italic;margin:10px 0 0;max-width:var(--s2u-measure)}
+.node{position:relative;padding:var(--s2u-space-6) 0 0 var(--rail);margin:0}
+/* an entry is a system panel body. The date draws the spine dot and the connector to it (a rule in the spine's
+   colour from the dot to the panel's left edge), so both centre on the date's line whatever the fonts and the
+   width; the story adds the picture mark and the :target frame. */
+.entry{position:relative;padding:var(--pad)}
+.entry header{display:flex;gap:var(--s2u-space-3);align-items:baseline;flex-wrap:wrap}
+.entry time{position:relative;font:var(--s2u-type-readout);letter-spacing:var(--s2u-tracking-readout);color:var(--s2u-gold);font-variant-numeric:tabular-nums;white-space:nowrap}
+.entry time::before{content:"";position:absolute;top:50%;left:calc(-1*(var(--pad) + var(--rail)/2));width:calc(var(--rail)/2);height:var(--spine);
+margin-top:calc(-1*var(--spine)/2);background:var(--s2u-glyph-cross);opacity:.7}
+.entry time::after{content:"";position:absolute;top:50%;left:calc(-1*(var(--pad) + var(--rail)/2) - 7px);width:14px;height:14px;margin-top:-7px;border-radius:50%;
+background:var(--s2u-ground);border:2px solid var(--s2u-glyph-cross);transition:border-color var(--s2u-dur-base),background-color var(--s2u-dur-base)}
+.node.pic .entry time::after{border-color:var(--s2u-gold)}
+.node:target .entry time::after{border-color:var(--s2u-gold);background:var(--s2u-gold)}
+.entry time .yr{color:var(--s2u-text-dim)}
 .node.pic .entry::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--s2u-gold);transform:rotate(45deg);opacity:.7}
 .node:target .entry{box-shadow:inset 0 0 0 1px var(--s2u-gold)}
-.entry header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
-.entry time{font:var(--s2u-type-readout);letter-spacing:1.2px;color:var(--s2u-gold);font-variant-numeric:tabular-nums;white-space:nowrap}
-.entry time .yr{color:var(--s2u-text-dim)}
-.entry h3{font:600 20px/1.2 var(--s2u-font-label);letter-spacing:.4px;margin:0;color:var(--s2u-text-strong)}
+.entry h3{font:600 22px/1.2 var(--s2u-font-label);letter-spacing:0;margin:0;color:var(--s2u-text-strong)}
 .entry h3 a{color:inherit;text-decoration:none}.entry h3 a:hover{color:var(--s2u-gold)}
-.hook{font:800 17px/1.4 var(--s2u-font-display);font-stretch:62.5%;font-style:italic;color:var(--s2u-text-strong);margin:10px 0 8px;text-wrap:pretty}
-.entry p{margin:9px 0}
+.entry .hook{font:500 19px/1.45 var(--s2u-font-body);font-style:italic;letter-spacing:0;color:var(--s2u-text-strong);margin:var(--s2u-space-2) 0;max-width:var(--s2u-measure);text-wrap:pretty}
+.entry p{margin:var(--s2u-space-2) 0}
 .entry code{background:var(--s2u-tab);padding:1px 4px}
 .entry .how,.but{font:var(--s2u-type-body-small)}
 .but{border-left:2px solid var(--s2u-gold);padding-left:12px}.but .s2u-label{color:var(--s2u-gold);box-shadow:inset 0 0 0 1px var(--s2u-gold)}
@@ -293,8 +302,11 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--s2u-font-label);letter-spacin
 .closing p{max-width:70ch}
 .closing code{font:var(--s2u-type-readout);color:var(--s2u-glyph-cross)}
 @media (max-width:720px){.story-hero .logo{width:min(360px,78vw)}.strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media (max-width:560px){.tl{--rail:34px}.entry{padding:12px 12px 10px}.entry header{gap:6px}.era .mark{width:22px;height:22px;left:calc(var(--rail)/2 - 11px);top:48px}
-.era .mark::after{inset:5px}.dot{width:12px;height:12px;left:calc(var(--rail)/2 - 6px)}}
+/* a phone: a narrower rail and panel padding; the entry's header stacks, the date on its own line above the title,
+   so the dot (12px) still centres on the date's line */
+@media (max-width:560px){.tl{--rail:34px;--pad:var(--s2u-space-3)}.entry header{flex-direction:column;align-items:flex-start;gap:var(--s2u-space-1)}
+.era .mark{width:22px;height:22px;left:calc(var(--rail)/2 - 11px);margin-top:-11px}.era .mark::after{inset:5px}
+.entry time::after{width:12px;height:12px;margin-top:-6px;left:calc(-1*(var(--pad) + var(--rail)/2) - 6px)}}
 """
 
 JS = r"""
@@ -398,8 +410,10 @@ def chrome_footer(base, fine, repo="https://github.com/Scotho/socom-unzipped"):
         '    <nav aria-label="Footer">',
         '      <a href="%s/story.html">The story</a>' % base,
         '      <a href="%s/classic.html">Classic menu</a>' % base,
+        '      <a href="%s/map-viewer/">Map viewer (experimental)</a>' % base,
         '      <a href="%s" target="_blank" rel="noopener">GitHub</a>' % repo,
         '      <a href="%s#report">Report a bug</a>' % w,
+        '      <a href="%s/data.html">Your data</a>' % base,
         '    </nav>',
         '  </div>',
         '  <p class="s2u-fine" id="foot-fine">%s</p>' % fine,

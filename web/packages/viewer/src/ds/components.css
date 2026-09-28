@@ -13,7 +13,13 @@
   .s2u-bar__brand { flex: none; display: inline-flex; align-items: center; gap: var(--s2u-space-2); text-decoration: none; color: var(--s2u-gold); font: var(--s2u-type-nav); letter-spacing: var(--s2u-tracking-nav); text-transform: uppercase; }
   .s2u-bar__ii { color: var(--s2u-glyph-cross); font-style: italic; font-weight: 600; }
   .s2u-bar__word { white-space: nowrap; }
-  .s2u-bar__nav { display: flex; gap: var(--s2u-space-1); flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .s2u-bar__nav {
+    display: flex; gap: var(--s2u-space-1); flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* the nav scrolls where it does not fit: the last visible link fades at the right edge so the cut reads as a
+       scroll, not a clip. Opaque against transparent is all the mask needs, so the ground token stands for opaque. */
+    mask-image: linear-gradient(to right, var(--s2u-ground) calc(100% - 28px), transparent);
+    -webkit-mask-image: linear-gradient(to right, var(--s2u-ground) calc(100% - 28px), transparent);
+  }
   .s2u-bar__nav::-webkit-scrollbar { display: none; }
   .s2u-bar__nav a {
     display: block; padding: 6px 10px; text-decoration: none; color: var(--s2u-text);
@@ -21,7 +27,7 @@
     transition: color var(--s2u-dur-fast), background-color var(--s2u-dur-fast);
   }
   .s2u-bar__nav a:hover, .s2u-bar__nav a.is-on, .s2u-bar__nav a[aria-current="page"] { background: var(--s2u-tab-lit); color: var(--s2u-gold); }
-  .s2u-bar__end { margin-left: auto; display: flex; align-items: center; gap: var(--s2u-space-2); }
+  .s2u-bar__end { flex: none; margin-left: auto; display: flex; align-items: center; gap: var(--s2u-space-2); }
   @media (max-width: 720px) {
     .s2u-bar { gap: var(--s2u-space-3); }
   }
@@ -69,9 +75,15 @@
     padding: var(--s2u-space-3) var(--s2u-space-4);
     font: var(--s2u-type-panel-heading); letter-spacing: var(--s2u-tracking-panel-heading); text-transform: uppercase; color: var(--s2u-gold);
   }
-  .s2u-panel__body { background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-0); padding: var(--s2u-space-4); color: var(--s2u-text); font: var(--s2u-type-body); }
+  .s2u-panel__body { background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-0); padding: var(--s2u-space-4); flex: 1; color: var(--s2u-text); font: var(--s2u-type-body); }
   .s2u-panel__body > :first-child { margin-top: 0; } .s2u-panel__body > :last-child { margin-bottom: 0; }
-  .s2u-panel__body p { max-width: var(--s2u-measure); }
+  /* a link that is a panel head or a card title keeps the head's gold (cyan on the teal head read wrong: owner,
+     2026-09-28); its underline is gold mixed down against the panel and comes up full when pointed at; a link
+     that leaves the site carries a small arrow, outside the underline */
+  .s2u-panel__head a, .s2u-card > h3 a { color: var(--s2u-gold); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.18em; text-decoration-color: color-mix(in srgb, var(--s2u-gold) 45%, var(--s2u-panel)); }
+  .s2u-panel__head a:hover, .s2u-card > h3 a:hover, .s2u-panel__head a:focus-visible, .s2u-card > h3 a:focus-visible { text-decoration-color: var(--s2u-gold); }
+  .s2u-panel__head a[target="_blank"]::after, .s2u-card > h3 a[target="_blank"]::after { content: ' ↗'; display: inline-block; font-size: 0.8em; color: var(--s2u-text-dim); }
+  .s2u-panel__body p, .s2u-panel__body ul, .s2u-panel__body ol { max-width: var(--s2u-measure); }
   .s2u-panel--image .s2u-panel__body { padding: 0; }
   .s2u-panel--image img { display: block; width: 100%; height: auto; }
   .s2u-panel.is-link { text-decoration: none; transition: background-color var(--s2u-dur-fast); }
@@ -137,6 +149,10 @@
   .s2u-iconbtn { width: 32px; height: 30px; padding: 0; border: 0; display: inline-grid; place-items: center; cursor: pointer; background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-0); color: var(--s2u-text); }
   .s2u-iconbtn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
   .s2u-iconbtn:hover { color: var(--s2u-gold); }
+  /* Disabled: a field's select, a label standing in for a button (the viewer's ISO-source chip), and
+     an icon control -- none of Tab's or Check's own disabled rule reaches these. */
+  .s2u-field select:disabled, .s2u-label:disabled, .s2u-iconbtn:disabled { opacity: var(--s2u-disabled); cursor: default; }
+  .s2u-iconbtn:disabled:hover { color: var(--s2u-text); }
 
   .s2u-tabs { display: flex; flex-wrap: wrap; gap: var(--s2u-space-2); }
   .s2u-tabs--column { flex-direction: column; flex-wrap: nowrap; width: var(--s2u-tab-w); max-width: 100%; }
