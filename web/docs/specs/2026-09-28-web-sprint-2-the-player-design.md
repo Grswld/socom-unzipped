@@ -112,3 +112,22 @@ bodies are supplied, else a placeholder named and the task carried; (7) nothing 
 ## 6. Findings recorded during the sprint
 
 *(dated, newest last)*
+
+### The motion format: one reader for all 341 clips; the player is not `zAnimObjectMotionBegin` (2026-09-28, W2.2a)
+
+Every clip -- `MOTION_S.ZAR`'s seven victory clips, identical on all 22 maps, and `MOTION_P.ZAR`'s 334 -- reads with one
+layout (`web/docs/research/77-motion-format.md`): 30 keys a second, per-part quaternion channels, translations at 1/256
+of a unit (the constant offsets reproduce `seal_A_scuba`'s bind nodes within a step, so the clips carry the SEAL
+skeleton's bone lengths; on `al_gman01` they are up to 44 steps out), the bind rows reproduced as three.js reads them
+with no conjugation or axis swap. The upper-body clips (`seal_p_*`, `seal_pfp_*`, `seal_mv_*`: 14-16 parts, no root or
+legs) layer over the full-body ones. Cycles by name (frames): `seal_stand` 16, `seal_walk` 25, `seal_jog` 22,
+`seal_run` 19, `seal_crouch` 21, `seal_crouchwalk` 28, `seal_prone` 10, `seal_jump` 20, `seal_runningjump_launch` 25,
+`seal_runningjump_in_air` 14, `seal_land_soft` 20, `seal_land_hard` 20, `seal_recoil` 2, `seal_reload` 45, the `_fp_`
+first-person set. Playback lives in `READERC.ZAR`'s `motion.rdr` (398 entries: `looped`, `playback`, `max_velocity`,
+`BlendTime`, `zanim_callback` -- the motion calls the zAnim animation, e.g. `seal_jump` → `jump_whoosh` at 0.4; 24 of
+26 callback names are CZANIM animations); the victory clips are one-shot. `zAnimObjectMotionBegin` 0x262690 is zAnim's
+OBJECT_MOTION begin hook, not the skeletal player, and its command is at least 0x80 bytes where reCOM's `0x13` type is
+20 on all 1,777 uses; blend-or-hold between keys is `FUN_0028c4f0` / `FUN_0028c380` / `FUN_0028c250` (called from
+`Tick_0` at 0x57a818-0x57a82c), with `FUN_00289bb0`, `FUN_0028d670`, `FUN_0028a100`, `CZSIObject_Read` 0x289380
+beside them -- not on hand, so `MOTION_BLEND` is slerp on the shorter arc, named. Research 25's in-memory "walk" keys
+are `seal_run`'s root byte for byte.
