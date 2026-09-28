@@ -1,6 +1,6 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
-import { viewerRevision } from './revision';
+import { viewerRevision, viewerRevisionBadge } from './revision';
 import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
@@ -19,7 +19,8 @@ export class Ui {
   private readonly diagnostics = find<HTMLUListElement>('diagnostics');
   private readonly diagnosticsCount = find<HTMLElement>('diagnostics-count');
   private readonly hint = find<HTMLParagraphElement>('hint');
-  private readonly fps = find<HTMLElement>('fps');
+  private readonly fpsNumber = find<HTMLElement>('fps-n');
+  private readonly fpsRest = find<HTMLElement>('fps-rest');
   private readonly loading = find<HTMLElement>('loading');
   private readonly loadingWhat = find<HTMLElement>('loading-what');
   private readonly loadingBar = find<HTMLElement>('loading-bar');
@@ -239,11 +240,12 @@ export class Ui {
   }
 
   /**
-   * The build's revision and stamp: on the About line's badge, so it is readable without unfolding
-   * anything, and again as the last line of the About text. Returns the label for the debug hook.
+   * The build's revision: `rev <hash>` alone on the About summary's chip, so it is readable without
+   * unfolding anything, and the full "rev … · built …" line as the last line of the About text.
+   * Returns the full label for the debug hook.
    */
-  showRevision(label = viewerRevision()): string {
-    find<HTMLElement>('revision').textContent = label;
+  showRevision(label = viewerRevision(), badge = viewerRevisionBadge()): string {
+    find<HTMLElement>('revision').textContent = badge;
     find<HTMLElement>('revision-line').textContent = label;
     return label;
   }
@@ -408,7 +410,10 @@ export class Ui {
    * same in a counter but 16.7 ms and 34 ms do not.
    */
   setFps(fps: number, frameMs: number): void {
-    this.fps.textContent = `${Math.round(fps)} fps · ${frameMs.toFixed(1)} ms`;
+    // Two spans: at 360px the pill keeps the number and styles.css hides the rest, so it clears the
+    // site bar's GitHub tab.
+    this.fpsNumber.textContent = String(Math.round(fps));
+    this.fpsRest.textContent = ` fps · ${frameMs.toFixed(1)} ms`;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {

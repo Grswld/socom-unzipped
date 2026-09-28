@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const webRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -41,12 +43,38 @@ function basePath(value: string | undefined): string {
   return name ? `/${name}/` : '/';
 }
 
+/**
+ * The fonts ship with the build. `copyPublicDir` is off because `web/public/` is the extracted disc
+ * tree, which must never be copied into `dist/`; but the vendored `fonts.css` names `/fonts/*.woff2`,
+ * which Vite rewrites under `base`, and a build without the files answered `text/html` for each one live
+ * (nginx's try_files handing back index.html). So the woff2 files, and their OFL texts, are copied into
+ * `<outDir>/fonts/` once the bundle is written. `packages/viewer/test/build_fonts.test.ts` reads the
+ * result; the vendored CSS stays byte-exact.
+ */
+function shipFonts(publicDir: string): Plugin {
+  let outDir = '';
+  return {
+    name: 'viewer:ship-fonts',
+    apply: 'build',
+    configResolved(config) { outDir = config.build.outDir; },
+    closeBundle() {
+      const src = join(publicDir, 'fonts');
+      const dst = join(outDir, 'fonts');
+      mkdirSync(dst, { recursive: true });
+      for (const f of readdirSync(src)) if (/\.(woff2|txt)$/.test(f)) copyFileSync(join(src, f), join(dst, f));
+    },
+  };
+}
+
+const publicDir = fileURLToPath(new URL('../../public', import.meta.url));
+
 export default defineConfig({
   root: here,
   base: basePath(process.env.VIEWER_BASE),
-  publicDir: fileURLToPath(new URL('../../public', import.meta.url)),
+  publicDir,
   server: { port: 5173, strictPort: true },
   build: { outDir: fileURLToPath(new URL('../../dist/viewer', import.meta.url)), emptyOutDir: true, copyPublicDir: false },
   worker: { format: 'es' },
   define: { __VIEWER_REV__: JSON.stringify(gitRevision()), __BUILD_STAMP__: JSON.stringify(buildStamp) },
+  plugins: [shipFonts(publicDir)],
 });

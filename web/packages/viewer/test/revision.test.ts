@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { revisionLabel, viewerRevision } from '../src/revision';
+import { revisionBadge, revisionLabel, viewerRevision, viewerRevisionBadge } from '../src/revision';
 
 /**
  * The build's own name in the panel: the git revision it was built from and when. Vite writes the two
@@ -23,5 +23,23 @@ describe('revisionLabel', () => {
 describe('viewerRevision', () => {
   it('falls back to unknown when the build defines are absent, as under vitest', () => {
     expect(viewerRevision()).toBe('rev unknown · build time unknown');
+  });
+});
+
+/**
+ * The About summary's chip carries only `rev <short hash>`: the full "rev … · built …" line is the
+ * last line of the About text, and the chip beside a summary has no room for a date.
+ */
+describe('revisionBadge', () => {
+  it('is the revision alone, dirty mark kept', () => {
+    expect(revisionBadge('a1b2c3d')).toBe('rev a1b2c3d');
+    expect(revisionBadge('a1b2c3d-dirty')).toBe('rev a1b2c3d-dirty');
+  });
+  it('says unknown for an empty value', () => {
+    expect(revisionBadge('')).toBe('rev unknown');
+    expect(revisionBadge('  ')).toBe('rev unknown');
+  });
+  it('viewerRevisionBadge falls back like the label', () => {
+    expect(viewerRevisionBadge()).toBe('rev unknown');
   });
 });
