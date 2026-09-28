@@ -303,6 +303,26 @@ W2.2c: crouch rootY 3.4 (0.62 × 5.504), prone 1.8 (under the camera ramp's floo
 prone 6-9; prone backward at the crawl's 11 (no backward crawl clip exists — the clip plays reversed). Frostfire's
 clean walk-off for the tests: the deck at x 630-675, z 725-815, y 142, east edge onto the 100 floor (B's ramp is walled).
 
+### The SEAL is 19.6 units tall, and the console's spawn dump holds a crouched player (2026-09-28, W2.3)
+
+*(the implementer's reading, under review; the plan's Log records the verdict)* The skeleton in the console dump
+(`actor+0x170`, count 32 at +0x60) is reached through a table of 32 node **pointers** at +0x64 (26 live, 6 null), each a
+`CZBodyPart` in reCOM's field order — `+0` translation, `+0x0c` its `CNode` (the local matrix; the name at `+0x90`),
+`+0x1c` parent, `+0x20` quaternion, `+0x40` id — named `skel_root`, `hips`, `neck`, `head`, `lcalf`, `rcalf`, … (no
+eyeball nodes). **The player at spawn is crouched:** its root 5.504 is under the game's own stance test `node[0].y <
+9.0` (research 17 §8), and its right knee sits on the ground at 0.54; the five standing actors in the same dump carry
+the same bone lengths with `skel_root` at **11.484** and the `head` joint composing to 17.28-17.48 (17.37 at the resting
+root). Research 17 §1's "standing idle" 5.504 is therefore the crouch, and its measured camera (target 15.38, eye
+20.107 up) is the crouched player's; with the standing root 11.484 the ramp of `FUN_0029a950` saturates (fVar9 = 10) and
+the standing look-at target is **21.48** over the feet, which is where `dynamics.rdr`'s `cam_*_aim` y 20.5 sits (W2.1's
+camera takes the stance's root, so both cases fall out of one formula; W2.2c measures the standing camera on the
+console). The frame: the player is 27.71 units from the smoothed eye along the view (24.91 level, 19.60 below; 26.96
+from the unsmoothed eye), the composed head joint projects to x 348.3 against the frame's head at x 351; the helmet's
+top at row 269 back-projects, at the head's own depth 29.24, to 12.39 over the feet — 2.23 above the head joint.
+**Standing height 17.37 + 2.23 = 19.6 ± 0.3 units (1.96 m at `MetersPerUnit 0.1`)**, the crouch 12.4 measured on the
+frame, the shoulders 5.1 (82 px at 0.0618 units/px; the joint span 3.8-4.0 plus 0.6 a side agrees); the neck at 0.84
+and the knees at 0.30 of the height (a human's 0.85 and 0.29). Estimates: the eye at 18.3 (0.936 × stature), prone 3.0.
+
 ## 8. Rulings
 
 - **W2.R1** — "the correct height" is the game's third-person camera with the body in the frame (research 17's
