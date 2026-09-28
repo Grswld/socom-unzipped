@@ -10,3 +10,6 @@ export * from './spawns';
 export * from './lod';
 export * from './grid';
 export * from './probe';
+export * from './firePoint';
+export * from './ray';
+export * from './weapon';

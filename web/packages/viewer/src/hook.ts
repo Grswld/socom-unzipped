@@ -1,6 +1,7 @@
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
+import type { ShotRecord } from './shot';
 import type { Stand } from './stand';
 import type { SliderName, ToggleName } from './ui';
 
@@ -29,6 +30,9 @@ export interface ViewerHook {
     slots: { a: number; b: number };
     /** Where the map on screen was read from: the served tree, or the player's own disc image (W1.7). */
     source: 'http' | 'iso';
+    /** W2.4 (`./shot`): the shots fired on this map, and the last one -- its fire point, its end, whether it hit the hull. */
+    shots: number;
+    lastShot: ShotRecord | null;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
@@ -47,6 +51,8 @@ export interface ViewerHook {
   walkFor(seconds: number, input?: { forward?: number; right?: number }): Pose;
   /** Walk mode: the mover's feet, or null in fly mode. */
   feet(): [number, number, number] | null;
+  /** W2.4: one shot from the current pose, as the left button fires it; null in fly mode (`./shot`). */
+  fire(): ShotRecord | null;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

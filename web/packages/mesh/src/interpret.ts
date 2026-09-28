@@ -39,6 +39,21 @@ const TAIL_QUADWORDS = 2;
 
 /** SEMANTICS §4 quadword a x,y,z: `ITOF4`, so the stored int16 is sixteenths of a unit. */
 const POSITION_SCALE = 16;
+/** Research 15 §0 item 1: command `0x70` converts the position lanes with `ITOF15`, 1.15 fixed point. */
+const POSITION_SCALE_ITOF15 = 32768;
+
+/**
+ * How a packet's position lanes become model space, which is the one thing the two drawing commands disagree on
+ * (research 15 §0 item 1: `0x70` is `0x68` with two instructions changed; SEMANTICS §3 `TOP+3`):
+ *
+ * - `'bias'`, command `0x68`: `int16 / 16 + TOP+3.xyz` (`ITOF4`, then `ADD.xyz`). The world and the map's props.
+ * - `'scale'`, command `0x70`: `int16 / 32768 * TOP+3.w` (`ITOF15`, then `MULw.xyz`). The weapons, the fittings and
+ *   the turrets (web/docs/research/79 §2): every visual node of `WEAP_MDL`, `FLIB_MDL` and `TURR_MDL` lands inside
+ *   its own `nparams` bbox this way and none the other, and their `TOP+3.xyz` is zero in every packet.
+ *
+ * The command list that picks one is the EE's (SEMANTICS §9), not the packet's, so the caller says which.
+ */
+export type PositionForm = 'bias' | 'scale';
 /** SEMANTICS §4 quadword b x,y: `ITOF12`, normalised texture coordinates (§7 — TW/TH do not enter). */
 const UV_SCALE = 4096;
 /** SEMANTICS §4 (a.w, b.z, b.w) and §5 entry [1]: `ITOF15`, 1.15 fixed point. */
@@ -210,8 +225,11 @@ function vertexIndex(offset: number, vertexCount: number, lane: string): number 
   return index;
 }
 
-/** Turns one drawn (`MSCNT`) packet into a mesh. Throws `MeshError` on anything SEMANTICS does not describe. */
-export function interpretPacket(packet: VuPacket): MeshData {
+/**
+ * Turns one drawn (`MSCNT`) packet into a mesh. Throws `MeshError` on anything SEMANTICS does not describe. `form`
+ * is the position conversion the drawing command applies (`PositionForm`); every other lane is the same in both.
+ */
+export function interpretPacket(packet: VuPacket, form: PositionForm = 'bias'): MeshData {
   const { mem, f32, written } = packet;
   /** Where a quadword's lanes start in `mem`, once this packet is known to have unpacked it. */
   const lanesOf = (qw: number, what: string): number => {
@@ -225,6 +243,11 @@ export function interpretPacket(packet: VuPacket): MeshData {
   const vertexCount = mem[counts + Z]! >>> 0;
   const triangleCount = mem[counts + W]! >>> 0;
   const bias = [f32[BIAS_QW * LANES + X]!, f32[BIAS_QW * LANES + Y]!, f32[BIAS_QW * LANES + Z]!];
+  // `PositionForm`: 0x68 divides by 16 and adds TOP+3.xyz; 0x70 divides by 32768 and multiplies by TOP+3.w.
+  const scaled = form === 'scale';
+  const divisor = scaled ? POSITION_SCALE_ITOF15 : POSITION_SCALE;
+  const multiplier = scaled ? f32[BIAS_QW * LANES + W]! : 1;
+  const add = scaled ? [0, 0, 0] : bias;
   // A count that cannot fit VU memory is not a count, and must not become an allocation.
   const fits = (last: number, what: string) => {
     if (last > VU_QUADWORDS) throw new MeshError(`the header claims ${what} reaching TOP+${last}, past the ${VU_QUADWORDS} quadwords of VU data memory`);
@@ -241,9 +264,9 @@ export function interpretPacket(packet: VuPacket): MeshData {
     const a = lanesOf(base, `vertex ${k}'s position quadword`);          // V4-16, signed
     const b = lanesOf(base + 1, `vertex ${k}'s UV quadword`);            // V4-16, signed
     const c = lanesOf(base + 2, `vertex ${k}'s colour quadword`);        // V4-8 USN, unsigned bytes
-    positions[k * 3 + X] = mem[a + X]! / POSITION_SCALE + bias[X]!;
-    positions[k * 3 + Y] = mem[a + Y]! / POSITION_SCALE + bias[Y]!;
-    positions[k * 3 + Z] = mem[a + Z]! / POSITION_SCALE + bias[Z]!;
+    positions[k * 3 + X] = (mem[a + X]! / divisor) * multiplier + add[X]!;
+    positions[k * 3 + Y] = (mem[a + Y]! / divisor) * multiplier + add[Y]!;
+    positions[k * 3 + Z] = (mem[a + Z]! / divisor) * multiplier + add[Z]!;
     normals[k * 3 + X] = mem[a + W]! / NORMAL_SCALE;
     normals[k * 3 + Y] = mem[b + Z]! / NORMAL_SCALE;
     normals[k * 3 + Z] = mem[b + W]! / NORMAL_SCALE;
@@ -305,6 +328,14 @@ function isDegenerate(positions: Float32Array, i0: number, i1: number, i2: numbe
  * template states, not by anything the chunk or the chain says.
  */
 export function interpretChainParts(chain: Chain): { meshes: MeshData[]; lines: LineStrip[] } {
+  return interpretChainPartsAs(chain, 'bias');
+}
+
+/**
+ * `interpretChainParts` with the position form the drawing command applies (`PositionForm`): `'scale'` for the
+ * weapons' chains (web/docs/research/79 §2). A separate name so `interpretChainParts` stays a one-argument callback.
+ */
+export function interpretChainPartsAs(chain: Chain, form: PositionForm): { meshes: MeshData[]; lines: LineStrip[] } {
   const meshes: MeshData[] = [];
   const lines: LineStrip[] = [];
   const packets = unpackVif(chain);
@@ -313,7 +344,7 @@ export function interpretChainParts(chain: Chain): { meshes: MeshData[]; lines: 
     if (packet.kind !== 'mscnt') continue;
     try {
       if (isLineStripPacket(packet)) lines.push(interpretLinePacket(packet));
-      else meshes.push(interpretPacket(packet));
+      else meshes.push(interpretPacket(packet, form));
     } catch (e) {
       if (!(e instanceof MeshError)) throw e;
       throw new MeshError(`chunk ${chain.nodeName} packet ${i}: ${e.message}`);
