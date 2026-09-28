@@ -54,6 +54,28 @@ def cd_image_env(env, resolve=None):
     return env
 
 
+LATEST_FRAME_ENV = "PS2X_HOST_SCREENSHOT_LATEST"
+# Sprint 17 F0: the player-condition knob. The frame file costs the GL thread a readback and a PNG encode every
+# ~150 ms (research/73: 169 ms/s; docs/LATER.md row 43) that no player's run pays; with this set to 1 the drive
+# leaves LATEST_FRAME_ENV unset and captures through PrintWindow instead.
+NO_LATEST_FRAME_ENV = "SOCOM_DRIVE_NO_LATEST_FRAME"
+
+
+def child_env(environ=None):
+    """The environment launch() gives our exe, built from `environ` (default os.environ).
+
+    The exe rewrites its current frame to LATEST_FRAME_ENV's file and grab() reads it instead of PrintWindow, so the
+    default is set in `environ` itself (grab() looks there), an operator's own path winning. With
+    NO_LATEST_FRAME_ENV=1 the variable is removed from `environ` -- an exported one too -- and so is absent from the
+    child: the runtime writes no frame file and grab() falls back to PrintWindow."""
+    environ = os.environ if environ is None else environ
+    if environ.get(NO_LATEST_FRAME_ENV) == "1":
+        environ.pop(LATEST_FRAME_ENV, None)
+    else:
+        environ.setdefault(LATEST_FRAME_ENV, os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
+    return hostplatform.dev_env(cd_image_env(dict(environ, PS2X_SOCOM2_PAD="1")))
+
+
 def launch(target, seconds):
     # Resolved before anything is started: no disc is a launch failure naming the three places it
     # looked, not a black boot (the VM's title stage, twice, with no image under game/).
@@ -61,9 +83,7 @@ def launch(target, seconds):
     if target == "pcsx2":
         return subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", iso],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # The exe rewrites its current frame to this file; grab() reads it instead of PrintWindow.
-    os.environ.setdefault("PS2X_HOST_SCREENSHOT_LATEST", os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
-    env = hostplatform.dev_env(cd_image_env(dict(os.environ, PS2X_SOCOM2_PAD="1")))
+    env = child_env()
     if not hostplatform.is_windows():
         # Linux: press() injects through the runtime's latched pad file rather than X key events,
         # which the VM's ~3 fps poll drops (x11shot.press). The file must exist and be neutral

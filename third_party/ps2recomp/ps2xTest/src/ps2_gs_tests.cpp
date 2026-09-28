@@ -17,6 +17,7 @@
 #include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_upload_reasons.h"
+#include "runtime/gs/gs_frame_histogram.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
@@ -6469,6 +6470,27 @@ void register_ps2_gs_tests()
             t.IsTrue(up() == R::SameFree, "valid again after its re-upload");
             gate.decide(z, a.data(), a.size(), true, none, 6u, 1u, 1u, false, false);
             t.IsTrue(up() == R::SameRewritten, "a Z-format upload at an unaligned dbp in page 6 stamps page 7 too");
+        });
+
+        // Sprint 17 F0: the present-interval histogram -- [gs-gl stats] frames line. The fps column
+        // is a 60-call mean; this is the distribution of the time between two presents, so a 2.5 s
+        // freeze shows in over= and longest_ms instead of vanishing into a mean. Header-only.
+        tc.Run("F0: GsFrameHistogram buckets present intervals by edge, keeps the longest, and never drops one past the last edge", [](TestCase &t)
+        {
+            GsFrameHistogram h{};
+            for (int i = 0; i < 3; ++i)
+                h.add(16'000'000ull);   // 16.0 ms: le17
+            h.add(40'000'000ull);       // 40 ms: le50
+            h.add(2'500'000'000ull);    // 2.5 s: over, and the longest
+            t.Equals(h.n, 5ull, "five intervals");
+            t.Equals(h.counts[0], 3ull, "three at or under 17 ms");
+            t.Equals(h.counts[4], 1ull, "one in (33, 50]");
+            t.Equals(h.counts[6], 1ull, "one over 100 ms lands in the open bucket, never wraps");
+            t.Equals(h.longestNs, 2'500'000'000ull, "the longest is kept");
+            const std::string line = h.line();
+            t.IsTrue(line.find("le17=3 ") != std::string::npos && line.find("over=1 ") != std::string::npos &&
+                         line.find("longest_ms=2500.0") != std::string::npos,
+                     line);
         });
 
         // Sprint 16 F2: the [gs-submit] line -- the submit= column of [gs-gl stats] split over EVERY

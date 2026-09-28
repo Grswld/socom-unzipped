@@ -14,7 +14,7 @@
   "scripts/parity/refs/mission_failure_banner.png": "e0f03049024c66e9056e599170a63086b838c0c413ab522252a07a95945012a8",
   "scripts/parity/guest_probe_console.json": "912bf9d7c538574cfc345164a51ace194769c8fbbe87b57e609b4b92fd7a4e27",
   "card": "682ad80be95e9a13158b331848df376c5620eec92df79baea5626793e92e0052",
-  "env": "9c1c96350d9461f9ac325db26243a74af83ab7723d4325c32526c2d4d98d8f54",
+  "env": "bd47114f8477e28598b2035aae0153491708e3049172e84993202161b26db41d",
   "mapping": "c393b87b99732a1f"
  },
  "detail": {
@@ -22,7 +22,8 @@
   "env": [
    "PS2X_HOST_GAMEPAD=0",
    "PS2X_PC_SAMPLER=1",
-   "PS2X_PEEK=0x416054:3,*0x408c58+0x2e8:1,*0x408c58+0x2e8*:2,*0x408c58+0x1368:1,*0x408c58:64,0x4365c0:1"
+   "PS2X_PEEK=0x416054:3,*0x408c58+0x2e8:1,*0x408c58+0x2e8*:2,*0x408c58+0x1368:1,*0x408c58:64,0x4365c0:1",
+   "PS2X_VU_STATS=1"
   ],
   "mapping": "from title.game.log"
  }

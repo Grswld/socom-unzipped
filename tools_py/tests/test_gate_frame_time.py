@@ -32,6 +32,32 @@ PROOF4_LINE = ("FRAME mean=21.86 worst1s=30.30 n=3067 (VBlank pacing: host ms pe
                "the time between presents; the scripted walk, sampler t=321.2 s (the HUD step) to t=388.3 s (the "
                "last step), 67 windows)")
 
+# Sprint 17 F0 (b): the game's own frame rate. With PS2X_VU_STATS=1 the runtime prints a [vu1-stats] line a second
+# (ps2_vu1_core.cpp, the print after s_lastSyncV) whose `syncv/s=` field is the game's own draw rate; the line has no
+# clock, so frame_time attributes each one to the [pc-sampler] row before it. The proof4 fixture predates the knob,
+# so these lines are planted into a copy of it: 58.0 after the row at 310.2 s (before the HUD step at 320.7 s),
+# 29.0, 31.0 and 30.0 inside the walk.
+VU1_LINE = ("[vu1-stats] programs/s=1210 cycles/s=5812345 host=212 ms/s (36.5 ns/cycle) flips/s=%.1f syncv/s=%.1f "
+            "thread=240 ms/s proc=260 ms/s interp-programs/s=0 handbacks/s=3 vu0/s=0 native-entered/s=1200 "
+            "native-ended/s=1190 native-handbacks/s=10\n")
+PLANTED_SYNCV = ((310.0, 58.0), (330.0, 29.0), (350.0, 31.0), (370.0, 30.0))
+
+
+def game_log_with_vu1_stats(path, planted=PLANTED_SYNCV, head=()):
+    """A copy of the proof4 game log at `path` with a [vu1-stats] line after the first sampler row at or past each
+    planted t; `head` lines go before the first row (stats printed before the sampler's first sample)."""
+    todo = sorted(planted)
+    with open(GAME, encoding="utf-8") as src, open(path, "w", encoding="utf-8") as dst:
+        dst.writelines(head)
+        for line in src:
+            dst.write(line)
+            m = frame_time.SAMPLER_RE.search(line)
+            while m and todo and float(m.group(1)) >= todo[0][0]:
+                dst.write(VU1_LINE % (todo[0][1], todo[0][1]))
+                todo.pop(0)
+    assert not todo, todo
+    return path
+
 
 class Reader(unittest.TestCase):
     def test_the_saved_stamps_numbers(self):
@@ -77,6 +103,43 @@ class Reader(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class SyncvReader(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_the_walks_vu1_stats_lines_are_averaged_and_the_one_before_the_hud_is_not(self):
+        game = game_log_with_vu1_stats(os.path.join(self.tmp, "g.txt"))
+        self.assertEqual(frame_time.read_syncv(game, 320.7, 388.8), 30.0)
+        sv = frame_time.syncv(game, 320.7, 388.8)
+        self.assertEqual((sv.mean, sv.n), (30.0, 3))
+        self.assertEqual(frame_time.syncv_line(sv), "SYNCV mean=30.0/s n=3 (the game's own frame rate: [vu1-stats] "
+                                                    "syncv/s over the scripted walk)")
+
+    def test_a_log_with_no_vu1_stats_lines_reads_none(self):
+        self.assertIsNone(frame_time.read_syncv(GAME, 320.7, 388.8))
+
+    def test_a_stats_line_before_the_first_sampler_row_has_no_clock_and_is_not_counted(self):
+        game = game_log_with_vu1_stats(os.path.join(self.tmp, "g.txt"), head=[VU1_LINE % (99.0, 99.0)])
+        self.assertEqual(frame_time.syncv(game, 0.0, 1000.0).n, 4, "the four planted after rows, not the head one")
+
+    def test_the_stamp_reader_uses_the_drive_logs_walk(self):
+        shutil.copyfile(DRIVE, os.path.join(self.tmp, "mission.drive.log"))
+        game_log_with_vu1_stats(os.path.join(self.tmp, "mission.game.log"))
+        sv, why = frame_time.read_syncv_stamp(self.tmp)
+        self.assertIsNone(why)
+        self.assertEqual((sv.mean, sv.n), (30.0, 3))
+
+    def test_the_gate_and_the_ladder_set_the_vu_stats_knob(self):
+        self.assertEqual(gate.launch_env("mission", "card", base={}, default_ok=True).get("PS2X_VU_STATS"), "1")
+        self.assertNotIn("PS2X_VU_STATS", gate.launch_env("title", "card", base={}, default_ok=True))
+        self.assertEqual(gate.launch_env("mission", "card", base={"PS2X_VU_STATS": "0"},
+                                         default_ok=True)["PS2X_VU_STATS"], "0", "an operator's own value wins")
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        with open(os.path.join(root, "scripts", "parity", "ladder_frostfire.sh"), encoding="utf-8") as f:
+            self.assertRegex(f.read(), r"(?m)^export PS2X_VU_STATS=1\b")
+
+
 class GateFrameLine(_LaunchCase):
     """main() with the mission stage mocked: it leaves the fixture's logs where run_gate leaves a live run's."""
 
@@ -114,6 +177,25 @@ class GateFrameLine(_LaunchCase):
         info = self._record()["informational"]
         self.assertEqual((info["frame_mean_ms"], info["frame_worst_ms"], info["frame_n"]), (21.86, 30.30, 3067))
         self.assertNotIn("frame", self._record()["pins"], "the frame numbers are not a pin the standard can hold")
+
+    def test_the_mission_summary_carries_the_syncv_line_and_the_record_its_mean(self):
+        rc, out = self._run(game_log_with_vu1_stats(os.path.join(self.tmp, "vu1.txt")))
+        self.assertEqual(rc, 0, out)
+        summary = self._summary()
+        self.assertIn("\nSYNCV mean=30.0/s n=3 ", summary)
+        self.assertIn("SYNCV mean=30.0/s n=3 ", out)
+        self.assertLess(summary.index(PROOF4_LINE), summary.index("SYNCV mean="), "next to FRAME, after it")
+        info = self._record()["informational"]
+        self.assertEqual(info["syncv_mean"], 30.0)
+        self.assertEqual(info["frame_mean_ms"], 21.86, "the frame record is unchanged beside it")
+        self.assertNotIn("syncv", " ".join(self._record()["pins"]), "informational, never a pin")
+        self.assertIn("PINS MATCH", summary)
+
+    def test_a_mission_with_no_vu1_stats_lines_says_so_and_records_no_syncv(self):
+        rc, out = self._run()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("SYNCV NO-DATA (no [vu1-stats] syncv/s line in the walk", self._summary())
+        self.assertNotIn("syncv_mean", self._record()["informational"])
 
     def test_a_differing_frame_time_does_not_fail_the_gate(self):
         rc, out = self._run()
