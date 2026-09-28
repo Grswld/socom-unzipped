@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-28 07:15Z, LATEST) -- Sprint 17 day one, `sprint-17` at fbed9734: batch 1 proved (chain `s17_b1` green on `0627373f`, SYNCV 18.7/s), G1 and F1 Step 0 merged, Q0 answered (research/78: Q2 is the fix, in an agent). PR #100 merged and deployed to /map-viewer. The hardening workflow (owner's priority; `vm/security/`, ignored) runs in wt-medusa-*. One controller in the main tree (the owner, 02:35Z); every other session in its worktree.**
-  Next: Q2 and F0 5b builds, batch 2's chain, the morning report ~15:00Z.
+- **Where the loop is now (2026-09-28 13:56Z, LATEST) -- Sprint 17 day one done, `sprint-17` at da0deb8f: chains `s17_b1`/`s17_b2` green; batch 2's gate `FRAME 16.67 / SYNCV 23.2` (D1 on one gate; three owed). Merged: ds-web, H1, F0, G1, F1 Step 0, F0 5b, Q2 Steps 1-2, the network hardening (`vm/security/`, ignored), main (web sprints 1+2). Q2 Step 3: the logoff restarts in-process but presents no frame (KNOWN §2). The seat went silent 07:47Z; the controller holds Q2. One controller in the main tree (owner, 02:35Z).**
+  Next: Q2's display round; A1 (`wt-s17-a1`, the seat's); the Medius app-message bounds (Opus workflow); Q2 Steps 4-5.
 - **Next free ruling number: R332** (R322-R331 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
