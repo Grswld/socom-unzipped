@@ -6290,6 +6290,51 @@ void register_ps2_gs_tests()
             t.Equals(static_cast<int>(sizeof(clut) / sizeof(clut[0])), 256, "the window is 256 resolved entries");
         });
 
+        tc.Run("S17 F1 attempt 1: the decode walks the source once and its hash is textureSourceHash's", [](TestCase &t)
+        {
+            // KNOWN 2 (the Sprint 8 review's (a)): a texture that really changed paid three walks of its
+            // source -- the revalidation hash, the decode, and textureSourceHash again inside the decode
+            // for entry.sourceHash. The fold: decodeTexture hashes the rows it already reads, through
+            // GsGlTextureIdentity::walkTexels, and the value must be hashTexels' exactly, or every entry
+            // decoded after the fold fails its next revalidation and R123 is silently undone.
+            // For a non-indexed format textureSourceHash() is hashTexels(..., seed()) and nothing else.
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            for (uint32_t y = 0; y < 64u; ++y)
+                for (uint32_t x = 0; x < 64u; ++x)
+                    GSMem::WriteCT32(vram.data(), 0x0c0u, 1u, x, y, 0x11223344u + x + y * 64u);
+            std::vector<uint32_t> scratch(64u), row(64u), decoded(64u * 64u, 0u);
+            const uint64_t sourceHash = GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                                        scratch.data(), GsGlTextureIdentity::seed());
+            uint32_t rowsSeen = 0u;
+            const GsGlTextureIdentity::DecodeWalk walk = GsGlTextureIdentity::walkTexels(
+                vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u, row.data(), GsGlTextureIdentity::seed(),
+                [&](uint32_t y, const uint32_t *texels)
+                {
+                    ++rowsSeen;
+                    std::memcpy(decoded.data() + static_cast<size_t>(y) * 64u, texels, 64u * sizeof(uint32_t));
+                });
+            t.IsTrue(walk.sourceHash != GsGlTextureIdentity::kUnhashable, "a CT32 source is hashable at decode time");
+            t.IsTrue(walk.sourceHash == sourceHash, "the decode-time hash is textureSourceHash()'s value over the same bytes");
+            t.Equals(walk.sourceWalks, 1u, "the decode reports one walk of the source");
+            t.Equals(rowsSeen, 64u, "every row reaches the decode once");
+            bool same = true;
+            for (uint32_t y = 0; y < 64u; ++y)
+                for (uint32_t x = 0; x < 64u; ++x)
+                    same = same && decoded[static_cast<size_t>(y) * 64u + x] == 0x11223344u + x + y * 64u;
+            t.IsTrue(same, "the rows handed to the decode are the planted texels, in order");
+
+            // A changed texel: the decode's hash moves with the source, and still equals the revalidation's.
+            GSMem::WriteCT32(vram.data(), 0x0c0u, 1u, 33u, 17u, 0xDEADBEEFu);
+            const uint64_t changed = GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                                     scratch.data(), GsGlTextureIdentity::seed());
+            const GsGlTextureIdentity::DecodeWalk again = GsGlTextureIdentity::walkTexels(
+                vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u, row.data(), GsGlTextureIdentity::seed(),
+                [](uint32_t, const uint32_t *) {});
+            t.IsTrue(again.sourceHash == changed && again.sourceHash != walk.sourceHash,
+                     "a changed source texel moves the decode-time hash exactly as it moves textureSourceHash()");
+            t.Equals(again.sourceWalks, 1u, "and the second decode is one walk too");
+        });
+
         tc.Run("R123: mix and seed are order-sensitive so row order is part of the identity", [](TestCase &t)
         {
             const uint64_t a = GsGlTextureIdentity::mix(GsGlTextureIdentity::mix(GsGlTextureIdentity::seed(), 1u), 2u);
