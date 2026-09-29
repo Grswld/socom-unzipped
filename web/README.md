@@ -1,35 +1,69 @@
-# SOCOM Unzipped map viewer — SOCOM II's multiplayer maps, decoded from the disc and drawn in a browser
+# SOCOM Unzipped for the browser: the map viewer and reCOM mode
 
-Goal: every SOCOM II: U.S. Navy SEALs multiplayer map, read byte for byte out of the game's own
-`RUN/MP*.ZDB` archives — container, scene graph, DMA/VIF geometry, GS textures and palettes, lighting,
-fog, collision — and drawn again with three.js as close to the console's own picture as a browser
-allows, without emulating the game. Nothing is pre-baked and no asset is committed; **you supply your
-own disc**. It runs at [socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/).
+SOCOM II: U.S. Navy SEALs' multiplayer maps, read byte for byte out of **your own copy of the disc** and drawn again in
+a browser with three.js -- and, in reCOM mode, walked, fought over and played online as a SEAL, with every speed,
+jump, reticle, round, sound, effect and rule read from the game's own data or its decompiled code. Nothing is
+pre-baked and no game asset is in this repository. It runs at
+[socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/).
 
-It is a spin-off of [**SOCOM Unzipped**](../README.md), the static recompilation of the game for PC,
-and lives in that repository's `web/` directory as **a separate project**: its own npm workspace,
-tests, docs and CI, building alone and deploying as a static site. It needs nothing from the
-recompilation and the recompilation needs nothing from it (see
+It is a spin-off of [**SOCOM Unzipped**](../README.md), the static recompilation of the game for PC, and lives in that
+repository's `web/` directory as **a separate project**: its own npm workspace, tests, docs and CI, building alone and
+deploying as a static site plus an optional multiplayer server. It needs nothing from the recompilation and the
+recompilation needs nothing from it (see
 [What the viewer takes from the rest of the repository](#what-the-viewer-takes-from-the-rest-of-the-repository)).
 An agent working on the recomp can skip this directory entirely.
 
-**Start here if you are a new agent or contributor:** the design and the findings recorded as the
-viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/specs/2026-09-20-web-map-viewer-design.md)
-and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
-(the plan beside them in `docs/plans/`); web sprint 1, "the engine's world", is
-[`docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md`](docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md)
-and its plan [`docs/plans/2026-09-28-web-sprint-1.md`](docs/plans/2026-09-28-web-sprint-1.md); web sprint 2, "the
-SEAL in the world" (the player: the game's camera, speeds, fall, a stand-in body, the reticle and the rifle), is
-[`docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md`](docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md)
-and its plan [`docs/plans/2026-09-28-web-sprint-2.md`](docs/plans/2026-09-28-web-sprint-2.md), whose Outcome is the
-close and whose Log the record of every task and number; the byte-level format authority is the viewer's own
-[`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md), and the
-meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
-the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the research notes (the viewer's own two, 71 and 72, live in `docs/research/` here; the rest are the repository's)
-and its Ghidra function names. The behaviour every change is checked against, maps and pictures
-included, is pinned down in [`packages/viewer/e2e/viewer.spec.ts`](packages/viewer/e2e/viewer.spec.ts)
-(`npm run e2e`); the viewer's chrome is the s2u design system, vendored under
-`packages/viewer/src/ds/` by `npm run ds:sync` (the manifest test refuses a hand edit).
+## What it is
+
+- **A map viewer.** All 22 multiplayer maps -- geometry, textures, lighting, fog, LOD, detail textures, collision,
+  spawns -- decoded from the disc's archives and drawn as the console's Graphics Synthesizer drew them, on WebGPU or
+  WebGL2, with a free-flying camera and a PS2 presentation (the console's 640x448 frame stretched as a television did).
+- **reCOM mode.** Walk the maps as a SEAL: the game's third-person camera and movement law, the SEAL's own model and
+  motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
+  accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
+  no first person (the owner's ruling). Today reCOM mode is behind the `?redotcom` URL flag and opens on foot.
+- **Multiplayer.** Respawn matches of up to 16 players plus spectators on a Node server, one match per map, the round's
+  damage, death, respawn, teams, scoring and scoreboard read from the game ([Multiplayer server](#multiplayer-server-web-sprint-3)).
+- **A worked example of recreating a PS2 game in the browser** from its own data: see
+  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for which parts are general PS2 and where to start with another game.
+
+## What it is not
+
+- **Not an emulator.** No PS2 code runs; the engine's data paths and rules are re-implemented in TypeScript.
+- **Not the game.** No campaign, no AI, no original online service. It does not connect to anyone else's server.
+- **Not a source of game data.** You supply your own disc (the page opens your `.iso` in the browser; nothing is
+  uploaded). The repository ships no archives, textures, models, sounds or code from the game.
+- **Not affiliated** with Sony Interactive Entertainment or Zipper Interactive.
+
+## Documentation
+
+| read | for |
+|---|---|
+| this README | running it, the controls, what the picture is made of, the known gaps |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the packages, their boundaries, the sim shared by page and server, adapting it to another PS2 game |
+| [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | every kind of data: where it comes from, the code that reads it, how it was verified; the legal stance |
+| [`docs/PROCESS.md`](docs/PROCESS.md) | the stack and the development process: ground truth, research notes, rulings, AI agents |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | the web project's conventions (the repository's rules are [`../CONTRIBUTING.md`](../CONTRIBUTING.md)) |
+| [`docs/corpus/llms.txt`](docs/corpus/llms.txt) | the same knowledge as structured records for an AI assistant |
+| [`docs/research/`](docs/research/) | the evidence: research notes 71-91, each citing the disc files and decompiled functions it read |
+| [`docs/specs/`](docs/specs/), [`docs/plans/`](docs/plans/) | one design spec and plan per sprint; a plan's Log is the record of every task and number |
+
+**Start here if you are a new agent or contributor:** the latest sprint is web sprint 3, "the round"
+([spec](docs/specs/2026-09-29-web-sprint-3-multiplayer-design.md), [plan](docs/plans/2026-09-29-web-sprint-3-multiplayer.md));
+before it, web sprint 2, "the SEAL in the world"
+([spec](docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md), [plan](docs/plans/2026-09-28-web-sprint-2.md)),
+web sprint 1, "the engine's world" ([spec](docs/specs/2026-09-28-web-sprint-1-the-engines-world-design.md),
+[plan](docs/plans/2026-09-28-web-sprint-1.md)), and the viewer's first design and polish
+([design](docs/specs/2026-09-20-web-map-viewer-design.md), [polish](docs/specs/2026-09-26-web-map-viewer-polish-design.md)).
+The byte-level format authority is [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md),
+and the meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in the
+code cite research notes by number (`research 84 §3`: notes 71-91 live in `docs/research/` here, lower numbers are the
+repository's [`../docs/research/`](../docs/research/)) and the decompilation's Ghidra function names
+(`FUN_00xxxxxx`). The behaviour every change is checked against, maps and pictures included, is pinned down in the
+Playwright specs under [`packages/viewer/e2e/`](packages/viewer/e2e/) (`npm run e2e`); the viewer's chrome is the s2u
+design system, vendored under `packages/viewer/src/ds/` by `npm run ds:sync` (the manifest test refuses a hand edit).
+
+**Licence:** GPL-3.0, the repository's ([`LICENSE`](../LICENSE)); see [Licence](#licence).
 
 ## How it works (one paragraph)
 
@@ -115,7 +149,10 @@ Everything below is relative to `web/`.
 | `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`), the zAnim effect commands, the thrown casing's flight, the particle sources and the effect models (`effects.ts`, `effectMotion.ts`, `effectParticles.ts`, `effectModels.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
-| `tools/` | the extractor and the dump/export tools |
+| `packages/server` | the multiplayer match server (Node, `ws`): one room per map running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
+| `tools/` | the extractor, the dump/export tools, the comparison instruments, the release sweep, the bot load test, `build-corpus.ts` |
+| `docs/research/`, `docs/corpus/` | the research notes (71-91) and the AI-readable corpus built from them (`llms.txt`, `records.jsonl`, `sections.jsonl`) |
+| `deploy/` | the multiplayer server's Docker image, Compose with Caddy, systemd unit and `deploy.sh` |
 | `docs/specs/`, `docs/plans/` | the viewer's own design specs and plan, kept here rather than in the repository's `docs/superpowers/` so the recomp's agents do not have to read past them |
 | `public/maps/`, `test-fixtures/` (ignored) | your extracted game data; never committed |
 
@@ -451,10 +488,12 @@ spawn dump, to 0.0003; standing, the target is 21.484 and the eye 25.709 up.
 **The stances and the body are measured on the console's dump and frame** ("The SEAL is 19.6 units tall, and the
 console's spawn dump holds a crouched player"). The skeleton root is 11.484 over the feet standing (the 24 actors at
 the bind pose) and 5.504 crouched -- the dump's player is crouched: its root under the game's own stance test of 9.0,
-a knee on the ground; prone 1.8 is an estimate. The body (`viewer/src/body.ts`) is a stand-in at 19.6 units
-standing (1.96 m: the standing head joint 17.37 plus the head's 2.23 measured on the frame), 12.4 crouched and 5.1
-across the shoulders, in the world's shading with the frame's own colours; the scope's eye, 18.3, is an
-estimate.
+a knee on the ground; prone 1.8 is an estimate. The body (`viewer/src/body.ts`, `bodyView.ts`) is the game's own:
+the map's player character out of `CLIB_MDL.ZED`, skinned on its `CLIB_GEO.ZED` skeleton, its gear hung where
+`READERC.ZAR/character.rdr` says, played by the game's clips out of `MOTION_P.ZAR`
+([research 78](docs/research/78-character-mesh-and-skeleton.md), [research 77](docs/research/77-motion-format.md));
+the bind-pose SEAL is 19.431 units tall. (Web sprint 2 began with a 19.6-unit stand-in measured on the frame; the
+real model replaced it.) The scope's eye, 18.3, is an estimate.
 
 **The reticle and the rifle are the disc's** ("The console's reticle: two bitmaps at one texel per pixel, a
 65-pixel cross on the frame's centre"; "The SEAL's rifle and the game's own bullet mark"). `HUD2_TXR.ZED`'s
@@ -514,24 +553,24 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
 
 ## Known gaps
 
-- **The SEAL is a stand-in.** The body is a mannequin at the measured size whose legs swing by a stride model;
-  the real model (`CLIB_GEO.ZED`'s skinned `CMesh` chain, the `0x70` unpack no decoder here reads), its 32-node
-  skeleton and its animations (`MPZANIM.ZAR`, unopened) are web sprint 3's first candidate. With them would come
-  the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
-- **The shot's effects are not drawn.** The round leaves the rifle's `firepoint` (above), but the muzzle's CZANIM
-  animation (`muzzle_m4`: the shell, the flash hider's flash, the smoke; the M4A1 SD's `muzzle_m4SD` has no flash)
-  is not played -- the zAnim command payloads are not decoded (research 77 §10). The swap's hand-off phases (0.72 / 0.82 /
-  0.62 / 0.79) are a reading of the clips' callbacks, not settled; no bullet surface class was found, so every polygon stops a round. The scoped sway moves the
-  rounds but nothing on screen (no reader of it that draws was found: research 84 section 8).
-- **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
-  the material half of the camera's surface test is left out.
+- **The swap's hand-off phases are a reading.** The phases at which a weapon changes hands (0.72 / 0.82 / 0.62 /
+  0.79) are read from the clips' callbacks, not settled, and the 0.4 s ease between mounts is the viewer's own
+  (a named reading). The scoped sway moves the rounds but nothing on screen, as in the game as far as it was read
+  (no reader of it that draws was found: [research 84](docs/research/84-accuracy-and-recoil.md) section 8); a
+  console check would confirm.
+- **A round stops at the first surface.** The game's penetration rule is read (research 84 section 13: materials
+  whose `PENETRATION` is 1.0 are passed over), but the page's `Fire` still stops at the first polygon (research 89
+  section 8).
+- **Some effects are open.** The tracer's travelling model, a lifetime count-down on marks and footprints, and the
+  skinned body under a light's pass (research 89 section 8). Maps with no game explosion effect show stand-in
+  sprites for a grenade's blast.
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall
   are the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement
   (W2.2c: the instruments and the recipe are in the tree, [research 79](../docs/research/79-seal-speed-on-the-console.md))
   waits for a window the owner names. Until it runs the prone root (1.8), the prone body (3.0), the scope's eye
   heights (the eye 18.3 standing, and the crouched and prone eyes derived from it) and the crouch and prone body
   columns are estimates, and two numbers are readings only: the crouch diagonal's speed-up along its axis (19.8 at
-  45°) and the headroom ray's start (the feet + 14). The slope and water slow-down are not modelled.
+  45°) and the headroom ray's start (the feet + 14). The steep-ground slide is not modelled (research 86 section 6.2).
 - **A kerb between 6 and 6.5 units over a lower floor is passed over.** The floor selection takes the highest
   floor at or under the feet + 6, so such a kerb, climbable by the step rule, is walked under for the floor below
   (inherited from the selection, not the step rule's). The record's layer mask is probed as all layers (the
@@ -571,7 +610,9 @@ Entertainment.
 
 ## Licence
 
-GPL-3.0, the repository's ([`LICENSE`](../LICENSE)). CI for this directory is
+GPL-3.0, the repository's ([`LICENSE`](../LICENSE)); contributions are accepted under GPL-3.0-compatible terms
+([`CONTRIBUTING.md`](CONTRIBUTING.md), [`../CONTRIBUTING.md`](../CONTRIBUTING.md)). The licence covers this project's
+code and documentation only, never the game or its data. CI for this directory is
 [`.github/workflows/web.yml`](../.github/workflows/web.yml), which runs only when `web/` changes.
 
 ## Multiplayer server (web sprint 3)
