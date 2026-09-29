@@ -1,5 +1,6 @@
 import { parseRdr, rdrGet, readZarMembers, readZdbMember, Zar, type AssetSource, type RdrNode } from '@s2u/archive';
 import { flattenScene, parseAnimSets, parseSceneGraph, parseWorldRoot, worldCollision, type SceneNode } from '@s2u/scene';
+import { SOUND_FALLBACKS, SOUND_NAME_FIXES } from './soundNames';
 import {
   callbackSounds, findReverbPresets, parseBankFile, parseSoils, parseSoundScript, renderLoop, SampleCache,
   SOCOM_REVERB_MODE, soundHash, soundParams, weaponSounds, zanimEmitters, zanimSounds, type Material, type RenderedSound,
@@ -226,7 +227,8 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
         for (const n of sounds) wanted.add(n);
       }
     }
-    for (const n of casingSounds) wanted.add(n);
+    // Through the effects' name table: the data's `.BUL_CASE_METAL` is the banks' `.BUL_CAS_METAL` (`./soundNames`).
+    for (const n of casingSounds) wanted.add(SOUND_NAME_FIXES[n] ?? n);
     if (damageVoice) wanted.add(damageVoice);
     try { await borrowMissing(source, banks, sets, wanted, archive, missing); } catch (e) { missing.push(`borrowing: ${why(e)}`); }
     for (const { bytes } of banks) {
@@ -283,7 +285,9 @@ export async function borrowMissing(
     banks.push({ file: best[0], bytes: bytes.slice(), only });
     need = need.filter((n) => !only.includes(n));
   }
-  for (const n of need) missing.push(`${archive}: no bank holds ${n}`);
+  // A name with a stand-in the banks now hold is not missing: the play takes the stand-in (`soundFor`).
+  const held = new Set([...have, ...banks.flatMap((b) => b.only ?? [])]);
+  for (const n of need) if (!SOUND_FALLBACKS[n]?.some((f) => held.has(f))) missing.push(`${archive}: no bank holds ${n}`);
 }
 
 /**

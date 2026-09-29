@@ -6,6 +6,7 @@ import {
 } from '@s2u/sound';
 import type { SoundData } from './soundData';
 import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
+import { soundFor } from './soundNames';
 
 /**
  * The game's own sounds in the browser (web/docs/research/81): the map's 989snd banks decoded from the disc, each sound
@@ -600,7 +601,8 @@ export class GameAudio {
   private callback(name: string, position: Vec3 | null): string | null {
     const sounds = this.callbacks.get(name);
     if (!sounds) { this.dropped.silent++; return null; }                // a zAnim that plays no sound, or no such zAnim
-    const played = sounds.filter((sound) => this.play(sound, position, 'callback'));
+    // Through the effects' name table (`./soundNames`): a casing's `.BUL_CASE_METAL` is the banks' `.BUL_CAS_METAL`.
+    const played = sounds.map((sound) => soundFor(sound, (n) => this.has(n))).filter((sound) => this.play(sound, position, 'callback'));
     return played[0] ?? null;
   }
 
