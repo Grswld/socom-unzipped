@@ -255,6 +255,8 @@ const effects = new Effects(Math.random, (name, at) => { audio.play(name, at); }
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
 effects.setWorld(() => walk.grid());
+// The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
+effects.setLightReceivers(() => [view?.group, view?.weapon].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).

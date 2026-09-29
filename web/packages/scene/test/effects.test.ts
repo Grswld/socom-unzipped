@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
-  CmdBytes, decodeEffectOp, decodeEffectProgram, frictionFactor, keyAt, launchDirection, launchMotion, MOTION,
+  CmdBytes, decodeEffectOp, lightAt, lightRange, NODE_CALLER, decodeEffectProgram, frictionFactor, keyAt, launchDirection, launchMotion, MOTION,
   parseAnimSets, particleColour, particleFade, particleScale, sourceVelocity, stepMotion, terminalFactor, tracerRound,
   ZANIM_COMMAND_NAMES, ZCMD,
-  type EffectProgram, type MotionWorld, type ObjectMotion, type ParticleSource,
+  type EffectProgram, type MotionWorld, type ZAnimLight, type ObjectMotion, type ParticleSource,
 } from '../src/index';
 
 /**
@@ -155,6 +155,15 @@ describe('PARTICLE_SOURCE\'s keys and fades', () => {
   });
 });
 
+describe('the light pass (the VU1 handler at 0x23d8)', () => {
+  it('falls off with the light height over the surface and is gated by the side it faces', () => {
+    expect(lightAt([0, 10, 0], [0, 1, 0], [0, 100])).toEqual({ f: 0.5 * 0.9, gate: 1 });
+    expect(lightAt([0, 150, 0], [0, 1, 0], [0, 100]).f).toBe(0);
+    expect(lightAt([0, -10, 0], [0, 1, 0], [0, 100]).gate).toBe(0);  // behind the surface
+    expect(lightAt([0, 0.5, 0], [0, 1, 0], [0, 100]).gate).toBe(0.5);
+  });
+});
+
 describe('the tracers (FUN_003cb1a0, FUN_003c5ac0, FUN_003cabe0)', () => {
   it('every fourth round of a tracer weapon, never the suppressed ones', () => {
     expect([1, 2, 3, 4, 5, 8].map((r) => tracerRound(54, r))).toEqual([false, false, false, true, false, true]);   // M4A1
@@ -212,6 +221,22 @@ describe.skipIf(!MP2)(`the M4A1 SD's muzzle effect on Frostfire's CZANIM${MP2 ? 
     // shell_smoke_big, the same role, is on.
     const big = ops('shell_smoke_big').find((o) => o.op === 'particles') as { source: ParticleSource };
     expect(big.source.setActive).toBe(true);
+  });
+
+  it('the lights: light_flash_large adds a 100-190 spot shrinking to nothing by 0.5 s; zoom_flash_fire is at the caller', () => {
+    const big = ops('light_flash_large').find((o) => o.op === 'light') as { light: ZAnimLight };
+    expect(big.light.blend).toBe(0x48);                               // additive
+    expect(big.light.atContext).toBe(true);
+    expect(big.light.rgb.map((v) => +v.toFixed(2))).toEqual([214.2, 242.25, 216.75]);
+    expect(big.light.opacity).toBe(64);
+    expect(big.light.duration).toBe(1);
+    expect(lightRange(big.light, 0)).toEqual([100, 190]);
+    expect(lightRange(big.light, 0.25)).toEqual([50, 95]);
+    expect(lightRange(big.light, 0.6)).toEqual([0, 0]);
+    const muzzle = ops('zoom_flash_fire').find((o) => o.op === 'light') as { light: ZAnimLight };
+    expect(muzzle.light.node).toBe(NODE_CALLER);
+    expect(muzzle.light.blend).toBe(0x44);
+    expect(muzzle.light.ranges.map((k) => k.map((v) => +v.toFixed(2)))).toEqual([[0, 5, 12], [0.05, 15, 60], [0.1, 0, 0]]);
   });
 
   it('FRAG_sparks throws its spark node by a fixed launch: +0x54 is the direction, block A the speed and the pull', () => {

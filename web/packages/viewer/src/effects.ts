@@ -9,6 +9,7 @@ import type { Rgba } from '@s2u/gs';
 import { EffectRun, type EffectHost, type OpTick } from './effectRunner';
 import { buildEffectModel, effectBrighten, markMaterial } from './effectMaterials';
 import { ParticleSystem } from './particles';
+import { EffectLights } from './effectLights';
 import type { EffectData, EffectTexture } from './effectData';
 import type { FireEvent, MarkTable } from './fire';
 
@@ -93,6 +94,8 @@ export interface EffectStats {
   sources: number;
   emitted: number;
   lastShell: { position: Vec3; velocity: Vec3 } | null;
+  /** The `LIGHT` passes live now, begun so far, their overlays, and their ranges now. */
+  lights: ReturnType<EffectLights['stats']>;
   /** The effect models drawn now, by name. */
   shown: string[];
   bounces: number;
@@ -112,6 +115,8 @@ export class Effects {
   private readonly materials = new Map<string, MeshBasicNodeMaterial>();
   private runs: EffectRun[] = [];
   private readonly particles: ParticleSystem;
+  /** The `LIGHT` commands' passes over the world (`./effectLights`). */
+  readonly lights = new EffectLights();
   private readonly valves = new Map<string, number>();
   private readonly played: Record<string, number> = {};
   private grid: () => Grid | null = () => null;
@@ -128,6 +133,12 @@ export class Effects {
     this.object.name = 'effects';
     this.particles = new ParticleSystem(random);
     this.object.add(this.particles.object);
+    this.object.add(this.lights.object);
+  }
+
+  /** What the lights re-draw (the world's group, the held weapon): `EffectLights.setReceivers`. */
+  setLightReceivers(roots: () => Object3D[]): void {
+    this.lights.setReceivers(roots);
   }
 
   /** The hull the casings bounce on (the walk's grid). */
@@ -151,6 +162,7 @@ export class Effects {
     for (const p of data?.programs ?? []) if (!this.programs.has(p.name.toLowerCase())) this.programs.set(p.name.toLowerCase(), p);
     this.textures = new Map(data?.textures ?? []);
     this.particles.setTextures(this.textures);
+    this.lights.setTexture(this.textures.get('light_map.tif') ?? null);
     for (const model of data?.models ?? []) this.models.set(model.name, buildEffectModel(model, this.textures, this.materials));
   }
 
@@ -228,6 +240,7 @@ export class Effects {
     }
     this.runs = alive;
     this.particles.update(dt, camera);
+    this.lights.update(dt);
   }
 
   /** Everything playing stops (a new map). */
@@ -240,6 +253,7 @@ export class Effects {
     this.runs = [];
     this.valves.clear();
     this.particles.clear();
+    this.lights.clear();
     this.lastShell = null;
   }
 
@@ -249,7 +263,7 @@ export class Effects {
       missing: this.data?.missing.slice(0, 16) ?? [],
       runs: this.runs.length, played: { ...this.played }, shells: this.shellsLive(), particles: this.particles.count(),
       sources: this.particles.activeSources(), emitted: this.particles.emitted,
-      lastShell: this.lastShell, bounces: this.bounces, sounds: this.sounds.slice(-16),
+      lastShell: this.lastShell, bounces: this.bounces, sounds: this.sounds.slice(-16), lights: this.lights.stats(),
       shown: this.runs.map((r) => (r.context as RunContext).instance).filter((i): i is Instance => !!i && i.model !== '' && i.object.visible).map((i) => i.model),
     };
   }
@@ -413,6 +427,19 @@ export class Effects {
         const follow = op.source.follow ? () => this.nodeMatrix(run, op.source.node) : null;
         this.particles.emit(op.source, node, ctx.place, run.program.name, () => !run.finished, run, follow);
         return;
+      }
+      case 'light': {
+        // Where it is (decomp 111995-112027): its node's place (flag 0x2: the caller), else the context's point (0x8),
+        // plus its offset (0x4).
+        const l = op.light;
+        const m = l.node !== null ? this.nodeMatrix(run, l.node) : null;
+        const base: Vec3 = m ? [m.elements[12]!, m.elements[13]!, m.elements[14]!]
+          : l.atContext && ctx.place.position ? [...ctx.place.position] : this.runPosition(run);
+        this.lights.begin(l, [base[0] + l.offset[0], base[1] + l.offset[1], base[2] + l.offset[2]], () => !run.finished);
+        // The command runs its length (+0x3c) before its sequence goes on [reading: the tick keys the ranges by the
+        // command's own time]; the light itself lasts until the animation ends.
+        let t = 0;
+        return l.duration > 0 ? (dt) => (t += dt) >= l.duration : undefined;
       }
       case 'sound': {
         const at = op.node > 0 ? this.nodeMatrix(run, op.node) : null;

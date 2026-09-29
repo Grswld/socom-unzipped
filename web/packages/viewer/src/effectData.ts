@@ -117,6 +117,7 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
     if (decals) marks.push(...decalSetRows(parseRdr(decals), MARK_SET)); else missing.push('READERC.ZAR: no decals.rdr');
   } catch (e) { missing.push(`READERC.ZAR: ${why(e)}`); }
   for (const m of marks) textureNames.add(m.texture.toLowerCase());
+  textureNames.add('light_map.tif');                  // the `LIGHT` pass's spot (`FUN_00315110`'s default)
 
   let defaultMaterial = 0;
   const readerm = await member('READERM.ZAR');

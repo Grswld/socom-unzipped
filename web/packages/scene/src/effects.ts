@@ -61,6 +61,74 @@ export class CmdBytes {
   vec3(o: number): Vec3 { return [this.f32(o), this.f32(o + 4), this.f32(o + 8)]; }
 }
 
+/**
+ * `LIGHT` (32; tick `FUN_00264cb0`, decomp 111906-112214; research 89 §10): a dynamic light the engine draws as a second
+ * pass of every lit visual it reaches -- `light_map.tif` projected on the surface, its colour times the falloff.
+ */
+export interface ZAnimLight {
+  flags: number;
+  /** +8 with flag 0x2: the node it sits at (`NODE_CALLER`: the muzzle's weapon), or null. */
+  node: number | null;
+  /** Flag 0x8: at the context's position (an explosion's point). */
+  atContext: boolean;
+  /** +0x14 with flag 0x4, added. */
+  offset: Vec3;
+  /** 0..255 (+0x20, flag 0x40). */
+  rgb: Vec3;
+  /** The pass's vertex alpha, 128 = 1 (+0x2c, flag 0x80; the default 64, `FUN_00315110`). */
+  opacity: number;
+  /** The GS ALPHA selector (+9 with flag 0x100, else 0x44): 0x44 source alpha, 0x48 additive. */
+  blend: number;
+  /** The ranges `(t, min, max)` (s16 count +0x34, offset +0x36, flag 0x20), linear, the last held; or the static pair (flag 0x10). */
+  ranges: [number, number, number][];
+  /** Seconds (+0x3c): the command's length. */
+  duration: number;
+}
+
+export function decodeLight(c: CmdBytes): ZAnimLight {
+  const flags = c.u16(4);
+  const ranges: [number, number, number][] = [];
+  if (flags & 0x20) {
+    const n = c.i16(0x34), o = c.i16(0x36);
+    for (let i = 0; i < n && o > 0; i++) ranges.push([c.f32(o + 12 * i), c.f32(o + 12 * i + 4), c.f32(o + 12 * i + 8)]);
+  } else if (flags & 0x10) ranges.push([0, c.f32(0x0c), c.f32(0x10)]);
+  return {
+    flags, node: flags & 0x2 ? c.i8(8) : null, atContext: (flags & 0x8) !== 0,
+    offset: flags & 0x4 ? c.vec3(0x14) : [0, 0, 0],
+    rgb: flags & 0x40 ? c.vec3(0x20) : [255, 255, 255],
+    opacity: flags & 0x80 ? c.f32(0x2c) : 64,
+    blend: flags & 0x100 ? c.u8(9) : 0x44,
+    ranges, duration: c.f32(0x3c),
+  };
+}
+
+/** A light's `(min, max)` range at `t` seconds: the keys linear, the last held (decomp 112110-112181). */
+export function lightRange(light: Pick<ZAnimLight, 'ranges'>, t: number): [number, number] {
+  const k = light.ranges;
+  if (k.length === 0) return [0, 0];
+  if (t <= k[0]![0]) return [k[0]![1], k[0]![2]];
+  for (let i = 1; i < k.length; i++) {
+    if (t <= k[i]![0]) {
+      const a = k[i - 1]!, b = k[i]!, span = b[0] - a[0], f = span > 0 ? (t - a[0]) / span : 1;
+      return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+    }
+  }
+  const last = k[k.length - 1]!;
+  return [last[1], last[2]];
+}
+
+/**
+ * The light pass at one point (the VU1 handler at 0x23d8, research 89 §10): `L` the light minus the point, `n` the
+ * surface normal; `h = max(L.n, 0)`, the falloff `f = 0.5 clamp((max - h) / (max - min))`, the gate `min(h, 1)`. The
+ * pass's colour is `rgb f` and its alpha `opacity f gate`, over the spot's texel at `0.5 + (L.t, L.b) / max`.
+ */
+export function lightAt(L: Vec3, n: Vec3, range: [number, number]): { f: number; gate: number } {
+  const h = Math.max(L[0] * n[0] + L[1] * n[1] + L[2] * n[2], 0);
+  const [min, max] = range;
+  const f = max > min ? 0.5 * Math.min(1, Math.max(0, (max - h) / (max - min))) : 0;
+  return { f, gate: Math.min(h, 1) };
+}
+
 /** A sub-command of an `IF`/`ELSEIF`'s condition list, as far as the effects need one. */
 export type EffectCondition =
   /** `RANDOM_WEIGHT` (tick `FUN_0025dcf0`, decomp 107832): true when `rand() / 2^31 <= p`, the f32 at +4. */
@@ -100,8 +168,8 @@ export type EffectOp =
   | { op: 'particles'; source: ParticleSource }
   /** `SOUND` (30): the sound name (u16 +6, through the name table) at the node +16 (research 81 §6). */
   | { op: 'sound'; sound: string; node: number }
-  /** `LIGHT` (32): an RGB (f32 x3 at +0x20, 0..255) and a radius (+0x2c); drawn by the engine's dynamic lights (not modelled). */
-  | { op: 'light'; rgb: Vec3; radius: number }
+  /** `LIGHT` (32): a dynamic light (`ZAnimLight`). */
+  | { op: 'light'; light: ZAnimLight }
   /** `CALL_ANIMATION` (45; begin `FUN_0025d5c0`): the animation named at +7, run at this one's place. */
   | { op: 'call'; anim: string }
   /** `STOP_SEQUENCE` (51): this animation's sequence named at +4 (a name index). */
@@ -192,7 +260,7 @@ export function decodeEffectOp(cmd: Pick<ZAnimCommand, 'set' | 'cmd' | 'bytes'>,
     case ZCMD.OBJECT_MOTION: return { op: 'motion', motion: decodeObjectMotion(c, names) };
     case ZCMD.PARTICLE_SOURCE: return { op: 'particles', source: decodeParticleSource(c, names) };
     case ZCMD.SOUND: return { op: 'sound', sound: NAME(names, c.u16(6)), node: c.i8(16) };
-    case ZCMD.LIGHT: return { op: 'light', rgb: c.vec3(0x20), radius: c.f32(0x2c) };
+    case ZCMD.LIGHT: return { op: 'light', light: decodeLight(c) };
     case ZCMD.CALL_ANIMATION: return { op: 'call', anim: NAME(names, c.u8(7)) };
     case ZCMD.STOP_SEQUENCE: return { op: 'stopSequence', sequence: NAME(names, c.u16(4)) };
     case ZCMD.FAIL: return { op: 'fail' };
