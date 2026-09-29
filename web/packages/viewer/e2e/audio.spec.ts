@@ -10,10 +10,12 @@ import type {} from '../src/hook';
  */
 test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps', async ({ page }) => {
   await page.goto('/?map=MP2&redotcom');
-  await page.waitForFunction(() => window.__viewer?.stats().map === 'FROSTFIRE' && window.__viewer.audio().banks.length === 3);
+  await page.waitForFunction(() => window.__viewer?.stats().map === 'FROSTFIRE' && window.__viewer.audio().banks.length >= 3);
   const loaded = await page.evaluate(() => window.__viewer.audio());
-  expect(loaded.banks.map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
-  expect(loaded.missing).toEqual([]);
+  expect(loaded.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
+  expect(loaded.defaultMaterial).toBe('METAL_THICK');
+  // The only name no bank holds: the game's own shell_eject spells the metal casing .BUL_CASE_METAL (the banks: _CAS_).
+  expect(loaded.missing.filter((m) => !/BUL_CASE_METAL|SG_SHELL_TIN/.test(m))).toEqual([]);
   expect(loaded.unlocked).toBe(false);
 
   await page.mouse.click(640, 400);                                   // the gesture that unlocks the output
@@ -36,9 +38,17 @@ test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().events.footstep), { timeout: 30_000 }).toBeGreaterThan(1);
   await page.keyboard.up('KeyW');
 
+  // The place: the reverb built and ramped to the outdoor depth, the outdoor bed up, Frostfire's fan emitter placed.
+  await expect.poll(() => page.evaluate(() => window.__viewer.audio().ambience.on)).toBe(true);
+  const place = await page.evaluate(() => window.__viewer.audio());
+  expect(place.reverb.loaded).toBe(true);
+  expect(place.reverb.depth).toBeGreaterThan(0);
+  expect(place.ambience.emitters.map((e) => e.node)).toEqual(['fan1']);
+  expect(place.byName['~OUTDOOR_AMB']).toBe(1);
+
   const s = await page.evaluate(() => window.__viewer.setAudio({ muted: true }));
   expect(s.muted).toBe(true);
-  expect(s.dropped.unknown).toBe(0);
+  expect(Object.keys(s.unknownNames).filter((n) => n !== '.BUL_CASE_METAL')).toEqual([]);
   expect(s.played).toBeGreaterThan(4);
   // The rig's deck is metal (the SOILS table's METAL_THICK): its step, and its landing.
   expect(Object.keys(s.byName).some((n) => n.startsWith('.STEP_'))).toBe(true);

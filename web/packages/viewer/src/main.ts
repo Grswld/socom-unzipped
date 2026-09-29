@@ -158,8 +158,8 @@ const whiteOut = new WhiteOut(canvas?.parentElement ?? null);
 grenade.on('explode', (info) => {
   if (info.flash) whiteOut.start(info.flash);
   // The zAnim's sound: the effects play it with the run (`effects.play`'s sound door); without the run, the material's
-  // variant, else the base (`frag_grenade`: .GREN_MED) -- the variants reach the sound through a call.
-  if (!info.byEffects && !audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
+  // variant, whose zAnim starts the base (`frag_grenade`: .GREN_MED) -- the audio follows the call (research 81 §6).
+  if (!info.byEffects) audio.onAnimCallback(info.anim, info.pos);
   // The game's screen shake by the distance (research 83, `./look`).
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
 });
@@ -568,6 +568,10 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id === wantedSound) audio.setData(message.data);
     return;
   }
+  if (message.kind === 'soundLoops') {
+    if (message.id === wantedSound) audio.setLoops(message.loops);
+    return;
+  }
   if (message.kind === 'effects') {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
@@ -831,6 +835,7 @@ async function boot(): Promise<void> {
     effects.update(dt, fly.camera); // EFFECTS: the zAnim effect runs, the casings, the particles
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
+    walkSounds.frame([fly.camera.position.x, fly.camera.position.y, fly.camera.position.z]);   // the reverb, the beds
     grenade.update(dt);
     whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw

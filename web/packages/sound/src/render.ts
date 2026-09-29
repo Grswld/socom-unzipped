@@ -56,11 +56,23 @@ export interface RenderOptions {
   /** RAND_PLAY's last pick and PLAY_CYCLE's index, kept per grain across plays as the IRX keeps them in the grain. */
   state?: Map<string, number>;
   maxSeconds?: number;
+  /**
+   * A looping bed or emitter: rendered exactly `maxSeconds` long with nothing keyed off at the end, for the page to
+   * loop (`./audio`'s ambience) -- a one-shot's voices are released at `maxSeconds` and their release rendered.
+   */
+  loop?: boolean;
 }
 
 export interface RenderedSound {
+  /** The dry mix: every voice but a tone flagged reverb-only (flags bit 4). */
   left: Float32Array;
   right: Float32Array;
+  /**
+   * The reverb send: the voices whose tone carries flags bit 0 (web/docs/research/81 §9: SOCOM's IRX sets the voice's
+   * VMIXEL/VMIXER effect-input bits from it, `989SND.IRX` decomp 14339-14345), at their volumes; null with none.
+   */
+  sendLeft: Float32Array | null;
+  sendRight: Float32Array | null;
   sampleRate: number;
   /** Voices the grains started. */
   voices: number;
@@ -221,6 +233,9 @@ interface Voice {
   killAt: number;
   /** When its sample runs out at its pitch, for WAIT_FOR_ALL_VOICES: a looping sample's is its key-off. */
   endsAt: number;
+  /** Tone flags bit 0: into the reverb; bit 4: into the reverb only (the dry mix's VMIXL/VMIXR bits cleared). */
+  reverb: boolean;
+  dry: boolean;
 }
 
 interface Handler {
@@ -302,6 +317,7 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
     voices.push({
       handler: h, sample, step, pos: 0, left: voiceLevel(l), right: voiceLevel(r),
       env: new Envelope(tone.adsr1, tone.adsr2), start: frame, keyOffAt: Infinity, killAt: Infinity,
+      reverb: (tone.flags & 1) !== 0, dry: (tone.flags & 0x10) === 0,
       endsAt: sample.loops || step <= 0 ? Infinity : frame + Math.ceil(sample.pcm.length / step),
     });
     started.push(tone.sampleOffset);
@@ -443,18 +459,19 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
     }
     flush();
   }
-  // A looping sample nothing keyed off is released at the guard.
+  // A looping sample nothing keyed off is released at the guard -- or, for a loop, simply cut there.
   const cap = maxFrames;
-  for (const v of voices) if (v.keyOffAt === Infinity && v.sample.loops) v.keyOffAt = cap;
+  if (!options.loop) for (const v of voices) if (v.keyOffAt === Infinity && v.sample.loops) v.keyOffAt = cap;
 
   // The voices, sample by sample: the envelope, the linear interpolation, the pair.
-  let length = 0;
+  let length = options.loop ? cap : 0;
   const rendered: { v: Voice; l: Float32Array }[] = [];
-  const limit = cap + OUTPUT_RATE;   // a release after the cap still ends
+  const limit = options.loop ? cap : cap + OUTPUT_RATE;   // a one-shot's release after the cap still ends
   for (const v of voices) {
-    const out: number[] = [];
+    const out = new Float32Array(Math.max(0, limit - v.start));
     const pcm = v.sample.pcm;
-    for (let n = 0; v.start + n < limit; n++) {
+    let n = 0;
+    for (; v.start + n < limit; n++) {
       if (v.start + n >= v.killAt) break;
       if (v.start + n === v.keyOffAt) v.env.keyOff();
       if (!v.env.tick()) break;
@@ -464,21 +481,46 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
         else break;
       }
       const i1 = Math.min(i0 + 1, pcm.length - 1), frac = v.pos - i0;
-      out.push((pcm[i0]! * (1 - frac) + pcm[i1]! * frac) * (v.env.level / 32767));
+      out[n] = (pcm[i0]! * (1 - frac) + pcm[i1]! * frac) * (v.env.level / 32767);
       v.pos += v.step;
     }
-    rendered.push({ v, l: Float32Array.from(out) });
-    length = Math.max(length, v.start + out.length);
+    rendered.push({ v, l: out.subarray(0, n) });
+    if (!options.loop) length = Math.max(length, v.start + n);
   }
   const left = new Float32Array(length), right = new Float32Array(length);
+  const anySend = rendered.some(({ v }) => v.reverb);
+  const sendLeft = anySend ? new Float32Array(length) : null, sendRight = anySend ? new Float32Array(length) : null;
   let peak = 0;
   for (const { v, l } of rendered) {
     const gl = v.left / 0x7ffe / 32768, gr = v.right / 0x7ffe / 32768;
-    for (let n = 0; n < l.length; n++) {
-      left[v.start + n]! += l[n]! * gl;
-      right[v.start + n]! += l[n]! * gr;
+    const m = Math.min(l.length, length - v.start);
+    if (v.dry) {
+      for (let n = 0; n < m; n++) { left[v.start + n]! += l[n]! * gl; right[v.start + n]! += l[n]! * gr; }
+    }
+    if (v.reverb && sendLeft && sendRight) {
+      for (let n = 0; n < m; n++) { sendLeft[v.start + n]! += l[n]! * gl; sendRight[v.start + n]! += l[n]! * gr; }
     }
   }
   for (let n = 0; n < length; n++) peak = Math.max(peak, Math.abs(left[n]!), Math.abs(right[n]!));
-  return { left, right, sampleRate: OUTPUT_RATE, voices: voices.length, samples: started, peak };
+  return { left, right, sendLeft, sendRight, sampleRate: OUTPUT_RATE, voices: voices.length, samples: started, peak };
+}
+
+/**
+ * A looping sound (a bed, an emitter) rendered `seconds + fade` long and folded -- its last `fade` seconds crossed
+ * equal-power into its first -- so the buffer repeats with no seam. The console runs such a sound's grains for ever;
+ * a buffer of a few seconds' worth repeats past notice (the page's `LOOP_SECONDS_PLACEHOLDER`).
+ */
+export function renderLoop(bank: SoundBank, index: number, samples: SampleCache, seconds: number, fade: number, options: RenderOptions = {}): RenderedSound {
+  const r = renderSound(bank, index, samples, { ...options, vol: options.vol ?? 0x400, pan: options.pan ?? 0, loop: true, maxSeconds: seconds + fade });
+  const loopFrames = Math.round(seconds * OUTPUT_RATE), fadeFrames = Math.round(fade * OUTPUT_RATE);
+  const fold = (x: Float32Array | null): Float32Array | null => {
+    if (!x) return null;
+    const y = x.slice(0, loopFrames);
+    for (let i = 0; i < fadeFrames && loopFrames + i < x.length; i++) {
+      const t = i / fadeFrames;
+      y[i] = x[i]! * Math.sin((t * Math.PI) / 2) + x[loopFrames + i]! * Math.cos((t * Math.PI) / 2);
+    }
+    return y;
+  };
+  return { ...r, left: fold(r.left)!, right: fold(r.right)!, sendLeft: fold(r.sendLeft), sendRight: fold(r.sendRight) };
 }

@@ -114,3 +114,43 @@ export function landingSounds(material: Material | undefined, cls: LandingClass)
   if (cls >= 2) out.push(HARD_LANDING_SOUND);
   return out;
 }
+
+/** `.BUL_PASSING` (0x3fc508) and `.ROCKET_BY` (0x3fc518), the two sounds `FUN_003c4700` hands the projectiles. */
+export const BULLET_PASSING_SOUND = '.BUL_PASSING';
+export const ROCKET_BY_SOUND = '.ROCKET_BY';
+/** `FUN_00598000`'s distances: a round within 20 units of the actor, a rocket within 100 (once), a flinch within 70. */
+export const BULLET_PASSING_DISTANCE = 20;
+export const ROCKET_BY_DISTANCE = 100;
+
+/** The point of segment a-b nearest to p, and its distance (`FUN_00308b00`'s closest approach). */
+export function closestOnSegment(p: readonly number[], a: readonly number[], b: readonly number[]): { point: [number, number, number]; distance: number } {
+  const d = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!];
+  const len2 = d[0]! * d[0]! + d[1]! * d[1]! + d[2]! * d[2]!;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p[0]! - a[0]!) * d[0]! + (p[1]! - a[1]!) * d[1]! + (p[2]! - a[2]!) * d[2]!) / len2)) : 0;
+  const point: [number, number, number] = [a[0]! + d[0]! * t, a[1]! + d[1]! * t, a[2]! + d[2]! * t];
+  return { point, distance: Math.hypot(p[0]! - point[0], p[1]! - point[1], p[2]! - point[2]) };
+}
+
+/**
+ * `FUN_00598000` (decomp 454613-454655): a projectile's segment this tick against an actor's position (`+0x1c`, the
+ * feet). A bullet whose segment comes within `BULLET_PASSING_DISTANCE` plays `.BUL_PASSING` at its nearest point (at
+ * volume 1.0, `vtable+0x14`); a rocket within `ROCKET_BY_DISTANCE`, `.ROCKET_BY`, once a rocket. The shooter's own
+ * rounds are not the rule's: they leave from the shooter, so every one would pass at 0 -- the game skips them (a
+ * projectile flag, `+4` bit 3, and the shooter test at the head of the function), and so does the viewer.
+ */
+export function passingSound(actor: readonly number[], from: readonly number[], to: readonly number[], rocket = false): { sound: string; at: [number, number, number] } | null {
+  const { point, distance } = closestOnSegment(actor, from, to);
+  if (distance < (rocket ? ROCKET_BY_DISTANCE : BULLET_PASSING_DISTANCE)) return { sound: rocket ? ROCKET_BY_SOUND : BULLET_PASSING_SOUND, at: point };
+  return null;
+}
+
+/**
+ * The SEAL's hurt voice on a hard landing: `FUN_005ac1f0` takes `damage = (speed - light) / (deadly - light)` (0 at or
+ * under the light speed) off each body part's health (`+0xffc`, six parts) and then runs the damage reaction
+ * (`FUN_005a54d0`); the character's `sounds (CHRSND_DAMAGE ...)` in `character.rdr` (`mp_seal1`: `.SEAL_DAMAGE`) is
+ * the voice a hurt SEAL plays. A reading: the landing's damage is certain, the voice's call inside the reaction was not
+ * traced. True for a landing class that deals damage (1 and up).
+ */
+export function landingHurts(cls: LandingClass): boolean {
+  return cls >= 1;
+}

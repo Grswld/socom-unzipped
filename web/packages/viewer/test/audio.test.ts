@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
-import type { RenderedSound } from '@s2u/sound';
-import { GameAudio, LISTENING_GAIN_PLACEHOLDER, type AudioOut } from '../src/audio';
+import { parseZdb, Zar, zdbMember } from '@s2u/archive';
+import { parseSceneGraph, worldCollision } from '@s2u/scene';
+import type { RenderedSound, ReverbImpulse } from '@s2u/sound';
+import { GameAudio, LISTENING_GAIN_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER, panGains, type AudioOut, type LoopHandle } from '../src/audio';
 import { soundFromDisc, type SoundData } from '../src/soundData';
 import { WalkSounds, type WalkSignals } from '../src/walkSounds';
 import type { AnimStats } from '../src/animator';
@@ -17,10 +20,20 @@ class Recorder implements AudioOut {
   unlocked = false;
   gain = -1;
   played: RenderedSound[] = [];
+  reverb: ReverbImpulse | null = null;
+  ramps: [number, number][] = [];
+  loops: { sound: RenderedSound; gains: [number, number]; stopped: boolean }[] = [];
   get state(): string { return this.unlocked ? 'running' : 'locked'; }
   unlock(): void { this.unlocked = true; }
   setGain(gain: number): void { this.gain = gain; }
   play(sound: RenderedSound): void { this.played.push(sound); }
+  setReverb(ir: ReverbImpulse | null): void { this.reverb = ir; }
+  rampReverb(depth: number, seconds: number): void { this.ramps.push([depth, seconds]); }
+  loop(sound: RenderedSound): LoopHandle {
+    const l = { sound, gains: [0, 0] as [number, number], stopped: false };
+    this.loops.push(l);
+    return { setGains: (left, right) => { l.gains = [left, right]; }, stop: () => { l.stopped = true; } };
+  }
 }
 
 const seeded = (seed: number) => (): number => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x80000000; };
@@ -34,6 +47,23 @@ async function mp2(): Promise<SoundData> {
   if (!data) throw new Error('no sound data');
   return data;
 }
+
+describe('a tree with no sound archives', () => {
+  it('says so in the stats and warns once', async () => {
+    const empty = mkdtempSync(resolve(tmpdir(), 's2u-nosound-'));
+    const d = await soundFromDisc(new FsAssetSource(empty), 'RUN/MP2.ZDB', 'MP2');
+    expect(d.banks).toEqual([]);
+    expect(d.missing[0]).toMatch(/^RUN\/SOUNDS\/BNKSTORE\.ZAR: /);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const audio = new GameAudio(new Recorder());
+    audio.setData(d);
+    audio.setData(d);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+    expect(audio.stats().missing[0]).toMatch(/BNKSTORE/);
+    expect(audio.onFootstep(7, null)).toBeNull();
+  });
+});
 
 describe('the output controls', () => {
   it('sets the gain from the volume and the mute', () => {
@@ -58,8 +88,13 @@ describe('the output controls', () => {
 describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
   it('reads the three banks, the script, the materials, the weapons and the callbacks', async () => {
     const d = await mp2();
-    expect(d.banks.map((b) => b.file)).toEqual(['MP2_am.bnk', 'MP2_fx.bnk', 'MP2_vc.bnk']);
-    expect(d.missing).toEqual([]);
+    expect(d.banks.filter((b) => !b.only).map((b) => b.file)).toEqual(['MP2_am.bnk', 'MP2_fx.bnk', 'MP2_vc.bnk']);
+    // Borrowed (PLACEHOLDER): the tin steps Frostfire's METAL_THIN floors ask for, the metal bounce of a grenade.
+    expect(d.banks.find((b) => b.only?.includes('.STEP_TIN'))).toBeDefined();
+    expect(d.banks.some((b) => b.only?.includes('.GREN_METAL'))).toBe(true);
+    // The names no bank on the disc holds: the game's own shell_eject spells the metal casing `.BUL_CASE_METAL` (the
+    // banks: `.BUL_CAS_METAL`), and names a shotgun shell on tin that no bank has.
+    expect(d.missing).toEqual(['MP2: no bank holds .BUL_CASE_METAL', 'MP2: no bank holds .SG_SHELL_TIN']);
     expect(new Map(d.params).get('.STEP_STONE')?.range).toEqual([30, 200]);
     expect(d.materials[STONE]!.step).toBe('.STEP_STONE');
     expect(d.weapons.find((w) => w.name === 'M4A1 SD')).toMatchObject({ fireClose: '.M4A1_SIL', reload: '.M4A1_SIL_RLD' });
@@ -79,18 +114,19 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(audio.onFootstep(STONE, [0, 0, -10])).toBe('.STEP_STONE');
     expect(audio.onFootstep(STONE, [0, 0, -10], { stick: 0.3 })).toBe('.STEALTH_STONE');
     expect(audio.onFootstep(STONE, [0, 0, -10], { stance: 2 })).toBe('.CRAWL_STONE');
-    expect(audio.onFootstep(0, [0, 0, -10])).toBeNull();               // UNKNOWN: no step sound
+    expect(audio.onFootstep(0, [0, 0, -10])).toBe('.STEP_METAL');      // 0: the map's DefaultMaterial, METAL_THICK
+    expect(audio.onFootstep(3, [0, 0, -10])).toBeNull();               // INVISIBLE_DI: no step sound
     expect(audio.onFootstep(STONE, [0, 0, -500])).toBeNull();          // past the step's RANGE (200)
     expect(audio.onFire('M4A1 SD', [0, 0, -5])).toBe('.M4A1_SIL');
     expect(audio.onReload('M4A1 SD')).toBe('.M4A1_SIL_RLD');
     expect(audio.onJump([0, 0, -5])).toBe('.JUMP_WHOOSH');
     expect(audio.onLand(80, STONE, [0, 0, -5])).toEqual(['.STONE_JUMP']);
-    expect(audio.onLand(220, STONE, [0, 0, -5])).toEqual(['.BONE_BRK_1']);
-    expect(audio.onLand(400, STONE, [0, 0, -5])).toEqual(['.STONE_JUMP', '.BONE_BRK_1']);
+    expect(audio.onLand(220, STONE, [0, 0, -5])).toEqual(['.BONE_BRK_1', '.SEAL_DAMAGE']);   // hurt: the damage voice
+    expect(audio.onLand(400, STONE, [0, 0, -5])).toEqual(['.STONE_JUMP', '.BONE_BRK_1', '.SEAL_DAMAGE']);
     expect(audio.onAnimCallback('shotgun_pump')).toBe('.SHOTGUN_COCK');
     const s = audio.stats();
     expect(s.map).toBe('MP2');
-    expect(s.banks.map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
+    expect(s.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
     expect(s.played).toBe(out.played.length);
     expect(s.byName['.STEP_STONE']).toBe(1);
     expect(s.dropped.range).toBe(1);
@@ -147,4 +183,107 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(s.byName['.M4A1_SIL']).toBe(3);
     expect(s.byName['.M4A1_SIL_RLD']).toBe(1);
   });
+
+  it('hears material 0 as the map DefaultMaterial, follows zAnim calls, and hurts on a hard landing', async () => {
+    const d = await mp2();
+    expect(d.materials[d.defaultMaterial]!.name).toBe('METAL_THICK');
+    const out = new Recorder(), audio = new GameAudio(out, seeded(4));
+    audio.setData(d);
+    audio.setFallTable(235, [62, 91, 120]);
+    out.unlock();
+    expect(audio.onFootstep(0, null)).toBe('.STEP_METAL');
+    expect(audio.stats().defaultMaterial).toBe('METAL_THICK');
+    expect(new Map(d.callbacks).get('frag_grenade_stone')).toEqual(['.GREN_MED']);   // through frag_grenade
+    expect(audio.onAnimCallback('frag_grenade_stone')).toBe('.GREN_MED');
+    expect(d.damageVoice).toBe('.SEAL_DAMAGE');
+    expect(audio.onLand(100, 0)).toEqual(['.METAL_JUMP']);
+    expect(audio.onLand(190, 0)).toEqual(['.METAL_JUMP', '.SEAL_DAMAGE']);
+    expect(audio.onLand(220, 0)).toEqual(['.BONE_BRK_1', '.SEAL_DAMAGE']);
+  });
+
+  it('plays .BUL_PASSING at the nearest point of another shooter round within 20 units', async () => {
+    const out = new Recorder(), audio = new GameAudio(out, seeded(6));
+    audio.setData(await mp2());
+    audio.setListener(IDENTITY);
+    out.unlock();
+    expect(audio.onRoundPast([-100, 5, 0], [100, 5, 0], [0, 0, 0])).toBe('.BUL_PASSING');
+    expect(audio.stats().recent.at(-1)).toMatchObject({ name: '.BUL_PASSING', event: 'passing' });
+    expect(audio.onRoundPast([-100, 30, 0], [100, 30, 0], [0, 0, 0])).toBeNull();
+  });
+
+  it('ramps the reverb to the mission zone depth and crosses the beds as the camera goes in', async () => {
+    const d = await mp2();
+    expect(d.reverb.preset?.slice(0, 2)).toEqual([0xb1, 0x7f]);                // libsd mode 3, "Studio Medium"
+    expect(d.reverb.indoor).toEqual([[0.45, 1], [0.2, 1]]);                    // the first of the two keys
+    expect(d.reverb.outdoor).toEqual([[0.07, 1], [0.2, 1]]);
+    expect(d.beds).toEqual({ outside: ['~OUTDOOR_AMB'], inside: ['~INDOOR_AMB'] });
+    expect(d.emitters.map((e) => [e.sound.trim(), e.node])).toEqual([['~FAN_ROTATE', 'fan1']]);
+    const out = new Recorder(), audio = new GameAudio(out, seeded(8));
+    out.unlock();                                                                    // the reverb is built once unlocked
+    audio.setData(d);
+    audio.setListener(IDENTITY);
+    audio.setAmbience(true);
+    audio.setEnvironment(false, 0);
+    expect(out.reverb!.ll.length).toBeGreaterThan(24_000);
+    expect(out.ramps.at(-1)).toEqual([0.07, 1]);
+    audio.setEnvironment(true, 0);
+    expect(out.ramps.at(-1)).toEqual([0.45, 1]);
+    audio.setEnvironment(true, 5);                                                   // no such entry: off over a second
+    expect(out.ramps.at(-1)).toEqual([0, 1]);
+    const [outside, inside, fan] = out.loops;
+    expect(out.loops.length).toBe(3);
+    expect(outside!.sound.left.length).toBe(LOOP_SECONDS_PLACEHOLDER * 48_000);
+    expect(inside!.gains).toEqual([1, 1]);
+    expect(outside!.gains).toEqual([0, 0]);
+    expect(audio.stats().ambience).toMatchObject({ on: true, bed: 'inside' });
+    // The fan: heard by its RANGE from where it stands; far away, nothing.
+    const fanAt = d.emitters[0]!.position;
+    audio.setListener([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, fanAt[0], fanAt[1], fanAt[2] + 10, 1]);
+    expect(fan!.gains[0]).toBeGreaterThan(0.5);
+    audio.setListener(IDENTITY);
+    expect(fan!.gains).toEqual([0, 0]);
+    audio.setAmbience(false);
+    expect(out.loops.every((l) => l.stopped)).toBe(true);
+    expect(panGains(90)[0]).toBe(0);
+    expect(panGains(0)).toEqual([1, 1]);
+  });
+});
+
+/**
+ * Every map's floors step (the feel-QA's Crossroads, research 81 §4): each polygon a SEAL stands on, its material (byte 0
+ * the map's DefaultMaterial), has its step, stealth, crawl and landing sound in the map's banks or a borrowed one. The
+ * three fixture maps always; all 22 when the served tree is extracted.
+ */
+const served = resolve(fixtures, '../public/maps');
+const everyMap = [
+  ...['MP2', 'MP6', 'MP72'].filter((m) => existsSync(resolve(fixtures, `RUN/${m}.ZDB`))).map((m) => ({ dir: fixtures, map: m })),
+  ...(existsSync(resolve(served, 'RUN/SOUNDS/BNKSTORE.ZAR'))
+    ? readdirSync(resolve(served, 'RUN')).filter((f) => /^MP\d+\.ZDB$/.test(f) && !['MP2.ZDB', 'MP6.ZDB', 'MP72.ZDB'].includes(f))
+      .map((f) => ({ dir: served, map: f.replace('.ZDB', '') }))
+    : []),
+];
+describe.skipIf(!haveSound)('every map steps on every floor', () => {
+  it.each(everyMap)('$map', async ({ dir, map }) => {
+    const source = new FsAssetSource(dir);
+    const d = await soundFromDisc(source, `RUN/${map}.ZDB`, map);
+    expect(d.banks.length).toBeGreaterThanOrEqual(3);
+    const out = new Recorder(), audio = new GameAudio(out, seeded(1));
+    audio.setData(d);
+    out.unlock();
+    const zdb = new Uint8Array(readFileSync(resolve(dir, `RUN/${map}.ZDB`)));
+    const polys = worldCollision(parseSceneGraph(Zar.parse(zdbMember(zdb, parseZdb(zdb), `${map}_GEO.ZED`))));
+    const silent = new Map<string, number>();
+    for (const m of new Set(polys.filter((p) => p.ditype & 1).map((p) => p.material))) {
+      const mat = audio.materialOf(m);
+      if (!mat?.step) continue;                                    // INVISIBLE_DI, BARREL ...: no step sound in SOILS
+      for (const stance of [0, 2] as const) {
+        const got = audio.onFootstep(m, null, { stance });
+        if (!got) silent.set(`${mat.name}/${stance}`, (silent.get(`${mat.name}/${stance}`) ?? 0) + 1);
+      }
+      if (audio.onLand(50, m).length === 0 && mat.land) silent.set(`${mat.name}/land`, 1);
+    }
+    expect([...silent.keys()]).toEqual([]);
+    // Only the casings' names the disc holds nowhere (`.BUL_CASE_METAL`, `.SG_SHELL_*`) may be missing.
+    expect(d.missing.filter((x) => /no bank holds/.test(x) && !/BUL_CASE_METAL|SG_SHELL_/.test(x))).toEqual([]);
+  }, 60_000);
 });
