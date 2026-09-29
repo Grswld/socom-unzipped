@@ -184,7 +184,7 @@ describe('which placements the engine lights', () => {
   /** A bare node: no children, no collision, one visual. */
   const node = (name: string, flags: number, over: Partial<SceneNode> = {}): SceneNode => ({
     name, modelName: null, type: NODE_GENERIC, flags, matrix: Float32Array.from(IDENTITY),
-    bbox: new Float32Array(6), regionmask: 0, visuals: 1, visualParams: [0], children: [], collision: [], ...over,
+    bbox: new Float32Array(6), regionmask: 0, visuals: 1, visualParams: [0], visualMaterials: [0], children: [], collision: [], ...over,
   });
 
   it('a node with neither dynamic bit is drawn prelit: the VU light command is never emitted for it', () => {

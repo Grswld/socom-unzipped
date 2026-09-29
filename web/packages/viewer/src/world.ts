@@ -6,7 +6,10 @@ import {
 } from 'three';
 import type { Blending, BlendingDstFactor, BlendingSrcFactor, Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
-import { float, log2, materialReference, positionView, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
+import {
+  cameraPosition, float, log2, materialReference, normalWorld, positionView, positionWorld, select, texture as textureNode, uniform, uv, varying, vec3,
+  vec4, vertexColor,
+} from 'three/tsl';
 import { buildGrid, cellAt, lodIsLast, lodOpacity, lodVisible, type LodBand } from '@s2u/scene';
 import {
   detailDrawState, detailRenderOrder, drawState, gsMipLod, materialSpec, mipChain, type GsMipLod,
@@ -495,7 +498,80 @@ export function buildWorld(map: LoadedMap): WorldView {
     detailMaterials.set(key, entry);
     return material;
   };
-  const refreshDetail = (): void => { for (const d of details) d.mesh.visible = detailOn && !wireframeOn; };
+  const refreshDetail = (): void => {
+    for (const d of details) d.mesh.visible = detailOn && !wireframeOn;
+    for (const e of envPasses) e.mesh.visible = envOn && !wireframeOn;
+  };
+
+  /**
+   * The environment-map pass (VU1 `0x34`/`0x36`, research 15 §6; `envVertex` in `./materialSpec` is its CPU twin):
+   * over every draw whose visual names a reflection material (`LoadedMesh.reflect`), a second mesh on the same geometry
+   * with the material's texture sampled at the sphere-map `st` of the reflection off the vertex's normal, coloured by
+   * the material's base colour and faded by `(1 + a) * vertex alpha * rim` -- a faint sky on Blood Lake's, Fish Hook's
+   * and Enowapi's water, the clouds on Sujo's glass. Computed per vertex, as the VU does, and interpolated. Its
+   * `ALPHA` and `TEX1` are the texture's own (source-alpha, bilinear on all of them), it depth-tests less-or-equal
+   * against its base (`TEST` GEQUAL on the console's Z16S) and writes none, fogged as its base is.
+   */
+  let envOn = true;
+  const envPasses: { mesh: Mesh; base: Object3D }[] = [];
+  const envMaterials = new Map<string, MeshBasicNodeMaterial>();
+  const envByPalette = new Map((map.envMaterials ?? []).map((e) => [e.index + 1, e]));
+  const envMaterialFor = (index: number, fog: boolean, cull: boolean): MeshBasicNodeMaterial | null => {
+    const key = `${index}|${fog ? 1 : 0}|${cull ? 1 : 0}`;
+    const cached = envMaterials.get(key);
+    if (cached) return cached;
+    const m = envByPalette.get(index);
+    const rgba = m ? map.textures[m.texture] : undefined;
+    if (!m || !rgba) return null;
+    let texture = textures.get(m.texture);
+    if (!texture) {
+      texture = makeTexture(rgba, materialSpec(map.textureFlags[m.texture], fog, true, false), map.textureMips?.[m.texture]);
+      textures.set(m.texture, texture);
+    }
+    const V = positionWorld.sub(cameraPosition);
+    const R = V.sub(normalWorld.mul(V.dot(normalWorld).mul(2)));
+    const turned = vec3(R.z, R.x, R.y);                          // the block's basis rows (0,1,0), (0,0,1), (1,0,0)
+    const falls = turned.z.lessThan(0);
+    const rim = select(falls, turned.z.add(m.rimOffset).mul(m.rimSlope).max(0), float(1));
+    const clamped = vec3(turned.x, turned.y, turned.z.max(0));
+    const length = select(falls, clamped.length(), V.length());
+    const st = varying(clamped.xy.div(length).mul(m.uvScale).add(0.5));
+    const alpha = varying(vertexColor().a.mul((1 + m.rgba[3]) / 128).mul(rim));
+    const texel = textureNode(texture, st);
+    const colour = texel.rgb.mul(vec3(m.rgba[0] / 128, m.rgba[1] / 128, m.rgba[2] / 128)).clamp(0, 1);
+    const material = new MeshBasicNodeMaterial();
+    material.name = `env ${m.texture}`;
+    material.vertexColors = false;
+    material.colorNode = vec4(colour.mul(brighten), texel.a.mul(alpha).clamp(0, 1));
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthFunc = LessEqualDepth;
+    Object.assign(material, blendFactorsFor({ src: 'srcAlpha', dst: 'oneMinusSrcAlpha' }));
+    material.side = cull ? FrontSide : DoubleSide;
+    material.fog = fog;
+    envMaterials.set(key, material);
+    return material;
+  };
+  const addEnv = (base: Mesh, part: LoadedMesh): void => {
+    if (!part.reflect || !part.normals) return;
+    const material = envMaterialFor(part.reflect, part.fog, part.cull);
+    if (!material) return;
+    // The reflection needs the vertex normal the VU reads; the base draws never did. `part` is the chunk as
+    // decoded -- a prop's normals in model space, which the instance matrix turns, a world part's already world.
+    if (!base.geometry.getAttribute('normal')) base.geometry.setAttribute('normal', new BufferAttribute(part.normals, 3));
+    let mesh: Mesh;
+    if (base instanceof InstancedMesh) {
+      const instanced = new InstancedMesh(base.geometry, material, base.count);
+      instanced.instanceMatrix = base.instanceMatrix;
+      mesh = instanced;
+    } else mesh = new Mesh(base.geometry, material);
+    mesh.name = `${base.name} (env)`;
+    mesh.frustumCulled = base.frustumCulled;
+    mesh.renderOrder = detailRenderOrder(base.renderOrder, engineOn) + 0.25;   // after the detail pass, as the list orders it
+    mesh.visible = envOn && !wireframeOn;
+    base.add(mesh);
+    envPasses.push({ mesh, base });
+  };
   /** Hangs a detail pass under a queued base draw, when its texture binds one. */
   const addDetail = (base: Mesh, part: LoadedMesh): void => {
     if (part.textureName === null || SHADOW_TEXTURE.test(part.textureName) || !map.detail[part.textureName]) return;
@@ -551,6 +627,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
     later(revealWorld, mesh, part.order, part.cells ?? [], part.alternate, part.textureName);
     addDetail(mesh, part);
+    addEnv(mesh, part);
     triangles += part.indices.length / 3;
   }
 
@@ -603,6 +680,7 @@ export function buildWorld(map: LoadedMap): WorldView {
           later(revealProps, mesh, part.order, cellsOf(i), prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0), last: false });
           if (rest) lodRest.set(mesh, rest);
           addDetail(mesh, part);
+          addEnv(mesh, part);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
@@ -613,6 +691,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
         later(revealProps, mesh, part.order, cellsOf(0), prop.alternate, part.textureName);
         addDetail(mesh, part);
+        addEnv(mesh, part);
       } else {
         const mesh = new InstancedMesh(geometry, material, count);
         mesh.name = prop.modelName;
@@ -620,6 +699,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         mesh.instanceMatrix.needsUpdate = true;
         later(revealProps, mesh, part.order, allCells, prop.alternate, part.textureName);
         addDetail(mesh, part);
+        addEnv(mesh, part);
       }
       triangles += (part.indices.length / 3) * count;
     }
@@ -694,6 +774,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     orderCell = cellAt(grid, x, z).index;
     engineOrder(drawn, grid, x, z).forEach((d, i) => { d.object.renderOrder = i; });
     for (const { mesh, base } of details) mesh.renderOrder = detailRenderOrder(base.renderOrder, true);
+    for (const { mesh, base } of envPasses) mesh.renderOrder = detailRenderOrder(base.renderOrder, true) + 0.25;
   };
 
   return {
@@ -795,6 +876,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       }
       for (const { object } of drawn) object.renderOrder = 0;
       for (const { mesh } of details) mesh.renderOrder = detailRenderOrder(0, false);
+      for (const { mesh } of envPasses) mesh.renderOrder = detailRenderOrder(0, false) + 0.25;
     },
     dispose: () => {
       for (const child of group.children) {
@@ -806,6 +888,8 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const twin of fades.values()) twin.dispose();
       for (const { material } of detailMaterials.values()) material.dispose();
       for (const { mesh } of details) if (mesh instanceof InstancedMesh) mesh.dispose();
+      for (const material of envMaterials.values()) material.dispose();
+      for (const { mesh } of envPasses) if (mesh instanceof InstancedMesh) mesh.dispose();
       for (const child of weapon?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
       for (const child of grenade?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
       for (const texture of textures.values()) texture.dispose();

@@ -49,6 +49,8 @@ export interface PlacedModel {
   chunks: string[];
   /** Per chunk, in `chunks` order: whether the engine culls its back faces (`VISUAL_FLAG_CULL`). */
   cull: boolean[];
+  /** Per chunk: its `Material_Palette` entry, 1-based, 0 for none (`SceneNode.visualMaterials`). Absent on one built by hand. */
+  material?: number[];
   /** `m_facade` on this node: non-zero, the engine turns it to face the camera (`facadeOf`). */
   facade: number;
   /** 16 floats, column-major: what three.js wants (the transpose of `rowMajor`). */
@@ -224,6 +226,7 @@ export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): Pl
       instanceIndex: f.instanceIndex,
       chunks: Array.from({ length: f.node.visuals }, (_, v) => chunkKey(f.nodeIndex, f.instanceIndex, v)),
       cull: Array.from({ length: f.node.visuals }, (_, v) => ((f.node.visualParams[v] ?? VISUAL_FLAG_CULL) & VISUAL_FLAG_CULL) !== 0),
+      material: Array.from({ length: f.node.visuals }, (_, v) => f.node.visualMaterials?.[v] ?? 0),
       facade: f.facade,
       world: toColumnMajor(f.world),
       rowMajor: f.world,
