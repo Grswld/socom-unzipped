@@ -185,6 +185,98 @@ class TheLongWrapper(unittest.TestCase):
 
 
 @unittest.skipUnless(BASH, "bash not found")
+class TheLobbyStage(unittest.TestCase):
+    """Sprint 17 A1 (issue #94): the online screens' music held in SOCOM Online's lobby and scored minute by minute.
+    The owner on the batch-2 build: "sustained hang or up-pitch every few seconds". The path to the lobby is not a
+    drive.py step script -- it is online_login_ours.py's `login` stage with --prefilled --existing, as the
+    controller's q2 logoff run calls it -- so the lobby stage's generated drive script is a shell driver that
+    audio_parity.sh runs in drive.py's place, under the same recorder, volume hold and dump."""
+    STAMP = "test_a1_lobby_music_dryrun"
+
+    def tearDown(self):
+        shutil.rmtree(os.path.join(ROOT, "logs", "parity", self.STAMP), ignore_errors=True)
+
+    def run_long(self, *args):
+        return subprocess.run([BASH, LONG_SH, "--dry-run", "--stamp", self.STAMP, *args],
+                              cwd=ROOT, capture_output=True, text=True)
+
+    def dry_run(self, *args):
+        p = self.run_long("--stage", "lobby", *args)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        lines = p.stdout.splitlines()
+        head = dict(kv.split("=", 1) for kv in lines[0].split())
+        script = dict(kv.split("=", 1) for kv in lines[1].split())["script"]
+        with open(os.path.join(ROOT, script), encoding="utf-8") as f:
+            body = f.read()
+        return head, script, body, p.stdout
+
+    def command(self, body):
+        cmd = [ln for ln in body.splitlines() if "tools_py.parity.online_login_ours" in ln and not ln.startswith("#")]
+        self.assertEqual(len(cmd), 1, body)
+        return cmd[0].split()
+
+    def test_the_drive_script_reaches_the_lobby_by_the_prefilled_existing_login(self):
+        head, script, body, _ = self.dry_run("--minutes", "2")
+        self.assertEqual(head["stage"], "lobby")
+        self.assertTrue(script.endswith(".sh"), script)
+        cmd = self.command(body)
+        self.assertIn("--prefilled", cmd)
+        self.assertIn("--existing", cmd)
+        # the login steps, named in the script as online_login_ours.py's stages run them
+        for step in ("boot_to_online", "login", "universe", "persona", "CONNECT", "EULA", "SERVER NEWS"):
+            self.assertIn(step, body)
+        # it stays in the lobby: no briefing room, no game, no extra presses
+        for leave in ("--host", "--join", "--then"):
+            self.assertNotIn(leave, cmd)
+        # our hosted server, by the harness's one knob
+        self.assertIn("scripts/parity/env.sh", body)
+        self.assertEqual(subprocess.run([BASH, "-n", os.path.join(ROOT, script)]).returncode, 0)
+
+    def test_it_holds_in_the_lobby_for_the_minutes(self):
+        for minutes in ("2", "10"):
+            head, _script, body, _ = self.dry_run("--minutes", minutes)
+            cmd = self.command(body)
+            self.assertEqual(cmd[cmd.index("--hold") + 1], str(int(minutes) * 60), minutes)
+            self.assertEqual(head["hold"], f"{int(minutes) * 60}s")
+
+    def test_the_run_length_covers_the_login_and_the_whole_hold(self):
+        head, _script, body, _ = self.dry_run("--minutes", "2")
+        drive_s, record_s = int(head["drive"][:-1]), int(head["record"][:-1])
+        cmd = self.command(body)
+        self.assertEqual(cmd[cmd.index("--seconds") + 1], str(drive_s))
+        # q2_logoff online1 logged `LOBBY class=ok` at 172 s; the hold takes a capture every 5 s on top of its sleep
+        self.assertGreater(drive_s, 172 + 120 + 120 // 5)
+        self.assertGreater(record_s, drive_s)
+
+    def test_the_game_log_is_pinned_beside_the_capture_for_the_dips_scorer(self):
+        _head, _script, body, _ = self.dry_run("--minutes", "2")
+        self.assertIn("PS2X_RUN_LOG=", body)
+        self.assertIn(f"logs/parity/{self.STAMP}/run.log", body)
+
+    def test_the_console_side_is_refused_with_a_sentence(self):
+        p = self.run_long("--stage", "lobby", "--target", "pcsx2")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("not yet", p.stderr)
+        self.assertIn("online_login.py", p.stderr)
+        self.assertFalse(os.path.exists(os.path.join(ROOT, "logs", "parity", self.STAMP, "drive_lobby.sh")))
+
+    def test_walk_is_refused_in_the_lobby(self):
+        p = self.run_long("--stage", "lobby", "--walk")
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("MISSION", p.stderr)
+
+    def test_a_bad_stage_names_the_lobby(self):
+        p = self.run_long("--stage", "clan")
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("lobby", p.stderr)
+
+    def test_audio_parity_runs_a_shell_driver_in_drive_pys_place(self):
+        with open(AUDIO_SH, encoding="utf-8") as f:
+            body = f.read()
+        self.assertIn('*.sh) bash "$script"', body)
+
+
+@unittest.skipUnless(BASH, "bash not found")
 class AudioParityStaysCompatible(unittest.TestCase):
     """W7 lengthened audio_parity.sh's capture rather than copying it. Its first three arguments, and what it
     does with them, must not have moved: the pinned PCSX2 reference was captured with the old defaults."""

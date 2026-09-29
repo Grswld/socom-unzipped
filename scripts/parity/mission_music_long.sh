@@ -9,7 +9,7 @@
 # loopback of what Windows actually sends the speaker -- and score the capture minute by minute so the
 # degradation the owner describes is a column of numbers rather than an impression.
 #
-#   scripts/parity/mission_music_long.sh [--minutes N] [--stage mission|briefing] [--walk] [--target ours|pcsx2]
+#   scripts/parity/mission_music_long.sh [--minutes N] [--stage mission|briefing|lobby] [--walk] [--target ours|pcsx2]
 #                                        [--stamp S] [--max-device-per-minute N] [--no-score] [--dry-run]
 #
 # --dry-run generates the drive script and prints the lengths, launching nothing: it is how the script itself is
@@ -23,6 +23,19 @@
 # meets hostiles, and a death ends the capture and the music with it, so the leg is deliberately SHORT and safe
 # rather than the owner's route (which nobody has recorded); the same run serves W6 (the garbled HELP popup) if a
 # popup arrives, since every `ifpopup` guard saves the frame it looks at before pressing. Mission stage only.
+#
+# --stage lobby (Sprint 17 A1, issue #94, 2026-09-29): the ONLINE screens' music, which the owner heard wrong on the
+# batch-3 build and described on batch 2 as a "sustained hang or up-pitch every few seconds". The path to SOCOM
+# Online's lobby is not a drive.py step script: it is tools_py/parity/online_login_ours.py -- boot_to_online (the
+# main menu, ONLINE) and its @staged("login") stage (LOGIN, universe, the saved persona, the prefilled password
+# keyboard, CONNECT, the prompts, the EULA, SERVER NEWS closed; `LOBBY class=ok`) -- run with --prefilled
+# --existing as the controller's q2 logoff run calls it, against the server scripts/parity/env.sh names (our hosted
+# box by default). So the stage writes a shell DRIVER, logs/parity/<stamp>/drive_lobby.sh, which runs that login
+# with --hold <minutes*60> and nothing after it (no briefing room, no game), and audio_parity.sh runs a `.sh`
+# script in drive.py's place under the same recorder, volume hold, dump and scorers. The game's own log is pinned
+# beside the capture (PS2X_RUN_LOG=.../run.log) for audio_dips. --target pcsx2 is refused ("not yet"): the console's
+# login (tools_py/parity/online_login.py) starts from a savestate against a local Horizon stack with the DNS stub on
+# a LAN address, which this script does not drive. --walk is the mission's only.
 #
 # --max-device-per-minute N: the pin. After the dips scorer runs, its "DEVICE total .. max K in a minute" line is
 # read and the run exits 4 when K > N. Unset = report only; the ceiling is pinned once the endpoint A/B has said
@@ -100,13 +113,24 @@ while [ $# -gt 0 ]; do
     --max-device-per-minute) MAX_DEVICE=$2; shift 2 ;;
     --no-score) SCORE=0; shift ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,60p' "$0"; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; sed -n '2,60p' "$0"; exit 2 ;;
+    -h|--help) sed -n '2,73p' "$0"; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; sed -n '2,73p' "$0"; exit 2 ;;
   esac
 done
 case "$TARGET" in ours|pcsx2) ;; *) echo "--target must be ours or pcsx2" >&2; exit 2 ;; esac
+case "$STAGE" in
+  mission|briefing|lobby) ;;
+  *) echo "mission_music_long: --stage must be mission, briefing or lobby, not '$STAGE'" >&2; exit 2 ;;
+esac
 if [ "$WALK" = 1 ] && [ "$STAGE" != mission ]; then
   echo "mission_music_long: --walk moves through the MISSION; it has no meaning on the '$STAGE' stage" >&2
+  exit 2
+fi
+if [ "$STAGE" = lobby ] && [ "$TARGET" = pcsx2 ]; then
+  echo "mission_music_long: --stage lobby --target pcsx2 is not yet driven: the console's login" >&2
+  echo "  (tools_py/parity/online_login.py) starts from PCSX2 savestate 9 against a local Horizon stack with the DNS" >&2
+  echo "  stub on a LAN address (scripts/parity/env.sh socom_require_ipv4), and this script runs neither. Record ours" >&2
+  echo "  with --target ours; the console's lobby is a separate run." >&2
   exit 2
 fi
 [ -f "$BASE" ] || { echo "no such script: $BASE" >&2; exit 2; }
@@ -142,9 +166,9 @@ case "$STAGE" in
     fi
     echo "# --- briefing stage: the deploy press and everything after it is cut; the hold is on the briefing ---" >> "$SCRIPT"
     ;;
-  *)
-    echo "mission_music_long: --stage must be mission or briefing, not '$STAGE'" >&2
-    exit 2
+  lobby)
+    # The driver is written below, once the run length it hands the login is known; no step script is appended.
+    SCRIPT="$OUT/drive_lobby.sh"
     ;;
 esac
 POPUPS=0
@@ -152,7 +176,8 @@ POPUPS=0
 # the player is back at the insertion point after every pair. LEGS covers the whole hold; the base script's own
 # closing `wait+8.0:NONE` is left in place as the settle before the first leg.
 LEGS=$(( (HOLD_S + 9) / 10 ))
-{
+[ "$STAGE" = lobby ] && { EXTRA=0; LEGS=0; }
+[ "$STAGE" = lobby ] || {
   if [ "$WALK" = 1 ]; then
     echo "# --- $LEGS walking legs appended by mission_music_long.sh --walk for a ${MINUTES}-minute in-mission capture:"
     echo "# --- hold W 8 s / settle 2 s / hold S 8 s / settle 2 s, an ifpopup guard every $POPUP_EVERY legs ---"
@@ -193,6 +218,9 @@ BOOT_S=240
 DRIVE_S=$((BOOT_S + HOLD_S + POPUPS * 3 + 60))
 # A hold step costs its 0.5 s post-press sleep and a capture on top of the hold itself; a walk has two steps a leg.
 [ "$WALK" = 1 ] && DRIVE_S=$((DRIVE_S + LEGS * 2))
+# The lobby hold is online_login_ours.py's own: a 5 s sleep and a capture, HOLD_S/5 times, each capture allowed 1 s.
+# The login to the lobby measured 172 s (logs/parity/s17_q2_logoff online1, `LOBBY class=ok`), inside BOOT_S.
+[ "$STAGE" = lobby ] && DRIVE_S=$((BOOT_S + HOLD_S + HOLD_S / 5 + 60))
 REC_S=$((DRIVE_S + 20))
 DUMP="$OUT/mix.wav"
 # PS2X_AUDIO_DUMP is read by a NATIVE Windows binary through python and run.sh, and an MSYS "/c/..." path
@@ -201,6 +229,23 @@ DUMP="$OUT/mix.wav"
 # there is one; on Linux cygpath does not exist and the POSIX path is already right.
 DUMP_ENV="$ROOT/$DUMP"
 if command -v cygpath >/dev/null 2>&1; then DUMP_ENV="$(cygpath -w "$ROOT/$DUMP")"; fi
+if [ "$STAGE" = lobby ]; then
+  # The lobby driver. audio_parity.sh runs it from the data root in drive.py's place, with PS2X_AUDIO_DUMP, PS2X_DEV
+  # and the callback trace already exported; env.sh adds the server and the harness's instruments. The name and the
+  # password are the q2 logoff run's (the persona already on instance A's card, hence --existing).
+  {
+    echo "#!/usr/bin/env bash"
+    echo "# Generated by mission_music_long.sh --stage lobby (stamp $STAMP) for a ${MINUTES}-minute hold in SOCOM Online's lobby."
+    echo "# The login steps, online_login_ours.py's: boot_to_online (main menu, ONLINE) -> login (@staged \"login\": LOGIN,"
+    echo "# universe, persona (saved, --existing), password (prefilled keyboard, ENTER), CONNECT, prompts, EULA, SERVER NEWS"
+    echo "# closed; LOBBY class=ok) -> the hold, ${HOLD_S} s in the lobby, one capture every 5 s. Nothing after it."
+    echo "set -u"
+    echo ". \"$TOOLS_ROOT/scripts/parity/env.sh\""
+    echo "export PS2X_RUN_LOG=\"$ROOT/$OUT/run.log\""
+    echo "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1"
+    echo "\"\$PYTHON\" -m tools_py.parity.online_login_ours --name socomc --password socom --prefilled --existing --instance A --out $OUT/login --seconds $DRIVE_S --hold $HOLD_S"
+  } > "$SCRIPT"
+fi
 
 echo "stamp=$STAMP target=$TARGET stage=$STAGE walk=$WALK minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA legs=$LEGS popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
 echo "script=$SCRIPT dump=$DUMP env=$DUMP_ENV"
@@ -210,6 +255,10 @@ echo "script=$SCRIPT dump=$DUMP env=$DUMP_ENV"
 # knobs it adds, so the file always says what the game was handed.
 write_env_ps2x "$OUT" "mission_music_long.sh stamp=$STAMP target=$TARGET stage=$STAGE walk=$WALK$([ "$DRY" = 1 ] && echo ' --dry-run: as started; nothing launched')"
 if [ "$DRY" = 1 ]; then
+  if [ "$STAGE" = lobby ]; then
+    echo "--dry-run: nothing launched. the lobby driver $SCRIPT: login, then a ${HOLD_S} s hold, --seconds $DRIVE_S."
+    exit 0
+  fi
   echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -c '^hold+8.0:[WS]' "$SCRIPT") walking legs, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."
   exit 0
 fi
@@ -217,8 +266,13 @@ AUDIO_DUMP="$DUMP_ENV" SOCOM_DATA_ROOT="$ROOT" bash "$TOOLS_ROOT/scripts/parity/
 rc=$?
 echo "capture rc=$rc"
 
-# The proof that the hold really was in the mission, not on a cinematic: the fast path's untilref line.
-grep -E "^untilref\(|^ifpopup:" "$OUT/drive.stdout" 2>/dev/null || echo "(no untilref/ifpopup line in $OUT/drive.stdout)"
+# The proof that the hold really was in the mission, not on a cinematic: the fast path's untilref line. In the lobby,
+# the login's own verdict: `LOBBY class=ok`, or the classified `RESULT LOBBY-FAIL <class>`.
+if [ "$STAGE" = lobby ]; then
+  grep -E "LOBBY class=|RESULT LOBBY-FAIL" "$OUT/drive.stdout" 2>/dev/null || echo "(no LOBBY class line in $OUT/drive.stdout)"
+else
+  grep -E "^untilref\(|^ifpopup:" "$OUT/drive.stdout" 2>/dev/null || echo "(no untilref/ifpopup line in $OUT/drive.stdout)"
+fi
 
 if [ "$SCORE" = 1 ]; then
   for wav in "$OUT/mix.wav" "$OUT/endpoint.wav"; do
@@ -231,7 +285,9 @@ if [ "$SCORE" = 1 ]; then
   done
   if [ -s "$OUT/endpoint.wav" ] && [ -s "$OUT/mix.wav" ]; then
     echo "=== audio_dips  endpoint vs mix ==="
-    log=$(ls -t logs/run_*.log 2>/dev/null | head -1)
+    # The game log pinned beside the capture (the lobby driver's PS2X_RUN_LOG), else the newest run log.
+    log="$OUT/run.log"
+    [ -s "$log" ] || log=$(ls -t logs/run_*.log 2>/dev/null | head -1)
     pya -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
       ${log:+--log "$log"} > "$OUT/dips.txt" 2>&1 || true
     tail -40 "$OUT/dips.txt"
