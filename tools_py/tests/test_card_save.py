@@ -129,5 +129,50 @@ class EncoderTest(unittest.TestCase):
         self.assertEqual(json.loads(out.getvalue()), [s17pc()])
 
 
+
+class CheckHostTest(unittest.TestCase):
+    """#111, the persona proof of 2026-09-29 (logs/parity/persona_card_proof): the creator wrote HOST 67.222.156.250
+    (the copied dist/config.json's Custom server) and the game ran against 3.143.65.100, so the form came up with
+    no persona -- the per-server rule (KNOWN section 1), not a card the game refused. --check-host is the recipe's
+    pre-flight: the card's FIRST record (the one the form shows) must be for the server the run is aimed at."""
+
+    def run_check(self, server, leaf='created.bin', resolved=None):
+        import io
+        import tempfile
+        from contextlib import redirect_stdout
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'card')
+            with open(path, 'wb') as f:
+                f.write(fixture(leaf))
+            out = io.StringIO()
+            with redirect_stdout(out), mock.patch.object(card_save.socket, 'gethostbyname',
+                                                         side_effect=lambda h: resolved[h]):
+                rc = card_save.main(['card_save', '--check-host', path, server])
+        return rc, out.getvalue()
+
+    def test_the_same_address_passes(self):
+        rc, out = self.run_check('3.143.65.100', resolved={})
+        self.assertEqual(rc, 0, out)
+        self.assertIn('s17pc', out)
+
+    def test_another_address_fails_naming_both(self):
+        rc, out = self.run_check('67.222.156.250', resolved={})
+        self.assertEqual(rc, 1, out)
+        self.assertIn('3.143.65.100', out)
+        self.assertIn('67.222.156.250', out)
+
+    def test_a_name_is_resolved_and_a_port_dropped(self):
+        rc, out = self.run_check('socom.scotho.com:10075', resolved={'socom.scotho.com': '3.143.65.100'})
+        self.assertEqual(rc, 0, out)
+        rc, out = self.run_check('elsewhere.example', resolved={'elsewhere.example': '198.51.100.9'})
+        self.assertEqual(rc, 1, out)
+
+    def test_a_card_without_a_persona_fails(self):
+        rc, out = self.run_check('3.143.65.100', leaf='virgin.bin', resolved={})
+        self.assertEqual(rc, 1, out)
+        self.assertIn('no persona', out)
+
+
 if __name__ == '__main__':
     unittest.main()

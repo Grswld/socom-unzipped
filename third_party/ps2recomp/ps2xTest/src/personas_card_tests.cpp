@@ -99,6 +99,7 @@ void register_personas_card_tests()
             const fs::path file = cardFile(home, "player");
             t.IsTrue(fs::is_regular_file(file), "the card file exists under cards/player/BASCUS-97275SOCOMII/");
             t.IsTrue(note.find("BASCUS-97275SOCOMII") != std::string::npos, "the note names the file written: " + note);
+            t.IsTrue(note.find("for 203.0.113.5 ") != std::string::npos, "and the HOST the persona is for (#111): " + note);
             t.IsFalse(fs::exists(fs::path(file.string() + ".tmp")), "and no temp file is left");
             std::vector<card::Persona> records;
             std::string why;

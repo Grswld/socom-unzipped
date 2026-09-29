@@ -544,7 +544,9 @@ namespace launcher::personas
             note = shown + ": cannot be written";
             return false;
         }
-        note = "wrote " + n + " to " + fs::path(file).make_preferred().string();
+        // HOST in the note: the game shows a persona only on the server it was made for (KNOWN section 1), and the
+        // #111 proof lost a game run to a config aimed elsewhere that nothing on screen named.
+        note = "wrote " + n + " for " + host + " to " + fs::path(file).make_preferred().string();
         return true;
     }
 
