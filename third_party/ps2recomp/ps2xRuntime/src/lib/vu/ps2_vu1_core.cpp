@@ -2547,6 +2547,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     {
         g_vu1NativeEntered.fetch_add(1, std::memory_order_relaxed);
         const uint32_t nativeEntryPc = m_state.pc;
+        // Forget any slot noted before this call, so a hand-back that names no reason is unnamed_handback,
+        // never charged to a stale key.
+        if (refusalsOn)
+            Vu1Refusals::takeNoted();
         programEnded = m_nativeFn(*this, budgetEnd);
         if (programEnded)
             g_vu1NativeEnded.fetch_add(1, std::memory_order_relaxed);

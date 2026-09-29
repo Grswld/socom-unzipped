@@ -281,6 +281,15 @@ namespace Vu1Refusals
         return std::string(buf);
     }
 
+    // The refusals a full table could not key: cumulative, so a reader takes the last (largest) value it sees.
+    inline std::string formatOverflow(const char *tag, uint64_t lost)
+    {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "%s overflow=%llu (keys past %u slots not counted)", tag,
+                      static_cast<unsigned long long>(lost), kSlots);
+        return std::string(buf);
+    }
+
     // ---- the process's instrument ----------------------------------------------------------------------------
 
     // The knob, read once (on the first refusal site or run() that asks, so after the process set developer
@@ -374,15 +383,24 @@ namespace Vu1Refusals
         for (const Row &r : live().take())
             std::fprintf(stderr, "%s\n", formatRow("[vu1-refuse]", r, elapsedMs).c_str());
         if (const uint64_t lost = live().overflow())
-            std::fprintf(stderr, "[vu1-refuse] overflow=%llu (keys past %u slots not counted)\n",
-                         static_cast<unsigned long long>(lost), kSlots);
+            std::fprintf(stderr, "%s\n", formatOverflow("[vu1-refuse]", lost).c_str());
     }
 
-    // vu1_replay's end: the running totals, one line per key.
+    // vu1_replay's end: the running totals, one line per key, then the overflow line when anything was lost.
+    inline std::vector<std::string> formatTotals(const Table &table)
+    {
+        std::vector<std::string> lines;
+        for (const Row &r : table.totals())
+            lines.push_back(formatRow("[vu1-refuse-total]", r, -1.0));
+        if (const uint64_t lost = table.overflow())
+            lines.push_back(formatOverflow("[vu1-refuse-total]", lost));
+        return lines;
+    }
+
     inline void printTotals(FILE *out)
     {
         std::lock_guard<std::mutex> lock(printMutex());
-        for (const Row &r : live().totals())
-            std::fprintf(out, "%s\n", formatRow("[vu1-refuse-total]", r, -1.0).c_str());
+        for (const std::string &line : formatTotals(live()))
+            std::fprintf(out, "%s\n", line.c_str());
     }
 }
