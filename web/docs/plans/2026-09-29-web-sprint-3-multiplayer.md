@@ -139,6 +139,14 @@ README sections (running a server, joining, the protocol), research 91 final, th
 
 *(newest first)*
 
+- **2026-09-29 — the close** (the cloud agent). The soaks found two bugs, both fixed with tests: a stalled loop
+  stranded commands (the credit now grows by the wall time), and a new match's re-spawn of living players was
+  corrected (the spawn voids the prediction at its own ack). Confirming soak, 16 players + 8 spectators across a match
+  end: zero corrections, 60 Hz, 26 KiB/s a client. Hit volumes now come from the SEAL's own skeleton. Final: vitest
+  1479 passed; build green; e2e the base's 31 plus the 2 multiplayer specs green (the 8 base timing failures here
+  unchanged; an empty icon link ended a /favicon.ico 404 that flaked walk and traversal). PR to `main` opened for the
+  owner; the Lightsail provisioning is HUMAN_TASKS O27.
+
 - **2026-09-29 — M3-M9 in** (the cloud agent; Sonnet/Opus implementers for the lobby, the terrorist body, the deploy,
   the bots, the scoreboard, the round screens and the hit volumes, each reviewed and committed by the main agent).
   **Server** `packages/server`: rooms per map, the 60 Hz command stream (W3.R8) with a 200 ms credit and a 100 ms gap
