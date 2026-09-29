@@ -1,3 +1,4 @@
+import { capturePointer, releasePointer } from './pointer';
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { padRaw, strongest } from './gamepad';
 import { moveStick } from './moveStick';
@@ -633,7 +634,9 @@ export class FlyCamera {
     this.dragging = e.pointerId;
     this.lastX = e.clientX;
     this.lastY = e.clientY;
-    this.canvas.setPointerCapture(e.pointerId);
+    // Refused when the pointer is already gone (the click became the lock, a synthetic event): no `pointerup` will come
+    // for it, so there is no drag to keep, and it is not an error (`./pointer`).
+    if (!capturePointer(this.canvas, e.pointerId)) this.dragging = null;
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
@@ -652,7 +655,7 @@ export class FlyCamera {
     if (e.button === 0) this.letGo();
     if (this.dragging !== e.pointerId) return;
     this.dragging = null;
-    if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
+    releasePointer(this.canvas, e.pointerId);
   };
 
   private readonly onLockChange = (): void => {
@@ -660,7 +663,7 @@ export class FlyCamera {
     if (!this.locked) this.letGo();
     if (this.locked && this.dragging !== null) {
       // The click that took the lock also started a drag; the lock owns the look from here.
-      if (this.canvas.hasPointerCapture(this.dragging)) this.canvas.releasePointerCapture(this.dragging);
+      releasePointer(this.canvas, this.dragging);
       this.dragging = null;
     }
     this.options.onLockChange?.(this.locked);
