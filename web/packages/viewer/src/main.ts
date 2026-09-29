@@ -49,6 +49,7 @@ import { gameAudio } from './audio';
 import { soundFor } from '@s2u/sound';
 import { Effects } from './effects';
 import { surfaceShade } from './surfaceShade';
+import { MarkClipper } from './markClip';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower, type GrenadeItem } from './grenade';
@@ -1156,6 +1157,11 @@ function show(map: LoadedMap): void {
   fire.setShade(shade);
   effects.setShade(shade);
   grenade.setShade(shade);
+  // ... and are clipped to its triangles, shaded per vertex, as `FUN_003b3ab0` builds them (research 89 §13).
+  const clipper = new MarkClipper(built.group);
+  fire.setClip(clipper);
+  effects.setClip(clipper);
+  grenade.setClip(clipper);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
   fly.setClipPlanes(map.camera?.nearPlane ?? 4, Math.max(2000, view.box.min.distanceTo(view.box.max) * 1.6));

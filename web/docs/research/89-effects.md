@@ -623,8 +623,7 @@ The owner, after playing: the bullet marks show up much lighter and fainter than
 - The collision hull and the drawn world are separate meshes. The probe's 4.8 units cover the gap between them.
 - The grenade's scorch (`grenade.ts`, the grenades' file) still draws bare. It should take `surfaceShade` the same
   way.
-- A viewer mark is not clipped to its polygon, so on a stair's edge it hangs past the step. This is separate from the
-  colour, and still open.
+- A viewer mark was not clipped to its polygon, so on a stair's edge it hung past the step. Closed in §14.
 
 **Evidence.**
 - Pictures, in `test-fixtures/screens/effects/` (git-ignored, game data):
@@ -651,3 +650,59 @@ The owner, after playing: the bullet marks show up much lighter and fainter than
 - `e2e/effects.spec.ts` ("the marks take the colour of the wall they are on"): Frostfire's container marks take
   (0.508, 0.508, 0.523, 1) and Desert Glory's stone marks (0.126, 0.123, 0.110, 1), with their pictures.
 
+## 14. Round five: the mark clipped to the world, shaded per vertex (2026-09-29)
+
+**The game's build, read whole** (`FUN_003b3ab0`, decomp 306491-306670). For each visual of the hit node flagged
+`0x10000` (`FUN_003139e0` 213893), each triangle of the visual:
+- **faces the round**: its stored normal (the visual's normal stream, `+0x40`, s16/32768) dotted with the round's
+  direction brought into the node's frame (`FUN_003b3950` 306426) is below **-0.01** (306595); else it is skipped;
+- **lies within 4.8** of the mark's plane: all three vertices, projected by the mark's matrix (`FUN_00307810` 206431:
+  a look-at along the round, x and y scaled by `(w - 1) / (size * w)` and offset 0.5 -- the bitmap's u and v -- z the
+  depth along the round), have `fabs(z) <= 4.8` (306632);
+- **meets the square**: `FUN_003bf290` (313290) -- the projected triangle's u range and v range each overlap the
+  square's (`DAT_004b5070`..`DAT_004b5068`; not initialised in the decomp, 0 and 1 by the matrix's offset).
+- The triangle then goes **whole** to `FUN_003b3800` (306386) with its three vertices' colour words -- one pool entry a
+  triangle (`iVar11 == 1`, 306654) -- and the GS draws it with the bitmap clamped.
+
+**The budget.** None per mark: the loop has no cap. The cap is the pool's, and the pool counts **triangles**:
+`FUN_003b3800` takes one entry from `FUN_003bf1a0` (313254: refused past `base + overflow`) for each triangle, and
+`FUN_003bf110` (313233) trims whole entries back to the base, oldest first, each frame. `TEMP_DECAL_POOL` `BASE 150`,
+`OVERFLOW 50`: 150 world triangles of bullet marks and footprints together. A mark over 1-5 triangles leaves 30-150
+marks standing, not 150.
+
+**In the viewer** (`viewer/src/markClip.ts`):
+- `MarkClipper` walks the drawn world (the map group `surfaceShade` reads: visible meshes with a `color` attribute,
+  less the detail and reflection passes and the flares), takes the triangles in the square's box, `MARK_DEPTH` either
+  side along the round, and applies the three tests above. The facing normal is the winding's (CCW front, mesh
+  SEMANTICS §6), turned by a mirroring placement.
+- Each kept triangle is clipped to the square (Sutherland-Hodgman on u and v in [0, 1]); each output vertex takes the
+  triangle's colour interpolated there, which is the gouraud colour the GS gives that pixel. The same pixels as the
+  game's whole triangle under a clamped bitmap, drawn with less fill.
+- **The node.** The game marks the hit node's visuals only. The viewer's world is one mesh per texture over the whole
+  map, and a prop a mesh or instance per placement; so the node is "the world" or one prop placement, the one whose
+  triangle lies nearest the hit under the square's centre (solid before blended). A mark on the ground by a crate stays
+  off the crate.
+- Every layer of the node takes its copy, as the game's per-visual copies do; a fading terrain layer's copy fades
+  with its vertex alpha. `lastShade` is the most opaque layer's colour under the centre.
+- One small mesh a mark, in world space, its buffers made once (`MARK_CLIP_MAX_TRIANGLES` 32 world triangles, a
+  buffer bound and not the game's). Nothing drawn under it yet: the bare square at unity, clipped again four a frame.
+- Fire's temporary pool counts triangles (`TEMP_DECAL_TRIANGLES` 150), oldest marks hidden first. The footprints keep
+  their own pool of meshes [the game shares one; not joined here]. The grenade's scorch (permanent pool) is clipped
+  the same way, projected straight down.
+
+**Readings.**
+- The `(w - 1) / w` texel-centre scale of the uv is not applied (a 16-texel bitmap: 6 %).
+- The viewer's node rule stands in for the game's node: a world chunk in the game can be smaller than "the world".
+- A big triangle sloping away along the round is dropped whole, as the game drops it: at a grazing angle the far
+  vertices pass 4.8.
+
+**Cost** (`viewer/test/markClip.bench.ts`, a 1024 x 1024 world of 131k triangles in 96 world meshes plus 300 props,
+512 random hits, 5.4 world triangles kept a mark): **0.08-0.12 ms a mark** mean (p99 0.2-0.4 ms) on the host under a
+game run's load. Each geometry's cell index is built on the first mark that reaches it: 60 ms for that whole world,
+once.
+
+**Verification.** `viewer/test/markClip.test.ts`: a mark on a stair's edge stops at the edge; a lower step within reach
+takes the part past it on its own surface; a mark in a corner covers both faces, each with its own colour; each clipped
+vertex's colour equals the world's interpolated at that point; the facing and 4.8 tests; instanced props through each
+instance's matrix, hidden draws skipped; the lift and the reused buffers; `Fire.setClip` (the clip, `lastShade`, a wall
+drawn late); the pool counting triangles; a footprint and a scorch over a step's edge.
