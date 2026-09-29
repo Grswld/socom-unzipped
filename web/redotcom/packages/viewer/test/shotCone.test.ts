@@ -8,7 +8,7 @@ import { MoverSim } from '../src/net/moverSim';
 import { Button, type Command } from '../src/net/protocol';
 import {
   aheadOf, bound, cameraLook, centreClaim, coneCoords, faceToward, pointSegment, ShotCone, type AimMover,
-  CONE_SLACK_PX_PLACEHOLDER, CONE_WINDOW_PLACEHOLDER, ROOT_POSE_SLACK_PLACEHOLDER,
+  CONE_SLACK_PX_PLACEHOLDER, CONE_WINDOW_PLACEHOLDER, ROOT_POSE_SLACK_PLACEHOLDER, STANCE_CHANGE_TICKS_PLACEHOLDER,
 } from '../src/net/shotCone';
 import { PlayerCamera } from '../src/playerCamera';
 import { Traversal } from '../src/traversal';
@@ -296,6 +296,21 @@ describe('the server runs the page\'s Accuracy from the commands', () => {
     expect(CONE_WINDOW_PLACEHOLDER).toBe(6);
     expect(CONE_SLACK_PX_PLACEHOLDER).toBe(2);
     expect(ROOT_POSE_SLACK_PLACEHOLDER).toBe(4);
+    expect(STANCE_CHANGE_TICKS_PLACEHOLDER).toBe(60);
+  });
+
+  it('a posture change widens the root slack by the two stances\' roots for STANCE_CHANGE_TICKS_PLACEHOLDER ticks, then not', () => {
+    const cone = new ShotCone(HELD_RIFLE);
+    const span = Math.abs(rootY('crouch') - rootY('stand'));
+    expect(span).toBeGreaterThan(0);
+    cone.tick(cmd(1), still, 1);
+    expect(cone.frame(1)!.rootSlack).toBe(ROOT_POSE_SLACK_PLACEHOLDER);
+    cone.tick(cmd(2), { ...still, posture: 'crouch' }, 2);                   // the change, at count 2
+    const last = 2 + STANCE_CHANGE_TICKS_PLACEHOLDER;
+    for (let c = 3; c <= last + 1; c++) cone.tick(cmd(c), { ...still, posture: 'crouch' }, c);
+    expect(cone.frame(2)!.rootSlack).toBeCloseTo(ROOT_POSE_SLACK_PLACEHOLDER + span, 12);
+    expect(cone.frame(last)!.rootSlack).toBeCloseTo(ROOT_POSE_SLACK_PLACEHOLDER + span, 12);
+    expect(cone.frame(last + 1)!.rootSlack).toBe(ROOT_POSE_SLACK_PLACEHOLDER);
   });
 });
 
