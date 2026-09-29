@@ -11,8 +11,9 @@ import type { SwapPick, SwapProgress } from './walk';
  *   the Inventory (`FUN_0021bda0`'s menu over every slot): the grenades are reached there, not on L2.
  * - **The gate** (`FUN_005a8cb0`, `FUN_005bdc30`, the slot's count, `FUN_005c4fd0`, else the denied sound
  *   `FUN_003419c0`), then `FUN_005c4b10`: the slot already in the hand does nothing (**no toggle back**); a scope drops
- *   to first person; the kit's selected slot `+0x824` is set, and a change of category (`FUN_005c50b0`) starts the swap
- *   through `FUN_005c1660` -> `FUN_005a64c0`, whose clip choice the MOTION workstream ported (`WalkMode.swapWeapon`).
+ *   (the game's to first person; the viewer's to the third-person view -- it has no first person, owner 2026-09-29);
+ *   the kit's selected slot `+0x824` is set, and a change of category (`FUN_005c50b0`) starts the swap through
+ *   `FUN_005c1660` -> `FUN_005a64c0`, whose clip choice the MOTION workstream ported (`WalkMode.swapWeapon`).
  *   Refused while reloading, while a swap runs, while throwing, in the air.
  * - **Rifle to pistol.** At the start `FUN_005a7260` re-parents the rifle to `spinelo` (the clip's own `rifle` track
  *   poses it there) and sets `m_item` to 2 at once; `FUN_0057d5e0` turns the playing clips to their pistol versions.
@@ -68,7 +69,7 @@ export interface KitHost {
   canSwap(): boolean;
   /** `m_item` changed: the anim set, the fire's record, the reticle, the icon, the sounds follow. */
   item(item: Firearm): void;
-  /** A swap began (`FUN_005c4b10`): the scope drops to first person. */
+  /** A swap began (`FUN_005c4b10`): the trigger lets go and a scope drops to the third-person view (`main.ts`). */
   started?(to: Firearm): void;
   /**
    * The swap clip on the mover and its progress (`WalkMode.swapProgress`), null once it is over or cut. Given, the kit
