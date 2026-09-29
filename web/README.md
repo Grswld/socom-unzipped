@@ -163,6 +163,7 @@ the choice is remembered. A failed load unfolds the panel so the error is seen.
 | right button (held) | the aim view, first person from the SEAL's eyes |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
 | `R` | reloads; an empty magazine waits for it |
+| `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
 
 ### The controller
 
@@ -196,7 +197,9 @@ clips are the game's pick and blend: the stick's speed picks each set's clip by 
 strafe sets share the stick's angle, every clip plays at the rate its root needs. While walking, the game's own HUD is drawn
 over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
 compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
-the context prompt (the climb icon); hidden in flight.
+the context prompt (the climb icon, a door's within its 30 units); the round start as the console plays it (a fade from
+black, "STARTING ROUND 1 OF 11", then the objective); the compass's nav marks (the map's own nav points, C..Z); hidden in
+flight.
 
 **The walk sounds** with the game's own sounds, decoded from the map's banks (`docs/research/81-sounds.md`): a
 footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
