@@ -115,15 +115,28 @@ describe('the command stream (W3.R8)', () => {
     expect(snap.own!.x).toBe(Math.fround(server.x));
   });
 
-  it('never runs more commands than ticks given, past a 200 ms burst (the speed guard)', () => {
-    const { room, join, cmd, send } = setup();
+  it('never runs a client faster than real time, past a one-second burst (the speed guard)', () => {
+    const { room, join, cmd, send, advance } = setup();
     join(1);
     room.step();
-    const burst = Array.from({ length: 120 }, () => cmd(1, { forward: 1 }));
-    for (let i = 0; i < 120; i += 60) send(1, burst.slice(i, i + 60));
+    const burst = Array.from({ length: 300 }, () => cmd(1, { forward: 1 }));
+    for (let i = 0; i < 300; i += 60) send(1, burst.slice(i, i + 60));
     const before = room.player(1)!.sim.seq;
+    for (let i = 0; i < 60; i++) { advance(1000 / 60); room.step(); }
+    // A second of play: at most the second's 60 and the second saved up.
+    expect(room.player(1)!.sim.seq - before).toBeLessThanOrEqual(121);
+    expect(room.player(1)!.sim.seq - before).toBeGreaterThan(60);
+  });
+
+  it('runs a stall\'s backlog once the loop is back (the dropped ticks are the wall time\'s)', () => {
+    const { room, join, cmd, send, advance } = setup();
+    join(1);
+    for (let i = 0; i < 70; i++) { advance(1000 / 60); room.step(); }       // the saved credit spent on nothing
+    const before = room.player(1)!.sim.seq;
+    send(1, Array.from({ length: 40 }, () => cmd(1)));
+    advance(700);                                                             // the loop stalled 0.7 s: 42 ticks lost
     room.step();
-    expect(room.player(1)!.sim.seq - before).toBeLessThanOrEqual(12);
+    expect(room.player(1)!.sim.seq - before).toBe(40);
   });
 
   it('sends each client the others\' bodies at 30 Hz, never its own', () => {

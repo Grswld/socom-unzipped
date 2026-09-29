@@ -45,7 +45,9 @@ class PageWalk implements NetWalk {
   nudge(dx: number, dy: number, dz: number): void { const s = this.sim!.walker.state; s.x += dx; s.y += dy; s.z += dz; }
   /** One tick of play: the press, then the quantised tick, then the tap. */
   play(input: Omit<Command, 'seq'>): void {
-    if (!this.sim || this.locked) { this.tap?.({ ...input, forward: 0, right: 0, buttons: 0 }, [0, 0, 0]); return; }
+    // Locked (dead, or not yet stood anywhere) the page sends no stick and no presses -- but the Action press, the
+    // respawn's (`WalkMode.action`).
+    if (!this.sim || this.locked) { this.tap?.({ ...input, forward: 0, right: 0, buttons: input.buttons & Button.Action }, [0, 0, 0]); return; }
     const cmd = quantiseCommand({ ...input, seq: 0 });
     this.sim.apply(cmd);
     const s = this.sim.walker.state;
@@ -140,6 +142,37 @@ describe('the others, drawn behind the server (M4)', () => {
     const lag = b.sim!.walker.state.x - xs[xs.length - 1]!;
     expect(lag).toBeGreaterThan(0);
     expect(ca.snapshotRate()).toBeGreaterThan(25);
+    ca.close(); cb.close();
+  });
+});
+
+describe('a death and a respawn in the stream (M6)', () => {
+  it('takes no snapped correction through a kill, the wait and the respawn', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const m = map();
+    m.respawns.push(...m.slots.map((s) => ({ ...s })));
+    const room = new Room(m, null, { now: () => Date.now() });
+    const a = new PageWalk(m.grid), b = new PageWalk(m.grid);
+    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1), simulate: { latencyMs: 40 } }, a);
+    const cb = new NetClient({ url: 'mem', map: 'MP99', name: 'B', socket: pair(room, 2), simulate: { latencyMs: 40 } }, b);
+    let seq = 0;
+    for (let t = 0; t < 14 * 60; t++) {
+      a.play({ forward: 0, right: 0, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
+      // B runs about, and presses Action every second (the respawn's press once dead).
+      b.play({ forward: 1, right: t % 120 < 60 ? 0.5 : -0.5, yaw: 90 + (t % 360), pitch: 0, turn: 0.1, buttons: t % 60 === 0 ? Button.Action : 0, stance: 0, weapon: 0 });
+      if (t >= 60 && t < 100 && t % 9 === 0) {
+        // A's rounds straight at B, from the server's own places (the test is about the stream, not the aim).
+        const pa = room.player(1)!.sim.walker.state, pb = room.player(2)!.sim.walker.state;
+        const from: [number, number, number] = [pa.x, pa.y + 15.4, pa.z];
+        const d = [pb.x - from[0], pb.y + 12 - from[1], pb.z - from[2]], l = Math.hypot(d[0]!, d[1]!, d[2]!);
+        room.text(1, { type: 'fire', seq: ++seq * 10, from, dir: [d[0]! / l, d[1]! / l, d[2]! / l], weapon: 0, viewTick: room.tick });
+      }
+      room.step();
+      vi.advanceTimersByTime(1000 / 60);
+    }
+    expect(room.player(2)!.deaths).toBeGreaterThanOrEqual(1);
+    expect(room.player(2)!.alive).toBe(true);
+    expect(cb.corrections).toEqual({ small: 0, snapped: 0, largest: 0 });
     ca.close(); cb.close();
   });
 });

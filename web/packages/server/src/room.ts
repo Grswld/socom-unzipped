@@ -52,8 +52,13 @@ const SPAWN_LIFT = 1;
 /** VOTE_BAN_SCOPE_PLACEHOLDER (see `Room.banned`). */
 export const VOTE_BAN_MS = 10 * 60_000;
 export const EXPIRED_PLAY_S = 15, RESULT_S = 1, ENGINE_READ_S = 3, ROUND_COMPLETE_S = 5, FINAL_ROUND_S = 10, GAME_COMPLETE_S = 10;
-/** A client may run this many commands ahead of the ticks it has been given (a burst after a stall): 200 ms. */
-const CREDIT_MAX = 12;
+/**
+ * A client's commands are run as its credit allows: a tick's worth each server tick, or the wall time's when the loop
+ * stalled and dropped ticks (a GC pause, a busy host), so a stall's backlog is run once the server is back rather than
+ * left in the queue for good; never more than a second's worth saved up (the speed guard: no client runs faster than
+ * real time, past a one-second burst).
+ */
+const CREDIT_MAX = 60;
 /** Ticks a gap in the command numbers is waited on before the queue goes on without the missing one (100 ms). */
 const GAP_WAIT = 6;
 /** A command's stick past this, a button, or a turn counts as input for the idle kick. */
@@ -137,6 +142,8 @@ export class Room {
   readonly wins = { seal: 0, terrorist: 0 };
   private state: RoundState;
   private readonly polys;
+  private creditStep = 1;
+  private lastStepAt: number | null = null;
   /** The rows changed (a join, a leave, a rename): one score event goes out at the next tick. */
   private scoreDirty = false;
 
@@ -242,7 +249,7 @@ export class Room {
       while (at > 0 && p.queue[at - 1]!.seq > c.seq) at--;
       p.queue.splice(at, 0, c);
     }
-    if (p.queue.length > 240) p.queue.splice(0, p.queue.length - 240);   // a flood is dropped, not queued
+    if (p.queue.length > 600) p.queue.splice(0, p.queue.length - 600);   // a flood (10 s) is dropped, not queued
   }
 
   /** A text frame: a JSON event. */
@@ -265,6 +272,9 @@ export class Room {
   step(): void {
     this.tick++;
     const now = this.opts.now();
+    // The credit this step: a tick, or the wall time since the last step when that is more (a stall's dropped ticks).
+    this.creditStep = this.lastStepAt === null ? 1 : Math.max(1, ((now - this.lastStepAt) / 1000) * TICK_HZ);
+    this.lastStepAt = now;
     for (const p of this.players.values()) this.run(p, now);
     for (const p of this.players.values()) this.remember(p);
     this.flyGrenades();
@@ -276,7 +286,7 @@ export class Room {
 
   /** A player's commands, in order, as far as its credit goes. */
   private run(p: Player, now: number): void {
-    p.credit = Math.min(CREDIT_MAX, p.credit + 1);
+    p.credit = Math.min(CREDIT_MAX, p.credit + this.creditStep);
     while (p.queue.length && p.credit >= 1) {
       // A gap (a command lost past the redundancy, or still on its way): wait for it a while, then go on without it.
       if (p.queue[0]!.seq > p.sim.seq + 1 && p.gapSince + GAP_WAIT > this.tick) { if (p.gapSince < 0) p.gapSince = this.tick; break; }
