@@ -238,6 +238,23 @@ describe('penetration (research 84 section 13: HandleIntersections 0x3c9b70, FUN
     expect(shot.through!.map((t) => t.distance)).toEqual([30]);
   });
 
+  it('lastHit is the surface it stopped on, or the last it struck when it went through all and was spent', () => {
+    // Glass then thin metal then a far wall out of reach: through both, spent in the air -- lastHit is the metal.
+    const { fire } = rig(world([wall(-30, 30), wall(-60, 26), wall(-4600, 25)]));
+    fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    const shot = fire.shoot()!;
+    expect(shot.hit).toBeNull();
+    expect(shot.through!.map((t) => t.distance)).toEqual([30, 60]);
+    expect(fire.state().lastHit!.distance).toBeCloseTo(60, 6);
+    expect(fire.state().lastHit!.material).toBe(26);
+    // Glass then stone: stopped on the stone, which is lastHit; the glass is in the list.
+    const stopped = rig(world([wall(-30, 30), wall(-60, 25)]));
+    stopped.fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    const s2 = stopped.fire.shoot()!;
+    expect(s2.through!.map((t) => t.distance)).toEqual([30]);
+    expect(stopped.fire.state().lastHit!.distance).toBeCloseTo(60, 6);
+  });
+
   it('stone stops it at once; without a table every surface stops it', () => {
     const { fire } = rig(world([wall(-30, 25), wall(-60, 25)]));
     fire.setPenetration((m) => PEN[m ?? 0] ?? 0);

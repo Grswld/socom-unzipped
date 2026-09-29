@@ -521,7 +521,8 @@ export class Fire {
     this.rounds--;
     this.shots++;
     this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
-    this.lastHit = hit;
+    // The surface it stopped on, or -- went through everything and was spent in the air -- the last it struck.
+    this.lastHit = hit ?? through[through.length - 1] ?? null;
     // EFFECTS: the game's rule, when one is set (`setTracerRule`): the M4A1 SD draws none (research 89 §6).
     if (!this.tracerRule || this.tracerRule(this.rifle.id, this.shots)) this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
     const shot: Shot = { from, to: hit ? [...hit.point] : end, hit, ...(through.length ? { through } : {}) };
