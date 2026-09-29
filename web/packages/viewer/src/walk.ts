@@ -18,7 +18,9 @@ import type { TraversalPose } from './animator';
  *   steps at 30 fps and at 240 fps; the eye is drawn between the last two steps (`eye`).
  * - **The speed: the law, as read from the decompilation (W2.2b step 1 and its review).** Each actor tick
  *   (`dt = actor+0x2e0`) `FUN_005af930` puts the pad in `actor+0x244` (lateral, controller.rdr's `Strafe`) and
- *   `actor+0x240` (forward, `MoveLong`), and `FUN_005870e0` (decomp 445164-445169) runs the ground state by the
+ *   `actor+0x240` (forward, `MoveLong`) -- the move stick as the pad reader leaves it (`./moveStick`: 0.3 dead per
+ *   axis, rescaled, x sqrt 2, each axis clamped and the pair never put in the unit disc; the keys a full axis each, so
+ *   W+D is (1, 1); web research 88 section 3) -- and `FUN_005870e0` (decomp 445164-445169) runs the ground state by the
  *   stance at `actor+0x174`: 0 -> `FUN_00586570` (stand), 1 -> `FUN_00584c60` (crouch), 2 -> `FUN_005845c0`
  *   (prone). `FUN_00586f00` calls a stick within 0.03 of rest (`DAT_003f3428`) idle: no locomotion, the stop is
  *   at once whatever the stick was.
@@ -845,9 +847,9 @@ export class Walker {
         else this.action_ = null;
       }
     }
-    let forward = input.forward, right = input.right;
-    const length = Math.hypot(forward, right);
-    if (length > 1) { forward /= length; right /= length; }
+    // The pad reader clamps each axis to +-1 and never puts the pair in the unit disc (`./moveStick`): a full
+    // diagonal is (1, 1), which the standing blend takes as min(1, |stick|) and prone as one axis at 1.
+    let forward = Math.max(-1, Math.min(1, input.forward)), right = Math.max(-1, Math.min(1, input.right));
     const wade = this.driver?.stickFactor?.(this) ?? 1;          // TRAVERSAL SEAM: the water's slow-down
     forward *= wade; right *= wade;
     if (this.inAir) { this.fall(dt, forward, right); return; }

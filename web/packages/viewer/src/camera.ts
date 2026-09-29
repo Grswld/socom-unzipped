@@ -1,5 +1,6 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
-import { PAD_DEAD_ZONE } from './gamepad';
+import { padRaw, strongest } from './gamepad';
+import { moveStick } from './moveStick';
 import {
   FirstPersonBob, LookLaw, nudgePitch, ScreenShake, SCREEN, stepPitch, viewOffset,
   type LookOptions, type LookState, type Shake,
@@ -68,6 +69,8 @@ const FOV = 49;
  */
 const DEFAULT_NEAR = 4;
 const DEFAULT_FAR = 12000;
+/** Walking, the look law's step: the game's frame, the mover's 60 Hz tick (`./walk`'s `TICK`). */
+const LOOK_TICK = 1 / 60;
 const SPRINT_FOV = 1.14;
 /** Exponential approach rate for the FOV kick, per second. */
 const FOV_RATE = 9;
@@ -184,6 +187,8 @@ export class FlyCamera {
   private prone = false;
   private scoped = false;
   private turnRate = 0;
+  /** Walking, the look's time not yet stepped, under one `LOOK_TICK`. */
+  private lookClock = 0;
   private screen: [number, number] = [0, 0];
 
   constructor(
@@ -307,6 +312,7 @@ export class FlyCamera {
     this.stickBoost = false;
     this.law.reset();
     this.turnRate = 0;
+    this.lookClock = 0;
     if (!on) {
       this.setScreenOffset(0, 0);
       this.walkPitch = [-PITCH_LIMIT, PITCH_LIMIT];
@@ -393,16 +399,19 @@ export class FlyCamera {
   }
 
   /**
-   * The ground-plane half of what `update` would steer by: W/S and the stick's y forward, D/A and the stick's x to
-   * the right, clamped into the unit disc as `update` clamps. The boost (a double-tapped W held, or the stick held at
-   * its rim) is the fly camera's: on the ground it is never on. Space and shift have no meaning on the ground.
+   * The ground-plane half of what `update` would steer by, as the console's pad reader hands the mover its stick
+   * (web research 88 section 3): the stick -- the pad's or the touch stick's, its push as the pad gave it (`./gamepad`'s
+   * radial 0.15 dead zone and rescale undone, as `walkLook` does for the look) -- through the move stick's law
+   * (`moveStick`: 0.3 per axis, the rescale, the circle's x sqrt 2); the keys a full byte on each axis they press, so
+   * W+D is (1, 1) as PCSX2's binds and the host port's keys give it; on each axis the larger of the two. Not put back
+   * in the unit disc: the game never does. The boost (a double-tapped W held, or the stick held at its rim) is the fly
+   * camera's: on the ground it is never on. Space and shift have no meaning on the ground.
    */
   groundWish(): GroundWish {
-    let forward = this.stickY + (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
-    let right = this.stickX + (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
-    const length = Math.hypot(forward, right);
-    if (length > 1) { forward /= length; right /= length; }
-    return { forward, right, boost: false };
+    const [sx, sy] = moveStick(...padRaw(this.stickX, this.stickY));
+    const keyForward = (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
+    const keyRight = (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
+    return { forward: strongest(keyForward, sy) + 0, right: strongest(keyRight, sx) + 0, boost: false };
   }
 
   /**
@@ -420,8 +429,11 @@ export class FlyCamera {
     const arrowTilt = (this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('arrowdown') ? 1 : 0);
     if (this.walking) this.walkLook(dt, arrowTurn, arrowTilt);
     else {
-      const turn = Math.abs(this.lookX) > Math.abs(arrowTurn) ? -this.lookX : arrowTurn;
-      const tilt = Math.abs(this.lookY) > Math.abs(arrowTilt) ? this.lookY : arrowTilt;
+      // A pad's corner is past the rim (`./gamepad` `padStick`); flying, the pair is held to the disc as it always was.
+      const rim = Math.max(1, Math.hypot(this.lookX, this.lookY));
+      const lookX = this.lookX / rim, lookY = this.lookY / rim;
+      const turn = Math.abs(lookX) > Math.abs(arrowTurn) ? -lookX : arrowTurn;
+      const tilt = Math.abs(lookY) > Math.abs(arrowTilt) ? lookY : arrowTilt;
       if (turn !== 0 || tilt !== 0) {
         this.yaw += turn * ARROW_LOOK * dt;
         this.pitch = this.clampPitch(this.pitch + tilt * ARROW_LOOK * dt);
@@ -519,19 +531,25 @@ export class FlyCamera {
    * the first-person bob, as a view offset.
    */
   private walkLook(dt: number, arrowTurn: number, arrowTilt: number): void {
-    const push = Math.hypot(this.lookX, this.lookY);
-    const raw = push > 0 ? (PAD_DEAD_ZONE + (1 - PAD_DEAD_ZONE) * Math.min(1, push)) / push : 0;
-    const padX = this.lookX * raw, padY = this.lookY * raw;
+    const [padX, padY] = padRaw(this.lookX, this.lookY);
     const x = Math.abs(padX) > Math.abs(arrowTurn) ? padX : -arrowTurn;
     const y = Math.abs(padY) > Math.abs(arrowTilt) ? padY : arrowTilt;
-    const rates = this.law.frame(dt, x, y);
-    this.turnRate = rates.yaw;
-    const pitch = stepPitch(this.pitch, rates.pitch, dt, this.walkPitch[0], this.walkPitch[1]);
-    if (rates.yaw !== 0 || pitch !== this.pitch) {
-      this.yaw += rates.yaw * dt;
-      this.pitch = pitch;
-      this.apply();
+    // The game's look runs once a 60 Hz game frame (`FUN_002da930`'s ramp, `FUN_00594600`, `actor+0x48`), so the law
+    // steps on its own tick here, as the mover does: a second of turning is the same at any display rate (research 88).
+    this.lookClock += dt;
+    let turned = false;
+    while (this.lookClock >= LOOK_TICK - 1e-9) {
+      this.lookClock -= LOOK_TICK;
+      const rates = this.law.frame(LOOK_TICK, x, y);
+      this.turnRate = rates.yaw;
+      const pitch = stepPitch(this.pitch, rates.pitch, LOOK_TICK, this.walkPitch[0], this.walkPitch[1]);
+      if (rates.yaw !== 0 || pitch !== this.pitch) {
+        this.yaw += rates.yaw * LOOK_TICK;
+        this.pitch = pitch;
+        turned = true;
+      }
     }
+    if (turned) this.apply();
     const [sx, sy] = this.shake.step(dt);
     const wish = this.groundWish(), slow = this.scoped ? 0.2 : 1;
     const bob = this.firstPerson ? this.bob.step(dt, wish.right * slow, wish.forward * slow, this.prone) : 0;

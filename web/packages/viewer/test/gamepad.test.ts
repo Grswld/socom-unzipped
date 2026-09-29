@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { FlyCamera } from '../src/camera';
 import {
-  ACTION_WORDS, mergeInput, noInput, OWNER, PAD_BUTTON, PAD_DEAD_ZONE, PAD_FLAGS, PAD_LAYOUT, PAD_STICK, padInput,
+  ACTION_WORDS, mergeInput, noInput, OWNER, PAD_BUTTON, PAD_DEAD_ZONE, PAD_FLAGS, PAD_LAYOUT, PAD_STICK, padInput, padRaw,
   PadWatch, pressedSince, releasedSince, shortSource,
   type GamepadLike, type Input, type PadLike, type PadRow,
 } from '../src/gamepad';
@@ -87,11 +87,17 @@ describe('padInput: the sticks', () => {
     expect(padInput(pad({ axes: [0, -(PAD_DEAD_ZONE + 0.01), 0, 0] })).moveY).toBeLessThan(0.02);
   });
 
-  it('clamps a square gate\'s corner to the rim, on the diagonal', () => {
+  it('keeps a square gate\'s corner past the rim, on the diagonal, so padRaw gives the walk each axis full (research 88)', () => {
     const v = padInput(pad({ axes: [1, -1, 0, 0] }));
-    expect(Math.hypot(v.moveX, v.moveY)).toBeCloseTo(1, 12);
-    expect(v.moveX).toBeCloseTo(Math.SQRT1_2, 12);
-    expect(v.moveY).toBeCloseTo(Math.SQRT1_2, 12);
+    const k = (Math.SQRT2 - PAD_DEAD_ZONE) / (1 - PAD_DEAD_ZONE) / Math.SQRT2;
+    expect(v.moveX).toBeCloseTo(k, 12);
+    expect(v.moveY).toBeCloseTo(k, 12);
+    const [x, y] = padRaw(v.moveX, v.moveY);
+    expect(x).toBeCloseTo(1, 12);
+    expect(y).toBeCloseTo(1, 12);
+    expect(padRaw(0, 0)).toEqual([0, 0]);
+    const part = padInput(pad({ axes: [0, 0, 0.6, 0] }));
+    expect(padRaw(part.lookX, part.lookY)[0]).toBeCloseTo(0.6, 12);    // an axis alone comes back as the pad gave it
   });
 
   it('reads a missing or non-finite axis as centred', () => {

@@ -11,12 +11,10 @@
  * - **The layout** is data, `PAD_LAYOUT`: each row a control, the action, and the source it rests on -- or `assumed`
  *   where the repository does not say what that button does in SOCOM II. Never an assumption presented as documented.
  * - **The input** is `Input`: the move and look pairs and the actions, which `padInput` reads off a pad through the
- *   table and `mergeInput` merges with the touch stick's. The move pair is the touch stick's own (`./touch`,
- *   `stickVector`), so the camera and the mover take it unchanged.
+ *   table and `mergeInput` merges with the touch stick's. The pairs take the touch stick's shaping (`./touch`,
+ *   `stickVector`'s dead zone and rescale) without its rim (`padStick`), so the walk can undo it (`padRaw`).
  * - **The watch** (`PadWatch`) says when a pad comes and goes, from the events and from the poll alike.
  */
-import { stickVector } from './touch';
-
 /** The standard mapping's buttons, named as the PS2 pad's (W3C Gamepad standard layout, by position). */
 export const PAD_BUTTON = {
   Cross: 0, Circle: 1, Square: 2, Triangle: 3, L1: 4, R1: 5, L2: 6, R2: 7,
@@ -49,7 +47,8 @@ export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
- * What the pad, the keys' lanes and the touch stick ask for in one frame. The pairs are in the unit disc: `moveX`
+ * What the pad, the keys' lanes and the touch stick ask for in one frame. The pairs are in the unit disc but for a
+ * pad's corner (`padStick`, up to 1.487 a side): `moveX`
  * right and `moveY` forward, the touch stick's frame (`./touch`, `stickVector`); `lookX` right and `lookY` up. The
  * actions mean the same button in both modes (W2.R5): `jump` is a jump on foot and up in the fly camera, `crouch` a
  * crouch on foot and down; `mode` is the walk/fly switch `G` is. `stance` is the game's stance button (Triangle): a tap
@@ -220,9 +219,33 @@ function down(button: { readonly pressed: boolean; readonly value: number } | un
 }
 
 /**
+ * A pad stick's pair through the radial dead zone and its rescale (the zone's edge 0, a push of 1 still 1), y flipped
+ * so up is positive -- and **not** clamped to the rim: a pad whose corner reads (1, -1) keeps its corner at 1.487 a
+ * side, so the walk can undo the shaping exactly (`padRaw`) and read the push per axis as the console's pad reader
+ * does (`FUN_002da930` clamps each axis, not the pair: web research 88 section 4). The fly camera clamps what it uses.
+ */
+export function padStick(x: number, y: number): { x: number; y: number } {
+  const d = Math.hypot(x, y);
+  if (d <= PAD_DEAD_ZONE) return { x: 0, y: 0 };
+  const s = (d - PAD_DEAD_ZONE) / (1 - PAD_DEAD_ZONE) / d;
+  return { x: x * s + 0, y: -y * s + 0 };
+}
+
+/**
+ * `padStick` undone: the pad's own push per axis (x right, y up) from a shaped pair -- the touch stick's too, which is
+ * shaped the same way (`./touch` `stickVector`, the same 0.15). What the walk's look and move read the game's law from.
+ */
+export function padRaw(x: number, y: number): [number, number] {
+  const push = Math.hypot(x, y);
+  if (push === 0) return [0, 0];
+  const k = (PAD_DEAD_ZONE + (1 - PAD_DEAD_ZONE) * push) / push;
+  return [x * k, y * k];
+}
+
+/**
  * The pad's input through a layout: pure, so it is pinned on a synthetic pad (`test/gamepad.test.ts`). A stick goes
- * through the touch stick's own shaping (`stickVector` with a radius of 1: the dead zone, the rescale, the clamp to the
- * rim) with its y flipped, so up the stick is forward and up; a button holds its action. `null` is the rest input.
+ * through `padStick` (the radial dead zone and the rescale, no rim) with its y flipped, so up the stick is forward and
+ * up; a button holds its action. `null` is the rest input.
  */
 export function padInput(pad: GamepadLike | null | undefined, layout: readonly PadRow[] = PAD_LAYOUT): Input {
   const out = noInput();
@@ -230,10 +253,9 @@ export function padInput(pad: GamepadLike | null | undefined, layout: readonly P
   for (const row of layout) {
     if (row.action === 'move' || row.action === 'look') {
       const [ax, ay] = PAD_STICK[row.control as PadStick];
-      const v = stickVector(axis(pad, ax), axis(pad, ay), 1, PAD_DEAD_ZONE);
-      // `+ 0` turns stickVector's -0 (a y of 0 flipped) into 0.
-      if (row.action === 'move') { out.moveX = v.x + 0; out.moveY = v.y + 0; }
-      else { out.lookX = v.x + 0; out.lookY = v.y + 0; }
+      const v = padStick(axis(pad, ax), axis(pad, ay));
+      if (row.action === 'move') { out.moveX = v.x; out.moveY = v.y; }
+      else { out.lookX = v.x; out.lookY = v.y; }
     } else if (down(pad.buttons[PAD_BUTTON[row.control as PadButton]])) {
       out[row.action] = true;
     }
