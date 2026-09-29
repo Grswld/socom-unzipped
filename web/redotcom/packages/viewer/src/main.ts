@@ -407,7 +407,7 @@ const walkSounds = new WalkSounds(audio, {
  */
 // The effects' sounds through the map's banks: the data's slips mended and a stand-in for a casing sound a map lacks
 // (`@s2u/sound`'s `soundFor`, the one name table: research 90 items 4 and 12).
-const effects = new Effects(Math.random, (name, at) => { audio.play(soundFor(name, (n) => audio.has(n)), at); });
+const effects = new Effects(Math.random, (name, at, volume) => { audio.play(soundFor(name, (n) => audio.has(n)), at, 'play', volume); });
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
 effects.setWorld(() => walk.grid());

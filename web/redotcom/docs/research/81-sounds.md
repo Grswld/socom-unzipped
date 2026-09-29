@@ -33,12 +33,15 @@ tree; the numbers below are counts, offsets and names.
   callback (`FUN_005a3570`); the sound is the crawl prone, else the step when the stick is past half, else the stealth
   step (`FUN_005a39b0`).
 - **The M4A1 SD** (§5): `zweapon.rdr`'s record names `FireSoundClose .M4A1_SIL` and `ReloadSound .M4A1_SIL_RLD`, and
-  no medium or far report (the unsuppressed M4A1 has `.M4A1`, `.M4A1_M`, `.M4A1_F`, `.M4A1_RLD`).
+  no medium or far report (the unsuppressed M4A1 has `.M4A1`, `.M4A1_M`, `.M4A1_F`, `.M4A1_RLD`). A remote round's
+  report is picked by its distance from the camera against `WEAPON_GLOBAL`'s 9 and 50 metres (§5).
 - **The jump** (§6) is the `seal_jump` clip's `zanim_callback (name (jump_whoosh) time (0.4))`; the map's `CZANIM.ZAR`
   zAnim `jump_whoosh` plays `.JUMP_WHOOSH`. **The landing** (`FUN_005ac1f0`) plays the material's `LANDSOUND`
   (`.STONE_JUMP` ...) below the heavy fall-damage speed and `.BONE_BRK_1` above it (both at the deadly one).
-- **In the viewer** (§8): `@s2u/sound` decodes and renders; the page reads two to three banks by range (1.1-1.4 MB
-  of the 67), renders each sound at the game's volume and pan when it starts and plays it through Web Audio.
+- **In the viewer** (§8): `@s2u/sound` decodes and renders; the page reads the map's three banks and `HUDUI.bnk` by
+  range (about 1.9 MB of the 67 for Frostfire, §1; `FUN_00344450` loads HUDUI with every map), plus the one or two
+  banks lent for names the map's lack (§7), renders each sound at the game's volume and pan when it starts and plays
+  it through Web Audio.
   Verified by the hook on Frostfire and Desert Glory, and by rendering the sounds to WAV (§11).
 
 ## 1. The containers
@@ -115,7 +118,8 @@ footfall, one voice each. `.M4A1_SIL` (Vol 80): two tones at once, a crack (vol 
 - **`sounds.rdr`** (`FUN_003435c0`, decomp 242323-242560): `SETS` holds a list per bank block (`SMUS`, `HUDUI`,
   `MP2_VC`, `MP2_AM`, `MP2_FX`, ... 128 sets, 20,812 entries) and `GROUPS` the voice-line groups. An entry is the
   name's CRC-32 (signed: `.STEP_STONE` is 1440126871, `.M4A1_SIL` -1181866505) and keys: `RANGE` (15,162 entries),
-  `ONESHOT` (8,633), `MED`/`FAR` (1,150 each: a weapon's distance variants), `SUBTITLE*`, `AMBIENT` (279),
+  `ONESHOT` (8,633), `MED`/`FAR` (1,150 each: marks on a weapon's distance variants -- **not read by the game**:
+  `FUN_003435c0`'s key table, ELF 0x3f7708.., has no such key; §5 has the chooser), `SUBTITLE*`, `AMBIENT` (279),
   `DOPPLER` (27), `STREAMING_EFX`, `LINK`, `LOOP`. `RANGE`'s two numbers land as `u16` at +0xc and +0xe; `VOLUME` would be a float at
   +4 (no set uses it). The walk's: `.STEP_STONE` 30-200, `.STEALTH_STONE` 30-130, `.STONE_JUMP` 50-200,
   `.JUMP_WHOOSH` 30-130, `.M4A1_SIL` and `.M4A1_SIL_RLD` 20-200, `.M4A1` 85-1700, `.M4A1_M` 85-1700 `MED`,
@@ -167,9 +171,22 @@ volume 1.0 (`vtable+0x14`), or without a place (`vtable+0xc`) for the local play
 `.M4A1` / `.M4A1_M` / `.M4A1_F`, `.M4A1_RLD`, `Sound_Radius 100`. Both banks' sounds are in every map's `_fx.bnk`
 (`MP2_FX` 97-102). **The reload sound starts with the reload**: `FUN_005c2a90` (decomp 477484-477537) takes the next
 magazine, starts the reload (`FUN_005a82e0`) and in the same step plays the weapon's `+0x98` sound -- the `ReloadSound`
-handle `FUN_003c4700` resolved from the name at `+0x9c` -- at the actor (`+0x1c`), volume 1.0. The choice among close,
-medium and far for a remote shooter is not traced (the viewer takes the next variant when the listener is past the
-previous one's `RANGE`: a reading).
+handle `FUN_003c4700` resolved from the name at `+0x9c` -- at the actor (`+0x1c`), volume 1.0.
+
+**Close, medium or far** (traced 2026-09-29): the ZWEAPON reader stores `FireSoundClose/Med/Far` (keys 0x3fcc50/60/70)
+as slots 0/1/2 (`FUN_003d0140`, decomp 322595-322609) and the bank load resolves them to handles at the weapon's
+`+0xe0/+0xe4/+0xe8` (`FUN_003d01c0`, 316290-316300). `FUN_003cd810` (322042-322071) reads `zweapon.rdr`'s
+`WEAPON_GLOBAL` keys `SoundDistanceClose/Med/Far` (strings 0x3fc5d0/0x3fc5f0/0x3fc610), scales each by `DAT_003dfe10` =
+1 / `MetersPerUnit` (217166: 10 units a metre) and stores its square (`FUN_003d0100`, 323282-323288) in
+`DAT_004b52f0/f4/f8`. The retail record: `SoundDistanceClose 0`, `SoundDistanceMed 9`, `SoundDistanceFar 50` -- 90 and
+500 units. `FUN_003d2c50` (325494-325540, from the fire path at 479450) takes the round's position against the camera
+(`DAT_0048db48 + 0x30`), its squared length: over the far square the `+0xe8` (far) handle, else over the medium one
+`+0xe4`, else `+0xe0` (close); a null handle plays nothing; otherwise `vtable+0x14` at volume 1.0 at the round -- the
+3D play, so the variant's own `RANGE` still gates it. So the game plays `.M4A1` within 90 units, `.M4A1_M` to 500,
+`.M4A1_F` beyond (silent past 1,700 by `RANGE`). The M4A1 SD has no Med/Far name, so its slots are empty and past 90
+units its round is silent [PLAUSIBLE: the empty name's lookup to a null handle, `FUN_00344f30`, was not read to the
+end]. `sounds.rdr`'s `MED`/`FAR` marks are data only (§3). The viewer: `weaponGlobals`, `fireVariant`,
+`GameAudio.onFire` (pinned by sound.test.ts and audio.test.ts "picks a remote round by WEAPON_GLOBAL distance").
 
 **A round passing** (`FUN_00598000`, decomp 454613-454655): each tick a projectile's segment is taken against an actor's
 position (`FUN_00308b00`, the closest approach); within 70 units the actor flinches (`FUN_00572fa0`), within 20 a bullet
@@ -185,7 +202,16 @@ penetration's exit, a ricochet -- are excluded with it: the viewer's own rounds 
   (jump_whoosh) time (0.4))`; `seal_runningjump_launch` and the climbs carry `jump_whoosh` at 0.1-0.5. A callback runs
   the zAnim of its name from the map's `CZANIM.ZAR` (`common` set): `jump_whoosh`'s name table is `NA, jump_whoosh,
   dummy_node, .JUMP_WHOOSH, spinehi` and its one command is set 0 command 30 (32 bytes, the play-sound command) whose
-  `u16` at +6 is 3 -- `.JUMP_WHOOSH` -- and +16 names the node (`spinehi`) it sounds at. All 73 such commands of MP6's
+  `u16` at +6 is 3 -- `.JUMP_WHOOSH` -- and +16 names the node (`spinehi`) it sounds at. The command's layout
+  (`FUN_002659c0`, decomp 112319-112470): flags `u16` +4, the sound's name index `u16` +6, **the volume f32 at +8 under
+  flag 0x10** (else 1.0), the pan `u16` +0xc under 0x20, the pitch bend `s16` +0xe under 0x40, the node byte +16, the
+  offset f32 triple at +0x14 under flag 4; flag 0x80 is a new play. The volume goes to the play (112460-112461) and
+  `FUN_00342670` makes the app volume `volume x RANGE gain x 1024` (241912-241955), which 989snd takes into the voice as
+  `(app x orig) >> 10` clamped at 127 (`iop/blocksnd.c` 129-133, 448-450): Desert Glory's mission `inside_noise` loops
+  at 0.6, its `flame_in_rubble1` fire (`~FIRE_SM`, flags 0x292) at 3.0, `flashcrash_grenade`'s `.MARK_141_FLASH` at
+  2.0, `shotgun_hit_dirt` at 5.0, Frostfire's `wind_inside` gusts at 0.6. The viewer honours it on the callbacks, the
+  beds, the emitters and the gusts (`commandVolume`, `GameAudio.play`'s volume); pan and pitch bend are not applied
+  (§12). All 73 such commands of MP6's
   archive index a sound name; of its 67 animations with one, 65 play one sound (`ladder_rung .STEP_LADDER`, `shotgun_pump .SHOTGUN_COCK`,
   `dive_prone .JUMP_TO_PRONE`, `land_sound .FALL_STONE`, the grenades' material hits ...), `law_impact` and
   `RPG_impact` two (`.EXP_1`, `.GREN_FAR`).
@@ -245,7 +271,9 @@ sounds: 200 of 200 over the 22 maps.
   (MP6: 21 reads, 4.1 MB, 66 ms) -- and `GameAudio` renders a sound when it starts, with the play volume and pan
   `FUN_00342670` would give it from the camera, into a stereo buffer for one `AudioBufferSourceNode`. No
   `PannerNode`: its equal-power law and roll-off are not 989snd's. The `AudioContext` is made suspended at page start
-  and the first click or key resumes it.
+  and the first click or key the browser counts as a user activation resumes it; `unlocked` means the context runs
+  (a touch `pointerdown` or an Escape leaves the resume pending until the lift or the next key), plays before that are
+  counted as locked, and a refused resume is warned once and kept in `stats().resumeError`.
 - **The events** (`GameAudio`): `onFootstep(material, position, {stance, stick})`, `onFire(weapon, position)`,
   `onReload(weapon, position)`, `onJump(position)` (the `jump_whoosh` callback now), `onLand(speed | class,
   material, position)`, `onAnimCallback(name, position)`, `play(name, position)`; `setVolume`, `setMuted`; `stats()`
@@ -260,7 +288,9 @@ sounds: 200 of 200 over the 22 maps.
   **`borrowMissing`**: a step, stealth, crawl or landing sound of a material the map's floors use, a grenade bounce or
   round impact on a surface the map has, an explosion or a casing, that the map's banks lack, lent by the same name from
   the bank of another map that has it (found through `sounds.rdr`: a set is a bank's block) -- 1 or 2 borrowed banks a
-  map, every floor of the 22 now sounding. The remote fire variants' chooser and the footprint decals are not traced.
+  map, every floor of the 22 now sounding. The footprint decals are not traced; the remote fire variants' chooser is (§5).
+  A bank that will not parse is named in `missing` and the rest of the map's sound still comes (`soundFromDisc` and
+  `renderAmbienceLoops` read bank by bank; soundData.test.ts).
 - **The unlock costs nothing** (measured on the dev server, headless Chromium): the first key press used to spend 949 ms
   (Desert Glory), 451 ms (Sandstorm), 133 ms (Frostfire) in the audio unlock -- about 300 ms of it the page's first
   `AudioContext` (the browser's audio service), the rest the reverb's response and the loops' buffers. Now the context
@@ -302,11 +332,47 @@ sounds: 200 of 200 over the 22 maps.
 
 ## 10. The ambience
 
-The mission script plays it (`MZANIM.ZAR`, `mission` set; the common set carries the same beds):
-- **The beds.** `check_camera_inside_state1` (activation 1: it starts with the mission) loops on the camera's inside
-  state: stop `outside_noise`, start `inside_noise` (command 46, the stop, names its animation at +4; 45, the start, at
-  +7), and the reverse. `outside_noise` plays `~OUTDOOR_AMB`, `inside_noise` `~INDOOR_AMB`, without a place (flags
-  0x280). `~OUTDOOR_AMB` (MP2) is two tones panned 270/90 and two child sounds under an LFO.
+The scripts play it (`CZANIM.ZAR`'s `common` set and the map's `MZANIM.ZAR` `mission` set).
+
+**Which set a name is.** A start names its animation bare, and the game resolves a bare name (`FUN_0026a250`, decomp
+115001-115072, reached from `CALL_ANIMATION` through `FUN_0026e650`, 117599) in the registry's **current** set first --
+`DAT_00414be4`, written only by the set start `FUN_0026c600` (116314-116330); both start sites (75858-75866,
+149735-149741) start `common` then `mission`, so the current set is the mission's -- then in every other set in load
+order; within a set the first animation of the name (`FUN_0026c8f0`). So where both sets carry a name, the mission's
+wins (`resolveZAnims`). That matters: the mission's first `inside_noise` plays `~OUTDOOR_AMB` (flags 0x290) at 0.6 on
+MP6 (Desert Glory), MP7, MP8, MP9 and MP12 and at 0.5 on MP5, and on MP10 (Blood Lake) `SND_OUTDOOR_AMBIENCE_LOOP`, a
+name no bank holds -- silent; the common set's plays `~INDOOR_AMB` (0x280)
+on all 22. The viewer played the common one everywhere until 2026-09-29 (pinned now: audio.test.ts "resolves Desert
+Glory's indoor bed in the mission set").
+
+**The command numbers the scripts use** (set 0): the list opens with `Reserved` (`FUN_0026ac20`, string 0x3ed270), then
+`FUN_0025bc20`'s base commands in order (decomp 106862-106925: IF 2, ELSEIF 3, ELSE 4, ENDIF 5, LOOP 14, WAIT 15,
+SOUND 30, WHILE 39, END_WHILE 40, EXPRESSION 43, CALL_ANIMATION 45, STOP_ANIMATION 46 ...), then the game's own in
+`FUN_002ad290`'s order (152550-152557): `VALVE` 61 ... **`CAMERA_INDOORS` 66**, **`PLAYER_INDOORS` 72**. `CAMERA_INDOORS`'s
+tick (0x2936b0, read off the ELF) answers the byte the camera's floor probe writes from the polygon's `m_inside`
+(`FUN_002dc180`, 140054) -- the reverb's own test (241521); `PLAYER_INDOORS`'s (0x2b3880) bit 2 of the player's byte
+`+0x1060`. An `IF`'s expression follows its 8-byte head (`02 00 32 00 01 00 00 00 | 48 00 12 00`); the `ELSEIF` carries
+`EXPRESSION` 43 with operand 1, `!` (reCOM's `IsOperator` order; the objectives' `VALVE` tests join with operand 2, `&&`).
+
+- **The beds.** The common `check_camera_inside_state1` (activation 1: it starts with the mission) loops on
+  `PLAYER_INDOORS`: stop `outside_noise`, start `inside_noise` (command 46, the stop, names its animation at +4; 45, the
+  start, at +7), and the reverse. `outside_noise` plays `~OUTDOOR_AMB`, `inside_noise` `~INDOOR_AMB` (or the mission's,
+  above), without a place (flags 0x280, or 0x290 with a volume). `~OUTDOOR_AMB` (MP2) is two tones panned 270/90 and two
+  child sounds under an LFO.
+- **The camera-state layers** (`ambienceLayers`, walked out of the scripts rather than two literal names, 2026-09-29):
+  every activation-1 script is read in command order; its starts inside an `IF`/`ELSEIF` on `CAMERA_INDOORS` or
+  `PLAYER_INDOORS` (or its `!`) belong to that side, a start outside any branch to both, and the `WAIT`s ahead of its
+  first test are its delay. Each started animation's placeless play-sound commands (no node, no offset) are the side's
+  layers, each at its command volume: a `~` sound its sequence starts once is a bed (`loop`); a sound its sequence
+  replays -- `SOUND`, `WAIT`, `LOOP` -1 (`FUN_0025ede0`: -1 never ends) -- is a `repeat` every `base + range x U[0,1)`
+  seconds (the `WAIT`'s random form, `FUN_0025ed50`: flag 0x20 takes the pair at +12/+16, +16/+20 with 0x10). Three
+  maps have a second script: **Frostfire** (MP2) `check_camera_inside_state` starts `snd_wind_outside` (no animation of
+  that name on MP2 -- a name copied from MP1's script, silent as on the console), waits 8 s, then on `CAMERA_INDOORS` starts
+  `wind_inside` and stops `wind_outside`, or the reverse; each plays `SND_OUTDOOR_WIND_GUST_LOOP` (in no bank: silent)
+  and replays `.OUTDR_WND_GST2` every 5-20 s and `.OUTDR_WND_GST3` every 2-16 s, at 1.0 outdoors and 0.6 indoors
+  (`MP2_am` holds both). **MP1**'s script starts `snd_wind_outside` / `snd_wind_inside`: `~OUTDOOR_AMB` at 1.0 out and
+  0.6 in, beside the common beds. Pinned: sound.test.ts "walks the camera-state scripts" (a synthetic copy of MP2's
+  bytes) and audio.test.ts "walks Frostfire's camera-state scripts" (the fixture, and the gusts played on a clock).
 - **The emitters.** Every self-starting animation (activation 1) whose play-sound command loops a `~` sound at a node
   (flags 0x82/0x282, the node byte at +16, `0xf9` the animation's root node): Frostfire's `~FAN_ROTATE` at `fan1`,
   Desert Glory's insects at its lights and fires in a barrel and the rubble, the waterfalls and rivers of Abandoned,
@@ -331,10 +397,14 @@ The mission script plays it (`MZANIM.ZAR`, `mission` set; the common set carries
   Hook, The Mixer (indoor) and Requiem test it (`TEST_REGISTER -2`) to pick their layers; Requiem's ice sounds read
   global 3, which nothing here sets. The viewer renders the beds once, with register 2 at spawn A's camera height
   (`BED_CAMERA_ABOVE_FEET_PLACEHOLDER`, 25 over the floor), not per frame.
-- **In the viewer**: each sound rendered once in the worker as a 12 s loop with a 1 s crossfade folded in
+- **In the viewer**: each loop (a bed layer, an emitter) rendered once in the worker at its command's volume
+  (`loopKey`: one render per sound and volume) as a 12 s loop with a 1 s crossfade folded in
   (`LOOP_SECONDS_PLACEHOLDER`), played round; the beds cross over 0.5 s (`BED_FADE_SECONDS_PLACEHOLDER`) as the camera's
-  floor goes in and out; an emitter's two channel gains follow the camera each frame -- its `RANGE` fall-off, squared
-  by 989snd's law, and the pan pair of its azimuth.
+  floor goes in and out, and the side's `repeat`/`once` layers are armed afresh (their animation restarts: a gust at
+  once, then after each wait), not before the script's delay; an emitter's two channel gains follow the camera each
+  frame -- its `RANGE` fall-off, squared by 989snd's law, and the pan pair of its azimuth [reading: the console clamps
+  `volume x gain x orig` at 127 inside the voice; a loop rendered at a volume over 1 and then scaled is a little louder
+  at a distance than that].
 
 ## 11. Verification
 
@@ -359,3 +429,12 @@ Glory `.STEP_SAND` and `.SAND_JUMP`; nothing dropped.
 - The Gaussian interpolation (research/69 §4) and the SPU2's reverb down/up-sampling filters: the render interpolates
   linearly and the reverb response holds each 24 kHz tick for two output samples.
 - Whether the console is silent where the viewer borrows (a capture on Rat's Nest would say).
+- The beds' script tests `PLAYER_INDOORS` (the player's `+0x1060` bit 2), the wind's `CAMERA_INDOORS` (the camera's
+  floor); the viewer drives both from the camera's floor (`setEnvironment`) [reading: they differ only while the
+  camera and the SEAL stand on different sides of a door]. What sets the player's bit is not traced.
+- A camera script's delay is applied to its one-shots only; its loops (MP1's `~OUTDOOR_AMB` at 1.0) start with
+  the ambience. Two scripts starting the same bed at the same volume are one loop here (the console has two voices).
+- Activation-1 scripts that start animations on other tests (the objectives' `VALVE`s, `RANDOM_WEIGHT` in Desert
+  Glory's `mp6_battlesounds`, the lightning of MP52 and MP61) are not walked; nor are the zAnim sound commands' pan (flag 0x20) and
+  pitch bend (0x40). The effects' own zAnim `SOUND` op (`@s2u/scene`'s `effects.ts`) does not yet read the command
+  volume: its casing bounce volume reaches `GameAudio.play`, its command volume does not.

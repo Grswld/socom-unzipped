@@ -1,10 +1,10 @@
 import {
-  fixSoundName, footstepSound, landingClass, landingHurts, landingSounds, landSpeeds, makeVolume, panDegrees, parseBankFile,
+  fireVariant, fixSoundName, footstepSound, landingClass, landingHurts, landingSounds, landSpeeds, makeVolume, panDegrees, parseBankFile,
   passingSound, PAN_RESET, rangeGain, renderLoop, renderSound, reverbImpulse, SampleCache, soundFor, voiceLevel,
-  type LandingClass, type Material, type RenderedSound, type ReverbImpulse, type SoundBank, type SoundParams,
+  type AmbienceLayer, type LandingClass, type Material, type RenderedSound, type ReverbImpulse, type SoundBank, type SoundParams,
   type StanceCode, type WeaponSounds,
 } from '@s2u/sound';
-import type { SoundData } from './soundData';
+import { loopKey, type SoundData } from './soundData';
 import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
 
 /**
@@ -24,17 +24,20 @@ import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopL
  * mission's `IndoorReverb`/`OutdoorReverb` entry for the polygon under the camera (`setEnvironment`), as
  * `FUN_00341a60` does each frame with `snd_AutoReverb`.
  *
- * **The ambience** (§10): the mission's beds (`~OUTDOOR_AMB` outdoors, `~INDOOR_AMB` indoors, crossed as the camera
- * goes in and out) and its emitters (a `~` loop at a scene node, heard by its `RANGE` and azimuth as the camera moves),
- * each rendered once for `LOOP_SECONDS_PLACEHOLDER` and looped.
+ * **The ambience** (§10): the layers the mission's camera-state scripts start on each side -- the beds (`~OUTDOOR_AMB`
+ * outdoors, `~INDOOR_AMB` indoors, crossed as the camera goes in and out) and the one-shots a script replays after a
+ * random wait (Frostfire's wind gusts) -- each at its command's volume, and its emitters (a `~` loop at a scene node,
+ * heard by its `RANGE` and azimuth as the camera moves); the loops each rendered once for `LOOP_SECONDS_PLACEHOLDER`.
  *
  * **The events.** The other workstreams call the `on*` methods (`GameAudio`'s API below). Each names a sound the way
  * the game names it -- a material's `STEPSOUND`, a weapon's `FireSoundClose`, a zAnim callback's -- and a name the
  * map's banks do not hold is silent, as `FUN_00344f30` answers no handle for it on the console.
  *
  * **Unlock.** A browser starts no audio before a gesture: the `AudioContext` is made suspended at page start
- * (`unlockOn`) and resumed by the first pointer or key press; an event before that is counted (`stats().dropped.locked`)
- * and not played.
+ * (`unlockOn`) and resumed by the first pointer or key press the browser counts as a user activation (a touch
+ * `pointerdown` and an Escape are not: their resume stays pending until the finger lifts or another key). Until the
+ * context runs, a play is counted (`stats().dropped.locked`) and not played; a refused resume is warned once and kept
+ * in `stats().resumeError`.
  */
 
 /**
@@ -63,9 +66,11 @@ export type Vec3 = readonly [number, number, number];
 
 /** What the hook reports (`window.__viewer.audio()`). */
 export interface AudioStats {
-  /** Whether a gesture has made the context, and its state (`running` once it plays). */
+  /** Whether the context runs after a gesture (not merely that one was seen), and its state. */
   unlocked: boolean;
   state: string;
+  /** Why the last resume was refused, or null. */
+  resumeError: string | null;
   muted: boolean;
   volume: number;
   /** The map whose banks are loaded, and each bank's block name and sound count. */
@@ -94,7 +99,7 @@ export interface AudioStats {
   missing: string[];
 }
 
-export type AudioEvent = 'footstep' | 'fire' | 'reload' | 'jump' | 'land' | 'callback' | 'passing' | 'play';
+export type AudioEvent = 'footstep' | 'fire' | 'reload' | 'jump' | 'land' | 'callback' | 'passing' | 'play' | 'ambience';
 
 /** A landing as the walk reports it: its contact speed (units a second), or its class name. */
 export type LandingInput = number | 'soft' | 'hard' | 'harder' | 'deadly';
@@ -115,6 +120,10 @@ export interface AudioOut {
   readonly ready?: boolean;
   readonly unlocked: boolean;
   readonly state: string;
+  /** Why the last resume was refused (optional). */
+  readonly resumeError?: string | null;
+  /** Calls `run` when the output starts running after a gesture (optional: an output that unlocks at once has none). */
+  onRunning?(run: () => void): void;
   setGain(gain: number): void;
   play(sound: RenderedSound): void;
   /** The reverb's response (null: none), and its depth ramped to over `seconds`. */
@@ -137,17 +146,34 @@ export class WebAudioOut implements AudioOut {
   private ir: ReverbImpulse | null = null;
   private depth = 0;
 
-  /** A gesture has resumed the context (it may exist before, suspended: `prepare`). */
+  /** A gesture has asked the context to resume (it may exist before, suspended: `prepare`). */
   private gestured = false;
-  get unlocked(): boolean { return this.ctx !== null && this.gestured; }
+  private resumeError_: string | null = null;
+  private warnedResume = false;
+  private readonly running: (() => void)[] = [];
+  /** Unlocked is the context running after a gesture: a resume still pending (a touch `pointerdown`) is not. */
+  get unlocked(): boolean { return this.gestured && this.ctx?.state === 'running'; }
   get ready(): boolean { return this.ctx !== null; }
   get state(): string { return this.gestured ? this.ctx?.state ?? 'locked' : 'locked'; }
+  get resumeError(): string | null { return this.resumeError_; }
+  onRunning(run: () => void): void { this.running.push(run); }
 
   unlock(): void {
     this.prepare();
-    if (!this.ctx) return;
+    const ctx = this.ctx;
+    if (!ctx) return;
     this.gestured = true;
-    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
+    if (ctx.state === 'running') return;
+    // Asked again on every gesture until it runs: a resume from an event that is no activation stays pending, and the
+    // next one (the finger's lift, a key) is what the browser lets through.
+    ctx.resume().then(() => {
+      if (ctx.state !== 'running') return;
+      this.resumeError_ = null;
+      for (const run of this.running) run();
+    }, (e: unknown) => {
+      this.resumeError_ = e instanceof Error ? e.message : String(e);
+      if (!this.warnedResume) { this.warnedResume = true; console.warn(`audio: the context would not resume: ${this.resumeError_}`); }
+    });
   }
 
   prepare(): void {
@@ -316,7 +342,7 @@ export function panGains(pan: number): [number, number] {
   return [voiceLevel(l) / centre, voiceLevel(r) / centre];
 }
 
-interface Emitter { sound: string; node: string; position: [number, number, number]; handle: LoopHandle | null; gain: number }
+interface Emitter { sound: string; node: string; position: [number, number, number]; volume: number; handle: LoopHandle | null; gain: number }
 
 /**
  * The walk's sound: the loaded banks, the rules that pick a sound, the listener, the reverb, the ambience, the output.
@@ -329,7 +355,10 @@ export class GameAudio {
   private materials: Material[] = [];
   private defaultMaterial = 0;
   private weapons = new Map<string, WeaponSounds>();
+  /** `WEAPON_GLOBAL`'s medium and far distances, squared (`fireVariant`); null: every round is the close sound. */
+  private fireSq: { med: number; far: number } | null = null;
   private callbacks = new Map<string, string[]>();
+  private callbackVolumes = new Map<string, number[]>();
   private damageVoice: string | null = null;
   private map: string | null = null;
   private missing: string[] = [];
@@ -343,7 +372,7 @@ export class GameAudio {
   private speeds: [number, number, number] | null = null;
   private played = 0;
   private readonly byName: Record<string, number> = {};
-  private readonly events: Record<AudioEvent, number> = { footstep: 0, fire: 0, reload: 0, jump: 0, land: 0, callback: 0, passing: 0, play: 0 };
+  private readonly events: Record<AudioEvent, number> = { footstep: 0, fire: 0, reload: 0, jump: 0, land: 0, callback: 0, passing: 0, play: 0, ambience: 0 };
   private readonly dropped = { locked: 0, range: 0, unknown: 0, muted: 0, silent: 0 };
   private readonly unknownNames: Record<string, number> = {};
   private readonly recent: AudioStats['recent'] = [];
@@ -355,7 +384,14 @@ export class GameAudio {
   private beds: { outside: LoopHandle[]; inside: LoopHandle[] } = { outside: [], inside: [] };
   private bed: 'outside' | 'inside' | null = null;
   private emitters: Emitter[] = [];
-  /** The loops the worker rendered (`setLoops`), by sound name; while `loopsFollow`, the ambience waits for them. */
+  /**
+   * The one-shot layers (`once`, `repeat`: Frostfire's gusts), each armed while its side is up: `next` the clock time
+   * of its next play, null while its side is down or a `once` has played.
+   */
+  private oneShots: { side: 'outside' | 'inside'; layer: AmbienceLayer; next: number | null }[] = [];
+  /** When the ambience started: the mission's start, for the scripts' `delay`. */
+  private ambienceT0 = 0;
+  /** The loops the worker rendered (`setLoops`), by `loopKey` (name and volume); while `loopsFollow`, the ambience waits. */
   private loops = new Map<string, RenderedSound>();
   private loopsFollow = false;
   /** Whether the one warning about a tree with no sound archives has been given. */
@@ -366,11 +402,14 @@ export class GameAudio {
    * thread. True for the tests; the page's `gameAudio` is made without it, so nothing heavy ever runs on a gesture.
    */
   constructor(private readonly out: AudioOut = new WebAudioOut(), private readonly random: () => number = Math.random,
-              options: { inline?: boolean } = {}) {
+              options: { inline?: boolean; now?: () => number } = {}) {
     this.inline = options.inline ?? true;
+    this.now = options.now ?? ((): number => performance.now() / 1000);
     this.out.setGain(this.gain());
   }
   private readonly inline: boolean;
+  /** The clock the replayed layers keep, seconds. */
+  private readonly now: () => number;
   /** Work queued behind the unlock: the reverb's buffer, then one loop's buffer a job; `pump` runs them frame by frame. */
   private jobs: { gen: number; run: () => void }[] = [];
   private gen = 0;
@@ -409,7 +448,10 @@ export class GameAudio {
     this.materials = data?.materials ?? [];
     this.defaultMaterial = data?.defaultMaterial ?? 0;
     this.weapons = new Map((data?.weapons ?? []).map((w) => [w.name, w]));
+    const fd = data?.fireDistances;
+    this.fireSq = fd ? { med: fd.med * fd.med, far: fd.far * fd.far } : null;
     this.callbacks = new Map(data?.callbacks ?? []);
+    this.callbackVolumes = new Map(data?.callbackVolumes ?? []);
     this.damageVoice = data?.damageVoice ?? null;
     this.reverbLoaded = false;
     this.env = null;
@@ -436,15 +478,18 @@ export class GameAudio {
    */
   unlockOn(target: EventTarget): void {
     setTimeout(() => { if (!this.out.ready) this.out.prepare?.(); }, 0);
+    // Only the context here: the reverb and the loops are queued for the frames after (`pump`), once it runs.
+    const running = (): void => { this.loadReverb(); if (this.ambienceWanted) this.startAmbience(); };
+    this.out.onRunning?.(running);
     const unlock = (): void => {
       const t0 = performance.now();
       const was = this.out.unlocked;
       this.out.unlock();
-      // Only the context here: the reverb and the loops are queued for the frames after (`pump`).
-      if (!was && this.out.unlocked) { this.loadReverb(); if (this.ambienceWanted) this.startAmbience(); }
+      if (!was && this.out.unlocked) running();          // an output that runs at once (the tests' recorder)
       this.timing.unlockMs = Math.max(this.timing.unlockMs, performance.now() - t0);
     };
-    for (const type of ['pointerdown', 'keydown', 'touchend']) target.addEventListener(type, unlock, { capture: true, passive: true });
+    // `pointerup` and `touchend`: a touch's activation is its lift, not its `pointerdown`.
+    for (const type of ['pointerdown', 'pointerup', 'keydown', 'touchend']) target.addEventListener(type, unlock, { capture: true, passive: true });
   }
 
   /** The listener: the camera's world matrix (column-major, as three.js holds it), once a frame; the emitters follow. */
@@ -452,6 +497,7 @@ export class GameAudio {
     this.listener = matrixWorld ? Array.from(matrixWorld) : null;
     this.pump();
     this.updateEmitters();
+    this.updateOneShots();
   }
 
   /**
@@ -564,15 +610,16 @@ export class GameAudio {
    * Renders a looping sound once (per ambience start: emitters of one sound share the render) and starts it silent;
    * null when the bank lacks it or the output is locked.
    */
-  private startLoop(name: string, cache: Map<string, RenderedSound>): LoopHandle | null {
+  private startLoop(name: string, cache: Map<string, RenderedSound>, volume = 1): LoopHandle | null {
     const found = this.find(name);
     if (!found || !this.canBuild()) return null;
-    let r = cache.get(name) ?? this.loops.get(name);
+    const key = loopKey(name, volume);
+    let r = cache.get(key) ?? this.loops.get(key);
     if (!r) {
       if (!this.inline) return null;            // the page plays only the worker's loops
       r = renderLoop(found.loaded.bank, found.index, found.loaded.samples, LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER,
-        { random: this.random, state: this.grainState });
-      cache.set(name, r);
+        { random: this.random, state: this.grainState, vol: Math.round(0x400 * volume) });
+      cache.set(key, r);
     }
     this.byName[name] = (this.byName[name] ?? 0) + 1;
     return this.out.loop(r);
@@ -584,12 +631,20 @@ export class GameAudio {
     const cache = new Map<string, RenderedSound>();
     this.beds = { outside: [], inside: [] };
     this.bed = null;
+    this.ambienceT0 = this.now();
+    // The one-shot layers, armed as their side comes up (`crossBeds`).
+    const layers = this.data.layers;
+    this.oneShots = layers
+      ? (['outside', 'inside'] as const).flatMap((side) => layers[side].filter((l) => l.kind !== 'loop').map((layer) => ({ side, layer, next: null })))
+      : [];
     this.crossBeds();
     // One loop a job: each starts silent, then takes its gains -- the bed's side, the emitter's place.
     for (const side of ['outside', 'inside'] as const) {
-      for (const s of this.data.beds[side]) {
-        this.queueWarm(s, cache, () => {
-          const h = this.startLoop(s, cache);
+      const beds = layers ? layers[side].filter((l) => l.kind === 'loop').map((l) => ({ sound: l.sound, volume: l.volume }))
+        : this.data.beds[side].map((sound) => ({ sound, volume: 1 }));
+      for (const { sound: s, volume } of beds) {
+        this.queueWarm(loopKey(s, volume), cache, () => {
+          const h = this.startLoop(s, cache, volume);
           if (!h) return;
           this.beds[side].push(h);
           const up = this.bed === side ? 1 : 0;
@@ -597,8 +652,10 @@ export class GameAudio {
         });
       }
     }
-    this.emitters = this.data.emitters.map((e) => ({ sound: e.sound, node: e.node, position: e.position, handle: null, gain: 0 }));
-    for (const e of this.emitters) this.queueWarm(e.sound, cache, () => { e.handle = this.startLoop(e.sound, cache); this.updateEmitters(); });
+    this.emitters = this.data.emitters.map((e) => ({ sound: e.sound, node: e.node, position: e.position, volume: e.volume ?? 1, handle: null, gain: 0 }));
+    for (const e of this.emitters) {
+      this.queueWarm(loopKey(e.sound, e.volume), cache, () => { e.handle = this.startLoop(e.sound, cache, e.volume); this.updateEmitters(); });
+    }
   }
 
   private stopAmbience(): void {
@@ -608,6 +665,7 @@ export class GameAudio {
     for (const e of this.emitters) e.handle?.stop();
     this.beds = { outside: [], inside: [] };
     this.emitters = [];
+    this.oneShots = [];
     this.bed = null;
     this.ambienceOn = false;
   }
@@ -620,6 +678,26 @@ export class GameAudio {
     this.bed = bed;
     for (const h of this.beds.outside) h.setGains(bed === 'outside' ? 1 : 0, bed === 'outside' ? 1 : 0, BED_FADE_SECONDS_PLACEHOLDER);
     for (const h of this.beds.inside) h.setGains(bed === 'inside' ? 1 : 0, bed === 'inside' ? 1 : 0, BED_FADE_SECONDS_PLACEHOLDER);
+    // The script stops the other side's animation and starts this side's afresh: its sequences run from their first
+    // command, a `SOUND` at once -- or, before the script's first test, once its `WAIT`s have run (Frostfire's 8 s).
+    const now = this.now();
+    for (const o of this.oneShots) o.next = o.side === bed ? Math.max(now, this.ambienceT0 + o.layer.delay) : null;
+    this.updateOneShots();
+  }
+
+  /**
+   * The armed one-shot layers that are due, played without a place at their command's volume (`FUN_002659c0`'s
+   * placeless play); a `repeat` is armed again for its wait, `base + range x U[0,1)` (`FUN_0025ed50`).
+   */
+  private updateOneShots(): void {
+    if (!this.ambienceOn || this.oneShots.length === 0) return;
+    const now = this.now();
+    for (const o of this.oneShots) {
+      if (o.next === null || now < o.next) continue;
+      this.play(o.layer.sound, null, 'ambience', o.layer.volume);
+      const w = o.layer.wait;
+      o.next = o.layer.kind === 'repeat' && w ? now + w.base + w.range * this.random() : null;
+    }
   }
 
   /** Each emitter's gains from the camera: its `RANGE` fall-off (squared by 989snd's law) and its azimuth's pan pair. */
@@ -628,6 +706,9 @@ export class GameAudio {
     for (const e of this.emitters) {
       if (!e.handle) continue;
       const [distance, right, forward] = this.local(e.position);
+      // The loop is rendered at the command's volume (`loopKey`); the distance's gain goes on as 989snd's square law.
+      // A reading: the console clamps `volume x gain x orig` at 127 inside the voice, so a loud emitter (a 3.0 fire) is
+      // a little louder at a distance here than there.
       const g = rangeGain(distance, this.rangeOf(e.sound));
       e.gain = g * g;
       const [l, r] = panGains(distance > 1e-6 ? panDegrees(right, forward) : 0);
@@ -650,22 +731,22 @@ export class GameAudio {
   }
 
   /**
-   * One round of `weapon` (a `zweapon.rdr` `InternalName`, `M4A1 SD` by default) from `position`: its
-   * `FireSoundClose`, or -- for a shooter out of that sound's `RANGE` -- its `FireSoundMed` then `FireSoundFar`
-   * where the weapon has them (a reading: the script marks the variants `MED` and `FAR`; the chooser is not traced).
+   * One round of `weapon` (a `zweapon.rdr` `InternalName`, `M4A1 SD` by default) from `position`: the slot
+   * `FUN_003d2c50` picks by the round's squared distance from the camera against `WEAPON_GLOBAL`'s (`fireVariant`:
+   * close within 90 units, `FireSoundMed` to 500, `FireSoundFar` beyond), played at the round with volume 1.0 and so
+   * still under that sound's own `RANGE`. A weapon with no sound in the slot (the M4A1 SD's medium and far) is silent
+   * there -- the game's null handle, no fall back to the close sound. No listener or no distances: the close sound.
    */
   onFire(weapon = 'M4A1 SD', position: Vec3 | null = null): string | null {
     this.events.fire++;
     const w = this.weapons.get(weapon);
-    if (!w?.fireClose) return null;
+    if (!w) return null;
     let name = w.fireClose;
-    if (position && this.listener) {
+    if (position && this.listener && this.fireSq) {
       const d = this.local(position)[0];
-      for (const next of [w.fireMed, w.fireFar]) {
-        const range = this.rangeOf(name);
-        if (next && d > range[1]) name = next;
-      }
+      name = [w.fireClose, w.fireMed, w.fireFar][fireVariant(d * d, this.fireSq.med, this.fireSq.far)]!;
     }
+    if (!name) { this.dropped.silent++; return null; }
     return this.play(name, position, 'fire') ? name : null;
   }
 
@@ -725,8 +806,11 @@ export class GameAudio {
   private callback(name: string, position: Vec3 | null): string | null {
     const sounds = this.callbacks.get(name);
     if (!sounds) { this.dropped.silent++; return null; }                // a zAnim that plays no sound, or no such zAnim
-    // Through the one name table (`@s2u/sound`'s `soundFor`): a casing's `.BUL_CASE_METAL` is the banks' `.BUL_CAS_METAL`.
-    const played = sounds.map((sound) => soundFor(sound, (n) => this.has(n))).filter((sound) => this.play(sound, position, 'callback'));
+    const volumes = this.callbackVolumes.get(name);
+    // Through the one name table (`@s2u/sound`'s `soundFor`): a casing's `.BUL_CASE_METAL` is the banks' `.BUL_CAS_METAL`;
+    // each at its command's volume (flag 0x10: the flashbang's `.MARK_141_FLASH` at 2.0).
+    const played = sounds.map((sound, i) => ({ sound: soundFor(sound, (n) => this.has(n)), volume: volumes?.[i] ?? 1 }))
+      .filter(({ sound, volume }) => this.play(sound, position, 'callback', volume)).map(({ sound }) => sound);
     return played[0] ?? null;
   }
 
@@ -746,19 +830,22 @@ export class GameAudio {
   }
 
   /**
-   * Plays a sound by its bank name (`.STEP_STONE`) at `position` (null: without a place). False when it did not
-   * sound: locked, muted, out of its range, or a name the map's banks do not hold.
+   * Plays a sound by its bank name (`.STEP_STONE`) at `position` (null: without a place), at `volume` -- a zAnim
+   * command's own (flag 0x10), 1 for every other play: the app volume is `volume x RANGE gain x 1024`
+   * (`FUN_00342670`, decomp 241912-241955), which 989snd takes into the voice as `(app x orig) >> 10` clamped at 127.
+   * False when it did not sound: locked, muted, out of its range, or a name the map's banks do not hold.
    */
-  play(name: string, position: Vec3 | null = null, event: AudioEvent = 'play'): boolean {
+  play(name: string, position: Vec3 | null = null, event: AudioEvent = 'play', volume = 1): boolean {
     if (event === 'play') this.events.play++;
+    if (event === 'ambience') this.events.ambience++;
     const found = this.find(name);
     if (!found) { this.dropped.unknown++; this.unknownNames[name] = (this.unknownNames[name] ?? 0) + 1; return false; }
     if (!this.out.unlocked) { this.dropped.locked++; return false; }
     if (this.muted_) { this.dropped.muted++; return false; }
-    let vol = 0x400, pan = PAN_RESET;
+    let vol = Math.round(0x400 * volume), pan = PAN_RESET;
     if (position && this.listener) {
       const [distance, right, forward] = this.local(position);
-      vol = Math.round(0x400 * rangeGain(distance, this.rangeOf(name)));
+      vol = Math.round(0x400 * volume * rangeGain(distance, this.rangeOf(name)));
       if (vol <= 0) { this.dropped.range++; return false; }
       pan = distance > 1e-6 ? panDegrees(right, forward) : 0;
     }
@@ -786,7 +873,7 @@ export class GameAudio {
 
   stats(): AudioStats {
     return {
-      unlocked: this.out.unlocked, state: this.out.state, muted: this.muted_, volume: this.volume_, map: this.map,
+      unlocked: this.out.unlocked, state: this.out.state, resumeError: this.out.resumeError ?? null, muted: this.muted_, volume: this.volume_, map: this.map,
       banks: this.banks.map((b) => ({ name: b.bank.name, sounds: b.bank.sounds.length, ...(b.borrowed ? { borrowed: true } : {}) })),
       decoded: this.banks.reduce((n, b) => n + b.samples.size, 0),
       played: this.played, byName: { ...this.byName }, events: { ...this.events }, dropped: { ...this.dropped },
