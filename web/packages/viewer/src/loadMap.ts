@@ -3,7 +3,7 @@ import {
   type RdrNode, type TexDetail, type TexEntry,
   type AssetSource, type ZarKey, type ZdbEntry,
 } from '@s2u/archive';
-import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
+import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba, type TextureRecord } from '@s2u/gs';
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
   buildGrid, collisionLines, DEFAULT_GRID_PARAMS, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter,
@@ -96,6 +96,13 @@ export interface LoadedMap {
     cells?: number[][];
   }[];
   textures: Record<string, Rgba>;
+  /**
+   * A mipmapped texture's own mip levels, 1 to `MXL`, by texture name: the records its `MIPTBP1` names by `gsaddr`
+   * in the same library (`rockwall_mip1.tif`, `mipdetail.tif`), decoded as the base is. The GS samples level n from
+   * them; a generated chain would differ -- a detail texture's levels are authored transparent, the pass's fade.
+   * Absent for a texture whose levels did not all resolve (it falls back to a generated chain).
+   */
+  textureMips?: Record<string, Rgba[]>;
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
    * GS state the record's bind packet sets -- blend equation, alpha test, filtering, wrap. See
@@ -305,6 +312,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
+  const textureMips: Record<string, Rgba[]> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
   const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...grenade.parts]
@@ -336,6 +344,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
         const decoded = decodeTexture(record, palettes);
         for (const d of decoded.diagnostics) notes.add(`texture ${name}: ${d}`);
         textures[name] = decoded.rgba;
+        const mips = mipLevels(txr, record, palettes, (line) => notes.add(`texture ${name}: ${line}`));
+        if (mips) textureMips[name] = mips;
         textureFlags[name] = {
           bilinear: record.bilinear, transparent: record.transparent, graded: isGraded(decoded.rgba),
           opaque: isOpaque(decoded.rgba), gs: record.gs,
@@ -408,6 +418,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     world,
     props,
     textures,
+    textureMips,
     textureFlags,
     detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
@@ -443,6 +454,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   if (map.ground) out.push(map.ground.points.buffer, map.ground.fields.buffer);
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
+  for (const levels of Object.values(map.textureMips ?? {})) for (const rgba of levels) out.push(rgba.data.buffer);
   if (map.body) out.push(...bodyTransferables(map.body));
   for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy, map.bulletMark]) if (rgba) out.push(rgba.data.buffer);
   for (const rgba of Object.values(map.hud ?? {})) out.push(rgba.data.buffer);
@@ -1010,6 +1022,43 @@ export interface LoadedLineGroup {
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
+/** Per library: its texture records by `gsaddr`, the space `TEX0.TBP0` and `MIPTBP1` both name them in. */
+const recordsByAddr = new WeakMap<Zar, Map<number, ZarKey>>();
+
+/**
+ * A mipmapped texture's own levels (`LoadedMap.textureMips`): `MIPTBP1`'s pointers resolved to the records beside it,
+ * each decoded and required to be exactly half the level above. Null when the texture asks for none, or when a level
+ * is missing or the wrong size -- the caller then lets the renderer generate the chain, with a diagnostic.
+ */
+function mipLevels(txr: Zar, record: TextureRecord, palettes: PaletteTable, note: (line: string) => void): Rgba[] | null {
+  const tbps = record.gs?.mipmaps ? record.gs.mipTbp : undefined;
+  if (!tbps || tbps.length === 0) return null;
+  let byAddr = recordsByAddr.get(txr);
+  if (!byAddr) {
+    byAddr = new Map();
+    for (const key of txr.find('textures')?.children ?? []) {
+      const texdat = txr.child(key, 'texdat');
+      if (!texdat) continue;
+      const data = txr.data(texdat);
+      if (data.length >= 12) byAddr.set(new DataView(data.buffer, data.byteOffset).getUint32(8, true), key);   // 36 §5: gsaddr
+    }
+    recordsByAddr.set(txr, byAddr);
+  }
+  const levels: Rgba[] = [];
+  for (const [i, tbp] of tbps.entries()) {
+    const key = byAddr.get(tbp);
+    const texdat = key ? txr.child(key, 'texdat') : undefined;
+    if (!key || !texdat) { note(`mip level ${i + 1} at gsaddr ${tbp} is not in its library; the chain is generated`); return null; }
+    const level = decodeTexture(parseTextureRecord(key.name, txr.data(texdat)), palettes).rgba;
+    if (level.width !== record.width >> (i + 1) || level.height !== record.height >> (i + 1)) {
+      note(`mip level ${i + 1} (${key.name}) is ${level.width}x${level.height}, not half the level above; the chain is generated`);
+      return null;
+    }
+    levels.push(level);
+  }
+  return levels;
+}
+
 type Decoded = ReturnType<ReturnType<typeof decoder>>;
 
 /**

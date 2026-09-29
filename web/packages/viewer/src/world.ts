@@ -9,7 +9,7 @@ import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/w
 import { float, log2, materialReference, positionView, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
 import { buildGrid, cellAt, lodIsLast, lodOpacity, lodVisible, type LodBand } from '@s2u/scene';
 import {
-  detailDrawState, detailRenderOrder, drawState, gsMipLod, materialSpec, type GsMipLod,
+  detailDrawState, detailRenderOrder, drawState, gsMipLod, materialSpec, mipChain, type GsMipLod,
   type DetailSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags,
 } from './materialSpec';
 import { engineOrder } from './engineOrder';
@@ -394,7 +394,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     const spec = materialSpec(flags, fog, blendGraded, cull);
     let texture = name === null ? undefined : textures.get(name);
     if (!texture && name !== null && rgba) {
-      texture = makeTexture(rgba, spec);
+      texture = makeTexture(rgba, spec, map.textureMips?.[name]);
       textures.set(name, texture);
     }
     // Backface culling is the visual's own flag on the disc (`VISUAL_FLAG_CULL`, `@s2u/scene`).
@@ -483,7 +483,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     if (!texture) {
       // A detail texture's own `CLAMP_1` is REPEAT on both axes on all 65 detail records whose texture is
       // on the disc; 62 of them ask `TEX1` for the mipmaps the minification at `uv` times needs.
-      texture = makeTexture(rgba, { ...materialSpec(map.textureFlags[spec.texture], fog, true, false), wrapS: 'repeat', wrapT: 'repeat' });
+      texture = makeTexture(rgba, { ...materialSpec(map.textureFlags[spec.texture], fog, true, false), wrapS: 'repeat', wrapT: 'repeat' },
+        map.textureMips?.[spec.texture]);
       textures.set(spec.texture, texture);
     }
     const material = new MeshBasicNodeMaterial();
@@ -898,7 +899,7 @@ function gsTexel(texture: Texture, at: Node<'vec2'>, lod: GsMipLod | null): Node
   return sampled.level(level) as unknown as Node<'vec4'>;
 }
 
-export function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
+export function makeTexture(rgba: Rgba, spec: MaterialSpec, discMips?: readonly Rgba[]): DataTexture {
   const texture = new DataTexture(new Uint8Array(rgba.data.buffer, rgba.data.byteOffset, rgba.data.length), rgba.width, rgba.height, RGBAFormat);
   texture.flipY = FLIP_Y;
   // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on
@@ -907,11 +908,16 @@ export function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
   // shaded surface out; the renderer's output is left unconverted to match.
   texture.colorSpace = NoColorSpace;
   // `TEX1` off the disc: bilinear on every texture in the corpus, and a mipmap chain on the ground and
-  // detail textures that ask for one (`MMIN = LINEAR_MIPMAP_LINEAR`). The hardware was given one or
-  // two levels; three generates the whole chain, which is the same picture near and a calmer one far.
+  // detail textures that ask for one (`MMIN = LINEAR_MIPMAP_LINEAR`). The hardware was given one or two
+  // levels, the records `MIPTBP1` names (`LoadedMap.textureMips`), and those are uploaded as they are --
+  // a detail texture's are transparent, the pass's fade with distance -- with a filtered tail to 1x1 that
+  // `gsTexel` never reaches. A texture whose levels did not resolve gets three's generated chain.
   texture.magFilter = spec.bilinear ? LinearFilter : NearestFilter;
   texture.minFilter = spec.mipmaps ? LinearMipmapLinearFilter : spec.bilinear ? LinearFilter : NearestFilter;
-  texture.generateMipmaps = spec.mipmaps;
+  if (spec.mipmaps && discMips && discMips.length > 0) {
+    texture.mipmaps = mipChain(rgba, discMips).map((l) => ({ data: new Uint8Array(l.data.buffer, l.data.byteOffset, l.data.length), width: l.width, height: l.height }));
+    texture.generateMipmaps = false;
+  } else texture.generateMipmaps = spec.mipmaps;
   // `CLAMP` off the disc, per axis. A glow's quad clamps so the bilinear tap at u = 1 cannot fetch
   // u = 0 and draw the quad's outline; a tiling wall repeats.
   texture.wrapS = spec.wrapS === 'clamp' ? ClampToEdgeWrapping : RepeatWrapping;

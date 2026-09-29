@@ -1,5 +1,5 @@
 import type { TexDetail } from '@s2u/archive';
-import type { GsState } from '@s2u/gs';
+import type { GsState, Rgba } from '@s2u/gs';
 
 /**
  * What the viewer knows about one texture: the two record flags it always read, the two facts it reads
@@ -257,4 +257,29 @@ export function gsMipLod(gs: GsState | null | undefined): GsMipLod | null {
 /** The level `gsMipLod` gives at a depth (the clip `w`, in world units): what the shader computes per fragment. */
 export function gsMipLevel(lod: GsMipLod, depth: number): number {
   return Math.min(lod.max, Math.max(0, Math.log2(depth) * lod.scale + lod.k));
+}
+
+/**
+ * The full mip chain a renderer needs, to 1x1: the base, the disc's own levels (`LoadedMap.textureMips`, what the GS
+ * samples up to `MXL`), then a 2x2 box filter of the last disc level for the rest. The GS never samples past `MXL`
+ * (`gsMipLevel` clamps there); the tail exists only because a WebGL texture with an incomplete chain samples black.
+ */
+export function mipChain(base: Rgba, disc: readonly Rgba[]): Rgba[] {
+  const chain = [base, ...disc];
+  let last = chain[chain.length - 1]!;
+  while (last.width > 1 || last.height > 1) {
+    const w = Math.max(1, last.width >> 1), h = Math.max(1, last.height >> 1);
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) {
+      let sum = 0, n = 0;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const sx = Math.min(last.width - 1, x * 2 + dx), sy = Math.min(last.height - 1, y * 2 + dy);
+        sum += last.data[(sy * last.width + sx) * 4 + c]!; n++;
+      }
+      data[(y * w + x) * 4 + c] = Math.round(sum / n);
+    }
+    last = { width: w, height: h, data };
+    chain.push(last);
+  }
+  return chain;
 }
