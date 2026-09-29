@@ -67,7 +67,9 @@ single-key poses), `seal_llean_rstep` / `seal_p_rlean_rstep` (a step while leani
 as its length in seconds; a loop with a positive `max_velocity` (a locomotion cycle, the ladder's climb) takes its
 own duration **divided by** `playback` -- `seal_climbladder`, 16 keys (0.533 s) over `playback` 3, loops in 0.178 s.
 The same routine sets the clip's rate factor `+0x1c` to `max_velocity x 10 / 100` for a loop (0.135 for the ladder),
-1 for a one-shot. `ClipShape.seconds` follows this.
+1 for a one-shot. A one-shot then runs from key 0 to its last key n - 1 in `playback x ((n - 1) / n)^2` seconds
+(`FUN_0028c4f0`, the motion workstream's `oneShotSeconds`, research 80): `seal_climbcrate` 1.168 s. `ClipShape.seconds`
+follows both.
 
 ### 1.2 `refPt` and the root's travel
 
@@ -360,41 +362,58 @@ offset in `h`, the uphill factor in the water and the water's effects are not mo
 (W2.2c to measure); the fallback clip shapes (a smoothstep with each clip's seconds, rise and travel) stand in only
 before the pack arrives.
 
-### 7.3 The seams (for the controller to re-apply over the MOTION rewrite)
+### 7.3 The seams (re-applied over the MOTION rewrite at the merge of `claude/web-viewer-playtest-fixes`, 3e673174)
 
 - `walk.ts`: `GROUND_FIELDS` 6 (`appflags` packed; `WorldPoly.appflags`); `TickDriver` / `TraversalHooks`
-  interfaces; `Walker.driver` (its `tick` runs first in `Walker.tick`, returning true when it moved the mover);
-  `Walker.setAirborne(on, vy)`; the stick's `stickFactor` in `Walker.tick` before `locomote`; `WalkMode.useTraversal`,
-  `traversal()`, `action()`, `lean()`, `attachMoves` (called where `stand()` makes the `Walker`), the move's yaw held
-  in `look()`, `this.moves?.reset(w)` in `setCamera`, the move's root and peek in `cameraTick()`, the peek's shift and
-  the move's root in `follow()`'s first person, `PlaySnapshot.traversal` in `snapshot()`. Every line is marked
-  `TRAVERSAL SEAM`.
-- `animator.ts`: `MoverSnapshot.traversal` (`TraversalPose`: clip, frame, loop, rootY); `step` plays it in place of
-  `pickClip` at the move's frame; `rootOverride` sets the root's height in `pose()`.
+  interfaces; `Walker.driver`, whose `tick` runs first in `Walker.tick` (before the jump lock and the actions),
+  returning true when it moved the mover; `Walker.setAirborne(on, vy)`, which also ends the action, the jump and the
+  carried velocity (a jump-grab ends the running jump; a hang's let-go starts `Jump fall`); the water's
+  `stickFactor` before the air / ground split; `WalkMode.useTraversal`, `traversal()`, `action()`, `lean()`,
+  `attachMoves` (where `stand()` makes the `Walker`), the move's yaw held in `look()`, `moves?.reset(w)` in
+  `setCamera`, the peek on the camera and the move's root under the posed one in `cameraTick()`, the peek's shift and
+  the move's root in `follow()`'s first person, `PlaySnapshot.traversal`; the jump and a stance change refused while
+  `busy()`; `stance_` kept with the mover's after the ticks. Every line is marked `TRAVERSAL SEAM`.
+- `animator.ts`: `MoverSnapshot.traversal` (`TraversalPose`: clip, frame, loop, rootY); `step` hands it to
+  `traversalStep`, a one-node play keyed `trav:<clip>` at the move's key, its `zanim_callback`s fired through `onEvent`
+  as the phase passes them, `rootOverride` setting the root's height in `pose()` -- so `rootY()`, and through
+  `WalkMode.setPosedRoot` the camera, carry the move's root.
 - `playerCamera.ts`: `peekShift`, `localCamera(rootY, pitch, peek = 0)`, `PlayerCamera.peek`,
   `firstPersonPeekShift`, `isPeekCameraSurface` and `cameraPass`'s `accept`.
-- `main.ts`: `TraversalPage` (made after `walk`), `TRAVERSAL_CLIPS` in the play request, `setClips` on the play data,
-  `setIcons` on a map, `padLanes` in `padFrame`, `input()` before `walk.frame`, `frame()` after the reticle; the hook's
-  `traversal()`, `action()`, `setLean()` (`hook.ts`). `loadMap.ts`: `actionIcons`.
+- `gamepad.ts`: the `action` lane on Cross (standard button 0), `leanLeft` / `leanRight` on the d-pad's Left / Right
+  (14 / 15), walk-only (`ACTION_WORDS`); `ui.ts`'s walk hint names X, Q / E, Cross and the d-pad.
+- `main.ts`: `TraversalPage` (with the audio's `play` / `onLand`), `TRAVERSAL_CLIPS` in the play request, `setClips`
+  on the play data, `padLanes(before, after)` in `padFrame`, `input()` before `walk.frame`, `hudFrame(hud)` and
+  `hud.feed({ climb: traversal.hudClimb() })`; the hook's `traversal()`, `action()`, `setLean()` (`hook.ts`).
 
-### 7.4 Bindings wanted from the UI workstream
+### 7.4 Bindings
 
-| control | the game's | the viewer now |
+| control | the game's | the viewer |
 |---|---|---|
-| Cross | Action (climb, the ladder slide) | jump (W2.7's assumption); the action has no pad lane -- **wanted: an `action` lane on Cross, and jump on Square** |
-| Square | Jump | nothing |
-| d-pad left / right, held | peek left / right | the `leanLeft` / `leanRight` lanes are on L2 / R2 -- **wanted: on the d-pad** (L1/L2 are the weapon swaps, R1 fire, R2 inventory in `controller.rdr`) |
+| Cross (button 0) | Action (climb, the ladder slide) | the `action` lane, on its press, walking |
+| Square | Jump | jump (the owner's layout) |
+| d-pad Left / Right (14 / 15), held | peek left / right | the `leanLeft` / `leanRight` lanes, walking |
 | keyboard X | (the pad's Cross) | the action, on its press, walking |
 | keyboard Q / E, held | (the d-pad) | the peek left / right, walking (the fly camera's down / up) |
 
-### 7.5 Events for the audio
+### 7.5 The sounds and the events
 
-`window` `s2u:traversal` `CustomEvent`s, `detail` a `TraversalEvent`: `ladderMount {from}`, `ladderRung {y}`
-(`motion.rdr`'s `ladder_rung` -> CZANIM `ladder_rung`, `.STEP_LADDER` at the hips; reCOM's SOCOM 1 `sounds.rdr`
-`SND_STEP_LADDER ONESHOT RANGE(30,200)`), `ladderDismount {at}`, `ladderSlide {on}` (the `~LADDER_SLIDE` loop,
-0x65f558, `FUN_00344f30` decomp 461031), `ladderSlideLand`, `climbStart {kind}`, `climbUp` (`.CLIMB_UP`), `pullUp`
-(`.PULL_UP`), `jumpWhoosh` (`.JUMP_WHOOSH`), `climbEnd {kind}`, `waterEnter {depth}`, `waterLand {depth}`
-(`seal_fall_in_water`), `waterLeave`. The sound banks are looked up by name; no numeric ids.
+The traversal's clips play in the animator, so their `motion.rdr` callbacks sound through `Play.onEvent` ->
+`WalkSounds` -> `GameAudio.onAnimCallback` like any clip's: `ladder_rung` (CZANIM `ladder_rung`, `.STEP_LADDER` at the
+hips; reCOM's SOCOM 1 `sounds.rdr` `SND_STEP_LADDER ONESHOT RANGE(30,200)`), `climb_up` (`.CLIMB_UP`), `pull_up`
+(`.PULL_UP`), `jump_whoosh` (`.JUMP_WHOOSH`). The wade's steps and a fall into water are the bed's `UNDERWATER`
+material's (`.STEP_WATER`, `.FALL_WATER`) through the footfalls and the landing. `TraversalPage` sends only what no clip
+carries: the slide's `~LADDER_SLIDE` (0x65f558, `FUN_00344f30` decomp 461031; the audio plays one pass of the loop) and
+the slide's landing (`onLand` at its contact speed). Every `TraversalEvent` also goes out on `window` as
+`s2u:traversal`: `ladderMount {from}`, `ladderRung {y}`, `ladderDismount {at}`, `ladderSlide {on}`, `ladderSlideLand
+{speed}`, `climbStart {kind}`, `climbUp`, `pullUp`, `jumpWhoosh`, `climbEnd {kind}`, `waterEnter {depth}`, `waterLand
+{depth}`, `waterLeave`.
+
+**The HUD** (`./hud`, research 87): the climb prompt as `Hud.feed`'s `climb` (the step up and the vault as `low`: one
+bitmap for all), the ladder's `action_slide.tif` through `Hud.setAction('ladder_slide')` while on a ladder.
+
+**The jump** is the walk's (research 80): the standing jump stays on the floor (its rise is the clip's), so a ledge is
+climbed from it as from the floor; the running jump's 79.9 up lifts the feet 13.6, bringing a 36 ledge into the table's
+32 while the contact holds -- the jump-grab, pinned in `traversal.test.ts` on the walk's own `Walker.jump`.
 
 ## 8. The states [read]
 
