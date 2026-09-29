@@ -167,7 +167,9 @@ previous one's `RANGE`: a reading).
 position (`FUN_00308b00`, the closest approach); within 70 units the actor flinches (`FUN_00572fa0`), within 20 a bullet
 plays `.BUL_PASSING` (0x3fc508, `FUN_003c4700` hands it to the projectiles) at the nearest point, volume 1.0; a rocket
 within 100 plays `.ROCKET_BY` once. A projectile flagged at `+4` bit 3 is skipped; the player's own rounds leave from
-the player, so the rule is for other shooters' rounds (`GameAudio.onRoundPast`), never one's own.
+the player, so the rule is for other shooters' rounds (`GameAudio.onRoundPast`), never one's own. Whatever excludes a
+round's first segment (the flag, or the shooter test at the head) is the projectile's, so its later segments -- a
+penetration's exit, a ricochet -- are excluded with it: the viewer's own rounds play no `.BUL_PASSING` however they go on.
 
 ## 6. The jump and the landing
 
@@ -210,7 +212,12 @@ missing names from another map's bank that holds them (the same recording: §8, 
 
 **Names the disc holds nowhere**: the casings' `shell_eject` zAnims (CZANIM) name the metal casing `.BUL_CASE_METAL`
 where every bank spells it `.BUL_CAS_METAL` (and `.SG_SHELL_TIN`, `.SG_SHELL_SAND` exist in no bank): a spelling slip
-in the game's data, so a casing on metal is silent on the console too.
+in the game's data, so a casing on metal is silent on the console too. `grenade_hit_asphalt` has no play-sound command:
+its CALL_ANIMATION (45, the name at +7, `FUN_0025d550`) names `.GREN_ASPHALT` -- no animation and no bank of the disc is
+called that, so it is silent too. The viewer mends both (`SOUND_NAME_FIXES`, one table the effects share):
+`.BUL_CASE_METAL` plays `.BUL_CAS_METAL`, `.GREN_ASPHALT` the stone's `.GREN_STONE` (asphalt steps like stone in
+SOILS) -- departures from the retail game, named. With the lending, every `grenade_hit_<surface>` of a surface a map has
+sounds: 200 of 200 over the 22 maps.
 
 ## 8. The viewer
 
@@ -242,6 +249,13 @@ in the game's data, so a casing on metal is silent on the console too.
   round impact on a surface the map has, an explosion or a casing, that the map's banks lack, lent by the same name from
   the bank of another map that has it (found through `sounds.rdr`: a set is a bank's block) -- 1 or 2 borrowed banks a
   map, every floor of the 22 now sounding. The remote fire variants' chooser and the footprint decals are not traced.
+- **The unlock costs nothing** (measured on the dev server, headless Chromium): the first key press used to spend 949 ms
+  (Desert Glory), 451 ms (Sandstorm), 133 ms (Frostfire) in the audio unlock -- about 300 ms of it the page's first
+  `AudioContext` (the browser's audio service), the rest the reverb's response and the loops' buffers. Now the context
+  is made suspended when the map's sound data arrives, the response is computed in the worker, and the convolver
+  (~11 ms, the browser's partitioning) and the loops' buffers (a channel a job, shared by a sound's emitters) are built
+  from a queue run 4 ms a frame (`PUMP_BUDGET_MS`) before any gesture; the key press only resumes the context: 0.4-0.7 ms
+  for the whole event, 0.1 ms in the handler (`stats().timing`).
 - **The stats** (`window.__viewer.audio()`): the banks (the borrowed marked), the map's `defaultMaterial`, the reverb
   (loaded, inside, zone, depth), the ambience (the beds, which is up, the emitters and their gains), the dropped plays
   by reason (locked, range, unknown, muted, silent -- a surface or zAnim that names no sound) and `unknownNames`;
@@ -283,7 +297,17 @@ The mission script plays it (`MZANIM.ZAR`, `mission` set; the common set carries
   Desert Glory's insects at its lights and fires in a barrel and the rubble, the waterfalls and rivers of Abandoned,
   Foxhunt and Shadow Falls, dogs, chimes, lapping water, radios, humming equipment, the helicopters (their SoftImage
   path not followed: heard at the node's rest), crickets (whose conductors wait on a global register the game sets, so
-  no voice starts). 0 to 18 a map; one node (`pipe` on Vigilance) is not in the realised scene.
+  no voice starts in the first seconds). 0 to 18 a map; one node (`pipe` on Vigilance) is not in the realised scene.
+- **The crickets** set no game register: their conductor counts its burst of chirps in a local register (`SET_REGISTER
+  _RAND 0..40`, `INC_REGISTER`, `TEST_REGISTER < 90`) and waits `RAND_DELAY` up to 4000 ticks (16.7 s) between bursts --
+  longer than the 12 s loop, so it rendered silent. A loop with no voice in 12 s is rendered over 40 s at 24 kHz
+  (`renderLoopAtLeastOneVoice`, `LONG_LOOP_SECONDS_PLACEHOLDER`).
+- **Global register 2** is the one the game sets for the ambience: each frame `snd_SetSFXGlobalReg(2, x)` (989snd call
+  0x67; `FUN_00341a60`, decomp 241580-241600) with `x = f x 255 - 128`, `f` the camera's height through the mission's
+  `elevation (max min)` (`FUN_002aca30`: 0 below, 1 above, linear between). The outdoor beds of Foxhunt, Enowapi, Fish
+  Hook, The Mixer (indoor) and Requiem test it (`TEST_REGISTER -2`) to pick their layers; Requiem's ice sounds read
+  global 3, which nothing here sets. The viewer renders the beds once, with register 2 at spawn A's camera height
+  (`BED_CAMERA_ABOVE_FEET_PLACEHOLDER`, 25 over the floor), not per frame.
 - **In the viewer**: each sound rendered once in the worker as a 12 s loop with a 1 s crossfade folded in
   (`LOOP_SECONDS_PLACEHOLDER`), played round; the beds cross over 0.5 s (`BED_FADE_SECONDS_PLACEHOLDER`) as the camera's
   floor goes in and out; an emitter's two channel gains follow the camera each frame -- its `RANGE` fall-off, squared
