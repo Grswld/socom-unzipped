@@ -310,12 +310,25 @@ of the radius across instead [placeholder].
 
 `grenade_mark.tif` (`EFFE_TXR.ZED`) per material, `MIN_SIZE`-`MAX_SIZE` across: SAND 30-50; DIRT, STONE 20.2-30.9;
 SNOW, METAL_THICK, METAL_THIN, WOOD_THICK 10.2-20.9; WOOD_THIN, ASPHALT 10.2-16; GLASS 10-13. The viewer lays one
-under a grenade that went off at rest (STONE's size for an unlisted material) [reading: the decal's placement was not
-traced]. Its colour: a `FUN_003139e0` decal like a bullet mark (`FUN_003d0ba0`, the permanent pool), so the GS
+under a grenade that went off at rest (STONE's size for an unlisted material). Its colour: a `FUN_003139e0` decal like a bullet mark (`FUN_003d0ba0`, the permanent pool), so the GS
 modulates its texel by the vertex colour of the world triangles under it (research 89 §13, `FUN_003b3ab0` /
 `FUN_003beca0`). The viewer draws it with the marks' material (`markMaterial`: texel x vertex colour, brightened) and
 paints its corners with `surfaceShade`'s colour straight down under the blast (the 4.8-unit window), asking again each
 frame while the ground there is not drawn yet (`GrenadeThrower.setShade`, `stats().scorchShade`).
+
+**The placement (traced 2026-09-29).** `FUN_003c7af0` (decomp 318876, the explosion's damage query, when
+`Explosion_Radius` > 0) probes a vertical column at the blast's x and z, `FUN_0031df50(10.0, world, pos)` (a type-2
+`DiIntersect`, research 23 §1.3), and `FUN_002d4c20` takes the **highest** candidate whose y is no more than **10**
+over the blast's (no floor below). That candidate record -- `point, t, normal, node` -- is `FUN_003d0ba0`'s `param_3`:
+the decal set by the candidate surface's material (`FUN_002dc1d0`, the record's `+0xc0` table), the square centred on
+the candidate's point, framed along its normal negated (323891, `FUN_00307810`), the node its walk. So the scorch lies
+flat on the ground under the blast whatever the slope, as a bullet mark lies on its wall (research 89 §15). The viewer
+(`GrenadeThrower.groundUnder`) casts the throw's hull from 10 over the blast to 10 under it, takes the first solid
+hit, and frames the clipped scorch on its point along its normal negated; its random turn about the normal is kept
+[reading: `FUN_00307810` takes none]. Straight down, as before, Desert Glory's `g157` hillside (39.9 degrees at z
+1700) dropped every scorch whole at the 4.8 test (`viewer/test/grenadeScorchSlope.test.ts`). Not followed: the game
+marks under a blast in the air too (the column has no floor) and takes the probed surface's material for the size;
+the viewer still marks at rest only, sized by the material it lay on.
 
 ## 8. The model and the hold
 
@@ -505,7 +518,7 @@ The C4 (ID 151, `Timer1` 6, `Explosion_Radius` 5, `IgnoreExplosionDI`) is in no 
   line along each flight), `resetGrenades()`.
 - **Asks**: the peek state, for the lean tosses (the table and clips are in; the walk has no lean yet); the particle
   command 0x27's layout, to replace `EXPLOSION_READING`; `SetModelOrientation` (0x3cabe0) for the grenade's spin in
-  flight (`SPIN_PLACEHOLDER` 14 rad/s); the decal placement; the inventory menu's own picture.
+  flight (`SPIN_PLACEHOLDER` 14 rad/s); the inventory menu's own picture.
 
 ### 9.9 The bounce materials on all 22 maps (round 4)
 
@@ -558,7 +571,7 @@ What it found:
 | `SPIN_PLACEHOLDER` | 14 rad/s | `SetModelOrientation` |
 | `EXPLOSION_READING` | §7.2 | the particle commands |
 | the flash glow | a fifth of 100 -> 190 | the light |
-| the scorch | at rest only | the decal's placement |
+| the scorch | at rest only, the rest material's size | the column under any blast, its surface's material (§7.3) |
 | hull surfaces | bit 18 skipped (`isShotSurface`) | the projectile query's class |
 | `ARC_DEPTH_TEST_PLACEHOLDER` | true | the translucent line list's (`FUN_003373b0`) Z test (§11) |
 
