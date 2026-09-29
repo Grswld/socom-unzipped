@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Zar, parseRdr, rdrGet, type RdrNode } from '@s2u/archive';
+import { Zar, parseRdr, parseZdb, rdrGet, zdbMember, type RdrNode } from '@s2u/archive';
 import { fixture } from '../../archive/test/fixtures';
 import {
   actorToWorldPoint, BOUNCE_LIFT, decalEntry, GRENADE_BLAST, buildGrid, CROUCH_MOVING_SPEED_SQ, explosionDamage, FIRST_BOUNCE_DAMPING, gridCast,
   heldPower, impactRange, isToss, launchGrenade, M67, materialTable, maxThrowDistance, maxThrowSpeed, parseMotionZar,
-  releaseSeconds, throwClipSeconds, HE, AN_M8, MARK141, CLAYMORE, claymoreCone, weaponCategory, bouncesByType, flashLevel, blindStrength, BLIND_KEYS, REST_SPEED, SOILS, soilsTable, stepGrenade, stepThrowPower, surfaceMaterial, THROW_ANIMS, THROW_PARAMS,
-  throwableRecord, throwAnim, throwElevation, throwVelocity,
+  releaseSeconds, throwClipSeconds, HE, AN_M8, MARK141, CLAYMORE, CLAYMORE_RULES, claymoreCone, PLACE_CLAYMORE_ANIM, weaponCategory, bouncesByType, flashLevel, blindStrength, BLIND_KEYS, REST_SPEED, SOILS, soilsTable, stepGrenade, stepThrowPower, surfaceMaterial, THROW_ANIMS, THROW_PARAMS,
+  throwableRecord, throwAnim, throwElevation, throwVelocity, materialAnim, parseAnimSets, parseSceneGraph, parseWorldRoot, worldCollision,
   type CollisionOwner, type Grenade, type GrenadeEvent, type GridParams, type HullCast, type V3, type WorldPoly,
 } from '../src/index';
 
@@ -317,6 +317,10 @@ describe('the transcribed tables against the game\'s files', () => {
     expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'AN-M8')).toEqual(AN_M8);
     expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'Mark141')).toEqual(MARK141);
     expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'Claymore')).toEqual(CLAYMORE);
+    const weapons = (rdrGet(script(zweapon!, 'zweapon.rdr'), 'ZWEAPON') as RdrNode[]).filter((r) => Array.isArray(r));
+    const detonator = weapons.find((r) => rdrGet(r, 'InternalName') === 'Detonator')!;
+    expect([Number(rdrGet(detonator, 'ID')), rdrGet(detonator, 'ModelName'), rdrGet(detonator, 'IconTextureName')])
+      .toEqual([CLAYMORE_RULES.detonator.id, CLAYMORE_RULES.detonator.model, CLAYMORE_RULES.detonator.icon]);
   });
 
   it.skipIf(!readerc)('SOILS is materials.rdr\'s, and the clips\' playback is motion.rdr\'s', () => {
@@ -326,15 +330,41 @@ describe('the transcribed tables against the game\'s files', () => {
       expect(decalEntry(decals, M67.decalSet, material)).toEqual({ set: 'GRENADE_BLAST', material, texture: 'grenade_mark.tif', minSize: min, maxSize: max });
     }
     const animations = rdrGet(script(readerc!, 'motion.rdr'), 'animations') as RdrNode[];
-    for (const a of Object.values(THROW_ANIMS)) {
+    for (const a of [...Object.values(THROW_ANIMS), PLACE_CLAYMORE_ANIM]) {
       const entry = animations.find((r) => Array.isArray(r) && rdrGet(r, 'anim_name') === a.clip) as RdrNode;
       expect(Number(rdrGet(entry, 'playback'))).toBe(a.playback);
     }
   });
 
+  // Research 85 §9.9 (`tools/grenade-materials.ts` over all 22 maps): the bounce's zAnim is `sprintf("%s_%s",
+  // HitAnimName, material name)` (0x3fc540, the weapon loader at decomp 316340) looked up in the map's CZANIM.ZAR; the
+  // hull's bytes resolve through the table, byte 0 by the world root's DefaultMaterial.
+  for (const [stem, defaultMaterial] of [['MP2', 'METAL_THICK'], ['MP6', 'SAND'], ['MP72', 'ASPHALT']] as const) {
+    const zdb = fixture(`RUN/${stem}.ZDB`);
+    it.skipIf(!zdb || !readerc)(`${stem}: every hull material resolves, and the names the grenade asks for are the archive's`, () => {
+      const table = materialTable(soilsTable(script(readerc!, 'materials.rdr')));
+      const toc = parseZdb(zdb!);
+      const root = parseWorldRoot(Zar.parse(zdbMember(zdb!, toc, `${stem}.ZED`)));
+      expect(root.defaultMaterial).toBe(defaultMaterial);
+      const polys = worldCollision(parseSceneGraph(Zar.parse(zdbMember(zdb!, toc, `${stem}_GEO.ZED`))));
+      for (const b of new Set(polys.map((p) => p.material))) {
+        expect(b).toBeLessThan(table.length);
+        expect(surfaceMaterial(b, root.defaultMaterial, table).name).not.toBe('UNKNOWN');
+      }
+      expect(surfaceMaterial(0, root.defaultMaterial, table).name).toBe(defaultMaterial);
+      const anims = parseAnimSets(Zar.parse(zdbMember(zdb!, toc, 'CZANIM.ZAR'))).sets.flatMap((s) => s.anims.map((a) => a.name));
+      // The grenade_hit_<material> anims the archive holds are the names the code builds from the table's materials.
+      const hits = anims.filter((a) => a.startsWith(`${M67.hitAnim}_`));
+      expect(hits.length).toBeGreaterThan(10);
+      // All but `grenade_hit_grating`: the table has no GRATING (METAL_GRATE is `grenade_hit_metal_grate`), no hull asks for it.
+      expect(hits.filter((a) => !table.some((t) => materialAnim(M67.hitAnim, t.name) === a))).toEqual(['grenade_hit_grating']);
+      expect(anims).toContain(materialAnim(M67.hitAnim, defaultMaterial));
+    });
+  }
+
   it.skipIf(!motion)('the clips are MOTION_P.ZAR\'s, their lengths to the frame', () => {
     const clips = parseMotionZar(Zar.parse(motion!));
-    for (const a of Object.values(THROW_ANIMS)) {
+    for (const a of [...Object.values(THROW_ANIMS), PLACE_CLAYMORE_ANIM]) {
       const clip = clips.find((c) => c.name === a.clip);
       expect(clip?.duration).toBeCloseTo(a.duration, 6);
     }
