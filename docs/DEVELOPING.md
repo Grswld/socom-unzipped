@@ -875,9 +875,16 @@ what it decides, its metric, its command and what enforces it; **gap** marks a r
 | 4. The merged chain | ~90 min | **the day's proof** of everything merged that day | all green, `logs/merged_chain.last_green` |
 | (close) Three quiet gates, one exe | three gates | the sprint's frame-rate bar (R322, F6) | `FRAME mean=` / `worst1s=` |
 
-- **Rung 1, the replay bench:** a headless replay of a recorded GS stream through the draw path. **Gap:** it is
-  being built on `agent/s17-replay-bench` (no commit at 2026-09-28 21:07Z); until it merges the ladder starts at
-  rung 2, and its command and metric are written here in the commit that lands it.
+- **Rung 1, the replay bench** (landed 2026-09-29, `agent/s17-replay-bench`): a headless replay of a recorded GS
+  stream through the draw path, no game. Record one mission walk with `PS2X_GS_RECORD=logs/bench/<name>.gsr:t<sec>:600`
+  beside `PS2X_GS_STATS=1` (600 presents from the HUD window; 599 MB; record with `PS2X_GS_DOUBLE_SWIZZLE=1` so the
+  uploads are raw and the bench times the render-thread swizzle); then `python -m tools_py.parity.replay_bench run
+  --exe C:/Projects/socom_pc/dist/gs_replay_bench.exe --json <out>.json [--knob NAME=VALUE] <recording>` twice per arm
+  and `replay_bench compare <before>.json <after>.json`. The metric is `elapsed_ms`/`fps` over the replay (570
+  presents in ~11.5 s on 2026-09-29; the spread between two identical runs ~0.8 %, so a pick needs more than that in
+  both pairs); the histogram rows say where the frames went. The `--exe` must be absolute until #117 lands. The
+  bench reads the replay alone: the recorder's swizzle and the game thread are outside it (F3's `[gs-loop]` line is
+  the game-thread instrument).
 - **SYNCV decides a pick, host-ms decides only the close.** `FRAME` is host ms per guest VBlank and drifts with host
   load (about 20 % between single gates: the controller's estimate on 2026-09-28, no `docs/KNOWN.md` row); `SYNCV`
   counts the frames the game drew (`[vu1-stats] syncv/s` over the same walk, `tools_py/parity/frame_time.py`). A
