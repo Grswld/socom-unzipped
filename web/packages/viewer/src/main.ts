@@ -9,6 +9,7 @@ import type { LoadedMap, LoadStage } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, PS2_FRAME, type Backend, type Presentation } from './renderer';
 import type { LinkLog } from './linkLog';
+import { rehearse } from './rehearsal';
 import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './fog';
 import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
@@ -438,6 +439,8 @@ let warmWalk: (() => Promise<void>) | null = null;
 let linkLog: LinkLog | null = null;
 /** When each warm-up of the map on screen finished (`performance.now()`), for the hook's `links()`. */
 let warmedAt: Record<string, number> = {};
+/** The body whose walk warm-up is done and whose first draws are owed (`./rehearsal`, research 90 #21): the next frame makes them. */
+let rehearsal: BodyView | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -937,6 +940,7 @@ async function boot(): Promise<void> {
       // Research 90 #23: the throw's arc and a blast's scorch, ahead of the scene-wide warm-up (which reaches them last).
       created.prepare(grenade.warmObjects(), scene, fly.camera, { stale }),
     ]);
+    if (!stale()) rehearsal = b;                     // #21: compiled; now drawn once, off the walk's first frame
   };
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();
@@ -983,6 +987,27 @@ async function boot(): Promise<void> {
     lastAdapted = now;
   };
   created.setPixelRatio(RATIO_CAP);
+  /**
+   * Research 90 #21 (`./rehearsal`): the walk's first draws -- the SEAL and what it holds, its shadow map's pass, the
+   * throw's arc, the HUD and the reticle -- made once in a frame before the walk, before that frame's own render,
+   * which clears over them.
+   */
+  const rehearseWalk = (b: BodyView): void => {
+    const arc = grenade.warmObjects().filter((o) => o.parent !== null);
+    rehearse(scene, [b.group, ...arc], () => {
+      charShadow.update(created.renderer, scene, b.group);
+      render(scene, fly.camera);
+    }, (o) => o.userData['effectLightPass'] === true);
+    charShadow.clear();
+    for (const o of [hud.warmTarget(), reticle.warmTarget()]) {
+      rehearse(o.scene, o.scene.children, () => {
+        const autoClear = created.renderer.autoClear;
+        created.renderer.autoClear = false;
+        try { created.renderer.render(o.scene, o.camera); } finally { created.renderer.autoClear = autoClear; }
+      });
+    }
+    warmedAt['rehearsed'] = performance.now();
+  };
   const frame = (): void => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
@@ -1015,6 +1040,11 @@ async function boot(): Promise<void> {
     grenade.update(dt);
     whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    if (rehearsal) {                 // #21: the walk's first draws, before this frame's render clears over them
+      const b = rehearsal;
+      rehearsal = null;
+      if (b === body && !walking) rehearseWalk(b);
+    }
     if (body?.group.visible) charShadow.update(created.renderer, scene, body.group); else charShadow.clear();
     render(scene, fly.camera);
     const aim = walk.aim();

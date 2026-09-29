@@ -1,7 +1,9 @@
 /**
  * The walk's entry and a grenade's blast, frame by frame, with the program links each caused (research 90 §9, issues
  * #21 and #23): the longest frames after `setMode('walk')` and after the blast, and every link a frame waited for
- * (`sync`, from the page's `links()` hook, `packages/viewer/src/linkLog.ts`) with the object and material that asked.
+ * (`sync`, from the page's `links()` hook, `packages/viewer/src/linkLog.ts`) with the object and material that asked,
+ * the main thread's long tasks in each window (a long frame with none was spent outside the page's JavaScript), and
+ * when each warm-up of the map ended against the entry (`walk`, `rehearsed`, `props`, `world`; negative: before it).
  *
  * The page is driven as `tools/release-sweep.ts` drives it: the installed Chrome, 1280 x 720, WebGL2 by hiding
  * `navigator.gpu` (the default here), a click and Escape at scene-ready, 0.3 s, then the walk; after 3 s standing, `4`
@@ -32,6 +34,9 @@ const INIT = `
     axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })) };
   navigator.getGamepads = () => [window.__pad];
   window.__fr = { on: false, rec: [], last: 0 };
+  // The main thread's long tasks: a long frame with none is time spent outside the page's JavaScript (the GPU process).
+  window.__lt = [];
+  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__lt.push([e.startTime, e.duration]); }).observe({ type: 'longtask', buffered: true }); } catch (e) {}
   requestAnimationFrame(function tick(t) {
     const s = window.__fr;
     if (s.on) s.rec.push({ t, dt: t - s.last });
@@ -41,12 +46,13 @@ const INIT = `
 `;
 
 interface Frame { t: number; dt: number }
-interface Window_ { worst: { at: number; ms: number }[]; sync: (LinkRecord & { at: number })[]; asyncLinks: number; pendingAtEntry?: number; warmed?: Record<string, number>; throwSync?: number }
+interface Window_ { worst: { at: number; ms: number }[]; longTasks: { at: number; ms: number }[]; sync: (LinkRecord & { at: number })[]; asyncLinks: number; pendingAtEntry?: number; warmed?: Record<string, number>; throwSync?: number }
 interface Result { map: string; look: string; backend: string; entry: Window_ | null; blast: Window_ | null; error?: string }
 
-function windowOf(rec: Frame[], links: LinkRecord[], t0: number, span: number): Window_ {
+function windowOf(rec: Frame[], links: LinkRecord[], t0: number, span: number, tasks: [number, number][]): Window_ {
   const win = rec.filter((r) => r.t > t0 && r.t - t0 < span);
   return {
+    longTasks: tasks.filter(([t, d]) => t + d > t0 && t < t0 + span).map(([t, d]) => ({ at: +((t - t0) / 1000).toFixed(2), ms: +d.toFixed(0) })),
     worst: [...win].sort((a, b) => b.dt - a.dt).slice(0, 3).map((r) => ({ at: +((r.t - t0) / 1000).toFixed(2), ms: +r.dt.toFixed(0) })),
     sync: links.filter((l) => l.sync).map((l) => ({ ...l, at: +((l.t - t0) / 1000).toFixed(3) })),
     asyncLinks: links.filter((l) => !l.sync).length,
@@ -82,7 +88,8 @@ async function run(browser: Browser, map: string, look: 'modern' | 'ps2', backen
     await p.waitForTimeout(3000);
     const entryFrames = await recOff();
     const el = await p.evaluate((s) => window.__viewer.links(s), t0);
-    r.entry = windowOf(entryFrames, el.records, t0, 3000);
+    const tasks = (): Promise<[number, number][]> => p.evaluate(() => (window as unknown as { __lt: [number, number][] }).__lt);
+    r.entry = windowOf(entryFrames, el.records, t0, 3000, await tasks());
     r.entry.pendingAtEntry = pendingAtEntry;
     // Each warm-up's end against the entry (negative: done before it).
     r.entry.warmed = Object.fromEntries(Object.entries(el.warmed).map(([k, v]) => [k, +((v - t0) / 1000).toFixed(2)]));
@@ -104,7 +111,7 @@ async function run(browser: Browser, map: string, look: 'modern' | 'ps2', backen
     const links = (await p.evaluate((s) => window.__viewer.links(s), tThrow)).records;
     if (tb !== null) {
       // The blast's first frame: the poll saw it within 100 ms; the window starts 0.1 s before.
-      r.blast = windowOf(gr, links, tb - 100, 1600);
+      r.blast = windowOf(gr, links, tb - 100, 1600, await p.evaluate(() => (window as unknown as { __lt: [number, number][] }).__lt));
       r.blast.throwSync = links.filter((l) => l.sync && l.t < tb! - 100).length;
     } else r.error = 'no blast';
   } catch (e) {
@@ -122,7 +129,7 @@ async function main(): Promise<void> {
     for (let k = 0; k < REPEAT; k++) for (const map of MAPS) for (const look of LOOKS) for (const backend of BACKENDS) {
       const r = await run(browser, map, look, backend);
       all.push(r);
-      const fmt = (w: Window_ | null): string => w ? `${w.worst.map((x) => `${x.ms}ms@${x.at}s`).join(' ')} sync ${w.sync.length} async ${w.asyncLinks}` : '-';
+      const fmt = (w: Window_ | null): string => w ? `${w.worst.map((x) => `${x.ms}ms@${x.at}s`).join(' ')} sync ${w.sync.length} async ${w.asyncLinks} longtasks ${w.longTasks.map((x) => `${x.ms}ms@${x.at}s`).join(' ') || 'none'}` : '-';
       console.log(`${map.padEnd(5)} ${look.padEnd(6)} ${backend.padEnd(6)} entry ${fmt(r.entry)} | blast ${fmt(r.blast)}${r.error ? ` !! ${r.error}` : ''}`);
       console.log(`    warmed (s from entry) ${JSON.stringify(r.entry?.warmed ?? {})}, async links in flight at entry ${r.entry?.pendingAtEntry ?? '-'}`);
       for (const [name, w] of [['entry', r.entry], ['blast', r.blast]] as const) {
