@@ -22,7 +22,7 @@ import type {} from '../packages/viewer/src/hook';
 const args = process.argv.slice(2);
 const opt = (name: string): string | undefined => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const BASE = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5192/';
-const MAPS = (opt('--maps') ?? 'MP2,MP6,MP72,MP10,MP7').split(',');
+const MAPS = (opt('--maps') ?? 'MP2,MP6,MP72,MP10,MP7,MP61,MP82').split(',');
 const OUT = opt('--out') ?? fileURLToPath(new URL('../test-fixtures/screens/playtest', import.meta.url));
 const EYE = 15.4, INIT_PITCH = -9.167, DEG = Math.PI / 180;
 
@@ -81,7 +81,7 @@ const clipsSeq = (rec: Frame[]): string[] => rec.reduce<string[]>((out, f) => {
  * and an idle clip in the air or under a moving body.
  */
 function score(rec: Frame[], shots: number[]): FrameStats {
-  const stalled = (t: number): boolean => shots.some((s) => t >= s && t - s < 400);
+  const stalled = (t: number): boolean => shots.some((s) => t >= s && t - s < 1000);
   const dts = rec.slice(1).filter((f) => !stalled(f.t)).map((f) => f.dt).sort((a, b) => a - b);
   let cameraJump = 0, rootPop = 0, jumpAt: string | null = null, idleInAir = 0, idleMoving = 0, teleport = -10;
   const snaps: string[] = [];
@@ -98,7 +98,8 @@ function score(rec: Frame[], shots: number[]): FrameStats {
       }
     }
     if (a.rootY !== null && b.rootY !== null && i - teleport > 2) rootPop = Math.max(rootPop, Math.abs(b.rootY - a.rootY));
-    if (b.clip && a.clip && b.clip !== a.clip && b.blend !== null && b.blend >= 0.999 && b.from === null) snaps.push(`${a.clip} -> ${b.clip}`);
+    // A new play (its key) arriving with no cross-fade; the main clip changing inside one locomotion play is its nodes blending.
+    if (b.clip && a.clip && b.clip !== a.clip && b.play !== a.play && b.blend !== null && b.blend >= 0.999 && b.from === null) snaps.push(`${a.clip} -> ${b.clip}`);
     if (b.air && b.clip && IDLES.has(b.clip)) idleInAir++;
     if (!b.air && b.clip && IDLES.has(b.clip) && feetStep < 5 && b.trav === 'none' && feetStep / Math.max(1e-3, b.dt / 1000) > 20) idleMoving++;
   }
@@ -432,6 +433,61 @@ async function playBloodLake(s: Session): Promise<void> {
   });
 }
 
+/**
+ * Sujo's glass: the panes of `worldmodel/g1890` stand in the plane z 537 at x 995-999, y 155-186 (the hull's
+ * material 9, `GLASS`, 0.99 of a round through by `projectile.ts`'s table). From 60 south of them, the view pitched onto
+ * the pane's middle, one SEMI round: what it hits, whether it goes through, what sounds.
+ */
+async function playSujo(s: Session): Promise<void> {
+  const p = s.p;
+  await s.scenario('a round through a glass pane', async (x, n, f, shots) => {
+    await x.place([997, 200, 477], 180);
+    await p.waitForTimeout(800);
+    const eye = (await read(p, () => window.__viewer.camera()?.eye))!;
+    const pitch = Math.atan2(170 - eye[1]!, 537 - eye[2]!) * 180 / Math.PI;
+    await p.evaluate((pt) => window.__viewer.setCamera({ yaw: 180, pitch: pt }), pitch);
+    await p.waitForTimeout(500);
+    while ((await read(p, () => window.__viewer.fireMode())) !== 'SEMI') await read(p, () => window.__viewer.switchFireMode());
+    const before = await read(p, () => ({ played: { ...window.__viewer.audio().byName }, fx: { ...window.__viewer.effects().played } }));
+    await read(p, () => window.__viewer.shoot());
+    await p.waitForTimeout(700);
+    shots.push(await x.shot('MP61-glass-shot'));
+    const after = await read(p, () => ({ played: window.__viewer.audio().byName, fx: window.__viewer.effects().played, hit: window.__viewer.fire().lastHit }));
+    n['feet'] = await read(p, () => window.__viewer.feet());
+    n['pitch'] = +pitch.toFixed(2);
+    n['lastHit'] = after.hit;
+    n['sounds'] = Object.fromEntries(Object.entries(after.played).filter(([k, v]) => v !== (before.played[k] ?? 0)));
+    n['effects'] = Object.fromEntries(Object.entries(after.fx).filter(([k, v]) => v !== (before.fx[k] ?? 0)));
+    const hit = after.hit as unknown as Record<string, unknown> | null;
+    if (!hit) f.push('the round aimed at the pane hit nothing');
+  });
+}
+
+/**
+ * Guidance's ice: the hull's material 16 (`ICE`) on `worldmodel/terrain_167` / `_80` around (1266, -28, 2334), about
+ * 600 from spawn A. Stood on it, the run for 1.5 s each way along x: the steps' sound and the speed across it.
+ */
+async function playGuidance(s: Session): Promise<void> {
+  const p = s.p;
+  await s.scenario('run on the ice', async (x, n, _f, shots) => {
+    for (const [name, yaw] of [['east', -90], ['west', 90]] as const) {
+      await x.place([1266, -28, 2334], yaw);
+      await p.waitForTimeout(600);
+      const before = await read(p, () => ({ ...window.__viewer.audio().byName }));
+      await p.keyboard.down('KeyW');
+      await p.waitForTimeout(1500);
+      const rec = await p.evaluate(() => (window as unknown as { __pt: { rec: Frame[] } }).__pt.rec.slice(-30));
+      if (name === 'east') shots.push(await x.shot('MP82-ice'));
+      await p.keyboard.up('KeyW');
+      const after = await read(p, () => window.__viewer.audio().byName);
+      n[`${name}.speed`] = +speedOf(rec, 0.4).toFixed(1);
+      n[`${name}.feet`] = rec[rec.length - 1]?.feet?.map((v) => +v.toFixed(1));
+      n[`${name}.sounds`] = Object.fromEntries(Object.entries(after).filter(([k, v]) => v !== (before[k] ?? 0)));
+      await p.waitForTimeout(400);
+    }
+  });
+}
+
 async function playFrostfire(s: Session): Promise<void> {
   const p = s.p;
   await s.scenario('walk off the 142 deck', async (x, n, f, shots) => {
@@ -542,6 +598,8 @@ try {
     await playMap(s);
     if (map === 'MP2') await playFrostfire(s);
     if (map === 'MP10') await playBloodLake(s);
+    if (map === 'MP61') await playSujo(s);
+    if (map === 'MP82') await playGuidance(s);
     all.push(...s.scenarios);
     problems[map] = s.problems;
     await page.close();

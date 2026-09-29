@@ -1,4 +1,4 @@
-import { sampleClip, THROW_ANIMS, type MotionClip, type PartPose, type ThrowAnim } from '@s2u/scene';
+import { PLACE_CLAYMORE_ANIM, sampleClip, THROW_ANIMS, type MotionClip, type PartPose, type ThrowAnim } from '@s2u/scene';
 import type { LayerContext, PoseLayer } from './animator';
 import { BLEND_TIME_DEFAULT, entryOf, motionOf, type Motion } from './locomotion';
 import type { MotionTable } from './motionTable';
@@ -19,7 +19,7 @@ import type { MotionTable } from './motionTable';
  */
 
 /** Every throw clip the page asks the worker for (the page adds them to `PLAY_CLIPS`). */
-export const THROW_CLIPS: readonly string[] = [...new Set(Object.values(THROW_ANIMS).map((a) => a.clip))];
+export const THROW_CLIPS: readonly string[] = [...new Set([...Object.values(THROW_ANIMS), PLACE_CLAYMORE_ANIM].map((a) => a.clip))];
 
 /** Where the clips come from once the source's pack is in (`Play.motionSource`). */
 export type ThrowClipSource = () => { clips: ReadonlyMap<string, MotionClip>; table: MotionTable | null } | null;

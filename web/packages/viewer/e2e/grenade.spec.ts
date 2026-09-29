@@ -173,18 +173,39 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-flashbang-whiteout.png') });
   expect((await page.evaluate(() => window.__viewer.whiteOut())).opacity).toBeGreaterThan(0.5);
 
-  // The claymore (key 8): set down on the ground under the hand, facing the SEAL's way; `9` sets it off.
+  // The claymore (key 8): R1 plays `Place claymore` (seal_place_claymore) on the body; 1.3 s in the charge is down under
+  // the hand, facing the SEAL's way, and the Detonator comes up; R1 with the Detonator sets it off (research 85 §9.7.1).
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 3_000 }).toBe('ready');
+  await expect.poll(() => page.evaluate(() => window.__viewer.whiteOut().opacity), { timeout: 20_000 }).toBeLessThan(0.05);   // the flash gone
   expect(await page.evaluate(() => window.__viewer.selectItem('Claymore'))).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.selectItem('Detonator'))).toBe(false);   // none down yet
   await page.evaluate(() => { window.__viewer.trigger(true); window.__viewer.trigger(false); });
-  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().leftByItem.Claymore)).toBe(3);
-  const placed = (await page.evaluate(() => window.__viewer.grenade())).live.find((l) => l.state === 'rest' && l.fuse > 1e6)!;
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_place_claymore');
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().phase), { intervals: [50] }).toBeGreaterThan(0.3);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-claymore-place-clip.png') });
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().leftByItem.Claymore), { timeout: 5_000 }).toBe(3);
+  const set = await page.evaluate(() => window.__viewer.grenade());
+  expect(set.held).toBe('Detonator');
+  expect(set.placed).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__viewer.hud().model.weaponIcon)).toBe('detonator_icon.tif');
+  const placed = set.live.find((l) => l.state === 'rest' && l.fuse > 1e6)!;
   expect(placed.pos[1]).toBeCloseTo(100.1, 1);                 // on Frostfire's floor
-  expect(await page.evaluate(() => window.__viewer.detonateCharges())).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 5_000 }).toBe('ready');
+  await page.waitForTimeout(3000);
+  expect((await page.evaluate(() => window.__viewer.grenade())).explosions.length).toBe(5);   // no fuse: it waits
+  const cf = (await page.evaluate(() => window.__viewer.feet()))!;
+  const cp = placed.pos, cdx = cp[0] - cf[0], cdz = cp[2] - cf[2], cl = Math.hypot(cdx, cdz) || 1;
+  await lookAt([cp[0] + (cdx / cl) * 40, cp[1] + 25, cp[2] + (cdz / cl) * 40], [cp[0], cp[1], cp[2]]);
+  await page.waitForTimeout(200);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-claymore-placed.png') });
+  await stand(210, REST_PITCH);
+  await page.evaluate(() => { window.__viewer.trigger(true); window.__viewer.trigger(false); });   // the Detonator
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().explosions.length), { timeout: 2_000 }).toBe(6);
   const clay = (await page.evaluate(() => window.__viewer.grenade())).explosions[5]!;
   expect(clay.item).toBe('Claymore');
   expect(clay.radius).toBe(250);
+  expect((await page.evaluate(() => window.__viewer.grenade())).held).toBe('Claymore');   // back on the claymore
   expect(await page.evaluate(() => window.__viewer.selectItem('M67'))).toBe(true);
 
   // Peeking right (the traversal's lean, research 86): the throw is the lean's toss, from the lean's own clip.

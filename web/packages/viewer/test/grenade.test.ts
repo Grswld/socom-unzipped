@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Group } from 'three';
-import { buildGrid, HE, M67, releaseSeconds, THROW_ANIMS, throwClipSeconds, type Grid, type GridParams, type V3, type WorldPoly } from '@s2u/scene';
+import { buildGrid, CLAYMORE_RULES, HE, M67, PLACE_CLAYMORE_ANIM, releaseSeconds, THROW_ANIMS, throwClipSeconds, type Grid, type GridParams, type V3, type WorldPoly } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
-import { GrenadeThrower, KIT_ITEMS, L2_SLOT_PLACEHOLDER, RELEASE_POINT, worldToActor, type GrenadeSource } from '../src/grenade';
+import { GrenadeThrower, KIT_ITEMS, L2_SLOT_PLACEHOLDER, RELEASE_POINT, THROWABLES, worldToActor, type GrenadeSource } from '../src/grenade';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
 import { whiteOut } from '../src/flash';
 import { THROW_CLIPS, ThrowPose } from '../src/throwPose';
@@ -29,7 +29,7 @@ function thrower(extra: Partial<GrenadeSource> = {}): { g: GrenadeThrower; event
 describe('the kit\'s slots (research 85 §9)', () => {
   it('selects by name, cycles like the inventory, and L2 goes to its slot and back', () => {
     const { g, events } = thrower();
-    expect(KIT_ITEMS).toEqual(['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore']);
+    expect(KIT_ITEMS).toEqual(['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore', 'Detonator']);
     expect(g.select('HE')).toBe(true);
     expect(g.item()).toBe('HE');
     expect(g.icon()).toBe(HE.icon);
@@ -38,6 +38,7 @@ describe('the kit\'s slots (research 85 §9)', () => {
     expect(g.cycleInventory()).toBe('Mark141');
     expect(g.icon()).toBe('grenade_flashbang_icon.tif');
     expect(g.cycleInventory()).toBe('Claymore');
+    expect(g.select('Detonator')).toBe(false);               // no charge down: the Detonator is not offered
     expect(g.cycleInventory()).toBe('rifle');
     expect(g.icon()).toBeNull();
     expect(g.cycleInventory()).toBe('M67');
@@ -180,28 +181,92 @@ describe('the smoke and the flash going off', () => {
     expect(g.stats().effects).toBeLessThanOrEqual(before + 40);
   });
 
-  it('the claymore is set down on the ground under the hand, facing the SEAL heading, and waits to be set off', () => {
+  const claymoreFloor = (): Grid => {
     const floor: WorldPoly = {
       modelName: 'worldmodel', path: 'worldmodel/f', region: 0, ditype: 3, material: 7, ptcount: 4, cameratype: 0,
       points: Float32Array.from([-2000, 50, -2000, 2000, 50, -2000, 2000, 50, 2000, -2000, 50, 2000]),
     };
     const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 500, cellsX: 8, cellsZ: 8, originX: -2000, originZ: -2000 };
-    const grid = buildGrid(params, [], [], [floor], [{ modelName: 'worldmodel', path: 'worldmodel/f0', first: 0, count: 1 }]);
+    return buildGrid(params, [], [], [floor], [{ modelName: 'worldmodel', path: 'worldmodel/f0', first: 0, count: 1 }]);
+  };
+
+  it('the claymore: the placing clip, down under the hand at 1.3 s, the Detonator up, and off only when it is fired', () => {
+    const grid = claymoreFloor();
     const booms: { damageToPlayer: number; anim: string }[] = [];
-    const { g } = thrower({ grid: () => grid, snapshot: () => snap({ feet: [100, 50, 200], yaw: 0 }), handPoint: () => [102, 62, 192] });
+    const clips: string[] = [];
+    const { g, events } = thrower({ grid: () => grid, snapshot: () => snap({ feet: [100, 50, 200], yaw: 0 }), handPoint: () => [102, 62, 192] });
     g.on('explode', (e) => booms.push(e));
+    g.on('throwStart', ({ anim, releaseIn }) => clips.push(`${anim.clip} ${releaseIn}`));
     g.select('Claymore');
-    g.pull();
+    g.pull();                                                  // R1: the `Place claymore` action, not the charge yet
+    expect(clips).toEqual([`seal_place_claymore ${CLAYMORE_RULES.placeSeconds}`]);
+    expect(g.stats()).toMatchObject({ placing: true, placed: 0, held: 'Claymore' });
+    run(g, 1.25);
+    expect(g.stats().placed).toBe(0);
+    run(g, 0.1);                                               // 1.3 s in: down
     const set = g.stats().live[0]!;
     expect(set.pos).toEqual([102, 50.1, 192]);
     expect(set.state).toBe('rest');
+    expect(g.stats()).toMatchObject({ placing: false, placed: 1, held: 'Detonator', icon: 'detonator_icon.tif' });
     expect(g.stats().leftByItem.Claymore).toBe(3);
+    expect(events.at(-1)).toBe('equip true Detonator');
     run(g, 20);
-    expect(booms).toEqual([]);                                // no fuse: it waits
-    expect(g.detonateCharges()).toBe(1);
+    expect(booms).toEqual([]);                                 // no fuse, no tripwire: it waits
+    g.pull();                                                  // R1 with the Detonator: CZKit_DetonateRemoteExplosives
+    expect(g.stats().held).toBe('Claymore');                   // FUN_005c8a20(0x99): the claymore back up
     run(g, 0.1);
-    expect(booms[0]!.anim).toBe('claymore_stone');            // the material variant first; the effects fall back
+    expect(booms[0]!.anim).toBe('claymore_stone');             // the material variant first; the effects fall back
     // The SEAL stands behind it (its cone points the way he faced): a 32nd of the damage.
     expect(booms[0]!.damageToPlayer).toBeCloseTo(16 / 32, 9);
+    // The clip is the motion pack's, and the page asks for it.
+    expect(THROW_CLIPS).toContain(PLACE_CLAYMORE_ANIM.clip);
+  });
+
+  it('the claymore: four down at most, none while moving, none off the ground, and the Detonator reaches 500 units', () => {
+    const grid = claymoreFloor();
+    let feet: V3 = [100, 50, 200], vx = 0;
+    const refused: string[] = [];
+    const { g } = thrower({ grid: () => grid, snapshot: () => snap({ feet, yaw: 0, vx }), handPoint: () => [feet[0] + 2, feet[1] + 12, feet[2] - 8] });
+    g.on('refuse', (r) => refused.push(r.text));
+    const place = (): void => { g.select('Claymore'); g.pull(); run(g, 3); };
+    vx = 40;                                                   // on the move: not started
+    g.select('Claymore');
+    g.pull();
+    expect(g.stats().placing).toBe(false);
+    vx = 0;
+    feet = [100, 200, 200];                                    // the hand 162 over a floor 150 below the feet: out of reach
+    place();
+    expect(g.stats().placed).toBe(0);
+    expect(g.stats().leftByItem.Claymore).toBe(4);
+    feet = [100, 50, 200];
+    place();
+    feet = [700, 50, 200];                                     // 600 units along
+    place();
+    feet = [1300, 50, 200];
+    place();
+    place();
+    expect(g.stats().placed).toBe(4);
+    expect(g.stats().leftByItem.Claymore).toBe(0);
+    expect(g.stats().held).toBe('Detonator');
+    // Fired at the far end: the two at its feet go, the one 600 units back is beyond the Detonator's 500.
+    expect(g.detonateCharges()).toBe(2);
+    expect(g.stats().held).toBeNull();                         // no claymore left: back to the rifle
+    run(g, 0.1);
+    expect(g.stats().placed).toBe(2);
+    expect(g.select('Detonator')).toBe(true);                  // still two down
+    expect(refused).toEqual([]);
+  });
+
+  it('the claymore: a fifth is refused with the game\'s message', () => {
+    const grid = claymoreFloor();
+    const refused: string[] = [];
+    const records = { ...THROWABLES, Claymore: { ...THROWABLES.Claymore, capacity: 6 } };   // more in the pouch than may be down
+    const h = new GrenadeThrower({ grid: () => grid, snapshot: () => snap({ feet: [100, 50, 200], yaw: 0 }), view: () => 'third', handPoint: () => [102, 62, 192] }, records);
+    h.on('refuse', (r) => refused.push(r.text));
+    for (let i = 0; i < 5; i++) { h.select('Claymore'); h.pull(); run(h, 3); }
+    expect(h.stats().placed).toBe(4);
+    expect(h.stats().leftByItem.Claymore).toBe(2);
+    expect(refused).toEqual(['Unable To Deploy: Max Equipment Items Placed (4)']);
+    expect(h.stats().message).toBeNull();                      // 2 s on screen, then gone
   });
 });
