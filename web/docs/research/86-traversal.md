@@ -447,6 +447,54 @@ reader) and the slope -- steeper than 50 degrees slides; speed along the fall li
 the clip past 58.75 a second. **Not implemented**: it needs the field decoded and the walk's refusal of steep floors
 replaced. No prone roll, no mantle beyond the climbs, no rappel, zipline or swim exist.
 
+### 6.3 The jump up a slope: the floor in the air (round 4, 2026-09-29) [read, data]
+
+**The owner's report** (2026-09-29, after playing): a jump while running up terrain went through the ground most of the
+time. **Reproduced** (`test/walk.test.ts`, "a running jump up a slope"): ramps of 15, 26.6, 40 and 48 degrees over a
+floor running on under them, a take-off on the flat just short of a ramp's foot, Frostfire's rail ramp `rmp1` (x
+680-705, z 891 -> 975, y 100 -> 142, 26.6 degrees, the 100 floor under it) and MP6's hillside `g157` at z 1700 (x 1010
+-> 1040, y 36 -> 59, about 39 degrees). Before the fix every one ended with the feet under the slope's top -- by 0.8 to
+46 units; on `rmp1` the SEAL landed on the 100 floor *under* the ramp, 27.6 under its top.
+
+**The cause** [viewer]: the airborne tick (`Walker.fall`) looked for its landing only among the floors **at or under
+the feet as they were the tick before** (`h.y <= from`), and only while falling (`vy <= 0`). A running jump's feet sink
+0.98 through the 0.1 s wind-up (research 80 section 2.2) while the run carries them 6.5 units up the slope, so at the
+impulse they are already under the slope; from then on the slope was never a candidate: rising, nothing was tested;
+falling, the only floors "under the feet" were a floor beneath the ramp (Frostfire: landed there) or none (the fall
+went on under the map). The flat-ground tests never saw it: there the floor stays under the feet. `airStep` added a
+second fault: a column whose floor was over the feet was refused, stalling the flight against a rising slope.
+
+**What the game does** [read]:
+
+- `FUN_005b0420` (decomp 467037-467110) probes the ground every tick, airborne or not, and takes the floor with
+  `FUN_005b5d40` (470163-470290): the highest hit at or under the probe's origin + 1, else the lowest, refused only
+  when it is more than 20 over the feet -- the walk's own `selectFloor` (research 23 section 1.1, research 24 section 2).
+  The origin is the actor's record `+0xf54` plus a node's world position, written by `FUN_005b0840` (467165-467300);
+  the viewer keeps research 23's reading of it, the feet + 5 (`PROBE_LIFT`).
+- `FUN_0059ad30` (456263-456327) with that floor: with the jump's bit (`actor+0x1061` bit 1) set and bit 2 clear, the
+  feet (`actor+0x2e4`) **under the floor** and the wind-up spent (`actor+0x1360 <= 0`), the feet are **put on the
+  floor**, bit 1 cleared and bit 2 set. **The fall speed is not touched**: no test of its sign.
+- `FUN_0059b440` (456467-456570), the walk-off branch the jump is now in: with the feet at or under the floor, the fall
+  speed `actor+0x133c` is recorded and zeroed **only when it is a fall** (`0 <= +0x133c`), and the feet put on the floor
+  (plus the material's offset); the airborne bit 5 is cleared -- the landing, `FUN_005af930` -> `FUN_005af590` -- only
+  when the feet are within 3 (`DAT_0044c264`) of the floor **and falling**.
+
+So in the game a slope rising over a jump's feet lifts them onto it and the rise goes on; the landing is on the way
+down. **The fix** (`walk.ts` `fall`, `airStep`): the airborne floor is `selectFloor(probeGround(x, z), from + 5, y)`,
+the ground's own pick; feet at or under it are put on it; a fall (`vy <= 0`) is the landing, a rise goes on. A column is
+entered in the air when it has a floor within `step_height` over the feet (the ground step's allowance, which the
+wind-up already had). The flat jump, the walk-off and every landing test are unchanged (the flat floor is never over
+the feet in flight).
+
+**Bounds** [derived]: with `FUN_005b56c0`'s uphill factor on the stick (section 5.3) the run up a slope of angle a is
+`65 cos^2 a`, so the feet end the wind-up at most `0.98 + 65 cos^2 a x 7/60 x tan a <= 0.98 + 3.79` = 4.8 under the
+slope's top -- inside the pick's 6, so the slope is always the floor chosen, even over a floor beneath. Without the
+factor (a bare `Walker`) a ramp over 33.5 degrees over another floor can sink the feet past 6, and the game's pick then
+takes the floor beneath as well; the tests of the steep ramps run with the traversal's driver, as the page does.
+Terrain without a floor beneath takes the slope as "the lowest" up to 20 under it. **Not modelled**: the game's two-tick
+landing (`FUN_0059ad30` puts the feet on the floor, the next `FUN_0059b440` zeroes the fall and clears bit 5) and the
+3-unit landing window -- the viewer lands on the tick of contact, as before.
+
 ## 7. What the viewer does, the seams, the bindings, the events
 
 ### 7.1 Modelled

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
-import { buildGrid, SEAL_LOCOMOTION, SEAL_TUNING, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
+import { buildGrid, probeGround, SEAL_LOCOMOTION, SEAL_TUNING, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
@@ -11,6 +11,7 @@ import {
   ACTION_SECONDS, BODY_RADIUS, CARRY_DECAY, EYE_HEIGHT, JUMP_DELAY, JUMP_LOCK, RUNNING_JUMP_SPEED, STANCES, TICK,
   type GroundData, type Stance, type WalkInput,
 } from '../src/walk';
+import { Traversal } from '../src/traversal';
 
 /**
  * The walk (web sprint 1, W1.4): a mover at the engine's 60 Hz on the probe's floor, sliding on walls at radius
@@ -1114,5 +1115,121 @@ describe('round 4: the rifle <-> pistol swap in the picker (FUN_005a64c0)', () =
     expect(w.action).toBeNull();
     expect(w.overlay?.clip).toBe('seal_mv_rifle2pistol');
     expect(w.overlay!.t / w.overlay!.seconds).toBeCloseTo((t + TICK) / ACTION_SECONDS.swapStand, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The owner's 2026-09-29 report: a running jump up a slope went through the ground (web research 86 section 6.3).
+
+/** The highest surface the probe has over (x, z): the slope's top where a ramp stands over a lower floor. */
+const topAt = (grid: Grid, x: number, z: number): number => Math.max(...probeGround(grid, x, z).map((h) => h.y));
+
+/** A walker on `grid` driven as the page drives it: the traversal's tick and `FUN_005b56c0`'s uphill factor. */
+function driven(grid: Grid, polys: readonly WorldPoly[]): Walker {
+  const w = new Walker(grid);
+  w.driver = new Traversal(grid, polys);
+  return w;
+}
+
+/**
+ * Runs the mover from where it stands toward (tx, tz) until `jumpWhen` says so, jumps, and flies it to a landing.
+ * Each tick from the impulse on (the 0.1 s wind-up sinks the feet in the game too: FUN_0059ad30 lands nothing while
+ * `actor+0x1360` runs) the feet must stand at or over the slope's top under them. Returns the flight's lowest margin.
+ */
+function jumpUp(w: Walker, grid: Grid, tx: number, tz: number, jumpWhen: (w: Walker) => boolean): { worst: number; landed: boolean } {
+  w.state.yaw = facing(w.state.x, w.state.z, tx, tz);
+  for (let i = 0; i < 600 && !jumpWhen(w); i++) w.tick(FORWARD);
+  expect(jumpWhen(w), `never reached the take-off, at (${w.state.x.toFixed(1)}, ${w.state.y.toFixed(1)}, ${w.state.z.toFixed(1)})`).toBe(true);
+  expect(w.jump(), `jump refused at (${w.state.x.toFixed(1)}, ${w.state.z.toFixed(1)})`).toBe(true);
+  let worst = Infinity, ticks = 0;
+  const windUp = Math.round(JUMP_DELAY / TICK) - 1;
+  while (w.airborne && ticks < 240) {
+    w.tick(FORWARD);
+    ticks++;
+    if (ticks > windUp) worst = Math.min(worst, w.state.y - topAt(grid, w.state.x, w.state.z));
+  }
+  return { worst, landed: !w.airborne };
+}
+
+describe('a running jump up a slope lands on it, never under it (owner 2026-09-29; FUN_0059ad30, FUN_0059b440)', () => {
+  /** A ramp rising along +x from x 0 at `degrees`, over a flat floor at 0 that runs on under it (as Frostfire's). */
+  const ramp = (degrees: number): WorldPoly[] => {
+    const k = Math.tan(degrees * Math.PI / 180);
+    const slope: WorldPoly = {
+      modelName: 'worldmodel', path: 'worldmodel/ramp', region: 0, ditype: 3, material: 25, ptcount: 4, cameratype: 0,
+      points: Float32Array.from([0, 0, -200, 190, 190 * k, -200, 190, 190 * k, 200, 0, 0, 200]),
+    };
+    return [floor(-200, -200, 200, 200, 0), slope];
+  };
+
+  for (const degrees of [15, 26.6, 40, 48]) {
+    it(`a ${degrees}-degree ramp: the flight never dips under it, and the landing is on it`, () => {
+      const polys = ramp(degrees), grid = world(polys);
+      const w = driven(grid, polys);
+      w.place(-60, 0, 0);
+      const r = jumpUp(w, grid, 200, 0, (m) => m.state.x > 20 && Math.hypot(m.state.vx, m.state.vz) >= RUNNING_JUMP_SPEED);
+      expect(r.landed).toBe(true);
+      expect(r.worst).toBeGreaterThanOrEqual(-1e-6);
+      expect(w.state.y).toBeCloseTo(topAt(grid, w.state.x, w.state.z), 6);   // on the ramp, not the floor under it
+      expect(w.state.y).toBeGreaterThan(5);
+    });
+  }
+
+  it("taken off the flat at 65 just short of a 26.6-degree ramp's foot: the ramp rising under the flight is met, not passed", () => {
+    const polys = ramp(26.6), grid = world(polys);
+    const w = driven(grid, polys);
+    w.place(-100, 0, 0);
+    const r = jumpUp(w, grid, 200, 0, (m) => m.state.x > -3);
+    expect(r.landed).toBe(true);
+    expect(r.worst).toBeGreaterThanOrEqual(-1e-6);
+    expect(w.state.y).toBeCloseTo(topAt(grid, w.state.x, w.state.z), 6);
+    expect(w.state.y).toBeGreaterThan(5);
+  });
+
+  it('rising into the ground keeps the rise (FUN_0059b440 zeroes only a fall): no landing until the feet come down', () => {
+    const polys = ramp(26.6), grid = world(polys);
+    const w = driven(grid, polys);
+    w.place(-100, 0, 0);
+    w.state.yaw = facing(-100, 0, 200, 0);
+    for (let i = 0; i < 600 && w.state.x < 10; i++) w.tick(FORWARD);
+    expect(w.jump()).toBe(true);
+    let rose = false, lastVy = 0;
+    while (w.airborne) { w.tick(FORWARD); if (w.state.vy > 0) rose = true; if (w.airborne) lastVy = w.state.vy; }
+    expect(rose).toBe(true);
+    expect(lastVy).toBeLessThan(0);                                          // the landing is on a fall
+    expect(w.landing!.speed).toBeGreaterThan(0);
+  });
+});
+
+describe.skipIf(!MP2)(`a running jump up Frostfire's rail ramp${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+  it('rmp1 (x 680-705, z 891-975, y 100 -> 142 at 26.6 degrees, the 100 floor under it): lands on the ramp', async () => {
+    const map = await loadMap(new FsAssetSource(FIXTURES), 'RUN/MP2.ZDB');
+    const grid = groundGrid(map.ground!);
+    for (const bare of [true, false]) {                                     // with and without the uphill factor
+      const w = bare ? new Walker(grid) : driven(grid, groundPolygons(map.ground!));
+      expect(w.place(693, 100 + EYE_HEIGHT, 870)).toBe(true);
+      expect(w.state.y).toBe(100);
+      const r = jumpUp(w, grid, 693, 1000, (m) => m.state.z > 905);
+      expect(r.landed).toBe(true);
+      expect(r.worst).toBeGreaterThanOrEqual(-1e-6);
+      expect(w.state.y).toBeGreaterThan(110);                                 // not the 100 floor under the ramp
+      expect(w.state.y).toBeCloseTo(topAt(grid, w.state.x, w.state.z), 6);
+    }
+  });
+});
+
+const MP6 = fixture('RUN/MP6.ZDB');
+describe.skipIf(!MP6)(`a running jump up MP6's hillside${MP6 ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+  it('g157 at z 1700 (x 1010 -> 1040, y 36 -> 59, about 39 degrees): the flight stays over the ground', async () => {
+    const map = await loadMap(new FsAssetSource(FIXTURES), 'RUN/MP6.ZDB');
+    const grid = groundGrid(map.ground!);
+    for (const bare of [true, false]) {
+      const w = bare ? new Walker(grid) : driven(grid, groundPolygons(map.ground!));
+      expect(w.place(1012, 60, 1700)).toBe(true);
+      const r = jumpUp(w, grid, 1100, 1700, (m) => Math.hypot(m.state.vx, m.state.vz) >= RUNNING_JUMP_SPEED);
+      expect(r.landed).toBe(true);
+      expect(r.worst).toBeGreaterThanOrEqual(-1e-6);
+      expect(w.state.y).toBeCloseTo(topAt(grid, w.state.x, w.state.z), 6);
+    }
   });
 });
