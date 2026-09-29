@@ -8,6 +8,7 @@
     "@s2u/gs": "*",
     "@s2u/mesh": "*",
     "@s2u/scene": "*",
+    "@s2u/sound": "*",
     "three": "^0.186.0"
   },
   "devDependencies": {

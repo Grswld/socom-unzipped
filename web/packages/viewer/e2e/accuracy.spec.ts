@@ -23,7 +23,7 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -61,7 +61,10 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   await settle(page, 180);
   const before = await page.evaluate(() => ({ a: window.__viewer.accuracy(), shots: window.__viewer.fire().shots }));
   expect(before.a.size).toBeLessThan(2);
-  // The trigger held on automatic (0.8 x FireWait = 0.112 s a round): read while it is still down.
+  // The rifle comes up on burst (FUN_005c0250); automatic for the held trigger (0.8 x FireWait = 0.112 s a round).
+  expect(await page.evaluate(() => window.__viewer.fireMode())).toBe('BURST');
+  expect(await page.evaluate(() => window.__viewer.switchFireMode())).toBe('AUTO');
+  expect((await page.evaluate(() => window.__viewer.hud())).model.fireMode).toBe('auto');
   await page.evaluate(() => window.__viewer.trigger(true));
   await page.waitForTimeout(450);
   const burst = await page.evaluate(() => ({ a: window.__viewer.accuracy(), r: window.__viewer.reticle(), shots: window.__viewer.fire().shots }));

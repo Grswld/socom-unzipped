@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import {
-  decodeTexture, PaletteTable, parseTextureRecord, psmt8Offset, type PaletteRecord, type TextureRecord,
+  csm1Clut4Index, decodeTexture, PaletteTable, parseTextureRecord, psmt8Offset, type PaletteRecord, type TextureRecord,
 } from '../src';
 import { fixture } from '../../archive/test/fixtures';
 import goldens from './goldens/frostfire-textures.json';
@@ -62,6 +62,21 @@ describe('decodeTexture', () => {
     expect(reds(out.rgba.data).slice(0, 9)).toEqual([0, 4, 16, 20, 32, 36, 48, 52, 2]);
     // Every byte of the block is used exactly once: the layout is a permutation, not a resampling.
     expect(new Set(reds(out.rgba.data)).size).toBe(256);
+  });
+
+  it('reads PSMT4 two texels a byte, low nibble first, through the csm1 8x2 CLUT', () => {
+    const table = new PaletteTable();
+    table.add(ramp());
+    const rec = synthetic({
+      bpp: 4, width: 4, height: 1, size: 2, pixels: new Uint8Array([0x10, 0x98]),
+      tex0: { ...synthetic().tex0!, psm: 0x14, tw: 2, th: 0 },
+    });
+    const out = decodeTexture(rec, table, 'raster');
+    expect(out.diagnostics).toEqual([]);
+    // Nibbles 0, 1, 8, 9: 0-7 read entries 0-7, 8-15 the buffer's second row, entries 16-23.
+    expect(reds(out.rgba.data)).toEqual([0, 1, 16, 17]);
+    expect(reds(decodeTexture(rec, table, 'raster', 'linear').rgba.data)).toEqual([0, 1, 8, 9]);
+    expect([0, 7, 8, 15].map(csm1Clut4Index)).toEqual([0, 7, 16, 23]);
   });
 
   it('reports a missing palette and falls back to the first one', () => {

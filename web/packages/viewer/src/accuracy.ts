@@ -154,8 +154,14 @@ export function nextFireMode(weapon: WeaponRecord, mode: number, scoped = false)
   return mode;
 }
 
-/** The mode a weapon comes up in (`FUN_005c0fd0`: cycled until it is `MaxFireMode`): automatic on the M4A1s. */
+/**
+ * The mode a weapon comes up in: the kit's set-up at spawn puts the primary slot on **burst** when the weapon enables
+ * it (`FUN_005c0250`, decomp 476217-476223: `FUN_003d2a60(slot 1, 2)` -> mode 2) -- the console frame at spawn shows
+ * the three rounds of mode 2 (research 87) -- and a mode still 0 is cycled up to `MaxFireMode` (`FUN_005c0fd0`
+ * 476658-476668). Online the game then restores the player's last mode per weapon (`DAT_0066b580`), not modelled.
+ */
 export function defaultFireMode(weapon: WeaponRecord): number {
+  if (weapon.fireModes.includes(2)) return 2;
   return weapon.fireModes.includes(weapon.maxFireMode) ? weapon.maxFireMode : (weapon.fireModes[0] ?? 0);
 }
 

@@ -31,7 +31,7 @@ reCOM's order from `+0x18`: `m_retposx/y` +0x18/+0x1c, `m_retoffsetx/y` +0x20/+0
   own (quirky) `tan(tan(hfov))` law; each axis is `u·|u|` of a uniform `u` -- densest at the centre.
 - **Fire modes** (§6): `MaxFireMode 3` = semi, burst, automatic; 1 / 3 / unlimited rounds a pull; the wait `FireWait`,
   × 0.8 in burst and automatic (the SD: 0.14 s semi, 0.112 s = 536 a minute auto). The switch is L3 (`FireMode`),
-  refused while scoped; the rifle comes up automatic.
+  refused while scoped; the rifle comes up on **burst** (the kit's spawn set-up; the console frame's three rounds).
 - **The zoom** (§7): third person → first person (1.01) → the scope at `ZoomMode[state − 4]` -- **the M4A1 SD's one
   scope level is 3×, the M4A1's 2.5×; `ZoomMode0` (1.5 on every record) is never a magnification**. D-pad Up in, Down
   out, no wrap; the magnification runs linearly at 3× the target a second; the look is divided by it; the move stick
@@ -91,7 +91,7 @@ Weapon-wide, SD then M4A1: `FireWait` **0.14** / 0.12; `NumZoomModes` 2, `ZoomMo
 `AccBurstCnt` **5-10** / 4-7; `AccScalar` **0-0** / 0-0.03; `Muzzle_Velocity` 900 / 921; `ImpactRadius` 25 / 30;
 `Effective_Range` 550 / 600; `Maximum_Range` 800 / 1000; `Damage_Modifier` 0.15 / 0.3; `Sound_Radius` 10 / 100;
 `Ammo_Capacity` 30; `NumMags` 3; `MaxFireMode` 3; `RecoilPct` 0.2; `Rumble` 0.04 / 0.2 / 125 (SD). Transcribed as
-`@s2u/scene`'s `M4A1_SD` (and the M4A1's `DEFAULT_RIFLE`), pinned to the file by `weapons.test.ts`.
+`@s2u/scene`'s `HELD_RIFLE` (and the M4A1's `DEFAULT_RIFLE`), pinned to the file by `weapons.test.ts`.
 
 ## 2. The frame the numbers are pixels of
 
@@ -166,8 +166,11 @@ at 26 -- the look is the biggest term; a round +7, closing again in 0.14 s; auto
 - **The pull's count** `kit+0x818`: +1 per round (`FUN_005be9a0` 475516, before the round leaves); **reset to 0 when the
   trigger (`ctrl+0x118`) is up or just released** (`FUN_005c0ae0` 476382-476400), which also stops a burst mid-way.
 - **The switch** (`FUN_005c4600`, 478555): only when the magnification is ≤ 1.01 (not scoped); mode + 1, past
-  `MaxFireMode` back to 1, skipping a mode whose flag is off. A weapon comes up in `MaxFireMode` (476650-476670):
-  automatic on both M4A1s. `controller.rdr` binds it to `LeftStickTap` (L3) in the Default layout (`RightStickTap` in
+  `MaxFireMode` back to 1, skipping a mode whose flag is off.
+- **The mode at spawn:** the kit's set-up (`FUN_005c0250`, 476217-476223) puts the primary slot on **burst** when the
+  weapon enables mode 2 (`FUN_003d2a60(slot 1, 2)`) -- which is what the console frame at spawn shows (three
+  `firemode.tif` rounds = mode 2, research 87); a mode still 0 is cycled up to `MaxFireMode` (`FUN_005c0fd0`
+  476650-476670), and online the player's last mode per weapon is restored (`DAT_0066b580`, not modelled). `controller.rdr` binds it to `LeftStickTap` (L3) in the Default layout (`RightStickTap` in
   Reverse).
 
 ## 7. The views and the zoom (`FUN_005448a0`, `FUN_005445b0`, `FUN_00544400`)
@@ -186,9 +189,10 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   give two levels (M40A1 6×, 12×); a sidearm (one mode) zooms from first person into the 9× view.
 - **Zoom out**, d-pad Down (`FUN_00544400`, table 0x65c320): 1, 2 → 0; 3, 4 → 1 (clearing the knock, `FUN_005b9020`);
   5 → 1 (3 at night), clearing the knock; s > 5 → s − 1.
-- **What else sets it:** a second round of a pull while scoped → 1 (`FUN_005c5340` 479404); a weapon switch → 1
-  (`FUN_005c4b10` 478833); an attached launcher selected → 1 (`FUN_00216770` 70389); death → 0 (`FUN_00547af0`), the
-  vehicle and ladder paths → 0/1 (`FUN_005463c0`, `FUN_00579720`). Nothing on reload, stance or movement.
+- **What else sets it:** a second round of a pull while scoped → 1 (`FUN_005c5340` 479404); a weapon switch drops
+  **only the night vision** to 1 (`FUN_005c4b10` 478813-478833: `if (body+0x200 == 3) ... FUN_005448a0(body, 1)`) --
+  what a scope does when a grenade comes up was not traced, and the viewer drops it to first person [reading]; an attached launcher selected → 1 (`FUN_00216770` 70389); death → 0
+  (`FUN_00547af0`), the vehicle and ladder paths → 0/1 (`FUN_005463c0`, `FUN_00579720`). Nothing on reload, stance or movement.
 - **The run** (`FUN_001f1610`, `FUN_001f0750` 52864-52990): the applied magnification `DAT_003dc338` moves linearly to
   the target `DAT_003dc340` at `DAT_00408c48` = 3 × the target a second in, at least 3 × the old target out (1.01 →
   3 in 0.22 s). `FUN_0029b2f0` puts it on the projection (`cam+0x470/+0x474` = zoom × 1.0): **tan(half FOV) ÷ zoom**
@@ -250,6 +254,13 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   pixels on the frame) with a one-texel grey (79, PS2 alpha 94) cross along the centre lines, dashed for its inner 22
   texels; `ret_scope_02` a soft black ring inside the tube (alpha 255 at 95 texels fading to 0 at 44). The F2000 (ID
   63) skips `ret_scope_02`. `scopeLayout`.
+- **The HUD in a scope** (`FUN_001f6ce0` 56025-56066): when the magnification (`FUN_005be660`, 9 in state 4) is over
+  1.01 the HUD writes **`ZOOM: %2.1fx`** (string 0x3e3098) at (20, 420), scale 0.9 -- "ZOOM: 3.0x" on the SD -- and
+  hides it otherwise; research 87 found no zoom readout. The reticle's own `RANGE(m): %.0f` line (`DAT_00408e58`,
+  `FUN_00216770` 70440-70448) is shown only in the scope, the 9x view and the night vision (`ChangeReticule`: types 5, 7,
+  8), placed at (415, 215) in the scope, (515, 40) and (515, 70) in the others (`DAT_003dc528..550`). Neither is drawn
+  yet: the HUD workstream's `hud.setZoom` receives the magnification (research 84's request). `FUN_002122a0` (68371)
+  hides two more HUD parts whenever the view is first person or scoped (state > 1), not identified.
 - **The accuracy pip** (`ret_accuracy`, `hud+0x1f0`): placed at the centre + body `+0xe44/+0xe48` (clamped to 200
   pixels), which `FUN_005aa6e0` (464351) sets to the screen position of where the **muzzle's** ray actually lands; hidden
   while that is inside the reticle, faded in and out 32 a frame. It marks an obstructed muzzle. Not drawn yet: it needs
@@ -273,7 +284,7 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   the last level back to third person -- the viewer's convenience), `set(state)`, `update(dt)`, `state()`, `view()`,
   `target()`, `magnification()`, `fov(baseDeg)`, `lookScale()`, `moveScale()`, `firstPerson()`, `scoped()`.
 - `fire.ts` -- `setGun(FireGun)`: `trigger`, `roundsPerPull`, `interval`, `round(dir)`; the range × 10.
-- `main.ts` -- the M4A1 SD's record (`M4A1_SD`) drives the fire, the bloom and the zoom; `gunFrame` each frame (the
+- `main.ts` -- the M4A1 SD's record (`HELD_RIFLE`) drives the fire, the bloom and the zoom; `gunFrame` each frame (the
   bloom off `walk.snapshot()` and `fly.pose()`'s look rates, a look jump over 45° a frame counted as a placement; the
   zoom's run and `fly.setFov(zoom.fov(base))`; the LOOK workstream's `fly.setZoom(magnification, mode4)` when the camera
   has it). **The right mouse button is the zoom's press** (it was the held first-person aim: the game's first zoom step
@@ -281,11 +292,13 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   **`B` switches the fire mode** (free; not while scoped). The hook: `zoom()`, `zoomIn()`, `zoomOut()`, `cycleZoom()`,
   `fireMode()`, `switchFireMode()`, `accuracy()`, `trigger(down)`.
 - **Requests.**
-  - UI (the pad): lane `zoom` = d-pad Up, pressed edge → `onZoom()` in `main.ts` (or `zoom.zoomIn()` for the game's
-    exact no-wrap step); lane `zoomOut` = d-pad Down → `zoom.zoomOut()`; lane `fireMode` = L3 → `switchFireMode()`
-    (W2.7 already reads the fire mode on L3). The hint line could add "right-click zoom · B fire mode".
+  - UI (the pad): **done at the merge** -- `zoom` = d-pad Up → the game's no-wrap step in, `zoomOut` = d-pad Down, and
+    `fireMode` = L3 (replacing the launcher's crouch shortcut there; the stance is Triangle); the walk hint reads
+    "right click zoom · d-pad up/down zoom · B fire mode". The zoom and the fire mode do nothing while the grenade is up.
+  - HUD: draw `ZOOM: %2.1fx` and the scope's `RANGE(m)` line (above) off `hud.setZoom`; `hud.setFireMode` is fed.
   - WEAPON (`rifleKick.ts`): start the kick only when `kickStarts(zoom.state(), accuracy.rounds())` and tick it only when
-    `kickTicks(zoom.state())`; unscoped the camera must not kick. The two-leg shot should send its muzzle-leg hit to
+    `kickTicks(zoom.state())`; unscoped the camera must not kick. **Done at the merge**: `FireGun.kickStarts/kickTicks`
+    gate `Fire`'s `RifleKick`, whose per-stance numbers now come off the parsed stances (the parser's inheritance). The two-leg shot should send its muzzle-leg hit to
     the reticle for the accuracy pip (§9).
   - LOOK: `fly.setZoom` is called with `ZoomMode[state − 4]` (1 unscoped) and `mode4`; the move stick's × 0.2 is
     `zoom.moveScale()`.

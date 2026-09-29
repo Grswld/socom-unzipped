@@ -4,6 +4,7 @@ import {
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 
 /**
  * Simple shooting (web sprint 2, W2.5; the spec's §4 W2.5): a hitscan round along the aim, at the rifle's own rate,
@@ -14,10 +15,14 @@ import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntr
  *   `READERC.ZAR/character.rdr`'s `mp_seal1` kit -- `FireWait 0.12` s between rounds (500 a minute),
  *   `Ammo_Capacity 30`, `NumMags 3`, `Maximum_Range 1000` (`scene/src/weapons.ts` cites the records).
  * - **The ray.** The game fires from the weapon model's `firepoint` node toward the aim point (`FUN_00297410`'s,
- *   1000 ahead along the pitched look: `playerCamera.ts`). The viewer has no weapon model, so **the eye stands in
- *   for the firepoint**: the segment runs from the camera's eye through the aim point, `Maximum_Range` long. Its
- *   line is the view's centre line, so the round lands under the reticle (the spec's §7, W2.1: the aim point
- *   projects to the frame's centre at rest). `segmentHit` (`scene/src/segment.ts`) walks the grid the probe walks.
+ *   1000 ahead along the pitched look: `playerCamera.ts`). WEAPON: with the rifle in the SEAL's hands the source
+ *   gives that point (`FireSource.muzzle`: the posed `firepoint`, `./heldItem` -- `+0x14b0` plus the position, the
+ *   path `GetPutativeFirePointW` 0x57fa70 takes with a1 false), and the round runs in two legs: the eye's ray along
+ *   the view's centre line finds the point under the reticle (the aim point), then the segment from the muzzle to
+ *   it finds what the round meets -- the same point unless something stands between the rifle and it (the
+ *   convergence is research 79 §4's reading). Without a muzzle (no body, no clips) **the eye stands in for the
+ *   firepoint**: the segment runs from the camera's eye through the aim point, `Maximum_Range` long, which lands
+ *   under the reticle (the spec's §7, W2.1). `segmentHit` (`scene/src/segment.ts`) walks the grid the probe walks.
  * - **Which surfaces.** Every polygon, walls and floors. The engine's segment test skips bit-18 or bit-19 surfaces
  *   by `DAT_0044d758` (`segment.ts`); the five callers that set it to 1 (`FUN_0029bf70` the camera, `FUN_0057efe0`
  *   the headroom ray, `FUN_00596d60` the peek, `FUN_005aa6e0` a camera-side ray) are none of them a round, and the
@@ -29,15 +34,26 @@ import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntr
  *   the oldest recycled (the game's `TEMP_DECAL_POOL` is 150 + 50 overflow: `decals.rdr`).
  * - **The magazine.** 30 in the rifle and `NumMags - 1` = 2 spare -- `NumMags` read as the magazines carried with
  *   the loaded one among them, which is what the console frame's ammo box shows at spawn ("2 MAGS"). `R` reloads
- *   over `RELOAD_SECONDS` [estimate: the M4A1's record has no `ReloadTime`, so the game's reload is its animation's
- *   length, which is not in the tree]; a partly spent magazine is dropped, as a spare is a whole magazine.
+ *   over the reload clip's length when the source knows it (`FireSource.reloadSeconds`: `motion.rdr`'s `playback`
+ *   of `seal_reload` 1.6, `seal_crouch_reload` 1.9, `seal_prone_reload` 1.7, `seal_mv_reload` 1.2 -- the M4A1's
+ *   record has no `ReloadTime`, so the game's reload is its animation's), else over `RELOAD_SECONDS` [estimate]; a
+ *   partly spent magazine is dropped, as a spare is a whole magazine.
  * - **The range** is `Maximum_Range` x `UNITS_PER_METRE` (10): the file's ranges are metres (research 84 §2).
- * - **The gun** (`setGun`, `./accuracy` through `main.ts`; research 84): where a round goes inside the reticle, the
- *   fire mode's rounds a pull (single 1, burst 3, automatic unlimited) and its wait (`FireWait`, x 0.8 in burst and
- *   automatic). Without one: straight down the aim, one round a `FireWait`, held for automatic.
+ * - **The gun** (`setGun`, `./accuracy` through `main.ts`; research 84): the eye's ray leaves off the view's centre
+ *   line by the reticle's cone and knock (`FUN_005bd100` / `FUN_00592260`), so the point it finds -- the one the
+ *   muzzle's leg then fires at -- lies inside the reticle; the fire mode's rounds a pull (single 1, burst 3,
+ *   automatic unlimited) and its wait (`FireWait`, x 0.8 in burst and automatic). Without one: straight down the
+ *   aim, one round a `FireWait`, held for automatic.
  * - **The trigger.** A press fires at once if the wait has passed since the last round; held, it fires at the rate
- *   while the pull has rounds left. The tracer is drawn for one frame, from a muzzle stand-in beside the eye (a line
- *   along the view's own centre line would be a point on the screen) to the hit.
+ *   while the pull has rounds left. The tracer is drawn for one frame, from the muzzle (or, without one, a stand-in
+ *   beside the eye: a line along the view's own centre line would be a point on the screen) to the hit.
+ * - **The kick** (WEAPON, `./rifleKick`): the aim's pitch kicked by the stance's `FireRifleKick*` and let back, as the
+ *   game's `FUN_005b91c0` / `FUN_005b9280` do, through the source's `look` and `kickPitch` -- **only scoped**: the
+ *   game starts it only on a pull's first round in a scope and ticks it only in the 9x view or a scope (research 84
+ *   §8), which the gun says (`kickStarts`, `kickTicks`). Unscoped the recoil is the reticle's knock alone.
+ * - **The events** (`subscribe`, for the audio and the body): `round` each time a round leaves, with the weapon's
+ *   name and id, the fire point in the world, the aim's end and whether it met the hull; `reloadStart` with the
+ *   reload's length; `reloadEnd` when the fresh magazine is in (`completed`), or when a reset cut it short.
  */
 
 type Vec3 = [number, number, number];
@@ -50,28 +66,70 @@ export const MAX_DECALS = 64;
 export const RELOAD_SECONDS = 2;
 /** The tracer's start from the eye, in the view's own axes (right, up, ahead), units [estimate: a muzzle stand-in]. */
 const MUZZLE: Vec3 = [1.2, -1.5, 3];
+/** A muzzle round's segment runs this far past the aim point, so float rounding cannot make it miss what it aims at. */
+const AIM_MARGIN = 0.01;
 
 /** Where the shot comes from and goes toward: the camera's eye and the aim point (`WalkMode.fireAim`). */
 export interface FireAim { eye: Vec3; far: Vec3 }
 /**
  * The gunplay a round is shot through (`./accuracy`, research 84): `trigger` on each press and release (the pull's
- * count restarts), `roundsPerPull` for the fire mode, `interval` for its wait, and `round` for the round's direction
- * off the aim -- called once per round that leaves, which counts it.
+ * count restarts), `roundsPerPull` for the fire mode, `interval` for its wait, `round` for the eye ray's direction
+ * off the aim -- called once per round that leaves, which counts it -- and the scoped kick's gate: `kickStarts`
+ * (asked after `round`) and `kickTicks`.
  */
 export interface FireGun {
   trigger(down: boolean): void;
   roundsPerPull(): number;
   interval(fireWait: number): number;
   round(dir: Vec3): Vec3;
+  kickStarts?(): boolean;
+  kickTicks?(): boolean;
 }
 
-/** What the shot reads from the page: the walk's hull and its aim, each null when there is none (not walking). */
-export interface FireSource { grid(): Grid | null; aim(): FireAim | null }
+/**
+ * What the shot reads from the page: the walk's hull and its aim, each null when there is none (not walking); and,
+ * WEAPON, the posed rifle's muzzle in the world (`Play.muzzle`) and the reload clip's length (`Play.reloadSeconds`),
+ * each null when there is none.
+ */
+export interface FireSource {
+  grid(): Grid | null;
+  aim(): FireAim | null;
+  muzzle?(): Vec3 | null;
+  reloadSeconds?(): number | null;
+  /** WEAPON: the aim's pitch (radians, up positive) and the stance, for the kick (`./rifleKick`); null when not walking. */
+  look?(): { pitch: number; stance: KickStance } | null;
+  /** WEAPON: turns the aim's pitch by `radians` (the kick). */
+  kickPitch?(radians: number): void;
+}
+
+/**
+ * The weapon an event is about: the record's `InternalName` and `ID` (`zweapon.rdr`: the M4A1 is 54), its muzzle
+ * animation (`FireAnimName`) and its sound names (`FireSoundClose`/`Med`/`Far`, `ReloadSound`), null where the record
+ * has none.
+ */
+export interface FireWeapon {
+  name: string;
+  id: number;
+  fireAnim: string | null;
+  sounds: { close: string | null; med: string | null; far: string | null; reload: string | null };
+}
+/**
+ * What `Fire` tells its subscribers (the audio workstream's hook, and the body's reload):
+ * - `round`: a round left `from` -- the fire point in the world (the muzzle, or the eye without one) -- toward
+ *   `to`, where it met the hull when `hit`; `rounds` left in the magazine after it.
+ * - `reloadStart`: a reload began, `seconds` long.
+ * - `reloadEnd`: the reload finished and the magazine is full (`completed`), or it was cut short (a new map).
+ */
+export type FireEvent =
+  | { type: 'round'; weapon: FireWeapon; from: Vec3; to: Vec3; hit: boolean; rounds: number }
+  | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
+  | { type: 'reloadEnd'; weapon: FireWeapon; completed: boolean };
+export type FireListener = (event: FireEvent) => void;
 export interface ShotHit { point: Vec3; normal: Vec3; distance: number }
 /** One round: the segment tested and what it met. */
 export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null }
 export interface MagazineState { rounds: number; capacity: number; spare: number; reloading: boolean }
-export interface FireState { shots: number; magazine: MagazineState; lastHit: ShotHit | null; decals: number }
+export interface FireState { shots: number; magazine: MagazineState; lastHit: ShotHit | null; decals: number; kick: KickStats }
 
 const sub = (a: readonly number[], b: readonly number[]): Vec3 => [a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!];
 const unit = (v: Vec3): Vec3 => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
@@ -121,6 +179,8 @@ export class Fire {
   private gun: FireGun | null = null;
   /** Rounds fired since the trigger was pressed (the fire mode's limit). */
   private pulled = 0;
+  private readonly listeners = new Set<FireListener>();
+  private readonly kick: RifleKick;
 
   constructor(
     private readonly source: FireSource,
@@ -130,6 +190,7 @@ export class Fire {
   ) {
     this.rounds = rifle.magazine;
     this.spare = Math.max(0, rifle.mags - 1);
+    this.kick = new RifleKick(rifle, random);
     this.material = new MeshBasicMaterial({
       transparent: true, depthWrite: false, side: DoubleSide, fog: true, toneMapped: false,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
@@ -183,6 +244,26 @@ export class Fire {
     return shot;
   }
 
+  /** Whether the trigger is down (the rifle's raise reads it: `./weaponRaise`). */
+  triggerHeld(): boolean {
+    return this.held;
+  }
+
+  /** Calls `listener` with every round and reload (`FireEvent`); returns the unsubscribe. */
+  subscribe(listener: FireListener): () => void {
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
+  private emit(event: FireEvent): void {
+    for (const l of [...this.listeners]) l(event);
+  }
+
+  private weapon(): FireWeapon {
+    const s = this.rifle.sounds;
+    return { name: this.rifle.name, id: this.rifle.id, fireAnim: this.rifle.fireAnim ?? null, sounds: s ? { ...s } : { close: null, med: null, far: null, reload: null } };
+  }
+
   /** One round now if the rate, the magazine and the aim allow: the hook's `shoot()`. */
   shoot(): Shot | null {
     return this.tryFire();
@@ -191,18 +272,23 @@ export class Fire {
   /** `R`: a fresh magazine from the spares over `RELOAD_SECONDS`; false when full, out of spares or already at it. */
   reload(): boolean {
     if (this.reloadLeft > 0 || this.spare <= 0 || this.rounds >= this.rifle.magazine) return false;
-    this.reloadLeft = RELOAD_SECONDS;
+    const clip = this.source.reloadSeconds?.() ?? null;
+    this.reloadLeft = clip !== null && clip > 0 ? clip : RELOAD_SECONDS;
+    this.emit({ type: 'reloadStart', weapon: this.weapon(), seconds: this.reloadLeft });
     return true;
   }
 
   /**
-   * One frame, before it is drawn: the reload, the bloom's return, the rate's wait, a held trigger's rounds, and the
+   * One frame, before it is drawn: the reload, the rate's wait, a held trigger's rounds, the scoped kick, and the
    * tracer's one frame -- a tracer lit since the last frame is drawn in this one and gone in the next.
    */
   update(dt: number): number {
     if (this.reloadLeft > 0) {
       this.reloadLeft -= dt;
-      if (this.reloadLeft <= 1e-9) { this.reloadLeft = 0; this.rounds = this.rifle.magazine; this.spare--; }
+      if (this.reloadLeft <= 1e-9) {
+        this.reloadLeft = 0; this.rounds = this.rifle.magazine; this.spare--;
+        this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: true });
+      }
     }
     if (this.tracerFrames > 0) this.tracerFrames--;
     else this.tracer.visible = false;
@@ -211,6 +297,12 @@ export class Fire {
     while (this.held && this.wait <= 1e-9 && this.pullRound()) fired++;
     if (this.wait < 0) this.wait = 0;
     if (fired > 0) this.tracerFrames = 0;           // lit in this frame: drawn in it, gone in the next
+    const look = this.source.look?.() ?? null;
+    const ticks = !this.gun?.kickTicks || this.gun.kickTicks();   // research 84 §8: the kick ticks only scoped
+    if (look && ticks) {
+      const turn = this.kick.frame(dt, look.pitch);
+      if (turn !== 0) this.source.kickPitch?.(turn);
+    } else this.kick.reset();
     return fired;
   }
 
@@ -229,11 +321,13 @@ export class Fire {
       magazine: { rounds: this.rounds, capacity: this.rifle.magazine, spare: this.spare, reloading: this.reloadLeft > 0 },
       lastHit: this.lastHit ? { point: [...this.lastHit.point], normal: [...this.lastHit.normal], distance: this.lastHit.distance } : null,
       decals: this.decals.filter((d) => d.visible).length,
+      kick: this.kick.stats(),
     };
   }
 
   /** A new map: the marks go, the magazines are full again. */
   reset(): void {
+    if (this.reloadLeft > 0) this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
     for (const d of this.decals) this.object.remove(d);
     this.decals.length = 0;
     this.nextDecal = 0;
@@ -244,6 +338,7 @@ export class Fire {
     this.held = false;
     this.lastHit = null;
     this.pulled = 0;
+    this.kick.reset();
     this.tracerFrames = 0;
     this.tracer.visible = false;
   }
@@ -272,26 +367,48 @@ export class Fire {
     if (this.wait > 1e-9 || this.reloadLeft > 0 || this.rounds <= 0) return null;
     const aim = this.source.aim(), grid = this.source.grid();
     if (!aim || !grid) return null;
-    const aimDir = unit(sub(aim.far, aim.eye));
-    const dir = this.gun ? unit(this.gun.round(aimDir)) : aimDir;   // research 84: the round inside the reticle
-    const from: Vec3 = [...aim.eye];
-    const range = this.rifle.maximumRange * UNITS_PER_METRE;
-    const end: Vec3 = [from[0] + dir[0] * range, from[1] + dir[1] * range, from[2] + dir[2] * range];
+    const look = unit(sub(aim.far, aim.eye));
+    // Research 84: the eye's ray leaves by the reticle's cone and knock (without a gun, straight down the view).
+    const ray = this.gun ? unit(this.gun.round(look)) : look;
+    const reach = this.rifle.maximumRange * UNITS_PER_METRE;
+    const eyeEnd: Vec3 = [aim.eye[0] + ray[0] * reach, aim.eye[1] + ray[1] * reach, aim.eye[2] + ray[2] * reach];
+    const muzzle = this.source.muzzle?.() ?? null;
+    let from: Vec3 = [...aim.eye], dir = ray, end = eyeEnd, fromMuzzle = false;
+    if (muzzle) {
+      // Two legs: the eye's ray finds the point under the reticle, the muzzle's segment what the round meets on the
+      // way to it (see the header). The segment runs a hair past the aim point, so rounding cannot stop it short.
+      const seen = segmentHit(grid, aim.eye, eyeEnd);
+      const target: Vec3 = seen ? [...seen.point] : eyeEnd;
+      const toward = sub(target, muzzle);
+      const length = Math.hypot(...toward);
+      if (length > AIM_MARGIN) {
+        from = [...muzzle];
+        fromMuzzle = true;
+        dir = unit(toward);
+        end = [from[0] + dir[0] * (length + AIM_MARGIN), from[1] + dir[1] * (length + AIM_MARGIN), from[2] + dir[2] * (length + AIM_MARGIN)];
+        if (!seen) end = target;
+      }
+    }
     const h = segmentHit(grid, from, end);
+    const span = Math.hypot(...sub(end, from));
     let hit: ShotHit | null = null;
     if (h) {
       // Newell's normal points either way: the mark faces the shooter.
       const d = h.normal[0] * dir[0] + h.normal[1] * dir[1] + h.normal[2] * dir[2];
       const normal: Vec3 = d > 0 ? [-h.normal[0], -h.normal[1], -h.normal[2]] : [...h.normal];
-      hit = { point: [...h.point], normal, distance: h.t * range };
+      hit = { point: [...h.point], normal, distance: h.t * span };
       this.place(hit);
     }
     this.rounds--;
     this.shots++;
     this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
     this.lastHit = hit;
-    this.drawTracer(from, dir, hit ? hit.point : end);
-    return { from, to: hit ? [...hit.point] : end, hit };
+    this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
+    const shot: Shot = { from, to: hit ? [...hit.point] : end, hit };
+    const aimNow = this.source.look?.() ?? null;
+    if (aimNow && (!this.gun?.kickStarts || this.gun.kickStarts())) this.kick.round(aimNow.pitch, aimNow.stance);
+    this.emit({ type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds });
+    return shot;
   }
 
   private place(hit: ShotHit): void {
@@ -314,13 +431,14 @@ export class Fire {
     mesh.updateMatrixWorld();
   }
 
-  private drawTracer(eye: Vec3, dir: Vec3, to: Vec3): void {
+  private drawTracer(eye: Vec3, dir: Vec3, to: Vec3, fromMuzzle = false): void {
     const ahead = new Vector3(...dir);
     const right = new Vector3().crossVectors(ahead, new Vector3(0, 1, 0));
     if (right.lengthSq() < 1e-9) right.set(1, 0, 0);
     right.normalize();
     const up = new Vector3().crossVectors(right, ahead).normalize();
-    const start = new Vector3(...eye).addScaledVector(right, MUZZLE[0]).addScaledVector(up, MUZZLE[1]).addScaledVector(ahead, MUZZLE[2]);
+    const start = fromMuzzle ? new Vector3(...eye)
+      : new Vector3(...eye).addScaledVector(right, MUZZLE[0]).addScaledVector(up, MUZZLE[1]).addScaledVector(ahead, MUZZLE[2]);
     const position = this.tracer.geometry.getAttribute('position') as Float32BufferAttribute;
     position.setXYZ(0, start.x, start.y, start.z);
     position.setXYZ(1, to[0], to[1], to[2]);

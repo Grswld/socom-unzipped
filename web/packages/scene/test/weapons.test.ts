@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Zar, parseRdr, rdrGet, type RdrNode } from '@s2u/archive';
 import {
-  BULLET_MARK, DEFAULT_RIFLE, M4A1_SD, UNITS_PER_METRE, decalEntry, defaultPrimary, kitPrimaries, readBulletMark,
+  BULLET_MARK, DEFAULT_RIFLE, HELD_RIFLE, UNITS_PER_METRE, decalEntry, defaultPrimary, kitPrimaries, readBulletMark,
   readDefaultRifle, readWeapon, weaponRecord,
   type DecalEntry, type WeaponRecord,
 } from '../src/weapons';
@@ -18,11 +18,16 @@ import {
 const rec = (...pairs: [string, RdrNode][]): RdrNode[] => pairs.flatMap(([k, v]) => [k, Array.isArray(v) ? v : [v]]);
 
 const stance = rec(['ReticuleKnock', '12'], ['ReticuleKnockReturn', '70'], ['ReticuleKnockMax', '45'], ['TargetMin', '1']);
+/** WEAPON: the standing record with its rifle kick, as the game's file spells the four keys. */
+const standing = [...stance, ...rec(
+  ['FireRifleKickRate', '0.5'], ['FireRifleKickReturnRate', '0.18'], ['FireRifleKickBaseDist', '0.09'], ['FireRifleKickRandomDist', '0.015'],
+)];
 const m4 = rec(
   ['InternalName', 'M4A1'], ['DisplayName', 'M4A1'],
-  ['Reticule_Modifiers', rec(['STANCE_STAND', stance], ['STANCE_CROUCH', stance])],
+  ['Reticule_Modifiers', rec(['STANCE_STAND', standing], ['STANCE_CROUCH', stance])],
   ['FireWait', '0.12'], ['Maximum_Range', '1000'], ['ID', '54'], ['NumMags', '3'],
   ['AMMO_TYPES', [rec(['NAME', '5.56 x 45mm'])]], ['Ammo_Capacity', '30'], ['DecalSet', 'BULLET_MARK_SMALL'],
+  ['FireAnimName', 'muzzle_m4'], ['FireSoundClose', '.M4A1'],
 );
 const m16 = rec(['InternalName', 'M16A2'], ['FireWait', '0.1'], ['ID', '51']);
 const zweapon: RdrNode = [
@@ -37,15 +42,23 @@ describe('the weapon record reader over a hand-built zweapon.rdr', () => {
       name: 'M4A1', id: 54, fireWait: 0.12, roundsPerMinute: 500, magazine: 30, mags: 3,
       ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 1000, effectiveRange: 0, decalSet: 'BULLET_MARK_SMALL',
       knock: { knock: 12, knockReturn: 70, knockMax: 45 },
+      // STANCE_CROUCH has no kick keys and STANCE_PRONE no node: the parser copies the stance before (0x3cda30).
+      rifleKick: {
+        stand: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 },
+        crouch: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 },
+        prone: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 },
+      },
+      fireAnim: 'muzzle_m4',
+      sounds: { close: '.M4A1', med: null, far: null, reload: null },
     });
   });
 
   it('reads the stances as the parser does: each starts as a copy of the one before, the constructor defaults under all', () => {
     const r = weaponRecord(zweapon, 'M4A1');
-    // STANCE_STAND sets four keys; the rest are FUN_003c59c0's: 0, Mult 1, KnockCount 3, KnockEntryStrength 1.
+    // STANCE_STAND sets eight keys; the rest are FUN_003c59c0's: 0, Mult 1, KnockCount 3, KnockEntryStrength 1.
     expect(r.stances.stand).toMatchObject({ knock: 12, knockReturn: 70, knockMax: 45, targetMin: 1, targetMax: 0,
-      dilateMoveMult: 1, knockCount: 3, knockEntry: 1, kickRate: 0 });
-    // STANCE_CROUCH is the same node here; STANCE_PRONE is absent, so it is the crouch copied.
+      dilateMoveMult: 1, knockCount: 3, knockEntry: 1, kickRate: 0.5, kickBase: 0.09, constrict: 0 });
+    // STANCE_CROUCH sets the first four again over a copy of the stand; STANCE_PRONE is absent, so it is the crouch.
     expect(r.stances.crouch).toEqual(r.stances.stand);
     expect(r.stances.prone).toEqual(r.stances.crouch);
     const prone = rec(['ReticuleKnock', '8'], ['TargetDilateUponMovementMult', '63']);
@@ -141,10 +154,16 @@ describe.skipIf(!ZWEAPON || !READERC)('the default rifle off the game\'s ZWEAPON
     expect(new Set(kits)).toEqual(new Set(['M4A1']));
   });
 
-  it('is the transcription: DEFAULT_RIFLE, M4A1_SD and BULLET_MARK are the files\', proven each run that has them', () => {
+  it('is the transcription: DEFAULT_RIFLE, HELD_RIFLE and BULLET_MARK are the files\', proven each run that has them', () => {
     expect(readDefaultRifle(bytes(ZWEAPON!), bytes(READERC!))).toEqual(DEFAULT_RIFLE);
-    expect(readWeapon(bytes(ZWEAPON!), 'M4A1 SD')).toEqual(M4A1_SD);
+    expect(readWeapon(bytes(ZWEAPON!), 'M4A1 SD')).toEqual(HELD_RIFLE);
     expect(readBulletMark(bytes(READERC!), DEFAULT_RIFLE.decalSet)).toEqual(BULLET_MARK);
+  });
+
+  it('is the transcription: HELD_RIFLE is the file M4A1 SD, the rifle the SEAL holds', () => {
+    const zar = Zar.parse(bytes(ZWEAPON!));
+    const script = parseRdr(zar.data(zar.root.children.find((k) => k.name.toLowerCase() === 'zweapon.rdr')!));
+    expect(weaponRecord(script, 'M4A1 SD')).toEqual(HELD_RIFLE);
   });
 
   it('the M16A2 beside it reads its own numbers (the reader is not the transcription)', () => {

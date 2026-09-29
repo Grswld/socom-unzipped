@@ -77,28 +77,40 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
     }
   });
 
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
 
-  // G toggles the mode and the panel's switch mirrors it; the switch drives it too. The picker keeps the focus
+  // G toggles the mode and the panel's Fly / Walk switch mirrors it; the switch drives it too. The picker keeps the focus
   // after a pick, and the keys ignore a SELECT (as a player's would reach the page after a click on the canvas).
+  const fly = page.locator('#mode button[data-mode="fly"]');
+  const walkButton = page.locator('#mode button[data-mode="walk"]');
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
+  await expect(fly).toHaveAttribute('aria-pressed', 'true');
+  await expect(walkButton).toHaveAttribute('aria-pressed', 'false');
   await page.keyboard.press('KeyG');
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('walk');
   await expect(page.locator('#walk')).toBeChecked();
+  await expect(walkButton).toHaveAttribute('aria-pressed', 'true');
+  await expect(fly).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#hint')).toContainText('WASD move');
+  await expect(page.locator('#hint')).not.toContainText('double-tap W');
   await page.keyboard.press('KeyG');
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
   await expect(page.locator('#walk')).not.toBeChecked();
-  await page.locator('#walk').evaluate((el) => {
-    const box = el as HTMLInputElement;
-    box.checked = true;
-    box.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await expect(fly).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#hint')).toContainText('double-tap W to boost');
+  await expect(page.locator('#hint')).not.toContainText('space jump');
+  await walkButton.click();
+  expect(await page.evaluate(() => window.__viewer.mode())).toBe('walk');
+  await expect(walkButton).toHaveAttribute('aria-pressed', 'true');
+  await fly.click();
+  expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
+  await walkButton.click();
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('walk');
 
   // At A's spawn: the feet on the floor at 100, the game's camera behind them (W2.1): at pitch 0 and yaw 0 (facing
@@ -180,7 +192,7 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
       problems.push(`console: ${m.text()}`);
     }
   });
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

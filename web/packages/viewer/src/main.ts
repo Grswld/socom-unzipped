@@ -2,7 +2,7 @@
 import { Scene, Timer } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { M4A1_SD, spawnsFor, type Spawns } from '@s2u/scene';
+import { HELD_RIFLE, SEAL_TUNING, spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -16,16 +16,23 @@ import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { aimPoint } from './playerCamera';
+import { explosionShake } from './look';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
+import { Hud, RangeFinder } from './hud';
 import { buildBody, type BodyView } from './bodyView';
-import { ammoText, Fire } from './fire';
-import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, nextFireMode, perturb, roundsPerPull } from './accuracy';
+import { Fire } from './fire';
+import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
-import { Play, playActions } from './play';
+import { Play, playActions, StanceButton } from './play';
+import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
+import { gameAudio } from './audio';
+import { WalkSounds } from './walkSounds';
+import { WEAPON_CLIPS } from './weaponPose';
+import { GrenadeThrower } from './grenade';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -50,6 +57,13 @@ const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('the page has no #view canvas');
 
+/**
+ * Playing as a SEAL (walk mode, the body, the rifle) is behind `?redotcom` (`./features`, the owner 2026-09-28). Without
+ * it the play's markup is taken out of the page before the page is wired, and nothing below binds `G`, the pad's
+ * Start, `R` or the hook's walk: the page is the fly camera alone.
+ */
+const PLAY = playEnabled(globalThis.location?.search ?? '');
+if (!PLAY) removePlayUi();
 const ui = new Ui();
 const scene = new Scene();
 const fly = new FlyCamera(canvas, {
@@ -65,21 +79,49 @@ const overlays = new Overlays(scene);
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
+/** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
+const hud = new Hud();
+const rangeFinder = new RangeFinder();
 /**
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
  */
-const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() }, M4A1_SD);
+const fire = new Fire({
+  grid: () => walk.grid(), aim: () => walk.fireAim(),
+  muzzle: () => play.muzzle(), reloadSeconds: () => play.reloadSeconds(),   // WEAPON: the rifle in hand (`./play`)
+  look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
+  kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
+}, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
-fire.bindKey();
+if (PLAY) fire.bindKey();
+/**
+ * The frag grenade (`./grenade`, web/docs/research/85): `4` takes it up (`1` the rifle), the trigger throws it --
+ * held for power, let go to throw; its flight over the walk's hull, its fuse, its explosion.
+ */
+const grenade = new GrenadeThrower({ grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view() });
+scene.add(grenade.object);
+if (PLAY) grenade.bindKey();
+grenade.on('equip', (on) => {
+  fire.release(); play.setRifleStowed(on);   // a slot change lets a held trigger go; the rifle away while the grenade is up
+  // Out of the scope with the rifle away [reading: the game's weapon switch, FUN_005c4b10, drops only the night vision
+  // to first person; what a scoped grenade does was not traced -- research 84 section 7].
+  if (on && zoom.state() >= 4) setZoom(1);
+});
+grenade.on('throw', () => { audio.play('.THROW_OBJECT', walk.drawnFeet()); });
+grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
+grenade.on('explode', (info) => {
+  audio.onAnimCallback(info.anim, info.pos);        // frag_grenade: .GREN_MED
+  // The game's screen shake by the distance (research 83, `./look`).
+  if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
+});
 /**
  * Research 84 (`./accuracy`, `./zoom`): the M4A1 SD's gunplay -- the SEAL's rifle (the player spec's W2.R4) -- its
  * reticle's bloom and climb, where each round goes inside it, its fire modes (`B`; L3 on the pad, the UI's lane), and
  * the view states the scope steps through (the right button; d-pad Up / Down on the pad, the UI's `zoom` lane).
  */
-const accuracy = new Accuracy(M4A1_SD);
-const zoom = new Zoom(M4A1_SD);
-let fireMode = defaultFireMode(M4A1_SD);
+const accuracy = new Accuracy(HELD_RIFLE);
+const zoom = new Zoom(HELD_RIFLE);
+let fireMode = defaultFireMode(HELD_RIFLE);
 /** The map camera's vertical FOV in degrees; the zoom divides its tangent. */
 let baseFov = 49;
 fire.setGun({
@@ -93,10 +135,21 @@ fire.setGun({
     if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(1);
     return out;
   },
+  // Research 84 section 8: the camera kicks only scoped, on a pull's first round, and the kick ticks only scoped.
+  kickStarts: () => kickStarts(zoom.state(), accuracy.rounds()),
+  kickTicks: () => kickTicks(zoom.state()),
 });
-/** The fire-mode switch (`FUN_005c4600`): not while scoped. */
+/** The HUD's name for a fire mode (`./hud`: the `firemode.tif` rounds, 1 / 3 / 4 of them). */
+const HUD_FIRE_MODE = { 1: 'single', 2: 'burst', 3: 'auto' } as const;
+function showFireMode(): void {
+  const m = HUD_FIRE_MODE[fireMode as 1 | 2 | 3];
+  if (m) hud.setFireMode(m);
+}
+showFireMode();
+/** The fire-mode switch (`FUN_005c4600`; L3, `B`): not while scoped, nor while the grenade is up (it has one mode). */
 function switchFireMode(): string {
-  fireMode = nextFireMode(M4A1_SD, fireMode, zoom.target() > 1.01);
+  if (!grenade.equipped()) fireMode = nextFireMode(HELD_RIFLE, fireMode, zoom.target() > 1.01);
+  showFireMode();
   return FIRE_MODE_NAMES[fireMode] ?? String(fireMode);
 }
 /** A view state, the way the game's own changes go: the knock cleared on leaving the scope (`FUN_005b9020`). */
@@ -105,24 +158,49 @@ function setZoom(state: number): void {
   zoom.set(state);
   if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
 }
-/** The zoom's press (the right button; the pad's `zoom` lane, d-pad Up): one step, and from the last back out. */
-function onZoom(): void {
-  if (walk.mode() !== 'walk') return;
+/**
+ * The zoom's steps, walking and with the rifle up: `in` d-pad Up (`FUN_005445b0`), `out` d-pad Down (`FUN_00544400`),
+ * `cycle` the right button (in, and from the last level back to third person). The knock is cleared leaving a scope.
+ */
+function stepZoom(how: 'in' | 'out' | 'cycle'): number {
+  if (walk.mode() !== 'walk' || grenade.equipped()) return zoom.state();
   const before = zoom.state();
-  zoom.cycle();
+  if (how === 'in') zoom.zoomIn(); else if (how === 'out') zoom.zoomOut(); else zoom.cycle();
   if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
+  return zoom.state();
 }
-globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
+if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
   const target = e.target;
   if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
   switchFireMode();
 });
-/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
+/** The trigger, pressed or let go: the grenade's while it is up, else the rifle's -- only while walking. */
 function trigger(down: boolean): void {
+  if (grenade.equipped()) {
+    if (down) grenade.pull();
+    else grenade.release();
+    return;
+  }
   if (down) fire.pull();
   else fire.release();
 }
+/**
+ * The sound (web/docs/research/81, `./audio`): the map's own banks, played on the walk's events (`./walkSounds`) --
+ * the footfalls, the jump, the landing, the rifle's rounds and reload. The first click or key press unlocks it.
+ * `gameAudio` is the API the panel and the other workstreams import from `./audio` (`setVolume`, `setMuted`,
+ * `onFootstep`, `onFire`, `onReload`, `onJump`, `onLand`, `onAnimCallback`).
+ */
+const audio = gameAudio;
+audio.unlockOn(globalThis);
+audio.setFallTable(SEAL_TUNING.gravity, SEAL_TUNING.fallingDamage);
+const walkSounds = new WalkSounds(audio, {
+  walking: () => walk.mode() === 'walk',
+  feet: () => walk.drawnFeet(),
+  stance: () => walk.posture(),
+  wish: () => fly.groundWish(),
+  grid: () => walk.grid(),
+});
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -191,6 +269,7 @@ const load = (path: string): void => {
   askedAt = performance.now();
   wantedMap = ++requests;
   wantedMapFrom = source.kind;
+  mapSource = source;
   rememberMap(path);
   revealing?.cancel();
   revealing = null;
@@ -213,6 +292,8 @@ let wantedIndexFrom: SourceRequest = SERVED;
 /** The source the wanted map is being read from, and the one the map on screen came from, for `stats()`. */
 let wantedMapFrom: SourceRequest['kind'] = 'http';
 let shownFrom: SourceRequest['kind'] = 'http';
+/** The source the wanted map is being read from, whole: the map's sound is asked of it too. */
+let mapSource: SourceRequest = SERVED;
 
 /** Asks `from` for its map list; the answer switches the picker, and the source, over to it. */
 function askIndex(from: SourceRequest): void {
@@ -228,10 +309,21 @@ function askIndex(from: SourceRequest): void {
  * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
  */
 const play = new Play();
+// WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
+// audio's hook (`FireEvent`: every round, every reload's start and end).
+play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
+fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });
+play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard   // the pose and the sound, per round and reload
 let wantedPlay = -1;
+/** The map's sound, asked of the source the map came from once it is shown (`./soundData`). */
+let wantedSound = -1;
+function askSound(from: SourceRequest, path: string, archive: string): void {
+  wantedSound = ++requests;
+  ask({ kind: 'sound', id: wantedSound, source: from, path, archive });
+}
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS] });
 }
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -240,18 +332,28 @@ function askPlay(from: SourceRequest): void {
  * step is the first-person view, state 1) -- the right mouse button on the canvas is the zoom's press (a `mousedown`,
  * which fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
  */
-canvas.addEventListener('mousedown', (e) => { if (e.button === 2) onZoom(); });
+canvas.addEventListener('mousedown', (e) => { if (e.button === 2) stepZoom('cycle'); });
+
 /**
  * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
- * (docs/PLAYTEST.md step 8), the aim while held (`playActions`). In the fly camera the same lanes are up and down.
+ * (docs/PLAYTEST.md step 8), the aim while held (`playActions`), and the stance button's tap (crouch) and hold (prone;
+ * `StanceButton`, one step a frame). In the fly camera the same lanes are up and down.
  */
-function playLanes(before: Input, after: Input): void {
+const stanceButton = new StanceButton();
+/** The hook's aim (`setAim(true)`), over the lanes until `setAim(false)` hands it back: Playwright holds no button. */
+let aimForced = false;
+function playLanes(before: Input, after: Input, dt: number): void {
   const act = playActions(before, after);
-  if (walk.mode() === 'walk') {
+  const walking = walk.mode() === 'walk';
+  if (walking) {
     if (act.jump) walk.jump();
     if (act.crouch) walk.crouch();
   }
-  walk.setAiming(walk.mode() === 'walk' && (act.aim || zoom.firstPerson()));
+  // Fed a released button off foot, so a press begun in the fly camera is not a tap when the walk begins.
+  const go = stanceButton.update(walking && after.stance, dt, walk.stance());
+  if (go !== null) walk.setStance(go);
+  // First person while the pad's aim lane is held or the zoom is at 1 or more (research 84: its first step is that view).
+  walk.setAiming(walking && (aimForced || act.aim || zoom.firstPerson()));
 }
 
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
@@ -288,9 +390,9 @@ function gunFrame(dt: number, walking: boolean): void {
   zoom.update(dt);
   const fov = zoom.fov(baseFov);
   if (Math.abs(fov - lastFov) > 1e-6) { fly.setFov(fov); lastFov = fov; }
-  // The look's divisor (FUN_005966a0) -- the LOOK workstream's `FlyCamera.setZoom`, where the camera has it.
-  const setLookZoom = (fly as unknown as { setZoom?: (m: number, mode4?: boolean) => void }).setZoom;
-  setLookZoom?.call(fly, 1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
+  // The look's divisor (FUN_005966a0, `FUN_005be660`): the LOOK workstream's law takes the magnification and mode 4.
+  fly.setZoom(1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
+  hud.setZoom(zoom.magnification());
 }
 
 /**
@@ -324,6 +426,10 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id === wantedPlay) play.setClips(message.data);
     return;
   }
+  if (message.kind === 'sound') {
+    if (message.id === wantedSound) audio.setData(message.data);
+    return;
+  }
   if (message.kind === 'progress') {
     if (message.id !== wantedMap) return;               // a stage of a load we have moved on from
     ui.setLoading(true, STAGE_WORDS[message.stage], message.total > 0 ? message.done / message.total : 0);
@@ -332,6 +438,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   if (message.id !== wantedMap) return;
   shownFrom = wantedMapFrom;
   show(message.map);
+  askSound(mapSource, message.map.path, message.map.archive);
 });
 
 ui.onMapChange((path) => {
@@ -348,7 +455,7 @@ ui.onFullscreen();
 // ---- W2.7: the controller (`./gamepad`, ruling W2.R5) ------------------------------------------------------------
 /**
  * The touch stick's lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
- * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Cross and L3 are.
+ * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Square and L3 are.
  */
 const touchInput: Input = noInput();
 const touchLane: TouchTarget = {
@@ -378,24 +485,35 @@ let padMerged: Input = noInput();
  * the fly camera flies by and the walk's mover steps by (`groundWish`), so one mapping drives both (W2.R5). The right
  * stick turns at the arrow keys' rate, scaled (`setLook`). Up and down are the fly camera's; on foot the jump and the
  * crouch are the mover's (W2.3a), to be read from `padMerged` there -- the game's crouch acts on the release
- * (docs/PLAYTEST.md step 8; `releasedSince`). Start toggles walk and fly on its press, as `G` does on its keydown.
+ * (docs/PLAYTEST.md step 8; `releasedSince`); the stance button's tap and hold are `StanceButton`'s. Start toggles walk and fly on its press, as `G` does on its keydown.
  */
-function padFrame(): void {
+function padFrame(dt: number): void {
   const pad = padInput(pads.poll(navigator));
   const input = mergeInput(touchInput, pad);
   fly.setStick(input.moveX, input.moveY);
-  fly.setLift((input.jump ? 1 : 0) - (input.crouch ? 1 : 0));
+  fly.setLift((input.jump ? 1 : 0) - (input.crouch || input.stance ? 1 : 0));
   fly.setStickBoost(input.boost);
   fly.setLook(input.lookX, input.lookY);
-  if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
-  playLanes(padMerged, input);      // W2.6: jump, crouch and aim on foot
+  if (PLAY && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
+  // edges, so a released R1 never lets go of a mouse button or the touch button still held.
+  if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
+  // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up).
+  const pressed = pressedSince(padLast, pad);
+  if (pressed.includes('zoom')) stepZoom('in');
+  if (pressed.includes('zoomOut')) stepZoom('out');
+  if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
+  playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
   padLast = pad;
   padMerged = input;
 }
 attachTouchControls(touchLane, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
-walk.bindKey();
-ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
+if (PLAY) {
+  walk.bindKey();
+  ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
+}
 ui.onPanelToggle();
+ui.onControlsPopover();
 const revision = ui.showRevision();
 
 /**
@@ -522,7 +640,8 @@ async function boot(): Promise<void> {
   const frame = (): void => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
-    padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
+    padFrame(dt);                   // W2.7: the pad and the touch stick into the camera's lanes, before it steps
+    fly.setBody(walk.mode() === 'walk' && walk.view() === 'first', walk.posture() === 'prone');   // the bob's (research 83)
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
@@ -530,7 +649,9 @@ async function boot(): Promise<void> {
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
-    ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
+    fly.camera.updateMatrixWorld();
+    audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
+    grenade.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -538,14 +659,23 @@ async function boot(): Promise<void> {
       // The reticle on the aim point (FUN_00297410's, 1000 ahead along the look): the frame's centre at rest.
       fly.camera.updateMatrixWorld();
       const [nx, ny] = aimPoint(fly.camera, aim);
-      reticle.setAimPoint(nx, ny);
+      const [sx, sy] = fly.screenShift();   // the shake and the bob move the world, not the HUD (research 83)
+      reticle.setAimPoint(nx - sx, ny - sy);
       // Research 84: the HUD's size (halved in third person) and the knock's climb; the scope's overlay at 5 and up.
       const r = accuracy.reticle(zoom.state());
       reticle.setSize(r.size, r.offset);
-      reticle.setMode(zoom.view() === 'scope' ? 'scope' : 'reticle');
+      reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
     }
     reticle.setVisible(walking);
     reticle.render(created.renderer);
+    hud.setVisible(walking);
+    hud.feed({
+      // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
+      magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
+      yaw: fly.pose().yaw, stance: walk.posture(),
+      range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
+    });
+    hud.render(created.renderer);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -631,10 +761,12 @@ function show(map: LoadedMap): void {
     ui.setFogEnabled(fog.enabled);
   }
   reticle.setBitmaps(map.reticle);
+  hud.setBitmaps(map.hud);
   fire.reset();                                   // a new map: no marks, full magazines
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
+  grenade.setMap(built.grenade, map.grenade);     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
@@ -660,6 +792,7 @@ function show(map: LoadedMap): void {
   body = map.body ? buildBody(map.body, map, lighting) : null;
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
+  play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -781,18 +914,22 @@ window.__viewer = {
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
   mode: () => walk.mode(),
-  setMode: (mode) => walk.setMode(mode),
+  setMode: (mode) => (mode === 'walk' && !PLAY ? false : walk.setMode(mode)),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
   pad: () => ({ id: pads.id(), input: { ...padMerged } }),
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
-  setAim: (on) => { walk.setAiming(on); return walk.view(); },
+  setAim: (on) => { aimForced = on; walk.setAiming(walk.mode() === 'walk' && on); return walk.view(); },
+  look: () => fly.lookState(),
+  setLook: (opts) => { fly.setLookOptions(opts); return fly.lookOptions(); },
+  setZoom: (magnification, mode4) => fly.setZoom(magnification, mode4),
+  shake: (distance) => { const s = explosionShake(distance); if (s) fly.shakeScreen(s); return s !== null; },
   zoom: () => ({ state: zoom.state(), view: zoom.view(), magnification: zoom.magnification(), fov: zoom.fov(baseFov), lookScale: zoom.lookScale() }),
-  zoomIn: () => { if (walk.mode() === 'walk') { const b = zoom.state(); zoom.zoomIn(); if (b >= 4 && zoom.state() < 4) accuracy.leaveScope(); } return zoom.state(); },
-  zoomOut: () => { if (walk.mode() === 'walk') { const b = zoom.state(); zoom.zoomOut(); if (b >= 4 && zoom.state() < 4) accuracy.leaveScope(); } return zoom.state(); },
-  cycleZoom: () => { onZoom(); return zoom.state(); },
+  zoomIn: () => stepZoom('in'),
+  zoomOut: () => stepZoom('out'),
+  cycleZoom: () => stepZoom('cycle'),
   fireMode: () => FIRE_MODE_NAMES[fireMode] ?? String(fireMode),
   switchFireMode: () => switchFireMode(),
   accuracy: () => ({ ...accuracy.state(), cone: accuracy.cone(zoom.state()) }),
@@ -803,6 +940,21 @@ window.__viewer = {
   setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
+  audio: () => audio.stats(),
+  setAudio: (settings) => {
+    if (settings.volume !== undefined) audio.setVolume(settings.volume);
+    if (settings.muted !== undefined) audio.setMuted(settings.muted);
+    return audio.stats();
+  },
+  weapon: () => play.weaponStats(),
   trigger: (down) => trigger(down),
+  setGear: (name, on) => play.setGearVisible(name, on),
+  hud: () => hud.state(),
+  setHud: (patch) => { hud.patch(patch); return hud.state(); },
+  grenade: () => grenade.stats(),
+  throwGrenade: (holdSeconds = 1, immediate = true) => grenade.throwNow(holdSeconds, immediate),
+  equipGrenade: (on) => grenade.equip(on),
+  grenadeTrail: (on) => grenade.setTrail(on),
+  resetGrenades: () => grenade.reset(),
   revision,
 } satisfies ViewerHook;

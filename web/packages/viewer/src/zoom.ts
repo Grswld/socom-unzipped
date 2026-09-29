@@ -14,9 +14,9 @@ import type { WeaponRecord } from '@s2u/scene';
  *   `s - 3 < NumZoomModes`. No wrap: the last level stays.
  * - **Zoom out** (d-pad Down, `FUN_00544400`, jump table 0x65c320): 1, 2 -> 0; 3, 4 -> 1; 5 -> 1 (3 at night); s > 5
  *   -> s - 1.
- * - **What drops it**: a second round of a pull while scoped (`FUN_005c5340`: state 1); a weapon switch
- *   (`FUN_005c4b10`: 1); death, a vehicle, a ladder (`FUN_00547af0`, `FUN_005463c0`, `FUN_00579720`: 0). Not a reload,
- *   not a stance change, not moving -- which is cut to 0.2 while scoped (`FUN_005966a0`).
+ * - **What drops it**: a second round of a pull while scoped (`FUN_005c5340`: state 1); a weapon switch from the night
+ *   vision (`FUN_005c4b10`: 3 -> 1, and only 3); death, a vehicle, a ladder (`FUN_00547af0`, `FUN_005463c0`,
+ *   `FUN_00579720`: 0). Not a reload, not a stance change, not moving -- which is cut to 0.2 while scoped.
  * - **The animation** (`FUN_001f1610` / `FUN_001f0750`): the magnification runs linearly to its new value at 3 x the
  *   target a second in (1 -> 2.5 in 0.2 s), and out at 3 x the old one.
  * - **The FOV**: the camera's projection scale is the magnification (`FUN_0029b2f0`: `cam+0x470/+0x474` = zoom x
@@ -45,7 +45,7 @@ export class Zoom {
 
   setWeapon(weapon: WeaponRecord): void {
     this.weapon = weapon;
-    if (this.s > 1) this.set(1);                  // FUN_005c4b10: a weapon switch drops to first person
+    if (this.s === 3) this.set(1);                // FUN_005c4b10 478813-478833: a switch drops the night vision only
   }
 
   /** Night maps: first person zooms into the night vision first (`DAT_0045c380 + 0x5dc`). */

@@ -31,7 +31,8 @@ export const RIM_HOLD_MS = 400;
 /**
  * The boost gesture on a phone: the thumb pushed to the stick's rim and held there. A moment at the
  * rim is ordinary steering; holding it is the ask. There is no second control for it, because a
- * second control is the thing a thumb cannot reach while it is on the stick.
+ * second control is the thing a thumb cannot reach while it is on the stick. It is the fly camera's
+ * boost alone: on foot the camera ignores it (`FlyCamera.setStickBoost`; no sprint in walk mode).
  */
 export function boostFromRim(pushed: number, heldMs: number): boolean {
   return pushed >= RIM && heldMs >= RIM_HOLD_MS;

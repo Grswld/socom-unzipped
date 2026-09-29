@@ -44,20 +44,24 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'boost' | 'fire' | 'aim' | 'leanLeft' | 'leanRight' | 'mode';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'boost', 'fire', 'aim', 'leanLeft', 'leanRight', 'mode'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'zoomOut' | 'fireMode' | 'leanLeft' | 'leanRight' | 'mode';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'zoomOut', 'fireMode', 'leanLeft', 'leanRight', 'mode'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
  * What the pad, the keys' lanes and the touch stick ask for in one frame. The pairs are in the unit disc: `moveX`
  * right and `moveY` forward, the touch stick's frame (`./touch`, `stickVector`); `lookX` right and `lookY` up. The
  * actions mean the same button in both modes (W2.R5): `jump` is a jump on foot and up in the fly camera, `crouch` a
- * crouch on foot and down; `mode` is the walk/fly switch `G` is.
+ * crouch on foot and down; `mode` is the walk/fly switch `G` is. `stance` is the game's stance button (Triangle): a tap
+ * and a hold mean different things on foot (`./play`, `StanceButton`), and it is down in the fly camera like `crouch`.
+ * `boost` is the fly camera's alone: the walk has no sprint. `zoom` and `zoomOut` are the zoom's steps in and out (d-pad
+ * Up and Down) and `fireMode` the fire-mode switch (L3), the walk's alone: one press a step (`pressedSince`; research 84).
  */
 export interface Input {
   moveX: number; moveY: number;
   lookX: number; lookY: number;
-  jump: boolean; crouch: boolean; boost: boolean; fire: boolean; aim: boolean;
+  jump: boolean; crouch: boolean; stance: boolean; boost: boolean; fire: boolean; aim: boolean; zoom: boolean;
+  zoomOut: boolean; fireMode: boolean;
   leanLeft: boolean; leanRight: boolean; mode: boolean;
 }
 
@@ -65,7 +69,8 @@ export interface Input {
 export function noInput(): Input {
   return {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
-    jump: false, crouch: false, boost: false, fire: false, aim: false, leanLeft: false, leanRight: false, mode: false,
+    jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, zoomOut: false,
+    fireMode: false, leanLeft: false, leanRight: false, mode: false,
   };
 }
 
@@ -84,10 +89,14 @@ const HOST_INPUT = 'third_party/ps2recomp/ps2xRuntime/src/lib/socom2_host_input.
 const CROUCH_H = 'third_party/ps2recomp/ps2xRuntime/include/runtime/host_crouch_shortcut.h';
 const LAUNCHER = 'third_party/ps2recomp/ps2xShared/src/launcher_config.cpp';
 const STICKS = `${MAPPING_H}:25-27; ${HOST_INPUT}:297, :336`;
+/** A binding the owner stated in words (the play-test of walk mode), not one the repository documents on its own. */
+export const OWNER = 'owner, 2026-09-28';
 
 /**
- * SOCOM II's layout as the repository documents it (W2.R5), and the viewer's own bindings beside it, marked. Circle,
- * Square, Select and the d-pad are left free: what they do in the game is not in the repository either.
+ * SOCOM II's layout as the owner gave it on 2026-09-28 (Square jumps, R1 fires, Triangle is the stance, L1 aims, Start
+ * is the walk/fly switch, d-pad Up zooms, the left stick moves and the right looks), with what the repository documents beside it
+ * where it does, and the viewer's own bindings marked `assumed`; research 84 adds the game's d-pad Down (zoom out) and
+ * L3 (the fire mode). Cross, Circle, Select and d-pad Left and Right are left free.
  */
 export const PAD_LAYOUT: readonly PadRow[] = [
   {
@@ -101,61 +110,84 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'keys\' rate',
   },
   {
-    control: 'L3', action: 'crouch', documented: `docs/INSTALL.md §6; docs/PLAYTEST.md step 8; ${LAUNCHER}:568`,
-    note: 'the launcher\'s default crouch shortcut, L-STICK CLICK; the game\'s own L3 is fire mode, which the '
-      + 'shortcut moves to the keyboard\'s 2 key. In the game it toggles stand/crouch on release (PLAYTEST step 8); '
-      + 'down in the fly camera',
+    control: 'Square', action: 'jump', documented: `${OWNER}; docs/KNOWN.md (R139 row)`,
+    note: 'jump on foot and up in the fly camera. The owner\'s word, and the disc\'s control dictionary agrees '
+      + '(KNOWN.md R139: "X is Action, Square is Jump, Circle is TeamCommand")',
   },
   {
-    control: 'Triangle', action: 'crouch', documented: `${CROUCH_H}:4-7; docs/INSTALL.md §6`,
-    note: 'the stance: a light press toggles crouch, a full press goes prone (PlayerUpd, FUN_00594cf0), and a PC '
-      + 'pad\'s Triangle is always full, so in the game it goes prone. The viewer has no prone: it crouches, and is '
-      + 'down in the fly camera',
+    control: 'R1', action: 'fire', documented: OWNER,
+    note: 'held, the rifle fires at its rate; let go, it stops -- the mouse button\'s trigger. The owner\'s word '
+      + '(socom2_host_input.cpp:297 puts fire among the shoulder buttons without saying which)',
   },
   {
-    control: 'Cross', action: 'jump', documented: 'assumed',
-    note: 'jump on foot and up in the fly camera; what Cross does in SOCOM II play the repository does not say',
+    control: 'Triangle', action: 'stance', documented: `${OWNER}; ${CROUCH_H}:4-7; docs/INSTALL.md §6`,
+    note: 'the stance button. Tap: stand and crouch toggle; hold: prone; from prone a tap stands. The game reads '
+      + 'Triangle\'s pressure (a light press toggles crouch at release, a full one goes prone: PlayerUpd, '
+      + 'FUN_00594cf0), and a browser pad\'s button is on or off, so a hold stands in for the full press; the hold\'s '
+      + 'length is a guess (`STANCE_HOLD_S_PLACEHOLDER`, ./play). Down in the fly camera',
   },
   {
-    control: 'R1', action: 'fire', documented: 'assumed',
-    note: 'socom2_host_input.cpp:297 puts fire among the shoulder buttons without saying which; the shot is W2.4\'s',
+    control: 'L1', action: 'aim', documented: OWNER,
+    note: 'held on foot, the first-person aim view (W2.6). The owner\'s word (socom2_host_input.cpp:297 puts aim '
+      + 'among the shoulder buttons without saying which)',
   },
   {
-    control: 'L1', action: 'aim', documented: 'assumed',
-    note: 'the other shoulder of socom2_host_input.cpp:297\'s pair; held on foot, the first-person aim view (W2.6)',
+    control: 'Up', action: 'zoom', documented: OWNER,
+    note: 'the zoom in: third person, first person, the scope (FUN_005445b0, research 84 section 7), a step a press, '
+      + 'on foot only, no wrap. The owner\'s word (2026-09-28); the right mouse button steps it too, and wraps',
+  },
+  {
+    control: 'Down', action: 'zoomOut', documented: 'web/docs/research/84-accuracy-and-recoil.md §7',
+    note: 'the zoom out, a step a press: the scope to first person, first person to third. The game\'s own zoom-out '
+      + 'handler (the input byte beside d-pad Up\'s, FUN_00594cf0)',
+  },
+  {
+    control: 'Start', action: 'mode', documented: OWNER,
+    note: 'the viewer\'s walk/fly switch, as G is. The owner\'s word; in the game START is the pause and the menus '
+      + '(socom2_host_input.cpp:294-296), the one button that takes a player out of play, as the fly camera is out of it',
+  },
+  {
+    control: 'L3', action: 'fireMode', documented: 'web/docs/research/84-accuracy-and-recoil.md §6',
+    note: 'the game\'s fire mode: semi, burst, automatic and round, not while scoped (FUN_005c4600, research 84 '
+      + 'section 6). The launcher\'s crouch shortcut on L3 (${LAUNCHER}:568) is gone: the stance is Triangle',
   },
   {
     control: 'L2', action: 'leanLeft', documented: 'assumed',
     note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"); the repository names the game\'s L2 the '
-      + 'second-weapon swap (launcher_config.cpp:572, host_crouch_shortcut.h:13-14). No lean in the viewer yet',
+      + 'second-weapon swap (launcher_config.cpp:572, host_crouch_shortcut.h:13-14). No lean in the viewer yet, so the '
+      + 'panel lists it in neither mode',
   },
   {
     control: 'R2', action: 'leanRight', documented: 'assumed',
-    note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"). No lean in the viewer yet',
-  },
-  {
-    control: 'Start', action: 'mode', documented: 'assumed',
-    note: 'the viewer\'s walk/fly switch, as G is; in the game START is the pause and the menus '
-      + '(socom2_host_input.cpp:294-296), the one button that takes a player out of play, as the fly camera is out of it',
+    note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"). No lean in the viewer yet, so the panel '
+      + 'lists it in neither mode',
   },
   {
     control: 'R3', action: 'boost', documented: 'assumed',
-    note: 'the viewer\'s boost, as a double-tapped W or the touch stick held at its rim, not a game control; what '
-      + 'R3 does in SOCOM II the repository does not say',
+    note: 'the fly camera\'s boost, as a double-tapped W or the touch stick held at its rim, not a game control; what '
+      + 'R3 does in SOCOM II the repository does not say. There is no sprint on foot (the owner, 2026-09-28)',
   },
 ];
 
-/** What each action is called on the panel, on foot and in the fly camera: one button, the same motion in both. */
-export const ACTION_WORDS: Record<PadAction, { walk: string; fly: string }> = {
-  move: { walk: 'walk', fly: 'fly along the look' },
+/**
+ * What each action is called on the panel, on foot and in the fly camera: one button, the same motion in both where
+ * there is one. `null` is an action the mode does not have -- fire and aim are the walk's alone, the boost the fly
+ * camera's alone (no sprint on foot), and there is no lean yet -- and the panel leaves that row out of that mode's table.
+ */
+export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string | null }> = {
+  move: { walk: 'move', fly: 'fly along the look' },
   look: { walk: 'look', fly: 'look' },
   jump: { walk: 'jump', fly: 'up' },
-  crouch: { walk: 'crouch', fly: 'down' },
-  boost: { walk: 'boost', fly: 'boost' },
-  fire: { walk: 'fire', fly: 'fire' },
-  aim: { walk: 'aim', fly: 'aim' },
-  leanLeft: { walk: 'lean left', fly: 'lean left' },
-  leanRight: { walk: 'lean right', fly: 'lean right' },
+  crouch: { walk: 'crouch (tap toggles)', fly: 'down' },
+  stance: { walk: 'stance: tap crouch, hold prone', fly: 'down' },
+  boost: { walk: null, fly: 'boost' },
+  fire: { walk: 'fire (held)', fly: null },
+  aim: { walk: 'aim (held)', fly: null },
+  zoom: { walk: 'zoom (scope)', fly: null },
+  zoomOut: { walk: 'zoom out', fly: null },
+  fireMode: { walk: 'fire mode', fly: null },
+  leanLeft: { walk: null, fly: null },
+  leanRight: { walk: null, fly: null },
   mode: { walk: 'fly (as G)', fly: 'walk (as G)' },
 };
 

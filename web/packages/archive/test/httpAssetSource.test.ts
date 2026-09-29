@@ -57,4 +57,22 @@ describe('HttpAssetSource', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })));
     await expect(new HttpAssetSource('/maps').list()).rejects.toThrow('HTTP 503 index.json');
   });
+
+  it('reads a range with a Range request, and slices a server that ignores it (81 §1)', async () => {
+    const file = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const ranged = vi.fn(async (_url: string, init?: RequestInit) => {
+      const range = /bytes=(\d+)-(\d+)/.exec(String((init?.headers as Record<string, string> | undefined)?.Range ?? ''));
+      if (init?.method === 'HEAD') return new Response(null, { headers: { 'content-length': '10' } });
+      if (!range) return new Response(file);
+      return new Response(file.slice(Number(range[1]), Number(range[2]) + 1), { status: 206 });
+    });
+    vi.stubGlobal('fetch', ranged);
+    const s = new HttpAssetSource('/maps');
+    expect(await s.size('RUN/SOUNDS/BNKSTORE.ZAR')).toBe(10);
+    expect(Array.from(await s.readRange('RUN/SOUNDS/BNKSTORE.ZAR', 3, 4))).toEqual([3, 4, 5, 6]);
+    expect((ranged.mock.calls[1]![1] as RequestInit).headers).toEqual({ Range: 'bytes=3-6' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(file)));   // a server with no ranges answers 200, whole
+    expect(Array.from(await new HttpAssetSource('/maps').readRange('X', 8, 2))).toEqual([8, 9]);
+    await expect(new HttpAssetSource('/maps').readRange('X', 8, 4)).rejects.toThrow('run past its end');
+  });
 });

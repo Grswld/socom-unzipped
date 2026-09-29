@@ -340,6 +340,58 @@ describe('FlyCamera', () => {
     expect(distance(true)).toBeGreaterThan(plain * 3);
   });
 
+  describe('no sprint on foot (owner, 2026-09-28)', () => {
+    it('the ground wish never carries a boost: not a double-tapped W, not the stick held at its rim', () => {
+      fly.setWalking(true);
+      press('KeyW');
+      release('KeyW');
+      press('KeyW');
+      expect(fly.groundWish()).toEqual({ forward: 1, right: 0, boost: false });
+      release('KeyW');
+      fly.setStick(0, 1);
+      fly.setStickBoost(true);
+      expect(fly.groundWish()).toEqual({ forward: 1, right: 0, boost: false });
+    });
+
+    it('a W double-tapped while walking arms nothing: flying with W held afterwards is unboosted', () => {
+      fly.setWalking(true);
+      press('KeyW');
+      release('KeyW');
+      press('KeyW');                                   // the second tap, on foot
+      fly.setWalking(false);                           // the mode switches with W still down
+      fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+      run(fly, 2, 120);
+      const carried = -fly.pose().z;
+      release('KeyW');
+      fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+      press('KeyW');
+      run(fly, 2, 120);
+      release('KeyW');
+      expect(carried).toBeCloseTo(-fly.pose().z, 6);
+    });
+
+    it('the rim-held stick boost is dropped on entering the walk and ignored there; flying it works again', () => {
+      const flown = (): number => {
+        fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+        fly.setStick(0, 1);
+        run(fly, 2, 120);
+        fly.setStick(0, 0);
+        return -fly.pose().z;
+      };
+      fly.setStickBoost(true);
+      fly.setWalking(true);
+      fly.setWalking(false);                           // in and out again: the boost did not survive
+      const plain = flown();
+      fly.setWalking(true);
+      fly.setStickBoost(true);                         // asked for on foot: ignored
+      fly.setWalking(false);
+      expect(flown()).toBeCloseTo(plain, 6);
+      fly.setStickBoost(true);
+      expect(flown()).toBeGreaterThan(plain * 3);      // the fly camera keeps its boost
+      fly.setStickBoost(false);
+    });
+  });
+
   it('lookFrom faces the target', () => {
     fly.lookFrom([0, 0, 0], [0, 0, -100]);
     expect(fly.pose().yaw).toBeCloseTo(0, 4);

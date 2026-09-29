@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RIFLE, M4A1_SD } from '@s2u/scene';
+import { DEFAULT_RIFLE, HELD_RIFLE } from '@s2u/scene';
 import { Zoom, ZOOM_FIRST } from '../src/zoom';
 
 /** The view states and the zoom (research 84 §7): `FUN_005445b0` in, `FUN_00544400` out, `FUN_005448a0` the set. */
@@ -9,7 +9,7 @@ const sniper = { ...DEFAULT_RIFLE, zoomModes: [1.5, 6, 12] };        // the M40A
 
 describe('the zoom steps', () => {
   it('the M4A1 SD: third -> first -> 3x, and in stays there; out goes back the same way', () => {
-    const z = new Zoom(M4A1_SD);
+    const z = new Zoom(HELD_RIFLE);
     expect([z.state(), z.view()]).toEqual([0, 'third']);
     expect(z.zoomIn()).toBe(1);
     expect(z.target()).toBe(ZOOM_FIRST);
@@ -42,7 +42,7 @@ describe('the zoom steps', () => {
   });
 
   it('night maps: first person zooms into the night vision, then the scope', () => {
-    const z = new Zoom(M4A1_SD, true);
+    const z = new Zoom(HELD_RIFLE, true);
     z.zoomIn();
     expect(z.zoomIn()).toBe(3);
     expect(z.zoomIn()).toBe(5);
@@ -50,12 +50,12 @@ describe('the zoom steps', () => {
   });
 
   it('the mouse cycle wraps from the last level to third person', () => {
-    const z = new Zoom(M4A1_SD);
+    const z = new Zoom(HELD_RIFLE);
     expect([z.cycle(), z.cycle(), z.cycle(), z.cycle()]).toEqual([1, 5, 0, 1]);
   });
 
   it('runs to the magnification at 3 x the target a second, and the FOV and the look follow it', () => {
-    const z = new Zoom(M4A1_SD);
+    const z = new Zoom(HELD_RIFLE);
     z.zoomIn(); z.settle();
     z.zoomIn();                                                      // 1.01 -> 3 at 9 a second
     z.update(0.1);
@@ -68,15 +68,20 @@ describe('the zoom steps', () => {
     z.zoomOut();                                                     // back out at 3 x the old target: 9 a second
     z.update(0.1);
     expect(z.magnification()).toBeCloseTo(2.1, 9);
-    const first = new Zoom(M4A1_SD);
+    const first = new Zoom(HELD_RIFLE);
     first.zoomIn();
     expect(first.lookScale()).toBe(1);                               // first person changes nothing in the look
   });
 
-  it('a weapon switch drops a scope to first person', () => {
-    const z = new Zoom(M4A1_SD);
+  it('a weapon switch drops the night vision to first person, and only it (FUN_005c4b10)', () => {
+    const night = new Zoom(HELD_RIFLE, true);
+    night.zoomIn(); night.zoomIn();
+    expect(night.state()).toBe(3);
+    night.setWeapon(DEFAULT_RIFLE);
+    expect(night.state()).toBe(1);
+    const z = new Zoom(HELD_RIFLE);
     z.zoomIn(); z.zoomIn();
     z.setWeapon(DEFAULT_RIFLE);
-    expect(z.state()).toBe(1);
+    expect(z.state()).toBe(5);
   });
 });

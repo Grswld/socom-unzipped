@@ -22,8 +22,15 @@ import { rdrReal } from './tuning';
  *   M4A1's record has no `ReloadTime` (four records do -- Spas 12 2, JACKHAMMER 2, M60E3 3, M63A 2.5 -- and reCOM's
  *   loader defaults `m_reloadtime` to 0, `zwep_weapon.cpp:64`), so the rifle's reload is its animation's length.
  * - **The reticle's knock** (`Reticule_Modifiers STANCE_STAND`): `ReticuleKnock 12`, `ReticuleKnockReturn 70`,
- *   `ReticuleKnockMax 45` -- the bloom a shot adds, how fast it returns, and its cap, in the game's own units (not
- *   traced to pixels: `fire.ts` maps them onto W2.4's 0..1 spread as a ratio, an estimate).
+ *   `ReticuleKnockMax 45` -- the pixels of the 640x448 frame a round climbs the reticle, its return a second, and its
+ *   cap; every stance's whole `Reticule_Modifiers` struct is `stances` (research 84, `viewer/src/accuracy.ts`).
+ * - **The rifle kick** (WEAPON; `Reticule_Modifiers STANCE_STAND/CROUCH/PRONE`): `FireRifleKickRate`,
+ *   `FireRifleKickReturnRate`, `FireRifleKickBaseDist`, `FireRifleKickRandomDist` -- the aim's climb a round, read by
+ *   the game's `FUN_005b91c0` / `FUN_005b9280` into the aim pitch in radians (`viewer/src/rifleKick.ts`). The M4A1:
+ *   0.5 / 0.18 / 0.09 / 0.015 standing, 0.08 crouched, 0.06 prone.
+ * - **The effect and the sounds** (WEAPON, for the muzzle and the audio): `FireAnimName` (the CZANIM animation a round
+ *   plays at the muzzle: the M4A1's `muzzle_m4` is `shell_eject`, `flash_fire_hider`, `shell_smoke_med`; the M4A1
+ *   SD's `muzzle_m4SD` has no flash), `FireSoundClose`/`Med`/`Far` and `ReloadSound` (the sound bank's names).
  * - **The mark.** `READERC.ZAR/decals.rdr`'s `DECAL_SETS` entry `BULLET_MARK_SMALL` lists a bitmap and a size range
  *   per surface material; the viewer does not model the SOILS materials (the table is not in a map's archive, as
  *   `probe.ts` says of its own material test), so it takes the `STONE` row: `bullet_mark_stone.tif`, 1 to 1.8 units.
@@ -79,7 +86,13 @@ export interface WeaponStance {
   knockCount: number; knockEntry: number;
 }
 
-/** One weapon out of `zweapon.rdr`: the fields the viewer's shot, reticle and zoom use. */
+/** One stance's rifle kick (`Reticule_Modifiers STANCE_*`): rates in radians a second, sizes in radians. */
+export interface RifleKick { rate: number; returnRate: number; baseDist: number; randomDist: number }
+
+/** The three stance records of `Reticule_Modifiers`, as the game's `FUN_0058a720` picks one. */
+export const KICK_STANCES = { stand: 'STANCE_STAND', crouch: 'STANCE_CROUCH', prone: 'STANCE_PRONE' } as const;
+
+/** One weapon out of `zweapon.rdr`: the fields the viewer's shot, reticle, zoom, muzzle and sounds use. */
 export interface WeaponRecord {
   /** `InternalName`. */
   name: string;
@@ -117,6 +130,12 @@ export interface WeaponRecord {
   fireModes: number[];
   /** `RecoilPct` (weapon `+0x6c`): what a round adds to the body's `+0x378` (capped at 10; `FUN_0057d510`). */
   recoilPct: number;
+  /** WEAPON: the rifle kick per stance (`FireRifleKick*`), null for a stance the record does not give. */
+  rifleKick: Record<keyof typeof KICK_STANCES, RifleKick | null>;
+  /** WEAPON: `FireAnimName`, the muzzle's CZANIM animation, or null. */
+  fireAnim: string | null;
+  /** WEAPON: `FireSoundClose`, `FireSoundMed`, `FireSoundFar`, `ReloadSound`: the sound bank's names, or null. */
+  sounds: { close: string | null; med: string | null; far: string | null; reload: string | null };
 }
 
 /** One row of a `decals.rdr` set: the bitmap and the size range for one material. */
@@ -209,19 +228,34 @@ export function weaponRecord(script: RdrNode, name: string): WeaponRecord {
   for (const [key, mode] of [['BurstMode', 2], ['SingleMode', 1], ['AutoMode', 3]] as const) {
     if (rdrGet(record, key) !== undefined) { enabled.add(mode); maxFireMode = Math.max(maxFireMode, mode); }
   }
+  const stances = weaponStances(modifiers, where);
+  // WEAPON's per-stance kick, off the parsed stances (so a stance inherits the one before, as the parser copies it);
+  // null for a stance with no kick (the constructor's zeros).
+  const kick = (stance: WeaponStanceName): RifleKick | null => {
+    const st = stances[stance];
+    return st.kickRate === 0 && st.kickBase === 0 ? null
+      : { rate: st.kickRate, returnRate: st.kickReturnRate, baseDist: st.kickBase, randomDist: st.kickRandom };
+  };
+  const optional = (key: string): string | null => {
+    const v = rdrGet(record, key);
+    return typeof v === 'string' ? v : null;
+  };
   return {
     name, id: n('ID'), fireWait, roundsPerMinute: Math.round(60 / fireWait),
     magazine: n('Ammo_Capacity'), mags: n('NumMags'),
     ammo, ammoId: n('ID', round, `zweapon.rdr ZAMMO ${ammo}`),
     maximumRange: n('Maximum_Range'), effectiveRange: opt('Effective_Range', 0), decalSet: text(record, 'DecalSet', where),
     knock: { knock: n('ReticuleKnock', standNode, knockAt), knockReturn: n('ReticuleKnockReturn', standNode, knockAt), knockMax: n('ReticuleKnockMax', standNode, knockAt) },
-    stances: weaponStances(modifiers, where), zoomModes,
+    stances, zoomModes,
     accuracyBurst: {
       countMin: opt('AccBurstCnt_Min', 0), countMax: opt('AccBurstCnt_Max', 0),
       scalarMin: opt('AccScalar_Min', 0), scalarMax: opt('AccScalar_Max', 0),
     },
     maxFireMode, fireModes: [1, 2, 3].filter((m) => enabled.has(m)),
     recoilPct: opt('RecoilPct', 0),
+    rifleKick: { stand: kick('stand'), crouch: kick('crouch'), prone: kick('prone') },
+    fireAnim: optional('FireAnimName'),
+    sounds: { close: optional('FireSoundClose'), med: optional('FireSoundMed'), far: optional('FireSoundFar'), reload: optional('ReloadSound') },
   };
 }
 
@@ -327,15 +361,24 @@ export const DEFAULT_RIFLE: WeaponRecord = {
   zoomModes: [1.5, 2.5],
   accuracyBurst: { countMin: 4, countMax: 7, scalarMin: 0, scalarMax: 0.03 },
   maxFireMode: 3, fireModes: [1, 2, 3], recoilPct: 0.2,
+  rifleKick: {
+    stand: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 },
+    crouch: { rate: 0.5, returnRate: 0.18, baseDist: 0.08, randomDist: 0.015 },
+    prone: { rate: 0.5, returnRate: 0.18, baseDist: 0.06, randomDist: 0.015 },
+  },
+  fireAnim: 'muzzle_m4',
+  sounds: { close: '.M4A1', med: '.M4A1_M', far: '.M4A1_F', reload: '.M4A1_RLD' },
 };
 
 /**
- * The same file's **M4A1 SD** (`ID 62`, `ModelName m4Acarbine_sd`): the rifle the owner named as the SEAL's (the player
- * spec's W2.R4), transcribed and pinned as `DEFAULT_RIFLE` is. Beside the M4A1 it fires slower (`FireWait` 0.14),
- * reaches less (800 m), zooms further (`ZoomMode1` 3), sways faster scoped (6 px/s standing), knocks harder crouched and
- * prone (11, 10), crouches to a finer rest (`TargetMin` 0.75) and never grows its bloom over a burst (`AccScalar_Max` 0).
+ * `zweapon.rdr`'s **M4A1 SD** (`ID 62`, `ModelName m4Acarbine_sd`), transcribed and pinned as `DEFAULT_RIFLE` is: the
+ * rifle the viewer's SEAL holds and fires (the owner's pick, W2.R4, over `mp_seal1`'s kit default, the plain M4A1).
+ * Beside the M4A1 it fires slower (`FireWait` 0.14, 429 a minute), reaches less (800 m), zooms further (`ZoomMode1` 3),
+ * sways faster scoped (6 px/s standing), knocks harder crouched and prone (11, 10), crouches to a finer rest
+ * (`TargetMin` 0.75) and never grows its bloom over a burst (`AccScalar_Max` 0); `muzzle_m4SD` (shell and smoke, no
+ * flash) and the suppressed `.M4A1_SIL` with no medium or far variant. Research 84 prints every number.
  */
-export const M4A1_SD: WeaponRecord = {
+export const HELD_RIFLE: WeaponRecord = {
   name: 'M4A1 SD', id: 62, fireWait: 0.14, roundsPerMinute: 429, magazine: 30, mags: 3,
   ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 800, effectiveRange: 550, decalSet: 'BULLET_MARK_SMALL',
   knock: { knock: 12, knockReturn: 70, knockMax: 45 },
@@ -347,6 +390,13 @@ export const M4A1_SD: WeaponRecord = {
   zoomModes: [1.5, 3],
   accuracyBurst: { countMin: 5, countMax: 10, scalarMin: 0, scalarMax: 0 },
   maxFireMode: 3, fireModes: [1, 2, 3], recoilPct: 0.2,
+  rifleKick: {
+    stand: { rate: 0.5, returnRate: 0.18, baseDist: 0.09, randomDist: 0.015 },
+    crouch: { rate: 0.5, returnRate: 0.18, baseDist: 0.08, randomDist: 0.015 },
+    prone: { rate: 0.5, returnRate: 0.18, baseDist: 0.06, randomDist: 0.015 },
+  },
+  fireAnim: 'muzzle_m4SD',
+  sounds: { close: '.M4A1_SIL', med: null, far: null, reload: '.M4A1_SIL_RLD' },
 };
 
 /** `READERC.ZAR/decals.rdr`'s `BULLET_MARK_SMALL` row for `STONE`, transcribed and pinned as `DEFAULT_RIFLE` is. */

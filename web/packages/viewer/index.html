@@ -8,20 +8,25 @@
     <link rel="stylesheet" href="./src/ds/index.css" />
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
-  <body>
+  <body class="panel-collapsed">
     <canvas id="view"></canvas>
     <!--
       Site navigation, not a viewer control, so it sits outside #panel: the backtick hides the panel
       and this stays, and it is the first thing in the top-left corner whichever way the panel is set.
-      The cog (W2.0) folds the panel away and back. It sits right after the brand rather than in the end
-      group: at 360px the bar is then brand, cog, GitHub, so the cog keeps its place beside the name
-      whatever the right-hand group does, and it is the one button over the panel it opens. It is a
-      real button, so a tap, a click, Enter and Space all work, and `aria-expanded` says which way it is.
+      Three tabs of one class share the end group and so one height, one padding, one gap and one icon-and-word
+      alignment: Controls (a hover / focus / click popover with the current mode's controls, `./src/ui.ts`
+      `onControlsPopover`), the cog (folds the settings panel away and back, `onPanelToggle`) and GitHub. The
+      panel starts folded (a first visit shows the map), so `aria-expanded` starts false. Real buttons, so a
+      tap, a click, Enter and Space all work; under 480px each is its icon alone (`aria-label` and `title` still
+      name it).
     -->
     <nav id="site-links" class="s2u-bar" aria-label="Site">
       <a id="home" class="s2u-bar__brand" href="https://socomunzipped.com/"><span class="s2u-bar__ii">II</span><span class="s2u-bar__word">Unzipped</span></a>
-      <button id="panel-toggle" class="s2u-iconbtn" type="button" aria-label="settings" aria-expanded="true" aria-controls="panel-body" title="hide the settings"><svg viewBox="0 0 24 24" aria-hidden="true" stroke-linejoin="round"><path d="M19.3 9.8L22 10.1L22 13.9L19.3 14.2L18.7 15.5L20.4 17.7L17.7 20.4L15.5 18.7L14.2 19.3L13.9 22L10.1 22L9.8 19.3L8.5 18.7L6.3 20.4L3.6 17.7L5.3 15.5L4.7 14.2L2 13.9L2 10.1L4.7 9.8L5.3 8.5L3.6 6.3L6.3 3.6L8.5 5.3L9.8 4.7L10.1 2L13.9 2L14.2 4.7L15.5 5.3L17.7 3.6L20.4 6.3L18.7 8.5Z"/><circle cx="12" cy="12" r="3"/></svg></button>
-      <div class="s2u-bar__end"><a id="source" class="s2u-tab s2u-tab--nav" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub" aria-label="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M 8 0 C 3.58 0 0 3.58 0 8 c 0 3.54 2.29 6.53 5.47 7.59 .4 .07 .55 -.17 .55 -.38 0 -.19 -.01 -.82 -.01 -1.49 -2.01 .37 -2.53 -.49 -2.69 -.94 -.09 -.23 -.48 -.94 -.82 -1.13 -.28 -.15 -.68 -.52 -.01 -.53 .63 -.01 1.08 .58 1.23 .82 .72 1.21 1.87 .87 2.33 .66 .07 -.52 .28 -.87 .51 -1.07 -1.78 -.2 -3.64 -.89 -3.64 -3.95 0 -.87 .31 -1.59 .82 -2.15 -.08 -.2 -.36 -1.02 .08 -2.12 0 0 .67 -.21 2.2 .82 .64 -.18 1.32 -.27 2 -.27 .68 0 1.36 .09 2 .27 1.53 -1.04 2.2 -.82 2.2 -.82 .44 1.1 .16 1.92 .08 2.12 .51 .56 .82 1.27 .82 2.15 0 3.07 -1.87 3.75 -3.65 3.95 .29 .25 .54 .73 .54 1.48 0 1.07 -.01 1.93 -.01 2.2 0 .21 .15 .46 .55 .38 A 8.013 8.013 0 0 0 16 8 c 0 -4.42 -3.58 -8 -8 -8 z"/></svg><span id="source-word">GitHub</span></a></div>
+      <div class="s2u-bar__end">
+        <button id="controls-toggle" class="s2u-tab s2u-tab--nav" type="button" aria-label="controls" aria-haspopup="dialog" aria-expanded="false" aria-controls="controls" title="the controls for the mode you are in"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M7 7h10a5 5 0 0 1 5 5v2.5a2.5 2.5 0 0 1-4.3 1.7L15.5 14h-7l-2.2 2.2A2.5 2.5 0 0 1 2 14.5V12a5 5 0 0 1 5-5z"/><path d="M8 9.5v3M6.5 11h3"/><path d="M15.5 10.5h.01M17.5 12.5h.01"/></svg><span id="controls-word">Controls</span></button>
+        <button id="panel-toggle" class="s2u-tab s2u-tab--nav" type="button" aria-label="settings" aria-expanded="false" aria-controls="panel-body" title="show the settings"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M19.3 9.8L22 10.1L22 13.9L19.3 14.2L18.7 15.5L20.4 17.7L17.7 20.4L15.5 18.7L14.2 19.3L13.9 22L10.1 22L9.8 19.3L8.5 18.7L6.3 20.4L3.6 17.7L5.3 15.5L4.7 14.2L2 13.9L2 10.1L4.7 9.8L5.3 8.5L3.6 6.3L6.3 3.6L8.5 5.3L9.8 4.7L10.1 2L13.9 2L14.2 4.7L15.5 5.3L17.7 3.6L20.4 6.3L18.7 8.5Z"/><circle cx="12" cy="12" r="3"/></svg><span id="settings-word">Settings</span></button>
+        <a id="source" class="s2u-tab s2u-tab--nav" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub" aria-label="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M 8 0 C 3.58 0 0 3.58 0 8 c 0 3.54 2.29 6.53 5.47 7.59 .4 .07 .55 -.17 .55 -.38 0 -.19 -.01 -.82 -.01 -1.49 -2.01 .37 -2.53 -.49 -2.69 -.94 -.09 -.23 -.48 -.94 -.82 -1.13 -.28 -.15 -.68 -.52 -.01 -.53 .63 -.01 1.08 .58 1.23 .82 .72 1.21 1.87 .87 2.33 .66 .07 -.52 .28 -.87 .51 -1.07 -1.78 -.2 -3.64 -.89 -3.64 -3.95 0 -.87 .31 -1.59 .82 -2.15 -.08 -.2 -.36 -1.02 .08 -2.12 0 0 .67 -.21 2.2 .82 .64 -.18 1.32 -.27 2 -.27 .68 0 1.36 .09 2 .27 1.53 -1.04 2.2 -.82 2.2 -.82 .44 1.1 .16 1.92 .08 2.12 .51 .56 .82 1.27 .82 2.15 0 3.07 -1.87 3.75 -3.65 3.95 .29 .25 .54 .73 .54 1.48 0 1.07 -.01 1.93 -.01 2.2 0 .21 .15 .46 .55 .38 A 8.013 8.013 0 0 0 16 8 c 0 -4.42 -3.58 -8 -8 -8 z"/></svg><span id="source-word">GitHub</span></a>
+      </div>
     </nav>
     <p id="fps" class="s2u-status s2u-status--pill" aria-live="off"><span id="fps-n">--</span><span id="fps-rest"> fps</span></p>
     <!--
@@ -29,8 +34,6 @@
       one at a time. Fixed, so showing it moves nothing; `role=status` so a screen reader hears it.
     -->
     <p id="toast" class="s2u-status s2u-status--pill" role="status" aria-live="polite" hidden></p>
-    <!-- The ammo box (W2.5, ./src/fire.ts): the console frame's bottom-left readout, shown while walking. -->
-    <p id="ammo" class="s2u-status s2u-status--pill" hidden aria-live="off">30/30 &middot; 2 MAGS</p>
     <button id="fullscreen" class="s2u-fab" type="button" title="fullscreen (F)" aria-label="fullscreen"><svg viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"/></svg></button>
     <!--
       The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
@@ -40,10 +43,11 @@
       <p id="loading-what" class="s2u-status">loading</p>
       <div id="loading-bar" class="s2u-loading__bar"></div>
     </div>
-    <!-- The settings. Folded, none of it shows: the cog in #site-links is the only trace (W2.0). -->
-    <div id="panel" class="s2u-overlay" data-density="compact">
+    <!-- The settings. Folded (the first visit's state), none of it shows: the cog in #site-links is the only trace (W2.0). -->
+    <div id="panel" class="s2u-overlay is-folded" data-density="compact">
       <div id="panel-body" class="s2u-overlay__body">
       <p id="panel-kicker">Map viewer &middot; SOCOM II multiplayer</p>
+      <!-- Map: the picker and the player's own disc first; the status under them is one dim line (its full text is the tooltip). -->
       <div class="row">
         <div class="s2u-field"><label class="s2u-field__label" for="maps">Map</label><select id="maps" aria-label="map"><option value="">loading maps...</option></select></div>
         <!--
@@ -57,124 +61,124 @@
         </label>
       </div>
       <p id="status" class="s2u-status">booting</p>
+      <!-- View: how the picture is drawn, and (with `?redotcom`) how the camera moves. Two segmented toggles, one markup. -->
+      <p class="s2u-field__label" id="view-label">View</p>
       <!--
         The one choice a visitor makes: the picture as a modern screen shows it, or as the console drew
         it. It is the `ps2look` checkbox under Advanced, presented as a switch; the checkbox stays the
         state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
       -->
       <div id="look" class="s2u-tabs" role="radiogroup" aria-label="picture">
-        <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true">Modern<span class="s2u-tab__what">your screen&rsquo;s size and shape</span></button>
-        <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false">PS2<span class="s2u-tab__what">640&times;448 on 4:3, as the console drew it</span></button>
+        <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true">Modern<span class="s2u-tab__what">your screen&rsquo;s shape</span></button>
+        <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
       </div>
       <!--
-        Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
+        Walk mode -- behind the `redotcom` URL parameter (`./src/features.ts`): without it this switch, the body row, the ammo
+        box and the touch buttons are not rendered at all (each carries `data-play`, and `./src/main.ts` takes them out before
+        the page is wired). (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
         the floor the engine's ground probe finds, stepping at the game's 60 Hz at motion.rdr's speeds, stopped by its
-        walls, falling off its edges. G toggles it; this box mirrors G; Space jumps; C cycles the stance; V first person; a click (the mouse captured) fires, R reloads.
+        walls, falling off its edges. Fly or Walk, as the Modern / PS2 switch above is Modern or PS2: the same markup, and
+        the hidden `walk` checkbox stays the state everything reads (the hook, the tests). G and the pad's Start toggle
+        it and this follows (`./src/ui.ts`, `onWalkSwitch`, `setWalk`).
       -->
-      <div class="row" id="walk-row">
-        <label class="s2u-check" title="Walk on the game's own floors, seen from behind as the game's camera sees you (21.5 units up at the target, about 25 behind), at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched (a full push stands up and runs where there is headroom), 11 prone, the stick ramping to full in a fifth of a second. The floor under you is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, the walls stop you at a body's radius, and the step runs at the game's 60 Hz. WASD or the stick walks, the mouse turns you and tilts the camera, Space jumps, C cycles stand, crouch and prone, V switches to first person and back, G switches back to flying."><input type="checkbox" id="walk" /> <span>walk (G) &mdash; the game's camera, floors and speeds; C crouches, V first person</span></label>
+      <div id="mode" class="s2u-tabs" data-play role="radiogroup" aria-label="camera">
+        <button type="button" class="s2u-tab" data-mode="fly" aria-pressed="true" title="Fly the free camera through the map, through walls and over floors: WASD along the look, Space and Shift up and down, a double-tapped W boosts, the wheel trims the speed. G switches to walking.">Fly<span class="s2u-tab__what">free camera (G)</span></button>
+        <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="Walk on the game's own floors, seen from behind as the game's camera sees you, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched, 11 prone. The floor is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, and the step runs at the game's 60 Hz. There is no sprint on foot. G switches back to flying.">Walk<span class="s2u-tab__what">on the floors (G)</span></button>
       </div>
-      <details id="about" class="s2u-disclosure">
-        <summary>Unzipped Project Map Viewer <span class="s2u-label s2u-label--warn" id="revision">dev build</span></summary>
-        <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
-          textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
-          reading of the game and a reading can be wrong.</p>
-        <p><b>Known to differ:</b> blended surfaces are sorted by the browser where the engine walked its
-          grid outward from the camera, the frame brighten is a fixed value where the game meters it, the
-          alternate states a map holds (destroyed, unlit, far LOD) are hidden rather than switched by
-          play, and there is no game &mdash; just the world.</p>
-        <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
-          <a href="https://socomunzipped.com/" target="_blank" rel="noopener noreferrer">socomunzipped.com &rarr;</a></p>
-        <p class="s2u-fine" id="revision-line">dev build</p>
-      </details>
+      <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
+      <!-- Advanced: every diagnostic switch, folded; the long explanations are tooltips. -->
       <details id="advanced" class="s2u-disclosure">
         <summary>Advanced</summary>
-        <div class="row">
-          <label class="s2u-check"><input type="checkbox" id="grid" /> <span>grid at y=100</span></label>
+        <div class="checks">
+          <label class="s2u-check"><input type="checkbox" id="grid" /> <span>grid</span></label>
           <label class="s2u-check"><input type="checkbox" id="collision" /> <span>collision</span></label>
           <label class="s2u-check" title="The measured A and B (spheres: where the camera opens) and the disc's spawn slots from AIMAPS.MPS, 24 a side, each drawn as its cell with an arrow along its facing."><input type="checkbox" id="spawns" /> <span>spawns</span></label>
-        </div>
-        <div class="row">
           <label class="s2u-check"><input type="checkbox" id="wireframe" /> <span>wireframe</span></label>
-          <label class="s2u-check"><input type="checkbox" id="untextured" /> <span>highlight untextured</span></label>
-        </div>
-        <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
-        <div class="row">
-          <label class="s2u-check" title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> <span>turn flares to face the camera</span></label>
-        </div>
-        <div class="row">
+          <label class="s2u-check"><input type="checkbox" id="untextured" /> <span>untextured</span></label>
           <label class="s2u-check" title="The GS LINE_STRIP geometry -- guy ropes, power lines, lamp brackets, light filaments -- drawn one pixel wide with the texture the packet names running along the strip, as the hardware drew them."><input type="checkbox" id="linestrips" checked /> <span>line strips</span></label>
-        </div>
-        <div class="row">
-          <label class="s2u-check" title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> <span>blend graded alpha</span></label>
-        </div>
-        <div class="row">
-          <label class="s2u-check" title="The drop shadows: the quads under props and the shadow patches baked onto the ground, every draw whose texture is a shadow*.tif, blended over what is under them after the world is drawn, as the engine's decal pass did."><input type="checkbox" id="shadows" checked /> <span>prop shadows</span></label>
+          <label class="s2u-check" title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> <span>graded alpha</span></label>
+          <label class="s2u-check" title="Draw in the engine's order: the map's grid traversed cell ring by cell ring outward from the camera's cell, the drop shadows in a pass after the last ring, and depth written under every blend as the console did. Recomputed when the camera crosses into another cell. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="engineorder" /> <span>engine order</span></label>
+          <label class="s2u-check" title="The drop shadows: the quads under props and the shadow patches baked onto the ground, every draw whose texture is a shadow*.tif, blended over what is under them after the world is drawn, as the engine's decal pass did."><input type="checkbox" id="shadows" checked /> <span>shadows</span></label>
           <label class="s2u-check" title="The states a map holds but does not open in: a destructible's remains and debris (whats_left, parts), a lamp's unlit copy (nolight), the pulsing objective ribbon (terrorist_pulse), the far level-of-detail copies named by lod.rdr. The game switches them by play and by range; drawn on top of the intact, lit, near ones they z-fight, so they are hidden unless you ask."><input type="checkbox" id="alternate" /> <span>alternate states</span></label>
-        </div>
-        <div class="row">
-          <label class="s2u-check" title="The detail texture the game lays over its ground and walls close up: each texture whose mp&lt;N&gt;_lib.rdr entry names a detail texture gets a second pass over the same surface, the detail repeated uv times as often, blended as the entry's bmode says and fading out over its range from the camera."><input type="checkbox" id="detail" checked /> <span>detail pass</span></label>
-        </div>
+          <label class="s2u-check" title="The detail texture the game lays over its ground and walls close up: each texture whose mp&lt;N&gt;_lib.rdr entry names a detail texture gets a second pass over the same surface, the detail repeated uv times as often, blended as the entry's bmode says and fading out over its range from the camera."><input type="checkbox" id="detail" checked /> <span>detail</span></label>
+          <label class="s2u-check" title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> <span>flares face camera</span></label>
         <!--
           W2.1: the player's body -- the map's SEAL (seal_A_scuba on Frostfire) decoded from its character library and
           dressed as the game's character.rdr dresses it. W2.2b: in the play mode (walk) it is always shown, at the
           mover's feet in the game's clips; this switch shows it in fly mode -- where the play left it, or in its bind
           pose at spawn slot A until the play mode is first entered. Off by default.
         -->
-        <div class="row" id="body-row">
-          <label class="s2u-check" title="The player's SEAL, decoded from the map's character library (CLIB_MDL, CLIB_GEO) with the gear READERC.ZAR's character.rdr hangs on it. Walking (G) it is always shown, running the game's own motion clips (RUN/MOTION_P.ZAR) as the mover walks, runs, crouches and jumps. This shows it in fly mode too: where the walk left it, or standing in its bind pose at spawn slot A, facing the slot's facing, until the walk is first entered."><input type="checkbox" id="player-body" /> <span>player body in fly mode</span></label>
+          <span id="body-row" data-play><label class="s2u-check" title="The player's SEAL, decoded from the map's character library (CLIB_MDL, CLIB_GEO) with the gear READERC.ZAR's character.rdr hangs on it. Walking (G) it is always shown, running the game's own motion clips (RUN/MOTION_P.ZAR) as the mover walks, runs, crouches and jumps. This shows it in fly mode too: where the walk left it, or standing in its bind pose at spawn slot A, facing the slot's facing, until the walk is first entered."><input type="checkbox" id="player-body" /> <span>player body</span></label></span>
         </div>
-        <div class="row">
-          <label class="s2u-check" title="Draw in the engine's order: the map's grid walked cell ring by cell ring outward from the camera's cell, the drop shadows in a pass after the last ring, and depth written under every blend as the console did. Recomputed when the camera crosses into another cell. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="engineorder" /> <span>engine draw order</span></label>
-        </div>
-      <details id="sliders-box" class="s2u-disclosure">
-        <summary>lighting (unlit, as the engine draws it)</summary>
-        <p class="s2u-fine">The PS2 draws a multiplayer map from the vertex colours the exporter baked: the VU1 light
-          command is only emitted for the odd node flagged dynamic (a fern, a palm, a flare), and those take the
-          map's own <code>GlobalLighting</code> rig. The game then brightens the whole frame by
-          <code>1 + FIX/128</code>, <code>FIX</code> coming from its auto-exposure; the console measured 93.</p>
-        <label class="s2u-range" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 93 is the value read off the console; 0 is the bare frame; the game's own defaults cap it at 100."><span>brighten</span>
-          <input type="range" id="brighten" min="0" max="255" step="1" value="93" /><output id="brighten-out"></output></label>
-        <div class="row">
-          <label class="s2u-check" title="Light every node with the map's rig, whether or not the engine would. The viewer's earlier reading, kept for comparison: about five times too dark on Frostfire."><input type="checkbox" id="rigeverywhere" /> <span>rig on every node (the old reading)</span></label>
-        </div>
-      </details>
-      <details id="fog-box" class="s2u-disclosure">
-        <summary>fog (GS FOGCOL + VU1 qwords 28/29)</summary>
-        <div class="row">
-          <label class="s2u-check"><input type="checkbox" id="fog" checked /> <span>fog</span></label>
-          <label class="s2u-colour">colour <input type="color" id="fogcolour" value="#646464" /></label>
-        </div>
-        <label class="s2u-range" title="F = 255 at this distance: nothing nearer is fogged."><span>near</span>
-          <input type="range" id="fognear" min="0" max="4000" step="10" value="600" /><output id="fognear-out"></output></label>
-        <label class="s2u-range" title="F = 0 at this distance: everything further is the fog colour outright."><span>far</span>
-          <input type="range" id="fogfar" min="10" max="6000" step="10" value="875" /><output id="fogfar-out"></output></label>
-      </details>
+        <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
+        <details id="sliders-box" class="s2u-disclosure">
+          <summary title="The PS2 draws a multiplayer map from the vertex colours the exporter baked; only the odd node flagged dynamic (a fern, a palm, a flare) takes the map's own GlobalLighting rig. The game then brightens the whole frame by 1 + FIX/128, FIX coming from its auto-exposure; the console measured 93.">lighting</summary>
+          <label class="s2u-range" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 93 is the value read off the console; 0 is the bare frame; the game's own defaults cap it at 100."><span>brighten</span>
+            <input type="range" id="brighten" min="0" max="255" step="1" value="93" /><output id="brighten-out"></output></label>
+          <div class="checks">
+            <label class="s2u-check" title="Light every node with the map's rig, whether or not the engine would. The viewer's earlier reading, kept for comparison: about five times too dark on Frostfire."><input type="checkbox" id="rigeverywhere" /> <span>rig everywhere</span></label>
+          </div>
+        </details>
+        <details id="fog-box" class="s2u-disclosure">
+          <summary title="GS FOGCOL and VU1 qwords 28/29">fog</summary>
+          <div class="row">
+            <label class="s2u-check"><input type="checkbox" id="fog" checked /> <span>fog</span></label>
+            <label class="s2u-colour">colour <input type="color" id="fogcolour" value="#646464" /></label>
+          </div>
+          <label class="s2u-range" title="F = 255 at this distance: nothing nearer is fogged."><span>near</span>
+            <input type="range" id="fognear" min="0" max="4000" step="10" value="600" /><output id="fognear-out"></output></label>
+          <label class="s2u-range" title="F = 0 at this distance: everything further is the fog colour outright."><span>far</span>
+            <input type="range" id="fogfar" min="10" max="6000" step="10" value="875" /><output id="fogfar-out"></output></label>
+        </details>
         <details id="diagnostics-box" class="s2u-disclosure">
-        <summary><span id="diagnostics-count">0</span> diagnostics</summary>
-        <ul id="diagnostics" class="s2u-status"></ul>
+          <summary><span id="diagnostics-count">0</span> diagnostics</summary>
+          <ul id="diagnostics" class="s2u-status"></ul>
+        </details>
       </details>
-      </details>
-      <p id="warning" class="s2u-notice s2u-notice--warn"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
-      <p class="s2u-fine">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,
+      <!-- The bottom: the notice in one short line, and About (the revision, the full notice) folded under it. -->
+      <p id="warning" class="s2u-notice s2u-notice--warn"><strong>EXPERIMENTAL</strong> &mdash; SOCOM II and its assets are the property of
+        <strong>Sony Interactive Entertainment</strong> (developed by Zipper Interactive); not affiliated or endorsed. Full notice under About.</p>
+      <details id="about" class="s2u-disclosure">
+        <summary>About <span class="s2u-label s2u-label--warn" id="revision">dev build</span></summary>
+        <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
+          textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
+          reading of the game and a reading can be wrong.</p>
+        <p><b>Known to differ:</b> blended surfaces are sorted by the browser where the engine traversed its
+          grid outward from the camera, the frame brighten is a fixed value where the game meters it, the
+          alternate states a map holds (destroyed, unlit, far LOD) are hidden rather than switched by
+          play, and there is no game &mdash; just the world.</p>
+        <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
+          <a href="https://socomunzipped.com/" target="_blank" rel="noopener noreferrer">socomunzipped.com &rarr;</a></p>
+        <p class="s2u-fine" id="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,
         audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
         Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
         Entertainment.</p>
-      <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; arrows look &middot; G walk &middot; space jump &middot; C stance &middot; V first person &middot; click fire &middot; R reload &middot; F fullscreen &middot; wheel speed 1.0&times; &middot; ` hides this</p>
-      <!--
-        The controller's layout (W2.7, ruling W2.R5): SOCOM II's own, as the repository documents it, the viewer's
-        bindings beside it marked "assumed". Hidden until a pad first connects; `./src/ui.ts` `showPadLayout` fills it.
-      -->
-      <details id="pad-box" class="s2u-disclosure" hidden>
-        <summary>controller layout</summary>
-        <table id="pad-layout">
-          <thead><tr><th scope="col">pad</th><th scope="col">walk</th><th scope="col">fly</th><th scope="col">source</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <p class="s2u-fine">The left stick moves and the right looks, on foot and in the air alike. On foot Cross jumps,
-          the crouch buttons crouch on release, and L1 held aims from the SEAL's eyes; fire and lean are the layout's.
-          A row marked assumed is a binding the repository does not document.</p>
+        <p class="s2u-fine" id="revision-line">dev build</p>
       </details>
+      </div>
+    </div>
+    <!--
+      The controls (owner, 2026-09-28): a popover, not part of the panel, anchored under the Controls tab in the bar. It
+      opens on hover, on keyboard focus and on a click or tap (which pins it), and closes on Esc, on a click outside it,
+      or when the pointer or focus leaves; it never takes the focus or the pointer lock. It lists only the current mode's
+      controls (`./src/ui.ts` `setCameraHint`), and the pad's layout under them once a pad is connected.
+    -->
+    <div id="controls" class="s2u-overlay" data-density="compact" role="dialog" aria-label="controls" hidden>
+      <div class="s2u-overlay__body">
+        <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; arrows look &middot; F fullscreen &middot; ` hides this</p>
+        <!--
+          The controller's layout (W2.7, ruling W2.R5): SOCOM II's own, as the repository documents it, the viewer's
+          bindings beside it marked "assumed". Hidden until a pad first connects, in the Controls popover; `./src/ui.ts` `showPadLayout` fills it.
+        -->
+        <details id="pad-box" class="s2u-disclosure" hidden open>
+          <summary>controller layout</summary>
+          <table id="pad-layout">
+            <thead><tr><th scope="col">pad</th><th scope="col" id="pad-mode">fly</th><th scope="col">source</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="s2u-fine">Only the current mode's controls are listed; G or Start switches modes. A row marked assumed is a
+            binding neither the owner nor the repository documents.</p>
+        </details>
       </div>
     </div>
     <!--
@@ -189,8 +193,8 @@
         <button id="touch-up" type="button" aria-label="up">&#9650;</button>
         <button id="touch-down" type="button" aria-label="down">&#9660;</button>
       </div>
-      <button id="touch-stance" type="button" aria-label="stance: stand, crouch, prone">C</button>
-      <button id="touch-fire" type="button" aria-label="fire">&#9673;</button>
+      <button id="touch-stance" type="button" data-play aria-label="stance: stand, crouch, prone">C</button>
+      <button id="touch-fire" type="button" data-play aria-label="fire">&#9673;</button>
     </div>
     <script type="module" src="./src/main.ts"></script>
   </body>

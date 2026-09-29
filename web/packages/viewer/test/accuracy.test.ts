@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RIFLE, M4A1_SD } from '@s2u/scene';
+import { DEFAULT_RIFLE, HELD_RIFLE } from '@s2u/scene';
 import {
   Accuracy, burstScalar, defaultFireMode, fireInterval, kickStarts, kickTicks, MAP_FOV, movementSize, nextFireMode,
   perturb, RADIUS_FACTOR, roundsPerPull, tangentPerPixel, TICK, type AccuracyInput,
 } from '../src/accuracy';
 
 /**
- * The gunplay model (research 84) on the M4A1 SD's own record (`zweapon.rdr`, `@s2u/scene`'s `M4A1_SD`): every
+ * The gunplay model (research 84) on the M4A1 SD's own record (`zweapon.rdr`, `@s2u/scene`'s `HELD_RIFLE`): every
  * expectation below is the decompilation's arithmetic on the file's numbers, worked by hand in the comment beside it.
  */
 
 const still: AccuracyInput = {
   stance: 'stand', velocity: [0, 0, 0], airborne: false, yawRate: 0, pitchRate: 0, zoomState: 0,
 };
-const sd = M4A1_SD.stances;
+const sd = HELD_RIFLE.stances;
 
 describe('the reticle size (FUN_005c2670, FUN_005c3360)', () => {
   it('rests at TargetMin; a round opens it by TargetDilateUponFire; it closes at TargetConstrict a second', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     expect(a.state().size).toBe(1);                                  // STANCE_STAND TargetMin 1
     a.round(0, 'stand');
     expect(a.state().size).toBe(8);                                  // + 7 (AccScalar_Max 0 on the SD: no growth)
@@ -30,18 +30,18 @@ describe('the reticle size (FUN_005c2670, FUN_005c3360)', () => {
   });
 
   it('moving: aims at |v|^2 / 65 x Mult, opening 1 a tick; crouched the multiplier is 13', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     const walk: AccuracyInput = { ...still, velocity: [30, 0, 0] };  // 900 / 65 = 13.85
     a.update(1, walk);
     expect(a.state().target).toBeCloseTo(900 / 65, 9);
     expect(a.state().size).toBeCloseTo(900 / 65, 9);
-    const b = new Accuracy(M4A1_SD);
+    const b = new Accuracy(HELD_RIFLE);
     b.update(3 * TICK, walk);
     expect(b.state().size).toBeCloseTo(1 + 3, 9);                  // TargetDilateUponMovement 1 a tick
     expect(movementSize(sd.crouch, { ...walk, velocity: [10, 0, 0] })).toBeCloseTo(100 / 65 * 13, 9);
     expect(movementSize(sd.prone, { ...walk, velocity: [3, 0, 0] })).toBeCloseTo(9 / 65 * 63, 9);
     // The standing run (65 units a second) is past TargetMax: the run opens it all the way.
-    const run = new Accuracy(M4A1_SD);
+    const run = new Accuracy(HELD_RIFLE);
     run.update(1, { ...still, velocity: [65, 0, 0] });
     expect(run.state().size).toBe(26);
   });
@@ -56,7 +56,7 @@ describe('the reticle size (FUN_005c2670, FUN_005c3360)', () => {
     expect([1, 2, 3].map((n) => burstScalar(DEFAULT_RIFLE, n))).toEqual([0, 0, 0]);
     expect(burstScalar(DEFAULT_RIFLE, 4)).toBeCloseTo(0.01, 12);    // n = 4 + 1 - 4 = 1, slope 0.03 / 3
     expect(burstScalar(DEFAULT_RIFLE, 30)).toBeCloseTo(0.07, 12);   // n capped at AccBurstCnt_Max 7 (not 3)
-    expect(burstScalar(M4A1_SD, 30)).toBe(0);
+    expect(burstScalar(HELD_RIFLE, 30)).toBe(0);
     const wide = { ...DEFAULT_RIFLE, stances: { ...DEFAULT_RIFLE.stances, stand: { ...DEFAULT_RIFLE.stances.stand, targetMax: 100 } } };
     const a = new Accuracy(wide);
     for (let i = 0; i < 4; i++) a.round(0, 'stand');
@@ -66,7 +66,7 @@ describe('the reticle size (FUN_005c2670, FUN_005c3360)', () => {
 
 describe('the knock (FUN_005c3360, FUN_005c2670)', () => {
   it('climbs 0.4 x 12 on the first round, 12 after, capped at 45; comes back at 70 a second', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     a.trigger();
     a.round(0, 'stand');
     expect(a.state().offset[1]).toBeCloseTo(-4.8, 9);               // KnockCount 1 x KnockEntryStrength 0.4
@@ -85,14 +85,14 @@ describe('the knock (FUN_005c3360, FUN_005c2670)', () => {
   });
 
   it('prone knocks 10 to a cap of 20 on the SD', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     for (let i = 0; i < 6; i++) a.round(0, 'prone');
     expect(a.state().offset[1]).toBe(-20);
     expect(a.state().size).toBe(24);                                 // TargetMax prone 24
   });
 
   it('scoped (5+): no knock, no bloom; the first round kicks, the second drops the scope', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     a.trigger();
     expect(a.round(5, 'stand')).toEqual({ dropZoom: false, kick: true });
     expect(a.round(5, 'stand')).toEqual({ dropZoom: true, kick: false });
@@ -111,7 +111,7 @@ describe('the cone (FUN_005bd100, FUN_00592260)', () => {
     expect(t.x).toBeCloseTo(Math.tan(Math.tan(0.6109)) / 320, 12);
     expect(t.y).toBeCloseTo(Math.tan(Math.tan(0.6109) * 448 / 640) / 224, 12);
     expect(t.y).toBeCloseTo(0.0023818, 6);
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     a.round(0, 'stand');                                             // size 8, knock -4.8
     const c = a.cone(0);
     expect(c.radius).toBeCloseTo(8 * t.y * RADIUS_FACTOR, 12);
@@ -142,7 +142,7 @@ describe('the cone (FUN_005bd100, FUN_00592260)', () => {
   });
 
   it('a thousand rounds land inside the square, three quarters of them in its inner half', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     for (let i = 0; i < 3; i++) a.round(0, 'stand');
     const c = a.cone(0);
     let inner = 0;
@@ -162,7 +162,7 @@ describe('the cone (FUN_005bd100, FUN_00592260)', () => {
 
 describe('the scoped sway (FUN_005b9280)', () => {
   it('drifts only scoped, within SniperDistLimit, turning at its ends', () => {
-    const a = new Accuracy(M4A1_SD);
+    const a = new Accuracy(HELD_RIFLE);
     a.update(1, still);
     expect(a.state().sway).toEqual([0, 0]);
     let maxX = 0;
@@ -170,7 +170,7 @@ describe('the scoped sway (FUN_005b9280)', () => {
     expect(maxX).toBe(20);                                           // SniperDistLimitX standing
     expect(Math.abs(a.state().sway[1])).toBeLessThanOrEqual(24);
     // The first tick: x += dt x (6 + 0.25) at the centre.
-    const b = new Accuracy(M4A1_SD);
+    const b = new Accuracy(HELD_RIFLE);
     b.update(TICK, { ...still, zoomState: 5 });
     expect(b.state().sway[0]).toBeCloseTo(6.25 * TICK, 12);
     // The cone follows it, not the size.
@@ -186,13 +186,14 @@ describe('the fire modes (FUN_005c0940, FUN_005c09f0, FUN_005c4600)', () => {
     expect(fireInterval(0.14, 3)).toBeCloseTo(0.112, 12);           // 536 rounds a minute on the SD
   });
 
-  it('comes up automatic; the switch goes single, burst, automatic and round; not while scoped', () => {
-    expect(defaultFireMode(M4A1_SD)).toBe(3);
-    expect(nextFireMode(M4A1_SD, 3)).toBe(1);
-    expect(nextFireMode(M4A1_SD, 1)).toBe(2);
-    expect(nextFireMode(M4A1_SD, 2)).toBe(3);
-    expect(nextFireMode(M4A1_SD, 3, true)).toBe(3);
-    const m14 = { ...M4A1_SD, maxFireMode: 3, fireModes: [1, 3] };   // SingleMode + AutoMode, no burst
+  it('comes up on burst (FUN_005c0250); the switch goes single, burst, automatic and round; not while scoped', () => {
+    expect(defaultFireMode(HELD_RIFLE)).toBe(2);
+    expect(defaultFireMode({ ...HELD_RIFLE, maxFireMode: 3, fireModes: [1, 3] })).toBe(3);
+    expect(nextFireMode(HELD_RIFLE, 3)).toBe(1);
+    expect(nextFireMode(HELD_RIFLE, 1)).toBe(2);
+    expect(nextFireMode(HELD_RIFLE, 2)).toBe(3);
+    expect(nextFireMode(HELD_RIFLE, 3, true)).toBe(3);
+    const m14 = { ...HELD_RIFLE, maxFireMode: 3, fireModes: [1, 3] };   // SingleMode + AutoMode, no burst
     expect(nextFireMode(m14, 1)).toBe(3);
   });
 });
