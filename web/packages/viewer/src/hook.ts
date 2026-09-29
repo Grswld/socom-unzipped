@@ -3,6 +3,7 @@ import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Input } from './gamepad';
 import type { Backend } from './renderer';
+import type { LinkRecord } from './linkLog';
 import type { FireState, Shot } from './fire';
 import type { Rect, ReticleColour } from './reticle';
 import type { HudPatch, HudView } from './hud';
@@ -42,6 +43,11 @@ export interface ViewerHook {
   } | null;
   setCamera(pose: Partial<Pose>): void;
   pose(): Pose;
+  /**
+   * The renderer's program links (`./linkLog`, research 90 issues #21 and #23): the counts since the page came up
+   * (`sync`: links a frame waited for), the async links in flight, and the records since `since` (`performance.now()`).
+   */
+  links(since?: number): { now: number; total: number; sync: number; pending: number; records: LinkRecord[] };
   stats(): {
     triangles: number; backend: Backend; diagnostics: string[]; loadMs: number; map: string | null;
     collisionPolys: number; untexturedDraws: number; shadowDraws: number; alternateDraws: number; spawns: Spawns | null;

@@ -2,6 +2,7 @@ import type { Camera, Material, Object3D } from 'three';
 import { BufferGeometry, Color, Float32BufferAttribute, Group, InstancedMesh, LinearSRGBColorSpace, LineSegments, Mesh, NearestFilter, OrthographicCamera, RenderTarget, Scene, SkinnedMesh } from 'three';
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { CompileQueue, firstOfEachKind } from './compileQueue';
+import { LinkLog, type PipelineBackend } from './linkLog';
 import { positionGeometry, texture as textureNode, uv, vec4 } from 'three/tsl';
 
 /** Which GPU API the pictures actually came out of, for the status line and the screenshot record. */
@@ -53,6 +54,8 @@ export interface ViewerRenderer {
    * of a map already replaced.
    */
   prepare(objects: readonly Object3D[], scene: Scene, camera: Camera, options?: PrepareOptions): Promise<void>;
+  /** Every program link, and whether a frame waited for it (`./linkLog`: research 90 issues #21 and #23). */
+  links: LinkLog;
 }
 
 /**
@@ -109,6 +112,8 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
   // the real fix is that no world draw writes alpha (`blendFactorsFor`, `world.ts`).
   const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL: false, alpha: false });
   await renderer.init();
+  const links = new LinkLog();
+  links.watch(renderer.backend as unknown as PipelineBackend);
   let ratio = Math.min(globalThis.devicePixelRatio, 2);
   let mode: Presentation = 'native';
   let cssWidth = 1;
@@ -186,6 +191,7 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
   return {
     renderer,
     backend,
+    links,
     render: (scene, camera) => {
       if (mode !== 'ps2') { renderer.render(scene, camera); return; }
       const previous = renderer.getRenderTarget();

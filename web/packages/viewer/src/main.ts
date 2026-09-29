@@ -8,6 +8,7 @@ import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, PS2_FRAME, type Backend, type Presentation } from './renderer';
+import type { LinkLog } from './linkLog';
 import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './fog';
 import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
@@ -433,6 +434,8 @@ const WORLD_LANES = 8;
 let prepareObjects: ((objects: Object3D[], stale: () => boolean, lanes?: number) => Promise<void>) | null = null;
 /** What entering the walk first draws -- the SEAL and its rifle, their shadow's silhouette, the HUD and the reticle -- compiled with the map. */
 let warmWalk: (() => Promise<void>) | null = null;
+/** The renderer's link log (`./linkLog`), once `boot` has a renderer: the hook's `links()`. */
+let linkLog: LinkLog | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -912,6 +915,7 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
+  linkLog = created.links;
   // The effects with the scene they light, the way the world is warmed (the PS2 frame's target, the hidden through
   // stand-ins): research 90 item 19, a light pass compiled for the canvas alone still stalled the first blast.
   compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.warm(scene, fly.camera); };
@@ -1318,6 +1322,10 @@ function show(map: LoadedMap): void {
 window.__viewer = {
   setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
+  links: (since) => ({
+    now: performance.now(), total: linkLog?.total ?? 0, sync: linkLog?.syncTotal ?? 0, pending: linkLog?.pending() ?? 0,
+    records: linkLog?.since(since) ?? [],
+  }),
   stats: () => ({
     triangles: view?.triangles ?? 0,
     backend,
