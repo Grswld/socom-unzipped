@@ -27,3 +27,5 @@ export * from './net/protocol';
 export * from './net/codec';
 export * from './net/body';
 export * from './net/moverSim';
+export * from './net/damage';
+export * from './net/lobby';

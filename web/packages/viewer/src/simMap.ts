@@ -25,6 +25,8 @@ export interface SimMap {
   spawns: Spawns | null;
   /** `AIMAPS.MPS`'s spawn slots, side 0 (A) and side 1 (B), each on the probe's floor (research 75). */
   slots: SpawnSlot[];
+  /** Its twin records: where a SEAL respawns (research 91 section 4, `FUN_002b7ee0`), placed the same way. */
+  respawns: SpawnSlot[];
   /** What went wrong on the way (a missing member costs a line, never the load, except the hull's). */
   notes: string[];
 }
@@ -50,13 +52,15 @@ export function simMapFromBytes(bytes: Uint8Array, path: string): SimMap {
   const grid = groundGrid(ground);
   const name = missionName(bytes, toc, notes) ?? stem;
   const spawns = spawnsFor(name) ?? null;
-  let slots: SpawnSlot[] = [];
+  let slots: SpawnSlot[] = [], respawns: SpawnSlot[] = [];
   try {
-    slots = placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), spawns ?? undefined, grid);
+    const ai = parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS'));
+    slots = placeSpawnSlots(ai, spawns ?? undefined, grid);
+    respawns = placeSpawnSlots(ai, spawns ?? undefined, grid, true);
   } catch (e) {
     notes.push(`spawn slots: ${say(e)}`);
   }
-  return { stem, name, ground, grid, spawns, slots, notes };
+  return { stem, name, ground, grid, spawns, slots, respawns, notes };
 }
 
 export async function loadSimMap(source: AssetSource, path: string): Promise<SimMap> {

@@ -49,6 +49,7 @@ describe.skipIf(!MP2 || !PACK)(`the server's Frostfire${MP2 && PACK ? '' : ` (${
     expect(Buffer.from(sim.ground.fields.buffer).equals(Buffer.from(page.ground!.fields.buffer))).toBe(true);
     expect(sim.slots.length).toBeGreaterThan(0);
     expect(new Set(sim.slots.map((s) => s.side))).toEqual(new Set([0, 1]));
+    expect(sim.respawns.length).toBeGreaterThan(sim.slots.length);   // Frostfire: hundreds of twins (research 75 §5.5)
   });
 
   it('walks ten scripted seconds on it bit for bit as the page\'s mover does, with the clips\' root motion and the moves', async () => {
