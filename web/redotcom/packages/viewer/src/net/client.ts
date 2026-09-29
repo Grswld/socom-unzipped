@@ -18,6 +18,8 @@ export interface NetWalk {
   respawn(at: readonly [number, number, number], yaw: number, replay?: readonly Command[]): boolean;
   nudge(dx: number, dy: number, dz: number): void;
   setLocked(on: boolean): void;
+  /** Dead as the server has it (`kill`) until the next `spawn`: the mover's death landing stays down. */
+  setDead?(on: boolean): void;
 }
 
 export interface Simulate {
@@ -60,6 +62,16 @@ export const SNAP_DISTANCE = 24;
 export const CORRECTION_FLOOR = 0.001;
 /** Ticks over which a small correction is spread (100 ms). */
 export const SMOOTH_TICKS = 6;
+/**
+ * The socket a constructor that threw leaves behind (closed, `readyState` 3): nothing is sent on it, closing it is a
+ * no-op, and the client reads 'closed', so `NetPage` backs off and retries as after a refused connect.
+ */
+const deadSocket = (): WebSocketLike => ({
+  binaryType: 'arraybuffer', readyState: 3,
+  send: () => undefined, close: () => undefined,
+  onopen: null, onclose: null, onmessage: null, onerror: null,
+});
+
 /** Commands kept for replay and reconciliation: 10 s. */
 const HISTORY = 10 * TICK_HZ;
 /** Snapshots kept for the others' interpolation. */
@@ -93,7 +105,16 @@ export class NetClient {
 
   constructor(private readonly opts: NetOptions, private readonly walk: NetWalk) {
     this.random = opts.random ?? Math.random;
-    this.socket = (opts.socket ?? ((url) => new WebSocket(url) as unknown as WebSocketLike))(opts.url);
+    const factory = opts.socket ?? ((url: string) => new WebSocket(url) as unknown as WebSocketLike);
+    try {
+      this.socket = factory(opts.url);
+    } catch {
+      // The WebSocket constructor throws for a bad scheme or a fragment (SyntaxError) and for ws:// from an https page
+      // (SecurityError): the connection failed, as a refused one does -- never the page's show() half-way.
+      this.socket = deadSocket();
+      this.state = 'closed';
+      return;
+    }
     this.socket.binaryType = 'arraybuffer';
     this.socket.onopen = () => {
       this.state = 'open';
@@ -188,7 +209,7 @@ export class NetClient {
         if (ev.id === this.id) this.spawned(ev.at, ev.yaw, ev.after);
         break;
       case 'kill':
-        if (ev.victim === this.id) { this.alive = false; this.walk.setLocked(true); }
+        if (ev.victim === this.id) { this.alive = false; this.walk.setLocked(true); this.walk.setDead?.(true); }
         break;
       case 'kicked': this.walk.setLocked(true); break;
       default: break;
@@ -201,6 +222,7 @@ export class NetClient {
     const replay = this.history.filter((h) => h.cmd.seq > after).map((h) => h.cmd);
     this.alive = true;
     this.walk.setLocked(false);
+    this.walk.setDead?.(false);
     this.walk.respawn(at, yaw, replay);
     // The replayed ticks' predictions are the new mover's now: they are not compared (the next snapshots are). Nor is
     // the one at `after` itself: a snapshot taken in the spawn's tick acks it with the new mover's feet.
