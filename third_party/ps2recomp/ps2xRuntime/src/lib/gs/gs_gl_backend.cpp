@@ -1540,9 +1540,49 @@ uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height, uint32
 // ---------------------------------------------------------------------------------------------
 namespace
 {
-    constexpr size_t kReplayPayloadMax = sizeof(uint32_t) * 5u + sizeof(GSPresentationRequest) + sizeof(GSContext) +
-                                         sizeof(GSTransferCommand);
+    constexpr uint32_t kReplayFlagSwizzledByRecorder = 1u;
+    constexpr size_t kReplayPayloadMax = sizeof(uint32_t) * 5u + sizeof(uint32_t) + sizeof(GSPresentationRequest) +
+                                         sizeof(GSContext) + sizeof(GSTransferCommand);
     static_assert(kReplayPayloadMax <= GsReplayFile::kMaxPayloadBytes, "a command's fields must fit a 'C' record");
+}
+
+// Every field of Cmd, by offset and size, and the structs inside it. A field added to Cmd must be added here AND to
+// packReplayPayload/unpackReplayPayload: F1 attempt 3's swizzledByRecorder went into padding, so neither sizeof(Cmd)
+// nor any existing offset moved -- only this list naming the field (and the payload carrying it) tells the two apart.
+uint32_t GSGlBackend::replayCmdLayoutHash()
+{
+    const uint32_t words[] = {
+        GsReplayFile::kVersion,
+        static_cast<uint32_t>(sizeof(Cmd)),
+        static_cast<uint32_t>(offsetof(Cmd, type)), static_cast<uint32_t>(sizeof(Cmd::type)),
+        static_cast<uint32_t>(offsetof(Cmd, swizzledByRecorder)), static_cast<uint32_t>(sizeof(Cmd::swizzledByRecorder)),
+        static_cast<uint32_t>(offsetof(Cmd, batch)), static_cast<uint32_t>(sizeof(Cmd::batch)),
+        static_cast<uint32_t>(offsetof(Cmd, transfer)), static_cast<uint32_t>(sizeof(Cmd::transfer)),
+        static_cast<uint32_t>(offsetof(Cmd, present)), static_cast<uint32_t>(sizeof(Cmd::present)),
+        static_cast<uint32_t>(offsetof(Cmd, context)), static_cast<uint32_t>(sizeof(Cmd::context)),
+        static_cast<uint32_t>(offsetof(Cmd, args)), static_cast<uint32_t>(sizeof(Cmd::args)),
+        static_cast<uint32_t>(offsetof(Cmd, dataOffset)), static_cast<uint32_t>(sizeof(Cmd::dataOffset)),
+        static_cast<uint32_t>(offsetof(Cmd, dataSize)), static_cast<uint32_t>(sizeof(Cmd::dataSize)),
+        static_cast<uint32_t>(offsetof(Cmd, token)), static_cast<uint32_t>(sizeof(Cmd::token)),
+        static_cast<uint32_t>(sizeof(GSVertex)), static_cast<uint32_t>(sizeof(GSDrawState)),
+        static_cast<uint32_t>(sizeof(GSClutLoad)), static_cast<uint32_t>(CmdType::ClutLoad),
+        kReplayFlagSwizzledByRecorder,
+    };
+    return GsReplayFile::layoutHash(words, sizeof(words) / sizeof(words[0]));
+}
+
+GsReplayFile::KnobList GSGlBackend::replayKnobEnvironment()
+{
+    GsReplayFile::KnobList out;
+    for (size_t i = 0; i < ps2x::knobs::kTableSize; ++i)
+    {
+        const char *name = ps2x::knobs::kTable[i].name;
+        if (std::strncmp(name + 4, "_GS_", 4) != 0 || std::strcmp(name, "PS2X_GS_RECORD") == 0)
+            continue;
+        const char *value = ps2x::knob(name);
+        out.emplace_back(name, value ? value : "");
+    }
+    return out;
 }
 
 uint32_t GSGlBackend::packReplayPayload(const Cmd &cmd, uint8_t *out)
@@ -1550,6 +1590,9 @@ uint32_t GSGlBackend::packReplayPayload(const Cmd &cmd, uint8_t *out)
     uint32_t n = 0u;
     std::memcpy(out, cmd.args, sizeof(cmd.args));
     n += sizeof(cmd.args);
+    const uint32_t flags = cmd.swizzledByRecorder ? kReplayFlagSwizzledByRecorder : 0u;
+    std::memcpy(out + n, &flags, sizeof(flags));
+    n += sizeof(flags);
     switch (cmd.type)
     {
     case CmdType::BeginTransfer:
@@ -1572,11 +1615,15 @@ uint32_t GSGlBackend::packReplayPayload(const Cmd &cmd, uint8_t *out)
 
 void GSGlBackend::unpackReplayPayload(Cmd &cmd, const uint8_t *in, uint32_t size)
 {
-    if (size < sizeof(cmd.args))
+    constexpr uint32_t kHead = static_cast<uint32_t>(sizeof(cmd.args) + sizeof(uint32_t));
+    if (size < kHead)
         return;
     std::memcpy(cmd.args, in, sizeof(cmd.args));
-    const uint8_t *rest = in + sizeof(cmd.args);
-    const uint32_t restSize = size - static_cast<uint32_t>(sizeof(cmd.args));
+    uint32_t flags = 0u;
+    std::memcpy(&flags, in + sizeof(cmd.args), sizeof(flags));
+    cmd.swizzledByRecorder = (flags & kReplayFlagSwizzledByRecorder) != 0u;
+    const uint8_t *rest = in + kHead;
+    const uint32_t restSize = size - kHead;
     if (cmd.type == CmdType::BeginTransfer && restSize >= sizeof(cmd.transfer))
         std::memcpy(&cmd.transfer, rest, sizeof(cmd.transfer));
     else if (cmd.type == CmdType::Present && restSize >= sizeof(cmd.present))
@@ -1585,10 +1632,133 @@ void GSGlBackend::unpackReplayPayload(Cmd &cmd, const uint8_t *in, uint32_t size
         std::memcpy(&cmd.context, rest, sizeof(cmd.context));
 }
 
+uint64_t GSGlBackend::writeReplayBatch(GsReplayFile::Writer &w, const CommandBuffer &buffer, uint64_t frameAtStart)
+{
+    uint64_t presents = 0u;
+    w.beginBatch(frameAtStart);
+    uint8_t payload[kReplayPayloadMax];
+    for (const Cmd &cmd : buffer.commands)
+    {
+        if (cmd.type == CmdType::Submit)
+        {
+            w.submit(cmd.batch);
+            continue;
+        }
+        const uint32_t n = packReplayPayload(cmd, payload);
+        const uint8_t *data = (cmd.dataSize && cmd.dataOffset + cmd.dataSize <= buffer.data.size()) ? buffer.data.data() + cmd.dataOffset : nullptr;
+        w.command(static_cast<uint8_t>(cmd.type), payload, n, data, data ? cmd.dataSize : 0u);
+        if (cmd.type == CmdType::Present)
+            ++presents;
+    }
+    w.endBatch();
+    return presents;
+}
+
+uint64_t GSGlBackend::rebuildReplayBuffer(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader, CommandBuffer &buffer)
+{
+    uint64_t swizzled = 0u;
+    buffer.clear();
+    buffer.commands.reserve(batch.events.size());
+    for (const GsReplayFile::Event &e : batch.events)
+    {
+        Cmd cmd;
+        if (e.submit)
+        {
+            cmd.type = CmdType::Submit;
+            cmd.batch = e.prim;
+        }
+        else
+        {
+            if (e.type > static_cast<uint8_t>(CmdType::ClutLoad))
+                continue;   // a type this build does not know: the layout hash makes this unreachable
+            cmd.type = static_cast<CmdType>(e.type);
+            if (e.payloadSize && e.payloadOffset + e.payloadSize <= batch.payload.size())
+                unpackReplayPayload(cmd, batch.payload.data() + e.payloadOffset, e.payloadSize);
+            if (e.blob != GsReplayFile::kNoBlob)
+            {
+                const std::vector<uint8_t> &bytes = reader.blob(e.blob);
+                cmd.dataOffset = buffer.data.size();
+                cmd.dataSize = bytes.size();
+                buffer.data.insert(buffer.data.end(), bytes.begin(), bytes.end());
+            }
+            if (cmd.type == CmdType::Upload && cmd.swizzledByRecorder)
+                ++swizzled;
+        }
+        buffer.commands.push_back(cmd);
+    }
+    return swizzled;
+}
+
+bool GSGlBackend::replayRoundTripForTest(const std::vector<ReplayCmdForTest> &in, const std::string &path,
+                                         std::vector<ReplayCmdForTest> &out, std::string &err)
+{
+    CommandBuffer buffer;
+    for (const ReplayCmdForTest &c : in)
+    {
+        Cmd cmd;
+        cmd.type = c.type;
+        cmd.swizzledByRecorder = c.swizzledByRecorder;
+        cmd.batch = c.batch;
+        cmd.transfer = c.transfer;
+        cmd.present = c.present;
+        cmd.context = c.context;
+        std::memcpy(cmd.args, c.args, sizeof(cmd.args));
+        cmd.dataOffset = buffer.data.size();
+        cmd.dataSize = c.data.size();
+        buffer.data.insert(buffer.data.end(), c.data.begin(), c.data.end());
+        buffer.commands.push_back(cmd);
+    }
+    {
+        GsReplayFile::Writer w;
+        std::vector<uint8_t> vram(1024u, 0u);
+        if (!w.open(path, 0u, vram.data(), static_cast<uint32_t>(vram.size()), {}, replayCmdLayoutHash(), replayKnobEnvironment()))
+        {
+            err = "cannot write " + path;
+            return false;
+        }
+        const uint64_t presents = writeReplayBatch(w, buffer, 0u);
+        if (!w.close(presents))
+        {
+            err = "write error";
+            return false;
+        }
+    }
+    GsReplayFile::Reader r;
+    if (!r.open(path, err, replayCmdLayoutHash()))
+        return false;
+    GsReplayFile::Batch batch;
+    if (!r.next(batch, err))
+    {
+        if (err.empty())
+            err = "no batch";
+        return false;
+    }
+    CommandBuffer rebuilt;
+    rebuildReplayBuffer(batch, r, rebuilt);
+    out.clear();
+    for (const Cmd &cmd : rebuilt.commands)
+    {
+        ReplayCmdForTest c;
+        c.type = cmd.type;
+        c.swizzledByRecorder = cmd.swizzledByRecorder;
+        c.batch = cmd.batch;
+        c.transfer = cmd.transfer;
+        c.present = cmd.present;
+        c.context = cmd.context;
+        std::memcpy(c.args, cmd.args, sizeof(c.args));
+        if (cmd.dataSize)
+            c.data.assign(rebuilt.data.begin() + static_cast<std::ptrdiff_t>(cmd.dataOffset),
+                          rebuilt.data.begin() + static_cast<std::ptrdiff_t>(cmd.dataOffset + cmd.dataSize));
+        out.push_back(std::move(c));
+    }
+    return true;
+}
+
 // PS2X_GS_RECORD=<file>[:<start>[:<frames>]]: from the first batch at or past <start> (a present index, t<seconds>
-// since the first replayed batch, or trig), write every batch HostRenderFrame replays -- with the shadow VRAM and
-// the palettes as they stand before the first -- until <frames> presents are in the file, then close it. Render
-// thread only. Recording adds the file's cost to the frames it spans; the recording, not their timing, is the point.
+// since the first replayed batch, or trig), write every batch HostRenderFrame replays -- with the shadow VRAM, the
+// palettes and the PS2X_GS_* knobs as they stand before the first -- until <frames> presents are in the file, then
+// close it. Render thread only. Recording adds the file's cost to the frames it spans; the recording, not their
+// timing, is the point.
 void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
 {
     static const char *const s_env = ps2x::knob("PS2X_GS_RECORD");
@@ -1629,7 +1799,8 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
         for (const auto &kv : m_cluts)
             cluts.push_back(kv.second);
         auto writer = std::make_unique<GsReplayFile::Writer>();
-        if (!writer->open(s_spec.file, m_frameCounter, m_shadowMemory.data(), static_cast<uint32_t>(m_shadowMemory.size()), cluts))
+        if (!writer->open(s_spec.file, m_frameCounter, m_shadowMemory.data(), static_cast<uint32_t>(m_shadowMemory.size()), cluts,
+                          replayCmdLayoutHash(), replayKnobEnvironment()))
         {
             std::fprintf(stderr, "[gs-record] cannot write %s; nothing recorded\n", s_spec.file.c_str());
             m_recDone = true;
@@ -1641,22 +1812,7 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
         m_recPresents = 0u;
     }
     GsReplayFile::Writer &w = *m_recWriter;
-    w.beginBatch(m_frameCounter);
-    uint8_t payload[kReplayPayloadMax];
-    for (const Cmd &cmd : buffer.commands)
-    {
-        if (cmd.type == CmdType::Submit)
-        {
-            w.submit(cmd.batch);
-            continue;
-        }
-        const uint32_t n = packReplayPayload(cmd, payload);
-        const uint8_t *data = (cmd.dataSize && cmd.dataOffset + cmd.dataSize <= buffer.data.size()) ? buffer.data.data() + cmd.dataOffset : nullptr;
-        w.command(static_cast<uint8_t>(cmd.type), payload, n, data, data ? cmd.dataSize : 0u);
-        if (cmd.type == CmdType::Present)
-            ++m_recPresents;
-    }
-    w.endBatch();
+    m_recPresents += writeReplayBatch(w, buffer, m_frameCounter);
     if (m_recPresents >= s_spec.frames || !w.ok())
     {
         const uint64_t batches = w.batches(), bytes = w.bytes(), stored = w.blobsStored(), refs = w.blobRefs();
@@ -1689,33 +1845,7 @@ uint64_t GSGlBackend::BenchReplay(const GsReplayFile::Batch &batch, const GsRepl
     if (!m_benchOn)
         return 0u;
     CommandBuffer &buffer = m_executing;
-    buffer.clear();
-    buffer.commands.reserve(batch.events.size());
-    for (const GsReplayFile::Event &e : batch.events)
-    {
-        Cmd cmd;
-        if (e.submit)
-        {
-            cmd.type = CmdType::Submit;
-            cmd.batch = e.prim;
-        }
-        else
-        {
-            if (e.type > static_cast<uint8_t>(CmdType::ClutLoad))
-                continue;   // a type this build does not know: the layout guard makes this unreachable
-            cmd.type = static_cast<CmdType>(e.type);
-            if (e.payloadSize && e.payloadOffset + e.payloadSize <= batch.payload.size())
-                unpackReplayPayload(cmd, batch.payload.data() + e.payloadOffset, e.payloadSize);
-            if (e.blob != GsReplayFile::kNoBlob)
-            {
-                const std::vector<uint8_t> &bytes = reader.blob(e.blob);
-                cmd.dataOffset = buffer.data.size();
-                cmd.dataSize = bytes.size();
-                buffer.data.insert(buffer.data.end(), bytes.begin(), bytes.end());
-            }
-        }
-        buffer.commands.push_back(cmd);
-    }
+    m_benchRecorderSwizzled += rebuildReplayBuffer(batch, reader, buffer);
     const uint64_t before = m_benchPresents;
     const auto t0 = std::chrono::steady_clock::now();
     // Present to present is replay time only: the reading and unpacking above is carried out of the interval.
@@ -1742,6 +1872,7 @@ void GSGlBackend::BenchResetTotals()
     }
     m_benchHist.reset();
     m_benchPresents = 0u;
+    m_benchRecorderSwizzled = 0u;
     m_benchElapsed = std::chrono::steady_clock::duration{};
 }
 
@@ -1757,6 +1888,7 @@ GSGlBackend::BenchTotals GSGlBackend::BenchTotalsNow() const
     }
     t.hist = m_benchHist;
     t.presents = m_benchPresents;
+    t.recorderSwizzledUploads = m_benchRecorderSwizzled;
     t.elapsedMs = std::chrono::duration<double, std::milli>(m_benchElapsed).count();
     return t;
 }

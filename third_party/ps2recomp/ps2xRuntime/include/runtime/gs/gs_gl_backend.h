@@ -109,13 +109,22 @@ public:
         GsFrameHistogram hist;          // the replay's time from present to present (glFinish at each batch's end)
         uint64_t presents = 0;
         double elapsedMs = 0.0;         // the batches' replay wall: executeCommands + glFinish, no file reading
+        // Uploads F1 attempt 3's recorder already swizzled (Cmd::swizzledByRecorder): that swizzle ran on the game
+        // thread in the recorded run and is in no field here -- the bench replays the render thread only.
+        uint64_t recorderSwizzledUploads = 0;
     };
     bool BenchBegin(const std::vector<GSClutLoad> &cluts);
     uint64_t BenchReplay(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader);
     void BenchResetTotals();
     BenchTotals BenchTotalsNow() const;
 
-private:
+    // The replay file's guards (fix round). replayCmdLayoutHash: every Cmd field's offset and size, and the sizes of
+    // the structs inside it, hashed -- a recording is replayed only by a build whose command record is the
+    // recorder's. replayKnobEnvironment: every PS2X_GS_* knob but PS2X_GS_RECORD as this process reads it now
+    // (ps2x::knob; an unset one as ""), in registry order: what a recording carries and the bench re-applies.
+    static uint32_t replayCmdLayoutHash();
+    static GsReplayFile::KnobList replayKnobEnvironment();
+
     enum class CmdType : uint8_t
     {
         Submit,
@@ -129,6 +138,23 @@ private:
         ClutLoad,
     };
 
+    // ps2x_tests only (no GL): a command as the recorder sees it, written through the recorder's packing into a
+    // replay file at `path`, read back and rebuilt as BenchReplay rebuilds it; `out` is the rebuilt commands.
+    struct ReplayCmdForTest
+    {
+        CmdType type = CmdType::Submit;
+        bool swizzledByRecorder = false;
+        GSPrimitiveBatch batch{};
+        GSTransferCommand transfer{};
+        GSPresentationRequest present{};
+        GSContext context{};
+        uint32_t args[5] = {0, 0, 0, 0, 0};
+        std::vector<uint8_t> data;
+    };
+    static bool replayRoundTripForTest(const std::vector<ReplayCmdForTest> &in, const std::string &path,
+                                       std::vector<ReplayCmdForTest> &out, std::string &err);
+
+private:
     struct Cmd
     {
         CmdType type = CmdType::Submit;
@@ -300,10 +326,14 @@ private:
     // render-thread side
     // Sprint 17 F: PS2X_GS_RECORD -- write the batch HostRenderFrame is about to replay (gs_gl_replay_file.h).
     void recordReplayBatch(const CommandBuffer &buffer);
-    // A non-Submit command's fields for the file ('C' payload): args, then the transfer, present or context the
-    // type carries. Returns the bytes written; unpack is the inverse.
+    // A non-Submit command's fields for the file ('C' payload): args, a flags word (bit 0: swizzledByRecorder),
+    // then the transfer, present or context the type carries. Returns the bytes written; unpack is the inverse.
     static uint32_t packReplayPayload(const Cmd &cmd, uint8_t *out);
     static void unpackReplayPayload(Cmd &cmd, const uint8_t *in, uint32_t size);
+    // One batch into the file (returns the presents in it), and one read batch back into commands (returns the
+    // recorder-swizzled uploads in it): the recorder, BenchReplay and replayRoundTripForTest share these two.
+    static uint64_t writeReplayBatch(GsReplayFile::Writer &w, const CommandBuffer &buffer, uint64_t frameAtStart);
+    static uint64_t rebuildReplayBuffer(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader, CommandBuffer &buffer);
     void executeCommands(CommandBuffer &buffer);
     void executeSubmit(const GSPrimitiveBatch &batch);
     void executeTransfer(const GSTransferCommand &command);
@@ -416,6 +446,7 @@ private:
     uint64_t m_benchCmdCount[8] = {};
     GsFrameHistogram m_benchHist;
     uint64_t m_benchPresents = 0;
+    uint64_t m_benchRecorderSwizzled = 0;
     std::chrono::steady_clock::duration m_benchElapsed{};
     std::chrono::steady_clock::duration m_benchCarry{};   // replay time since the last present, across batches
     uint64_t m_movieStartFrame = 0;   // first 16x16 movie block upload seen (trace windows are relative to it)

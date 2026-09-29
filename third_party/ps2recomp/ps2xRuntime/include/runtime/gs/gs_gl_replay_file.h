@@ -16,10 +16,14 @@
 // The layout (little-endian, the host's struct layouts -- a recording is read by a build of the same tree on the
 // same kind of host, and the header's layout block refuses anything else):
 //
-//   header, 64 bytes: "PS2XGSR1", u32 version, Layout (six u32 sizes), u32 vramBytes, u32 clutCount, u32 0,
-//                     u64 startFrame (the backend's present count when recording began), u64 0
+//   header, 64 bytes: "PS2XGSR1", u32 version, Layout (six u32 sizes), u32 vramBytes, u32 clutCount,
+//                     u32 cmdLayout (the recorder's hash of its command record: every field's offset and size,
+//                     GSGlBackend::replayCmdLayoutHash), u64 startFrame (the backend's present count when recording
+//                     began), u64 0
 //   vramBytes of the render thread's shadow VRAM at the first recorded batch
 //   clutCount GSClutLoad records: the palette snapshots the draws may still name (m_cluts)
+//   u32 knobCount, then knobCount x (u16 n, name[n], u16 m, value[m]): every PS2X_GS_* knob as the recording run
+//                     read it, an unset one with an empty value (version 2)
 //   records, one tag byte each:
 //     'B' u64 frameAtStart                            a batch begins (one HostRenderFrame)
 //     'T' GSDrawState u8 n GSVertex[n]                a Submit with a new draw state
@@ -46,12 +50,15 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace GsReplayFile
 {
     constexpr char kMagic[8] = {'P', 'S', '2', 'X', 'G', 'S', 'R', '1'};
-    constexpr uint32_t kVersion = 1u;
+    // 2: the command layout hash, the knob block, and a flags word in every 'C' payload (the review's fix round:
+    // F1 attempt 3's Cmd::swizzledByRecorder changed what an Upload's bytes mean without moving sizeof(Cmd)).
+    constexpr uint32_t kVersion = 2u;
     constexpr uint32_t kHeaderBytes = 64u;
     constexpr size_t kLayoutOffset = 12u;          // the layout block's first byte (sizeof(GSVertex))
     constexpr uint32_t kNoBlob = 0xFFFFFFFFu;
@@ -159,6 +166,21 @@ namespace GsReplayFile
         k ^= k >> 33;
         return k;
     }
+    // FNV-1a over 32-bit words: the command layout hash the recorder writes and the replayer checks.
+    inline uint32_t layoutHash(const uint32_t *words, size_t n)
+    {
+        uint32_t h = 2166136261u;
+        for (size_t i = 0; i < n; ++i)
+            for (int b = 0; b < 4; ++b)
+            {
+                h ^= (words[i] >> (8 * b)) & 0xFFu;
+                h *= 16777619u;
+            }
+        return h ? h : 1u;   // 0 means "not checked"
+    }
+
+    using KnobList = std::vector<std::pair<std::string, std::string>>;
+
     struct BlobKey
     {
         uint64_t h1 = 0, h2 = 0, size = 0;
@@ -224,7 +246,7 @@ namespace GsReplayFile
         }
 
         bool open(const std::string &path, uint64_t startFrame, const uint8_t *vram, uint32_t vramBytes,
-                  const std::vector<GSClutLoad> &cluts)
+                  const std::vector<GSClutLoad> &cluts, uint32_t cmdLayout = 0u, const KnobList &knobs = {})
         {
             if (m_fp)
                 return false;
@@ -242,12 +264,24 @@ namespace GsReplayFile
                 put32(header + kLayoutOffset + 4u * i, sizes[i]);
             put32(header + 36, vramBytes);
             put32(header + 40, static_cast<uint32_t>(cluts.size()));
+            put32(header + 44, cmdLayout);
             std::memcpy(header + 48, &startFrame, 8);
             write(header, kHeaderBytes);
             if (vramBytes)
                 write(vram, vramBytes);
             for (const GSClutLoad &c : cluts)
                 write(&c, sizeof(GSClutLoad));
+            const uint32_t knobCount = static_cast<uint32_t>(knobs.size());
+            write(&knobCount, 4);
+            for (const auto &kv : knobs)
+            {
+                for (const std::string *str : {&kv.first, &kv.second})
+                {
+                    const uint16_t n = static_cast<uint16_t>(str->size() < 0xFFFFu ? str->size() : 0xFFFFu);
+                    write(&n, 2);
+                    write(str->data(), n);
+                }
+            }
             return m_ok;
         }
 
@@ -368,7 +402,8 @@ namespace GsReplayFile
                 std::fclose(m_fp);
         }
 
-        bool open(const std::string &path, std::string &err)
+        // expectedCmdLayout: the replayer's own GSGlBackend::replayCmdLayoutHash(); 0 skips the check (the codec's tests).
+        bool open(const std::string &path, std::string &err, uint32_t expectedCmdLayout = 0u)
         {
             m_fp = std::fopen(path.c_str(), "rb");
             if (!m_fp)
@@ -413,6 +448,13 @@ namespace GsReplayFile
             uint32_t vramBytes = 0, clutCount = 0;
             std::memcpy(&vramBytes, header + 36, 4);
             std::memcpy(&clutCount, header + 40, 4);
+            std::memcpy(&m_cmdLayout, header + 44, 4);
+            if (expectedCmdLayout != 0u && m_cmdLayout != expectedCmdLayout)
+            {
+                err = "layout: the recording's command record (field offsets and sizes) is not this build's -- a recorder "
+                      "from another tree; record and replay with one tree";
+                return false;
+            }
             std::memcpy(&m_startFrame, header + 48, 8);
             if (vramBytes > (64u << 20) || clutCount > (1u << 20))
             {
@@ -432,6 +474,32 @@ namespace GsReplayFile
                     err = "truncated palettes";
                     return false;
                 }
+            uint32_t knobCount = 0;
+            if (!read(&knobCount, 4) || knobCount > 4096u)
+            {
+                err = "truncated or implausible knob block";
+                return false;
+            }
+            for (uint32_t i = 0; i < knobCount; ++i)
+            {
+                std::string parts[2];
+                for (std::string &str : parts)
+                {
+                    uint16_t n = 0;
+                    if (!read(&n, 2))
+                    {
+                        err = "truncated knob block";
+                        return false;
+                    }
+                    str.resize(n);
+                    if (n && !read(&str[0], n))
+                    {
+                        err = "truncated knob block";
+                        return false;
+                    }
+                }
+                m_knobs.emplace_back(parts[0], parts[1]);
+            }
             return true;
         }
 
@@ -524,6 +592,8 @@ namespace GsReplayFile
         const std::vector<uint8_t> &vram() const { return m_vram; }
         const std::vector<GSClutLoad> &cluts() const { return m_cluts; }
         uint64_t startFrame() const { return m_startFrame; }
+        uint32_t cmdLayout() const { return m_cmdLayout; }
+        const KnobList &knobs() const { return m_knobs; }
         const std::vector<uint8_t> &blob(uint32_t id) const
         {
             static const std::vector<uint8_t> s_none;
@@ -549,6 +619,8 @@ namespace GsReplayFile
         std::vector<GSClutLoad> m_cluts;
         std::vector<std::vector<uint8_t>> m_blobs;
         uint64_t m_startFrame = 0;
+        uint32_t m_cmdLayout = 0;
+        KnobList m_knobs;
         bool m_done = false;
         bool m_sawTrailer = false;
         uint64_t m_trailerBatches = 0;

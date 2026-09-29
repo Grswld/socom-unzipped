@@ -17,7 +17,11 @@ moves when its own cost does. Every draw-path attempt is then:
     python -m tools_py.parity.replay_bench compare logs/bench/before.json logs/bench/after.json
 
 `compare` prints one line a field -- name, before, after, the change in percent of before (`n/a` when before is 0)
--- over the fields both summaries hold, in the before summary's order, then fps, elapsed_ms and the histogram.
+-- over the fields both summaries hold, in the before summary's order, then fps, elapsed_ms and the histogram. The
+bench applies the recording's PS2X_GS_* knobs unless told otherwise (`--knob NAME=VALUE`) and writes what it applied
+under `knobs`; when a pair's knobs differ, compare prints a WARNING line per knob on stderr (not a clean A/B) and
+still compares. `run` deletes any JSON already at the output path before the bench starts and fails when the bench
+writes none, so a summary is never an earlier run's.
 
 Run: python -m tools_py.parity.replay_bench run <recording> [--exe dist/gs_replay_bench.exe] [--json out] [--warmup N] [--frames N]
 """
@@ -33,7 +37,7 @@ DEFAULT_EXE = os.path.join("dist", "gs_replay_bench.exe")
 TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(\S+)")
 NUMBER_RE = re.compile(r"^(-?[0-9]+(?:\.[0-9]+)?)(ms/s|/s|ms)?$")
 HIST_KEYS = ("le17", "le20", "le25", "le33", "le50", "le100", "over", "longest_ms")
-INT_TOP = ("frames", "warmup", "batches")
+INT_TOP = ("frames", "warmup", "batches", "recorder_swizzled")
 STR_TOP = ("recording", "per")
 
 
@@ -111,6 +115,13 @@ def compare(before, after):
     return out
 
 
+def knob_differences(before, after):
+    """[(name, before value, after value)] for every knob the two summaries' `knobs` disagree on, sorted by name;
+    a knob one summary does not set is None there."""
+    b, a = before.get("knobs") or {}, after.get("knobs") or {}
+    return [(k, b.get(k), a.get(k)) for k in sorted(set(b) | set(a)) if b.get(k) != a.get(k)]
+
+
 def format_compare(rows):
     width = max([len(r[0]) for r in rows] + [5])
     lines = ["%-*s %14s %14s %9s" % (width, "field", "before", "after", "change")]
@@ -119,7 +130,7 @@ def format_compare(rows):
     return lines
 
 
-def run(exe, recording, json_out, warmup=None, frames=None, no_stats=False, timeout=3600):
+def run(exe, recording, json_out, warmup=None, frames=None, no_stats=False, timeout=3600, knobs=()):
     """Run the bench (`exe` a path, or an argv list) on `recording`, writing `json_out`; the summary dict read
     back from the JSON (from the printed line when the JSON is missing). RuntimeError when the bench fails."""
     argv = list(exe) if isinstance(exe, (list, tuple)) else [exe]
@@ -130,18 +141,19 @@ def run(exe, recording, json_out, warmup=None, frames=None, no_stats=False, time
         argv += ["--frames", str(frames)]
     if no_stats:
         argv.append("--no-stats")
+    for kv in knobs:
+        argv += ["--knob", kv]
     d = os.path.dirname(os.path.abspath(json_out))
     os.makedirs(d, exist_ok=True)
+    if os.path.exists(json_out):
+        os.remove(json_out)   # a summary left by an earlier run must never be read as this one's
     p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     if p.returncode != 0:
         tail = "\n".join((p.stderr or "").strip().splitlines()[-5:])
         raise RuntimeError("gs_replay_bench exited %d: %s" % (p.returncode, tail))
-    if os.path.exists(json_out):
-        return load(json_out)
-    parsed = parse_output(p.stdout or "")
-    if parsed is None:
-        raise RuntimeError("gs_replay_bench printed no %s line and wrote no %s" % (SUMMARY_TAG, json_out))
-    return parsed
+    if not os.path.exists(json_out):
+        raise RuntimeError("gs_replay_bench exited 0 but wrote no %s" % json_out)
+    return load(json_out)
 
 
 def main(argv=None):
@@ -155,6 +167,7 @@ def main(argv=None):
     r.add_argument("--warmup", type=int, default=None)
     r.add_argument("--frames", type=int, default=None)
     r.add_argument("--no-stats", action="store_true")
+    r.add_argument("--knob", action="append", default=[], help="NAME=VALUE over the recorded value of that knob (repeatable)")
     c = sub.add_parser("compare", help="field by field, in percent: after against before")
     c.add_argument("before")
     c.add_argument("after")
@@ -162,7 +175,7 @@ def main(argv=None):
     if args.cmd == "run":
         json_out = args.json_out or args.recording + ".bench.json"
         try:
-            s = run(args.exe, args.recording, json_out, args.warmup, args.frames, args.no_stats)
+            s = run(args.exe, args.recording, json_out, args.warmup, args.frames, args.no_stats, knobs=args.knob)
         except (RuntimeError, OSError, subprocess.TimeoutExpired) as e:
             print(e, file=sys.stderr)
             return 1
@@ -175,6 +188,8 @@ def main(argv=None):
     except (OSError, ValueError) as e:
         print("cannot read a summary: %s" % e, file=sys.stderr)
         return 2
+    for name, b, a in knob_differences(before, after):
+        print("WARNING: the knobs differ, not a clean A/B: %s before=%s after=%s" % (name, b, a), file=sys.stderr)
     for line in format_compare(compare(before, after)):
         print(line)
     return 0
