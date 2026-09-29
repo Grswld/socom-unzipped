@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-279 merges (64 on the first-parent line, 215 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+280 merges (65 on the first-parent line, 215 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-54 merges.
+55 merges.
 
+- 2026-09-29 `0ee9d9da` the viewer's detail pass follows its fading LOD base (#113) [agent/i101-lod-detail]
 - 2026-09-29 `316ebdd1` the PCSX2 masters guarded by image (r0001/r0004), B's port shift on both (#112) [agent/i112-pnach-masters]
 - 2026-09-29 `e7f8c336` merge main (f6499f0e) into sprint-17: PR #109's web sprint 2 'the player' (R333) and the feature label [branch not named]
   - 2026-09-28 `f6499f0e` Merge pull request #109: the cloud's web sprint 2 'the player' onto main (the owner's word, R333) [branch not named]
