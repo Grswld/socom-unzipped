@@ -4,6 +4,8 @@
 // (+0 == -0) and pay for the double-precision classifier; it now may take the fast path, with the
 // slow path's value and flags bit for bit. The near shapes -- acc == -p non-zero, a product that
 // underflows to zero, a denormal result -- must still go slow.
+// Candidate C2 (the "flag ring" cases): fastCommit's flag-ring drain, entry by entry against in one
+// step (PS2X_VU1_COMMIT_BATCH=1), through Vu1FlagRingProbe below.
 #include "MiniTest.h"
 #include "ps2x/knobs.h"
 #include "vu/ps2_vu1_ops.h"
@@ -13,6 +15,7 @@
 #include <cstring>
 #include <emmintrin.h>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -223,6 +226,199 @@ namespace
     }
 }
 
+// Sprint 17 F, research/81 candidate C2: the fast path's flag ring drained entry by entry
+// (fastCommitWith<false>, the old path) and in one step (fastCommitWith<true>, PS2X_VU1_COMMIT_BATCH=1).
+// VU1Interpreter befriends this probe; it drives two interpreters through the same pushes, cycle
+// advances and commits and compares everything a later reader can see: the flag registers and
+// m_lastMacPc, Q and P, the head, count and next-ready cycle, and each slot's valid bit plus, for a
+// live slot, its fields. A !valid slot's other fields are not compared: no reader looks at them (the
+// invariants block in ps2_vu1_core.cpp), and the one-step drain leaves them as they were.
+struct Vu1FlagRingProbe
+{
+    using VU = VU1Interpreter;
+    using Entry = VU1Interpreter::FlagPipelineEntry;
+
+    static std::unique_ptr<VU> make()
+    {
+        auto vu = std::make_unique<VU>(VU::Unit::VU1);
+        vu->m_fast = true;
+        return vu;
+    }
+    static uint32_t count(const VU &vu) { return vu.m_fastFlagCount; }
+    static bool efuFree(const VU &vu) { return !vu.m_efu[0].valid || !vu.m_efu[1].valid; }
+    static void pushMac(VU &vu, uint32_t mac, uint32_t status, uint32_t extra, uint32_t pc)
+    {
+        vu.m_state.pc = pc;
+        vu.fastPushMacFlags(mac, status, extra);
+    }
+    // An FMAC-shaped entry with its own delay (the fast producers all use kFmacLatency; this puts
+    // a later entry ahead of the head's ready cycle, or one ready in its own issue cycle).
+    static void pushDelayed(VU &vu, uint32_t delay, uint32_t mac, uint32_t status, uint32_t pc)
+    {
+        Entry e{};
+        e.valid = true;
+        e.issueCycle = vu.m_cycle;
+        e.readyCycle = vu.m_cycle + delay;
+        e.issuePc = pc;
+        e.mac = mac;
+        e.status = status;
+        e.writesMac = true;
+        e.writesStatus = true;
+        vu.fastPushFlags(e);
+    }
+    static void fsset(VU &vu, uint16_t imm) { vu.queueFsset(imm); }
+    static void clip(VU &vu, uint32_t c) { vu.queueClip(c); }
+    static void fcset(VU &vu, uint32_t c) { vu.queueFcset(c); }
+    static void q(VU &vu, float v, uint32_t latency, uint32_t di) { vu.queueQ(v, latency, di); }
+    static void p(VU &vu, float v, uint32_t latency) { vu.queueP(v, latency); }
+    static void advance(VU &vu, uint32_t n) { vu.m_cycle += n; }
+    template <bool Batch>
+    static void commit(VU &vu) { vu.fastCommitWith<Batch>(); }
+    static void commitKnob(VU &vu) { vu.fastCommit(); }
+    static bool knob() { return VU::fastCommitBatchKnob(); }
+    static void setBatch(bool on) { VU::setFastCommitBatch(on); }   // what run() does with the knob
+
+    // Every field of every slot, valid or not: the two drains differ here by design (the old one
+    // zeroes a landed slot, the one-step one clears only its valid bit), which is what tells which
+    // drain fastCommit dispatched to.
+    static std::string rawDiff(const VU &a, const VU &b)
+    {
+        for (uint32_t slot = 0; slot < VU::kMaxFlagEntries; ++slot)
+        {
+            const Entry &x = a.m_flagPipeline[slot];
+            const Entry &y = b.m_flagPipeline[slot];
+            if (x.valid != y.valid || x.readyCycle != y.readyCycle || x.issueCycle != y.issueCycle ||
+                x.issuePc != y.issuePc || x.mac != y.mac || x.status != y.status || x.extraSticky != y.extraSticky ||
+                x.clip != y.clip || x.writesMac != y.writesMac || x.writesStatus != y.writesStatus ||
+                x.writesSticky != y.writesSticky || x.writesClip != y.writesClip)
+                return " slot " + std::to_string(slot) + " raw contents";
+        }
+        return {};
+    }
+    static bool pending(const VU &vu) { return vu.pipelinesPending(); }
+    static uint32_t status(const VU &vu) { return vu.m_state.status; }
+    static uint32_t mac(const VU &vu) { return vu.m_state.mac; }
+    static uint32_t clipReg(const VU &vu) { return vu.m_state.clip; }
+    static uint32_t lastMacPc(const VU &vu) { return vu.m_lastMacPc; }
+
+    // Empty when a slot is valid exactly inside the live window head .. head + count - 1.
+    static std::string windowFault(const VU &vu)
+    {
+        for (uint32_t slot = 0; slot < VU::kMaxFlagEntries; ++slot)
+        {
+            const uint32_t offset = (slot + VU::kMaxFlagEntries - vu.m_fastFlagHead) % VU::kMaxFlagEntries;
+            const bool live = offset < vu.m_fastFlagCount;
+            if (vu.m_flagPipeline[slot].valid != live)
+                return " slot " + std::to_string(slot) + (live ? " live but !valid" : " valid outside the live window") +
+                       " (head " + std::to_string(vu.m_fastFlagHead) + ", count " + std::to_string(vu.m_fastFlagCount) + ")";
+        }
+        return {};
+    }
+
+    // Empty when the two interpreters agree on everything a reader of the ring can see.
+    static std::string diff(const VU &a, const VU &b)
+    {
+        std::string why;
+        const auto field = [&why](const char *name, uint64_t x, uint64_t y)
+        {
+            if (x != y)
+                why += std::string(" ") + name + " " + std::to_string(x) + "!=" + std::to_string(y);
+        };
+        field("mac", a.m_state.mac, b.m_state.mac);
+        field("status", a.m_state.status, b.m_state.status);
+        field("clip", a.m_state.clip, b.m_state.clip);
+        field("lastMacPc", a.m_lastMacPc, b.m_lastMacPc);
+        field("q", vu1ops::bitsOf(a.m_state.q), vu1ops::bitsOf(b.m_state.q));
+        field("p", vu1ops::bitsOf(a.m_state.p), vu1ops::bitsOf(b.m_state.p));
+        field("head", a.m_fastFlagHead, b.m_fastFlagHead);
+        field("count", a.m_fastFlagCount, b.m_fastFlagCount);
+        field("nextReady", a.m_nextReadyCycle, b.m_nextReadyCycle);
+        field("fdiv.valid", a.m_fdiv.valid, b.m_fdiv.valid);
+        for (uint32_t i = 0; i < 2u; ++i)
+            field("efu.valid", a.m_efu[i].valid, b.m_efu[i].valid);
+        field("pending", a.pipelinesPending(), b.pipelinesPending());
+        for (uint32_t slot = 0; slot < VU::kMaxFlagEntries; ++slot)
+        {
+            const Entry &x = a.m_flagPipeline[slot];
+            const Entry &y = b.m_flagPipeline[slot];
+            if (x.valid != y.valid)
+            {
+                why += " slot " + std::to_string(slot) + " valid " + std::to_string(x.valid) + "!=" + std::to_string(y.valid);
+                continue;
+            }
+            if (!x.valid)
+                continue;
+            if (x.readyCycle != y.readyCycle || x.issueCycle != y.issueCycle || x.issuePc != y.issuePc ||
+                x.mac != y.mac || x.status != y.status || x.extraSticky != y.extraSticky || x.clip != y.clip ||
+                x.writesMac != y.writesMac || x.writesStatus != y.writesStatus ||
+                x.writesSticky != y.writesSticky || x.writesClip != y.writesClip)
+                why += " slot " + std::to_string(slot) + " fields";
+        }
+        return why;
+    }
+};
+
+namespace
+{
+    // The old drain and the one-step drain side by side; every step is checked on both.
+    struct RingPair
+    {
+        using P = Vu1FlagRingProbe;
+        std::unique_ptr<VU1Interpreter> perEntry = P::make();
+        std::unique_ptr<VU1Interpreter> oneStep = P::make();
+        uint32_t step = 0;
+        uint32_t commits = 0;
+        std::string first;
+        uint32_t failed = 0;
+
+        void check(const char *what)
+        {
+            ++step;
+            std::string why = P::diff(*perEntry, *oneStep);
+            const std::string windowOld = P::windowFault(*perEntry);
+            const std::string windowNew = P::windowFault(*oneStep);
+            if (!windowOld.empty())
+                why += " per-entry ring:" + windowOld;
+            if (!windowNew.empty())
+                why += " one-step ring:" + windowNew;
+            if (!why.empty() && failed++ == 0u)
+                first = "step " + std::to_string(step) + " (" + what + "):" + why;
+        }
+        template <class F>
+        void both(const char *what, F f)
+        {
+            f(*perEntry);
+            f(*oneStep);
+            check(what);
+        }
+        void commit()
+        {
+            ++commits;
+            P::commit<false>(*perEntry);
+            P::commit<true>(*oneStep);
+            check("commit");
+        }
+        void mac(uint32_t mac, uint32_t status, uint32_t extra, uint32_t pc)
+        {
+            both("fmac", [&](VU1Interpreter &vu) { P::pushMac(vu, mac, status, extra, pc); });
+        }
+        void advance(uint32_t n) { both("advance", [&](VU1Interpreter &vu) { P::advance(vu, n); }); }
+        std::string report() const { return std::to_string(failed) + " of " + std::to_string(step) + " steps differ; first: " + first; }
+    };
+
+    // A deterministic generator for the mixed-sequence case.
+    struct Lcg
+    {
+        uint64_t s;
+        uint32_t next()
+        {
+            s = s * 6364136223846793005ull + 1442695040888963407ull;
+            return static_cast<uint32_t>(s >> 33);
+        }
+        uint32_t below(uint32_t n) { return next() % n; }
+    };
+}
+
 void register_vu1_ops_tests()
 {
     MiniTest::Case("VU1Ops", [](TestCase &tc)
@@ -305,6 +501,245 @@ void register_vu1_ops_tests()
             t.IsTrue(fastMode.failed == 0u, fastMode.report("PS2X_VU1_FMAC_ZERO_FAST=1 shape differing"));
             t.IsTrue(slowMode.failed == 0u, slowMode.report("the old path differing"));
             t.IsTrue(knobMode.failed == 0u, knobMode.report("the knob-selected path differing"));
+        });
+
+        using P = Vu1FlagRingProbe;
+
+        tc.Run("flag ring: two FMACs in one cycle land in issue order, the later one's MAC wins", [](TestCase &t)
+        {
+            RingPair r;
+            r.mac(0x0F0u, 0x1u, 0x0u, 0x10u);
+            r.mac(0x00Fu, 0x8u, 0x2u, 0x18u);   // same cycle
+            r.advance(3u);
+            r.commit();                          // issue + 3: neither is ready (4-cycle latency)
+            t.IsTrue(P::count(*r.oneStep) == 2u && P::mac(*r.oneStep) == 0u, "nothing lands before issue + 4");
+            r.advance(1u);
+            r.commit();
+            t.IsTrue(r.failed == 0u, r.report());
+            t.IsTrue(P::count(*r.oneStep) == 0u, "both landed");
+            t.IsTrue(P::mac(*r.oneStep) == 0x00Fu && P::lastMacPc(*r.oneStep) == 0x18u, "MAC and its pc from the later FMAC");
+            // 0x41 after the first; then (0x41 & 0xFF0) | 0x8 | ((0x8 | 0x2) << 6).
+            t.IsTrue(P::status(*r.oneStep) == 0x2C8u, "STATUS: the later current half, both sticky halves ORed");
+        });
+
+        tc.Run("flag ring: an FMAC and an FSSET in one cycle (both orders), a CLIP and an FCSET in one cycle", [](TestCase &t)
+        {
+            RingPair r;
+            r.mac(0x111u, 0x1u, 0x0u, 0x08u);
+            r.advance(4u);
+            r.commit();                                        // STATUS 0x41
+            r.mac(0x123u, 0x2u, 0x0u, 0x20u);
+            r.both("fsset", [](VU1Interpreter &vu) { P::fsset(vu, 0x540u); });   // clears the FMAC's writesStatus
+            r.advance(4u);
+            r.commit();
+            t.IsTrue(P::mac(*r.oneStep) == 0x123u, "the FMAC beside the FSSET still lands its MAC");
+            t.IsTrue(P::status(*r.oneStep) == 0x541u, "but not its STATUS: (0x41 & 0x3F) | 0x540");
+            r.both("fsset", [](VU1Interpreter &vu) { P::fsset(vu, 0x000u); });   // FSSET first, FMAC after: both land
+            r.mac(0x456u, 0x4u, 0x1u, 0x28u);
+            r.advance(4u);
+            r.commit();
+            t.IsTrue(P::status(*r.oneStep) == ((0x001u & 0xFF0u) | 0x4u | (0x5u << 6)), "FSSET then the FMAC's STATUS");
+            r.both("clip", [](VU1Interpreter &vu) { P::clip(vu, 0x15u); });
+            r.both("fcset", [](VU1Interpreter &vu) { P::fcset(vu, 0xABCDEFu); });  // the CLIP entry now writes nothing
+            r.advance(4u);
+            r.commit();
+            t.IsTrue(P::clipReg(*r.oneStep) == 0xABCDEFu, "FCSET wins over the CLIP of its cycle");
+            t.IsTrue(r.failed == 0u, r.report());
+        });
+
+        tc.Run("flag ring: a full ring of 64 lands in one commit, and a full ring in one cycle", [](TestCase &t)
+        {
+            RingPair r;
+            for (uint32_t i = 0; i < 64u; ++i)
+            {
+                r.mac(0x1000u + i, i & 0xFu, (i * 7u) & 0x3Fu, i * 8u);
+                r.advance(1u);
+            }
+            t.IsTrue(P::count(*r.oneStep) == 64u, "64 queued");
+            r.advance(3u);
+            r.commit();
+            t.IsTrue(P::count(*r.oneStep) == 0u && P::mac(*r.oneStep) == 0x103Fu, "all 64 landed, the last MAC");
+            t.IsFalse(P::pending(*r.oneStep), "nothing pending after the drain");
+            for (uint32_t i = 0; i < 64u; ++i)
+                r.mac(0x2000u + i, (i >> 2) & 0xFu, i & 0x3u, i * 8u);   // one cycle, 64 entries
+            r.advance(3u);
+            r.commit();
+            t.IsTrue(P::count(*r.oneStep) == 64u, "a cycle short: none");
+            r.advance(1u);
+            r.commit();
+            t.IsTrue(P::count(*r.oneStep) == 0u, "then all");
+            t.IsTrue(r.failed == 0u, r.report());
+        });
+
+        tc.Run("flag ring: holes -- entries writing nothing or MAC only, partial drains, a head wrapping past 63", [](TestCase &t)
+        {
+            RingPair r;
+            for (uint32_t i = 0; i < 40u; ++i)
+                r.mac(i, i & 0xFu, 0u, i * 8u);
+            r.advance(4u);
+            r.commit();                                           // head 40
+            for (uint32_t i = 0; i < 30u; ++i)                    // slots 40 .. 63, 0 .. 5
+            {
+                switch (i % 5u)
+                {
+                case 0: r.mac(0x300u + i, 0x3u, 0x4u, 0x100u + i); break;
+                case 1: r.both("clip", [](VU1Interpreter &vu) { P::clip(vu, 0x2Au); });
+                        r.both("fcset", [](VU1Interpreter &vu) { P::fcset(vu, 0x777u); }); break;
+                case 2: r.mac(0x400u + i, 0xFu, 0x0u, 0x200u + i);
+                        r.both("fsset", [](VU1Interpreter &vu) { P::fsset(vu, 0xFC0u); }); break;
+                case 3: r.both("fsset", [](VU1Interpreter &vu) { P::fsset(vu, 0x0C0u); }); break;
+                default: r.mac(0x500u + i, 0x0u, 0x3Fu, 0x300u + i); break;
+                }
+                r.advance(1u);
+                if (i % 7u == 6u)
+                    r.commit();                                   // drains the entries issued 4+ cycles ago
+            }
+            t.IsTrue(P::count(*r.oneStep) != 0u, "a partial drain leaves the recent entries");
+            r.advance(4u);
+            r.commit();
+            t.IsTrue(P::count(*r.oneStep) == 0u, "then none");
+            t.IsTrue(r.failed == 0u, r.report());
+        });
+
+        tc.Run("flag ring: a drain stops at the first entry not ready; Q and P land by their own delays", [](TestCase &t)
+        {
+            RingPair r;
+            r.both("delay 10", [](VU1Interpreter &vu) { P::pushDelayed(vu, 10u, 0x0AAu, 0x1u, 0x40u); });
+            r.advance(1u);
+            r.mac(0x0BBu, 0x2u, 0x0u, 0x48u);                     // ready at 5, behind a head ready at 10
+            r.both("delay 0", [](VU1Interpreter &vu) { P::pushDelayed(vu, 0u, 0x0CCu, 0x4u, 0x50u); });
+            r.both("q", [](VU1Interpreter &vu) { P::q(vu, 3.0f, 7u, 0x10u); });
+            r.both("p", [](VU1Interpreter &vu) { P::p(vu, 5.0f, 12u); });
+            r.both("p", [](VU1Interpreter &vu) { P::p(vu, 6.0f, 3u); });
+            r.commit();
+            t.IsTrue(P::count(*r.oneStep) == 3u, "the head (ready at 10) blocks the entries behind it");
+            r.advance(5u);
+            r.commit();                                           // cycle 6: P(3) lands, the ring waits
+            t.IsTrue(P::count(*r.oneStep) == 3u && P::mac(*r.oneStep) == 0u, "still blocked at cycle 6");
+            r.advance(4u);
+            r.commit();                                           // cycle 10: all three, Q
+            t.IsTrue(P::count(*r.oneStep) == 0u && P::mac(*r.oneStep) == 0x0CCu, "all three in issue order at 10");
+            r.advance(3u);
+            r.commit();                                           // cycle 13: the second P
+            t.IsFalse(P::pending(*r.oneStep), "nothing pending");
+            t.IsTrue(r.failed == 0u, r.report());
+        });
+
+        tc.Run("flag ring: after a drain no slot outside the live window is valid (a stale bit is a phantom entry)", [](TestCase &t)
+        {
+            RingPair r;
+            for (uint32_t i = 0; i < 12u; ++i)
+                r.both("delay 0", [i](VU1Interpreter &vu) { P::pushDelayed(vu, 0u, 0x600u + i, 0x1u, i * 8u); });
+            r.commit();                                           // lands all twelve in their issue cycle
+            // The scanners: FSSET/FCSET in the drained entries' issue cycle, and pipelinesPending.
+            r.both("fsset", [](VU1Interpreter &vu) { P::fsset(vu, 0x040u); });
+            r.both("fcset", [](VU1Interpreter &vu) { P::fcset(vu, 0x1u); });
+            t.IsTrue(P::windowFault(*r.oneStep).empty(), "one-step drain:" + P::windowFault(*r.oneStep));
+            t.IsTrue(P::count(*r.oneStep) == 2u, "only the FSSET and FCSET are live");
+            r.advance(4u);
+            r.commit();
+            t.IsFalse(P::pending(*r.oneStep), "an empty ring is not pending work");
+            t.IsTrue(P::windowFault(*r.oneStep).empty(), "one-step drain, empty:" + P::windowFault(*r.oneStep));
+            t.IsTrue(r.failed == 0u, r.report());
+        });
+
+        tc.Run("flag ring: 20,000 mixed steps, the two drains identical after every step", [](TestCase &t)
+        {
+            RingPair r;
+            Lcg g{0x5C2F00Du};
+            for (uint32_t i = 0; i < 20000u; ++i)
+            {
+                const uint32_t roll = g.below(100u);
+                const bool room = P::count(*r.oneStep) < 64u;
+                const uint32_t a = g.next(), b = g.next(), c = g.next();
+                if (roll < 40u && room)
+                    r.mac(a & 0xFFFFu, b & 0xFu, c & 0x3Fu, (a >> 16) & 0x3FF8u);
+                else if (roll < 48u && room)
+                    r.both("fsset", [a](VU1Interpreter &vu) { P::fsset(vu, static_cast<uint16_t>(a & 0xFFFu)); });
+                else if (roll < 53u && room)
+                    r.both("clip", [a](VU1Interpreter &vu) { P::clip(vu, a & 0x3Fu); });
+                else if (roll < 56u && room)
+                    r.both("fcset", [a](VU1Interpreter &vu) { P::fcset(vu, a & 0xFFFFFFu); });
+                else if (roll < 61u && room)
+                    r.both("delayed", [a, b](VU1Interpreter &vu) { P::pushDelayed(vu, b % 13u, a & 0xFFFFu, b & 0xFu, 0x10u); });
+                else if (roll < 64u)
+                    r.both("q", [b](VU1Interpreter &vu) { P::q(vu, static_cast<float>(b & 0xFFu), 7u + (b & 0x7u), b & 0x30u); });
+                else if (roll < 67u && P::efuFree(*r.oneStep))
+                    r.both("p", [b](VU1Interpreter &vu) { P::p(vu, static_cast<float>(b & 0xFFu), 3u + (b % 29u)); });
+                else if (roll < 82u)
+                    r.advance(g.below(8u));
+                else
+                    r.commit();
+            }
+            r.advance(64u);
+            r.commit();
+            t.IsTrue(r.commits > 3000u, "enough commits: " + std::to_string(r.commits));
+            t.IsTrue(r.failed == 0u, r.report());
+        });
+
+        tc.Run("flag ring: PS2X_VU1_COMMIT_BATCH is a Dev Flag, default 0; fastCommit runs the drain the bool run() sets selects", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_COMMIT_BATCH");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
+                         std::string(e->dflt) == "0",
+                     "a Dev Flag, default 0 (R334: the A/B knob defaults to today's behaviour)");
+            if (ps2x::knob("PS2X_VU1_COMMIT_BATCH") == nullptr)
+                t.IsFalse(P::knob(), "unset: the per-entry drain");
+            // The dispatch: with the bool set as run() sets it, the public fastCommit must run that
+            // drain -- the same visible state as the drain run directly after every step, AND the same
+            // raw slot contents, which differ between the two drains (so the wrong one is caught).
+            for (const bool batch : {false, true})
+            {
+                P::setBatch(batch);
+                auto viaFastCommit = P::make();
+                auto direct = P::make();
+                Lcg g{0xC2D15Au + batch};
+                uint32_t steps = 0, visible = 0, raw = 0, commits = 0;
+                std::string first;
+                for (uint32_t i = 0; i < 2000u; ++i)
+                {
+                    const uint32_t roll = g.below(10u);
+                    const uint32_t a = g.next();
+                    if (roll < 5u && P::count(*direct) < 64u)
+                    {
+                        P::pushMac(*viaFastCommit, a & 0xFFFFu, a & 0xFu, (a >> 8) & 0x3Fu, (a >> 16) & 0x3FF8u);
+                        P::pushMac(*direct, a & 0xFFFFu, a & 0xFu, (a >> 8) & 0x3Fu, (a >> 16) & 0x3FF8u);
+                    }
+                    else if (roll < 6u && P::count(*direct) < 64u)
+                    {
+                        P::fsset(*viaFastCommit, static_cast<uint16_t>(a & 0xFFFu));
+                        P::fsset(*direct, static_cast<uint16_t>(a & 0xFFFu));
+                    }
+                    else if (roll < 8u)
+                    {
+                        P::advance(*viaFastCommit, a & 0x3u);
+                        P::advance(*direct, a & 0x3u);
+                    }
+                    else
+                    {
+                        ++commits;
+                        P::commitKnob(*viaFastCommit);
+                        if (batch)
+                            P::commit<true>(*direct);
+                        else
+                            P::commit<false>(*direct);
+                    }
+                    ++steps;
+                    const std::string why = P::diff(*direct, *viaFastCommit);
+                    const std::string rawWhy = P::rawDiff(*direct, *viaFastCommit);
+                    visible += why.empty() ? 0u : 1u;
+                    raw += rawWhy.empty() ? 0u : 1u;
+                    if ((!why.empty() || !rawWhy.empty()) && first.empty())
+                        first = "step " + std::to_string(steps) + ":" + why + rawWhy;
+                }
+                const std::string name = batch ? "set 1: fastCommit against the one-step drain"
+                                               : "set 0: fastCommit against the per-entry drain";
+                t.IsTrue(commits > 100u, name + ", commits " + std::to_string(commits));
+                t.IsTrue(visible == 0u && raw == 0u, name + ": " + std::to_string(visible) + " visible and " +
+                                                         std::to_string(raw) + " raw differences of " +
+                                                         std::to_string(steps) + " steps; first " + first);
+            }
+            P::setBatch(P::knob());   // back to what run() would set
         });
     });
 }
