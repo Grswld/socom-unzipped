@@ -7,9 +7,9 @@ import {
   MoverSim, overall, roundPath, Traversal, Walker,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
-  type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type Team,
+  type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
 } from '../../viewer/src/sim';
-import { bodyVolumes, rayBody, BODY_REACH, BODY_TOP, type V3 } from '../../viewer/src/net/hitVolumes';
+import { bodyVolumes, rayBody, stanceVolumes, BODY_REACH, BODY_TOP, type StanceVolumes, type V3 } from '../../viewer/src/net/hitVolumes';
 import { deathClip } from '../../viewer/src/net/deaths';
 
 /**
@@ -140,7 +140,14 @@ export class Room {
   /** The rows changed (a join, a leave, a rename): one score event goes out at the next tick. */
   private scoreDirty = false;
 
-  constructor(readonly map: SimMap, readonly clips: SimClips | null, opts: Partial<RoomOptions> = {}) {
+  /**
+   * The hit volumes (research 91 section 1.3): the SEAL skeleton's capsules at each posture's idle, built once here; one
+   * skeleton serves both teams (the Terrorist models carry the same bones). Null: the placeholder capsules.
+   */
+  private readonly volumes: StanceVolumes | null;
+
+  constructor(readonly map: SimMap, readonly clips: SimClips | null, opts: Partial<RoomOptions> = {}, body: SimSkeleton | null = null) {
+    this.volumes = body ? stanceVolumes(body) : null;
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
     this.opts.idleKickMs = Math.min(IDLE_KICK_MAX_MS, Math.max(IDLE_KICK_MIN_MS, this.opts.idleKickMs));
     this.polys = groundPolygons(map.ground);
@@ -390,7 +397,7 @@ export class Room {
       if (!past || !past.alive) continue;
       // Skip a body the ray passes nowhere near (the cylinder round its feet).
       if (!nearRay(from, dir, reach, past.feet)) continue;
-      const hit = rayBody(from, dir, reach, bodyVolumes(past.feet, past.yaw, past.posture));
+      const hit = rayBody(from, dir, reach, bodyVolumes(past.feet, past.yaw, past.posture, this.volumes));
       if (!hit) continue;
       const point: V3 = [from[0] + dir[0] * hit.t, from[1] + dir[1] * hit.t, from[2] + dir[2] * hit.t];
       // A body stops the round (PENETRATION 0: flesh is not in the materials' table; research 91 section 1.3).

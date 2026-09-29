@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AssetSource } from '@s2u/archive';
-import { loadSimClips, loadSimMap, TICK_HZ, type ClientEvent, type SimClips } from '../../viewer/src/sim';
+import { loadSimClips, loadSimMap, loadSimSkeleton, TICK_HZ, type ClientEvent, type SimClips } from '../../viewer/src/sim';
 import { Room, type RoomOptions } from './room';
 
 /**
@@ -105,11 +105,14 @@ export class MatchServer {
     if (have) return Promise.resolve(have);
     const pending = this.loading.get(key);
     if (pending) return pending;
-    const load = loadSimMap(this.opts.source, `RUN/${key}.ZDB`).then((map) => {
-      const room = new Room(map, this.clips, this.opts.room);
+    const path = `RUN/${key}.ZDB`;
+    // The SEAL skeleton for the hit volumes: without it the room keeps the placeholder capsules.
+    const body = loadSimSkeleton(this.opts.source, path).catch(() => null);
+    const load = Promise.all([loadSimMap(this.opts.source, path), body]).then(([map, skeleton]) => {
+      const room = new Room(map, this.clips, this.opts.room, skeleton);
       this.rooms.set(key, room);
       this.loading.delete(key);
-      this.opts.log({ level: 'info', msg: 'room loaded', map: key, name: map.name, slots: map.slots.length, respawns: map.respawns.length, notes: map.notes });
+      this.opts.log({ level: 'info', msg: 'room loaded', map: key, name: map.name, hitVolumes: skeleton ? skeleton.model : 'placeholder', slots: map.slots.length, respawns: map.respawns.length, notes: map.notes });
       return room;
     });
     load.catch(() => this.loading.delete(key));
