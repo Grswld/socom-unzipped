@@ -164,7 +164,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_VU1_DUMP_AFTER` | Float | `0` | With VU1_DUMP: arm after this many seconds. |
 | `PS2X_VU1_FAST` | Int | `1` | 0 selects the cycle-exact VU1 scheduler. |
 | `PS2X_VU1_FMAC_CHECK` | Flag | `0` | Cross-check the SIMD MAC-flag classifier against the long double path. |
-| `PS2X_VU1_FMAC_ZERO_FAST` | Flag | `0` | S17 F C1 A/B: 1 lets exact-zero product-sum lanes skip the slow classifier (bit-exact). |
+| `PS2X_VU1_FMAC_ZERO_FAST` | Flag | `1` | C1 adopted (R337): 1 = exact-zero product-sum lanes take the fast path (bit-exact); 0 = the old slow path. |
 | `PS2X_VU1_GEN` | Int | `1` | 0 disables the generated VU1 programs. |
 | `PS2X_VU1_HOST_DRAW` | Int | `0` | 1 draws the native dispatcher triangles in host space instead of kicking GIF packets. |
 | `PS2X_VU1_NATIVE` | Int | `1` | 0 reverts the hand-written native VU1 programs to the generated/interpreted path. |
