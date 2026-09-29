@@ -180,6 +180,8 @@ export class Play {
   private drawn: PerspectiveCamera | null = null;
   /** WEAPON: the rifle's raise (`./weaponRaise`), its layers over the clips (`./weaponPose`), the hand's node. */
   private readonly raise = new WeaponRaise();
+  /** The raise's weight this frame, for the animator (`MoverSnapshot.aimWeight`). */
+  private aimWeight = 0;
   private weaponPose: WeaponPose | null = null;
   private weaponInput: () => WeaponInput = () => ({ trigger: false, aiming: false });
   private hand: Group | null = null;
@@ -296,8 +298,10 @@ export class Play {
       const w = this.raise.frame(dt, this.weaponInput());
       if (this.weaponPose) this.weaponPose.fireWeight = w;
       this.weaponPose?.step(dt);
+      // MOTION: the same weight scales the aim's twist and lets the head look run when 0 (FUN_0057a330 439152-439193).
+      this.aimWeight = w;
     } else this.weaponPose?.stopReload();
-    this.bodyFrame(dt, snap);
+    this.bodyFrame(dt, snap && { ...snap, aimWeight: this.aimWeight });
     // The rifle rides the clips' `rifle` node: in W2.1's bind pose, never played, the hand holds nothing.
     if (this.weapon) this.weapon.visible = this.last !== null && this.animator !== null && !this.stowed;
     if (snap) this.moverEvents(snap, walk.mover?.() ?? null);
