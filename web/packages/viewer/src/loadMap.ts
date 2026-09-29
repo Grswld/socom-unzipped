@@ -166,6 +166,8 @@ export interface LoadedMap {
    * Null, with a diagnostic, when it will not decode; absent on a map built by hand.
    */
   body?: LoadedBody | null;
+  /** Web sprint 3 M5: the map's first Terrorist type (`chartype.rdr`), for the other players. Unplaced (`at` null). */
+  terrorist?: LoadedBody | null;
   /**
    * The held weapon (W2.4, `./shot`): the M4A1 SD (W2.R4) out of `COMMON/WEAP_GEO.ZED` and `WEAP_MDL.ZED`, its high
    * LOD's packets in the weapon's own frame (x along the barrel, y up; web/docs/research/79 §2) and its named nodes --
@@ -328,7 +330,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   }
 
   // W2.1: the player's body, decoded here so its textures join the ones decoded below (`./body`).
-  const body = loadBody(bytes, toc, await characterTableFor(source, path), (line) => notes.add(line));
+  const characterSource = await characterTableFor(source, path);
+  const body = loadBody(bytes, toc, characterSource, (line) => notes.add(line));
+  // Web sprint 3 M5: the map's first Terrorist, only once the SEAL loaded; a failure is a note.
+  const terrorist = body ? loadBody(bytes, toc, characterSource, (line) => notes.add(line), 'terrorists') : null;
   // W2.4: the held weapon, decoded here with the map so its textures come out of the same asset-library chain.
   const weapon = heldWeapon(bytes, toc, notes, DEFAULT_WEAPON);
   const sidearm = heldWeapon(bytes, toc, notes, DEFAULT_SIDEARM);
@@ -344,7 +349,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
   const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...(sidearm?.parts ?? []), ...grenade.models.flatMap((m) => m.parts)]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
-    .concat(body ? bodyTextureNames(body) : []);
+    .concat(body ? bodyTextureNames(body) : [])
+    .concat(terrorist ? bodyTextureNames(terrorist) : []);
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
   const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
   // The reflection materials some draw names (the env pass), their textures decoded with the rest.
@@ -465,6 +471,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     collision: placement.collision,
     slots,
     body: body && placeBody(body, slots),
+    terrorist,
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     ...(weapon ? { weapon } : {}),
@@ -496,6 +503,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   for (const levels of Object.values(map.textureMips ?? {})) for (const rgba of levels) out.push(rgba.data.buffer);
   if (map.body) out.push(...bodyTransferables(map.body));
+  if (map.terrorist) out.push(...bodyTransferables(map.terrorist));
   for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy, map.bulletMark]) if (rgba) out.push(rgba.data.buffer);
   for (const rgba of Object.values(map.hud ?? {})) out.push(rgba.data.buffer);
   if (map.grenade) out.push(...grenadeTransferables(map.grenade));

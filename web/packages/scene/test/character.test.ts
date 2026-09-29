@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseRdr, parseZdb, Zar, zdbMember, type RdrNode } from '@s2u/archive';
 import { interpretScaledChain, modelNodes, readMeshLibrary, skinSubMesh, walkModel } from '@s2u/mesh';
-import { gearMatrix, multiply, parseCharacterTable, playerCharacter, readSkeleton, transformPoint } from '../src';
+import { gearMatrix, multiply, parseCharacterTable, playerCharacter, readSkeleton, teamCharacter, transformPoint } from '../src';
 import { fixture } from '../../archive/test/fixtures';
 
 /**
@@ -56,6 +56,16 @@ describe('parseCharacterTable (research 78 §5)', () => {
       'terrorists', [['character', ['mp2_terror1'], 'name', ['Terrorist1']]]]];
     expect(playerCharacter(chartype)).toBe('mp2_seal1');
     expect(playerCharacter([['terrorists', []]])).toBeNull();
+  });
+
+  it('teamCharacter: the index-th entry that names a character, of either list', () => {
+    const chartype: RdrNode = [['navyseals', [['character', ['mp2_seal1']], ['character', ['mp2_seal2']]],
+      'terrorists', [['name', ['skip']], ['character', ['mp2_terror1']], ['character', ['mp2_terror2']]]]];
+    expect(teamCharacter(chartype, 'terrorists')).toBe('mp2_terror1');
+    expect(teamCharacter(chartype, 'terrorists', 1)).toBe('mp2_terror2');
+    expect(teamCharacter(chartype, 'terrorists', 2)).toBeNull();
+    expect(teamCharacter(chartype, 'navyseals', 1)).toBe('mp2_seal2');
+    expect(teamCharacter([['navyseals', []]], 'terrorists')).toBeNull();
   });
 });
 

@@ -139,6 +139,7 @@ export class Room {
     });
     if (m.role === 'player') this.addPlayer(id, m.team!);
     this.broadcastChanges(joined.changes, id);
+    this.send(id, this.scoreEvent());                          // the rows and the clock, for the joiner's HUD
     return true;
   }
 
