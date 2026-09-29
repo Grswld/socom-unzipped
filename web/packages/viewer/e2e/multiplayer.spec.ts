@@ -7,7 +7,7 @@ import type {} from '../src/hook';
 
 /**
  * The match in two browsers (web sprint 3, M4/M5; the bar's item 6 "new multi-client e2e"): a real match server
- * (`@s2u/server`, from the fixtures' disc) and two pages on Frostfire with `?redotcom&mp`. Each page joins, is stood
+ * (`@s2u/server`, from the fixtures' disc) and two pages on Frostfire with `?redotcom&fly&mp`. Each page joins, is stood
  * on its side's spawn by the server, and draws the other; a page walking is seen walking on the other, and its own
  * prediction takes no correction.
  */
@@ -56,7 +56,7 @@ async function joinPage(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 960, height: 600 } });
   await context.addInitScript((n) => { localStorage.setItem('s2u.viewer.panelOpen', '1'); localStorage.setItem('s2u.mp.name', n); }, name);
   const page = await context.newPage();
-  await page.goto(`/?redotcom&mp&server=ws://127.0.0.1:${MP_PORT}/ws&map=MP2`);
+  await page.goto(`/?redotcom&fly&mp&server=ws://127.0.0.1:${MP_PORT}/ws&map=MP2`);
   await expect.poll(() => page.evaluate(() => window.__viewer?.net?.()?.feet ?? null), { timeout: 120_000 }).not.toBeNull();
   return page;
 }

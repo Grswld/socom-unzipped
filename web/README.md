@@ -129,6 +129,8 @@ and, once a pad is connected, the pad's layout for that mode under them.
 `?map=MP2&redotcom`) and the page also has walk mode, the SEAL's body, the rifle, the ammo box and the touch stance and
 fire buttons. Without it none of that is rendered, bound or answered: no `G`, no Start, no Fly / Walk switch, no walk in
 the Controls popover, and the debug hook's `setMode('walk')` returns false. (`viewer/src/features.ts`, `playEnabled`.)
+With it the page **opens on foot** (owner, 2026-09-29): the first map starts walking once its body and clips are ready;
+add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
 **Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and

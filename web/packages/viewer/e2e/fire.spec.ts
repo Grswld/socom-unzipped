@@ -33,7 +33,7 @@ test('walk mode on Frostfire: one round marks the container west of spawn A and 
     }
   });
 
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

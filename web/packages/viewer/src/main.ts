@@ -90,6 +90,20 @@ if (!canvas) throw new Error('the page has no #view canvas');
  * Start, `R` or the hook's walk: the page is the fly camera alone.
  */
 const PLAY = playEnabled(globalThis.location?.search ?? '');
+/** `?redotcom` opens on foot (owner, 2026-09-29): the first map's walk starts once it is ready; `&fly` keeps the free
+ *  camera (the tests that measure the fly view ask for it). Later maps keep whichever mode the player is in. */
+const START_WALK = PLAY && !new URLSearchParams(globalThis.location?.search ?? '').has('fly');
+let startedWalk = false;
+function startInWalk(mapName: string): void {
+  if (!START_WALK || startedWalk) return;
+  let tries = 0;
+  const attempt = (): void => {
+    if (startedWalk || loaded?.name !== mapName) return;     // entered already, or another map was picked
+    if (walk.mode() === 'walk' || walk.setMode('walk')) { startedWalk = true; return; }
+    if (++tries < 300) requestAnimationFrame(attempt);        // the body and clips may still be on their way (~5 s)
+  };
+  attempt();
+}
 if (!PLAY) removePlayUi();
 const ui = new Ui();
 const scene = new Scene();
@@ -1229,7 +1243,10 @@ function show(map: LoadedMap): void {
   play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
   kit.reset();
   warmedAt = {};
-  void warmWalk?.().catch(() => {}).then(() => { warmedAt['walk'] = performance.now(); });   // what entering the walk draws first, compiled now
+  void warmWalk?.().catch(() => {}).then(() => {   // what entering the walk draws first, compiled now
+    warmedAt['walk'] = performance.now();
+    startInWalk(map.name);
+  });
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
     built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);

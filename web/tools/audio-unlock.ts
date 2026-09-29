@@ -28,7 +28,7 @@ try {
     for (const when of ['at scene ready', 'banks in + 2 s'] as const) {
       const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
       await page.addInitScript(REC);
-      await page.goto(`${BASE}?map=${map}&redotcom`);
+      await page.goto(`${BASE}?map=${map}&redotcom&fly`);
       await page.waitForFunction(() => document.getElementById('loading')?.hidden === true && (window.__viewer?.stats().collisionPolys ?? 0) > 0, undefined, { timeout: 180_000 });
       if (when !== 'at scene ready') {
         await page.waitForFunction(() => window.__viewer.audio().banks.length > 0, undefined, { timeout: 60_000 }).catch(() => undefined);

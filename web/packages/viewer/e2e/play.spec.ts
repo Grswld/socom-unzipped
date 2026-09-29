@@ -42,7 +42,7 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
     }
   });
 
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

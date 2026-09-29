@@ -27,7 +27,7 @@ test('walk mode on Frostfire: the yellow arc shows while the throw is held and i
     if (m.type() === 'error' || (m.type() === 'warning' && /GL_INVALID|WebGPU.*(error|fail)/i.test(m.text()))) problems.push(`console: ${m.text()}`);
   });
 
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

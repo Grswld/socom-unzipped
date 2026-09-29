@@ -5,7 +5,7 @@ import type {} from '../src/hook';
 /**
  * Walk mode on a phone (round 3): with emulated touch at 812x375 (landscape, the play mode) and 375x812 (portrait, where
  * the page asks for a turn), the touch layout's buttons hold the lanes the pad's buttons hold, and the page does what it does
- * for a pad. The page is loaded with `?redotcom`; the buttons are real touches, sent through the browser's own input
+ * for a pad. The page is loaded with `?redotcom&fly`; the buttons are real touches, sent through the browser's own input
  * (`Input.dispatchTouchEvent`), so a hold is a hold.
  */
 
@@ -17,7 +17,7 @@ const PORTRAIT = { width: 375, height: 812 };
 
 async function phone(page: Page, size: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(size);
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom&fly');
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 }
@@ -255,7 +255,7 @@ test.describe('walk mode on a phone, portrait', () => {
   });
 });
 
-test.describe('without ?redotcom', () => {
+test.describe('without ?redotcom&fly', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: LANDSCAPE });
 
   test('the phone has no walk layout, no hint, and the fly touch UI as it was', async ({ page }) => {

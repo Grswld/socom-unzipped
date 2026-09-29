@@ -23,7 +23,7 @@ test('the ladder, the climb and the peek on Frostfire (web research 86)', async 
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
-  await page.goto('/?map=MP2&redotcom');
+  await page.goto('/?map=MP2&redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');

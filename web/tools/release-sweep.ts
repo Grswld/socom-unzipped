@@ -163,7 +163,7 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
     if (backend === 'webgl2') await p.addInitScript(HIDE_GPU);
     await p.addInitScript(INIT);
     const t0 = Date.now();
-    await p.goto(`${BASE}?map=${map}&redotcom`);
+    await p.goto(`${BASE}?map=${map}&redotcom&fly`);
     await p.waitForFunction(() => (window.__viewer?.stats().triangles ?? 0) > 0 && (window.__viewer?.stats().collisionPolys ?? 0) > 0, undefined, { timeout: 180_000 });
     r.loadWallMs = Date.now() - t0;
     await p.waitForFunction(() => document.getElementById('loading')?.hidden === true, undefined, { timeout: 180_000 });

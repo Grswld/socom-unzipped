@@ -5,7 +5,7 @@ import type {} from '../src/hook';
 /**
  * The page's chrome (owner, 2026-09-28): the settings panel starts folded and the cog beside GitHub opens it; the bar's
  * tabs are one size; the Fly / Walk switch is the Modern / PS2 switch's own markup; the Controls popover names the
- * current mode's controls; and the play (walk, the SEAL, the touch stance and fire) exists only behind `?redotcom`.
+ * current mode's controls; and the play (walk, the SEAL, the touch stance and fire) exists only behind `?redotcom&fly`.
  *
  * A clean context: none of the specs' remembered "panel open" (`playwright.config.ts`), so the first-visit default shows.
  */
@@ -97,9 +97,9 @@ test('without ?redotcom there is no walking anywhere on the page', async ({ page
   expect(text).not.toMatch(/\b(walk\w*|stance|crouch\w*|prone|redotcom)\b/i);
 });
 
-test.describe('with ?redotcom', () => {
+test.describe('with ?redotcom&fly', () => {
   test('the Fly / Walk switch is the Modern / PS2 switch\'s own markup, and the two look alike', async ({ page }) => {
-    await loaded(page, '?redotcom');
+    await loaded(page, '?redotcom&fly');
     await page.locator('#panel-toggle').click();
     const look = page.locator('#look'), mode = page.locator('#mode');
     await expect(mode).toBeVisible();
@@ -119,7 +119,7 @@ test.describe('with ?redotcom', () => {
   });
 
   test('the Controls popover opens on hover and on click, lists the mode you are in, and Esc closes it', async ({ page }) => {
-    await loaded(page, '?redotcom');
+    await loaded(page, '?redotcom&fly');
     const tab = page.locator('#controls-toggle'), pop = page.locator('#controls'), hint = page.locator('#keys-list');
     await expect(pop).toBeHidden();
     await expect(tab).toHaveAttribute('aria-haspopup', 'dialog');
@@ -150,7 +150,7 @@ test.describe('with ?redotcom', () => {
   });
 
   test('a key pressed with the Controls tab focused still reaches the game, and the popover took no focus', async ({ page }) => {
-    await loaded(page, '?redotcom');
+    await loaded(page, '?redotcom&fly');
     await page.locator('#controls-toggle').hover();
     await expect(page.locator('#controls')).toBeVisible();
     expect(await page.evaluate(() => document.activeElement === document.body || document.activeElement?.id !== 'controls')).toBe(true);
@@ -161,7 +161,7 @@ test.describe('with ?redotcom', () => {
   });
 
   test('the Sound and Mouse look sections drive the audio and the look, and are remembered', async ({ page }) => {
-    await loaded(page, '?redotcom');
+    await loaded(page, '?redotcom&fly');
     await page.locator('#panel-toggle').click();
     await expect(page.locator('#sound-section')).toBeVisible();
     await expect(page.locator('#look-section')).toBeVisible();
@@ -193,7 +193,7 @@ test.describe('with ?redotcom', () => {
   });
 
   test('while walking the fullscreen button leaves the bottom-right corner of the HUD (the range readout) for the left edge', async ({ page }) => {
-    await loaded(page, '?redotcom');
+    await loaded(page, '?redotcom&fly');
     const flying = (await page.locator('#fullscreen').boundingBox())!;
     const size = page.viewportSize()!;
     expect(flying.x).toBeGreaterThan(size.width / 2);

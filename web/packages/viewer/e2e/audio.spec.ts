@@ -9,7 +9,7 @@ import type {} from '../src/hook';
  * what was rendered and started, by name.
  */
 test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps', async ({ page }) => {
-  await page.goto('/?map=MP2&redotcom');
+  await page.goto('/?map=MP2&redotcom&fly');
   await page.waitForFunction(() => window.__viewer?.stats().map === 'FROSTFIRE' && window.__viewer.audio().banks.length >= 3);
   const loaded = await page.evaluate(() => window.__viewer.audio());
   expect(loaded.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC', 'HUDUI']);

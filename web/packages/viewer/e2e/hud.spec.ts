@@ -108,7 +108,7 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
     }
   });
 
-  await page.goto('/?redotcom');   // walk mode is behind the play flag (`./features`)
+  await page.goto('/?redotcom&fly');   // walk mode is behind the play flag (`./features`)
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   // The panel is folded away by default: the select is set as a change from it would be.
@@ -250,7 +250,7 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
 });
 
 test('the compass on Vigilance pins Charlie where the console round-start frame does, from spawn A facing north', async ({ page }) => {
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').evaluate((el, v) => { (el as HTMLSelectElement).value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, 'RUN/MP51.ZDB');

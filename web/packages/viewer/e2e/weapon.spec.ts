@@ -26,7 +26,7 @@ test('the rifle in the hands, raised to fire, from the muzzle, kicked, reloaded;
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
 
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -121,7 +121,7 @@ test('the owner\'s rulings of 2026-09-29: keys 1-4, no scope on the Mark 23, the
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
   await page.setViewportSize({ width: 1280, height: 720 });     // the modern presentation at 16:9
-  await page.goto('/?map=MP2&redotcom');
+  await page.goto('/?map=MP2&redotcom&fly');
   const status = page.locator('#status');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
