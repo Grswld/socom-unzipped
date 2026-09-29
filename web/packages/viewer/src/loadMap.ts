@@ -129,6 +129,11 @@ export interface LoadedMap {
   detail: Record<string, TexDetail>;
   metersPerUnit: number;
   /**
+   * ACCURACY (research 84 section 14): the world root's `NightMission` flag (the engine's `CWorld+0x5dc`, 0x318da0:
+   * zoom in from first person steps into the night vision) and its `LensFX_NVG` colour (`CWorld+0x5e0`, RGBA).
+   */
+  night?: { mission: boolean; lens: [number, number, number, number] | null };
+  /**
    * `MP*.ZED/grid_params`, the engine's grid (`parseGridParams`; the engine's default 640 and 8 x 8 when the
    * key is absent): the cells every draw's `cells` index, walked by the engine order (W1.2).
    */
@@ -447,6 +452,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     textureFlags,
     detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
+    night: nightOf(bytes, toc, stem, notes),
     grid,
     lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
@@ -707,6 +713,20 @@ function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
     notes.add(`MetersPerUnit: ${say(e)}`);
   }
   return DEFAULT_METERS_PER_UNIT;
+}
+
+/** `MP*.ZED/NightMission` and `LensFX_NVG` (a u32 flag and four f32s; `FUN_00318da0`). */
+function nightOf(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): { mission: boolean; lens: [number, number, number, number] | null } {
+  try {
+    const zed = Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`));
+    const flag = zed.find('NightMission'), lens = zed.find('LensFX_NVG');
+    const mission = !!flag && flag.size >= 4 && new Reader(zed.data(flag)).u32(0) !== 0;
+    const r = lens && lens.size >= 16 ? new Reader(zed.data(lens)) : null;
+    return { mission, lens: r ? [r.f32(0), r.f32(4), r.f32(8), r.f32(12)] : null };
+  } catch (e) {
+    notes.add(`NightMission: ${say(e)}`);
+    return { mission: false, lens: null };
+  }
 }
 
 /** `MP*.ZED/grid_params` (`parseGridParams`, which takes the engine's default grid when the key is absent). */

@@ -221,8 +221,8 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
     expect(seen.camera!.pitch).toBeCloseTo(INIT_PITCH, 6);
     expect(seen.camera!.eye[0]).toBeCloseTo(fx, 3);
     if (stance === 'crouch') {
-      expect(seen.camera!.eye[1] - fy, name).toBeGreaterThan(up - 1.5);
-      expect(seen.camera!.eye[1] - fy, name).toBeLessThan(up + 1.5);
+      expect(seen.camera!.eye[1] - fy, name).toBeGreaterThan(up - 2.5);                                         // the three crouch idles' roots, drawn at random
+      expect(seen.camera!.eye[1] - fy, name).toBeLessThan(up + 2.5);
       expect(fz - seen.camera!.eye[2], name).toBeCloseTo(BEHIND_REST, 0);
     } else {
       expect(seen.camera!.eye[1] - fy, name).toBeCloseTo(up, 1);          // the live idle root breathes by hundredths

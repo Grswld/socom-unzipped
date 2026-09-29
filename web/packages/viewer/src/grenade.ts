@@ -5,7 +5,8 @@ import {
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
-  actorToWorldDir, actorToWorldPoint, explosionDamage, GRENADE_BLAST, gridCast, heldPower, HE, launchGrenade, M67,
+  actorToWorldDir, actorToWorldPoint, AN_M8, CLAYMORE, claymoreCone, explosionDamage, flashLevel, GRENADE_BLAST, gridCast, heldPower, HE,
+  launchGrenade, M67, MARK141,
   materialAnim, maxThrowDistance, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
   throwVelocity,
   type Grenade, type GrenadeEvent, type Grid, type HullCast, type ThrowAnim, type ThrowLaunch, type ThrowStance,
@@ -29,7 +30,7 @@ import type { PlaySnapshot, WalkView } from './walk';
  *   the power is how long it was held: 0.54 at a quarter second, 0.95 at one); let go, `GetThrowAnim` picks the clip
  *   (a toss under power 0.6 with the aim under sin 0.3), played on the body (`./throwPose`), and at its release phase
  *   the grenade leaves the posed right hand's (2, 0, 0) (`GrenadeSource.handPoint`) at `throwVelocity`'s velocity, its
- *   fuse (`Timer1` 3 s) starting then. The HE goes off where it lands (`HandleImpact`).
+ *   fuse (`Timer1` 3 s) starting then. The smoke pours out from 3 s to 40 s; the flash whites the screen out by the game's rule.
  * - **The flight.** `stepGrenade` at 60 Hz (`FLIGHT_TICK`), over `gridCast` of the walk's hull with the map's
  *   `DefaultMaterial`: gravity 98, the bounce at each material's ELASTICITY_COEFF, the rest under 5 units/s, the
  *   explosion at 3 s where it lies, the removal at 3.1.
@@ -70,16 +71,49 @@ export const EXPLOSION_READING = {
 export type GrenadePhase = 'holstered' | 'ready' | 'holding' | 'throwing';
 
 /** The throwables the viewer carries: `mp_seal1`'s kit (`character.rdr`: M4A1, Mark 23, M67, HE, Double Ammo Load). */
-export type GrenadeItem = 'M67' | 'HE';
-export const THROWABLES: Readonly<Record<GrenadeItem, ThrowableRecord>> = { M67, HE };
+export type GrenadeItem = 'M67' | 'HE' | 'AN-M8' | 'Mark141' | 'Claymore';
+/**
+ * The throwables the viewer carries: `mp_seal1`'s M67 and HE, the AN-M8 smoke of `mp_seal2`/`mp_seal4`, and the
+ * Mark141 flashbang, which no MP default kit carries (the loadout screen's to give).
+ */
+export const THROWABLES: Readonly<Record<GrenadeItem, ThrowableRecord>> = { M67, HE, 'AN-M8': AN_M8, Mark141: MARK141, Claymore: CLAYMORE };
 /** The kit's items in slot order as the viewer holds them (the Mark 23, slot 1, is not in the viewer). */
-export const KIT_ITEMS: readonly ('rifle' | GrenadeItem)[] = ['rifle', 'M67', 'HE'];
+export const KIT_ITEMS: readonly ('rifle' | GrenadeItem)[] = ['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore'];
+
+/** A placed item rather than a thrown one: `Muzzle_Velocity` 0 (the claymore; the C4 is no MP SEAL kit's). */
+export const isPlaced = (r: ThrowableRecord): boolean => r.muzzleVelocity === 0;
+/**
+ * How far below the hand the placement looks for the ground (`FUN_005c2430` walks the vertical probe's hits under the
+ * right hand's point and takes the highest at or below it) [placeholder: the probe's reach is not read].
+ */
+export const PLACE_REACH = 60;
+
+/**
+ * The smoke the AN-M8 pours out from `Timer1` to `Timer2`, as `smoke_stream` (`CZANIM.ZAR`, called by `smoke_grenade`)
+ * sets it out [reading of its two `large_smoke` sources, command 0x1b]: puffs of `cloudpuff01.tif` thrown +-20 across
+ * and 0-17 up, 3-4.5 across (x10 here, as the game's metres), living 5-7 s, grey 0.6 and 0.4, the pair running 20 s
+ * twice over -- the 40 s of `Timer2`. The rate (one a source every 0.4 s) is doubled to fill the screen the game's own
+ * sort order builds [placeholder].
+ */
+export const SMOKE_PLACEHOLDER = { every: 0.2, rise: [0, 17] as const, spread: 20, size: [30, 45] as const, grow: 1.6, life: [5, 7] as const, grey: [0.6, 0.4] as const };
+/**
+ * PLACEHOLDER (named): the smoke screen is drawn here even when the effects ran `smoke_grenade`, whose `large_smoke`
+ * puffs do not yet read as a screen in the effects' particles; false once they do (the EFFECTS workstream's call).
+ */
+export const SMOKE_ALWAYS_PLACEHOLDER = true;
+
+/** What a throwable does when it goes off: the frag's blast, the smoke's screen, the flash's white-out. */
+export type Detonation = 'blast' | 'smoke' | 'flash';
+export const detonationOf = (r: ThrowableRecord): Detonation =>
+  r.explosionRadius === 0 ? 'smoke' : r.explosionDamage === 0 ? 'flash' : 'blast';
 /**
  * PLACEHOLDER (named): the item L2 swaps to. The game's L2 is `SwapWeapon2` (`controller.rdr`'s Default), which
  * selects the kit slot held at the controller's `+0x228` -- slot 1, the sidearm, by default (`CSealCtrl`'s constructor
  * 0x598280), any slot the player assigns in the inventory (`FUN_0021bda0`); the viewer has no sidearm.
  */
 export const L2_SLOT_PLACEHOLDER: GrenadeItem = 'M67';
+/** The peek value past which a throw is the lean's toss [reading: the game tests the lean clip, not the value]. */
+export const PEEK_THROW = 0.5;
 /** The game releases from the hand bone's (2, 0, 0) (`CZKit_TickExplosives`, `FUN_002869d0` with 0x66b6d0). */
 export const RELEASE_POINT: V3 = [2, 0, 0];
 
@@ -92,6 +126,8 @@ export interface GrenadeSource {
   handPoint?(part: 'rhand' | 'lhand', p: V3): V3 | null;
   /** The held item's node under the right hand (`Play.heldNode`): the grenade rides it while it is up. */
   heldNode?(): Group | null;
+  /** The peek (`DAT_004161c0`, -1 left .. 1 right; the traversal's): past half a side, the body is in state 3. */
+  peek?(): number;
 }
 
 /** A throw as it left the hand: for the hook, the audio and the tests. */
@@ -130,7 +166,20 @@ export interface ExplosionInfo {
   /** `explosionDamage` at the player's feet, 0 beyond the radius (nothing takes it). */
   damageToPlayer: number;
   distanceToPlayer: number | null;
+  /** The throwable, and what it does going off. */
+  item: string;
+  detonation: Detonation;
+  /**
+   * The flashbang's white-out level for the player (`flashLevel`: 1-3, the map's `blindplayer0<level>`), from the
+   * distance and how squarely the SEAL faces it; null for the others, out of reach, or no SEAL on the ground.
+   */
+  flash: 1 | 2 | 3 | null;
+  /** Whether the game's own zAnim ran through the effects (`setEffectPlayer`), so no placeholder was drawn. */
+  byEffects: boolean;
 }
+
+/** Where the effects play a zAnim: the point, and the surface's normal when it lay on one. */
+export interface EffectAt { position: V3; normal?: V3 | null; velocity?: V3 | null }
 
 /** The events other workstreams hang off (`on`). */
 export interface GrenadeEvents {
@@ -138,6 +187,8 @@ export interface GrenadeEvents {
   equip: (equipped: boolean, item: GrenadeItem | null) => void;
   /** The throw's clip starts (`./throwPose` plays `anim.clip`); the hand lets go in `releaseIn` s. */
   throwStart: (info: { anim: ThrowAnim; power: number; releaseIn: number }) => void;
+  /** A charge set down (the claymore): where, facing which way, and its zAnim (`c4_start`: `.PLACE_CHARGE`). */
+  place: (info: { item: GrenadeItem; pos: V3; yaw: number; fireAnim: string }) => void;
   /** The grenade leaves the hand (audio: `.THROW_OBJECT`). */
   throw: (info: ThrowInfo) => void;
   /** A bounce (audio: the material's `grenade_hit_*` zAnim when `sound`). */
@@ -172,9 +223,13 @@ export interface GrenadeStats {
 
 const rand = (lo: number, hi: number, r: () => number): number => lo + (hi - lo) * r();
 
-interface Particle { sprite: Sprite; vel: V3; life: number; age: number; size: [number, number]; gravity: number; fade: number }
+interface Particle { sprite: Sprite; vel: V3; life: number; age: number; size: [number, number]; gravity: number; fade: number; still?: boolean }
 /** A grenade in the air or on the ground; `rest` is the material it came to rest on, null while it has not. */
-interface Live { g: Grenade; model: Group | null; spin: V3; trail: V3[]; line: Line | null; dots: Points | null; rest: string | null }
+interface Live {
+  g: Grenade; model: Group | null; spin: V3; trail: V3[]; line: Line | null; dots: Points | null; rest: string | null;
+  /** A placed charge's facing (the SEAL's yaw when it was set down, degrees); undefined for a thrown grenade. */
+  facing?: number;
+}
 interface Pending { anim: ThrowAnim; power: number; aimSin: number; stance: ThrowStance; left: number; total: number }
 
 type Listeners = { [K in keyof GrenadeEvents]: GrenadeEvents[K][] };
@@ -207,7 +262,7 @@ export class GrenadeThrower {
   private readonly bounceLog: BounceInfo[] = [];
   private readonly explosionLog: ExplosionInfo[] = [];
   private trail = false;
-  private readonly listeners: Listeners = { equip: [], throwStart: [], throw: [], bounce: [], explode: [] };
+  private readonly listeners: Listeners = { equip: [], throwStart: [], place: [], throw: [], bounce: [], explode: [] };
   private bound: EventTarget | null = null;
   private readonly scorchGeometry = new PlaneGeometry(1, 1);
 
@@ -216,7 +271,7 @@ export class GrenadeThrower {
     private readonly records: Readonly<Record<GrenadeItem, ThrowableRecord>> = THROWABLES,
     private readonly random: () => number = Math.random,
   ) {
-    this.left = { M67: records.M67.capacity, HE: records.HE.capacity };
+    this.left = capacities(records);
     this.object.add(this.hand);
     this.hand.visible = false;
   }
@@ -266,9 +321,10 @@ export class GrenadeThrower {
     this.live.length = 0;
     for (const p of this.particles) { this.object.remove(p.sprite); p.sprite.material.dispose(); }
     this.particles.length = 0;
+    this.smokes.length = 0;
     for (const s of this.scorches) { this.object.remove(s); (s.material as MeshBasicMaterial).dispose(); }
     this.scorches.length = 0;
-    this.left = { M67: this.records.M67.capacity, HE: this.records.HE.capacity };
+    this.left = capacities(this.records);
     this.thrown = 0;
     this.pending = null;
     this.recover = 0;
@@ -359,6 +415,7 @@ export class GrenadeThrower {
   /** The fire button pressed with the grenade up: the throw's hold begins, its power from 0 (`FUN_00594cf0`). */
   pull(): void {
     if (!this.equipped_ || this.phase_ !== 'ready' || this.left[this.item_] <= 0 || !this.source.snapshot()) return;
+    if (isPlaced(this.record)) { this.placeCharge(); return; }
     this.phase_ = 'holding';
     this.power = 0;
     this.pressure = 1;
@@ -407,6 +464,7 @@ export class GrenadeThrower {
       if (this.recover <= 0) this.finishThrow();
     }
     this.fly(dt);
+    this.smokeFrame(dt);
     this.effects(dt);
     this.placeHand(snap);
   }
@@ -442,7 +500,9 @@ export class GrenadeThrower {
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
-    const pick = ({ Digit1: 'rifle', Digit4: 'M67', Digit5: 'HE' } as const)[e.code as 'Digit1' | 'Digit4' | 'Digit5'];
+    if (e.code === 'Digit9' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && this.source.snapshot()) { this.detonateCharges(); return; }
+    const pick = ({ Digit1: 'rifle', Digit4: 'M67', Digit5: 'HE', Digit6: 'AN-M8', Digit7: 'Mark141', Digit8: 'Claymore' } as const)[
+      e.code as 'Digit1' | 'Digit4' | 'Digit5' | 'Digit6' | 'Digit7' | 'Digit8'];
     if (!pick || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if (e.target instanceof HTMLElement && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
     if (!this.source.snapshot()) return;
@@ -450,9 +510,52 @@ export class GrenadeThrower {
     else this.select(pick);
   };
 
+  // ---- the placed charges ---------------------------------------------------------------------------------------
+
+  /**
+   * Sets a claymore down (`CZKit_TickExplosives`' placement branch: `FUN_005c2430` then `FUN_005bc730`): the highest
+   * ground at or under the right hand's point, the charge facing the SEAL's way, still (`SetProjectile` with no
+   * velocity); its fuse never runs out (no `Timer1`). Null when there is no SEAL or no ground.
+   */
+  placeCharge(): V3 | null {
+    const snap = this.source.snapshot();
+    if (!snap || !this.equipped_ || !isPlaced(this.record) || this.left[this.item_] <= 0) return null;
+    const hand = this.source.handPoint?.('rhand', [0, 0, 0]) ?? actorToWorldPoint(snap.feet, snap.yaw, [2, 8, -8]);
+    const cast = this.hull();
+    const hits = cast ? cast([hand[0], hand[1] + 1, hand[2]], [hand[0], hand[1] - PLACE_REACH, hand[2]]) : [];
+    const ground = hits.find((h) => !h.material.volumetric && h.material.penetration !== 1 && !h.material.liquid);
+    const pos: V3 = ground ? [ground.point[0], ground.point[1] + 0.1, ground.point[2]] : [hand[0], snap.feet[1] + 0.1, hand[2]];
+    const record = this.record;
+    const g = launchGrenade(pos, [0, 0, 0], record);
+    g.state = 'rest';
+    const model = this.template ? this.template.clone() : null;
+    if (model) { model.position.set(...pos); model.rotation.set(0, (snap.yaw * Math.PI) / 180, 0); this.object.add(model); }
+    this.live.push({ g, model, spin: [0, 0, 0], trail: [], line: null, dots: null, rest: ground?.material.name ?? null, facing: snap.yaw });
+    this.left[this.item_]--;
+    this.emit('place', { item: this.item_, pos, yaw: snap.yaw, fireAnim: record.fireAnim });
+    if (this.left[this.item_] <= 0) this.finishThrow();
+    return pos;
+  }
+
+  /**
+   * Sets off every placed charge (the claymores) on the next tick [placeholder: the claymore's own trigger -- the
+   * game's placed-explosive tick (`PlacedExplosive`, 0x3c5310) and its detection query -- is not ported]. The count set off.
+   */
+  detonateCharges(): number {
+    let n = 0;
+    for (const l of this.live) if (l.facing !== undefined && l.g.state === 'rest') { l.g.fuse = 0; n++; }
+    return n;
+  }
+
   // ---- the throw ----------------------------------------------------------------------------------------------
 
+  /**
+   * The body's state for `GetThrowAnim`: 3 (a peek) while the lean holds -- the peek value past `PEEK_THROW`, its side
+   * picking the lean's toss (0x57fce0 asks which lean clip plays) -- else the stance.
+   */
   private stance(snap: PlaySnapshot): ThrowStance {
+    const peek = this.source.peek?.() ?? 0;
+    if (Math.abs(peek) > PEEK_THROW) return peek > 0 ? 'peek-right' : 'peek-left';
     return snap.stance;
   }
 
@@ -540,13 +643,12 @@ export class GrenadeThrower {
     } else if (e.kind === 'rest') {
       l.rest = e.material;
     } else if (e.kind === 'explode') {
-      this.explode(e.point, l.rest, l.g.record);
-      if (l.model) l.model.visible = false;
+      this.explode(e.point, l.rest, l.g.record, l);
     }
   }
 
   private drawLive(l: Live, dt: number): void {
-    if (l.model && l.g.state !== 'detonated') {
+    if (l.model && l.g.state !== 'detonated' && l.facing === undefined) {
       l.model.position.set(...l.g.pos);
       if (l.g.state === 'flight') {
         l.model.rotation.x += l.spin[0] * SPIN_PLACEHOLDER * dt;
@@ -583,20 +685,90 @@ export class GrenadeThrower {
 
   // ---- the explosion ------------------------------------------------------------------------------------------
 
-  private explode(pos: V3, material: string | null, record: ThrowableRecord): void {
+  /**
+   * The effects' door (`./effects`' `play`): the page hands it in, and a zAnim it can run replaces this file's
+   * placeholder sprites for that explosion. Null (or false back) keeps the placeholders.
+   */
+  setEffectPlayer(play: ((anim: string, at: EffectAt) => boolean) | null): void {
+    this.playEffect = play;
+  }
+
+  private playEffect: ((anim: string, at: EffectAt) => boolean) | null = null;
+
+  private explode(pos: V3, material: string | null, record: ThrowableRecord, l: Live): void {
     const snap = this.source.snapshot();
     const distance = snap ? Math.hypot(pos[0] - snap.feet[0], pos[1] - snap.feet[1], pos[2] - snap.feet[2]) : null;
+    const detonation = detonationOf(record);
+    // The flash's rule (0x597c00): the SEAL's forward against the unit direction to the flash.
+    let flash: 1 | 2 | 3 | null = null;
+    if (detonation === 'flash' && snap && distance !== null) {
+      const r = (snap.yaw * Math.PI) / 180, d = distance || 1;
+      const facing = (-Math.sin(r) * (pos[0] - snap.feet[0]) - Math.cos(r) * (pos[2] - snap.feet[2])) / d;
+      flash = flashLevel(distance, facing);
+    }
+    const anim = material && record.materialAnim ? materialAnim(record.materialAnim, material) : record.explosionAnim;
+    const at: EffectAt = { position: [...pos], normal: material ? [0, 1, 0] : null };
+    const byEffects = !!this.playEffect && (this.playEffect(anim, at) || (anim !== record.explosionAnim && this.playEffect(record.explosionAnim, at)));
     const info: ExplosionInfo = {
-      pos: [...pos], radius: record.explosionRadius,
-      anim: material ? materialAnim(record.explosionAnim, material) : record.explosionAnim, baseAnim: record.explosionAnim,
+      pos: [...pos], radius: record.explosionRadius, anim, baseAnim: record.explosionAnim,
       material, distanceToPlayer: distance,
-      damageToPlayer: distance === null ? 0 : explosionDamage(distance, record),
+      damageToPlayer: distance === null || !snap ? 0 : this.damageAt(distance, record, l, pos, snap.feet),
+      item: record.name, detonation, flash, byEffects,
     };
     this.explosionLog.push(info);
     if (this.explosionLog.length > 32) this.explosionLog.shift();
-    this.burst(pos);
-    if (material !== null) this.scorch(pos, material);
+    if (!byEffects) {
+      if (detonation === 'blast') this.burst(pos);
+      else if (detonation === 'flash') this.glow(pos);
+    }
+    if (detonation === 'smoke' && (!byEffects || SMOKE_ALWAYS_PLACEHOLDER)) {
+      this.smokes.push({ pos: [...pos], until: record.removal - record.fuse, next: 0, age: 0 });
+    }
+    if (detonation === 'blast' && material !== null) this.scorch(pos, material);
+    // The smoke's canister lies where it went off; the others are gone.
+    if (l.model) l.model.visible = detonation === 'smoke';
     this.emit('explode', info);
+  }
+
+  private readonly smokes: { pos: V3; until: number; next: number; age: number }[] = [];
+
+  /** `GetDamage` (0x3c7600) at the SEAL's feet: a claymore's a 32nd outside its cone (`claymoreCone`). */
+  private damageAt(distance: number, record: ThrowableRecord, l: Live, pos: V3, feet: readonly number[]): number {
+    const d = explosionDamage(distance, record);
+    if (l.facing === undefined || record !== CLAYMORE) return d;
+    const r = (l.facing * Math.PI) / 180;
+    const inside = claymoreCone([feet[0]! - pos[0], feet[1]! + 10 - pos[1], feet[2]! - pos[2]], [-Math.sin(r), 0, -Math.cos(r)]);
+    return inside ? d : d / 32;
+  }
+
+  /** The flashbang's light as a glow (the placeholder for `flashcrash_grenade`'s `explosion_light`). */
+  private glow(pos: V3): void {
+    const R = EXPLOSION_READING;
+    const flash = this.sprite(GRENADE_BITMAPS.fire, true, [1, 1, 1]);
+    flash.position.set(pos[0], pos[1] + 3, pos[2]);
+    this.particles.push({ sprite: flash, vel: [0, 0, 0], life: R.flash.life * 1.5, age: 0, size: [R.flash.radius[0] / 3, R.flash.radius[1] / 3], gravity: 0, fade: 1 });
+  }
+
+  /** `SMOKE_PLACEHOLDER`: each smoke's puffs, from its detonation to its removal. */
+  private smokeFrame(dt: number): void {
+    const S = SMOKE_PLACEHOLDER, r = this.random;
+    for (let i = this.smokes.length - 1; i >= 0; i--) {
+      const sm = this.smokes[i]!;
+      sm.age += dt;
+      if (sm.age >= sm.until) { this.smokes.splice(i, 1); continue; }
+      sm.next -= dt;
+      while (sm.next <= 0) {
+        sm.next += S.every;
+        const grey = rand(S.grey[1], S.grey[0], r);
+        const s = this.sprite(GRENADE_BITMAPS.puff, false, [grey, grey, grey]);
+        s.position.set(sm.pos[0], sm.pos[1] + 2, sm.pos[2]);
+        const a = rand(0, Math.PI * 2, r), sp = rand(0.2, 1, r) * S.spread;
+        this.particles.push({
+          sprite: s, vel: [Math.cos(a) * sp, rand(S.rise[0], S.rise[1], r), Math.sin(a) * sp],
+          life: rand(S.life[0], S.life[1], r), age: 0, size: ((w: number): [number, number] => [w, w * S.grow])(rand(S.size[0], S.size[1], r)), gravity: 0, fade: 0.9, still: true,
+        });
+      }
+    }
   }
 
   /** The `frag_grenade` zAnim's parts as sprites (`EXPLOSION_READING`). */
@@ -654,14 +826,16 @@ export class GrenadeThrower {
         continue;
       }
       p.vel[1] -= p.gravity * dt;
-      const drag = Math.exp(-2.5 * dt);
+      const drag = Math.exp((p.still ? -0.6 : -2.5) * dt);
       p.vel = [p.vel[0] * drag, p.vel[1] * (p.gravity ? 1 : drag), p.vel[2] * drag];
       p.sprite.position.x += p.vel[0] * dt;
       p.sprite.position.y += p.vel[1] * dt;
       p.sprite.position.z += p.vel[2] * dt;
       const size = p.size[0] + (p.size[1] - p.size[0]) * Math.sqrt(t);
       p.sprite.scale.set(size, size, 1);
-      p.sprite.material.opacity = p.fade * (1 - t) * (1 - t) * (t < 0.04 ? t / 0.04 : 1);
+      // A smoke puff holds thick most of its life, then thins (the screen's); a blast's part fades from the start.
+      const fading = p.still ? Math.min(1, (1 - t) / 0.35) : (1 - t) * (1 - t);
+      p.sprite.material.opacity = p.fade * fading * (t < (p.still ? 0.15 : 0.04) ? t / (p.still ? 0.15 : 0.04) : 1);
     }
   }
 
@@ -730,6 +904,11 @@ export function worldToActor(feet: readonly number[], yawDeg: number, w: readonl
   const r = (yawDeg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
   const dx = w[0]! - feet[0]!, dz = w[2]! - feet[2]!;
   return [dx * c - dz * s, w[1]! - feet[1]!, dx * s + dz * c];
+}
+
+/** Every throwable's pouch, full. */
+function capacities(records: Readonly<Record<GrenadeItem, ThrowableRecord>>): Record<GrenadeItem, number> {
+  return Object.fromEntries(Object.entries(records).map(([k, r]) => [k, r.capacity])) as Record<GrenadeItem, number>;
 }
 
 function textureOf(rgba: Rgba): DataTexture {

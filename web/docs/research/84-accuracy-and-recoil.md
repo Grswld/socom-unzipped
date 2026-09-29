@@ -323,3 +323,75 @@ Screenshots (PS2 presentation, Frostfire spawn A; `web/test-fixtures/screens/acc
 `e2e/accuracy.spec.ts`): `1-rest.png` (third person, size 1 drawn at 0.5: the console's 65-pixel cross),
 `2-moving.png` (W held: pinned at 26, the arms 45 out), `3-burst.png` (automatic held 0.45 s: the reticle climbed and
 opened), `4-first-person.png`, `5-scope.png` (the SD at 3×: the tube and the dashed cross).
+
+## 13. Penetration: what a round goes through
+
+`HandleIntersections` (0x3c9b70, decomp 319920-320067) walks a round's intersections nearest first, from the round's
+origin, skipping the shooter's own nodes; `FUN_003c8920` (319339-319527) takes each:
+
+- **Passed over, no effect:** a material whose `PENETRATION` (material `+0x24`, `materials.rdr` SOILS; the table is
+  `@s2u/scene`'s `materialTable`) is exactly 1.0 -- `PARTICLE_SYSTEM`, `ACTION`, `INVISIBLE_DI`, `ITEM`, the `*_VOL`s.
+- **Out of range:** a hit farther than the round's remaining range (`projectile+0x94`, squared) ends the round there,
+  in the air, unmarked (return 4). The range starts at `Maximum_Range` x 10.
+- **Struck:** the node's damage callback, the mark (`FUN_003d0ba0`), an AI noise, the impact (`bullet_hit_<material>`),
+  then the penetration: `next = (range + range x Piercing x 0.1) x PENETRATION`, the range becomes `next` when smaller;
+  the round goes on (return 2) while this hit lies within the range, else it stops here (4). `Piercing` is the round's
+  (`ZAMMO`, ammo `+0x14` by `FUN_003d4520`): **3 for 5.56 x 45mm**, so a round keeps `1.3 x PENETRATION` of its range --
+  glass 0.99 (1.287: nothing lost), `GLASS_MEDIUM`/`METAL_GRATE_THIN` 0.985, `CHAINLINK_FENCE`/`CAMO_NET` 0.98,
+  `PERSON` 0.97 (1.26), `METAL_RAILING` 0.95, `LEATHER` 0.9, `FABRIC_HEAVY` 0.85, `RUBBER`/`LEAFY_TREE`/`THATCH` 0.8
+  (1.04), `SNOWY_TREE` 0.7 (0.91), `WATER` 0.6 (0.78), `BARREL` 0.5 (0.65), `METAL_GRATE` 0.4 (0.52), `METAL_THIN` and
+  `PIPE_STEAM` 0.35 (0.455), `WOOD_THIN` 0.25 (0.325); every other material 0 -- stone, dirt, wood and metal thick,
+  plaster, glass thick and opaque -- stops it. There is no count limit: only the range.
+- A launcher's round (`FUN_003c5d20`) stops at any non-liquid surface; `RICOCHET` is read and never used.
+
+`accuracy.ts`'s `penetrate` is the walk; `Fire.setPenetration` takes the material byte to its `PENETRATION` (`main.ts`:
+the effects' material names to `materialTable()`); every surface struck is marked and its impact played (`Shot.through`,
+the round event's `through`); the eye's ray to the point under the reticle passes over the 1.0 materials too.
+
+## 14. Night vision
+
+- **Which maps:** the world root's `NightMission` u32 (`FUN_00318da0` 217135: `CWorld+0x5dc`): **MP1 Blizzard, MP5,
+  MP7, MP8, MP11, MP61, MP64, MP73 and MP83** (9 of the 22, read off every archive's `MP*.ZED`). On them the zoom's
+  first step from first person is state 3 (§7), and a weapon switch drops it to first person.
+- **What the game draws** (`FUN_005c1800`, called from the HUD's update 0x205200/0x20a470 in state 3):
+  - the goggles: `nvg_part.tif` (256x256: a green inside at PS2 alpha 22, a dark opaque rim), four mirrored 320x224
+    quads over the whole frame (`BitmapReticule_Init` 70940-70975), shown by `ChangeReticule` while `kit` is in state 3;
+  - the colour: `FUN_003b78d0(0, LensFX_NVG)` loads a colour matrix whose rows are all `(r, g, b) x 0.33` and
+    `a x 3.03` of the map's `LensFX_NVG` -- `(0.2, 0.898, 0.2, 0.24)` on every map -- and the camera's colour
+    `cam+0xd0` becomes the lens times the fog's; leaving, `FUN_003b78d0(0.25, (1, 1, 1, 0))` eases it back in four steps;
+  - `noise50.tif` (64x64), refilled with random texels every frame, over x 5-635, y 75-373 at alpha 64 -- **not drawn**:
+    its palette ramp (`FUN_00354a00(tex, 0x42, 0x49, 0x7f)`) is not decoded, and white noise at half alpha is not what
+    the frame would show;
+  - `.NV_GOGGLES_ON` / `.NV_GOGGLES_OFF` on the way in and out (`DAT_0044ce30/38`, `FUN_005448a0`).
+  `LensFX_StarlightScope` (0.3, ...) is the same for a scope on a night map (states 4+) [not ported].
+- **The viewer:** the goggles on the reticle's layer (`nightLayout`); the colour as a frame filter on the canvas -- an
+  approximation: the game's matrix acts on the lit vertex colours (`0.066 R + 0.296 G + 0.066 B + 0.727`, a lift of
+  the night's dark lighting) before the textures modulate them, which only the world renderer can do; the viewer takes
+  the rows' weights as a luminance, a gain of 3 for the lift, tinted by the lens. **Request (maps/lighting):** in state 3
+  replace each vertex colour's channels by that sum.
+
+## 15. The scope's sway, settled
+
+- `kit+0x58/+0x5c`, which `FUN_005bd100` accumulates the sway into, have **no reader**: the only other writer is
+  `FUN_005b9030` (a reset, 471941); every function that touches `+0x58` of a kit-sized pointer was checked
+  (`FUN_005be9a0`'s `+0x58` is the body's quaternion).
+- The sway is **used**: `FUN_005bd100` runs every frame for the local player (`FUN_00594cf0` 453666, unconditionally)
+  and in a scope writes `body+0x5d4/+0x5d8` from `-sway`; each round's direction is perturbed by them through the
+  player controller's virtual `+0x74` -- the controller's vtable at 0x4062d0 holds `FUN_00592260` there (0x406344) --
+  called by `FUN_005be9a0` for every round. So scoped rounds land off the scope's cross by the sway.
+- It is **not drawn**: in a scope (reticle type 5) the tube and its cross are at fixed frame coordinates, the ring and
+  arms are hidden; only the damage-direction markers (`hud+0x19b0`), placed about the reticle's centre (`320 + kit+0x20`),
+  move with it. The view does not sway. The viewer does the same.
+
+## 16. The sidearm's reticle and numbers
+
+- The kit's sidearm is the **Mark 23** (`mp_seal1`'s second `wep_name`; `ID 15` -> reticle set 0: `ret_sidearm_01`, a
+  32x32 dark disc with a 2x2 dot, and `ret_sidearm_02`, a 16x16 arm). `FUN_00215250` draws set 0 as the rifle's
+  (type != 2, 3, 9): each arm its own 16x16 quad `size` out from the centre -- `reticleLayout` takes the set's sizes,
+  `Reticle.setSet(reticleType(id, state, zoom))`.
+- Its record (pinned by the fixture test): `FireWait` 0.2, 12 rounds, `45 ACP` (Piercing 4), `Maximum_Range` 125 m;
+  standing `ReticuleKnock` 20 / 60 / 40, `TargetDilateUponFire` 20, `TargetDilateUponMovement` 0.75, `TargetConstrict`
+  75, **`TargetMin` 10 / `TargetMax` 30** (prone 14 / 34), `KnockCount` 1 at strength 1 (the first round climbs the
+  whole 20), no `FireRifleKick` (no kick even scoped), one fire mode (single), one zoom mode (1.5) -- so d-pad Up from
+  first person goes to the 9x view (state 4, `ret_binocs`), not a scope. `accuracy.ts`, `zoom.ts` and the reticle take
+  it as they take the SD.

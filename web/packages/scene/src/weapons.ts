@@ -111,6 +111,11 @@ export interface WeaponRecord {
   ammo: string;
   /** That round's `ID` in `ZAMMO`. */
   ammoId: number;
+  /**
+   * That round's `Piercing` (`ZAMMO`, ammo `+0x14`, 0 when absent: `FUN_003cedb0`): a penetrated surface leaves the
+   * round `range x (1 + Piercing x 0.1) x PENETRATION` (`FUN_003c8920`; research 84 section 13). 5.56 x 45mm: 3.
+   */
+  piercing: number;
   /** `Maximum_Range`, metres (x `UNITS_PER_METRE` in the world). */
   maximumRange: number;
   /** `Effective_Range`, metres (0 when absent). */
@@ -244,7 +249,7 @@ export function weaponRecord(script: RdrNode, name: string): WeaponRecord {
   return {
     name, id: n('ID'), fireWait, roundsPerMinute: Math.round(60 / fireWait),
     magazine: n('Ammo_Capacity'), mags: n('NumMags'),
-    ammo, ammoId: n('ID', round, `zweapon.rdr ZAMMO ${ammo}`),
+    ammo, ammoId: n('ID', round, `zweapon.rdr ZAMMO ${ammo}`), piercing: optReal(round, 'Piercing', `zweapon.rdr ZAMMO ${ammo}`) ?? 0,
     maximumRange: n('Maximum_Range'), effectiveRange: opt('Effective_Range', 0), decalSet: text(record, 'DecalSet', where),
     knock: { knock: n('ReticuleKnock', standNode, knockAt), knockReturn: n('ReticuleKnockReturn', standNode, knockAt), knockMax: n('ReticuleKnockMax', standNode, knockAt) },
     stances, zoomModes,
@@ -352,7 +357,7 @@ function stance(
  */
 export const DEFAULT_RIFLE: WeaponRecord = {
   name: 'M4A1', id: 54, fireWait: 0.12, roundsPerMinute: 500, magazine: 30, mags: 3,
-  ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 1000, effectiveRange: 600, decalSet: 'BULLET_MARK_SMALL',
+  ammo: '5.56 x 45mm', ammoId: 8, piercing: 3, maximumRange: 1000, effectiveRange: 600, decalSet: 'BULLET_MARK_SMALL',
   knock: { knock: 12, knockReturn: 70, knockMax: 45 },
   stances: {
     stand: stance(12, 70, 45, [5, 4, 20, 24, -0.06], [7, 1, 1, 50, 1, 26], [0.5, 0.18, 0.09, 0.015], 1, 0.4),
@@ -381,7 +386,7 @@ export const DEFAULT_RIFLE: WeaponRecord = {
  */
 export const HELD_RIFLE: WeaponRecord = {
   name: 'M4A1 SD', id: 62, fireWait: 0.14, roundsPerMinute: 429, magazine: 30, mags: 3,
-  ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 800, effectiveRange: 550, decalSet: 'BULLET_MARK_SMALL',
+  ammo: '5.56 x 45mm', ammoId: 8, piercing: 3, maximumRange: 800, effectiveRange: 550, decalSet: 'BULLET_MARK_SMALL',
   knock: { knock: 12, knockReturn: 70, knockMax: 45 },
   stances: {
     stand: stance(12, 70, 45, [6, 6, 20, 24, -0.04], [7, 1, 1, 50, 1, 26], [0.5, 0.18, 0.09, 0.015], 1, 0.4),

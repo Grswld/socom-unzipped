@@ -1,6 +1,6 @@
 import { Zar, zdbMember, type ZdbEntry } from '@s2u/archive';
 import { PaletteTable, type Rgba } from '@s2u/gs';
-import { HE, M67, parseWorldRoot, WEAPON_MEMBERS, weaponLibrary } from '@s2u/scene';
+import { AN_M8, CLAYMORE, HE, M67, MARK141, parseWorldRoot, WEAPON_MEMBERS, weaponLibrary } from '@s2u/scene';
 import { decodeNamedTextures } from './hudBitmaps';
 import type { LoadedMesh } from './loadMap';
 
@@ -60,7 +60,7 @@ export function loadGrenadeAssets(
   const models: GrenadeAssets['models'] = [];
   try {
     const lib = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
-    for (const name of [M67.model, HE.model]) {
+    for (const name of [M67.model, HE.model, AN_M8.model, MARK141.model, CLAYMORE.model]) {
       try {
         const decoded = lib.decode(name, 'all');
         for (const d of decoded.diagnostics) note(`grenade ${decoded.name}: ${d}`);
