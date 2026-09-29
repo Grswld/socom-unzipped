@@ -56,13 +56,19 @@ export interface ThrowableRecord {
   hitAnim: string;
   /** `DefaultSpecialAnimName`: the explosion's zAnim (`frag_grenade`: sparks, dust, the flash, smoke, `.GREN_MED`). */
   explosionAnim: string;
+  /**
+   * `SpecialMaterialAnimName`: the stem of the per-surface explosions (`frag_grenade` -> `frag_grenade_stone` ...), or
+   * null where the record says `NOT FOUND` (the smoke, the flash).
+   */
+  materialAnim: string | null;
   /** `DecalSet`: the scorch (`GRENADE_BLAST` in `decals.rdr`). */
   decalSet: string;
   /** `IconTextureName`: the HUD's weapon icon in `HUDW_TXR.ZED`. */
   icon: string;
   /**
-   * Goes off on the first surface it meets rather than bouncing: every type outside `HandleIntersections`' bounce list
-   * (`BOUNCE_TYPES`) takes `HandleImpact` (0x3c8920), which sets an explosive projectile to detonate at the hit.
+   * Goes off on the first surface it meets rather than bouncing: a type `HandleIntersections` does not send to
+   * `HandleBounce` (`bouncesByType`) takes `HandleImpact` (0x3c8920), which sets an explosive projectile to detonate at
+   * the hit. False for every hand-thrown grenade (their IDs 121-140 share the category 0x79).
    */
   impact: boolean;
   /** `AMMO_TYPES`' `NAME` and that round's `ZAMMO` record. */
@@ -78,27 +84,96 @@ export interface ThrowableRecord {
 export const M67: ThrowableRecord = {
   name: 'M67', id: 121, fuse: 3, removal: 3.1, muzzleVelocity: 1, gravity: 98,
   impactRadius: 450, effectiveRange: 400, maximumRange: 100000, capacity: 3, mags: 1, soundRadius: 700,
-  model: 'grenade', fireAnim: 'frag_start', hitAnim: 'grenade_hit', explosionAnim: 'frag_grenade', decalSet: 'GRENADE_BLAST',
+  model: 'grenade', fireAnim: 'frag_start', hitAnim: 'grenade_hit', explosionAnim: 'frag_grenade', materialAnim: 'frag_grenade', decalSet: 'GRENADE_BLAST',
   icon: 'grenade_frag_icon.tif', impact: false, ammo: 'M67 Ammo', ammoId: 11, explosionDamage: 10, explosionRadius: 150,
 };
 
 /**
  * `zweapon.rdr`'s HE (the `mp_seal1` and `mp_seal3` kits' second throwable) and its `HE Grenade Ammo`, transcribed:
- * the same fuse, `Explosion_Radius` 10 (100 units) and `Explosion_Damage` 11 -- and ID 126, not in the bounce list:
- * it goes off where it first lands.
+ * the same fuse, `Explosion_Radius` 10 (100 units) and `Explosion_Damage` 11. ID 126 is in the hand grenades' category
+ * 0x79, so it bounces and goes off on its fuse as the M67 does.
  */
 export const HE: ThrowableRecord = {
   name: 'HE', id: 126, fuse: 3, removal: 3.1, muzzleVelocity: 1, gravity: 98,
   impactRadius: 400, effectiveRange: 400, maximumRange: 100000, capacity: 3, mags: 1, soundRadius: 650,
-  model: 'HEgrenade', fireAnim: 'HE_start', hitAnim: 'grenade_hit', explosionAnim: 'HE_grenade', decalSet: 'GRENADE_BLAST',
-  icon: 'grenade_he_icon.tif', impact: true, ammo: 'HE Grenade Ammo', ammoId: 26, explosionDamage: 11, explosionRadius: 100,
+  model: 'HEgrenade', fireAnim: 'HE_start', hitAnim: 'grenade_hit', explosionAnim: 'HE_grenade', materialAnim: 'HE_grenade', decalSet: 'GRENADE_BLAST',
+  icon: 'grenade_he_icon.tif', impact: false, ammo: 'HE Grenade Ammo', ammoId: 26, explosionDamage: 11, explosionRadius: 100,
 };
 
 /**
- * The type bytes `HandleIntersections` (0x3c9b70, decomp 320032-320041) sends to `HandleBounce`: 0x79 (121, the M67),
- * 0x97, 0xac, 0xad, 0xb2 (and 0xb9, 0xba with no parent: the launched rounds' carriers). Every other goes to `HandleImpact`.
+ * `zweapon.rdr`'s AN-M8 (the `mp_seal2` and `mp_seal4` kits' smoke) and its `AN-M8 Ammo`: no explosion (radius and
+ * damage 0); at `Timer1` 3 s it starts `smoke_grenade` (the canister's stream, sparks, `!SMK_CANISTER`) and the
+ * projectile stays until `Timer2` 40 s.
  */
-export const BOUNCE_TYPES: ReadonlySet<number> = new Set([0x79, 0x97, 0xac, 0xad, 0xb2]);
+export const AN_M8: ThrowableRecord = {
+  name: 'AN-M8', id: 122, fuse: 3, removal: 40, muzzleVelocity: 1, gravity: 98,
+  impactRadius: 400, effectiveRange: 300, maximumRange: 100000, capacity: 3, mags: 1, soundRadius: 3,
+  model: 'a_smoke_grenade', fireAnim: 'smoke_grenade_start', hitAnim: 'grenade_hit', explosionAnim: 'smoke_grenade', materialAnim: null,
+  decalSet: 'BULLET_MARK_SMALL', icon: 'grenade_smoke_icon.tif', impact: false, ammo: 'AN-M8 Ammo', ammoId: 12,
+  explosionDamage: 0, explosionRadius: 0,
+};
+
+/**
+ * `zweapon.rdr`'s Mark141 (`FLASHBANG`) and its `Mark141 Ammo`: `Timer1` 1.5 s, `Timer2` 1.6, six carried, no damage,
+ * `Explosion_Radius` 15 (150 units): the reach of its white-out (`flashLevel`); its zAnim `flashcrash_grenade`
+ * (`.MARK_141_FLASH`, the light, `PhosExplode.tif`). No MP default kit carries it (`character.rdr`).
+ */
+export const MARK141: ThrowableRecord = {
+  name: 'Mark141', id: 123, fuse: 1.5, removal: 1.6, muzzleVelocity: 1, gravity: 98,
+  impactRadius: 400, effectiveRange: 300, maximumRange: 100000, capacity: 6, mags: 1, soundRadius: 10,
+  model: 'flashbang', fireAnim: 'flashbang_start', hitAnim: 'grenade_hit', explosionAnim: 'flashcrash_grenade', materialAnim: null,
+  decalSet: 'BULLET_MARK_SMALL', icon: 'grenade_flashbang_icon.tif', impact: false, ammo: 'Mark141 Ammo', ammoId: 14,
+  explosionDamage: 0, explosionRadius: 150,
+};
+
+/**
+ * `zweapon.rdr`'s Claymore (`mp_seal4`'s kit) and its `Claymore Ammo`: placed, not thrown (`Muzzle_Velocity` 0; the
+ * kit's placement branch, `CZKit_TickExplosives` for 0x98-0x9a), no `Timer1` (it waits for its trigger), `Timer2` 10,
+ * four carried, `Explosion_Damage` 16 to `Explosion_Radius` 25 (250 units) -- full in its front cone, a 32nd behind
+ * (`claymoreCone`) -- its zAnim `claymore` (`.M18_CLAYMORE`, sparks, dust, fire, flying bits).
+ */
+export const CLAYMORE: ThrowableRecord = {
+  name: 'Claymore', id: 153, fuse: 9999999, removal: 10, muzzleVelocity: 0, gravity: 98,
+  impactRadius: 400, effectiveRange: 0, maximumRange: 0, capacity: 4, mags: 1, soundRadius: 800,
+  model: 'claymore', fireAnim: 'c4_start', hitAnim: 'NOT FOUND', explosionAnim: 'claymore', materialAnim: 'claymore',
+  decalSet: 'BULLET_MARK_SMALL', icon: 'claymore_icon.tif', impact: false, ammo: 'Claymore Ammo', ammoId: 17,
+  explosionDamage: 16, explosionRadius: 250,
+};
+
+/** The claymore's cone half-angle (`0x3fbc7edd`, the argument `GetDamage` 0x3c7600 hands `FUN_003c7280`), radians. */
+export const CLAYMORE_CONE = 1.47261;
+
+/**
+ * `FUN_003c7280`: whether `rel` (the target less the claymore) lies in the claymore's cone -- ahead along `forward`
+ * (unit), no further than the explosion radius, and within `along x tan(CLAYMORE_CONE)` of the axis. `GetDamage`
+ * divides the damage by 32 outside it.
+ */
+export function claymoreCone(rel: V3, forward: V3, radius = CLAYMORE.explosionRadius): boolean {
+  const along = rel[0] * forward[0] + rel[1] * forward[1] + rel[2] * forward[2];
+  if (along <= 0 || along > radius) return false;
+  const off2 = rel[0] * rel[0] + rel[1] * rel[1] + rel[2] * rel[2] - along * along;
+  const r = along * Math.tan(CLAYMORE_CONE);
+  return off2 <= r * r;
+}
+
+/**
+ * `FUN_003d1a60` (called through `FUN_003d1e10` with the weapon's `+0x7c` ID): an ID's category, the first ID of its
+ * range -- 121-140 (0x79-0x8c) are the hand grenades, 151-170 (0x97-0xaa) the placed charges; 0xfe outside every range.
+ */
+export function weaponCategory(id: number): number {
+  const starts = [0x04, 0x1f, 0x33, 0x51, 0x5b, 0x65, 0x79, 0x8d, 0x91, 0x97, 0xab, 0xb9, 0xbe, 0xc9, 0xcd, 0xe6];
+  const ends = [0x1e, 0x32, 0x50, 0x5a, 0x64, 0x78, 0x8c, 0x90, 0x96, 0xaa, 0xb8, 0xbd, 0xc8, 0xcc, 0xe5, 0xfd];
+  for (let i = 0; i < starts.length; i++) if (id >= starts[i]! && id <= ends[i]!) return starts[i]!;
+  return 0xfe;
+}
+
+/**
+ * Whether `HandleIntersections` (0x3c9b70, decomp 320032-320041) sends a weapon's projectile to `HandleBounce`: its
+ * category 0x79 (the hand grenades) or 0x97 (the charges), or its own ID 0xac, 0xad or 0xb2 (and 0xb9, 0xba once
+ * fired from a carrier). Everything else takes `HandleImpact`.
+ */
+export const bouncesByType = (id: number): boolean =>
+  weaponCategory(id) === 0x79 || weaponCategory(id) === 0x97 || id === 0xac || id === 0xad || id === 0xb2;
 
 const text = (node: RdrNode, key: string, where: string): string => {
   const v = rdrGet(node, key);
@@ -125,15 +200,16 @@ export function throwableRecord(script: RdrNode, name = 'M67'): ThrowableRecord 
   if (!round) throw new Error(`zweapon.rdr ZAMMO has no ${ammo}`);
   const at = `zweapon.rdr ZAMMO ${ammo}`;
   return {
-    name, id: n('ID'), fuse: n('Timer1'), removal: n('Timer2'),
+    name, id: n('ID'), fuse: optional('Timer1', 9999999), removal: optional('Timer2', 9999999),
     muzzleVelocity: n('Muzzle_Velocity', WORLD_SCALE),
     gravity: Math.round(optional('Gravity_Acceleration', 9.8, WORLD_SCALE) * 1e6) / 1e6,
     impactRadius: n('ImpactRadius', WORLD_SCALE), effectiveRange: n('Effective_Range', WORLD_SCALE),
     maximumRange: n('Maximum_Range', WORLD_SCALE), capacity: n('Ammo_Capacity'), mags: n('NumMags'),
     soundRadius: n('Sound_Radius'), model: text(record, 'ModelName', where), fireAnim: text(record, 'FireAnimName', where),
     hitAnim: text(record, 'HitAnimName', where), explosionAnim: text(record, 'DefaultSpecialAnimName', where),
+    materialAnim: ((m: string) => (m === 'NOT FOUND' ? null : m))(text(record, 'SpecialMaterialAnimName', where)),
     decalSet: text(record, 'DecalSet', where), icon: text(record, 'IconTextureName', where).toLowerCase(),
-    impact: !BOUNCE_TYPES.has(n('ID')), ammo, ammoId: n('ID', 1, round, at),
+    impact: !bouncesByType(n('ID')), ammo, ammoId: n('ID', 1, round, at),
     explosionDamage: n('Explosion_Damage', 1, round, at), explosionRadius: n('Explosion_Radius', WORLD_SCALE, round, at),
   };
 }
@@ -628,3 +704,44 @@ export const GRENADE_BLAST: Readonly<Record<string, readonly [number, number]>> 
   SAND: [30, 50], DIRT: [20.2, 30.9], STONE: [20.2, 30.9], SNOW: [10.2, 20.9], METAL_THICK: [10.2, 20.9],
   METAL_THIN: [10.2, 20.9], WOOD_THICK: [10.2, 20.9], WOOD_THIN: [10.2, 16], ASPHALT: [10.2, 16], GLASS: [10, 13],
 };
+
+// ---- the flashbang's white-out -----------------------------------------------------------------------------------
+
+/**
+ * The player controller's flash reaction (`CSealCtrl` vtable slot at 0x669500 -> 0x597c00, decomp 454528-454585): with
+ * the flash inside 150 units (`d^2 < 22500`, the Mark141's `Explosion_Radius` x10), the falloff is 1 to 80 units
+ * (`d^2 <= 6400`) and `1 - (d^2 - 6400) x 6.2e-5` beyond; `facing` is the actor's forward against the direction to the
+ * flash (its node's z row against the unit body-to-flash difference); `s = 1 - facing x falloff`. Facing away
+ * (`facing <= DAT_0065e640` = 0) is level 1; else `s < 0.3` level 3, `s < 0.6` level 2, level 1 past it. The level names
+ * the map's `MZANIM` animation `blindplayer0<level>`; null outside the reach.
+ */
+export function flashLevel(distance: number, facing: number): 1 | 2 | 3 | null {
+  const d2 = distance * distance;
+  if (!(d2 < 22500)) return null;
+  const falloff = d2 > 6400 ? 1 - (d2 - 6400) * 6.2e-5 : 1;
+  if (facing <= 0) return 1;
+  const s = 1 - facing * falloff;
+  return s < 0.3 ? 3 : s < 0.6 ? 2 : 1;
+}
+
+/**
+ * The `blinded` screen command (set 0, 0x24) of `blindplayer01..03` (`MZANIM.ZAR`), read off its floats [reading: the
+ * command is not decoded field by field]: a start colour, then keys of (seconds, grey, strength) -- the white-out holds
+ * at `strength` (25 or 60) and returns to (1, 1, 1, 0) at the last key: 2 s, 4 s, 10 s. Level 1 is facing away or far.
+ */
+export const BLIND_KEYS: Readonly<Record<1 | 2 | 3, readonly { t: number; grey: number; strength: number }[]>> = {
+  1: [{ t: 0, grey: 0.9, strength: 25 }, { t: 2, grey: 1, strength: 0 }],
+  2: [{ t: 0, grey: 0.75, strength: 60 }, { t: 1.5, grey: 0.75, strength: 60 }, { t: 4, grey: 1, strength: 0 }],
+  3: [{ t: 0, grey: 0.75, strength: 60 }, { t: 8, grey: 0.75, strength: 60 }, { t: 10, grey: 1, strength: 0 }],
+};
+
+/** The white-out's strength at `t` seconds into its level's keys (0 after the last), linearly between keys. */
+export function blindStrength(level: 1 | 2 | 3, t: number): number {
+  const keys = BLIND_KEYS[level];
+  if (t <= 0) return keys[0]!.strength;
+  for (let i = 1; i < keys.length; i++) {
+    const a = keys[i - 1]!, b = keys[i]!;
+    if (t <= b.t) return a.strength + (b.strength - a.strength) * ((t - a.t) / (b.t - a.t));
+  }
+  return 0;
+}
