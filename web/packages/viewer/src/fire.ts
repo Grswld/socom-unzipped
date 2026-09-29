@@ -72,6 +72,8 @@ export const MAX_DECALS = 150;
 export const RELOAD_SECONDS = 2;
 /** The tracer's start from the eye, in the view's own axes (right, up, ahead), units [estimate: a muzzle stand-in]. */
 const MUZZLE: Vec3 = [1.2, -1.5, 3];
+/** `FUN_005aa6e0`'s tolerance on a hit against the aim, units a coordinate (decomp 464340-464350): 0.008. */
+export const PIP_TOLERANCE = 0.008;
 /** A muzzle round's segment runs this far past the aim point, so float rounding cannot make it miss what it aims at. */
 const AIM_MARGIN = 0.01;
 
@@ -233,7 +235,9 @@ export class Fire {
   /** Rounds fired since the trigger was pressed (the fire mode's limit). */
   private pulled = 0;
   private readonly listeners = new Set<FireListener>();
-  private readonly kick: RifleKick;
+  private kick: RifleKick;
+  /** WEAPON: each weapon's magazine while another is in the hand (`setWeapon`), by `InternalName`. */
+  private readonly stowedMags = new Map<string, { rounds: number; spare: number }>();
   private marks: MarkTable | null = null;
   private tracerRule: ((weaponId: number, round: number) => boolean) | null = null;
   /** EFFECTS: one material a mark bitmap, made on first use (the constructor's own is `material`). */
@@ -241,7 +245,7 @@ export class Fire {
 
   constructor(
     private readonly source: FireSource,
-    private readonly rifle: WeaponRecord = DEFAULT_RIFLE,
+    private rifle: WeaponRecord = DEFAULT_RIFLE,
     private readonly mark: DecalEntry = BULLET_MARK,
     private readonly random: () => number = Math.random,
   ) {
@@ -356,6 +360,61 @@ export class Fire {
   /** One round now if the rate, the magazine and the aim allow: the hook's `shoot()`. */
   shoot(): Shot | null {
     return this.tryFire();
+  }
+
+  /**
+   * WEAPON: the weapon in the hand changes (the kit's L1/L2: `./kit`). The one put away keeps its magazine and spares;
+   * the one taken up has its own (full the first time); a reload in progress stops without its magazine
+   * (`reloadEnd`, not completed), and the rate's wait, the pull and the kick start again.
+   */
+  setWeapon(record: WeaponRecord): void {
+    if (record.name === this.rifle.name) return;
+    this.cancelReload();
+    this.stowedMags.set(this.rifle.name, { rounds: this.rounds, spare: this.spare });
+    this.rifle = record;
+    const kept = this.stowedMags.get(record.name);
+    this.rounds = kept?.rounds ?? record.magazine;
+    this.spare = kept?.spare ?? Math.max(0, record.mags - 1);
+    this.wait = 0;
+    this.pulled = 0;
+    this.kick = new RifleKick(record, this.random);
+  }
+
+  /** WEAPON: the record in the hand. */
+  weaponRecord(): WeaponRecord {
+    return this.rifle;
+  }
+
+  /** WEAPON: a reload in progress stops, the magazine unchanged (`reloadEnd`, not completed); false when none ran. */
+  cancelReload(): boolean {
+    if (this.reloadLeft <= 0) return false;
+    this.reloadLeft = 0;
+    this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
+    return true;
+  }
+
+  /**
+   * WEAPON: the accuracy pip's ray (`FUN_005aa6e0` -> `FUN_005b6240`, research 84 §9): from the muzzle toward the point
+   * under the reticle (the eye's ray's hit, or its end at the range), the first polygon met, when that is short of
+   * the aim point by more than 0.008 on some axis (the game's tolerance, decomp 464340-464350) -- the world point of a
+   * blocked muzzle, or null (no muzzle, no aim, nothing in the way).
+   */
+  blockedMuzzle(): Vec3 | null {
+    const aim = this.source.aim(), grid = this.source.grid(), muzzle = this.source.muzzle?.() ?? null;
+    if (!aim || !grid || !muzzle) return null;
+    const look = unit(sub(aim.far, aim.eye));
+    const reach = this.rifle.maximumRange * UNITS_PER_METRE;
+    const eyeEnd: Vec3 = [aim.eye[0] + look[0] * reach, aim.eye[1] + look[1] * reach, aim.eye[2] + look[2] * reach];
+    const seen = segmentHit(grid, aim.eye, eyeEnd);
+    const target: Vec3 = seen ? [...seen.point] : eyeEnd;
+    const toward = sub(target, muzzle);
+    const length = Math.hypot(...toward);
+    if (!(length > AIM_MARGIN)) return null;
+    const h = segmentHit(grid, muzzle, target);
+    if (!h) return null;
+    const p = h.point;
+    if (Math.abs(p[0] - target[0]) <= PIP_TOLERANCE && Math.abs(p[1] - target[1]) <= PIP_TOLERANCE && Math.abs(p[2] - target[2]) <= PIP_TOLERANCE) return null;
+    return [p[0], p[1], p[2]];
   }
 
   /** `R`: a fresh magazine from the spares over `RELOAD_SECONDS`; false when full, out of spares or already at it. */

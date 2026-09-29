@@ -7,7 +7,10 @@ import {
   DEFAULT_RIFLE, IDENTITY, partMatrix, readSkeleton, sampleClip, Skeleton, transformPoint, type MotionClip, type MotionPart,
   type SkeletonPart,
 } from '@s2u/scene';
+import { buildGrid, HELD_RIFLE, HELD_SIDEARM, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
+import { Fire, PIP_TOLERANCE, type FireEvent } from '../src/fire';
+import { PIP_FADE, PIP_FULL, PIP_SCOPED_REACH, stepPip, type PipState } from '../src/reticle';
 import { Animator, partIndex, type MoverSnapshot } from '../src/animator';
 import { HELD_ITEM, heldSkeleton, muzzleOf, muzzlePoint } from '../src/heldItem';
 import { clipsFromPack, type MotionEntry } from '../src/motionTable';
@@ -317,3 +320,66 @@ describe.skipIf(noData)(`the M4A1 SD on seal_A_scuba's hand${noData ? ' (MOTION_
     for (const name of WEAPON_CLIPS) expect(clips.has(name), name).toBe(true);
   });
 });
+
+// ---- round 2: the sidearm's magazine, the pip ------------------------------------------------------------------------
+
+describe('the accuracy pip (FUN_00215250, FUN_005aa6e0): a blocked muzzle', () => {
+  it('shows past the drawn size, fading in 32 a frame to 128; hides inside it (a signed test) and fades out', () => {
+    let s: PipState = { alpha: 0, offset: null };
+    s = stepPip(s, [40, 5], 10, false);
+    expect(s).toEqual({ alpha: 32, offset: [40, 5] });
+    for (let i = 0; i < 5; i++) s = stepPip(s, [40, 5], 10, false);
+    expect(s.alpha).toBe(PIP_FULL);
+    s = stepPip(s, [-60, -60], 10, false);                     // up and to the left: both under the size, signed
+    expect(s.alpha).toBe(PIP_FULL - PIP_FADE);
+    expect(s.offset).toEqual([40, 5]);                          // fading where it was
+    for (let i = 0; i < 4; i++) s = stepPip(s, null, 10, false);
+    expect(s).toEqual({ alpha: 0, offset: null });
+  });
+
+  it('pulls a far offset in to 200.032 only scoped', () => {
+    expect(stepPip({ alpha: 0, offset: null }, [400, 0], 1, false).offset).toEqual([400, 0]);
+    const scoped = stepPip({ alpha: 0, offset: null }, [300, 400], 1, true).offset!;
+    expect(Math.hypot(...scoped)).toBeCloseTo(PIP_SCOPED_REACH, 6);
+  });
+
+  it('is the muzzle\'s ray meeting something short of the point under the reticle', () => {
+    const grid = pipWorld([pipQuad([-50, 0, -60, 50, 0, -60, 50, 50, -60, -50, 50, -60]), pipQuad([-50, 0, -30, 50, 0, -30, 50, 18, -30, -50, 18, -30])]);
+    const fire = new Fire({ grid: () => grid, aim: () => ({ eye: [0, 20, 0], far: [0, 20, -1000] }), muzzle: () => [3, 15, -8] }, DEFAULT_RIFLE);
+    const p = fire.blockedMuzzle()!;
+    expect(p[2]).toBeCloseTo(-30, 6);                          // the low wall, not the wall under the reticle
+    const clear = new Fire({ grid: () => grid, aim: () => ({ eye: [0, 20, 0], far: [0, 20, -1000] }), muzzle: () => [0, 19, -8] }, DEFAULT_RIFLE);
+    expect(clear.blockedMuzzle()).toBeNull();
+    expect(PIP_TOLERANCE).toBe(0.008);
+  });
+});
+
+describe('the weapon in the hand changes (Fire.setWeapon): each keeps its magazine', () => {
+  it('takes the Mark 23 at 12 rounds and three magazines, keeps the rifle\'s count, cancels a reload', () => {
+    const grid = pipWorld([pipQuad([-50, 0, -60, 50, 0, -60, 50, 50, -60, -50, 50, -60])]);
+    const events: FireEvent[] = [];
+    const fire = new Fire({ grid: () => grid, aim: () => ({ eye: [0, 20, 0], far: [0, 20, -1000] }) }, HELD_RIFLE);
+    fire.subscribe((e) => events.push(e));
+    fire.shoot(); fire.update(0.5); fire.shoot();
+    expect(fire.state().magazine.rounds).toBe(28);
+    expect(fire.reload()).toBe(true);
+    fire.setWeapon(HELD_SIDEARM);
+    expect(events.at(-1)).toMatchObject({ type: 'reloadEnd', completed: false, weapon: { name: 'M4A1 SD' } });
+    expect(fire.state().magazine).toEqual({ rounds: 12, capacity: 12, spare: 2, reloading: false });
+    fire.shoot();
+    expect(events.at(-1)).toMatchObject({ type: 'round', weapon: { name: 'Mark 23', id: 15, fireAnim: 'muzzle_mark23', sounds: { close: '.MARK_23' } } });
+    fire.setWeapon(HELD_RIFLE);
+    expect(fire.state().magazine).toMatchObject({ rounds: 28, capacity: 30, spare: 2 });
+    fire.setWeapon(HELD_SIDEARM);
+    expect(fire.state().magazine.rounds).toBe(11);
+    expect(fire.weaponRecord()).toBe(HELD_SIDEARM);
+  });
+});
+
+const pipQuad = (points: number[]): WorldPoly =>
+  ({ modelName: 'worldmodel', path: 'worldmodel/q', region: 0, ditype: 2, material: 25, ptcount: 4, cameratype: 0, points: Float32Array.from(points) });
+function pipWorld(polys: WorldPoly[]): Grid {
+  const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 4, cellsZ: 4, originX: -200, originZ: -200 };
+  const owners: CollisionOwner[] = polys.map((p, i) => ({ modelName: p.modelName, path: `${p.path}${i}`, first: i, count: 1 }));
+  return buildGrid(params, [], [], polys, owners);
+}

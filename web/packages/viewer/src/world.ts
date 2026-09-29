@@ -129,6 +129,8 @@ export interface WorldView {
    * decoded none.
    */
   weapon: Group | null;
+  /** WEAPON: the sidearm (`LoadedMap.sidearm`, the kit's Mark 23), built as the weapon is; `./play` hangs it. */
+  sidearm: Group | null;
   /**
    * The throwables' models by model name (`grenade`, `HEgrenade`; `LoadedMap.grenade`), built as the weapon is, outside
    * `group`: `./grenade` clones them for the hand and for each grenade in flight. Empty when the map decoded none.
@@ -661,6 +663,18 @@ export function buildWorld(map: LoadedMap): WorldView {
   // W2.4: the held weapon, built like a prop placed once -- the world's materials, lit by the map's rig -- but kept
   // out of `group`, the reveal queues, the extent and the triangle count: it belongs to the player, not the map,
   // and `./shot` moves it every frame. Its normals are lit in the weapon's own frame, not re-lit as it turns.
+  const heldModel = (held: LoadedMap['weapon']): Group | null => {
+    if (!held) return null;
+    const g = new Group();
+    g.name = held.name;
+    for (const part of held.parts) {
+      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
+      mesh.name = `${held.name} (${part.textureName ?? 'untextured'})`;
+      g.add(mesh);
+    }
+    return g;
+  };
+  const sidearm = heldModel(map.sidearm);
   let weapon: Group | null = null;
   if (map.weapon) {
     weapon = new Group();
@@ -764,6 +778,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       }
     },
     weapon,
+    sidearm,
     grenades,
     flarePositions: () => billboards.map((m) => [m.position.x, m.position.y, m.position.z]),
     lineGroups: () => lineObjects.map((line) => {
@@ -808,6 +823,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const { material } of detailMaterials.values()) material.dispose();
       for (const { mesh } of details) if (mesh instanceof InstancedMesh) mesh.dispose();
       for (const child of weapon?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
+      for (const child of sidearm?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
       for (const g of Object.values(grenades)) for (const child of g.children) if (child instanceof Mesh) child.geometry.dispose();
       for (const texture of textures.values()) texture.dispose();
     },

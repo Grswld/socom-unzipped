@@ -18,7 +18,7 @@ import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './walk';
 import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
-import { DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
+import { DEFAULT_SIDEARM, DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
 import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
 import { readHud, type HudBitmaps } from './hudAssets';
 import { grenadeTransferables, loadGrenadeAssets, type GrenadeAssets } from './grenadeAssets';
@@ -149,6 +149,11 @@ export interface LoadedMap {
    * not read, with a diagnostic.
    */
   weapon?: { name: string; parts: LoadedMesh[]; points: WeaponPoint[] };
+  /**
+   * WEAPON: the sidearm (`DEFAULT_SIDEARM`, the kit's Mark 23: `a_mark23`), decoded as the rifle is -- the grip at the
+   * origin, the barrel along +x -- with its `firepoint`. Absent when the library will not read.
+   */
+  sidearm?: { name: string; parts: LoadedMesh[]; points: WeaponPoint[] };
   /** W2.4: the rifle reticle's bitmaps off `HUD2_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
   reticle?: ReticleBitmaps | null;
   /** W2.5: the shot's mark, `BULLET_MARK`'s bitmap off `EFFE_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
@@ -297,7 +302,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // W2.1: the player's body, decoded here so its textures join the ones decoded below (`./body`).
   const body = loadBody(bytes, toc, await characterTableFor(source, path), (line) => notes.add(line));
   // W2.4: the held weapon, decoded here with the map so its textures come out of the same asset-library chain.
-  const weapon = heldWeapon(bytes, toc, notes);
+  const weapon = heldWeapon(bytes, toc, notes, DEFAULT_WEAPON);
+  const sidearm = heldWeapon(bytes, toc, notes, DEFAULT_SIDEARM);
   // The frag grenade (`./grenadeAssets`): its model's textures are decoded with the held weapon's below.
   const grenade = loadGrenadeAssets(bytes, toc, stem, textureKey, (line) => notes.add(line));
 
@@ -307,7 +313,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
-  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...grenade.models.flatMap((m) => m.parts)]
+  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...(sidearm?.parts ?? []), ...grenade.models.flatMap((m) => m.parts)]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
     .concat(body ? bodyTextureNames(body) : []);
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
@@ -420,6 +426,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     ...(weapon ? { weapon } : {}),
+    ...(sidearm ? { sidearm } : {}),
     grenade,
     reticle: reticle.bitmaps,
     bulletMark: bulletMark.rgba,
@@ -433,7 +440,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
 /** Every typed array in a `LoadedMap`, for the worker's transfer list: no copies cross the boundary. */
 export function transferables(map: LoadedMap): Transferable[] {
   const out: Transferable[] = [];
-  for (const mesh of [...map.world, ...map.props.flatMap((p) => p.parts), ...(map.weapon?.parts ?? [])]) {
+  for (const mesh of [...map.world, ...map.props.flatMap((p) => p.parts), ...(map.weapon?.parts ?? []), ...(map.sidearm?.parts ?? [])]) {
     out.push(mesh.positions.buffer, mesh.uvs.buffer, mesh.colors.buffer, mesh.indices.buffer);
     if (mesh.normals) out.push(mesh.normals.buffer);
     if (mesh.faceNormals) out.push(mesh.faceNormals.buffer);
@@ -455,10 +462,10 @@ export function transferables(map: LoadedMap): Transferable[] {
  * (`@s2u/scene`'s `weaponLibrary`, web/docs/research/79 §2). A library that will not read costs one diagnostic and
  * the weapon, never the load; a chunk that will not decode costs its own line and nothing else.
  */
-function heldWeapon(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): LoadedMap['weapon'] {
+function heldWeapon(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, model: string): LoadedMap['weapon'] {
   try {
     const library = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
-    const decoded = library.decode(DEFAULT_WEAPON, 'high');
+    const decoded = library.decode(model, 'high');
     for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
     const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
       ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
@@ -466,7 +473,7 @@ function heldWeapon(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): LoadedMap
     })));
     return { name: decoded.name, parts, points: decoded.points };
   } catch (e) {
-    notes.add(`weapon ${DEFAULT_WEAPON}: ${say(e)}`);
+    notes.add(`weapon ${model}: ${say(e)}`);
     return undefined;
   }
 }
