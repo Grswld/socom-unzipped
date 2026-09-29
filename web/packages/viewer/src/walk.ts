@@ -510,6 +510,13 @@ export const SWAP_OVERLAY = { playback: 1.32, frames: 21 } as const;
 export interface SwapPick { action: 'swapStand' | 'swapCrouch' | 'swapProne' | null; overlay: boolean; reversed: boolean; seconds: number }
 
 /**
+ * WEAPON: the swap clip playing on the mover (`Walker.swapProgress`): the action it is (null for the moving overlay),
+ * whether it is the overlay, and how far through it is, 0..1 of its seconds whichever way the clip runs. The kit's
+ * hand-off and end run on this clock, the one the body is drawn by, not a count of their own.
+ */
+export interface SwapProgress { action: 'swapStand' | 'swapCrouch' | 'swapProne' | null; overlay: boolean; progress: number }
+
+/**
  * An upper-body clip over the locomotion (the game's second play channel, `FUN_0028d860(anim+0x60, ...)`; a motion
  * flagged `BlendOverlay`): the moving swap. `t` seconds into `seconds`, backwards when `reversed`.
  */
@@ -734,6 +741,21 @@ export class Walker {
     const seconds = oneShotSeconds(SWAP_OVERLAY.playback, SWAP_OVERLAY.frames);
     this.overlay_ = { clip: SEAL_ANIMS.swapMoving, serial: ++this.serial, t: 0, seconds, reversed };
     return { action: null, overlay: true, reversed, seconds };
+  }
+
+  /**
+   * WEAPON: the swap clip playing -- the standing, crouched or prone action, or the moving overlay (a standing swap cut
+   * by the stick goes on as the overlay at the phase it reached) -- and its progress; null when none is (it ended, or
+   * another action took the mover).
+   */
+  swapProgress(): SwapProgress | null {
+    const a = this.action_;
+    if (a && (a.name === 'swapStand' || a.name === 'swapCrouch' || a.name === 'swapProne') && a.seconds) {
+      return { action: a.name, overlay: false, progress: Math.min(1, a.t / a.seconds) };
+    }
+    const o = this.overlay_;
+    if (o && o.clip === SEAL_ANIMS.swapMoving && o.seconds > 0) return { action: null, overlay: true, progress: Math.min(1, o.t / o.seconds) };
+    return null;
   }
 
   /** The ground state as it last ran (`GroundMotion`). */
@@ -1511,6 +1533,11 @@ export class WalkMode {
   swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
     if (!this.walking || !this.walker || this.moves?.busy()) return null;
     return this.walker.swapWeapon(to);
+  }
+
+  /** Walk mode: the swap clip playing and its progress (`Walker.swapProgress`), or null. */
+  swapProgress(): SwapProgress | null {
+    return this.walking && this.walker ? this.walker.swapProgress() : null;
   }
 
   /** Walk mode: crouches (true), stands (false) or toggles stand and crouch (no argument); crouched after (the stance). */

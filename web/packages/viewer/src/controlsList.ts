@@ -4,7 +4,7 @@
  * `PAD_LAYOUT`, grouped by `padGroup` under the same names.
  *
  * The keys are the ones the page binds: `WASD` and the fly keys (`./camera`), `G`, `C`, `V`, `Space` (`./walk`), `R`
- * (`./fire`), `B` (`./main`), `X`, `Q`, `E` (`./traversalPage`), `1`, `4`, `5` (`./grenade`), `F` and the backtick
+ * (`./fire`), `B` (`./main`), `X`, `Q`, `E` (`./traversalPage`), `1` to `4` (`./main`, `./kit`'s `hotkey`), `F` and the backtick
  * (`./ui`); the mouse's click fires and the right click steps the zoom (`./main`, `./fire`).
  */
 
@@ -76,9 +76,10 @@ export function controlGroups(mode: ControlMode, play: boolean): ControlGroup[] 
     {
       name: GROUP_WEAPONS,
       rows: [
-        { keys: '1', does: 'the rifle' },
-        { keys: '4', does: 'the M67 grenade' },
-        { keys: '5', does: 'the HE grenade' },
+        { keys: '1', does: 'main weapon (the rifle)' },
+        { keys: '2', does: 'sidearm (the Mark 23)' },
+        { keys: '3', does: 'equipment slot 1 (the M67 grenade)' },
+        { keys: '4', does: 'equipment slot 2 (the HE grenade)' },
       ],
     },
     { name: GROUP_GENERAL, rows: general },

@@ -167,12 +167,14 @@ Move and General), and the pad's layout under them, grouped the same way, once a
 | `Space` | jump |
 | `V` | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
 | `C` | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
-| right button (held) | the aim view, first person from the SEAL's eyes |
+| right click | the zoom, a step a click: first person from the SEAL's eyes, then the rifle's scope, then back to third person. The Mark 23 has no scope (the owner's ruling, 2026-09-29): with it the click goes between third and first person. On a wide screen the scope's black fills the frame beside it |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
 | `R` | reloads; an empty magazine waits for it |
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
+| `1` / `2` | the main weapon (the rifle) / the sidearm (the Mark 23), as L1 / L2: the game's swap clip plays |
+| `3` / `4` | the kit's equipment slots 1 and 2, in the kit's order (`mp_seal1`: the M67, the HE); R2 on the pad steps through every item |
 | `Tab` (held) | the round's scoreboard, as SELECT held on the console ([`docs/research/87-hud.md`](docs/research/87-hud.md) §12); the pad's Select too |
 | `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
 
@@ -480,10 +482,16 @@ point in the world, the end, the hit, the rounds left), `reloadStart` (its secon
 `mp_seal1` kit is M4A1, Mark 23, M67, HE: the controller's L1 and L2 slots are 0 and 1 (`FUN_00598280`), so L1 (`1`)
 takes the rifle and L2 (`2`) the Mark 23 (`a_mark23`, `scene/src/weapons.ts` `HELD_SIDEARM`: 12 rounds, semi, `FireWait`
 0.2, reticle set 0, `mark23_icon.tif`, `.MARK_23`); R2 steps the inventory through them and the throwables, and the
-M67 is no longer on L2 (`viewer/src/kit.ts`). The swap plays the game's clip (the MOTION workstream's
+M67 is no longer on L2 (`viewer/src/kit.ts`); on the PC `3` and `4` take up the kit's equipment slots 1 and 2 (the M67
+and the HE, `grenade.ts` `equipmentSlots`). The Mark 23 zooms no further than first person (`zoom.ts`
+`zoomsPastFirst`: the owner's ruling of 2026-09-29, over the game's one-mode rule that sent it to the 9x view). The
+swap plays the game's clip (the MOTION workstream's
 `WalkMode.swapWeapon`): the rifle rides `spinelo` on the clip's own track and is slung at `character.rdr`'s offset, the
 pistol comes out of the hips or the holster at the clip's hand-off (0.72 standing) and goes back into the `rthigh`
-holster; the pistol's clips (`seal_p_*`), Fire versions (`seal_pfp_*`) and reloads (`seal_p_reload` ...) follow
+holster. The kit runs on the walk's own clock for the clip (`WalkMode.swapProgress`), so a standing swap the stick
+turns into the moving one carries on at its phase; each weapon hangs from its clip's own track, never a cross-fade of
+the hand's and the back's (`Animator.heldLocal`), and eases over 0.4 s from where it was drawn when its mount changes
+(`heldItem.ts` `MountEase`): no jump at the swap's ends. The pistol's clips (`seal_p_*`), Fire versions (`seal_pfp_*`) and reloads (`seal_p_reload` ...) follow
 `m_item`. A reload puts the next magazine in at its start and keeps a part-used one in the ring; an empty magazine
 reloads by itself 0.01 s later, a dry trigger clicks (`dry`); walking faster than 20 a second turns a still reload
 into the moving one. The accuracy pip (`ret_accuracy`) marks a raised muzzle blocked short of the point under the

@@ -23,8 +23,9 @@ import type { PlaySnapshot, WalkView } from './walk';
  * workstreams hang off.
  *
  * - **The slots.** In SOCOM II a grenade is a kit slot, taken up from R2's inventory or by L1/L2 (`SwapWeapon1/2`)
- *   swapping to the slot assigned to them (research 85 §9.1), and thrown with the fire button (R1). Here: `1` the
- *   rifle, `4` the M67, `5` the HE; the pad's R2 (`cycleInventory`, through `./kit`'s inventory: L1 and L2 are the
+ *   swapping to the slot assigned to them (research 85 §9.1), and thrown with the fire button (R1). Here: `3` and `4`
+ *   the kit's equipment slots 1 and 2 (`equipmentSlots`: the M67, the HE; the page binds them, `./kit`'s `hotkey`),
+ *   `1` the rifle back; the pad's R2 (`cycleInventory`, through `./kit`'s inventory: L1 and L2 are the
  *   primary's and the sidearm's slots, the WEAPON workstream's `Kit`); the fire trigger (the left
  *   button, the touch fire button, R1) throws while one is up (`main.ts` routes it).
  * - **The throw.** Held, the power chases the button's pressure (`stepThrowPower`: a key or a click is pressure 1, so
@@ -87,6 +88,15 @@ export type KitItem = 'rifle' | HeldItem;
  * last, as `FUN_005c74e0` appends it to a kit with a claymore.
  */
 export const KIT_ITEMS: readonly KitItem[] = ['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore', 'Detonator'];
+
+/**
+ * The kit's equipment slots, in order: the throwables of `KIT_ITEMS` the pouch carries (a capacity over 0) -- the
+ * M67 and the HE first, `mp_seal1`'s two (`character.rdr`: M4A1, Mark 23, M67, HE). The PC's `3` and `4` take up the
+ * first two (the owner, 2026-09-29); R2's inventory reaches every one.
+ */
+export function equipmentSlots(records: Readonly<Record<GrenadeItem, ThrowableRecord>> = THROWABLES): GrenadeItem[] {
+  return KIT_ITEMS.filter((k): k is GrenadeItem => k !== 'rifle' && k !== 'Detonator' && (records[k as GrenadeItem]?.capacity ?? 0) > 0);
+}
 
 /** A placed item rather than a thrown one: `Muzzle_Velocity` 0 (the claymore; the C4 is no MP SEAL kit's). */
 export const isPlaced = (r: ThrowableRecord): boolean => r.muzzleVelocity === 0;
@@ -278,7 +288,6 @@ export class GrenadeThrower {
   private readonly explosionLog: ExplosionInfo[] = [];
   private trail = false;
   private readonly listeners: Listeners = { equip: [], throwStart: [], place: [], throw: [], bounce: [], explode: [], refuse: [], detonate: [] };
-  private bound: EventTarget | null = null;
   private readonly scorchGeometry = new PlaneGeometry(1, 1);
 
   constructor(
@@ -393,7 +402,7 @@ export class GrenadeThrower {
     return on;
   }
 
-  /** Selects a kit item by name (`1` the rifle, `4` the M67, `5` the HE, `9` the Detonator); false when it cannot be taken up. */
+  /** Selects a kit item by name (the rifle, a throwable, the Detonator); false when it cannot be taken up. */
   select(item: KitItem): boolean {
     if (item === 'rifle') return !this.equip(false);
     if (item === 'Detonator') return this.takeDetonator();
@@ -548,27 +557,14 @@ export class GrenadeThrower {
     };
   }
 
-  /** `4` takes the M67 (or puts it back), `5` the HE, `1` the rifle; while walking, no modifier, not on auto-repeat. */
-  bindKey(target: EventTarget = globalThis): void {
-    this.unbindKey();
-    target.addEventListener('keydown', this.onKey as EventListener);
-    this.bound = target;
+  /**
+   * The kit's equipment slots in order (`equipmentSlots`): what the PC's `3` and `4` take up (the page binds them,
+   * `./kit`'s `hotkey`). `slot` 1 or 2; false when the slot is empty or its item cannot be taken up now (none left).
+   */
+  selectEquipment(slot: number): boolean {
+    const item = equipmentSlots(this.records)[slot - 1];
+    return item !== undefined && this.select(item);
   }
-
-  unbindKey(): void {
-    this.bound?.removeEventListener('keydown', this.onKey as EventListener);
-    this.bound = null;
-  }
-
-  private readonly onKey = (e: KeyboardEvent): void => {
-    const pick = ({ Digit1: 'rifle', Digit4: 'M67', Digit5: 'HE', Digit6: 'AN-M8', Digit7: 'Mark141', Digit8: 'Claymore', Digit9: 'Detonator' } as const)[
-      e.code as 'Digit1' | 'Digit4' | 'Digit5' | 'Digit6' | 'Digit7' | 'Digit8' | 'Digit9'];
-    if (!pick || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-    if (e.target instanceof HTMLElement && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
-    if (!this.source.snapshot()) return;
-    if (pick !== 'rifle' && this.held() === pick) this.select('rifle');
-    else this.select(pick);
-  };
 
   // ---- the placed charges ---------------------------------------------------------------------------------------
 

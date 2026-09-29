@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Group } from 'three';
 import { buildGrid, CLAYMORE_RULES, HE, M67, PLACE_CLAYMORE_ANIM, releaseSeconds, THROW_ANIMS, throwClipSeconds, type Grid, type GridParams, type V3, type WorldPoly } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
-import { GrenadeThrower, KIT_ITEMS, RELEASE_POINT, THROWABLES, worldToActor, type GrenadeSource } from '../src/grenade';
+import { equipmentSlots, GrenadeThrower, KIT_ITEMS, RELEASE_POINT, THROWABLES, worldToActor, type GrenadeSource } from '../src/grenade';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
 import { whiteOut } from '../src/flash';
 import { THROW_CLIPS, ThrowPose } from '../src/throwPose';
@@ -60,6 +60,23 @@ describe('the kit\'s slots (research 85 §9)', () => {
     expect(g.select('HE')).toBe(false);
     g.select('M67');
     expect(g.cycleInventory()).toBe('AN-M8');              // M67 -> (HE is empty) -> the smoke
+  });
+
+  it('the equipment slots, in the order of the kit: 3 takes slot 1, 4 slot 2 (the owner, 2026-09-29); no per-type keys', () => {
+    expect(equipmentSlots()).toEqual(['M67', 'HE', 'AN-M8', 'Mark141', 'Claymore']);
+    expect(equipmentSlots({ ...THROWABLES, M67: { ...THROWABLES.M67, capacity: 0 } }).slice(0, 2)).toEqual(['HE', 'AN-M8']);
+    const { g, events } = thrower();
+    expect(g.selectEquipment(1)).toBe(true);
+    expect(g.item()).toBe('M67');
+    expect(g.selectEquipment(1)).toBe(true);                 // already up: stays (no toggle back, as the game's switch)
+    expect(g.equipped()).toBe(true);
+    expect(g.selectEquipment(2)).toBe(true);
+    expect(g.item()).toBe('HE');
+    expect(g.selectEquipment(3)).toBe(true);                 // the page binds only 3 and 4; a third slot exists
+    expect(g.selectEquipment(9)).toBe(false);                // past the kit: nothing
+    expect(events).toEqual(['equip true M67', 'equip true HE', 'equip true AN-M8']);
+    // The digits are the page's (`./kit`'s `hotkey`): the thrower binds none of its own.
+    expect('bindKey' in g).toBe(false);
   });
 });
 

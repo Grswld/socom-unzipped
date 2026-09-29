@@ -33,7 +33,7 @@ import { nightVisionRow, setNightVision } from './nightVision';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
-import { Kit, type Firearm } from './kit';
+import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
@@ -132,8 +132,8 @@ const fire: Fire = new Fire({
 scene.add(fire.object);
 if (PLAY) fire.bindKey();
 /**
- * The throwables (`./grenade`, web/docs/research/85): `4` the M67, `5` the HE, `1` the rifle -- the pad's L2 (the
- * game's SwapWeapon2) and R2 (its Inventory) -- and the trigger throws: held for power, let go to throw. The throw's
+ * The throwables (`./grenade`, web/docs/research/85): `3` and `4` the kit's equipment slots 1 and 2 (the M67, the HE),
+ * `1` the rifle back -- the pad's R2 (the game's Inventory) -- and the trigger throws: held for power, let go to throw. The throw's
  * clip plays on the body (`./throwPose`), the grenade rides the right hand's held node, and leaves the posed hand.
  */
 const grenade = new GrenadeThrower({
@@ -142,7 +142,6 @@ const grenade = new GrenadeThrower({
   peek: () => traversal.stats()?.peek ?? 0,           // research 86's lean: the lean tosses
 });
 scene.add(grenade.object);
-if (PLAY) grenade.bindKey();
 /** The throw's clip over the locomotion, a pose layer as the reload is. */
 const throwPose = new ThrowPose(() => play.motionSource());
 /** The HUD's icon for the rifle (the HUD's own default): the grenades put theirs in its place while up. */
@@ -253,6 +252,7 @@ const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(HELD_RIFLE),
 let kitItem: Firearm = 'rifle';
 const kit: Kit = new Kit({
   swapClip: (to) => walk.swapWeapon(to),
+  swapProgress: () => walk.swapProgress(),            // the walk's clock: the mounts change on the clip's frame
   // FUN_005a8cb0 / FUN_005bdc30's gates: not while reloading, not while a throw is held or thrown.
   canSwap: (): boolean => walk.mode() === 'walk' && !fire.state().magazine.reloading && grenade.phase() !== 'holding' && grenade.phase() !== 'throwing',
   item: (item) => {
@@ -292,11 +292,23 @@ function kitInventory(): string {
   if (next === 'rifle') { kit.select('rifle'); return 'rifle'; }
   return next;
 }
+/**
+ * The kit's equipment slot `slot` (1 or 2) up (`GrenadeThrower.selectEquipment`): not mid-swap (the kit's own gate), not
+ * while a throw is held or thrown; the firearm in the hand stays the kit's item under it, as R2's inventory leaves it.
+ */
+function selectEquipment(slot: 1 | 2): boolean {
+  if (walk.mode() !== 'walk' || kit.swapping()) return false;
+  return grenade.selectEquipment(slot);
+}
+// The PC's number keys (the owner, 2026-09-29; `./kit`'s `hotkey`): 1 the rifle, 2 the Mark 23, 3 and 4 the kit's
+// equipment slots 1 and 2 -- walking, no modifier, not on auto-repeat, not typed into the panel's fields.
 if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
-  if ((e.code !== 'Digit1' && e.code !== 'Digit2') || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
+  const key = hotkey(e.code);
+  if (!key || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
   const target = e.target;
   if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
-  selectFirearm(e.code === 'Digit2' ? 'pistol' : 'rifle');
+  if ('firearm' in key) selectFirearm(key.firearm);
+  else selectEquipment(key.equipment);
 });
 if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;

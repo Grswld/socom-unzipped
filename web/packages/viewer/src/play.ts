@@ -6,7 +6,7 @@ import type { BodyView } from './bodyView';
 import type { Pose } from './camera';
 import type { FireEvent } from './fire';
 import { pressedSince, releasedSince, type Input } from './gamepad';
-import { HELD_ITEM, heldSkeleton, mountMatrix, muzzlePoint, PISTOL_ITEM, type Carries, type Mount } from './heldItem';
+import { HELD_ITEM, heldSkeleton, MountEase, mountMatrix, muzzlePoint, PISTOL_ITEM, type Carries, type Mount } from './heldItem';
 import type { Firearm } from './kit';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { ACTION_CLIPS, type MoverActionName, type Stance, type WalkMode } from './walk';
@@ -196,6 +196,8 @@ export class Play {
   private sidearmMuzzle: Pnt3D | null = null;
   private item: Firearm = 'rifle';
   private mounts: { rifle: Mount; pistol: Mount } = { rifle: 'hand', pistol: 'spawn' };
+  /** WEAPON: a weapon eased from where it was drawn to a new mount (`MountEase`: the swap's ends, the hand-off). */
+  private readonly ease = new MountEase();
   private stance: Stance = 'stand';
   private readonly listeners = new Set<(e: PlayEvent) => void>();
   /** The rifle put away while another item is in the hand (the grenade: `./grenade`'s `equip`). */
@@ -217,6 +219,7 @@ export class Play {
     // The weapons ride the body's own frame: their matrices are set from their mounts each frame (`mountMatrix`).
     for (const o of [this.weapon, this.sidearm]) if (o && view) view.group.add(o);
     this.last = null;
+    this.ease.reset();
     this.raise.reset();
     this.rebuild();
   }
@@ -269,14 +272,15 @@ export class Play {
   }
 
   /** The weapons on their mounts in the body's frame; hidden before the first play and while stowed in the hand. */
-  private placeHeld(): void {
+  private placeHeld(dt: number): void {
     const skeleton = this.skeleton;
     const played = this.last !== null && this.animator !== null && skeleton !== null;
     const carries = (this.loaded?.carries ?? null) as Carries | null;
     for (const [item, object] of [['rifle', this.weapon], ['pistol', this.sidearm]] as const) {
       if (!object) continue;
       const mount = this.mounts[item];
-      const m = played ? mountMatrix(skeleton!, item, mount, carries) : null;
+      const hangs = mount === 'swap' ? `swap:${this.last?.overlay ? 'overlay' : this.last?.action?.name ?? ''}` : mount;
+      const m = this.ease.place(item, hangs, played ? mountMatrix(skeleton!, item, mount, carries, this.animator!.heldLocal(item)) : null, dt);
       object.visible = m !== null && !(this.stowed && mount === 'hand');
       if (m) { object.matrix.fromArray(m); object.matrixWorldNeedsUpdate = true; }
     }
@@ -301,15 +305,17 @@ export class Play {
     return this.weaponPose?.reloadSeconds(this.stance, this.movingForReload()) ?? null;
   }
 
-  /** WEAPON: the posed weapon's `firepoint` in the world (`./heldItem`), or null with no body, weapon or play yet. */
+  /**
+   * WEAPON: the posed weapon's `firepoint` in the world (`./heldItem`), or null with no body, weapon or play yet: the
+   * weapon as it is drawn (its mount's matrix, eased after a swap: `MountEase`), so a round leaves the muzzle seen.
+   */
   muzzle(): [number, number, number] | null {
     const last = this.last, skeleton = this.skeleton;
     const pistol = this.item === 'pistol';
     const at = pistol ? this.sidearmMuzzle : this.muzzleAt, object = pistol ? this.sidearm : this.weapon;
     if (!last || !skeleton || !at || !object || !this.animator || this.mounts[this.item] !== 'hand') return null;
-    const node = skeleton.indexOf(this.item);
-    if (node < 0) return null;
-    const p = transformPoint(skeleton.world[node]!, at[0], at[1], at[2]);
+    if (skeleton.indexOf(this.item) < 0 || !this.ease.placed(this.item)) return null;
+    const p = transformPoint(Float32Array.from(object.matrix.elements), at[0], at[1], at[2]);
     return p ? actorToWorld(last.feet, last.yaw, p) : null;
   }
 
@@ -366,7 +372,7 @@ export class Play {
     } else this.weaponPose?.stopReload();
     this.bodyFrame(dt, snap && { ...snap, aimWeight: this.aimWeight });
     // The rifle rides the clips' `rifle` node: in W2.1's bind pose, never played, the hand holds nothing.
-    this.placeHeld();
+    this.placeHeld(dt);
     if (snap) this.moverEvents(snap, walk.mover?.() ?? null);
     // FUN_0029a950 reads the posed root: the walk's camera stands on it from its next tick.
     walk.setPosedRoot?.(snap && this.animator ? this.animator.rootY() : null);
