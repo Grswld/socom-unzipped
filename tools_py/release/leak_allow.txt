@@ -73,6 +73,13 @@ key-file-name  web/deploy/compose.yaml            .env   # `env_file: .env` and 
 key-file-name  web/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
 key-file-name  web/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
 key-file-name  web/deploy/env.example             .env   # the template's header: copy it to .env, never commit that
+# the same five files since 2026-09-29 under web/redotcom/ (the web/ split: redotcom, landing, shared); the rows above
+# stay for the history leg, which scans the old commits at the old paths
+key-file-name  web/redotcom/deploy/deploy.sh               .env   # copies, chmods and greps the host's deploy/.env by name
+key-file-name  web/redotcom/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages
+key-file-name  web/redotcom/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
+key-file-name  web/redotcom/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
+key-file-name  web/redotcom/deploy/env.example             .env   # the template's header: copy it to .env, never commit that
 secret-assignment  docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md  persona   # a ternary's string literals, quoted from code
 secret-assignment  docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md  persona   # the same file at its pre-2026-09-25 path, for the history leg (moved by Sprint 13 R1)
 secret-assignment  .gitleaks.toml  0x1122334455667788   # gitleaks's allowance for the same fixed test token, spelled out
@@ -114,3 +121,4 @@ tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "s
 # -- a git SSH remote in a documented command (feat/web-map-viewer, a5ab2280): the e-mail rule reads `git@github.com`
 #    as an address; it is a hostname in a URL, and the whole line is public by nature.
 email  web/README.md  git@github.com   # `git subtree push ... git@github.com:Scotho/...` -- a remote, not an address
+email  web/redotcom/README.md  git@github.com   # the same line since the web/ split of 2026-09-29 (the row above stays for the history leg)

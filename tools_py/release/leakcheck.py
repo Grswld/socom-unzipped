@@ -68,6 +68,9 @@ SENSITIVE_IGNORED = (
     # history half can never pass; a gitlink is a commit hash, not a secret.
     "out.bin", "out.wav", "build/", "build-clang/", "build-linux/", "dist-r0004/", "dist-foo/", "game.iso",
     "disc.7z", "out/", "server/ops/pulled/", "server/ops/ops.env",
+    # web/: the disc data the viewer's extractor writes (293 MB of the game's archives), its test fixtures, and the
+    # landing site's menu movie cut from the disc -- at the layout of 2026-09-29 and at the one before it
+    "web/redotcom/public/maps/", "web/redotcom/test-fixtures/", "web/landing/public/media/", "web/public/maps/",
 )
 # Shapes of file that must never be tracked whatever their path (the .gitignore has the same list; this is
 # the proof that it held).

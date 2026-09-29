@@ -1,12 +1,28 @@
-# Dependencies and builds
+# Dependencies and builds (every workspace member: redotcom's packages, landing, shared)
 node_modules/
 dist/
 *.tsbuildinfo
 
 # Game data extracted from the owner's disc by `npm run extract-maps`, and everything the tools and
 # the tests write beside it. No SOCOM II asset is ever committed: the viewer decodes your own disc.
-/public/maps/
-/test-fixtures/
-/test-results/
-/playwright-report/
+/redotcom/public/maps/
+/redotcom/test-fixtures/
+test-results/
+playwright-report/
 *.log
+
+# The landing site's game-derived and build-time inputs (web/landing/README.md, "Build inputs"): the menu movie and
+# the HUD sounds rendered from the disc and the audio fixtures, the story copied from docs/story, the page generated
+# from docs/STORY.md, the viewer build copied in by deploy.sh, and the owner's local artwork and goldens.
+/landing/public/media/
+/landing/public/story/
+/landing/public/sfx/
+/landing/public/img/logo.webp
+/landing/public/img/intel.jpg
+/landing/public/img/share.jpg
+/landing/story.html
+/landing/map-viewer/
+/landing/art/
+/landing/e2e/goldens/home-*
+/landing/e2e/goldens/story-*
+release.tgz
