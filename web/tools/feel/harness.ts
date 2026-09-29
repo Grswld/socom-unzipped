@@ -1,11 +1,12 @@
 import type { MotionClip } from '@s2u/scene';
-import { bandsFrom, clipRate, pickClip, rootVelocity, type MoverSnapshot } from '../../packages/viewer/src/animator';
-import { clipsFromPack, motionTableFromArchive, type MotionTable } from '../../packages/viewer/src/motionTable';
+import { clipsFromPack } from '../../packages/viewer/src/motionTable';
 import { localCamera, lookHeight, PlayerCamera, INIT_AIM_PITCH } from '../../packages/viewer/src/playerCamera';
 import { rootY, TICK, type Stance } from '../../packages/viewer/src/walk';
 import { CONSOLE, consoleMoveStick, lightByte, LIGHT_PUSHES, type ConsoleValue, type TruthKind } from './console';
 import { fitHold, type Hold, type Row } from './fit';
-import { axisOfByte, DECK, FeelRig, type HoldInput, type Sample } from './rig';
+import { axisOfByte, DECK, FeelRig, type HoldInput, type MotionFixtures, type Sample } from './rig';
+
+export type { MotionFixtures } from './rig';
 
 /**
  * The feel-parity table (web research 88): scripted inputs through the viewer's whole walk -- the keys and the pad
@@ -255,68 +256,91 @@ export function lookRows(): FeelRow[] {
   return out;
 }
 
-/** The fixtures the motion rows read: the player's clips and `motion.rdr`. */
-export interface MotionFixtures { pack: Uint8Array; readerc: Uint8Array }
-
 const rootOf = (clip: MotionClip): Float32Array => clip.parts.find((p) => p.name === 'skel_root')?.translations ?? new Float32Array();
 
-/** The body's clips and the camera's root input: the run's rate, the full strafe's clip, the jump, the roots. */
+/** A looped clip's root travel a cycle, computed here apart from `./locomotion` (`FUN_0028ab10`): x and z, x n / (n - 1). */
+function travelPerCycle(clip: MotionClip): number {
+  const t = rootOf(clip), n = clip.frameCount, last = 3 * (n - 1);
+  return (Math.hypot(t[last]! - t[0]!, t[last + 2]! - t[2]!) * n) / (n - 1);
+}
+
+/** Frames of the rig at 60 a second, one at a time, with the walk's action after each. */
+function frames(rig: FeelRig, seconds: number): { s: Sample; action: string | null }[] {
+  const out: { s: Sample; action: string | null }[] = [];
+  for (let i = Math.round(seconds * 60); i > 0; i--) out.push({ s: rig.run(1 / 60)[0]!, action: rig.walk.snapshot()?.action?.name ?? null });
+  return out;
+}
+
+/**
+ * The body's clips and the camera's root input (the motion workstream's, web research 80): the run's and the full
+ * strafe's clip rates, the standing jump (the clip on the floor) and the running jump (the impulse), the camera on the
+ * posed root in a run, a jump and prone. The rows that need the clips run only with the fixtures.
+ */
 export function motionRows(fx: MotionFixtures | null): FeelRow[] {
   const out: FeelRow[] = [];
-  // The jump, whatever the fixtures: the viewer's hop from a standing start.
-  const rig = new FeelRig('stand');
-  rig.walk.jump();
-  const hop = rig.run(2.5);
-  const top = hop.reduce((m, s) => (s.feet[1] > m.feet[1] ? s : m), hop[0]!);
+  // The running jump needs no clip: 1 s of W, then the jump, W still held.
+  const runner = new FeelRig('stand');
+  runner.hold(1, { keys: ['KeyW'] }, 60, true);
+  const y0 = runner.sample().feet[1];
+  runner.walk.jump();
+  const leap = frames(runner, 1.5);
+  const air = runner.walk.mover()!.landing?.airTime ?? null;
+  runner.release();
+  const up = leap.findIndex((f) => f.s.feet[1] > y0 + 1e-9);
+  out.push(row('jump.runDelay', 'running jump: take-off to the first rise', 's', CONSOLE.runJumpDelay, up < 0 ? null : (up + 1) / 60, 'motion',
+    { toleranceAbs: 1 / 60 + 1e-9 }));
+  out.push(row('jump.runTop', 'running jump: the feet\'s top', 'u', CONSOLE.runJumpTop, Math.max(...leap.map((f) => f.s.feet[1])) - y0, 'motion',
+    { tolerancePct: 2 }));
+  out.push(row('jump.runAir', 'running jump: time in the air on flat ground', 's', CONSOLE.runJumpAir, air, 'motion', { toleranceAbs: 2 / 60 }));
   if (!fx) return out;
-  const table = motionTableFromArchive(fx.readerc);
-  const names = ['seal_run', 'seal_jump', 'seal_prone', 'seal_rstrafe', 'seal_rstrafe_fast', 'seal_run_90r'];
-  const clips = new Map(clipsFromPack(fx.pack, names).map((c) => [c.name, c] as const));
+  const clip = new Map(clipsFromPack(fx.pack, ['seal_run', 'seal_jump', 'seal_prone', 'seal_run_90r']).map((c) => [c.name, c] as const));
   const need = (name: string): MotionClip => {
-    const c = clips.get(name);
+    const c = clip.get(name);
     if (!c) throw new Error(`MOTION_P.ZAR has no ${name}`);
     return c;
   };
-  const run = need('seal_run');
-  out.push(row('anim.runFactor', 'full run: seal_run\'s speed factor', 'x', CONSOLE.runClipFactor,
-    clipRate(run, table?.get('seal_run'), 65) / run.rate, 'motion'));
-  // The jump: the clip's root rise and when it tops, against the viewer's hop.
-  const jump = need('seal_jump'), jt = rootOf(jump);
-  const ys: number[] = [];
-  for (let i = 1; i < jt.length; i += 3) ys.push(jt[i]!);
-  const apexKey = ys.indexOf(Math.max(...ys));
-  const playback = table?.get('seal_jump')?.playback ?? jump.frameCount / jump.rate;
-  out.push(row('jump.rise', 'standing jump: rise', 'u', { ...CONSOLE.jumpRise, value: Math.max(...ys) - ys[0]! },
-    top.feet[1], 'motion', { tolerancePct: 5, note: 'the viewer\'s is jumpImpulse\'s placeholder hop' }));
-  out.push(row('jump.apex', 'standing jump: time to the top', 's', { ...CONSOLE.jumpApexSeconds, value: (apexKey / jump.frameCount) * playback },
-    top.t, 'motion', { tolerancePct: 5 }));
-  // The camera's root input: FUN_0029a950 reads the live skeleton root, so a run lowers the look-at by the clip's root.
-  const runRoot = rootOf(run)[1]!;
-  const runRig = new FeelRig('stand');
-  const running = runRig.hold(2, { keys: ['KeyW'] });
-  const last = running[running.length - 1]!;
+  // The run and the full strafe: FUN_0058bdf0 turns a cycle at 65 / its travel a cycle, n keys a cycle.
+  const keysAt65 = (name: string): number => (65 * need(name).frameCount) / travelPerCycle(need(name)) / 30;
+  const run = new FeelRig('stand', undefined, fx).hold(2, { keys: ['KeyW'] });
+  const ran = run[run.length - 1]!;
+  out.push(row('anim.runFactor', 'full run: the clip\'s keys a second / 30', 'x', CONSOLE.runClipFactor,
+    ran.anim!.clip === 'seal_run' ? ran.anim!.rate / 30 : null, 'motion', { note: `playing ${ran.anim!.clip}` }));
+  const strafe = new FeelRig('stand', undefined, fx).hold(2, { keys: ['KeyD'] });
+  const st = strafe[strafe.length - 1]!;
+  out.push(row('anim.strafeFactor', 'full right strafe: the clip\'s keys a second / 30', 'x',
+    { value: keysAt65('seal_run_90r'), kind: 'decomp', source: 'FUN_00583030 -> FUN_0058bdf0: the strafe set\'s band at 65 is seal_run_90r (web research 80 section 0)' },
+    st.anim!.clip === 'seal_run_90r' ? st.anim!.rate / 30 : null, 'motion', { tolerancePct: 1, note: `playing ${st.anim!.clip}` }));
+  // The camera on the posed root: a run lowers the look-at to seal_run's root + 10; prone stands it on seal_prone's.
+  const runRoot = rootOf(need('seal_run'))[1]!;
   out.push(row('cam.runTarget', 'full run: look-at target over the feet', 'u', { ...CONSOLE.runRootY, value: lookHeight(runRoot) },
-    last.camera.target[1] - last.feet[1], 'motion', { toleranceAbs: 0.05, note: `seal_run's root y ${runRoot.toFixed(3)} + the ramp's 10` }));
-  const proneRoot = rootOf(need('seal_prone'))[1]!;
-  out.push(row('cam.proneRoot', 'prone: the skeleton root the camera stands on', 'u', { ...CONSOLE.proneRootY, value: proneRoot },
-    rootY('prone'), 'motion', { toleranceAbs: 0.05, note: `prone target ${lookHeight(proneRoot).toFixed(3)} against ${lookHeight(rootY('prone')).toFixed(3)}` }));
-  // A full right strafe: the console's set picks by speed (motion.rdr's transition bands); the viewer plays one clip.
-  const bands = bandsFrom(table);
-  const snap: MoverSnapshot = { vx: 65, vz: 0, vy: 0, yaw: 0, airborne: false, crouched: false, landing: null, jumps: 0 };
-  const picked = pickClip({ mover: snap, current: null, jumped: false, landed: false, bands, table });
-  const set = ['seal_rstrafe', 'seal_rstrafe_fast', 'seal_run_90r'].filter((n) => {
-    const e = table?.get(n);
-    return e && e.transitionA !== null && e.transitionB !== null && 65 >= e.transitionA * 10 && 65 <= e.transitionB * 10;
-  });
-  const consoleClip = set[set.length - 1] ?? 'seal_run_90r';
-  const factor = (name: string): number => {
-    const c = need(name);
-    return clipRate(c, table?.get(name), 65) / c.rate;
-  };
-  const travel = (name: string): number => Math.hypot(...rootVelocity(need(name)));
-  out.push(row('anim.strafeFactor', 'full right strafe: the clip\'s speed factor', 'x',
-    { value: 65 / travel(consoleClip), kind: 'decomp', source: `FUN_00583030's strafe set by motion.rdr's transition bands at 65: ${consoleClip}` },
-    factor(picked), 'motion', { tolerancePct: 5, note: `the console's ${consoleClip} (root ${travel(consoleClip).toFixed(1)} u/s) against the viewer's ${picked} (root ${travel(picked).toFixed(1)} u/s)` }));
+    ran.camera.target[1] - ran.drawn[1], 'motion', { toleranceAbs: 0.05, note: `seal_run's root y ${runRoot.toFixed(3)} + the ramp's 10` }));
+  const prone = new FeelRig('prone', undefined, fx).run(1.5);
+  out.push(row('cam.proneRoot', 'prone at rest: the root the camera stands on', 'u', { ...CONSOLE.proneRootY, value: rootOf(need('seal_prone'))[1]! },
+    prone[prone.length - 1]!.camera.rootY, 'motion', { toleranceAbs: 0.05 }));
+  // The standing jump: the clip on the floor.
+  const stander = new FeelRig('stand', undefined, fx);
+  stander.run(1);
+  const floorY = stander.sample().feet[1];
+  const t0 = stander.sample().t;
+  stander.walk.jump();
+  const hop = frames(stander, 1.5);
+  const rootAt = (f: { s: Sample }): number => f.s.anim?.rootY ?? -Infinity;
+  const top = hop.reduce((m, f) => (rootAt(f) > rootAt(m) ? f : m), hop[0]!);
+  const jt = rootOf(need('seal_jump'));
+  let clipTop = -Infinity;
+  for (let i = 1; i < jt.length; i += 3) clipTop = Math.max(clipTop, jt[i]!);
+  out.push(row('jump.standFeet', 'standing jump: the feet\'s rise', 'u', CONSOLE.standJumpFeet, Math.max(...hop.map((f) => f.s.feet[1])) - floorY, 'motion',
+    { toleranceAbs: 1e-6 }));
+  out.push(row('jump.standRoot', 'standing jump: the posed root\'s top', 'u', { ...CONSOLE.standJumpRootTop, value: clipTop },
+    top.s.anim?.rootY ?? null, 'motion', { toleranceAbs: 0.05 }));
+  out.push(row('jump.standTop', 'standing jump: time to the root\'s top', 's', CONSOLE.standJumpTopSeconds, top.s.t - t0, 'motion',
+    { toleranceAbs: 1 / 60 + 1e-9 }));
+  const last = hop.map((f) => f.action).lastIndexOf('jump');
+  out.push(row('jump.standLength', 'standing jump: how long the action holds', 's', CONSOLE.standJumpSeconds, last < 0 ? null : (last + 1) / 60, 'motion',
+    { toleranceAbs: 1 / 60 + 1e-9 }));
+  out.push(row('cam.jumpTarget', 'standing jump: the look-at target\'s top over the feet', 'u',
+    { value: lookHeight(clipTop), kind: 'decomp', source: 'FUN_0029a950 on the posed root (web research 80 section 0): seal_jump\'s top + 10' },
+    Math.max(...hop.map((f) => f.s.camera.target[1] - f.s.drawn[1])), 'motion', { toleranceAbs: 0.1 }));
   return out;
 }
 

@@ -78,23 +78,26 @@ Run from `web/`:
 
 | command | what it does |
 |---|---|
-| `npm install` | workspace install (five packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the two shared archives `READERC.ZAR` and `ZWEAPON.ZAR` beside them, `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `npm install` | workspace install (six packages plus `tools`) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR` and `SOUNDS/BNKSTORE.ZAR`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
-| `npm run typecheck` | `tsc` over the five packages, the viewer and `tools` |
+| `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
+| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §8) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
 
 ### Deploying
 
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
-`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table). The archives are the game's and are never
-part of the build.
+`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
+`maps/RUN/SOUNDS/BNKSTORE.ZAR`). The archives are the game's and are never part of the build. The sound banks are read
+**by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
+(nginx and Vite do); one that does not still works, fetching the whole store.
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -109,6 +112,7 @@ Everything below is relative to `web/`.
 | `packages/archive` | ZDB table of contents, ZAR/ZED v2, compiled `.rdr`, and the `AssetSource` the rest read through (`/node` for the file system, `http` for the browser) |
 | `packages/gs` | GS texture and palette decode, and the GS state block (`ALPHA`, `TEX1`, `TEST`, `CLAMP`) per texture |
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
+| `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
@@ -184,9 +188,21 @@ pressure, which a browser pad does not give.
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
 [What the picture is made of](#what-the-picture-is-made-of), "The player". In short: 65 units a second running, 37
-backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
-not jump: the game's jump is an animation's root motion, not yet read. The ammo box at the bottom left shows the
-magazine while walking.
+backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` jumps
+as the game does ([research 80](docs/research/80-the-jump.md)): under 15 units a second the standing jump, a clip on the
+floor (`seal_jump`, 0.99 s, the body's root and the camera rising 3.6); from 15 the running jump, 79.9 up 0.1 s after
+the take-off under the 235 fall -- 12.9 units (1.3 m) high, 0.78 s in the air, the take-off's speed carried; prone cannot. The
+clips are the game's pick and blend: the stick's speed picks each set's clip by its transition band, the forward and
+strafe sets share the stick's angle, every clip plays at the rate its root needs. While walking, the game's own HUD is drawn
+over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
+compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
+the context prompt (the climb icon); hidden in flight.
+
+**The walk sounds** with the game's own sounds, decoded from the map's banks (`docs/research/81-sounds.md`): a
+footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
+metal on Frostfire's rig, sand in Desert Glory), the stealth step at a light stick and the crawl prone; the jump's
+whoosh and the landing (the surface's, or a bone's crack from a deadly height); the M4A1 SD's suppressed round and its
+reload. The browser starts sound on the first click or key press; `window.__viewer.audio()` reports what played.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -385,16 +401,39 @@ rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAG
 every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
 `EFFE_TXR.ZED`, 1 to 1.8 units wide.
 
+**The rifle is in the SEAL's hands, raised to fire as the game raises it** (the sprint 2 player spec's §6, "The rifle
+in the hands, the Fire set, the kick and the satchel"). The body makes a `rifle` node under `rhand` with the rifle in
+hand (`FUN_00553290`); the clips' `rifle` track (`weapon` in the few SOCOM 1-named ones) poses it and the M4A1 SD
+hangs on it at its grip (`viewer/src/heldItem.ts`). The trigger raises the rifle over 0.1 s and it stays up 5 s after
+the last round, then falls over 0.5 s (`FUN_005dfe30`, `FUN_005dfc80`, the controller's 5.0 s at `FUN_00598280`;
+`viewer/src/weaponRaise.ts`); while up, each clip's **Fire** version (`seal_fp_stand`, `seal_fp_walk`,
+`seal_fp_crouch` ... twelve pairs, `FUN_005e0690`) blends in at that weight (`viewer/src/weaponPose.ts`, a pose layer
+over the clips). A round leaves the posed weapon's `firepoint` toward the point under the reticle; each kicks the
+aim's pitch by the stance's `FireRifleKick*` (`FUN_005b91c0`/`FUN_005b9280`, on in the image;
+`viewer/src/rifleKick.ts`), and `R` plays the stance's reload clip for its `motion.rdr` playback (1.6 s standing).
+The satchel is hung but hidden, as the game hides it until the SEAL picks up the bomb (`FUN_0059df60`). `Fire`'s
+`subscribe` is the audio's hook: a `round` event (the weapon's name, id, muzzle animation and sound names, the fire
+point in the world, the end, the hit, the rounds left), `reloadStart` (its seconds) and `reloadEnd`.
+
+**The HUD is the game's** ([`docs/research/87-hud.md`](docs/research/87-hud.md)): `CHUD`'s own rectangles read out
+of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, the weapon icon at (20, 389), "30/30" and
+"2 MAGS" at scale 0.9 on the baseline 382, the fire-mode rounds at x 10, 51, 87, the compass ring `compass_lo.tif` at
+96x96 on (565, 90) turned by the heading, the info box's health bar at (488, 396) -- drawn from `HUD_TXR`, `HUD2_TXR`,
+`HUDW_TXR` and `FONT_TXR` (the font a PSMT4 texture `@s2u/gs` now reads, every HUD bitmap stored bottom row first) with
+`fonts.rdr`'s `font_text_01` glyphs; each element's pixels within a pixel of the console frame's (`e2e/hud.spec.ts`).
+
 ## Known gaps
 
 - **The SEAL is a stand-in.** The body is a mannequin at the measured size whose legs swing by a stride model;
   the real model (`CLIB_GEO.ZED`'s skinned `CMesh` chain, the `0x70` unpack no decoder here reads), its 32-node
   skeleton and its animations (`MPZANIM.ZAR`, unopened) are web sprint 3's first candidate. With them would come
   the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
-- **The shot leaves the camera's eye, not the rifle.** The game fires from the weapon model's `firepoint` toward the
-  aim point; with no weapon model the eye stands in, so the round lands under the reticle but from the wrong
-  place. An empty magazine does not reload by itself (`R` does), the 2 s reload and the reticle's kick per round
-  are estimates, and no bullet surface class was found, so every polygon stops a round.
+- **The shot's effects are not drawn.** The round leaves the rifle's `firepoint` (above), but the muzzle's CZANIM
+  animation (`muzzle_m4`: the shell, the flash hider's flash, the smoke; the M4A1 SD's `muzzle_m4SD` has no flash)
+  is not played -- the zAnim command payloads are not decoded (research 77 §10). The rifle fired is the kit's M4A1
+  (`FireWait` 0.12) while the model in the hands is W2.R4's M4A1 SD; an empty magazine does not reload by itself
+  (`R` does), the reticle's knock mapping is an estimate, and no bullet surface class was found, so every polygon
+  stops a round.
 - **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
   the material half of the camera's surface test is left out.
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall

@@ -103,6 +103,7 @@ export function decodeTexture(
   }
   switch (psm) {
     case PSM.T8: palettized(rec, palettes, order, clut, data, diagnostics); break;
+    case PSM.T4: palettized4(rec, palettes, clut, data, diagnostics); break;
     case PSM.CT16: case PSM.CT16S: direct16(rec, data); break;
     case PSM.CT32: case PSM.CT24: direct32(rec, data); break;
     default:
@@ -113,7 +114,7 @@ export function decodeTexture(
 }
 
 function psmOfBpp(bpp: number): number | undefined {
-  return bpp === 8 ? PSM.T8 : bpp === 16 ? PSM.CT16 : bpp === 32 ? PSM.CT32 : undefined;
+  return bpp === 8 ? PSM.T8 : bpp === 4 ? PSM.T4 : bpp === 16 ? PSM.CT16 : bpp === 32 ? PSM.CT32 : undefined;
 }
 
 function palettized(
@@ -135,6 +136,41 @@ function palettized(
       const entry = ((rec.pixels[src] ?? 0) & 0xff) * 4;
       data.set(lut.subarray(entry, entry + 4), (y * rec.width + x) * 4);
     }
+  }
+}
+
+/**
+ * A 16-entry PSMT4 CLUT is uploaded as an 8x2 block under `csm1`: entries 0-7 on the buffer's first row, 8-15 on
+ * its second, and the second row starts 16 entries on (the `_PAL` buffer is a 16-wide CT32 image). Found on
+ * `FONT_TXR.ZED`'s `font_text_01.tif` (web/docs/research/87, 2026-09-28): its palette 139 holds a white alpha ramp
+ * in entries 0-7 and 16-23 and zeros between.
+ */
+export function csm1Clut4Index(i: number): number {
+  return (i & 7) | ((i & 8) << 1);
+}
+
+/**
+ * PSMT4: two texels a byte, the even texel in the low nibble (the GS's order), rows stored plainly; the CLUT is
+ * the 16 entries from `TEX0.CSA` x 16 on. The swizzled page layout of PSMT4 is not undone: every PSMT4 texture seen
+ * so far (the HUD font) reads plainly.
+ */
+function palettized4(
+  rec: TextureRecord, palettes: PaletteTable, clut: ClutOrder, data: Uint8ClampedArray, diagnostics: string[],
+): void {
+  const cbp = rec.tex0?.cbp ?? 0;
+  let palette = palettes.get(cbp);
+  if (!palette) {
+    palette = palettes.first;
+    if (!palette) { diagnostics.push(`${rec.name}: CBP ${cbp} has no palette and none are loaded`); return; }
+    diagnostics.push(`${rec.name}: CBP ${cbp} names no loaded palette; decoded with ${palette.gsaddr}`);
+  }
+  const base = (rec.tex0?.csa ?? 0) * 16;
+  const n = rec.width * rec.height;
+  for (let i = 0; i < n; i++) {
+    const byte = rec.pixels[i >> 1] ?? 0;
+    const nibble = i & 1 ? byte >> 4 : byte & 15;
+    const entry = (base + (clut === 'csm1' ? csm1Clut4Index(nibble) : nibble)) * 4;
+    data.set(palette.rgba.subarray(entry, entry + 4), i * 4);
   }
 }
 

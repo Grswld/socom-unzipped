@@ -7,7 +7,7 @@ import { buildGrid, DEFAULT_RIFLE, type CollisionOwner, type Grid, type GridPara
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
-import { ammoText, DECAL_OFFSET, Fire, MAX_DECALS, RELOAD_SECONDS, type FireAim } from '../src/fire';
+import { ammoText, DECAL_OFFSET, Fire, MAX_DECALS, RELOAD_SECONDS, type FireAim, type FireEvent, type FireSource } from '../src/fire';
 import { packGround, WalkMode } from '../src/walk';
 import { INIT_AIM_PITCH } from '../src/playerCamera';
 
@@ -269,3 +269,75 @@ const SPAWN_A: V3 = [796, 100, 614];
  * column onto `container_blue01`'s `climb` side, 12 units west of A (its normal 10 degrees off +x).
  */
 const FACING = { yaw: 90, pitch: INIT_AIM_PITCH, distance: 37.379, point: [784, 119.75, 614] as V3 };
+
+describe('WEAPON: the round leaves the rifle\'s muzzle, the events, the reload\'s clip, the kick', () => {
+  /** A shooter's eye at (0, 20, 0) looking down -z; the muzzle 3 right, 5 down, 8 ahead (a shouldered rifle). */
+  const source = (grid: Grid, extra: Partial<FireSource> = {}): FireSource => ({
+    grid: () => grid,
+    aim: () => ({ eye: [0, 20, 0], far: [0, 20, -1000] }),
+    muzzle: () => [3, 15, -8],
+    ...extra,
+  });
+
+  it('fires from the muzzle toward the point under the reticle: the round lands where the eye\'s ray meets the wall', () => {
+    const fire = new Fire(source(world([wallAt(-60)])), DEFAULT_RIFLE, undefined, () => 0.5);
+    const shot = fire.shoot()!;
+    expect(shot.from).toEqual([3, 15, -8]);
+    expect(shot.hit!.point.map((v) => Math.round(v * 1000) / 1000)).toEqual([0, 20, -60]);
+    expect(shot.hit!.distance).toBeCloseTo(Math.hypot(3, 5, 52), 5);
+  });
+
+  it('meets what stands between the rifle and the aim point first', () => {
+    // a low wall from y 0 to 18 at z -30: under the eye's line (y 20) but across the muzzle's (y 17.1 there)
+    const low = quad([-50, 0, -30, 50, 0, -30, 50, 18, -30, -50, 18, -30]);
+    const fire = new Fire(source(world([wallAt(-60), low])), DEFAULT_RIFLE, undefined, () => 0.5);
+    const shot = fire.shoot()!;
+    expect(shot.hit!.point[2]).toBeCloseTo(-30, 6);
+    expect(shot.hit!.point[1]).toBeCloseTo(15 + 5 * 22 / 52, 5);
+  });
+
+  it('without a muzzle it is the eye\'s round, as before', () => {
+    const fire = new Fire(source(world([wallAt(-60)]), { muzzle: () => null }), DEFAULT_RIFLE, undefined, () => 0.5);
+    expect(fire.shoot()!.from).toEqual([0, 20, 0]);
+  });
+
+  it('tells its subscribers each round (the weapon, the fire point, the end) and each reload\'s start and end', () => {
+    const events: FireEvent[] = [];
+    const fire = new Fire(source(world([wallAt(-60)]), { reloadSeconds: () => 1.6 }), DEFAULT_RIFLE, undefined, () => 0.5);
+    const off = fire.subscribe((e) => events.push(e));
+    fire.shoot();
+    expect(events[0]).toMatchObject({
+      type: 'round', from: [3, 15, -8], hit: true, rounds: 29,
+      weapon: { name: 'M4A1', id: 54, fireAnim: 'muzzle_m4', sounds: { close: '.M4A1', med: '.M4A1_M', far: '.M4A1_F', reload: '.M4A1_RLD' } },
+    });
+    expect(fire.reload()).toBe(true);
+    expect(events[1]).toMatchObject({ type: 'reloadStart', seconds: 1.6 });      // the reload clip's playback
+    fire.update(1.5);
+    expect(events).toHaveLength(2);
+    fire.update(0.2);
+    expect(events[2]).toMatchObject({ type: 'reloadEnd', completed: true });
+    expect(fire.state().magazine).toMatchObject({ rounds: 30, spare: 1 });
+    fire.shoot(); fire.update(0.2); fire.reload();
+    fire.reset();
+    expect(events.at(-1)).toMatchObject({ type: 'reloadEnd', completed: false });
+    off();
+    fire.shoot();
+    expect(events.at(-1)!.type).toBe('reloadEnd');
+  });
+
+  it('holds the trigger for the raise, and kicks the aim\'s pitch through the source', () => {
+    let pitch = 0;
+    const fire = new Fire(source(world([wallAt(-60)]), {
+      look: () => ({ pitch, stance: 'stand' }), kickPitch: (r) => { pitch += r; },
+    }), DEFAULT_RIFLE, undefined, () => 0);
+    expect(fire.triggerHeld()).toBe(false);
+    fire.pull();
+    expect(fire.triggerHeld()).toBe(true);
+    fire.release();
+    for (let i = 0; i < 6; i++) fire.update(1 / 60);
+    expect(pitch).toBeCloseTo(6 * DEFAULT_RIFLE.rifleKick.stand!.rate / 60, 9);   // rising at FireRifleKickRate
+    for (let i = 0; i < 120; i++) fire.update(1 / 60);
+    expect(pitch).toBeCloseTo(0, 9);                                                // and back to the rest
+    expect(fire.state().kick.state).toBe(0);
+  });
+});

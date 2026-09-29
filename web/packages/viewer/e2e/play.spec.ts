@@ -23,8 +23,8 @@ const SPAWN_A: [number, number, number] = [796, 100, 614];
 const EYE = 15.4;
 /** Facing research 24 section 6.1's first waypoint, (806, 665), from A: the floor at 100 runs all the way. */
 const YAW_TO_1 = Math.atan2(-(806 - 796), -(665 - 614)) * 180 / Math.PI;
-const LOCOMOTION = ['seal_walk', 'seal_jog', 'seal_run'];
-const TAKE_OFF = ['seal_jump', 'seal_runningjump_launch'];
+/** The Seal anim set's forward set (research 80): the player walks `seal_walk_alert`, jogs `seal_jog_alert`, runs `seal_run`. */
+const LOCOMOTION = ['seal_walk_alert', 'seal_jog_alert', 'seal_run'];
 
 /** Two frames with the pose in them before the canvas is worth photographing. */
 const settle = (page: Page): Promise<void> => page.evaluate(
@@ -85,18 +85,27 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
   expect(Math.hypot(moved[0] - SPAWN_A[0], moved[2] - SPAWN_A[2])).toBeGreaterThan(2);
   expect(moved[1]).toBeCloseTo(100, 3);
 
-  // The jump: in the air, in a take-off clip, two frames on (at most 0.2 s of game time: the page caps a frame's time).
+  // The jump standing still (research 80): the Jump action -- seal_jump on the floor, the feet never leaving it -- and
+  // the camera's target rising with the clip's root (FUN_0029a950 reads the posed root).
+  await page.waitForTimeout(600);
+  const rootBefore = (await page.evaluate(() => window.__viewer.camera()))!.rootY;
   const jumped = await page.evaluate(() => {
     const v = window.__viewer;
     const ok = v.jump();
-    return new Promise<{ ok: boolean; airborne: boolean | undefined; clip: string | undefined }>((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
-      done({ ok, airborne: v.mover()?.airborne, clip: v.stats().anim?.clip });
-    })));
+    return new Promise<{ ok: boolean; airborne: boolean | undefined; clip: string | undefined; top: number }>((done) => {
+      let top = 0, frames = 0;
+      const look = (): void => {
+        top = Math.max(top, v.camera()?.rootY ?? 0);
+        if (++frames < 40) requestAnimationFrame(look);
+        else done({ ok, airborne: v.mover()?.airborne, clip: v.stats().anim?.clip, top });
+      };
+      requestAnimationFrame(look);
+    });
   });
   expect(jumped.ok).toBe(true);
-  expect(jumped.airborne).toBe(true);
-  expect(TAKE_OFF).toContain(jumped.clip);
-  await expect.poll(async () => (await page.evaluate(() => window.__viewer.mover()))?.airborne).toBe(false);
+  expect(jumped.airborne).toBe(false);
+  expect(jumped.top).toBeGreaterThan(rootBefore + 2);              // seal_jump's root: 10.5 to 15.1
+  await expect.poll(async () => (await stats(page)).anim?.clip ?? null).toBe('seal_stand');
 
   // The picture from the shoulder, standing again.
   await page.waitForTimeout(1500);

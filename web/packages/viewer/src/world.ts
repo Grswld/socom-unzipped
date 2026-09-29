@@ -129,6 +129,11 @@ export interface WorldView {
    * decoded none.
    */
   weapon: Group | null;
+  /**
+   * The frag grenade's model (`LoadedMap.grenade`, `./grenade`), built as the weapon is, outside `group`: `./grenade`
+   * clones it for the hand and for each grenade in flight. Null when the map decoded none.
+   */
+  grenade: Group | null;
   dispose(): void;
 }
 
@@ -660,6 +665,18 @@ export function buildWorld(map: LoadedMap): WorldView {
     }
   }
 
+  // The frag grenade, as the weapon: the world's materials and the map's rig; `./grenade` places its clones.
+  let grenade: Group | null = null;
+  if (map.grenade && map.grenade.parts.length) {
+    grenade = new Group();
+    grenade.name = map.grenade.name;
+    for (const part of map.grenade.parts) {
+      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
+      mesh.name = `${map.grenade.name} (${part.textureName ?? 'untextured'})`;
+      grenade.add(mesh);
+    }
+  }
+
   /**
    * Numbers every draw by its place in the engine order from a camera at (x, z) in the group's frame, and
    * each detail pass half a step behind its base (`detailRenderOrder`). three's opaque list sorts by
@@ -738,6 +755,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       }
     },
     weapon,
+    grenade,
     flarePositions: () => billboards.map((m) => [m.position.x, m.position.y, m.position.z]),
     lineGroups: () => lineObjects.map((line) => {
       const b = new Box3().setFromBufferAttribute(line.geometry.getAttribute('position') as BufferAttribute);
@@ -781,6 +799,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const { material } of detailMaterials.values()) material.dispose();
       for (const { mesh } of details) if (mesh instanceof InstancedMesh) mesh.dispose();
       for (const child of weapon?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
+      for (const child of grenade?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
       for (const texture of textures.values()) texture.dispose();
     },
   };

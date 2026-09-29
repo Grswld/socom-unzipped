@@ -1,4 +1,4 @@
-import type { AssetSource, ReadProgress } from './assetSource';
+import type { RangedAssetSource, ReadProgress } from './assetSource';
 import { parseServedIndex, type MapInfo, type ServedIndex } from './mapIndex';
 
 /**
@@ -12,7 +12,7 @@ import { parseServedIndex, type MapInfo, type ServedIndex } from './mapIndex';
  * (`READERC.ZAR`, `ZWEAPON.ZAR`; web sprint 2, W2.R5), which `list()` names too. The older indexes -- an
  * array of `MapInfo`, or of bare paths, whose entries carry no name -- still load (`parseServedIndex`).
  */
-export class HttpAssetSource implements AssetSource {
+export class HttpAssetSource implements RangedAssetSource {
   private readonly base: string;
 
   constructor(baseUrl: string) {
@@ -69,6 +69,36 @@ export class HttpAssetSource implements AssetSource {
       onProgress(loaded, declared);
     }
     return loaded === out.length ? out : out.subarray(0, loaded);
+  }
+
+  /**
+   * A file's length (web/docs/research/81 §1: the ranged reads of `SOUNDS/BNKSTORE.ZAR`): a `HEAD`'s
+   * `Content-Length`, or, where a server leaves it out, the total a one-byte `Range` answer's `Content-Range` names.
+   */
+  async size(path: string): Promise<number> {
+    const head = await fetch(`${this.base}/${path}`, { method: 'HEAD' });
+    if (!head.ok) throw new Error(`HTTP ${head.status} ${path}`);
+    const declared = Number(head.headers.get('content-length') ?? NaN);
+    if (Number.isFinite(declared) && declared >= 0) return declared;
+    const probe = await fetch(`${this.base}/${path}`, { headers: { Range: 'bytes=0-0' } });
+    const total = Number(/\/(\d+)$/.exec(probe.headers.get('content-range') ?? '')?.[1] ?? NaN);
+    if (!Number.isFinite(total)) throw new Error(`HTTP ${path}: the server says neither its length nor its range`);
+    return total;
+  }
+
+  /**
+   * `length` bytes from `offset` with a `Range` request. A server that ignores the header answers 200 with the
+   * whole file, which is sliced rather than refused -- correct, only slower; a short answer is refused.
+   */
+  async readRange(path: string, offset: number, length: number): Promise<Uint8Array> {
+    if (offset < 0 || length < 0) throw new Error(`HTTP ${path}: no range of ${length} bytes at ${offset}`);
+    if (length === 0) return new Uint8Array(0);
+    const response = await fetch(`${this.base}/${path}`, { headers: { Range: `bytes=${offset}-${offset + length - 1}` } });
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${path}`);
+    let bytes = new Uint8Array(await response.arrayBuffer());
+    if (response.status !== 206) bytes = bytes.subarray(offset, offset + length);
+    if (bytes.byteLength !== length) throw new Error(`HTTP ${path}: ${length} bytes at ${offset} run past its end`);
+    return bytes;
   }
 
   private async get(path: string): Promise<Response> {

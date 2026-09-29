@@ -307,26 +307,8 @@ export function jumpSpeed(height: number, g: number = G): number {
 }
 
 /**
- * PLACEHOLDER (W2.R2): the height the jump reaches when the table has no `min_jump_height` -- the defaults, before
- * or without the disc's table. A round metre at the maps' scale, over `step_height` so a jump clears what a step
- * does not; no source.
+ * The jump is read (web/docs/research/80-the-jump.md; `./walk`): the running jump's impulse is `jump_factor x gravity x
+ * 0.4` (`FUN_0057e1b0` writes -0.4 of it into `actor+0x1364`, `FUN_005af930` into the fall speed 0.1 s later), and the
+ * standing jump's rise is the clip's skeleton root alone (`FUN_0059afd0`). `min_jump_height` is not read by either:
+ * what it bounds is not found (the cloud sprint's placeholder impulse from it is retired).
  */
-export const MIN_JUMP_HEIGHT_PLACEHOLDER = 10;
-
-/**
- * PLACEHOLDER (W2.R2), the jump's rule: the upward impulse that reaches the table's `min_jump_height` under its
- * gravity, sqrt(2 g h) -- `MIN_JUMP_HEIGHT_PLACEHOLDER` when the table has none. **Why a placeholder:** the spec's
- * W2.3 has the impulse as `jump_factor` (0.85) times what the decomp computes, and the bodies on hand do not compute
- * it. The seal's tick reads no field of the table (`decomp CZSealBody_Tick_0_0x57a330`, 0x57a330-0x57b510: no load
- * addresses 0x44c250..0x44c3dc -- its absolute loads are other constants, its pointer loads the SEAL's own fields,
- * the motion's and the root bone's, and there is no `$gp` load), and `SealProcessAltitude` is the probe's selection
- * only (`decomp CZSealBody_SealProcessAltitude`, 0x5b5d40); so neither `jump_factor` nor what `min_jump_height`
- * bounds is settled. reCOM keeps an `m_jumpImpulse` on the SEAL (`zSeal/zseal.h:777`) without the code that sets it.
- * W2.3b replaces this once the function that writes the impulse, or a 60 Hz trace of a standing jump, is on hand.
- */
-export function jumpImpulse(t: Pick<SealTuning, 'gravity' | 'min_jump_height'>): number {
-  return jumpSpeed(t.min_jump_height ?? MIN_JUMP_HEIGHT_PLACEHOLDER, t.gravity);
-}
-
-/** The jump's impulse on the defaults (`jumpImpulse`): sqrt(2 x 235 x 10), 68.56 units a second. PLACEHOLDER. */
-export const JUMP_PLACEHOLDER = jumpImpulse(SEAL_TUNING_DEFAULTS);

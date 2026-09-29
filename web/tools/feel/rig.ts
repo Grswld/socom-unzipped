@@ -1,5 +1,7 @@
-import type { WorldPoly } from '@s2u/scene';
+import { IDENTITY, partMatrix, Skeleton, type MotionClip, type WorldPoly } from '@s2u/scene';
+import { Animator, PLAY_CLIPS } from '../../packages/viewer/src/animator';
 import { FlyCamera } from '../../packages/viewer/src/camera';
+import { clipsFromPack, motionTableFromArchive, type MotionTable } from '../../packages/viewer/src/motionTable';
 import { padInput, type GamepadLike } from '../../packages/viewer/src/gamepad';
 import { packGround, WalkMode, type GroundData, type Stance, type WalkCameraState } from '../../packages/viewer/src/walk';
 
@@ -77,6 +79,28 @@ export interface HoldInput {
   pad?: readonly number[];
 }
 
+/** The fixtures the body's clips come from: the player's pack and `motion.rdr`. */
+export interface MotionFixtures { pack: Uint8Array; readerc: Uint8Array }
+
+/** The pack's clips and the table, read once a process. */
+let clipCache: { key: Uint8Array; clips: MotionClip[]; table: MotionTable | null } | null = null;
+function playClips(fx: MotionFixtures): { clips: MotionClip[]; table: MotionTable | null } {
+  if (clipCache?.key !== fx.pack) clipCache = { key: fx.pack, clips: clipsFromPack(fx.pack, PLAY_CLIPS), table: motionTableFromArchive(fx.readerc) };
+  return clipCache;
+}
+
+/**
+ * The body as far as the camera and the table need it: `./animator` on a skeleton of the one part the camera reads,
+ * `skel_root` (its bind at the standing 11.484) -- the clips, the plays and the cross-fades are the page's.
+ */
+function bodyAnimator(fx: MotionFixtures): Animator {
+  const { clips, table } = playClips(fx);
+  const skeleton = new Skeleton('feel', IDENTITY, [
+    { index: 0, name: 'skel_root', parent: -1, bindLocal: partMatrix([0, 0, 0, 1], [0, 11.484, 0]), bbox: new Float32Array(6), type: 0, flags: 0 },
+  ]);
+  return new Animator(skeleton, clips, table, { random: () => 0 });
+}
+
 /** One display frame after the walk's step: the mover and the camera as the page would draw them. */
 export interface Sample {
   t: number;
@@ -91,6 +115,8 @@ export interface Sample {
   /** The look law's axes (x right, y up) and the turn, rad/s left positive. */
   axis: [number, number];
   turnRate: number;
+  /** With a body: the clip playing, its keys a second, the posed root over the feet. */
+  anim: { clip: string; rate: number; rootY: number | null; nodes: { clip: string; weight: number; speed: number }[] } | null;
 }
 
 /** The fly camera is made once per process (it has no way to let go of its listeners); every walk is new. */
@@ -99,10 +125,12 @@ let shared: FlyCamera | null = null;
 export class FeelRig {
   readonly fly: FlyCamera;
   readonly walk: WalkMode;
+  /** The body's clips, when the fixtures are on hand: stepped after the walk, its posed root to the camera (`./play`). */
+  readonly animator: Animator | null;
   private held: string[] = [];
   private t = 0;
 
-  constructor(stance: Stance = 'stand', at: { x: number; z: number; y?: number; yaw?: number } = { x: 0, z: 0 }) {
+  constructor(stance: Stance = 'stand', at: { x: number; z: number; y?: number; yaw?: number } = { x: 0, z: 0 }, fx: MotionFixtures | null = null) {
     ensureDom();
     shared ??= new FlyCamera(canvas());
     this.fly = shared;
@@ -114,6 +142,16 @@ export class FeelRig {
     this.walk.setStance(stance);
     this.fly.setPose({ x: at.x, y: (at.y ?? 0) + 15.4, z: at.z, yaw: at.yaw ?? 0, pitch: 0 });
     if (!this.walk.setMode('walk')) throw new Error('feel rig: no floor to stand on');
+    this.animator = fx ? bodyAnimator(fx) : null;
+    this.body(1 / 60);
+  }
+
+  /** `./play`'s frame for the body: the clips a frame on, then the posed root handed to the camera's next tick. */
+  private body(dt: number): void {
+    const snap = this.walk.snapshot();
+    if (!this.animator || !snap) return;
+    this.animator.step(dt, snap);
+    this.walk.setPosedRoot(this.animator.rootY());
   }
 
   /** Seconds of display frames at `fps` with this input held, then let go (unless `keep`); a sample per frame. */
@@ -130,6 +168,7 @@ export class FeelRig {
     for (let i = Math.round(seconds * fps); i > 0; i--) {
       this.fly.update(dt);
       this.walk.frame(dt);
+      this.body(dt);
       this.t += dt;
       out.push(this.sample());
     }
@@ -159,6 +198,10 @@ export class FeelRig {
     return {
       t: this.t, feet: this.walk.feet()!, drawn: this.walk.drawnFeet()!, speed: this.walk.speed(), yaw: pose.yaw, pitch: pose.pitch,
       airborne: this.walk.mover()!.airborne, camera: this.walk.cameraState()!, axis: look.axis, turnRate: look.turnRate,
+      anim: this.animator ? (() => {
+        const a = this.animator.stats();
+        return { clip: a.clip, rate: a.rate, rootY: this.animator.rootY(), nodes: a.nodes };
+      })() : null,
     };
   }
 }

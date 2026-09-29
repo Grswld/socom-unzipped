@@ -108,8 +108,16 @@ export const CONSOLE = {
   turnAxisCorner: c(1.118, 'decomp', 'FUN_002da200 mode 1 on (1, 1): both axes clamped to 1, the curve 0.65 x 1.72'),
   // ---- the body's clips (read from the fixtures at run time; values here for the note) -----------------------------
   runClipFactor: c(1.1265, 'recomp', 'docs/research/25-sp-teleport.md line 372: node +0x24 1.1265 on seal_run at a forward walk'),
-  jumpRise: c(4.57, 'asset', 'MOTION_P.ZAR seal_jump skel_root y 10.51 -> 15.08 (key 12 of 20); the rise is the clip\'s (web spec section 7 W2.2b)'),
-  jumpApexSeconds: c(12 * 1.1 / 20, 'asset', 'seal_jump: 20 keys over motion.rdr playback 1.1 s, the root\'s top at key 12'),
+  /** The standing jump (web research 80 section 0): the clip on the floor, the feet never leave it. */
+  standJumpFeet: c(0, 'decomp', 'FUN_0057e1b0 under 15 u/s: the standing jump; seal_jump is no UseVelY motion (FUN_0059afd0), web research 80 section 0'),
+  standJumpRootTop: c(15.08, 'asset', 'MOTION_P.ZAR seal_jump skel_root y at key 12 of 20 (10.51 at key 0), web research 80 section 0'),
+  /** The play model (`FUN_0028c4f0`): a one-shot's phase at 1 / (playback x (n-1)/n); key 12 is phase 0.6. */
+  standJumpTopSeconds: c(0.6 * 1.1 * 19 / 20, 'decomp', 'FUN_0028c4f0 / FUN_0028ada0: key 12 of seal_jump at phase 0.6, 1.1 x 19/20 s a pass (web research 80 section 3)'),
+  standJumpSeconds: c(1.1 * (19 / 20) ** 2, 'decomp', 'seal_jump plays its keys 0-19 in 1.1 x (19/20)^2 = 0.993 s (web research 80 section 0)'),
+  /** The running jump: 79.9 up 0.1 s after the take-off, 2.4 g; 12.9 high at 60 Hz, 0.78 s in the air. */
+  runJumpDelay: c(0.1, 'decomp', 'actor+0x1360 = 0.1 (FUN_0057e1b0), web research 80 section 0'),
+  runJumpTop: c(12.9, 'decomp', 'jump_factor 0.85 x gravity 235 x 0.4 = 79.9 u/s, the 60 Hz fall step (web research 80 section 0)'),
+  runJumpAir: c(45 / 60, 'decomp', 'take-off to landing on flat ground at 60 Hz: 5 ticks of the 0.1 s wait, 40 of flight (web research 80 section 0 quotes 0.78, the closed form 0.1 + 2 x 79.9 / 235)'),
   runRootY: c(10.305, 'asset', 'MOTION_P.ZAR seal_run skel_root y; FUN_0029a950 reads the live root (research 17 section 3)'),
   proneRootY: c(2.168, 'asset', 'MOTION_P.ZAR seal_prone skel_root y (the camera ramp\'s floor is 2.169155)'),
 } as const;

@@ -7,7 +7,7 @@ import { FsAssetSource } from '@s2u/archive/node';
 import { facingVector } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { bodyYaw, chooseBodyModel, EYE_HEIGHT_W1R2 } from '../src/body';
-import { buildBody } from '../src/bodyView';
+import { buildBody, HIDDEN_AT_SPAWN } from '../src/bodyView';
 import { DEFAULT_LIGHTING } from '../src/lighting';
 import { loadMap, type LoadedMap } from '../src/loadMap';
 
@@ -123,6 +123,34 @@ describe.skipIf(!dressed)('Frostfire\'s SEAL as the game dresses it (served tree
     const at = knife.getWorldPosition(new Vector3()).sub(new Vector3(...m.body!.at!.position));
     expect(at.y).toBeGreaterThan(3.5);                         // below the knee (5.7), above the ankle (1.1)
     expect(at.y).toBeLessThan(5);
+    view.dispose();
+  });
+
+  it('wears no satchel until it carries the bomb: built, hidden at spawn (FUN_00599f00 -> FUN_0059df60(seal, 0))', async () => {
+    const m = await loaded();
+    const view = buildBody(m.body!, m, DEFAULT_LIGHTING);
+    expect(HIDDEN_AT_SPAWN.has('Satchel')).toBe(true);
+    const satchel = view.group.getObjectByName('Satchel')!;
+    expect(satchel.parent?.name).toBe('spinehi');
+    expect(satchel.visible).toBe(false);
+    expect(view.stats.hiddenGear).toEqual(['Satchel']);
+    expect(view.stats.fittingNames).toContain('Satchel');           // still hung: the bomb pickup shows it (FUN_005bbf10)
+    expect(view.setGearVisible('Satchel', true)).toBe(true);
+    expect(satchel.visible).toBe(true);
+    expect(view.stats.hiddenGear).toEqual([]);
+    expect(view.setGearVisible('no such gear', true)).toBe(false);
+    expect(view.group.getObjectByName('seal_holster')!.visible).toBe(true);
+    view.dispose();
+  });
+
+  it('hangs a prop under a part and poses it after the skeleton\'s own (the rifle under rhand)', async () => {
+    const m = await loaded();
+    const view = buildBody(m.body!, m, DEFAULT_LIGHTING);
+    const rifle = view.addProp('rifle', 'rhand');
+    expect(rifle.parent?.name).toBe('rhand');
+    const locals = m.body!.parts.map((p) => p.bindLocal);
+    view.setPose([...locals, Float32Array.from([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.25, 0.5, -0.25, 1])]);
+    expect(rifle.position.toArray()).toEqual([1.25, 0.5, -0.25]);
     view.dispose();
   });
 });

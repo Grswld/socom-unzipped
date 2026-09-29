@@ -16,15 +16,10 @@ import { moveStick } from '../src/moveStick';
 /** Research 88 section 2's divergences owned elsewhere, by row id: each is the owner's to close. */
 const REPORTED = new Set([
   'look.axis176',        // look: a single-byte edge of the dead zone (research 83 section 1's "one miss")
-  'look.turn1s@30',      // look: the law runs per display frame; the console's 60 Hz staircase turns 1 deg less at 30 fps
-  'look.turn1s@144',     // look: ... and 0.6 deg more at 144 fps
+  'cam.hfov169',         // presentation: the native view widens the horizontal angle with the window (research 88 section 4)
+  'look.turn1s@30',      // look: the law steps per display frame, the console's per 60 Hz frame
+  'look.turn1s@144',
   'look.corner',         // look / pad: ./gamepad clamps the pair to the rim before the law's circle
-  'cam.hfov169',         // presentation: the native view widens the horizontal angle with the window
-  'jump.rise',           // motion: the jump is the clip's root, not jumpImpulse's placeholder
-  'jump.apex',           // motion: ... and tops at 0.66 s, not 0.28
-  'cam.runTarget',       // motion (the camera's root input): the run's root is 10.305, the target 20.3 not 21.5
-  'cam.proneRoot',       // motion (the camera's root input): seal_prone's root is 2.168, not the 1.8 estimate
-  'anim.strafeFactor',   // motion: a full strafe plays seal_run_90r, not seal_rstrafe at the 3x cap
 ]);
 
 const pack = fixture('RUN/MOTION_P.ZAR'), readerc = fixture('RUN/READERC.ZAR');
@@ -35,7 +30,7 @@ describe('the feel-parity table', () => {
   it('builds, every row with a console source and a number from the viewer', () => {
     rows = feelTable(pack && readerc ? { pack, readerc } : null);
     console.log(formatTable(rows));
-    expect(rows.length).toBeGreaterThanOrEqual(pack && readerc ? 55 : 48);
+    expect(rows.length).toBeGreaterThanOrEqual(pack && readerc ? 61 : 52);
     for (const r of rows) {
       expect(r.source.length, r.id).toBeGreaterThan(10);
       expect(Number.isFinite(r.viewer), r.id).toBe(true);

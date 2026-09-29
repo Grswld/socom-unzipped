@@ -20,6 +20,8 @@ import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
 import { DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
 import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
+import { readHud, type HudBitmaps } from './hudAssets';
+import { grenadeTransferables, loadGrenadeAssets, type GrenadeAssets } from './grenadeAssets';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -151,6 +153,10 @@ export interface LoadedMap {
   reticle?: ReticleBitmaps | null;
   /** W2.5: the shot's mark, `BULLET_MARK`'s bitmap off `EFFE_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
   bulletMark?: Rgba | null;
+  /** The in-game HUD's bitmaps off `HUD_TXR`/`HUD2_TXR`/`HUDW_TXR`/`FONT_TXR` (`./hudAssets`, research 87), top row first. */
+  hud?: HudBitmaps;
+  /** The frag grenade's model, effect bitmaps and the map's `DefaultMaterial` (`./grenadeAssets`, `./grenade`). */
+  grenade?: GrenadeAssets;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -293,6 +299,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const body = loadBody(bytes, toc, await characterTableFor(source, path), (line) => notes.add(line));
   // W2.4: the held weapon, decoded here with the map so its textures come out of the same asset-library chain.
   const weapon = heldWeapon(bytes, toc, notes);
+  // The frag grenade (`./grenadeAssets`): its model's textures are decoded with the held weapon's below.
+  const grenade = loadGrenadeAssets(bytes, toc, stem, textureKey, (line) => notes.add(line));
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
@@ -300,7 +308,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
-  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? [])]
+  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...grenade.parts]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
     .concat(body ? bodyTextureNames(body) : []);
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
@@ -390,6 +398,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   for (const line of reticle.diagnostics) notes.add(line);
   const bulletMark = readEffectBitmap(bytes, toc, BULLET_MARK.texture);
   for (const line of bulletMark.diagnostics) notes.add(line);
+  const hud = readHud(bytes, toc);
+  for (const line of hud.diagnostics) notes.add(line);
   return {
     archive: stem,
     lines: segments.result(),
@@ -411,8 +421,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     ground: placement.ground,
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     ...(weapon ? { weapon } : {}),
+    grenade,
     reticle: reticle.bitmaps,
     bulletMark: bulletMark.rgba,
+    hud: hud.bitmaps,
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
@@ -434,6 +446,8 @@ export function transferables(map: LoadedMap): Transferable[] {
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   if (map.body) out.push(...bodyTransferables(map.body));
   for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy, map.bulletMark]) if (rgba) out.push(rgba.data.buffer);
+  for (const rgba of Object.values(map.hud ?? {})) out.push(rgba.data.buffer);
+  if (map.grenade) out.push(...grenadeTransferables(map.grenade));
   return out;
 }
 

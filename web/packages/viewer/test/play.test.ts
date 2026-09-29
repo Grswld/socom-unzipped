@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Matrix4 } from 'three';
+import { Group, Matrix4 } from 'three';
 import { FsAssetSource } from '@s2u/archive/node';
 import { partMatrix, type MotionClip, type MotionPart } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
@@ -10,7 +10,7 @@ import { buildBody } from '../src/bodyView';
 import { DEFAULT_LIGHTING } from '../src/lighting';
 import { loadMap, type LoadedMap } from '../src/loadMap';
 import { packGround, WalkMode, EYE_HEIGHT, type GroundData, type Stance } from '../src/walk';
-import { bodySkeleton, bodyVisible, eyePoint, Play, playActions, StanceButton, STANCE_HOLD_S_PLACEHOLDER, stanceOnHold, stanceOnTap } from '../src/play';
+import { bodySkeleton, bodyVisible, eyePoint, Play, playActions, StanceButton, STANCE_HOLD_S_PLACEHOLDER, stanceOnHold, stanceOnTap, type PlayEvent } from '../src/play';
 import { noInput } from '../src/gamepad';
 import { existsSync } from 'node:fs';
 
@@ -63,16 +63,21 @@ describe('the mover as the body reads it (WalkMode.snapshot)', () => {
     expect(Math.hypot(t.vx, t.vz)).toBeGreaterThan(30);
   });
 
-  it('counts the jumps it takes, so a take-off is seen even between two frames', () => {
+  it('counts the jumps it takes and carries the action by serial, so a take-off is seen even between two frames', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 0, y: 50, z: 0, yaw: 0, pitch: 0 });
     mode.setMode('walk');
     expect(mode.jump()).toBe(true);
     const s = mode.snapshot()!;
-    expect(s).toMatchObject({ airborne: true, jumps: 1 });
-    expect(s.vy).toBeGreaterThan(0);
-    expect(mode.jump()).toBe(false);                     // no footing in the air: not counted
+    // standing still it is the standing jump: the Jump action on the floor (research 80)
+    expect(s).toMatchObject({ airborne: false, jumps: 1, action: { name: 'jump', reversed: false } });
+    expect(mode.jump()).toBe(false);                     // the Jump action holds: not counted
     expect(mode.snapshot()!.jumps).toBe(1);
+    mode.walkFor(1.2, { forward: 1, right: 0, boost: false });
+    expect(mode.jump()).toBe(true);                      // running now: the running jump, off the floor
+    expect(mode.snapshot()).toMatchObject({ airborne: true, jumps: 2, action: { name: 'launch' } });
+    expect(mode.snapshot()!.action!.serial).toBeGreaterThan(s.action!.serial);
+    mode.walkFor(1.5, { forward: 0, right: 0, boost: false });
     mode.crouch(true);
     expect(mode.snapshot()!.crouched).toBe(true);
   });
@@ -254,6 +259,51 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     walk.unbindKey();
   });
 
+  it("hands the posed root to the walk's camera (FUN_0029a950) and tells the page the take-off, the steps and the landing", async () => {
+    const map = await loaded();
+    const fly = new FlyCamera(canvas());
+    const walk = new WalkMode(fly);
+    walk.setGround(GROUND, [0, 0, 0]);
+    const view = buildBody(map.body!, map, DEFAULT_LIGHTING);
+    const play = new Play();
+    play.setBody(view, map.body!);
+    const jump = still('seal_jump', 20);
+    jump.parts[0]!.translations = Float32Array.from(Array.from({ length: 21 }, (_, i) => [0, i === 20 ? 11 : 11 + 4 * Math.sin((Math.PI * i) / 19), 0]).flat());
+    jump.parts[0]!.flags = 0x1c;
+    const run = still('seal_run', 19);
+    run.parts[0]!.translations = Float32Array.from(Array.from({ length: 20 }, (_, i) => [0, 10.3, -(i === 19 ? 0 : i) * 1.923]).flat());
+    run.parts[0]!.flags = 0x1c;
+    play.setClips({ clips: [still('seal_stand', 16), jump, run], table: null });
+    const events: PlayEvent[] = [];
+    play.onEvent((e) => events.push(e));
+    fly.setPose({ x: 0, y: 40, z: 0, yaw: 0, pitch: 0 });
+    walk.setMode('walk');
+    const frames = (n: number): void => { for (let i = 0; i < n; i++) { walk.frame(1 / 60); play.frame(1 / 60, walk, fly.camera); } };
+    frames(30);
+    expect(walk.cameraState()!.rootY).toBeCloseTo(11, 5);
+    walk.jump();
+    let top = 0;
+    for (let i = 0; i < 40; i++) { frames(1); top = Math.max(top, walk.cameraState()!.rootY); }
+    expect(top).toBeGreaterThan(13);                                  // the camera rose with the jump's root
+    expect(events.filter((e) => e.kind === 'takeoff')).toEqual([{ kind: 'takeoff', running: false }]);
+    // run, then a running jump: steps with the foot's world point, then the landing
+    fly.setPose({ yaw: -90 });
+    for (let i = 0; i < 60; i++) { walk.walkFor(1 / 60, { forward: 1, right: 0, boost: false }); play.frame(1 / 60, walk, fly.camera); }
+    const steps = events.filter((e) => e.kind === 'footfall');
+    expect(steps.length).toBeGreaterThan(1);
+    const step = steps[0] as Extract<PlayEvent, { kind: 'footfall' }>;
+    expect(step.position).not.toBeNull();
+    expect(Math.abs(step.position![1])).toBeLessThan(20);
+    walk.jump();
+    for (let i = 0; i < 90; i++) { walk.walkFor(1 / 60, { forward: 1, right: 0, boost: false }); play.frame(1 / 60, walk, fly.camera); }
+    expect(events.filter((e) => e.kind === 'takeoff').map((e) => (e as { running: boolean }).running)).toEqual([false, true]);
+    const land = events.find((e) => e.kind === 'land') as Extract<PlayEvent, { kind: 'land' }>;
+    expect(land.speed).toBeGreaterThan(60);
+    expect(land.clip).toBeNull();                                     // the stick held: the run goes on
+    view.dispose();
+    walk.unbindKey();
+  });
+
   it('reports the view: the game camera in play, the aim (first person, the body hidden) while held, fly otherwise', async () => {
     const map = await loaded();
     const fly = new FlyCamera(canvas());
@@ -280,6 +330,46 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     walk.setMode('fly');
     play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('fly');
+    view.dispose();
+    walk.unbindKey();
+  });
+
+  it('WEAPON: hangs the rifle on the hand, raises it on the trigger, plays the reload, and gives the muzzle', async () => {
+    const map = await loaded();
+    const fly = new FlyCamera(canvas());
+    const walk = new WalkMode(fly);
+    walk.setGround(GROUND, [0, 0, 0]);
+    const view = buildBody(map.body!, map, DEFAULT_LIGHTING);
+    const play = new Play();
+    play.setBody(view, map.body!);
+    const rifle = new Group();
+    play.setWeapon(rifle, [{ name: 'firepoint', at: [7.7854, 0.8338, 0] }]);
+    expect(rifle.parent?.name).toBe('rifle');
+    expect(rifle.parent?.parent?.name).toBe('rhand');
+    const hold = still('seal_fp_stand', 8);
+    play.setClips({ clips: [still('seal_stand', 10), hold, still('seal_reload', 30)], table: null });
+    let trigger = false;
+    play.setWeaponInput(() => ({ trigger, aiming: false }));
+    play.frame(1 / 60, walk, fly.camera);
+    expect(rifle.visible).toBe(false);                         // never played: the bind pose holds nothing
+    expect(play.muzzle()).toBeNull();
+    fly.setPose({ x: 5, y: 40, z: 6, yaw: 0, pitch: 0 });
+    walk.setMode('walk');
+    play.frame(1 / 60, walk, fly.camera);
+    expect(rifle.visible).toBe(true);
+    expect(play.weaponStats()).toMatchObject({ held: true, raise: { state: 'down', weight: 0 }, pose: { fire: null } });
+    const muzzle = play.muzzle()!;
+    expect(Math.hypot(muzzle[0] - 5, muzzle[2] - 6)).toBeLessThan(20);      // at the body, in the world
+    trigger = true;
+    for (let i = 0; i < 12; i++) play.frame(1 / 60, walk, fly.camera);
+    expect(play.weaponStats()).toMatchObject({ raise: { state: 'up', weight: 1 }, pose: { fire: 'seal_fp_stand', fireWeight: 1 } });
+    trigger = false;
+    expect(play.reloadSeconds()).toBe(1);                      // no table: the clip's 30 keys at 30 a second
+    play.weaponEvent({ type: 'reloadStart', weapon: { name: 'M4A1', id: 54, fireAnim: null, sounds: { close: null, med: null, far: null, reload: null } }, seconds: 1 });
+    play.frame(1 / 60, walk, fly.camera);
+    expect(play.weaponStats().pose).toMatchObject({ reload: 'seal_reload' });
+    // the bomb carrier's satchel, where the body is dressed (character.rdr beside the fixture)
+    expect(play.setGearVisible('Satchel', true)).toBe(map.body!.fittings.some((f) => f.name === 'Satchel'));
     view.dispose();
     walk.unbindKey();
   });
