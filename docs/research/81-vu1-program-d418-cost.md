@@ -15,8 +15,9 @@ the end, walk and standing tail together, 127,338 samples, 530/s) and the stats 
    `ps2_vu1_ops.h:409-442`): the lane arithmetic, the MAC/STATUS packing (`finishFlags`, 29 ms/s) and the flag-ring
    push (14 ms/s). Beside it `VU1Interpreter::fastCommit` 41 ms/s and `vu1ops::fmacProductSum4Slow<false>` 28 ms/s.
 3. **By microcode address, 36 % is the `0x52` skinning code and ~56 % is handlers native already implements**
-   (clipper 26 %, transform 11 %, lighting 8 %, cull 4 %, draw 4 %) running generated because their lists carry
-   `0x52`/`0x66`. That is a native-coverage lever after all, outside this note's three candidates (§3.4).
+   (clipper 26 %, transform 11 %, lighting 8 %, cull 4 %, draw 4 %) running generated because native refused or
+   never entered their lists -- for which reason is unmeasured. At most ~22 of the 56 points fit the `0x52`/`0x66`
+   residual; the rest is unknown until a refusal-reason count exists (§3.4), outside the three candidates.
 4. **The profile must be symbolized against the exe that ran.** `dist/socom2.exe` was rebuilt after it; the stock
    tools now read `fastCommit` as 0.19 % instead of 4.1 % (§2.1). Every figure here is shift-corrected.
 5. Smallest and safest first: **C1**, a fast path for the zero-accumulator/zero-operand lanes of the product-sum
@@ -105,7 +106,7 @@ synchronously (`loadClutIfNeeded` 1,208, `markRtDirtyFromFrame` 615).
 r is at least 2, (3) at most 253, (4) no cancellation, (5) `|p| != FLT_MAX` (`:314-320`); a dest lane failing any
 calls the `noinline` double-precision classifier (`:230-289`, `:322-326`). Condition (1) also fails when acc and p
 are both zero (`+0 == -0`), which is every `MADDA.xyzw` whose matrix has a zero column: `MULAx` leaves `acc.w = 0`,
-then `MADDAy`/`MADDAz` add `0 * v` to it and go slow for the w lane. The image has 83 `MADD*` sites with dest
+then `MADDAy`/`MADDAz` add `0 * v` to it and go slow for the w lane. The image has 88 `MADD*` sites with dest
 `xyzw` and 38 with dest `w` (the `fmac<ArithMadd, ...>` instances in the generated file). The native lighting loop
 inlines the same function (`socom2_dispatch_0x1b50.cpp:121` includes `ps2_vu1_ops.h`). This is a hypothesis: no
 counter says which condition fails (§5 step 2 measures it before any code).
@@ -153,11 +154,17 @@ whole. **Fence:** as C1, plus a golden over every dump in `logs/vu1dump3` and `l
 
 ### 3.4 Outside the brief's frame: why the generated code runs at all
 
-~56 % of vu1gen's self time (~85 ms/s) is in handlers the native dispatcher implements, reached through lists
-native refuses whole because they contain `0x52`/`0x66` (`socom2_dispatch_0x1b50.cpp:30-35`), and through the
-`0x33c8` entry. Research/15 made that residual a scope decision on a corpus where it was 4 of 166 dumps (lines
-67-70); over the walk it is 32 % of dispatcher entries. A native `0x66` plus a native resume at `0x1b60` would move
-that work to native; the saving depends on native's speed per vertex, which nothing here measures.
+~56 % of vu1gen's self time (~85 ms/s) is in handlers the native dispatcher implements, run generated because
+native refused the list or was never entered; over the walk native hands back 32 % of its entries. Why is not
+measured. The recorded skinned lists are `52 66 08 40 42` and the `0x33c8` follow-ons dispatch `66 08 40 42`
+(research/15 lines 31-35, 146-148, 157-160): neither holds `0x02` (the `0x3618` clipper) or `0x18` (the `0x1440`
+lighting), so at most ~22 of the 56 points are attributable to the `0x52`/`0x66` residual
+(`socom2_dispatch_0x1b50.cpp:30-35`). Native also refuses for other reasons, none counted: over 256 vertices or
+triangles, a list over 64 qwords or 32 commands, the `0x02` ordering check, a zero triangle count, the XGKICK mode
+(`socom2_dispatch_0x1b50.cpp:199-200, 821-880, 885-917`). **First step before this lever is costed:** a
+refusal-reason count (one counter per refusal branch, printed on the `[vu1-stats]` line) over one walk. Only then
+can a native `0x66`, a native resume at `0x1b60`, or a relaxed ceiling be sized; the saving also depends on
+native's speed per vertex, which nothing here measures.
 
 ## 4. How a candidate is measured (R334, `docs/DEVELOPING.md` lines 868-902)
 
@@ -168,8 +175,8 @@ that work to native; the saving depends on native's speed per vertex, which noth
   holds the 25 follow-ons research/15 names.
 - **Rung 2 decides the pick:** the mission walk, knob off then on, one exe; SYNCV from `frame_time`. The why is
   `[gs-loop] ee: work=` (the game-thread instrument) and `[vu1-stats] host=` over **the scripted walk only**: the
-  862 ms/s `work=` of `docs/KNOWN.md` line 133 averages all 175 lines, walk plus the 160 s standing tail; the 54
-  lines inside `frame_time`'s window read 742. VU1 host time is subtracted from the guest clock
+  862 ms/s `work=` of `docs/KNOWN.md` line 133 averages the last 175 lines (from t=298.2: the walk's final 20 s
+  and the standing tail); all 212 lines from the HUD step read 839, the 54 inside `frame_time`'s window 742. VU1 host time is subtracted from the guest clock
   (`ps2_vu1_core.cpp:2809-2815`, research/34 line 26), so a VU1 saving reaches SYNCV only through the frame budget.
 - **The profile** (`docs/DEVELOPING.md` lines 941-962) confirms where a saving came from; symbolize it against the
   exe that ran it (§2.1). The hostprof tools cannot tell; the exe has a `.buildid` section the histogram header
