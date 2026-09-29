@@ -8,6 +8,8 @@ import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, PS2_FRAME, type Backend, type Presentation } from './renderer';
+import type { LinkLog } from './linkLog';
+import { rehearse } from './rehearsal';
 import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './fog';
 import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
@@ -434,6 +436,12 @@ const WORLD_LANES = 8;
 let prepareObjects: ((objects: Object3D[], stale: () => boolean, lanes?: number) => Promise<void>) | null = null;
 /** What entering the walk first draws -- the SEAL and its rifle, their shadow's silhouette, the HUD and the reticle -- compiled with the map. */
 let warmWalk: (() => Promise<void>) | null = null;
+/** The renderer's link log (`./linkLog`), once `boot` has a renderer: the hook's `links()`. */
+let linkLog: LinkLog | null = null;
+/** When each warm-up of the map on screen finished (`performance.now()`), for the hook's `links()`. */
+let warmedAt: Record<string, number> = {};
+/** The body whose walk warm-up is done and whose first draws are owed (`./rehearsal`, research 90 #21): the next frame makes them. */
+let rehearsal: BodyView | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -913,6 +921,7 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
+  linkLog = created.links;
   // The effects with the scene they light, the way the world is warmed (the PS2 frame's target, the hidden through
   // stand-ins): research 90 item 19, a light pass compiled for the canvas alone still stalled the first blast.
   compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.warm(scene, fly.camera); };
@@ -929,7 +938,10 @@ async function boot(): Promise<void> {
       b ? created.prepare([b.group], scene, fly.camera, { stale }) : null,
       b && map ? created.prepare([b.group], scene, map.camera, { stale, target: map.target, override: map.override }) : null,
       ...overlays.map((o) => created.prepare([o.scene], o.scene, o.camera, { screen: true })),
+      // Research 90 #23: the throw's arc and a blast's scorch, ahead of the scene-wide warm-up (which reaches them last).
+      created.prepare(grenade.warmObjects(), scene, fly.camera, { stale }),
     ]);
+    if (!stale()) rehearsal = b;                     // #21: compiled; now drawn once, off the walk's first frame
   };
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();
@@ -976,6 +988,27 @@ async function boot(): Promise<void> {
     lastAdapted = now;
   };
   created.setPixelRatio(RATIO_CAP);
+  /**
+   * Research 90 #21 (`./rehearsal`): the walk's first draws -- the SEAL and what it holds, its shadow map's pass, the
+   * throw's arc, the HUD and the reticle -- made once in a frame before the walk, before that frame's own render,
+   * which clears over them.
+   */
+  const rehearseWalk = (b: BodyView): void => {
+    const arc = grenade.warmObjects().filter((o) => o.parent !== null);
+    rehearse(scene, [b.group, ...arc], () => {
+      charShadow.update(created.renderer, scene, b.group);
+      render(scene, fly.camera);
+    }, (o) => o.userData['effectLightPass'] === true);
+    charShadow.clear();
+    for (const o of [hud.warmTarget(), reticle.warmTarget()]) {
+      rehearse(o.scene, o.scene.children, () => {
+        const autoClear = created.renderer.autoClear;
+        created.renderer.autoClear = false;
+        try { created.renderer.render(o.scene, o.camera); } finally { created.renderer.autoClear = autoClear; }
+      });
+    }
+    warmedAt['rehearsed'] = performance.now();
+  };
   const frame = (): void => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
@@ -1008,6 +1041,11 @@ async function boot(): Promise<void> {
     grenade.update(dt);
     whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    if (rehearsal) {                 // #21: the walk's first draws, before this frame's render clears over them
+      const b = rehearsal;
+      rehearsal = null;
+      if (b === body && !walking) rehearseWalk(b);
+    }
     if (body?.group.visible) charShadow.update(created.renderer, scene, body.group); else charShadow.clear();
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -1190,7 +1228,8 @@ function show(map: LoadedMap): void {
   play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
   play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
   kit.reset();
-  void warmWalk?.().catch(() => {});                          // what entering the walk draws first, compiled now
+  warmedAt = {};
+  void warmWalk?.().catch(() => {}).then(() => { warmedAt['walk'] = performance.now(); });   // what entering the walk draws first, compiled now
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
     built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);
@@ -1306,11 +1345,12 @@ function show(map: LoadedMap): void {
         revealing = spreadAcrossFrames(built0.revealProps);
         void revealing.done.then(async () => {
           if (stale()) return;
+          warmedAt['props'] = performance.now();
           const g = effects.stats().loaded ? effects.warmUp() : null;
           const warming = warmScene?.(built0.warmExtras());
           if (g) effects.warmStarted(g);
           try { await warming; } finally { if (g) effects.warmDone(g); }
-          if (!stale()) worldWarmed = built0;
+          if (!stale()) { worldWarmed = built0; warmedAt['world'] = performance.now(); }
         });
       });
     });
@@ -1324,6 +1364,10 @@ function show(map: LoadedMap): void {
 window.__viewer = {
   setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
+  links: (since) => ({
+    now: performance.now(), total: linkLog?.total ?? 0, sync: linkLog?.syncTotal ?? 0, pending: linkLog?.pending() ?? 0,
+    records: linkLog?.since(since) ?? [], warmed: { ...warmedAt },
+  }),
   stats: () => ({
     triangles: view?.triangles ?? 0,
     backend,

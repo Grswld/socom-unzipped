@@ -1,7 +1,7 @@
 import {
   AdditiveBlending, DataTexture, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, NormalBlending, PlaneGeometry,
   RGBAFormat, Sprite, SpriteMaterial, UnsignedByteType, BufferGeometry, Float32BufferAttribute, Line,
-  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Material, type Texture,
+  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Material, type Object3D, type Texture,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
@@ -403,6 +403,8 @@ export class GrenadeThrower {
     this.scorchBitmap = assets?.bitmaps?.[GRENADE_BITMAPS.scorch] ?? null;
     if (this.scorchMaterial) { (this.scorchMaterial as MeshBasicMaterial).map?.dispose(); this.scorchMaterial.dispose(); }
     this.scorchMaterial = null;
+    this.scorchWarm?.geometry.dispose();                // the warm-up's scorch was the old material's
+    this.scorchWarm = null;
     this.defaultMaterial = assets?.defaultMaterial ?? '';
     this.cast = null;
     this.castGrid = null;
@@ -1125,6 +1127,31 @@ export class GrenadeThrower {
       this.unclipped.delete(old);
     }
   }
+
+  /**
+   * What a throw and its blast first draw, for the page to compile with the SEAL (`ViewerRenderer.prepare`, research 90
+   * §9, #23): the arc's strip (hidden until R1 is held; the scene-wide warm-up reaches it last, after the throw on a
+   * quick one -- it linked at the hold) and a scorch with the material every blast will use (made at the first blast
+   * before, on a quad with a `color` lane no warmed draw had). The scorch is not in the scene: `prepare` parks it for
+   * the call, so no frame draws it.
+   */
+  warmObjects(): Object3D[] {
+    if (!this.scorchWarm) {
+      this.scorchWarm = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
+      this.scorchWarm.name = 'scorch (warm-up)';
+      this.scorchWarm.frustumCulled = false;
+      // The clipped scorch (./markClip) draws a different lane set (no normal): warm that program too, on a square.
+      const clipped = markClipGeometry();
+      squareInto({ origin: [0, 0, 0], right: [1, 0, 0], up: [0, 0, -1], forward: [0, -1, 0], side: 1 }, clipped, 0.05, null);
+      this.scorchClipWarm = new Mesh(clipped, this.scorchMaterialOf());
+      this.scorchClipWarm.name = 'scorch clipped (warm-up)';
+      this.scorchClipWarm.frustumCulled = false;
+    }
+    return [this.arcLine, this.scorchWarm, this.scorchClipWarm!];
+  }
+
+  private scorchWarm: Mesh | null = null;
+  private scorchClipWarm: Mesh | null = null;
 
   /**
    * The scorches' material: `grenade_mark.tif` in the marks' GS arithmetic (`markMaterial`: texel x the vertex colour,

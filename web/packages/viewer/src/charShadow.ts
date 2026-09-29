@@ -109,6 +109,19 @@ export function fitShadowCamera(cam: OrthographicCamera, box: Box3, direction: V
   return range;
 }
 
+/**
+ * Puts the actor's own meshes on the map's layer and takes everything else under it off: VU1 `0x40` draws the actor's
+ * triangles, once. An effect light's overlay (`./effectLights`, `userData.effectLightPass`: the receiver re-drawn in the
+ * light's pass, hung beside it) is not the actor's -- drawn into the map it only repeated the silhouette, and at the
+ * first blast its own silhouette program linked in the frame (research 90 #23: 47-50 ms on WebGL2).
+ */
+export function markCasters(actor: Object3D): void {
+  actor.traverse((o) => {
+    if (o.userData['effectLightPass'] === true) o.layers.disable(SHADOW_LAYER);
+    else o.layers.enable(SHADOW_LAYER);
+  });
+}
+
 /** The strength the receivers' formula scales by: `ShadowWeight * 255` in the GS's 0..128 alpha. */
 export function shadowStrength(weight: number): number { return (weight * 255) / UNITY; }
 
@@ -147,7 +160,7 @@ export class CharacterShadow {
     actor.updateMatrixWorld(true);
     this.box.setFromObject(actor, true);
     if (this.box.isEmpty()) { this.clear(); return; }
-    actor.traverse((o) => o.layers.enable(SHADOW_LAYER));
+    markCasters(actor);
     const range = fitShadowCamera(this.camera, this.box, this.direction);
     const cam = this.camera;
     const mid = this.box.getCenter(new Vector3());
@@ -180,7 +193,7 @@ export class CharacterShadow {
    */
   warmSetup(actor: Object3D): { camera: OrthographicCamera; target: RenderTarget; override: MeshBasicNodeMaterial } {
     actor.updateMatrixWorld(true);
-    actor.traverse((o) => o.layers.enable(SHADOW_LAYER));
+    markCasters(actor);
     this.box.setFromObject(actor, true);
     if (this.box.isEmpty()) this.box.setFromCenterAndSize(actor.getWorldPosition(new Vector3()), new Vector3(1, 1, 1));
     fitShadowCamera(this.camera, this.box, this.direction);

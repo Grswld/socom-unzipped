@@ -243,7 +243,9 @@ export class Effects {
     const particleTextures = new Set<string>();
     for (const p of d.programs) for (const s of p.sequences) for (const o of s.ops) if (o.op === 'particles') for (const t of o.source.textures) particleTextures.add(t.name.toLowerCase());
     for (const m of this.particles.warm(particleTextures)) { m.visible = true; }
-    const quad = new PlaneGeometry(1, 1);
+    // With the marks' own `color` lane (`markGeometry`): a quad without one linked another program, and the first mark
+    // drawn linked its own (research 90 §9).
+    const quad = markGeometry(new PlaneGeometry(1, 1));
     for (const tex of [...d.marks.map((r) => r.texture), ...d.footprints.map(([, t]) => t)]) {
       const t = this.textures.get(tex.toLowerCase());
       if (t) g.add(new Mesh(quad, markMaterial(t)));
