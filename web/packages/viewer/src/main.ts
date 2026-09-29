@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { Matrix4, Scene, Timer, Vector3 } from 'three';
+import { Matrix4, Scene, Timer, Vector3, type Object3D } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
 import { HELD_RIFLE, materialTable, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
@@ -295,6 +295,8 @@ const fog: FogSettings = {
 };
 /** The renderer's clear colour, once `boot` has one: the background follows the fog. */
 let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
+/** The renderer's warm-up (`ViewerRenderer.warm`), once `boot` has one: every program compiled after a map's reveal. */
+let warmScene: ((extras: Object3D[]) => Promise<void>) | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -743,6 +745,7 @@ async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
+  warmScene = (extras) => created.warm(scene, fly.camera, extras);
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();
   backend = chosen;
@@ -1051,6 +1054,8 @@ function show(map: LoadedMap): void {
     // The props follow, over further frames. The map is already drawn and flyable while they arrive,
     // and the flares among them are turned by the render loop on the frame after they land.
     revealing = spreadAcrossFrames(built0.revealProps);
+    // Then every program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
+    void revealing.done.then(() => { if (view === built0) void warmScene?.(built0.warmExtras()); });
   });
 }
 

@@ -138,6 +138,11 @@ export interface WorldView {
    */
   grenades: Record<string, Group>;
   dispose(): void;
+  /**
+   * What `ViewerRenderer.warm` should compile besides the scene: a stand-in mesh per LOD copy's fading twin, made now
+   * rather than on the first fade (`fadeTo`), so a copy crossing its band does not pay a compile in that frame.
+   */
+  warmExtras(): Object3D[];
 }
 
 /** The two material kinds the world is drawn with, which share every property this file sets. */
@@ -779,8 +784,28 @@ export function buildWorld(map: LoadedMap): WorldView {
     for (const { mesh, base } of envPasses) mesh.renderOrder = detailRenderOrder(base.renderOrder, true) + 0.25;
   };
 
+  const warmExtras = (): Object3D[] => {
+    const out: Object3D[] = [];
+    const seen = new Set<Basic>();
+    for (const d of drawn) {
+      const rest = d.lod ? lodRest.get(d.object) : undefined;
+      if (!rest || seen.has(rest.material) || !(d.object instanceof Mesh)) continue;
+      seen.add(rest.material);
+      let twin = fades.get(rest.material);
+      if (!twin) {
+        twin = new MeshBasicNodeMaterial();
+        twin.name = 'lod fade';
+        fades.set(rest.material, twin);
+        applyFade(rest, twin);
+      }
+      out.push(new Mesh(d.object.geometry, twin));
+    }
+    return out;
+  };
+
   return {
     group,
+    warmExtras,
     revealWorld,
     revealProps,
     triangles,
