@@ -15,7 +15,7 @@ import {
 import { BULLET_MARK, parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
-import { groundGrid, packGround, type GroundData } from './walk';
+import { groundGrid, packGround, type GroundData } from './mover';
 import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
 import { DEFAULT_SIDEARM, DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';

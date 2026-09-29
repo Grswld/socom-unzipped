@@ -10,7 +10,7 @@ import {
 } from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
-import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './walk';
+import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './mover';
 
 /**
  * The traversal moves the walk lacks (web research 86): the ladder (mount at the foot or the head, climb, climb off
