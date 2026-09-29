@@ -127,8 +127,9 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[1]).toBeCloseTo(100, 3);
 
   // On foot the table lists the walking controls: R1's fire, the zoom and fire mode, Cross's action, the d-pad's peek, the
-  // game's weapon slots (L1, L2, R2), no boost.
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(15);
+  // game's weapon slots (L1, L2, R2), Select's scoreboard (research 87 section 12), no boost.
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(16);
+  await expect(page.locator('#pad-layout tbody')).toContainText('scoreboard (held)');
   await expect(page.locator('#pad-layout tbody')).toContainText('action (climb, ladder slide)');
   await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(0);
   await expect(page.locator('#pad-layout tbody')).toContainText('fire (held)');
