@@ -45,7 +45,7 @@ import { Zoom } from './zoom';
 import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
 import { PlayUi, readPlayChoice, writePlayChoice } from './features';
-import { readShare, updateAddress } from './shareUrl';
+import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules, writeRules } from './rules';
@@ -982,11 +982,12 @@ ui.onRecomSwitch((on) => setPlayMode(on, true));
  * left. A server the URL named is replaced by the choice.
  */
 ui.setOnline(NET.choice);
-// The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten.
+// The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten on load -- only a
+// choice the visitor makes below takes it out.
 if (NET.choice !== 'url') updateAddress({ online: NET.choice });
 ui.onOnline((choice: OnlineChoice) => {
   writeOnline(choice);
-  updateAddress({ online: choice });
+  updateAddress(onlineChoiceAddress(choice));   // the choice replaces a named server: `server=` / `mp` leave the link
   NET = resolveOnline('', choice, PAGE_LOCATION);
   if (NET.url) updateAddress({ rules: RULES });
   if (loaded) connectNet(loaded);

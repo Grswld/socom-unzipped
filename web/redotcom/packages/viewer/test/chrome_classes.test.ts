@@ -86,6 +86,19 @@ describe('the viewer chrome uses the design system', () => {
     expect(doc.querySelector('#about a[href="https://socomunzipped.com/"]')).not.toBeNull();
     expect(html).not.toMatch(/s2u\.scotho\.com/);
   });
+  it('the segmented switch style keys on the switches\' role=group (never a radiogroup), so every switch is drawn as one', () => {
+    expect(css).not.toMatch(/radiogroup/);
+    expect(css).toMatch(/\.s2u-tabs\[role="group"\] \.s2u-tab\[aria-pressed="true"\]/);
+    for (const g of doc.querySelectorAll('.s2u-tabs[role="group"]')) expect(g.closest('.s2u-overlay'), g.id).not.toBeNull();
+  });
+  it('About says what Play is, and never that there is no game (the Mode switch offers Play)', () => {
+    const about = (doc.getElementById('about')!.textContent ?? '').replace(/\s+/g, ' ');
+    expect(about).not.toMatch(/there is no game/i);
+    expect(about).not.toMatch(/just the world/i);
+    expect(about).toMatch(/No game code runs/);
+    expect(about).toMatch(/Play is a reading of the game's rules/);
+    expect(doc.querySelector('#recom [data-recom="on"]')).not.toBeNull();
+  });
   it('ui.ts speaks the system’s state classes', () => {
     expect(ui).not.toMatch(/toggle\('error'/);
     expect(ui).toMatch(/toggle\('is-bad'/);

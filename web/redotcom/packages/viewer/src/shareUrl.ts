@@ -12,7 +12,8 @@
  * On load the address beats the remembered choice; with a parameter absent the remembered choice applies, and the page
  * writes it into the address (`history.replaceState`: no reload, no history entries). A value this page does not know
  * reads as absent. The developer's parameters (`devmode`, `fly`, `mp`, `server`, `lag`, `loss`, anything else) pass
- * through as they were, a bare one kept bare, and are never added.
+ * through as they were, a bare one kept bare, and are never added -- but an Online choice the visitor makes takes
+ * `server` and `mp` out (`onlineChoiceAddress`): the choice replaces the server they named, so the link must too.
  */
 import type { OnlineChoice } from './online';
 import { parseRules, type Rules } from './net/protocol';
@@ -26,6 +27,8 @@ export interface ShareState {
   view?: ShareView | null;
   online?: OnlineChoice | null;
   rules?: Rules | null;
+  /** Other parameters to take out of the address (a developer's, which are otherwise always kept). */
+  drop?: readonly string[];
 }
 
 /** What an address says: each setting, or null where it says nothing this page understands. */
@@ -85,7 +88,7 @@ export function writeShare(search: string, state: ShareState): string {
   const rest: string[] = [];
   for (const part of parts) {
     const key = keyOf(part);
-    if (key === ALIAS) continue;
+    if (key === ALIAS || state.drop?.includes(key)) continue;
     if ((KEYS as readonly string[]).includes(key)) { if (!had.has(key)) had.set(key, part); continue; }
     rest.push(part);
   }
@@ -105,6 +108,17 @@ export function writeShare(search: string, state: ShareState): string {
   }
   const all = [...ours, ...rest];
   return all.length ? `?${all.join('&')}` : '';
+}
+
+/** The parameters that beat `online=` on load (`./online` `resolveOnline`, `./netPage` `netSettings`). */
+export const ONLINE_OVERRIDES: readonly string[] = ['server', 'mp'];
+
+/**
+ * The address after the visitor picks an Online choice: the choice written, and the `server=` / `mp` that beat it on
+ * load taken out, so a reload and the copied link join what the visitor chose, not the server the link had named.
+ */
+export function onlineChoiceAddress(choice: OnlineChoice): ShareState {
+  return { online: choice, drop: ONLINE_OVERRIDES };
 }
 
 /** Writes `state` into the page's address without a reload or a history entry; best-effort (a `file:` page has none). */
