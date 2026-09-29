@@ -378,6 +378,7 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
   **Residual, accepted:** two holders remain reachable only when a reaper stalls ≥ 30 s at a one-command
   window (a sleeping machine), which any lease lock without kernel locking has; the loser's renew reports
   `LOCK LOST` within one interval. Blind: a hung job whose wrapper keeps renewing is never reaped.
+- **A queued lock waiter, or any test process beside a running suite, starves that suite on this host (2026-09-28/29, three times; issue #110).** A branch build's `unittest discover` ran 4-14 CPU-seconds in 20 minutes with two or three waiters queued (110 and 64 minutes holding the lock); the merged chain's suite ran 184 CPU-seconds in the 20 minutes the queue was empty and 2 in the 14 minutes after one waiter re-queued. Process starts cost ~4 s under 60-90 live bash processes (agents' shells, dev servers, leaked fixtures). Rules: no full suite in a branch build (the `build.sh test` guard, `agent/s17-suite-guard`); no waiter queued and no test process started while a chain holds the lock -- an agent queues its build only on the controller's word; the lock's heartbeat interval while a chain holds is a task for `scripts/loop_lock.sh`.
 
 ## git
 

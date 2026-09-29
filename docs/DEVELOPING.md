@@ -856,6 +856,135 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
 - **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
 
+## Measuring a change without a chain
+
+*(Owner's word 2026-09-28 ~21:00Z, ruled as this sprint's defaults in R334; the plan's Global Constraints cite this
+section. It goes between "Instruments and diagnostics" and "Knobs".)* A performance attempt is measured on the
+cheapest rung that can decide it, and only adoption and the day's proof pay for the dear ones. Each rung below says
+what it decides, its metric, its command and what enforces it; **gap** marks a rule that nothing refuses yet.
+
+**The ladder, cheapest first.**
+
+| Rung | Cost | Decides | Metric |
+|---|---|---|---|
+| 1. The replay bench | minutes, no game | a draw-path change's first read: worth an exe or not | the bench's own time per replayed frame |
+| 2. One mission walk, knob off then on, one exe | ~25 min, one holding | **the attempt pick** | `SYNCV mean=` (the game's own frame rate); the phase's ms/s beside it |
+| 3. The full gate | ~17 min + the build of the new default | **adoption** (the default flipped) | 3/3 `PINS MATCH`, and the fence of the plan's "A failing test first" bullet |
+| 4. The merged chain | ~90 min | **the day's proof** of everything merged that day | all green, `logs/merged_chain.last_green` |
+| (close) Three quiet gates, one exe | three gates | the sprint's frame-rate bar (R322, F6) | `FRAME mean=` / `worst1s=` |
+
+- **Rung 1, the replay bench:** a headless replay of a recorded GS stream through the draw path. **Gap:** it is
+  being built on `agent/s17-replay-bench` (no commit at 2026-09-28 21:07Z); until it merges the ladder starts at
+  rung 2, and its command and metric are written here in the commit that lands it.
+- **SYNCV decides a pick, host-ms decides only the close.** `FRAME` is host ms per guest VBlank and drifts with host
+  load (about 20 % between single gates: the controller's estimate on 2026-09-28, no `docs/KNOWN.md` row); `SYNCV`
+  counts the frames the game drew (`[vu1-stats] syncv/s` over the same walk, `tools_py/parity/frame_time.py`). A
+  pick compares knob off and knob on **inside one holding**, back to back; a difference near the attempt's stop rule
+  is run again in the reverse order before it is ruled. The phase's ms/s (`python -m tools_py.parity.submit_split`,
+  `PS2X_GS_STATS=1`) says why SYNCV moved; it is not the decision. Home: R334. **Gap:** nothing refuses a pick made
+  on host-ms or across two holdings.
+
+**An attempt is a knob on one exe, not a build.** An attempt lands behind a Dev knob in
+`third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h` whose default is the old behaviour (the precedent: Sprint 16
+F2's `PS2X_GS_RT_TEXTURE`); `python -m tools_py.knobs write` regenerates `docs/KNOBS.md`, and
+`tools_py/tests/test_knobs_registry.py` fails on a read with no row. With the default off, the attempt changes
+nothing, so it merges on its review and module tests, and every pending attempt shares the one exe the day's chain
+builds; each rung-2 run flips one knob. Adoption is a one-line commit flipping the default, then rung 3 on the exe
+built with it. A second attempt on the same phase waits for the first's ruling (one knob per run, never two).
+
+**The gate cannot take a knob today.** The gate pins the `PS2X_*` environment of its mission stage
+(`tools_py/parity/pins.py` `env_pin`, standard `scripts/parity/pins.json`), so
+`PS2X_GS_STATS=1 python -m tools_py.parity.gate --only mission` refuses with exit 7 (`pins drifted: env`) before it
+launches, and `--accept-pins` would rewrite the shared standard (a ruling, never a reflex). **Gap:** no gate flag
+declares an attempt knob as recorded-not-compared. Until one exists, rung 2 is the gate's own mission drive with
+the gate's mission environment, laid out as a stamp so `frame_time` reads it (the shape of Sprint 16's
+`logs/s16_controller/s16_f2_ab.sh`). A copy under `logs/`, never edited while it runs:
+
+```
+#!/usr/bin/env bash
+# logs/<seat>/<attempt>_ab.sh -- rung 2: the mission walk with <KNOB> off, then on, on ONE exe, one holding
+set -u; cd /c/Projects/socom_pc || exit 2
+A=logs/parity/ab/<attempt>
+kill_drivers() { powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1; }
+walk() {   # <side> [KNOB=value]
+  local out="$A/$1"; shift
+  rm -rf "$out"; mkdir -p "$out"; cp -r game/disc/mc0_parity "$out/mc0"; kill_drivers
+  env "$@" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 PS2X_VU_STATS=1 PS2X_GS_STATS=1 \
+      PS2X_RUN_LOG="$out/mission.game.log" \
+      python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_probe.txt \
+      --out "$out/mission" --seconds 480 --tail 170 > "$out/mission.drive.log" 2>&1
+}
+walk off; walk on <KNOB>=<attempt value>; kill_drivers
+python -m tools_py.parity.frame_time "$A/off" "$A/on"
+```
+
+launched as `RUN_MIN_FREE_MEM_GB=4 bash scripts/run_detached.sh --owner <seat> --purpose "launch: <attempt> A/B"
+--wait 60 logs/<seat>/<attempt>_ab.sh logs/<seat>/<attempt>_ab.detached` (a `launch` purpose writes the quiet
+marker). The readout is `frame_time`'s `SYNCV` line per side, then
+`python -m tools_py.parity.submit_split $A/<side>/mission.game.log --from <HUD t> --to <last step t>` for the
+phase. The Log line names the exe hash, the knob, both SYNCV means and the stop rule's verdict; TRIED, NOT ADOPTED
+is an outcome. A game run still needs a window the owner named (O20, R297).
+
+**Profile before designing the next attempt.** The next attempt is designed from a sampled profile of the GL thread
+over the walk, so attempts are ranked by measured cost, not by guess (F1 Step 1's ranking, 2026-09-28, moved
+`setup` above `resolve` that way). The same walk, the profiler on the main (GL) thread; the histogram
+(`PS2X_HOST_PROF_OUT`) is rewritten every 10 s, so a copy taken at the HUD step isolates the walk:
+
+```
+out=logs/parity/prof/<name>; rm -rf "$out"; mkdir -p "$out"; cp -r game/disc/mc0_parity "$out/mc0"
+( until grep -q '^s28_' "$out/mission.drive.log" 2>/dev/null; do sleep 5; done
+  cp "$out/hostprof.txt" "$out/hostprof_pre.txt" ) & snap=$!
+PYTHONUNBUFFERED=1 PS2X_HOST_PROF=1 PS2X_HOST_PROF_MAIN=1 PS2X_HOST_PROF_STACKS=1 \
+    PS2X_HOST_PROF_OUT="$out/hostprof.txt" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 \
+    PS2X_VU_STATS=1 PS2X_GS_STATS=1 PS2X_RUN_LOG="$out/mission.game.log" \
+    python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_probe.txt \
+    --out "$out/mission" --seconds 480 --tail 170 > "$out/mission.drive.log" 2>&1
+kill "$snap" 2>/dev/null
+python -m tools_py.hostprof_diff "$out/hostprof_pre.txt" "$out/hostprof.txt" --top 40 --exe dist/socom2.exe
+python -m tools_py.hostprof_stacks "$out/hostprof.txt" --exe dist/socom2.exe --top 40
+```
+
+in a `logs/` script launched like rung 2. The profiler suspends the thread it samples, so a profiled walk's SYNCV
+and FRAME are not measurements. Home: R334. **Gap:** nothing refuses an attempt designed without a profile, and the
+walk-only snapshot is the script's `until` loop above, not a tool.
+
+**Preflight: memory, and the owner's game closed.** Nothing lock-bound starts under 4 GB free physical memory:
+`powershell.exe -NoProfile -Command "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,2)"`.
+Before a chain or a game run, `tasklist | grep -i -E 'socom_unzipped_launcher|socom2'` prints nothing: two chains
+died on 2026-09-28 with the launcher and the game open. If they are open they are the owner's -- wait for them to
+close; `scripts/kill_stale_drivers.ps1` kills every `socom2*.exe`, so it runs only after this check. Guard:
+`scripts/run_detached.sh` refuses below `RUN_MIN_FREE_MEM_GB` (exit 3, test
+`test_memory_refusal_below_threshold_does_not_launch` in `tools_py/tests/test_loop_lock.py`), **default 3**, so a
+launch passes `RUN_MIN_FREE_MEM_GB=4`. **Gaps:** the default is not 4; `loop_lock.sh run` and `build.sh` check no
+memory; nothing refuses a start while the launcher runs. Home: R334, and `docs/HAZARDS.md`'s memory-floor
+hazard (2026-09-27: children failing `0xC0000142` at 3.3-3.6 GB free).
+
+**The suites.** At a merge: the module tests the brief names (`python -m unittest tools_py.tests.test_<module> ...`),
+lock-free, never beside a build or a game run. The full Python suite runs only inside the day's chain (its `test`
+step, `./build.sh test`) and on CI on every push (`linux` and `windows` when anything outside `docs/` moved), never
+under the lock outside a chain and never beside a build. Guard: `build.sh test` refuses under the quiet marker of a
+running launch (exit 3, `FORCE_QUIET=1` overrides). Home: R334. **Gap:** nothing refuses a full
+`python -m unittest discover` beside a build or outside the chain.
+
+**One merged chain a day.** The merge bar is a clean review plus the module tests; the chain proves the day: one
+`scripts/parity/merged_chain.sh` copy over everything merged since `logs/merged_chain.last_green`, once a day, in a
+window. A red chain bisects by branch and evicts by `docs/GIT_STRATEGY.md` "Slices", as before. Home: R334 (it
+replaces "per batch" and "the full Python suite after every merge" in the `loop-iteration` skill's step 4 for this
+sprint). **Gap:** nothing refuses a second chain in a day.
+
+**Builds a fresh worktree does not need.** Attempts share the day's exe, so no rung needs a worktree build of its
+own; a worktree keeps its `third_party/ps2recomp/build-clang/` for its whole life (a re-recomp rebuilds only what
+changed, issue #57). **Gap:** there is no compiler cache and no shared build directory, so a fresh worktree's first
+`./build.sh runtime` is a full build (624-983 s from an empty tree, 2026-09-21; about an hour with the recomp and a
+loaded host).
+
+**When a second machine exists.** It takes the builds and the CPU-side suites (`./build.sh recomp|runtime`, the
+module tests, `./build.sh test`); game runs, the gate and the chain's gate step stay on the machine that holds the
+disc image and the exe. The lock is per machine already: `scripts/loop_lock.sh` lives beside a clone's git common
+dir, so each machine serialises its own work. Nothing derived from the disc enters the tree on either machine.
+**Gap:** the chain runs all its steps in one tree under one holding, so it cannot yet split its build from its gate
+across two machines; until it can, the chain runs whole on the gate's machine.
+
 ## Knobs
 
 **`docs/KNOBS.md` is the complete, generated list** (since Sprint 10 Q2, 2026-09-21), and it states its own count by
