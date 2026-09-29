@@ -415,12 +415,12 @@ namespace snd989
             bool loopFile = false;
             std::vector<int16_t> s1, s2;             // per channel ADPCM history
 
-            // Issue #94: back to the top of the data with a fresh ADPCM history, as a voice keyed on at the start.
+            // Issue #94: back to the top of the data. The ADPCM history carries over: the IRX splices the top of
+            // the file into the same SPU buffer behind the last block, clearing that block's end flag, and never
+            // re-keys the voice (989SND.IRX around decomp line 12069-12132), so the decoder runs straight on.
             void rewindToTop()
             {
                 consumed = 0;
-                std::fill(s1.begin(), s1.end(), static_cast<int16_t>(0));
-                std::fill(s2.begin(), s2.end(), static_cast<int16_t>(0));
             }
 
             // --- shared ---
@@ -2264,7 +2264,9 @@ namespace snd989
         // closing it -- the refusal's fclose and then ~Stream's, a double free (ASan, Linux, 2026-09-18).
         st.file = fp;
         st.group = group;
-        st.loopFile = loopFile;   // issue #94: before the pre-fill below, the first decode of the file
+        // Issue #94: before the pre-fill below, the first decode of the file. A file under one chunk per channel
+        // plays once instead: looped, each pump yields a sliver and the ring starves (an underrun every render).
+        st.loopFile = loopFile && st.dataSize >= st.interleave * st.channels;
         st.step = static_cast<double>(st.rate) / static_cast<double>(kSampleRate);
         st.s1.assign(st.channels, 0);
         st.s2.assign(st.channels, 0);

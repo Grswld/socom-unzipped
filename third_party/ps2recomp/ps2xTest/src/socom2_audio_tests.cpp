@@ -2052,6 +2052,21 @@ void register_socom2_audio_tests()
                 const int32_t stop[1] = {static_cast<int32_t>(0x8400001Fu)};
                 backend.onNotify(0x2Fu, stop, 1u);
                 t.IsTrue(backend.isPlaying(0x8400001Fu, playing) && !playing, "an explicit stop still ends a looping stream");
+
+                // A QUEUED play with flag 4 does not loop: the IRX's queued path (FUN_0000f7e0, decomp 9826-9831)
+                // keeps flag 4 as bit 4 of the queue node, not the stream's 0x400. Parent (5376 frames) + the
+                // queued segment (5376 more) are over well inside 28800 frames.
+                const int32_t parent[10] = {static_cast<int32_t>(0x84000020u), 2, 0, 0, 0x400, 0, -1, 1, 0, 0};
+                backend.onNotify(0x2Cu, parent, 10u);
+                const int32_t queuedPlay[10] = {static_cast<int32_t>(0x84000020u), 2, 0, 0, 0x400, 0, -1, 1, 4, 1};
+                backend.onNotify(0x2Cu, queuedPlay, 10u);
+                t.IsTrue(backend.isPlaying(0x84000020u, playing) && playing, "the parent plays with a flag-4 segment queued behind it");
+                for (int i = 0; i < 24; ++i)
+                {
+                    backend.mixerPumpStreams();
+                    backend.mixerRender(buf.data(), 1200);
+                }
+                t.IsTrue(backend.isPlaying(0x84000020u, playing) && !playing, "the queued flag-4 segment played once and ended");
             }
             std::remove(path.c_str());
         });
