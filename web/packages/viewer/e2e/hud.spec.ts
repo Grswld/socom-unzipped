@@ -108,10 +108,11 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
     }
   });
 
-  await page.goto('/?redotcom');
+  await page.goto('/?redotcom');   // walk mode is behind the play flag (`./features`)
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
-  await page.locator('#maps').selectOption('RUN/MP2.ZDB');
+  // The panel is folded away by default: the select is set as a change from it would be.
+  await page.locator('#maps').evaluate((el, v) => { (el as HTMLSelectElement).value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, 'RUN/MP2.ZDB');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
   expect((await page.evaluate(() => window.__viewer.stats())).diagnostics).toEqual([]);
@@ -168,6 +169,41 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
   writeFileSync(join(SCREENS, 'frostfire-ps2-spawn-hud-climb.png'), Buffer.from((await grab(page)).split(',')[1]!, 'base64'));
   await page.evaluate(() => window.__viewer.setHud({ climb: { visible: false, kind: 'med' }, frozen: false }));
 
+  // The round start (research 87 §8), 6.5 s in: the first line pushed up by the objective's two.
+  const start = await page.evaluate(() => window.__viewer.setHud({ frozen: true, roundTime: 6.5 }));
+  expect(start.model.banner.map((m) => m.lines.map((l) => l.text))).toEqual([
+    ['STARTING ROUND 1 OF 11'], ['OBJECTIVE:', 'ELIMINATE THE TERRORISTS'],
+  ]);
+  expect(start.rects.banner).toEqual({ x: 147, y: 0, width: 345, height: 99 });
+  await settle(page);
+  writeFileSync(join(SCREENS, 'frostfire-ps2-round-start-6s.png'), Buffer.from((await grab(page)).split(',')[1]!, 'base64'));
+  await page.evaluate(() => window.__viewer.setHud({ settled: true, frozen: false }));
+
+  // The map's own door (READERM.ZAR/actions.rdr: wdoor_2 at (897.5, 100, 995), 30 units of reach): its prompt.
+  await page.evaluate(() => window.__viewer.setCamera({ x: 897.5, y: 115.4, z: 975, yaw: 180, pitch: -9.167 }));
+  await page.evaluate(() => window.__viewer.walkFor(0.2, { forward: 0 }));
+  await settle(page);
+  expect((await page.evaluate(() => window.__viewer.hud())).model.action).toBe('door');
+  await page.evaluate(([x, y, z, eye]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 180, pitch: -9.167 }), [...SPAWN_A, EYE] as const);
+  await page.evaluate(() => window.__viewer.walkFor(0.2, { forward: 0 }));
+  await settle(page);
+  expect((await page.evaluate(() => window.__viewer.hud())).model.action).toBeNull();
+
+  // The tactical map (research 87 section 9): M opens it at the camera's heading and zoom 2200, hides the HUD and the
+  // reticle, and draws over the world; M again closes it and the ammo box fades back in.
+  await page.locator('#view').focus().catch(() => {});
+  await page.keyboard.press('KeyM');
+  await settle(page);
+  expect(await page.evaluate(() => window.__viewer.tacMap())).toMatchObject({ open: true, zoom: 2200, pan: null });
+  expect((await page.evaluate(() => window.__viewer.reticle())).visible).toBe(false);
+  await page.waitForTimeout(2000);                                   // the grid's 1.8 s wipe
+  writeFileSync(join(SCREENS, 'frostfire-ps2-tacmap.png'), Buffer.from((await grab(page)).split(',')[1]!, 'base64'));
+  await page.keyboard.press('KeyM');
+  await settle(page);
+  expect((await page.evaluate(() => window.__viewer.tacMap())).open).toBe(false);
+  expect((await page.evaluate(() => window.__viewer.hud())).timing.fade).toBeLessThan(1);
+  await page.evaluate(() => window.__viewer.setHud({ settled: true }));
+
   // The native presentation: the HUD scaled by the height / 448, the compass kept to the right edge.
   await setToggle(page, 'ps2look', false);
   await settle(page);
@@ -182,4 +218,30 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
   await settle(page);
   expect((await page.evaluate(() => window.__viewer.hud())).visible).toBe(false);
   expect(problems).toEqual([]);
+});
+
+test('the compass on Vigilance pins Charlie where the console round-start frame does, from spawn A facing north', async ({ page }) => {
+  await page.goto('/?redotcom');
+  const status = page.locator('#status');
+  await expect(status).toContainText('triangles');
+  await page.locator('#maps').evaluate((el, v) => { (el as HTMLSelectElement).value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, 'RUN/MP51.ZDB');
+  await expect(status).toContainText('VIGILANCE (MP51)');
+  await expect(status).toContainText('triangles');
+  await setToggle(page, 'ps2look', true);
+  await settle(page);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  // A (KNOWN section 1: 540, 160, 1456 -- the actor's feet), facing north (-z).
+  await page.evaluate(() => window.__viewer.setCamera({ x: 540, y: 175.4, z: 1456, yaw: 0, pitch: -9.167 }));
+  await page.evaluate(() => window.__viewer.setHud({ settled: true }));
+  await settle(page);                                                // one frame's feed: the feet for the marks
+  const shown = await page.evaluate(() => window.__viewer.setHud({ frozen: true, yaw: 0 }));
+  // The console (`s4_pcsx2/A_rend053`, research 87 section 10): the green "C" box's pixels x 590-608, y 27-45.
+  const marks = shown.rects.marks!;
+  // The union of the box and its arrow: the box gives its right and top edges -- the console's 609 and 27 (its last
+  // column 608 and first row 27), the drawn content half a pixel right and down of the quad (GS_SAMPLE_OFFSET).
+  expect(Math.abs(marks.x + marks.width + 0.5 - 609)).toBeLessThanOrEqual(1);
+  expect(Math.abs(marks.y + 0.5 - 27)).toBeLessThanOrEqual(1);
+  expect(shown.model.navPoints.map((p) => p.name)).toEqual(['Charlie', 'Delta', 'Echo', 'Foxtrot', 'Juliet', 'Romeo', 'Whiskey']);
+  await settle(page);
+  writeFileSync(join(SCREENS, 'vigilance-ps2-spawn-a-compass.png'), Buffer.from((await grab(page)).split(',')[1]!, 'base64'));
 });

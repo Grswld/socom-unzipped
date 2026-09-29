@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseZdb } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
-  ACTION_ICONS, AT_REST, DEFAULT_MODEL, FIRE_MODE_ROUNDS, HUD_LAYOUT, Hud, ammoLines, hudLayout, timerText,
+  ACTION_ICONS, AT_REST, DEFAULT_MODEL, FIRE_MODE_ROUNDS, HUD_LAYOUT, Hud, ammoLines, hudLayout, roundStartAt, timerText,
   type HudModel,
 } from '../src/hud';
 import { flipRows, HUD_LIBRARIES, readHud } from '../src/hudAssets';
@@ -119,6 +119,42 @@ describe('the info box, the stance word, the prompt and the banner', () => {
     expect(rects.banner).toEqual({ x: 147, y: 0, width: 345, height: 99 });
     const m = rects.message!;
     expect(Math.abs(m.x + m.width / 2 - HUD_LAYOUT.message.text.x)).toBeLessThan(1.5);
+  });
+});
+
+describe('the round start', () => {
+  it('fades up from black; STARTING ROUND at 0.36 s, the objective at 5.36 s, each 0.357 s in, out from 7 s on', () => {
+    const at = (t: number) => roundStartAt(t);
+    const alphas = (t: number) => at(t).banner.map((m) => Math.round(m.alpha * 100) / 100);
+    expect(at(0).fader).toBe(1);
+    expect(at(0.75).fader).toBeCloseTo(0.5, 9);
+    expect(at(1.5).fader).toBe(0);
+    expect(at(0.3).banner).toEqual([]);
+    expect(at(0.54).banner.map((m) => m.lines.map((l) => l.text))).toEqual([['STARTING ROUND 1 OF 11']]);
+    expect(alphas(0.54)).toEqual([0.5]);
+    expect(alphas(3)).toEqual([1]);
+    // The console's frame 26 (t = 5.58): the first line full, the objective coming in (0.62).
+    expect(alphas(5.58)).toEqual([1, 0.62]);
+    expect(at(5.58).banner[1]!.lines).toEqual([{ text: 'OBJECTIVE:', scale: 1 }, { text: 'ELIMINATE THE TERRORISTS', scale: 0.765 }]);
+    // Frame 28 (7.58): the first line fading (0.39 measured); frame 33 (12.58): the objective fading (0.39).
+    expect(alphas(7.58)).toEqual([0.38, 1]);
+    expect(alphas(12.58)).toEqual([0.38]);
+    expect(at(12.8).banner).toEqual([]);
+  });
+
+  it('stacks the lines up from the bottom: one line on 94; three on 61.5, 76.5 and 91.5 (the ink feet on the Vigilance frames)', () => {
+    const baselines = (t: number): number[] => {
+      const { banner } = roundStartAt(t);
+      const q = hudLayout(PS2, model({ banner }), SIZES).quads.filter((x) => x.element === 'message' && x.rgba[0] === 1);
+      // Each line's glyph quads share a top; the baseline is that top + 20 rows x scale x 448/480 - 0.3.
+      const tops = [...new Set(q.map((x) => Math.round((x.y - x.h / 2) * 100) / 100))];
+      return tops.map((top) => {
+        const h = q.find((x) => Math.round((x.y - x.h / 2) * 100) / 100 === top)!.h;
+        return Math.round((top + (h * 20) / 25 - 0.3) * 10) / 10;
+      });
+    };
+    expect(baselines(3)).toEqual([94]);
+    expect(baselines(6.5).sort((a, b) => a - b)).toEqual([61.5, 76.5, 91.5]);
   });
 });
 

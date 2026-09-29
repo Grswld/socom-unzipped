@@ -54,7 +54,7 @@ const LIVE = (1 << 0) | (1 << 12);
 function node(name: string, type: number, matrix: Float32Array, over: Partial<SceneNode> = {}): SceneNode {
   return {
     name, modelName: null, type, flags: LIVE, matrix, bbox: Float32Array.from([-1, 0, -1, 1, 0, 1]), regionmask: 0,
-    visuals: 0, visualParams: [], children: [], collision: [], ...over,
+    visuals: 0, visualParams: [], visualMaterials: [], children: [], collision: [], ...over,
   };
 }
 

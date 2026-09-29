@@ -166,6 +166,7 @@ the choice is remembered. A failed load unfolds the panel so the error is seen.
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
+| `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
 
 ### The controller
 
@@ -201,7 +202,9 @@ clips are the game's pick and blend: the stick's speed picks each set's clip by 
 strafe sets share the stick's angle, every clip plays at the rate its root needs. While walking, the game's own HUD is drawn
 over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
 compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
-the context prompt (the climb icon); hidden in flight.
+the context prompt (the climb icon, a door's within its 30 units); the round start as the console plays it (a fade from
+black, "STARTING ROUND 1 OF 11", then the objective); the compass's nav marks (the map's own nav points, C..Z); hidden in
+flight.
 
 **The walk sounds** with the game's own sounds, decoded from the map's banks (`docs/research/81-sounds.md`): a
 footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
@@ -312,6 +315,11 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 - **The mip level is the GS's.** A mipmapped texture samples the level `TEX1` gives off the depth,
   `(log2(w) << L) + K` clamped to `0..MXL`, not the GPU's derivative LOD; with the corpus's K of -12 to -6.5 most never
   leave the base level (`gsMipLod`, `world.ts`'s `gsTexel`; research 82, D3).
+- **The mip levels are the disc's, and the reflective surfaces get their pass.** A mipmapped texture uploads the records
+  its `MIPTBP1` names (a detail texture's level 1 is transparent: the detail fades with distance). A draw whose visual
+  names a textured `Material_Palette` entry -- the water, glass, ice -- gets VU1 `0x34`'s environment-map pass: a sphere
+  map of the reflected eye ray in the entry's texture and colour, faded by its rim alpha (`world.ts`, `envVertex`).
+  The PS2 picture renders with no antialiasing, as the GS did (research 82, D3b, D5, D6).
 - **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
   (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
   world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the
