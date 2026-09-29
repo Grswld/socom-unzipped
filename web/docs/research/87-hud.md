@@ -315,7 +315,7 @@ posting, the newest 8 lines, a colour per line), and posts the one death it can 
 (`FUN_005ac1f0`'s class 3) is "%s falls to their death" with the player's name -- the viewer's SEAL then walks on. No
 pick-ups, deploys, grenade kills or comms exist in the viewer yet.
 
-## 11. Estimates and open ends
+## 15. Estimates and open ends
 
 - The text's vertical factor (25 x S x 448/480), its foot row offset (+0.3) and `PEN_NUDGE` (-0.6) are fitted (§3);
   the `CROUCH` word at scale 0.765 sits 0.7 high of the console's, which says the vertical model is not the code's.
