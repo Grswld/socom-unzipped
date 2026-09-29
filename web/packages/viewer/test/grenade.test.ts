@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Group } from 'three';
 import { buildGrid, CLAYMORE_RULES, HE, M67, PLACE_CLAYMORE_ANIM, releaseSeconds, THROW_ANIMS, throwClipSeconds, type Grid, type GridParams, type V3, type WorldPoly } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
-import { GrenadeThrower, KIT_ITEMS, L2_SLOT_PLACEHOLDER, RELEASE_POINT, THROWABLES, worldToActor, type GrenadeSource } from '../src/grenade';
+import { GrenadeThrower, KIT_ITEMS, RELEASE_POINT, THROWABLES, worldToActor, type GrenadeSource } from '../src/grenade';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
 import { whiteOut } from '../src/flash';
 import { THROW_CLIPS, ThrowPose } from '../src/throwPose';
@@ -27,7 +27,7 @@ function thrower(extra: Partial<GrenadeSource> = {}): { g: GrenadeThrower; event
 }
 
 describe('the kit\'s slots (research 85 §9)', () => {
-  it('selects by name, cycles like the inventory, and L2 goes to its slot and back', () => {
+  it('selects by name and cycles like the inventory (L1 and L2 are the firearms: ./kit)', () => {
     const { g, events } = thrower();
     expect(KIT_ITEMS).toEqual(['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore', 'Detonator']);
     expect(g.select('HE')).toBe(true);
@@ -42,8 +42,8 @@ describe('the kit\'s slots (research 85 §9)', () => {
     expect(g.cycleInventory()).toBe('rifle');
     expect(g.icon()).toBeNull();
     expect(g.cycleInventory()).toBe('M67');
-    expect(g.swap2()).toBe('rifle');                         // already on L2's slot: back to the rifle
-    expect(g.swap2()).toBe(L2_SLOT_PLACEHOLDER);
+    expect(g.select('rifle')).toBe(true);                    // the firearm back in the hand
+    expect(g.select('M67')).toBe(true);
     expect(events).toEqual([
       'equip true HE', 'equip true AN-M8', 'equip true Mark141', 'equip true Claymore', 'equip false null', 'equip true M67', 'equip false null', 'equip true M67',
     ]);

@@ -24,7 +24,8 @@ import type { PlaySnapshot, WalkView } from './walk';
  *
  * - **The slots.** In SOCOM II a grenade is a kit slot, taken up from R2's inventory or by L1/L2 (`SwapWeapon1/2`)
  *   swapping to the slot assigned to them (research 85 §9.1), and thrown with the fire button (R1). Here: `1` the
- *   rifle, `4` the M67, `5` the HE; the pad's L2 (`swap2`) and R2 (`cycleInventory`); the fire trigger (the left
+ *   rifle, `4` the M67, `5` the HE; the pad's R2 (`cycleInventory`, through `./kit`'s inventory: L1 and L2 are the
+ *   primary's and the sidearm's slots, the WEAPON workstream's `Kit`); the fire trigger (the left
  *   button, the touch fire button, R1) throws while one is up (`main.ts` routes it).
  * - **The throw.** Held, the power chases the button's pressure (`stepThrowPower`: a key or a click is pressure 1, so
  *   the power is how long it was held: 0.54 at a quarter second, 0.95 at one); let go, `GetThrowAnim` picks the clip
@@ -108,12 +109,6 @@ export const SMOKE_ALWAYS_PLACEHOLDER = true;
 export type Detonation = 'blast' | 'smoke' | 'flash';
 export const detonationOf = (r: ThrowableRecord): Detonation =>
   r.explosionRadius === 0 ? 'smoke' : r.explosionDamage === 0 ? 'flash' : 'blast';
-/**
- * PLACEHOLDER (named): the item L2 swaps to. The game's L2 is `SwapWeapon2` (`controller.rdr`'s Default), which
- * selects the kit slot held at the controller's `+0x228` -- slot 1, the sidearm, by default (`CSealCtrl`'s constructor
- * 0x598280), any slot the player assigns in the inventory (`FUN_0021bda0`); the viewer has no sidearm.
- */
-export const L2_SLOT_PLACEHOLDER: GrenadeItem = 'M67';
 /** The peek value past which a throw is the lean's toss [reading: the game tests the lean clip, not the value]. */
 export const PEEK_THROW = 0.5;
 /** The game releases from the hand bone's (2, 0, 0) (`CZKit_TickExplosives`, `FUN_002869d0` with 0x66b6d0). */
@@ -440,17 +435,6 @@ export class GrenadeThrower {
       const next = KIT_ITEMS[(KIT_ITEMS.indexOf(now) + k) % KIT_ITEMS.length]!;
       if (this.available(next)) { this.select(next); break; }
     }
-    return this.held() ?? 'rifle';
-  }
-
-  /**
-   * L2, the game's `SwapWeapon2` (`FUN_00594cf0` at 0x5957d8: a press selects the slot the controller keeps at `+0x228`
-   * through `FUN_005c4b10`, or plays `FUN_003419c0`'s refusal when the slot is empty): `L2_SLOT_PLACEHOLDER` here, and
-   * a second press, already on it, goes back to the rifle [reading].
-   */
-  swap2(): KitItem {
-    if (this.held() === L2_SLOT_PLACEHOLDER) this.select('rifle');
-    else this.select(L2_SLOT_PLACEHOLDER);
     return this.held() ?? 'rifle';
   }
 

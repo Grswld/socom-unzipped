@@ -15,6 +15,7 @@ import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
 import type { ViewStats, WeaponStats } from './play';
+import type { KitState } from './kit';
 import type { AudioStats } from './audio';
 import type { GrenadeStats, KitItem, ThrowInfo } from './grenade';
 import type { ThrowPoseStats } from './throwPose';
@@ -105,6 +106,8 @@ export interface ViewerHook {
   reticle(): {
     visible: boolean; rect: Rect | null; frame: { width: number; height: number };
     mode: 'reticle' | 'scope'; size: number; offset: [number, number]; colour: ReticleColour;
+    /** WEAPON: the reticle set drawn (1 the rifle's, 0 the sidearm's) and the accuracy pip (alpha 0..128, PS2 px offset). */
+    type: number; pip: { alpha: number; offset: [number, number] | null };
   };
   /**
    * Research 84 (`./zoom`): the view state (`body+0x200`: 0 third person, 1 first, 4 the 9x view, 5+ the scope), its
@@ -159,6 +162,12 @@ export interface ViewerHook {
    * raise (the Fire set's weight, up or down, the countdown), the layers' clips and weights, and the muzzle in the world.
    */
   weapon(): WeaponStats;
+  /** WEAPON (`./kit`): the firearm in use, where each weapon rides, and the swap playing. */
+  kit(): KitState;
+  /** WEAPON: L1 / L2 -- takes the rifle or the Mark 23 up (the swap's clip); false when refused or already in the hand. */
+  selectWeapon(item: 'rifle' | 'pistol'): boolean;
+  /** WEAPON: R2 -- the inventory's next slot (the rifle, the Mark 23, the throwables); the item selected. */
+  inventory(): string;
   /** WEAPON: the trigger held (true) or let go (false), as the mouse button and R1 hold it. */
   trigger(down: boolean): void;
   /** WEAPON: shows or hides a piece of the SEAL's gear by its `character.rdr` name (`Satchel`: the bomb carrier's). */

@@ -7,7 +7,7 @@ import { buildGrid, DEFAULT_RIFLE, UNITS_PER_METRE, type CollisionOwner, type Gr
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
-import { ammoText, DECAL_OFFSET, Fire, MAX_DECALS, RELOAD_SECONDS, type FireAim, type FireEvent, type FireSource } from '../src/fire';
+import { ammoText, DECAL_OFFSET, Fire, MAX_DECALS, RELOAD_DELAY, RELOAD_SECONDS, type FireAim, type FireEvent, type FireSource } from '../src/fire';
 import { packGround, WalkMode } from '../src/walk';
 import { INIT_AIM_PITCH } from '../src/playerCamera';
 
@@ -144,26 +144,49 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
     expect(fire.state().shots).toBe(2);
   });
 
-  it('empties the magazine, refuses to fire, reloads over RELOAD_SECONDS from a spare, and runs out of spares', () => {
+  it('empties the magazine, reloads by itself RELOAD_DELAY later (the new magazine in at the start), keeps a part-used one', () => {
     const { fire } = rig(world([wallAt(-30)]));
     expect(RELOAD_SECONDS).toBe(2);
-    for (let i = 0; i < 30; i++) { expect(fire.shoot()).not.toBeNull(); fire.update(0.2); }
-    expect(fire.state().magazine).toEqual({ rounds: 0, capacity: 30, spare: 2, reloading: false });
+    expect(RELOAD_DELAY).toBe(0.01);
+    for (let i = 0; i < 29; i++) { expect(fire.shoot()).not.toBeNull(); fire.update(0.2); }
+    expect(fire.shoot()).not.toBeNull();                     // the 30th: the magazine runs dry
+    expect(fire.state().magazine).toEqual({ rounds: 0, capacity: 30, spare: 2, reloading: true });   // asked for
     expect(fire.shoot()).toBeNull();
-    expect(fire.reload()).toBe(true);
+    fire.update(0.02);                                       // FUN_005c2a90: the next magazine goes in at once
+    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: true });
     expect(fire.reload()).toBe(false);                       // already reloading
-    expect(fire.state().magazine.reloading).toBe(true);
     fire.update(1.9);
-    expect(fire.shoot()).toBeNull();                         // not while reloading
+    expect(fire.shoot()).toBeNull();                         // no round while the reload plays
     fire.update(0.2);
     expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: false });
     expect(fire.reload()).toBe(false);                       // a full magazine
     fire.shoot(); fire.update(0.2);
     expect(fire.reload()).toBe(true);
-    fire.update(RELOAD_SECONDS);
-    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 0, reloading: false });
-    fire.shoot(); fire.update(0.2);
-    expect(fire.reload()).toBe(false);                       // no spare left
+    fire.update(RELOAD_DELAY + RELOAD_SECONDS);
+    // the third magazine in; the part-used one (29) keeps its rounds in the ring
+    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: false });
+    for (let i = 0; i < 30; i++) { fire.shoot(); fire.update(0.2); }
+    fire.update(RELOAD_DELAY + RELOAD_SECONDS);
+    expect(fire.state().magazine).toEqual({ rounds: 29, capacity: 30, spare: 0, reloading: false });
+    for (let i = 0; i < 29; i++) { fire.shoot(); fire.update(0.2); }
+    expect(fire.state().magazine).toEqual({ rounds: 0, capacity: 30, spare: 0, reloading: false });
+    expect(fire.reload()).toBe(false);                       // no magazine with rounds left
+  });
+
+  it('a dry trigger clicks (the `dry` event), and reloads when there is a magazine', () => {
+    const { fire } = rig(world([wallAt(-30)]));
+    const events: string[] = [];
+    fire.subscribe((e) => events.push(e.type));
+    for (let i = 0; i < 30; i++) { fire.shoot(); fire.update(0.2); }
+    fire.update(3);                                          // the automatic reload came and went
+    for (let i = 0; i < 30; i++) { fire.shoot(); fire.update(0.2); }
+    fire.update(3);
+    for (let i = 0; i < 30; i++) { fire.shoot(); fire.update(0.2); }
+    fire.update(3);
+    expect(fire.state().magazine).toMatchObject({ rounds: 0, spare: 0 });
+    fire.pull();
+    expect(events.at(-1)).toBe('dry');
+    expect(fire.state().magazine.reloading).toBe(false);
   });
 
   it('R reloads while walking; Ctrl+R, a repeat and R in fly mode are left alone', () => {
@@ -378,13 +401,14 @@ describe('WEAPON: the round leaves the rifle\'s muzzle, the events, the reload\'
       weapon: { name: 'M4A1', id: 54, fireAnim: 'muzzle_m4', sounds: { close: '.M4A1', med: '.M4A1_M', far: '.M4A1_F', reload: '.M4A1_RLD' } },
     });
     expect(fire.reload()).toBe(true);
+    fire.update(RELOAD_DELAY);
     expect(events[1]).toMatchObject({ type: 'reloadStart', seconds: 1.6 });      // the reload clip's playback
     fire.update(1.5);
     expect(events).toHaveLength(2);
     fire.update(0.2);
     expect(events[2]).toMatchObject({ type: 'reloadEnd', completed: true });
-    expect(fire.state().magazine).toMatchObject({ rounds: 30, spare: 1 });
-    fire.shoot(); fire.update(0.2); fire.reload();
+    expect(fire.state().magazine).toMatchObject({ rounds: 30, spare: 2 });      // the 29 kept in the ring
+    fire.shoot(); fire.update(0.2); fire.reload(); fire.update(RELOAD_DELAY);
     fire.reset();
     expect(events.at(-1)).toMatchObject({ type: 'reloadEnd', completed: false });
     off();

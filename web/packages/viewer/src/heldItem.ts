@@ -1,4 +1,4 @@
-import { IDENTITY, Skeleton, transformPoint, type Pnt3D, type WeaponPoint } from '@s2u/scene';
+import { IDENTITY, multiply, Skeleton, transformPoint, type Pnt3D, type WeaponPoint } from '@s2u/scene';
 
 /**
  * The rifle in the SEAL's hands (the WEAPON workstream; the owner's playtest: "no weapon model visible").
@@ -34,17 +34,59 @@ export const HELD_ITEM = { name: 'rifle', parent: 'rhand' } as const;
 /** The weapon model's muzzle node (research 79 §2.2; the RPG-7 spells it `firepont`). */
 export const MUZZLE_NODE = 'firepoint';
 
+/** WEAPON: the sidearm's node (`FUN_00553290` slot 2, the string "pistol"): under `rhand` while it is drawn. */
+export const PISTOL_ITEM = { name: 'pistol', parent: 'rhand' } as const;
+
 /**
- * The play skeleton: the body's own 26 parts (`LoadedBody.parts`, `CLIB_GEO`) and the held item's node after them,
- * under `rhand` at the identity; the body's own skeleton unchanged when it has no `rhand`.
+ * The play skeleton: the body's own 26 parts (`LoadedBody.parts`, `CLIB_GEO`) and the two held items' nodes after
+ * them, `rifle` then `pistol`, under `rhand` at the identity (the clips' `rifle` / `pistol` tracks pose them there);
+ * the body's own skeleton unchanged when it has no `rhand`.
  */
 export function heldSkeleton(base: Skeleton): Skeleton {
   const parent = base.indexOf(HELD_ITEM.parent);
   if (parent < 0) return base;
-  return new Skeleton(base.model, base.modelMatrix, [
-    ...base.parts,
-    { index: base.size, name: HELD_ITEM.name, parent, bindLocal: Float32Array.from(IDENTITY), bbox: new Float32Array(6), type: 0, flags: 0 },
-  ]);
+  const node = (index: number, name: string) =>
+    ({ index, name, parent, bindLocal: Float32Array.from(IDENTITY), bbox: new Float32Array(6), type: 0, flags: 0 });
+  return new Skeleton(base.model, base.modelMatrix, [...base.parts, node(base.size, HELD_ITEM.name), node(base.size + 1, PISTOL_ITEM.name)]);
+}
+
+/**
+ * Where a weapon rides, as the game hangs it (research on the swap, `FUN_005a7260` / `FUN_005a7730` / `FUN_005a60d0` /
+ * `FUN_005a75d0` / `FUN_005a70f0`):
+ * - `hand`: its node under `rhand`, posed by the clips' track (`skeleton.world` of `rifle` / `pistol`);
+ * - `swap`: the rifle during the swap, re-parented to `spinelo` at its start (`FUN_005a7260`) and posed there by the swap
+ *   clip's own `rifle` track (the clips carry it `spinelo`-relative: the muzzle ahead of the chest at key 0, on the back
+ *   at the end);
+ * - `carry`: the rifle slung, `character.rdr`'s "rifle" offset on `spinelo` (`FUN_005a60d0(seal, 2, 0)`);
+ * - `holster`: the pistol in its holster, the "pistol" offset on `rthigh` (`FUN_005a75d0`);
+ * - `spawn`: the pistol as the constructor hangs it, on `+0x304` (`hips`) at the identity.
+ */
+export type Mount = 'hand' | 'swap' | 'carry' | 'holster' | 'spawn';
+
+/** The carry offsets (`LoadedBody.carries`): part index and offset matrix, or null without `character.rdr`. */
+export interface Carries { rifle: { part: number; offset: Float32Array } | null; pistol: { part: number; offset: Float32Array } | null }
+
+/**
+ * A weapon's matrix in the model's frame (row-major, row-vector) on its mount, through the posed skeleton; null when the
+ * mount's part or offset is not to hand.
+ */
+export function mountMatrix(skeleton: Skeleton, item: 'rifle' | 'pistol', mount: Mount, carries: Carries | null): Float32Array | null {
+  const node = skeleton.indexOf(item);
+  switch (mount) {
+    case 'hand': return node >= 0 ? skeleton.world[node]! : null;
+    case 'swap': {
+      const spine = skeleton.indexOf('spinelo');
+      return node >= 0 && spine >= 0 ? multiply(skeleton.local[node]!, skeleton.world[spine]!) : null;
+    }
+    case 'carry': case 'holster': {
+      const c = item === 'rifle' ? carries?.rifle : carries?.pistol;
+      return c ? multiply(c.offset, skeleton.world[c.part]!) : null;
+    }
+    case 'spawn': {
+      const hips = skeleton.indexOf('hips');
+      return hips >= 0 ? skeleton.world[hips]! : null;
+    }
+  }
 }
 
 /** The weapon model's muzzle, in its own frame (the grip at the origin), or null when it names none. */
@@ -54,8 +96,8 @@ export function muzzlePoint(points: readonly WeaponPoint[]): Pnt3D | null {
 }
 
 /** The muzzle in the model's frame through the posed skeleton: the node's world matrix carries the weapon's point. */
-export function muzzleOf(skeleton: Skeleton, muzzle: Pnt3D): Pnt3D | null {
-  const i = skeleton.indexOf(HELD_ITEM.name);
+export function muzzleOf(skeleton: Skeleton, muzzle: Pnt3D, item: 'rifle' | 'pistol' = 'rifle'): Pnt3D | null {
+  const i = skeleton.indexOf(item);
   if (i < 0) return null;
   return transformPoint(skeleton.world[i]!, muzzle[0], muzzle[1], muzzle[2]);
 }

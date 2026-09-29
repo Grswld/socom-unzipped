@@ -223,8 +223,8 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   leanRight: { walk: 'peek right (held)', fly: null },
   mode: { walk: 'fly (as G)', fly: 'walk (as G)' },
   swap1: { walk: 'weapon swap 1: the rifle (1)', fly: null },
-  swap2: { walk: 'weapon swap 2: the M67 (4)', fly: null },
-  inventory: { walk: 'inventory: next item (1 rifle, 4 M67, 5 HE)', fly: null },
+  swap2: { walk: 'weapon swap 2: the Mark 23 (2)', fly: null },
+  inventory: { walk: 'inventory: next item (1 rifle, 2 Mark 23, 4 M67, 5 HE)', fly: null },
   scoreboard: { walk: 'scoreboard (held)', fly: null },
 };
 

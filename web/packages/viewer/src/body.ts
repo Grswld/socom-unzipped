@@ -60,6 +60,9 @@ export type FittingMesh = MeshData & { cull: boolean };
  */
 export interface BodyFitting { name: string; model: string; part: number; offset: Float32Array; meshes: FittingMesh[] }
 
+/** A weapon's carry place: the part it hangs from and its offset under it (row-major, row-vector). */
+export interface BodyCarry { part: number; offset: Float32Array }
+
 /** Where the body stands: slot A's centre and floor, turned to its facing. */
 export interface BodyPlacement {
   position: [number, number, number];
@@ -96,6 +99,12 @@ export interface LoadedBody {
   height: number;
   /** The eye line over the feet: the eye gear's offset up its part, or null where the character has none. */
   eye: number | null;
+  /**
+   * WEAPON: where the weapons ride when not in the hand -- `character.rdr`'s "rifle" gear (`NONAME.flt` on `spinelo`,
+   * `FUN_0058b0f0`'s `FindGear("rifle")`, the slung rifle `FUN_005a60d0` hangs there) and "pistol" gear (on `rthigh`, the
+   * holster `FUN_005a75d0` puts it in): the part and the offset under it (`gearMatrix`). Null without the table.
+   */
+  carries?: { rifle: BodyCarry | null; pistol: BodyCarry | null };
   stats: BodyStats;
 }
 
@@ -290,8 +299,14 @@ export function loadBody(bytes: Uint8Array, toc: ZdbEntry[], characters: Charact
     }
   }
 
+  const carry = (name: string): BodyCarry | null => {
+    const gear = table?.gear.get(name);
+    const part = gear ? skeleton.indexOf(gear.part) : -1;
+    return gear && part >= 0 ? { part, offset: gearMatrix(gear, table!.angleUnits) } : null;
+  };
   return {
     character, model, dressedBy: characters.why,
+    carries: { rifle: carry('rifle'), pistol: carry('pistol') },
     parts: skeleton.parts.map((p) => ({ name: p.name, parent: p.parent, bindLocal: p.bindLocal, bindWorld: Float32Array.from(skeleton.bindWorld[p.index]!) })),
     subMeshes, fittings, missing, at: null, height,
     eye: eyes.length ? eyes.reduce((a, b) => a + b, 0) / eyes.length : null,

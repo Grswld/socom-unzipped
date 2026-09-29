@@ -42,7 +42,7 @@ export const SOUND_CHARACTER = 'mp_seal1';
 /** A map's three banks, in the order a name is looked up in them. */
 export const SOUND_BANK_KINDS = ['am', 'fx', 'vc'] as const;
 /** The weapons whose sounds are read: the SEAL's rifle as held (W2.R4) and as the fire table reads it (W2.5). */
-export const SOUND_WEAPONS: readonly string[] = ['M4A1 SD', 'M4A1'];
+export const SOUND_WEAPONS: readonly string[] = ['M4A1 SD', 'M4A1', 'Mark 23'];
 
 export interface SoundData {
   /** The map's archive id, `MP2`. */

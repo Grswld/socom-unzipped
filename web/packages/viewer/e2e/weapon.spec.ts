@@ -72,5 +72,26 @@ test('the rifle in the hands, raised to fire, from the muzzle, kicked, reloaded;
   expect(reloading).toMatchObject({ raise: { state: 'up' }, pose: { reload: 'seal_reload' } });
   expect((await page.evaluate(() => window.__viewer.fire())).magazine.reloading).toBe(true);
   await page.screenshot({ path: join(SCREENS, 'frostfire-a-reload.png') });
+
+  // WEAPON round 2: L2's sidearm. The swap's clip, the pistol to the hand at its hand-off, the rifle slung on the back;
+  // the Mark 23's record, reticle set 0 and icon; its rounds from its own muzzle.
+  await expect.poll(async () => (await page.evaluate(() => window.__viewer.fire())).magazine.reloading, { timeout: 5000 }).toBe(false);
+  expect(await page.evaluate(() => window.__viewer.selectWeapon('pistol'))).toBe(true);
+  await expect.poll(async () => (await page.evaluate(() => window.__viewer.kit())).swap).toBeNull();
+  const drawn = await page.evaluate(() => window.__viewer.weapon());
+  expect(drawn).toMatchObject({ item: 'pistol', mounts: { rifle: 'carry', pistol: 'hand' } });
+  expect(drawn.muzzle).not.toBeNull();
+  expect((await page.evaluate(() => window.__viewer.fire())).magazine).toMatchObject({ rounds: 12, capacity: 12, spare: 2 });
+  expect((await page.evaluate(() => window.__viewer.reticle())).type).toBe(0);
+  const shot = await page.evaluate(() => window.__viewer.shoot());
+  expect(shot).not.toBeNull();
+  expect(Math.hypot(shot!.from[0] - drawn.muzzle![0], shot!.from[1] - drawn.muzzle![1], shot!.from[2] - drawn.muzzle![2])).toBeLessThan(2);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: join(SCREENS, 'frostfire-a-mark23.png') });
+  // L1: back to the rifle, the pistol holstered on the thigh.
+  expect(await page.evaluate(() => window.__viewer.selectWeapon('rifle'))).toBe(true);
+  await expect.poll(async () => (await page.evaluate(() => window.__viewer.kit())).swap).toBeNull();
+  expect(await page.evaluate(() => window.__viewer.weapon())).toMatchObject({ item: 'rifle', mounts: { rifle: 'hand', pistol: 'holster' } });
+  expect((await page.evaluate(() => window.__viewer.fire())).magazine.capacity).toBe(30);
   expect(problems).toEqual([]);
 });
