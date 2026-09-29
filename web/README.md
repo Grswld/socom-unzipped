@@ -135,7 +135,8 @@ The settings panel starts folded on every device, so a first visit is the map an
 the choice is remembered. A failed load unfolds the panel so the error is seen.
 
 With `?redotcom` the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
-`setMuted`) and a **Mouse look** section (raw or the game's stick curve, a sensitivity slider, invert pitch, and equal
+`setMuted`) and a **Mouse look** section (raw, the default, or the game's stick curve -- both kept by the owner's ruling of
+2026-09-29 -- a sensitivity slider, invert pitch, and equal
 pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
 `s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover lists
 the keyboard and mouse for the current mode in groups (Move, Combat, Stance & traversal, Weapons, General; the fly list is
@@ -273,8 +274,11 @@ step it back up.
 
 Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Controls,
 Settings and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
-panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself, and
-the status line is two dim lines whose whole text is its tooltip. The lift buttons clear the browser's own bottom
+panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself;
+on a phone held sideways, open, it docks in the top middle band -- right of the fullscreen and peek column, left of the
+zoom row, above the stick's zone -- so no touch button is under it (`e2e/phonePanel.spec.ts`, at 812x375, 667x375 and
+915x412); upright it is the full width under the bar, as before. The
+status line is two dim lines whose whole text is its tooltip. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 
 ## Loading a map without freezing the page
@@ -316,10 +320,12 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   own setup and parked at the engine's off values (`-10000`, `0.001`) on the sixteen maps without it.
   A packet whose GIFtag clears `FGE` — every sky, moon, star, water plane and self-lit surface on every
   map (`tools/dump-fge.ts`) — takes no fog, which is what puts the horizon back.
-- **The camera is the map's**: a 49° vertical field (`m_vfov`, a half-angle of 24.5°), 46° on Rat's Nest.
+- **The camera is the map's**: a 49° vertical field (`m_vfov`, a half-angle of 24.5°), 46° on Rat's Nest, kept at any
+  screen shape, so a wider screen sees wider (78° across on 16:9) -- the owner's ruling of 2026-09-29; the console's 70°
+  crop and a 1.537:1 pillarbox stay on the record (research 88), not in the panel.
 - **The PS2 picture** (the Modern / PS2 switch at the top of the panel): the 640×448 frame the console
   drew, projected with the map's own half-angles and stretched onto a 4:3 box the way the television
-  did. The choice is remembered. Everything else the panel offers is under **Advanced**.
+  did, smooth (the owner's ruling of 2026-09-29; not nearest-neighbour). The choice is remembered. Everything else the panel offers is under **Advanced**.
 - **Backface culling is the visual's own flag.** Bit 3 of each visual's `vparams` word is the cull
   the EE emits (`FUN_003b5f20`, `flags & 8`; `VISUAL_FLAG_CULL` in `scene`). Across the maps it is
   clear on exactly the things drawn from both sides -- Frostfire's ladders, whose rungs used to vanish

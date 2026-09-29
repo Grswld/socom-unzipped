@@ -295,6 +295,22 @@ body.is-walking #fullscreen { right: auto; bottom: auto; left: calc(8px + env(sa
   #tw-weapons { bottom: calc(var(--tw-floor) - 48px + env(safe-area-inset-bottom, 0px)); }
 }
 
+/*
+ * The panel on a phone held sideways: the full width under the bar would lie over every touch control, so it docks in the
+ * top middle band instead -- right of the left edge's column (the fullscreen button and the two peeks, to 88px), left of
+ * the zoom row under the compass (`--panel-right` keeps its width clear), and above the stick's zone (the bottom 45vh)
+ * and so above the kit's row and the face buttons below it -- and scrolls inside itself. Flying, the lift buttons and the
+ * fullscreen button are at the right edge, clear of the same band. Held upright the panel is as it was.
+ */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  #panel {
+    --panel-left: calc(96px + env(safe-area-inset-left, 0px));
+    --panel-right: calc(264px + env(safe-area-inset-right, 0px));
+    left: var(--panel-left); width: min(400px, calc(100vw - var(--panel-left) - var(--panel-right)));
+  }
+  #panel .s2u-overlay__body { box-sizing: border-box; max-height: calc(55vh - 60px - 8px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #touch-lift button, #touch-stance, #touch-fire, #touch-walk button { transition: none; }
 }

@@ -69,8 +69,8 @@
         state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
       -->
       <div id="look" class="s2u-tabs" role="radiogroup" aria-label="picture">
-        <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true">Modern<span class="s2u-tab__what">your screen&rsquo;s shape</span></button>
-        <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
+        <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true" title="The game&rsquo;s own 49&deg; vertical field (46&deg; on Rat&rsquo;s Nest), kept at any screen shape: the width widens with a wider screen, to 78&deg; across on 16:9 (owner, 2026-09-29).">Modern<span class="s2u-tab__what">your screen&rsquo;s shape</span></button>
+        <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false" title="The 640&times;448 frame the console drew, stretched smooth onto a 4:3 box as a television showed it (owner, 2026-09-29).">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
       </div>
       <!--
         Walk mode -- behind the `redotcom` URL parameter (`./src/features.ts`): without it this switch, the body row, the ammo
@@ -101,14 +101,14 @@
       </div>
       <!--
         The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so behind `?redotcom` like the
-        rest of the play. Raw is the default: one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
+        rest of the play. Raw is the default (owner, 2026-09-29; the stick curve kept beside it): one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
         in this browser only (`./src/ui.ts`, `onLookControls`).
       -->
       <div class="section" id="look-section" data-play>
         <p class="s2u-field__label">Mouse look</p>
         <div id="mouselaw" class="s2u-tabs" role="radiogroup" aria-label="mouse look">
-          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
-          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more.">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
+          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="The default (owner, 2026-09-29). Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
+          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more. Kept beside raw (owner, 2026-09-29).">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
         </div>
         <label class="s2u-range" title="A multiplier on the mapping: 1 is the default, 2 turns twice as far for the same movement."><span>sensitivity</span>
           <input type="range" id="sensitivity" min="0.25" max="4" step="0.05" value="1" /><output id="sensitivity-out"></output></label>
