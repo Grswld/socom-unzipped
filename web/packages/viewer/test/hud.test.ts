@@ -123,20 +123,23 @@ describe('the info box, the stance word, the prompt and the banner', () => {
 });
 
 describe('the round start', () => {
-  it('fades up from black, shows STARTING ROUND then the objective 5 s later, each 1 s in, 6 s held, 1 s out', () => {
+  it('fades up from black; STARTING ROUND at 0.36 s, the objective at 5.36 s, each 0.357 s in, out from 7 s on', () => {
     const at = (t: number) => roundStartAt(t);
+    const alphas = (t: number) => at(t).banner.map((m) => Math.round(m.alpha * 100) / 100);
     expect(at(0).fader).toBe(1);
     expect(at(0.75).fader).toBeCloseTo(0.5, 9);
     expect(at(1.5).fader).toBe(0);
-    expect(at(0.5).banner.map((m) => [m.lines.map((l) => l.text), m.alpha])).toEqual([[['STARTING ROUND 1 OF 11'], 0.5]]);
-    expect(at(3).banner).toHaveLength(1);
-    // The console's frame 26 (t = 5.6): the first line up and full, the objective coming in.
-    const five = at(5.5).banner;
-    expect(five.map((m) => m.alpha)).toEqual([1, 0.5]);
-    expect(five[1]!.lines).toEqual([{ text: 'OBJECTIVE:', scale: 1 }, { text: 'ELIMINATE THE TERRORISTS', scale: 0.765 }]);
-    expect(at(7.5).banner.map((m) => m.alpha)).toEqual([0.5, 1]);
-    expect(at(12.5).banner.map((m) => m.alpha)).toEqual([0.5]);
-    expect(at(13).banner).toEqual([]);
+    expect(at(0.3).banner).toEqual([]);
+    expect(at(0.54).banner.map((m) => m.lines.map((l) => l.text))).toEqual([['STARTING ROUND 1 OF 11']]);
+    expect(alphas(0.54)).toEqual([0.5]);
+    expect(alphas(3)).toEqual([1]);
+    // The console's frame 26 (t = 5.58): the first line full, the objective coming in (0.62).
+    expect(alphas(5.58)).toEqual([1, 0.62]);
+    expect(at(5.58).banner[1]!.lines).toEqual([{ text: 'OBJECTIVE:', scale: 1 }, { text: 'ELIMINATE THE TERRORISTS', scale: 0.765 }]);
+    // Frame 28 (7.58): the first line fading (0.39 measured); frame 33 (12.58): the objective fading (0.39).
+    expect(alphas(7.58)).toEqual([0.38, 1]);
+    expect(alphas(12.58)).toEqual([0.38]);
+    expect(at(12.8).banner).toEqual([]);
   });
 
   it('stacks the lines up from the bottom: one line on 94; three on 61.5, 76.5 and 91.5 (the ink feet on the Vigilance frames)', () => {

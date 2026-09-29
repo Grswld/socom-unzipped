@@ -144,18 +144,19 @@ export const SPAWN_FADE = { hold: 1, ramp: 0.5 } as const;
 /** The stance word: alpha 127 on a change, down 64 a second (`FUN_00221d90`). */
 export const STANCE_FADE = { start: 127 / 128, perSecond: 64 / 128 } as const;
 /**
- * The round's start as the console plays it (measured on the Vigilance round start, `A_ready021..034`, one frame a
- * second, the round clock read off each frame -- research 87 §8): the picture fades up from black over `fader`
- * seconds; the ammo box fades in (`SPAWN_FADE`); the banner shows "STARTING ROUND 1 OF 11" at once and, 5 s later,
- * "OBJECTIVE:" over the side's objective, pushing the first line up; each message fades in over 1 s, holds 6 s and
- * fades out over 1 s; the panel goes with the last line.
+ * The round's start as the console plays it (research 87 §8): the picture fades up from black over `fader` seconds
+ * [fitted on the Vigilance frames: `CFader_FadeIn(0.5)`'s argument unresolved]; the ammo box fades in (`SPAWN_FADE`);
+ * the message window (`messages.rdr`, `FUN_002b77a0`) shows "STARTING ROUND 1 OF 11" and 5 s later "OBJECTIVE:" over
+ * the side's objective, pushing the first line up; each line fades in at 280 alpha a second (100 / 280 = 0.357 s),
+ * starts fading out 7 s (`fadetime`) after it was posted, at the same rate; the panel goes with the last line. The
+ * posting times, 0.36 and 5.36 s after the round clock's 06:00, are the Vigilance frames' (A_ready021..034).
  */
 export const ROUND_START = {
   fader: 1.5,
-  fadeIn: 1, hold: 6, fadeOut: 1,
+  fadeIn: 100 / 280, fadetime: 7, fadeOut: 100 / 280,
   messages: [
-    { at: 0, lines: (r: RoundInfo): BannerLine[] => [{ text: `STARTING ROUND ${r.round} OF ${r.rounds}`, scale: 1 }] },
-    { at: 5, lines: (r: RoundInfo): BannerLine[] => [{ text: 'OBJECTIVE:', scale: 1 }, { text: r.objective, scale: 0.765 }] },
+    { at: 0.36, lines: (r: RoundInfo): BannerLine[] => [{ text: `STARTING ROUND ${r.round} OF ${r.rounds}`, scale: 1 }] },
+    { at: 5.36, lines: (r: RoundInfo): BannerLine[] => [{ text: 'OBJECTIVE:', scale: 1 }, { text: r.objective, scale: 0.765 }] },
   ],
 } as const;
 
@@ -166,12 +167,12 @@ export const DEFAULT_ROUND: RoundInfo = { round: 1, rounds: 11, objective: 'ELIM
 
 /** The banner's messages and the fader `t` seconds into the round start. */
 export function roundStartAt(t: number, round: RoundInfo = DEFAULT_ROUND): { banner: BannerMessage[]; fader: number } {
-  const R = ROUND_START, life = R.fadeIn + R.hold + R.fadeOut;
+  const R = ROUND_START, life = R.fadetime + R.fadeOut;
   const banner: BannerMessage[] = [];
   for (const m of R.messages) {
     const age = t - m.at;
     if (age < 0 || age >= life) continue;
-    const alpha = age < R.fadeIn ? age / R.fadeIn : age < R.fadeIn + R.hold ? 1 : (life - age) / R.fadeOut;
+    const alpha = Math.min(1, age / R.fadeIn, (life - age) / R.fadeOut);
     banner.push({ lines: m.lines(round), alpha });
   }
   return { banner, fader: Math.max(0, 1 - t / R.fader) };
