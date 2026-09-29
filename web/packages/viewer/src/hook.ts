@@ -62,6 +62,11 @@ export interface ViewerHook {
      * (first person), `fly` otherwise, and the drawn camera's pose. The walk's camera in detail is `camera()`.
      */
     view: ViewStats;
+    /**
+     * The night vision's colour row while the goggles are on (`./nightVision`: `0.33 x LensFX_NVG.rgb`,
+     * `3.03 x .a`, VU1 command 0x5c on every lit colour), null with them off.
+     */
+    nightVision: [number, number, number, number] | null;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;

@@ -29,6 +29,7 @@ import { DEFAULT_PLAYER } from './scoreboard';
 import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
 import { CharacterShadow } from './charShadow';
+import { nightVisionRow, setNightVision } from './nightVision';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
@@ -356,8 +357,10 @@ let fogIsMine = false;
  */
 function refreshFog(): void {
   const gain = brightenOf(lighting);
+  // With the goggles on the camera's colour is the lens's times the fog's (`FUN_005c1800`, `cam+0xd0`).
+  const lens = nightOn && nightLens ? nightLens : [1, 1, 1];
   const lift = (rgb: [number, number, number]): [number, number, number] =>
-    [Math.min(255, rgb[0] * gain), Math.min(255, rgb[1] * gain), Math.min(255, rgb[2] * gain)];
+    [Math.min(255, rgb[0] * lens[0]! * gain), Math.min(255, rgb[1] * lens[1]! * gain), Math.min(255, rgb[2] * lens[2]! * gain)];
   applyFog(scene, { ...fog, color: lift(fog.color) });
   setClearColor?.(lift(fog.enabled ? fog.color : ELF_DEFAULT_FOGCOL));
 }
@@ -512,37 +515,6 @@ function playLanes(before: Input, after: Input, dt: number): void {
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
 let nightLens: [number, number, number, number] | null = null;
 let nightOn = false;
-/**
- * The night vision's colour on the frame [approximation, research 84 section 14]. The game loads a colour matrix whose
- * four rows are all `(r x 0.33, g x 0.33, b x 0.33, a x 3.03)` of `LensFX_NVG` (0.2, 0.898, 0.2, 0.24) -- `0x3b78d0`
- * from `0x5c1800` -- i.e. every channel of a lit colour becomes `0.066 R + 0.296 G + 0.066 B + 0.727`: the night's
- * dark vertex lighting lifted to a flat, bright grey the textures then modulate, the green coming from the goggles
- * (`nvg_part.tif`, 17 % green inside) and the fog tinted by the lens. That is a per-vertex change the world renderer
- * would make; until it does, the viewer puts a frame filter on the canvas: the rows' weights normalised to a
- * luminance, a gain of `NIGHT_GAIN` for the lift, tinted by the lens's colour with green at 1.
- */
-const NIGHT_GAIN = 3;
-function setNightFilter(lens: [number, number, number, number] | null): void {
-  if (!canvas) return;
-  if (!lens) { canvas.style.filter = ''; return; }
-  const id = 's2u-nvg';
-  let svg: Element | null = document.getElementById(`${id}-svg`);
-  if (!svg) {
-    const made = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    made.id = `${id}-svg`;
-    made.setAttribute('width', '0'); made.setAttribute('height', '0');
-    made.style.position = 'absolute';
-    made.innerHTML = `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=""/></filter>`;
-    document.body.appendChild(made);
-    svg = made;
-  }
-  // The rows' weights (0.066, 0.296, 0.066 of the lens) as a luminance summing to 1, times the gain, times the tint.
-  const w = [lens[0], lens[1], lens[2]].map((c) => c / (lens[0] + lens[1] + lens[2]));
-  const tint = [lens[0] / lens[1], 1, lens[2] / lens[1]];
-  const row = (t: number): string => w.map((x) => (x * NIGHT_GAIN * t).toFixed(4)).join(' ') + ' 0 0';
-  svg.querySelector('feColorMatrix')!.setAttribute('values', `${row(tint[0]!)} ${row(tint[1]!)} ${row(tint[2]!)} 0 0 0 1 0`);
-  canvas.style.filter = `url(#${id})`;
-}
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
 let lastLook: { yaw: number; pitch: number } | null = null;
 let lastFov = -1;
@@ -586,7 +558,8 @@ function gunFrame(dt: number, walking: boolean): void {
   reticle.setNight(night);
   if (night !== nightOn) {
     nightOn = night;
-    setNightFilter(night ? nightLens : null);
+    setNightVision(night ? nightLens : null);   // the lit colours through VU1 command 0x5c (`./nightVision`)
+    refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
     if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', walk.drawnFeet());
   }
 }
@@ -1210,6 +1183,7 @@ window.__viewer = {
     body: body ? { ...body.stats, visible: body.group.visible } : null,
     anim: play.animStats(),
     view: play.viewStats(),
+    nightVision: nightVisionRow(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),

@@ -17,6 +17,7 @@ import {
 } from './materialSpec';
 import { engineOrder } from './engineOrder';
 import { shadowFactor } from './charShadow';
+import { nightLit } from './nightVision';
 import { fadeMaterial, fadePhase } from './lodFade';
 import type { Rgba } from '@s2u/gs';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
@@ -299,8 +300,10 @@ export function buildWorld(map: LoadedMap): WorldView {
   const vec2Uniform = (x: number, y: number) => uniform(new Vector2(x, y));
   // The typings do not know a material reference to a texture is a vec4, which is what the sampler yields.
   const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
-  const modulated = vec4(texel.mul(vertexColor())).clamp(0, 1);
-  const plain = vec4(vertexColor()).clamp(0, 1);
+  // The lit colour through the night vision's command 0x5c while the goggles are on (`./nightVision`), before the GS.
+  const lane = nightLit(vertexColor());
+  const modulated = vec4(texel.mul(lane)).clamp(0, 1);
+  const plain = vec4(lane).clamp(0, 1);
   // The characters' shadow (`./charShadow`, VU1 0x3c): black, source-alpha over the receiver, `Cd * (1 - a)`.
   const unshadowed = float(1).sub(shadowFactor());
   const SHADED: ColorNode = vec4(modulated.rgb.mul(brighten).mul(unshadowed), modulated.a);
@@ -445,7 +448,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         at = at.add(offset);
         scrolling.push({ offset, du: scroll[0], dv: scroll[1] });
       }
-      const moved = vec4(gsTexel(texture, at, mip).mul(vertexColor())).clamp(0, 1);
+      const moved = vec4(gsTexel(texture, at, mip).mul(nightLit(vertexColor()))).clamp(0, 1);
       entry.scrollNode = vec4(moved.rgb.mul(brighten).mul(receive ? unshadowed : float(1)), moved.a);
     }
     apply(entry);
@@ -476,7 +479,7 @@ export function buildWorld(map: LoadedMap): WorldView {
   const detailColor = (texture: Texture, spec: DetailSpec): ColorNode => {
     const scale = uniform(spec.scale), fade = uniform(spec.fade);
     // The GS picks the detail's level off the depth as it does the base's; the uv scale does not enter it.
-    const texel = vec4(gsTexel(texture, uv().mul(scale), gsMipLod(map.textureFlags[spec.texture]?.gs)).mul(vertexColor())).clamp(0, 1);
+    const texel = vec4(gsTexel(texture, uv().mul(scale), gsMipLod(map.textureFlags[spec.texture]?.gs)).mul(nightLit(vertexColor()))).clamp(0, 1);
     const weight = float(1).sub(positionView.length().div(fade)).clamp(0, 1);
     return vec4(texel.rgb.mul(brighten).mul(unshadowed), texel.a.mul(weight));
   };
