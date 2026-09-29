@@ -94,6 +94,8 @@ add_library(ps2_test_lib STATIC
     src/socom2_msifrpc_tests.cpp        # Sprint 13 Task C8 (audit F8)
     src/socom2_crypto_tests.cpp         # Sprint 13 Task C8 (audit F9)
     src/persona_record_tests.cpp        # Sprint 16 L1b (#73): the runtime's persona record
+    src/card_save_tests.cpp             # the persona-card plan Task 1: the card's persona file, from fixtures
+    src/personas_card_tests.cpp         # the persona-card plan Task 2: the creator, the card-backed list, the reorder
     src/runtime_seams_tests.cpp         # Sprint 13 Task C8 (audit F22)
     src/socom2_net_bounds_tests.cpp     # the network receive path's bounds (runtime/socom2_net_bounds.h)
     src/socom2_msg_bounds_tests.cpp     # the message dispatcher's bounds (runtime/socom2_msg_bounds.h)
@@ -131,6 +133,8 @@ endif()
 
 # Issue #74: font_advances.cpp measures the launcher's lines in the embedded face itself (raylib's LoadFontData).
 target_compile_definitions(ps2_test_lib PRIVATE PS2X_LAUNCHER_FONTS_DIR="${CMAKE_SOURCE_DIR}/ps2xLauncher/assets/fonts")
+# The persona-card plan Task 1: card_save_tests.cpp reads the fixture cards under ps2xTest/fixtures/cards/, never a real card.
+target_compile_definitions(ps2_test_lib PRIVATE PS2X_TEST_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/ps2xTest/fixtures")
 
 if(TARGET ps2_iop_fake_plugin)
     target_compile_definitions(ps2_test_lib PRIVATE

@@ -15,6 +15,7 @@
 #include "win32_glue.h"
 #include "ps2x/knobs.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cstdint>
@@ -224,6 +225,27 @@ namespace win32glue
         status = 0;
         process = nullptr;
         log = nullptr;
+    }
+
+    bool gameRunningFrom(const std::string &dir, std::string &which)
+    {
+        // /proc/<pid>/exe of every process this user can read (another user's is unreadable, and is not one the
+        // launcher started from this folder).
+        which.clear();
+        std::error_code ec;
+        const std::string home = fs::absolute(fs::path(dir), ec).string();
+        fs::directory_iterator it(fs::path("/proc"), fs::directory_options::skip_permission_denied, ec);
+        for (; !ec && it != fs::directory_iterator() && which.empty(); it.increment(ec))
+        {
+            const std::string pid = it->path().filename().string();
+            if (pid.empty() || !std::all_of(pid.begin(), pid.end(), [](char c) { return c >= '0' && c <= '9'; }))
+                continue;
+            std::error_code linkEc;
+            const fs::path image = fs::read_symlink(it->path() / "exe", linkEc);
+            if (!linkEc && launcher::isGameImage(home, image.string(), "socom2"))
+                which = image.string() + " (pid " + pid + ")";
+        }
+        return !which.empty();
     }
 
     bool startGame(const std::string &dirStr, const launcher::Config &config, GameProcess &out)
