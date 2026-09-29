@@ -173,6 +173,7 @@ Move and General), and the pad's layout under them, grouped the same way, once a
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
+| `Tab` (held) | the round's scoreboard, as SELECT held on the console ([`docs/research/87-hud.md`](docs/research/87-hud.md) §12); the pad's Select too |
 | `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
 
 ### The controller

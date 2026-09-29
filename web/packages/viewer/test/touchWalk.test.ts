@@ -30,7 +30,7 @@ describe('the layout in the page', () => {
 
   it('has a button for each of the pad\'s walking actions, each carrying a real lane', () => {
     const lanes = [...document.querySelectorAll<HTMLElement>('#touch-walk button[data-lane]')].map((b) => b.dataset['lane']!);
-    expect(lanes.sort()).toEqual(['action', 'fire', 'fireMode', 'inventory', 'jump', 'leanLeft', 'leanRight', 'stance', 'swap1', 'swap2', 'zoom', 'zoomOut'].sort());
+    expect(lanes.sort()).toEqual(['action', 'fire', 'fireMode', 'inventory', 'jump', 'leanLeft', 'leanRight', 'scoreboard', 'stance', 'swap1', 'swap2', 'zoom', 'zoomOut'].sort());
     for (const lane of lanes) expect(PAD_FLAGS.includes(lane as PadFlag), lane).toBe(true);
     expect(document.querySelectorAll('#touch-walk button[data-do="reload"]')).toHaveLength(1);
   });
@@ -79,7 +79,7 @@ describe('attachWalkTouch', () => {
 
   it('wires every button', () => {
     document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
-    expect(attachWalkTouch(() => undefined, () => undefined)).toBe(13);
+    expect(attachWalkTouch(() => undefined, () => undefined)).toBe(14);
   });
 
   it('a press holds the lane and a release lets it go, once', () => {

@@ -71,7 +71,7 @@ test.describe('walk mode on a phone, landscape', () => {
     await expect(page.locator('#rotate-hint')).toBeHidden();                      // sideways: nothing to ask
     const box = async (id: string) => (await page.locator(`#${id}`).boundingBox())!;
     const buttons = await page.locator('#touch-walk button').evaluateAll((els) => els.map((e) => e.id));
-    expect(buttons).toHaveLength(13);
+    expect(buttons).toHaveLength(14);
     // Everything is on the screen and clear of the HUD's bottom strip (the range and the timer) and of each other.
     const boxes = new Map<string, { x: number; y: number; width: number; height: number }>();
     for (const id of buttons) {
