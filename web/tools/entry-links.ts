@@ -41,7 +41,7 @@ const INIT = `
 `;
 
 interface Frame { t: number; dt: number }
-interface Window_ { worst: { at: number; ms: number }[]; sync: (LinkRecord & { at: number })[]; asyncLinks: number }
+interface Window_ { worst: { at: number; ms: number }[]; sync: (LinkRecord & { at: number })[]; asyncLinks: number; pendingAtEntry?: number; warmed?: Record<string, number>; throwSync?: number }
 interface Result { map: string; look: string; backend: string; entry: Window_ | null; blast: Window_ | null; error?: string }
 
 function windowOf(rec: Frame[], links: LinkRecord[], t0: number, span: number): Window_ {
@@ -81,8 +81,11 @@ async function run(browser: Browser, map: string, look: 'modern' | 'ps2', backen
     if (!(await p.evaluate(() => window.__viewer.setMode('walk')))) throw new Error('walk refused');
     await p.waitForTimeout(3000);
     const entryFrames = await recOff();
-    r.entry = windowOf(entryFrames, (await p.evaluate((s) => window.__viewer.links(s), t0)).records, t0, 3000);
-    (r.entry as Window_ & { pendingAtEntry?: number }).pendingAtEntry = pendingAtEntry;
+    const el = await p.evaluate((s) => window.__viewer.links(s), t0);
+    r.entry = windowOf(entryFrames, el.records, t0, 3000);
+    r.entry.pendingAtEntry = pendingAtEntry;
+    // Each warm-up's end against the entry (negative: done before it).
+    r.entry.warmed = Object.fromEntries(Object.entries(el.warmed).map(([k, v]) => [k, +((v - t0) / 1000).toFixed(2)]));
 
     // The blast: 4, R1 held 0.8 s, 2 s past it.
     await p.keyboard.press('Digit4');
@@ -102,7 +105,7 @@ async function run(browser: Browser, map: string, look: 'modern' | 'ps2', backen
     if (tb !== null) {
       // The blast's first frame: the poll saw it within 100 ms; the window starts 0.1 s before.
       r.blast = windowOf(gr, links, tb - 100, 1600);
-      (r.blast as Window_ & { throwSync?: number }).throwSync = links.filter((l) => l.sync && l.t < tb! - 100).length;
+      r.blast.throwSync = links.filter((l) => l.sync && l.t < tb! - 100).length;
     } else r.error = 'no blast';
   } catch (e) {
     r.error = e instanceof Error ? e.message : String(e);
@@ -121,8 +124,9 @@ async function main(): Promise<void> {
       all.push(r);
       const fmt = (w: Window_ | null): string => w ? `${w.worst.map((x) => `${x.ms}ms@${x.at}s`).join(' ')} sync ${w.sync.length} async ${w.asyncLinks}` : '-';
       console.log(`${map.padEnd(5)} ${look.padEnd(6)} ${backend.padEnd(6)} entry ${fmt(r.entry)} | blast ${fmt(r.blast)}${r.error ? ` !! ${r.error}` : ''}`);
+      console.log(`    warmed (s from entry) ${JSON.stringify(r.entry?.warmed ?? {})}, async links in flight at entry ${r.entry?.pendingAtEntry ?? '-'}`);
       for (const [name, w] of [['entry', r.entry], ['blast', r.blast]] as const) {
-        for (const l of w?.sync ?? []) console.log(`    ${name} sync @${l.at}s pending ${l.pending}: ${l.material} | ${l.object} | ${l.target}`);
+        for (const l of w?.sync ?? []) console.log(`    ${name} ${l.kind} @${l.at}s ${l.ms.toFixed(1)}ms pending ${l.pending}: ${l.material} | ${l.object} | ${l.target}`);
       }
     }
   } finally {

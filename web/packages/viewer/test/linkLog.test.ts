@@ -56,6 +56,18 @@ describe('linkLog: which programs link, and whether a frame waits (research 90 #
     expect(log.pending()).toBe(0);
   });
 
+  it('records a slow texture upload by name and size, and counts the fast ones only', () => {
+    let now = 0;
+    const log = new LinkLog(() => now);
+    const b = { ...fakeBackend(), updateTexture: (t: { cost: number }): void => { now += t.cost; } };
+    log.watch(b);
+    b.updateTexture({ cost: 0.5 } as never);
+    b.updateTexture({ name: 'crane1.tif', image: { width: 512, height: 256 }, cost: 12 } as never);
+    expect(log.textures).toBe(2);
+    expect(log.textureMs).toBeCloseTo(12.5);
+    expect(log.since()).toEqual([{ kind: 'texture', t: 0.5, ms: 12, sync: true, object: 'crane1.tif 512x256', material: 'texture', target: '', pending: 0 }]);
+  });
+
   it('keeps the latest 400 records', () => {
     const log = new LinkLog(() => 0);
     for (let i = 0; i < 450; i++) log.record(ro(`o${i}`, 'm'), false);

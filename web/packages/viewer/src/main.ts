@@ -436,6 +436,8 @@ let prepareObjects: ((objects: Object3D[], stale: () => boolean, lanes?: number)
 let warmWalk: (() => Promise<void>) | null = null;
 /** The renderer's link log (`./linkLog`), once `boot` has a renderer: the hook's `links()`. */
 let linkLog: LinkLog | null = null;
+/** When each warm-up of the map on screen finished (`performance.now()`), for the hook's `links()`. */
+let warmedAt: Record<string, number> = {};
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -1188,7 +1190,8 @@ function show(map: LoadedMap): void {
   play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
   play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
   kit.reset();
-  void warmWalk?.().catch(() => {});                          // what entering the walk draws first, compiled now
+  warmedAt = {};
+  void warmWalk?.().catch(() => {}).then(() => { warmedAt['walk'] = performance.now(); });   // what entering the walk draws first, compiled now
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
     built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);
@@ -1304,11 +1307,12 @@ function show(map: LoadedMap): void {
         revealing = spreadAcrossFrames(built0.revealProps);
         void revealing.done.then(async () => {
           if (stale()) return;
+          warmedAt['props'] = performance.now();
           const g = effects.stats().loaded ? effects.warmUp() : null;
           const warming = warmScene?.(built0.warmExtras());
           if (g) effects.warmStarted(g);
           try { await warming; } finally { if (g) effects.warmDone(g); }
-          if (!stale()) worldWarmed = built0;
+          if (!stale()) { worldWarmed = built0; warmedAt['world'] = performance.now(); }
         });
       });
     });
@@ -1324,7 +1328,7 @@ window.__viewer = {
   pose: () => fly.pose(),
   links: (since) => ({
     now: performance.now(), total: linkLog?.total ?? 0, sync: linkLog?.syncTotal ?? 0, pending: linkLog?.pending() ?? 0,
-    records: linkLog?.since(since) ?? [],
+    records: linkLog?.since(since) ?? [], warmed: { ...warmedAt },
   }),
   stats: () => ({
     triangles: view?.triangles ?? 0,
