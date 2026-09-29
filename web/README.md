@@ -171,14 +171,14 @@ nothing else -- no sources, readings or debug keys, which live in this README's 
 (`s2u.viewer.controlsTab`); with nothing chosen it opens on Controller when a pad is connected, else on Mouse & Keyboard
 (`viewer/src/controlsList.ts`, `padControlGroups`, `controlGroups`, `chooseTab`).
 
-**Playing as a SEAL is reCOM mode**, the settings' **Mode** switch (**Map viewer** / **reCOM**, owner 2026-09-29). In
+**Playing as a SEAL is reCOM mode**, the settings' **Mode** switch (**Explore** / **Play**, owner 2026-09-29). In
 reCOM mode the page also has walk mode, the SEAL's body, the rifle, the HUD, the Sound and Mouse look sections and the
 touch stance and fire buttons. In the map viewer none of that is rendered, bound or answered: no `G`, no Start, no Fly /
 Walk switch, no walk in the Controls popover, and the debug hook's `setMode('walk')` returns false. The switch works at
 run time, both ways, without a reload (the disc you opened stays open), and is remembered in this browser
-(`s2u.viewer.recom`). `?redotcom` in the address forces reCOM on for that visit (a deep link: `?redotcom`, or
-`?map=MP2&redotcom`); switching to the map viewer takes it out of the address. (`viewer/src/features.ts`, `playWanted`,
-`PlayUi`.) reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
+(`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and the old `?redotcom` is
+read as `mode=play` and rewritten to it (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
+`viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
 add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
@@ -192,11 +192,20 @@ pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered 
 `s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover's two
 lists are grouped the same way (Move, Combat, Stance & action, Weapons, General; the fly lists are Move and General).
 
-| setting | choices | remembered as |
-|---|---|---|
-| **Mode** | Map viewer (the default) · reCOM (play as a SEAL; `?redotcom` forces it) | `s2u.viewer.recom` |
-| **View** | Modern · PS2 | `s2u.viewer.look` |
-| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `s2u.viewer.online` |
+**Shareable links** (owner, 2026-09-29; `viewer/src/shareUrl.ts`). The page's state lives in its address and follows every
+change (`history.replaceState`: no reload, no history entries), so copying the address bar gives a friend the same setup:
+`mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`. On load the
+address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
+written in. A value the page does not know is ignored. `devmode`, `fly`, `mp`, `server=`, `lag=` and `loss=` work as
+before and pass through untouched (never added); `server=` (or `mp`) beats `online=` and implies it. A link with
+`online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with `mode=explore`.
+
+| setting | choices | in the address | remembered as |
+|---|---|---|---|
+| **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` (`?redotcom` read as it) | `s2u.viewer.recom` |
+| **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
+| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
+| map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
 
 **Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
 (Space follows the next player, V the free camera) and never takes a player's place. The line under it says what the

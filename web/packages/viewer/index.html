@@ -79,18 +79,19 @@
     <!-- The settings. Folded (the first visit's state), none of it shows: the cog in #site-links is the only trace (W2.0). -->
     <div id="panel" class="s2u-overlay is-folded" data-density="compact">
       <div id="panel-body" class="s2u-overlay__body">
-      <p id="panel-kicker">Map viewer &middot; SOCOM II multiplayer</p>
+      <p id="panel-kicker">redotcom &middot; SOCOM II multiplayer</p>
       <!--
         The page's mode (owner, 2026-09-29; `./src/features.ts`): the map viewer, or reCOM -- playing as a SEAL, the walk,
         the SEAL, the rifle, the HUD, the Sound and Mouse look sections and the touch buttons (every `data-play` element).
         The Modern / PS2 switch's markup. Switched at run time, both ways, without a reload (`PlayUi`): the disc stays
-        open. Remembered in this browser (`s2u.viewer.recom`); the URL's `redotcom` forces it on.
+        open. Remembered in this browser (`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that
+        (`./src/shareUrl.ts`; `redotcom` is read as `mode=play`).
       -->
       <div class="section" id="recom-section">
         <p class="s2u-field__label" id="recom-label">Mode</p>
         <div id="recom" class="s2u-tabs" role="radiogroup" aria-labelledby="recom-label">
-          <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly the free camera through the maps.">Map viewer<span class="s2u-tab__what">fly the maps</span></button>
-          <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play as a SEAL on the map: on foot, the rifle, the HUD, the game&rsquo;s sound.">reCOM<span class="s2u-tab__what">play as a SEAL</span></button>
+          <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly the free camera through the maps.">Explore<span class="s2u-tab__what">fly the maps</span></button>
+          <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play as a SEAL on the map: on foot, the rifle, the HUD, the game&rsquo;s sound.">Play<span class="s2u-tab__what">play as a SEAL</span></button>
         </div>
       </div>
       <!-- Map: the picker and the player's own disc first; the status under them is one dim line (its full text is the tooltip). -->

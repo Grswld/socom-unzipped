@@ -42,7 +42,8 @@ import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, k
 import { Zoom } from './zoom';
 import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
-import { PlayUi, playWanted, readPlayChoice, withoutPlayParam, writePlayChoice } from './features';
+import { PlayUi, readPlayChoice, writePlayChoice } from './features';
+import { readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { PLAY_CLIPS } from './animator';
@@ -90,13 +91,19 @@ if (!canvas) throw new Error('the page has no #view canvas');
 /** The page's query string, read once. */
 const SEARCH = globalThis.location?.search ?? '';
 /**
+ * The shareable settings the address carries (owner, 2026-09-29; `./shareUrl`): `mode`, `map`, `view`, `online`. On load
+ * they beat the remembered choices; each is written back into the address as it changes, so the address is a link to
+ * this setup. `?redotcom` is read as `mode=play` and rewritten to it.
+ */
+const SHARE = readShare(SEARCH);
+/**
  * Playing as a SEAL (walk mode, the body, the rifle, the HUD) is reCOM mode (`./features`; the owner 2026-09-28 and
  * 2026-09-29): the settings' Mode switch, remembered, and `?redotcom` forces it on. Off, the play's markup is out of the
  * page (`PlayUi`, put back when it is switched on) and nothing binds `G`, the pad's Start, `R` or the hook's walk: the
  * page is the fly camera alone. Switched at run time, both ways (`setPlayMode`), without a reload -- a reload would lose
  * the visitor's disc image.
  */
-let playOn = playWanted(SEARCH, readPlayChoice());
+let playOn = SHARE.play ?? readPlayChoice() === '1';
 /** `&fly` keeps the free camera when reCOM mode opens (the tests that measure the fly view ask for it). */
 const FLY_START = new URLSearchParams(SEARCH).has('fly');
 /** reCOM mode opens on foot (owner, 2026-09-29): the map's walk starts once it is ready. Later maps keep the mode. */
@@ -572,7 +579,7 @@ const play = new Play();
 // the URL's `&mp` / `&server=` over it. reCOM mode joins as a player, the map viewer as a watcher (`connectNet`).
 const remote = new RemotePlayers(scene);
 const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
-let NET: OnlineTarget = resolveOnline(SEARCH, readOnline(), PAGE_LOCATION);
+let NET: OnlineTarget = resolveOnline(SEARCH, SHARE.online ?? readOnline(), PAGE_LOCATION);
 let net: NetPage | null = null;
 /** The clips the worker sent (the death clips among them, for the page's own death). */
 let playClips: PlayClips | null = null;
@@ -807,7 +814,9 @@ ui.onMapChange((path) => {
   ui.setStatus(`loading ${path} ...`);
   load(path);
 });
-ui.onLook();                 // restores the remembered picture before the toggles are read
+// Restores the picture -- the address's `view`, else the remembered one -- before the toggles are read; the link follows it.
+ui.onLook(SHARE.view, (view) => updateAddress({ view }));
+updateAddress({ view: ui.toggles().ps2look ? 'ps2' : 'modern' });
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
@@ -926,11 +935,8 @@ function setPlayMode(on: boolean, remember: boolean): void {
   ui.setPlay(on);
   ui.setRecom(on);
   if (on) { walk.bindKey(); fire.bindKey(); } else { walk.unbindKey(); fire.unbindKey(); }
-  if (remember) {
-    writePlayChoice(on);
-    const href = on ? null : withoutPlayParam(globalThis.location?.href ?? '');
-    if (href) { try { history.replaceState(null, '', href); } catch { /* a page without a history */ } }
-  }
+  if (remember) writePlayChoice(on);
+  updateAddress({ play: on });                  // the link says the mode (and `?redotcom` becomes `mode=play`)
   if (!on) {
     fire.release();
     if (walk.mode() === 'walk') walk.setMode('fly');
@@ -952,8 +958,11 @@ ui.onRecomSwitch((on) => setPlayMode(on, true));
  * left. A server the URL named is replaced by the choice.
  */
 ui.setOnline(NET.choice);
+// The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten.
+if (NET.choice !== 'url') updateAddress({ online: NET.choice });
 ui.onOnline((choice: OnlineChoice) => {
   writeOnline(choice);
+  updateAddress({ online: choice });
   NET = resolveOnline('', choice, PAGE_LOCATION);
   if (loaded) connectNet(loaded);
   showOnline();
@@ -990,11 +999,7 @@ function wantedArchive(): string {
 function rememberMap(path: string): void {
   const archive = mapList.find((m) => m.path === path)?.archive;
   if (!archive) return;
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set('map', archive);
-    history.replaceState(null, '', url);
-  } catch { /* a page without a history, such as a file: URL */ }
+  updateAddress({ map: archive });              // `./shareUrl`: the other parameters kept as they were, `&fly` still bare
   try { localStorage.setItem(LAST_MAP_KEY, archive); } catch { /* the default next time */ }
 }
 ui.onSlider((name, value) => {
@@ -1034,6 +1039,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
     presentation = on ? 'ps2' : 'native';
     document.body.classList.toggle('ps2-look', on);
     fit?.();
+    updateAddress({ view: on ? 'ps2' : 'modern' });   // however it was switched, the link follows (`./shareUrl`)
   }
 }
 

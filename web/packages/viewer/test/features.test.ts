@@ -56,7 +56,7 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
     removePlayUi();
     const words = (document.body.textContent ?? '') + [...document.querySelectorAll('[title],[aria-label]')]
       .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' ');
-    expect(words.match(/.{0,40}\b(walk\w*|stance|crouch\w*|prone|redotcom)\b.{0,40}/gi)).toBeNull();
+    expect(words.match(/.{0,40}\b(walk\w*|stance|crouch\w*|prone)\b.{0,40}/gi)).toBeNull();
   });
 
   describe('the Ui over that page', () => {

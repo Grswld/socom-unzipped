@@ -104,7 +104,7 @@ describe('PlayUi: the play markup out and back in, at run time', () => {
     new PlayUi().detach();
     const words = (document.body.textContent ?? '') + [...document.querySelectorAll('[title],[aria-label]')]
       .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' ');
-    expect(words.match(/.{0,40}\b(walk\w*|stance|crouch\w*|prone|redotcom|devmode)\b.{0,40}/gi)).toBeNull();
+    expect(words.match(/.{0,40}\b(walk\w*|stance|crouch\w*|prone|devmode)\b.{0,40}/gi)).toBeNull();
   });
 });
 
@@ -121,7 +121,7 @@ describe('the Mode switch in the panel', () => {
     const buttons = [...recom.querySelectorAll('button')];
     expect(buttons.map((b) => b.dataset['recom'])).toEqual(['off', 'on']);
     for (const b of buttons) { expect(b.classList.contains('s2u-tab')).toBe(true); expect(b.querySelector('.s2u-tab__what')).not.toBeNull(); }
-    expect(buttons.map((b) => b.firstChild!.textContent)).toEqual(['Map viewer', 'reCOM']);
+    expect(buttons.map((b) => b.firstChild!.textContent)).toEqual(['Explore', 'Play']);
   });
 
   it('hands the visitor choice on once, and shows it', () => {

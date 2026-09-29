@@ -460,7 +460,7 @@ export class Ui {
    * The picture switch: Modern or PS2. It drives the hidden `ps2look` checkbox -- the state the
    * toggles, the hook and the tests read -- and remembers the choice, so a return visit opens on it.
    */
-  onLook(): void {
+  onLook(fromAddress: 'modern' | 'ps2' | null = null, changed: (view: 'modern' | 'ps2') => void = () => undefined): void {
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look button[data-look]'));
     const box = this.checks.ps2look;
     const show = (): void => {
@@ -474,10 +474,12 @@ export class Ui {
         box.dispatchEvent(new Event('change', { bubbles: true }));
         write(LOOK_KEY, ps2 ? 'ps2' : 'modern');
         show();
+        changed(ps2 ? 'ps2' : 'modern');
       });
     }
     box.addEventListener('change', show);
-    const stored = read(LOOK_KEY);
+    // The address's `view` (a shared link, `./shareUrl`) beats the remembered picture, for this visit.
+    const stored = fromAddress ?? read(LOOK_KEY);
     if (stored === 'ps2' || stored === 'modern') box.checked = stored === 'ps2';
     show();
   }
