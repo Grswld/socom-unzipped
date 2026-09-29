@@ -220,6 +220,8 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
       standToCrouch: one('Stand -> Crouch'), crouchToProne: one('Crouch -> Prone'), standToProne: one('Stand -> Prone'),
       jump: one('Jump'), launch: one('Jump launch'), inAir: one('Jump fall'), land: one('Jump land'), landHard: one('Jump land hard'),
       hit: one('Hit01'), hitStomach: one('Hit stomach01'), landDeath: one('Land forward'), getUp: one('Get up forward'),
+      fallForward: one('Fall forward'), fallBackwards: one('Fall backwards'), landBackwards: one('Land backwards'),
+      getUpBackwards: one('Get up backwards'),
       step: one('Step'), crouchStep: one('Crouch step'),
       swapStand: one('Rifle -> Pistol'), swapCrouch: one('Crouch rifle -> Pistol'), swapProne: one('Prone rifle -> Pistol'),
       swapMoving: one('Moving rifle -> Pistol'),
@@ -262,6 +264,8 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
       standToCrouch: SEAL_ANIMS.standToCrouch, crouchToProne: SEAL_ANIMS.crouchToProne, standToProne: SEAL_ANIMS.standToProne,
       hit: SEAL_ANIMS.hit, hitStomach: SEAL_ANIMS.hitStomach, landDeath: SEAL_ANIMS.landDeath, getUp: SEAL_ANIMS.getUp,
       swapStand: SEAL_ANIMS.swapStand, swapCrouch: SEAL_ANIMS.swapCrouch, swapProne: SEAL_ANIMS.swapProne,
+      fallForward: SEAL_ANIMS.fallForward, fallBackwards: SEAL_ANIMS.fallBackwards,
+      landBackwards: SEAL_ANIMS.landBackwards, getUpBackwards: SEAL_ANIMS.getUpBackwards,
     };
     const clips = new Map(clipsFromPack(new Uint8Array(readFileSync(PACK)), Object.values(names)).map((c) => [c.name, c]));
     const transitions = new Set(['standToCrouch', 'crouchToProne', 'standToProne']);

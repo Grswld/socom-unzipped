@@ -156,6 +156,11 @@ export interface LoadedMap {
    */
   slots: SpawnSlot[];
   /**
+   * The slots' twin records (`placeSpawnSlots(..., true)`): where a SEAL respawns (research 91 section 4.2), for the
+   * page's single-player match (`./net/loopback`), placed as the server's `simMapFromBytes` places them.
+   */
+  respawns?: SpawnSlot[];
+  /**
    * What the walk stands on (`./walk`, W1.4): the hull's polygons as the probe reads them, their nodes, and the
    * map's `grid_params`. Absent when the graph would not parse.
    */
@@ -450,6 +455,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const probe = placement.ground ? groundGrid(placement.ground) : undefined;
   const measured = spawnsFor(name);
   const slots = spawnSlotsOf(bytes, toc, measured, (line) => notes.add(line), probe);
+  const respawns = spawnSlotsOf(bytes, toc, measured, () => {}, probe, true);   // the slots' own line says it once
   const reticle = readReticle(bytes, toc);
   for (const line of reticle.diagnostics) notes.add(line);
   const bulletMark = readEffectBitmap(bytes, toc, BULLET_MARK.texture);
@@ -481,6 +487,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     origin: placement.origin,
     collision: placement.collision,
     slots,
+    respawns,
     body: body && placeBody(body, slots),
     terrorist,
     ground: placement.ground,
@@ -622,9 +629,9 @@ function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes:
  * reader refuses any file its layout does not account for to the last byte -- costs one diagnostic and an empty
  * list, never the load: the slots are an overlay, and the map draws without them.
  */
-export function spawnSlotsOf(bytes: Uint8Array, toc: ZdbEntry[], measured: Spawns | undefined, note: (line: string) => void, ground?: Grid): SpawnSlot[] {
+export function spawnSlotsOf(bytes: Uint8Array, toc: ZdbEntry[], measured: Spawns | undefined, note: (line: string) => void, ground?: Grid, twins = false): SpawnSlot[] {
   try {
-    return placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), measured, ground);
+    return placeSpawnSlots(parseAiMaps(zdbMember(bytes, toc, 'AIMAPS.MPS')), measured, ground, twins);
   } catch (e) {
     note(`spawn slots: ${say(e)}`);
     return [];

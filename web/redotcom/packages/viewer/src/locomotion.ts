@@ -52,6 +52,9 @@ export const SEAL_ANIMS = {
   jump: 'seal_jump', launch: 'seal_runningjump_launch', inAir: 'seal_runningjump_in_air',
   land: 'seal_land_soft', landHard: 'seal_land_hard',
   hit: 'guard_hit01', hitStomach: 'guard_hit_stomach01', landDeath: 'seal_landforward01', getUp: 'seal_getupforward01',
+  // The blast's knock (`./net/blast`): `Fall forward` / `Fall backwards`, `Land backwards`, `Get up backwards` (animset.rdr).
+  fallForward: 'seal_fallforward01', fallBackwards: 'seal_fallbackwards01', landBackwards: 'seal_landbackwards01',
+  getUpBackwards: 'seal_getupbackwards01',
   step: 'seal_step', crouchStep: 'seal_crouch_step',
   // The rifle <-> pistol swap (`FUN_005a64c0`, decomp 461850-462030): `Rifle -> Pistol` (0x35), `Crouch rifle -> Pistol`
   // (0x36), `Prone rifle -> Pistol` (0x37) and `Moving rifle -> Pistol` (the overlay over the locomotion); played

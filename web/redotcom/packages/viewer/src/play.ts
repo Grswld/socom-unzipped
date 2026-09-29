@@ -116,7 +116,7 @@ export type PlayEvent =
   | (Extract<AnimEvent, { kind: 'footfall' }> & { position: [number, number, number] | null })
   | Exclude<AnimEvent, { kind: 'footfall' }>
   | { kind: 'takeoff'; running: boolean }
-  | { kind: 'land'; speed: number; clip: 'land' | 'landHard' | 'hit' | 'hitStomach' | 'landDeath' | null; cls?: 0 | 1 | 2 | 3 };
+  | { kind: 'land'; speed: number; clip: 'land' | 'landHard' | 'hit' | 'hitStomach' | 'landDeath' | 'landBackwards' | null; cls?: 0 | 1 | 2 | 3 };
 
 /** A camera's pose in the fly camera's convention (yaw 0 looks down -z; degrees). */
 function poseOf(camera: PerspectiveCamera): Pose {

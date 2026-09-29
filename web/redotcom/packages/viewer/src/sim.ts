@@ -34,3 +34,4 @@ export * from './net/damage';
 export * from './net/lobby';
 export * from './net/deaths';
 export * from './net/rules';
+export * from './net/blast';

@@ -3,6 +3,7 @@ import type { Grid } from '@s2u/scene';
 import type { TraversalPose } from './animator';
 import { Button, holdBits, STANCE_CODES, type Command } from './net/protocol';
 import { MoverSim } from './net/moverSim';
+import { applyKnock, type Knock } from './net/blast';
 import { quantiseCommand } from './net/codec';
 import type { GroundWish, Pose } from './camera';
 import { pitchLimits, PlayerCamera, INIT_AIM_PITCH, scopeEyeHeight, scopePeekShift, type Vec3 } from './playerCamera';
@@ -283,6 +284,11 @@ export class WalkMode {
     this.stance_ = w.stance;
     this.restart();
     return true;
+  }
+
+  /** A blast's knock from the server (`./net/blast`): the same `applyKnock` the room laid on its mover. */
+  knock(k: Knock): boolean {
+    return !!this.walker && this.walking && applyKnock(this.walker, this.moves, k);
   }
 
   /** A correction from the server: the mover moved by (dx, dy, dz) now (a small one is spread over ticks by the caller). */

@@ -108,10 +108,12 @@ export class Lobby {
    * Adds a client; null when full (players and queue) or when `id` is already in the room. Players first while
    * there is room, else the FIFO queue.
    */
-  join(id: number, wantedName: string, random: () => number = Math.random, watch = false): { member: Member; changes: LobbyChange[] } | null {
+  join(id: number, wantedName: string, random: () => number = Math.random, watch = false, host?: Team): { member: Member; changes: LobbyChange[] } | null {
     if (this.byId.has(id)) return null;
     const counts = this.teamCounts();
-    const team = watch ? null : counts.seal + counts.terrorist < this.maxPlayers ? assignTeam(counts.seal, counts.terrorist, this.teamSize) : null;
+    // `host`: the game's host takes its side outright (SEALs, `FUN_002c5450` L166238-166262), not by the joiner's rule.
+    const team = watch ? null : counts.seal + counts.terrorist < this.maxPlayers
+      ? (host && counts[host] < this.teamSize ? host : assignTeam(counts.seal, counts.terrorist, this.teamSize)) : null;
     if (team === null && this.queue.length + this.watchers.size >= this.maxSpectators) return null;
     const clean = sanitizeName(wantedName);
     const name = uniqueName(clean === '' ? guestName(random) : clean, this.namesExcept(-1));
