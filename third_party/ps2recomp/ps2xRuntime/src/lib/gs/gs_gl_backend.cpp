@@ -8,6 +8,7 @@
 #include "runtime/gs/gs_gl_depth.h"
 #include "runtime/gs/gs_gl_target_extent.h"
 #include "runtime/gs/gs_gl_upload_trace.h"
+#include "runtime/gs/gs_loop_phases.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
 #include "runtime/gs/gs_gl_state_tags.h"
@@ -1038,11 +1039,16 @@ void GSGlBackend::waitForToken(uint64_t token)
     }
     if (!m_glReady.load(std::memory_order_acquire))
         return; // no GL yet (early boot): nothing to wait for
+    // Sprint 17 F3: the game thread waiting for the replay to reach a token -- the [gs-loop] token= column.
+    static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;
+    const auto waitStart = s_loopPhases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     std::unique_lock<std::mutex> lock(m_queueMutex);
     // #67: nor while the main thread is in the window's move loop (SetHostMoveLoop): nothing replays until it ends.
     m_queueCv.wait_for(lock, std::chrono::seconds(2), [&]
                        { return m_executedToken.load(std::memory_order_acquire) >= token ||
                                 m_backpressure.consumerSuspended(); });
+    if (s_loopPhases)
+        GsLoopPhases::live().add(GsLoopPhases::EeToken, GsLoopPhases::nsBetween(waitStart, std::chrono::steady_clock::now()));
 }
 
 bool GSGlBackend::pagesMayBeGpuDirty(uint32_t page, uint32_t pageCount) const
@@ -1435,7 +1441,12 @@ bool GSGlBackend::GuestFrameBoundary()
     // Nothing replays before ensureGl(), and the GL thread never waits on itself.
     if (!m_glReady.load(std::memory_order_acquire) || std::this_thread::get_id() == m_renderThread)
         return false;
+    // Sprint 17 F3: the [gs-loop] bp= column (the same wait as [gs-gl stats] backpressure wait_ms=, per second).
+    static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;
+    const auto waitStart = s_loopPhases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const GsFrameBackpressure::WaitResult result = m_backpressure.frameRecorded();
+    if (s_loopPhases)
+        GsLoopPhases::live().add(GsLoopPhases::EeBackpressure, GsLoopPhases::nsBetween(waitStart, std::chrono::steady_clock::now()));
     if (result == GsFrameBackpressure::WaitResult::Waited)
         return true;
     if (result != GsFrameBackpressure::WaitResult::TimedOut)
@@ -1490,6 +1501,9 @@ bool GSGlBackend::HostRenderFrame()
     // only after its commands were recorded (under m_queueMutex), so this is exactly the frames in
     // `buffer`. It is reported replayed even when the buffer is empty (a frame with no GS work).
     uint64_t framesTaken = 0u;
+    // Sprint 17 F3: the [gs-loop] queue= (the swap under m_queueMutex, and its notify) and replay= columns.
+    static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;
+    const auto queueStart = s_loopPhases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     {
         std::lock_guard<std::mutex> lock(m_queueMutex);
         buffer.commands.swap(m_pending.commands);
@@ -1501,6 +1515,9 @@ bool GSGlBackend::HostRenderFrame()
     // notify on that path -- and an empty swap is exactly when a waiter needs telling that the
     // queue it is parked behind is already drained.
     m_queueCv.notify_all();
+    const auto replayStart = s_loopPhases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    if (s_loopPhases)
+        GsLoopPhases::live().add(GsLoopPhases::Queue, GsLoopPhases::nsBetween(queueStart, replayStart));
     if (!buffer.commands.empty())
     {
         recordReplayBatch(buffer);   // Sprint 17 F: PS2X_GS_RECORD; one cached knob read when unset
@@ -1519,6 +1536,8 @@ bool GSGlBackend::HostRenderFrame()
     glBindVertexArray(0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
+    if (s_loopPhases)
+        GsLoopPhases::live().add(GsLoopPhases::Replay, GsLoopPhases::nsBetween(replayStart, std::chrono::steady_clock::now()));
     return m_presentTexture != 0u;
 }
 
@@ -2361,6 +2380,9 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         // Sprint 17 F0: the present intervals of this stats interval, then a fresh histogram.
         std::fprintf(stderr, "[gs-gl stats] %s\n", m_frameHist.line().c_str());
         m_frameHist.reset();
+        // Sprint 17 F3: the frame hand-off over the same interval -- the GL thread's second in five phases and
+        // the game thread's four waits (gs_loop_phases.h); the stamps are PS2X_GS_STATS's too.
+        std::fprintf(stderr, "%s\n", GsLoopPhases::format(GsLoopPhases::live().take(), elapsed).c_str());
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
         s_bytes = 0;
     }

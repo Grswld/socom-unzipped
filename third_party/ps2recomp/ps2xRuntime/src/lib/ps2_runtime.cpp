@@ -16,6 +16,7 @@
 #include "runtime/gs/gs_gl_backend.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_gl_caps.h"
+#include "runtime/gs/gs_loop_phases.h"
 #include "runtime/ee_scheduler.h"
 #include "ThreadNaming.h"
 #include "Kernel/Stubs/Audio.h"
@@ -2958,8 +2959,12 @@ void PS2Runtime::run()
     };
 
     uint64_t tick = 0;
+    // Sprint 17 F3: the [gs-loop] line's GL-thread phases (gs_loop_phases.h), stamped only under PS2X_GS_STATS.
+    static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;
+    using LoopClock = std::chrono::steady_clock;
     while (!isStopRequested())
     {
+        const LoopClock::time_point loopTop = s_loopPhases ? LoopClock::now() : LoopClock::time_point{};
         if (gameThreadFinished.load(std::memory_order_acquire))
         {
             // Sprint 17 Q2: the game thread returned. With a restart pending this is LoadExecPS2's stop, and the
@@ -3026,7 +3031,10 @@ void PS2Runtime::run()
             const uint64_t tickNow = eeScheduler().currentVSyncTick();
             if (tickNow != s_gpuLastTick)
             {
+                const LoopClock::time_point latchStart = s_loopPhases ? LoopClock::now() : LoopClock::time_point{};
                 gs().latchHostPresentationFrame();
+                if (s_loopPhases)
+                    GsLoopPhases::live().add(GsLoopPhases::Latch, GsLoopPhases::nsBetween(latchStart, LoopClock::now()));
                 s_gpuLastTick = tickNow;
             }
             if (gs().hostRenderFrame())
@@ -3060,6 +3068,7 @@ void PS2Runtime::run()
             UploadFrame(frameTex, this, presentWidth, presentHeight);
         }
 
+        const LoopClock::time_point drawStart = s_loopPhases ? LoopClock::now() : LoopClock::time_point{};
         BeginDrawing();
         ClearBackground(BLACK);
         const float srcWidth = static_cast<float>(std::max<uint32_t>(1u, presentWidth));
@@ -3271,7 +3280,18 @@ void PS2Runtime::run()
                 }
             }
         }
-        EndDrawing();
+        if (s_loopPhases)
+        {
+            const LoopClock::time_point endStart = LoopClock::now();
+            GsLoopPhases::live().add(GsLoopPhases::Draw, GsLoopPhases::nsBetween(drawStart, endStart));
+            EndDrawing();
+            GsLoopPhases::live().add(GsLoopPhases::End, GsLoopPhases::nsBetween(endStart, LoopClock::now()));
+            GsLoopPhases::live().noteIteration(GsLoopPhases::nsBetween(loopTop, endStart));
+        }
+        else
+        {
+            EndDrawing();
+        }
 
         if (WindowShouldClose())
         {
