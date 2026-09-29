@@ -237,6 +237,14 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   `whats_left` and the debris `parts`), a lamp beside its `nolight` copy, and the crates' pulsing
   objective ribbon. The game switches them by play; drawn together they z-fight. The viewer draws the
   intact, lit ones and hides the rest (`LoadedMesh.alternate`, "alternate states" in `options` shows them).
+- **Each placement draws its own baked light.** A model instanced in several places carries a chunk per instance
+  context, differing only in its prelit vertex colours; `hookupVisuals` numbers the contexts in load order, the copies
+  inside the prototypes first and the world's placements after them (`contextsBefore` in `scene`), and each placement
+  draws its own (`instanceShades` in `loadMap.ts`). Frostfire's tank rails drew the prototype's bare material colour
+  before, neon beside the prelit bridges (`docs/research/82-map-fidelity-audit.md`, D2).
+- **The mip level is the GS's.** A mipmapped texture samples the level `TEX1` gives off the depth,
+  `(log2(w) << L) + K` clamped to `0..MXL`, not the GPU's derivative LOD; with the corpus's K of -12 to -6.5 most never
+  leave the base level (`gsMipLod`, `world.ts`'s `gsTexel`; research 82, D3).
 - **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
   (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
   world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the

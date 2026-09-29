@@ -115,6 +115,12 @@ MP51 has no `CLUTTER.ZAR` instances. Needs an exactly-posed MP frame to settle.
 - **Fog colour.** `FOGCOL = 0x484a4a` in the console's Seeding Chaos GS dump (research 31 §8) is the disc's (74, 74, 72),
   what the viewer uses.
 
+### The 22-map survey
+
+Every map from each measured spawn at eye height looking toward the other, after D1-D3 (and `tools/map-health.ts`): all
+22 load with no diagnostics and no untextured draw, and nothing reads as broken -- no missing sky, black texture, hole or
+z-fight in the 44 views. The night maps are as dark as the console draws them now that the brighten is gone.
+
 ## 3. What would settle the open items
 
 - An exactly-posed multiplayer PCSX2 frame: a savestate at a spawn with its RDRAM (the camera at `0x415ff0` -> `cam+0x2c`
