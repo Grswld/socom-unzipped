@@ -142,3 +142,18 @@ describe('a round\'s mark carries the surface\'s colour (Fire.setShade)', () => 
     expect([unity.getX(0), unity.getY(0), unity.getZ(0), unity.getW(0)]).toEqual([1, 1, 1, 1]);
   });
 });
+
+describe('an effect light\'s overlay is not a surface (research 89 §10)', () => {
+  it('surfaceShade reads no colour off a draw flagged effectLightPass', () => {
+    const root = new Group();
+    const overlay = wall([[1, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 1], [1, 0, 0, 1]]);
+    overlay.userData.effectLightPass = true;
+    root.add(overlay);
+    root.updateMatrixWorld(true);
+    expect(surfaceShade(root)([0, 20, -30], [0, 0, 1])).toBeNull();
+    const base = wall([[0.25, 0.25, 0.25, 1], [0.25, 0.25, 0.25, 1], [0.25, 0.25, 0.25, 1], [0.25, 0.25, 0.25, 1]]);
+    root.add(base);
+    root.updateMatrixWorld(true);
+    expect(surfaceShade(root)([0, 20, -30], [0, 0, 1])![0]).toBeCloseTo(0.25, 6);
+  });
+});

@@ -48,7 +48,7 @@ export function surfaceShade(root: Object3D): SurfaceShade {
     raycaster.far = 2 * MARK_DEPTH;
     const drawn: Mesh[] = [];
     const visit = (o: Object3D): void => {
-      if (!o.visible) return;
+      if (!o.visible || o.userData['effectLightPass'] === true) return;   // a LIGHT's second draw, not a surface (89 §10)
       if (o instanceof Mesh && o.geometry.getAttribute('color')) drawn.push(o);
       for (const c of o.children) visit(c);
     };

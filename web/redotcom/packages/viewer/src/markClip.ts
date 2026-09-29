@@ -256,6 +256,10 @@ export class MarkClipper {
       const parent = obj.parent;
       if (parent instanceof Mesh && parent.geometry === obj.geometry) continue;   // a detail or reflection pass
       if (obj.name.endsWith('(flare)')) continue;
+      // An effect light's overlay (`./effectLights`: the receiver re-drawn on its own geometry, a sibling) is the LIGHT's
+      // second draw, not a visual of the node: the game's clip walks the hit node's own visuals, each once (research 89
+      // §10; `FUN_003b3ab0` 306491-306659).
+      if (obj.userData['effectLightPass'] === true) continue;
       this.gather(obj, frame);
     }
     if (this.candidateCount === 0) return 0;
