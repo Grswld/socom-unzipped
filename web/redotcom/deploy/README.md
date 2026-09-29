@@ -1,15 +1,15 @@
 # Deploying the multiplayer server
 
-The server (`packages/server`) is one Node process: HTTP `GET /health` (JSON), `GET /metrics` (Prometheus text) and the
+The server (`web/redotcom/packages/server`) is one Node process: HTTP `GET /health` (JSON), `GET /metrics` (Prometheus text) and the
 WebSocket `/ws`, all on one port (8787). Caddy in front gives it HTTPS/WSS. Transport is WebSocket only (ruling W3.R9 in
-`web/docs/specs/2026-09-29-web-sprint-3-multiplayer-design.md`), so **no UDP port is needed**.
+`web/redotcom/docs/specs/2026-09-29-web-sprint-3-multiplayer-design.md`), so **no UDP port is needed**.
 
 **The disc files are yours and are never served or baked into an image.** The server reads `RUN/` (`MP*.ZDB`,
 `MOTION_P.ZAR`, `READERC.ZAR`) from a directory mounted read-only.
 
 | File | What |
 |---|---|
-| `Dockerfile` | node:22 build stage (esbuild bundle, 340 kB) -> node:22-slim, non-root, `HEALTHCHECK` on `/health`. Build context: `web/` |
+| `Dockerfile` | node:22 build stage (esbuild bundle, 340 kB) -> node:22-slim, non-root, `HEALTHCHECK` on `/health`. Build context: `web/` (the npm workspace root; every member's manifest goes in) |
 | `Dockerfile.dockerignore` | BuildKit's per-Dockerfile ignore list (keeps `node_modules`, `public/maps`, `test-fixtures`, `.env`, disc archives out) |
 | `compose.yaml` | `mp` (published on 127.0.0.1:8787 only) and `caddy` (80/443, certificates in the `caddy_data` volume) |
 | `Caddyfile` | `{$MP_DOMAIN}` -> `mp:8787`; `/metrics` answers 403 to anyone but localhost |
@@ -41,14 +41,14 @@ guess until then.
 6. **Settings.** `cp env.example .env` in this directory and fill in `MP_DOMAIN` and `ACME_EMAIL` (both required);
    `DISC_DIR` if you used another path. `.env` is copied to the host by `deploy.sh`; never commit it.
 7. **Deploy.** `./deploy.sh ubuntu@HOST`. It installs `docker.io`, `docker-compose-v2` and `rsync` if missing, rsyncs
-   `web/`'s manifests, `packages/` and `deploy/` to `~/socom-mp/` on the host, runs `docker compose up -d --build`
+   `web/`'s manifests, `redotcom/packages/` and `redotcom/deploy/` to `~/socom-mp/` on the host, runs `docker compose up -d --build`
    there, then polls `https://$MP_DOMAIN/health` for up to 150 s. The first certificate takes a minute.
 8. **Check.** `curl https://mp.example.com/health` -> `{"ok":true,...}`. `/metrics` from outside is 403; on the host,
    `curl http://127.0.0.1:8787/metrics`.
 
 ## Running it
 
-On the host, in `~/socom-mp/deploy`:
+On the host, in `~/socom-mp/redotcom/deploy` (`~/socom-mp/deploy` before 2026-09-29; `deploy.sh` moves the `.env`):
 
 - Logs: `sudo docker compose logs -f mp` (the server writes one JSON object per line: `{"t":...,"level":...,"msg":...}`).
 - Restart: `sudo docker compose restart mp`.

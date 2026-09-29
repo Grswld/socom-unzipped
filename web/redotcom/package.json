@@ -1,20 +1,16 @@
 {
-  "name": "socom-unzipped-map-viewer",
+  "name": "@s2u/redotcom",
   "version": "0.1.0",
-  "description": "SOCOM II's multiplayer maps decoded from the disc and drawn in a browser -- a spin-off of SOCOM Unzipped",
+  "description": "redotcom: SOCOM II's multiplayer maps decoded from the disc and drawn in a browser, walked and played online (reCOM mode) -- a spin-off of SOCOM Unzipped",
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/Scotho/socom-unzipped.git",
-    "directory": "web"
+    "directory": "web/redotcom"
   },
-  "homepage": "https://socomunzipped.com/map-viewer/",
+  "homepage": "https://socomunzipped.com/redotcom/",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "packages/*",
-    "tools"
-  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -b packages/archive packages/gs packages/mesh packages/scene packages/sound && tsc --noEmit -p packages/viewer && tsc --noEmit -p tools && tsc --noEmit -p packages/server",

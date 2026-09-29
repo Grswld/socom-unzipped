@@ -1,13 +1,18 @@
-# BuildKit reads this beside deploy/Dockerfile (context web/): the disc-derived and generated trees stay out.
+# BuildKit reads this beside redotcom/deploy/Dockerfile (context web/): the disc-derived and generated trees stay out,
+# and of the landing site and the shared design system only the manifests npm ci needs go in.
 **/node_modules
-dist
-public
-test-fixtures
-test-results
-docs
+**/dist
+**/public
+**/test-fixtures
+**/test-results
+**/docs
 .env
 **/.env
-deploy
+redotcom/deploy
+landing/*
+!landing/package.json
+shared/*
+!shared/package.json
 *.ZDB
 *.ZAR
 *.iso

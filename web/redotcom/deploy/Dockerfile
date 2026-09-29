@@ -1,24 +1,29 @@
 # The multiplayer server (web sprint 3). BUILD CONTEXT: web/ (the npm workspace root), e.g. from web/:
-#   docker build -f deploy/Dockerfile -t socom-mp .
+#   docker build -f redotcom/deploy/Dockerfile -t socom-mp .
+# (since 2026-09-29 the workspace spans web/redotcom, web/landing and web/shared; every member's manifest is copied
+# so `npm ci` matches the lockfile, and only redotcom's sources go in.)
 # The disc is NEVER copied in: mount it read-only at run time (-v /srv/socom-disc:/disc:ro, SOCOM_DISC=/disc).
 
 FROM node:22 AS build
 WORKDIR /src
 # Manifests first, so the dependency layer is cached until a package.json or the lockfile changes.
 COPY package.json package-lock.json ./
-COPY tools/package.json tools/package.json
-COPY packages/archive/package.json packages/archive/package.json
-COPY packages/gs/package.json packages/gs/package.json
-COPY packages/mesh/package.json packages/mesh/package.json
-COPY packages/scene/package.json packages/scene/package.json
-COPY packages/sound/package.json packages/sound/package.json
-COPY packages/viewer/package.json packages/viewer/package.json
-COPY packages/server/package.json packages/server/package.json
+COPY landing/package.json landing/package.json
+COPY shared/package.json shared/package.json
+COPY redotcom/package.json redotcom/package.json
+COPY redotcom/tools/package.json redotcom/tools/package.json
+COPY redotcom/packages/archive/package.json redotcom/packages/archive/package.json
+COPY redotcom/packages/gs/package.json redotcom/packages/gs/package.json
+COPY redotcom/packages/mesh/package.json redotcom/packages/mesh/package.json
+COPY redotcom/packages/scene/package.json redotcom/packages/scene/package.json
+COPY redotcom/packages/sound/package.json redotcom/packages/sound/package.json
+COPY redotcom/packages/viewer/package.json redotcom/packages/viewer/package.json
+COPY redotcom/packages/server/package.json redotcom/packages/server/package.json
 RUN npm ci --ignore-scripts
 # Sources only (no node_modules, public/maps or test-fixtures: see Dockerfile.dockerignore).
-COPY packages packages
+COPY redotcom/packages redotcom/packages
 # esbuild comes with vite. ws's optional native addons are left out (it falls back to plain JS).
-RUN node_modules/.bin/esbuild packages/server/src/main.ts --bundle --platform=node --format=esm --target=node22 \
+RUN node_modules/.bin/esbuild redotcom/packages/server/src/main.ts --bundle --platform=node --format=esm --target=node22 \
       --external:bufferutil --external:utf-8-validate \
       --banner:js="import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" \
       --outfile=/out/server.mjs

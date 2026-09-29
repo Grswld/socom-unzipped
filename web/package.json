@@ -1,0 +1,28 @@
+{
+  "name": "socom-unzipped-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0",
+  "description": "The web half of SOCOM Unzipped: redotcom (the map viewer and its match server), the landing site socomunzipped.com, and the design system they share",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Scotho/socom-unzipped.git",
+    "directory": "web"
+  },
+  "workspaces": [
+    "redotcom",
+    "redotcom/packages/*",
+    "redotcom/tools",
+    "landing",
+    "shared"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck -w @s2u/redotcom && npm run typecheck -w landing && npm run typecheck -w shared",
+    "test": "npm test -w @s2u/redotcom && npm test -w shared && npm test -w landing",
+    "build": "npm run build -w @s2u/redotcom && npm run build -w landing",
+    "dev": "npm run dev -w @s2u/redotcom",
+    "dev:landing": "npm run dev -w landing",
+    "extract-maps": "npm run extract-maps -w @s2u/redotcom"
+  }
+}

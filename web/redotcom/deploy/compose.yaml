@@ -1,10 +1,10 @@
-# Run from web/deploy/ (deploy.sh does): docker compose up -d --build
-# Reads ./.env (copy env.example). Build context is web/ (one level up).
+# Run from web/redotcom/deploy/ (deploy.sh does): docker compose up -d --build
+# Reads ./.env (copy env.example). Build context is web/ (two levels up), the npm workspace root.
 services:
   mp:
     build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+      context: ../..
+      dockerfile: redotcom/deploy/Dockerfile
     image: socom-mp:latest
     restart: unless-stopped
     env_file: .env
