@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-369 rulings (330 global, 39 sprint-local): 361 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+370 rulings (331 global, 39 sprint-local): 362 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-330 rulings.
+331 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R336 | 2026-09-29 | active | the owner's words of 15:53Z ("lock is still yours") and 17:10Z ("The web agent needs the lock after this run for one task before you can take ownership back")… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R336** |
 | R335 | 2026-09-29 | active | the owner's word, "You have the next 10ish hours, a web agent is working but should never collide with you", names a third window: builds and game runs may run… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R335** |
 | R334 | 2026-09-28 | active | the owner's word after the controller's estimate of five to six more loop days: "proceed with your suggestions and make these options known to future testers a… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R334** |
 | R333 | 2026-09-28 | active | the cloud branch's web sprint 2 "the player" (`claude/web-sprint-cloud-8wa72q` at 3ecd4720, tagged `web-sprint-2-cloud-close`) is merged onto `main` and releas… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R333** |
