@@ -45,6 +45,12 @@ describe('the small commands, from their bytes', () => {
   it('SOUND names its sound in the u16 at +6 (research 81 §6)', () => {
     expect(decodeEffectOp(cmd(ZCMD.SOUND, [0x82, 0, 4, 0, ...new Array(24).fill(0)]), names)).toMatchObject({ op: 'sound', sound: '.JUMP_WHOOSH' });
   });
+  it('SOUND carries its own volume: the f32 at +8 with flag 0x10, else 1.0 (FUN_002659c0 112363-112416; research 81 §12)', () => {
+    const payload = (flags: number, v: number): number[] => [flags & 0xff, flags >> 8, 4, 0, ...f32(v), ...new Array(20).fill(0)];
+    expect(decodeEffectOp(cmd(ZCMD.SOUND, payload(0x92, 3)), names)).toMatchObject({ op: 'sound', sound: '.JUMP_WHOOSH', volume: 3 });
+    expect(decodeEffectOp(cmd(ZCMD.SOUND, payload(0x292, 0.6)), names)).toMatchObject({ volume: expect.closeTo(0.6, 6) });
+    expect(decodeEffectOp(cmd(ZCMD.SOUND, payload(0x82, 3)), names)).toMatchObject({ volume: 1 });   // no 0x10: the game's 1.0
+  });
   it('an IF\'s conditions: RANDOM_WEIGHT\'s probability, as flash_fire_hider picks its turn', () => {
     const rw = [0x0a, 0, 0x22, 0, ...f32(0.125)];
     expect(decodeEffectOp(cmd(ZCMD.IF, [...u32(1), ...rw]), names)).toEqual({ op: 'if', conditions: [{ kind: 'random', p: 0.125 }] });

@@ -724,7 +724,8 @@ export class Effects {
       case 'sound': {
         if (ctx.ambient && op.sound.startsWith('~')) return;
         const at = op.node > 0 ? this.nodeMatrix(run, op.node) : null;
-        this.playSound(op.sound, at ? [at.elements[12]!, at.elements[13]!, at.elements[14]!] : this.runPosition(run), 1);
+        // The command's own volume (flag 0x10's f32 at +8, else 1.0: `FUN_002659c0` 112363-112461), as the zAnim path.
+        this.playSound(op.sound, at ? [at.elements[12]!, at.elements[13]!, at.elements[14]!] : this.runPosition(run), op.volume);
         return;
       }
       default: return;

@@ -436,5 +436,6 @@ Glory `.STEP_SAND` and `.SAND_JUMP`; nothing dropped.
   the ambience. Two scripts starting the same bed at the same volume are one loop here (the console has two voices).
 - Activation-1 scripts that start animations on other tests (the objectives' `VALVE`s, `RANDOM_WEIGHT` in Desert
   Glory's `mp6_battlesounds`, the lightning of MP52 and MP61) are not walked; nor are the zAnim sound commands' pan (flag 0x20) and
-  pitch bend (0x40). The effects' own zAnim `SOUND` op (`@s2u/scene`'s `effects.ts`) does not yet read the command
-  volume: its casing bounce volume reaches `GameAudio.play`, its command volume does not.
+  pitch bend (0x40). The effects' own zAnim `SOUND` op (`@s2u/scene`'s `effects.ts`) reads the command volume (flag
+  0x10's f32 at +8, else 1.0) and the viewer's effect runs play at it (`viewer/test/effects.test.ts`); the doors'
+  runs (`viewer/src/doors.ts`, the `sound` hook) still play theirs at 1.0.
