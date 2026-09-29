@@ -32,14 +32,22 @@
 # --existing as the controller's q2 logoff run calls it, against the server scripts/parity/env.sh names (our hosted
 # box by default). So the stage writes a shell DRIVER, logs/parity/<stamp>/drive_lobby.sh, which runs that login
 # with --hold <minutes*60> and nothing after it (no briefing room, no game), and audio_parity.sh runs a `.sh`
-# script in drive.py's place under the same recorder, volume hold, dump and scorers. The game's own log is pinned
-# beside the capture (PS2X_RUN_LOG=.../run.log) for audio_dips. --target pcsx2 is refused ("not yet"): the console's
+# script in drive.py's place under the same recorder, volume hold, dump and scorers. Unlike the mission stage, the
+# lobby capture also carries scripts/parity/env.sh's instruments (PS2X_PC_SAMPLER, the call trace, PS2X_PEEK, the
+# input trace) and its server: this wrapper sources env.sh before the issue #38 record, so env_ps2x.txt names what
+# the lobby game ran under. The game's own log is pinned beside the capture (PS2X_RUN_LOG=.../run.log) for audio_dips. --target pcsx2 is refused ("not yet"): the console's
 # login (tools_py/parity/online_login.py) starts from a savestate against a local Horizon stack with the DNS stub on
 # a LAN address, which this script does not drive. --walk is the mission's only.
 #
 # --max-device-per-minute N: the pin. After the dips scorer runs, its "DEVICE total .. max K in a minute" line is
 # read and the run exits 4 when K > N. Unset = report only; the ceiling is pinned once the endpoint A/B has said
 # what a clean device looks like (docs/archive/sprints-7-12/2026-09-22-fix-wave-handoff.md).
+#
+# Exit codes: 0 captured (and pinned, if asked); 2 a refused argument (--target, --stage, --walk off the mission, the
+# lobby on pcsx2); 3 the briefing stage found no DEPLOY step; 4 the DEVICE pin failed or could not be judged;
+# 5 the lobby stage's login failed (online_login_ours.py's LOBBY_FAIL_EXIT, its own 4, renumbered here so it is not
+# read as the pin); anything else is the capture's own rc. MISSION_MUSIC_CAPTURE_SH replaces audio_parity.sh for the
+# tests only: the real capture kills every harness driver and game on the host (kill_stale_drivers.ps1).
 #
 # Run it under the loop lock (it launches a game):
 #   scripts/loop_lock.sh run <owner> --purpose "W7 mission music" -- scripts/parity/mission_music_long.sh --minutes 12
@@ -113,8 +121,8 @@ while [ $# -gt 0 ]; do
     --max-device-per-minute) MAX_DEVICE=$2; shift 2 ;;
     --no-score) SCORE=0; shift ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,73p' "$0"; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; sed -n '2,73p' "$0"; exit 2 ;;
+    -h|--help) sed -n '2,81p' "$0"; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; sed -n '2,81p' "$0"; exit 2 ;;
   esac
 done
 case "$TARGET" in ours|pcsx2) ;; *) echo "--target must be ours or pcsx2" >&2; exit 2 ;; esac
@@ -245,6 +253,10 @@ if [ "$STAGE" = lobby ]; then
     echo "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1"
     echo "\"\$PYTHON\" -m tools_py.parity.online_login_ours --name socomc --password socom --prefilled --existing --instance A --out $OUT/login --seconds $DRIVE_S --hold $HOLD_S"
   } > "$SCRIPT"
+  # The same environment in THIS shell, so the issue #38 record below -- and audio_parity.sh's, at the launch --
+  # names what the lobby game runs under, not what the wrapper had before the driver sourced it.
+  . "$TOOLS_ROOT/scripts/parity/env.sh"
+  export PS2X_RUN_LOG="$ROOT/$OUT/run.log"
 fi
 
 echo "stamp=$STAMP target=$TARGET stage=$STAGE walk=$WALK minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA legs=$LEGS popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
@@ -262,9 +274,15 @@ if [ "$DRY" = 1 ]; then
   echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -c '^hold+8.0:[WS]' "$SCRIPT") walking legs, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."
   exit 0
 fi
-AUDIO_DUMP="$DUMP_ENV" SOCOM_DATA_ROOT="$ROOT" bash "$TOOLS_ROOT/scripts/parity/audio_parity.sh" capture "$TARGET" "$STAMP" "$SCRIPT" "$DRIVE_S" "$REC_S"
+CAPTURE_SH="${MISSION_MUSIC_CAPTURE_SH:-$TOOLS_ROOT/scripts/parity/audio_parity.sh}"
+AUDIO_DUMP="$DUMP_ENV" SOCOM_DATA_ROOT="$ROOT" bash "$CAPTURE_SH" capture "$TARGET" "$STAMP" "$SCRIPT" "$DRIVE_S" "$REC_S"
 rc=$?
 echo "capture rc=$rc"
+# The login's classified failure exits LOBBY_FAIL_EXIT (4), the DEVICE pin's code: the lobby's is 5 here.
+if [ "$STAGE" = lobby ] && { [ "$rc" = 4 ] || grep -q "RESULT LOBBY-FAIL" "$OUT/drive.stdout" 2>/dev/null; }; then
+  echo "lobby: the login did not reach the lobby (capture rc=$rc) -- rc=5"
+  rc=5
+fi
 
 # The proof that the hold really was in the mission, not on a cinematic: the fast path's untilref line. In the lobby,
 # the login's own verdict: `LOBBY class=ok`, or the classified `RESULT LOBBY-FAIL <class>`.

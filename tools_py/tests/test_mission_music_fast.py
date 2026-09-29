@@ -270,6 +270,38 @@ class TheLobbyStage(unittest.TestCase):
         self.assertEqual(p.returncode, 2)
         self.assertIn("lobby", p.stderr)
 
+    def test_the_record_names_what_env_sh_hands_the_lobby_game(self):
+        # issue #38: env_ps2x.txt is "what the game ran under"; the lobby game runs under env.sh's instruments
+        self.dry_run("--minutes", "2")
+        with open(os.path.join(ROOT, "logs", "parity", self.STAMP, "env_ps2x.txt"), encoding="utf-8") as f:
+            record = f.read()
+        for knob in ("PS2X_PC_SAMPLER", "PS2X_RUN_LOG", "PS2X_SOCOM2_SERVER", "PS2X_SOCOM2_INPUT_TRACE"):
+            self.assertIn(knob, record)
+
+    def test_a_lobby_failure_exits_5_not_the_device_pins_4(self):
+        # The capture is stood in for by the wrapper's seam: it writes the login's classified failure and exits with
+        # online_login_ours.LOBBY_FAIL_EXIT (4), which is also the DEVICE pin's code -- the wrapper says 5.
+        with open(LONG_SH, encoding="utf-8") as f:
+            body = f.read()
+        # Never run the wrapper without the seam in it: the real capture runs kill_stale_drivers.ps1, which kills
+        # every driver and game on the host (an unguarded RED of this test ended another agent's run, 2026-09-29).
+        self.assertIn('CAPTURE_SH="${MISSION_MUSIC_CAPTURE_SH:-', body)
+        out = os.path.join(ROOT, "logs", "parity", self.STAMP)
+        os.makedirs(out, exist_ok=True)
+        fake = f"logs/parity/{self.STAMP}/fake_capture.sh"
+        with open(os.path.join(ROOT, fake), "w", encoding="utf-8", newline="\n") as f:
+            f.write('echo "RESULT LOBBY-FAIL login:eula" > "logs/parity/$3/drive.stdout"\nexit 4\n')
+        env = dict(os.environ, MISSION_MUSIC_CAPTURE_SH=fake)
+        p = subprocess.run([BASH, LONG_SH, "--stamp", self.STAMP, "--stage", "lobby", "--minutes", "1", "--no-score"],
+                           cwd=ROOT, capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 5, p.stdout + p.stderr)
+        self.assertIn("RESULT LOBBY-FAIL login:eula", p.stdout)
+        with open(LONG_SH, encoding="utf-8") as f:
+            header = f.read().split("\nset -u\n", 1)[0]
+        self.assertIn("exit codes:", header.lower())
+        self.assertIn("5 the lobby stage's login failed", header)
+        self.assertIn("4 the DEVICE pin", header)
+
     def test_audio_parity_runs_a_shell_driver_in_drive_pys_place(self):
         with open(AUDIO_SH, encoding="utf-8") as f:
             body = f.read()
