@@ -1,7 +1,8 @@
 import {
-  BufferGeometry, DataTexture, DoubleSide, Float32BufferAttribute, Group, Line, LineBasicMaterial, LinearFilter, Mesh,
+  BufferGeometry, DataTexture, DoubleSide, Float32BufferAttribute, Group, Line, LineBasicMaterial, LinearFilter, Matrix4, Mesh,
   MeshBasicMaterial, PlaneGeometry, RGBAFormat, UnsignedByteType, Vector3,
 } from 'three';
+import type { Material } from 'three';
 import type { Rgba } from '@s2u/gs';
 import { BULLET_MARK, DEFAULT_RIFLE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
@@ -27,7 +28,9 @@ import { RifleKick, type KickStance, type KickStats } from './rifleKick';
  *   by `DAT_0044d758` (`segment.ts`); the five callers that set it to 1 (`FUN_0029bf70` the camera, `FUN_0057efe0`
  *   the headroom ray, `FUN_00596d60` the peek, `FUN_005aa6e0` a camera-side ray) are none of them a round, and the
  *   round's own path was not found in the sitting, so no class is applied (the brief's fallback).
- * - **The mark.** `READERC.ZAR/decals.rdr`'s `BULLET_MARK_SMALL` (the M4A1's `DecalSet`), its `STONE` row:
+ * - **The mark.** EFFECTS (`setMarks`, web/docs/research/89 §5): the hit polygon's material's row of the rifle's
+ *   `DecalSet`, projected along the round, none where the material has none. Without the tables,
+ *   `READERC.ZAR/decals.rdr`'s `BULLET_MARK_SMALL` (the M4A1's `DecalSet`), its `STONE` row:
  *   `bullet_mark_stone.tif` (16x16, off every map archive's `RUN\COMMON\EFFE_TXR.ZED`: `hudBitmaps.ts`), a side
  *   between `MIN_SIZE` 1 and `MAX_SIZE` 1.8 units. The quad lies on the polygon's plane, `DECAL_OFFSET` off it toward
  *   the shooter, facing out. A plain dark disc stands in when the bitmap is absent. At most `MAX_DECALS` are kept,
@@ -56,8 +59,11 @@ type Vec3 = [number, number, number];
 
 /** The mark's lift off the polygon's plane, toward the shooter, in units. */
 export const DECAL_OFFSET = 0.05;
-/** The marks kept; the 65th reuses the oldest. */
-export const MAX_DECALS = 64;
+/**
+ * The marks kept; the 151st reuses the oldest. `decals.rdr`'s `TEMP_DECAL_POOL` `BASE 150` (`OVERFLOW 50`): the game
+ * trims its temporary pool back to the base, oldest first, every frame (`FUN_003bf110`, research 89 §5).
+ */
+export const MAX_DECALS = 150;
 /** A reload's length in seconds [estimate: the header]. */
 export const RELOAD_SECONDS = 2;
 /** The tracer's start from the eye, in the view's own axes (right, up, ahead), units [estimate: a muzzle stand-in]. */
@@ -102,11 +108,30 @@ export interface FireWeapon {
  * - `reloadEnd`: the reload finished and the magazine is full (`completed`), or it was cut short (a new map).
  */
 export type FireEvent =
-  | { type: 'round'; weapon: FireWeapon; from: Vec3; to: Vec3; hit: boolean; rounds: number }
+  | {
+    type: 'round'; weapon: FireWeapon; from: Vec3; to: Vec3; hit: boolean; rounds: number;
+    /** EFFECTS: the hit polygon's normal, facing the shooter, and its `material` byte (the SOILS index); null on a miss. */
+    normal?: Vec3 | null; material?: number | null;
+  }
   | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
   | { type: 'reloadEnd'; weapon: FireWeapon; completed: boolean };
 export type FireListener = (event: FireEvent) => void;
-export interface ShotHit { point: Vec3; normal: Vec3; distance: number }
+export interface ShotHit {
+  point: Vec3; normal: Vec3; distance: number;
+  /** EFFECTS: the polygon's `material` byte, an index into the SOILS table (web/docs/research/81 §4, 89 §5). */
+  material?: number;
+}
+/**
+ * EFFECTS (web/docs/research/89 §5): the mark per surface -- the polygon's material byte to its `decals.rdr` row of the
+ * rifle's `DecalSet` (null: the material has no row, and the round leaves no mark) and a row's bitmap by texture name
+ * (null: the dark disc). Without one every hit takes the constructor's mark.
+ */
+export interface MarkTable {
+  row(material: number): DecalEntry | null;
+  bitmap(texture: string): Rgba | null;
+  /** The material a mark's bitmap draws with, when the table makes its own (the effects' GS arithmetic, brightened). */
+  material?(texture: string): Material | null;
+}
 /** One round: the segment tested and what it met. */
 export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null }
 export interface MagazineState { rounds: number; capacity: number; spare: number; reloading: boolean }
@@ -122,6 +147,34 @@ const unit = (v: Vec3): Vec3 => { const l = Math.hypot(...v) || 1; return [v[0] 
 export function ammoText(m: MagazineState): string {
   const mags = `${m.spare} MAG${m.spare === 1 ? '' : 'S'}`;
   return `${m.rounds}/${m.capacity} · ${mags}${m.reloading ? ' · RELOADING' : ''}`;
+}
+
+/** The least elongation a slanting hit's mark is held to: `|dir . n|` at least this (research 89 §5, a reading). */
+export const MARK_GRAZE_FLOOR = 0.2;
+
+/**
+ * The game's mark as a matrix on the unit quad (research 89 §5; `FUN_003d0ba0` decomp 323789, `FUN_00307810` 206429):
+ * a square `side` across, square to the round's direction `dir` -- its up the world axis least aligned with the surface
+ * normal, so no turn -- projected along `dir` onto the surface (the plane through `point` with normal `normal`, which
+ * faces the shooter), then lifted `lift` along the normal. The projection stretches the mark on a slanting hit, as the
+ * game's does; `MARK_GRAZE_FLOOR` bounds the stretch where the game's clip to the polygon would.
+ */
+export function projectedMark(point: Vec3, normal: Vec3, dir: Vec3, side: number, lift: number): Matrix4 {
+  const n = new Vector3(...normal).normalize();
+  const f = new Vector3(...dir).normalize();
+  const axes = [new Vector3(1, 0, 0), new Vector3(0, 1, 0), new Vector3(0, 0, 1)];
+  const up0 = axes.reduce((best, a) => (Math.abs(a.dot(n)) < Math.abs(best.dot(n)) ? a : best));
+  const right = new Vector3().crossVectors(f, up0);
+  if (right.lengthSq() < 1e-12) right.set(1, 0, 0).cross(f);
+  right.normalize();
+  const up = new Vector3().crossVectors(right, f).normalize();
+  let fn = f.dot(n);
+  if (Math.abs(fn) < MARK_GRAZE_FLOOR) fn = fn < 0 ? -MARK_GRAZE_FLOOR : MARK_GRAZE_FLOOR;
+  // Along f onto the plane: an offset v from the point lands at v - f (v.n) / (f.n).
+  const onPlane = (v: Vector3): Vector3 => v.clone().addScaledVector(f, -v.dot(n) / fn).multiplyScalar(side);
+  const x = onPlane(right), y = onPlane(up);
+  const at = new Vector3(...point).addScaledVector(n, lift);
+  return new Matrix4().makeBasis(x, y, n).setPosition(at);
 }
 
 /** A dark disc, 16x16, soft at its rim: the mark when `bullet_mark_stone.tif` is not to hand. */
@@ -160,6 +213,10 @@ export class Fire {
   private bound: EventTarget | null = null;
   private readonly listeners = new Set<FireListener>();
   private readonly kick: RifleKick;
+  private marks: MarkTable | null = null;
+  private tracerRule: ((weaponId: number, round: number) => boolean) | null = null;
+  /** EFFECTS: one material a mark bitmap, made on first use (the constructor's own is `material`). */
+  private readonly markMaterials = new Map<string, Material>();
 
   constructor(
     private readonly source: FireSource,
@@ -195,6 +252,38 @@ export class Fire {
     this.texture = t;
     this.material.map = t;
     this.material.needsUpdate = true;
+  }
+
+  /**
+   * EFFECTS: which rounds draw the tracer -- `(weapon id, the round's count from 1) => boolean`, the game's
+   * `tracerRound` (`@s2u/scene`) -- or null for every round.
+   */
+  setTracerRule(rule: ((weaponId: number, round: number) => boolean) | null): void {
+    this.tracerRule = rule;
+  }
+
+  /** EFFECTS: the per-material marks (`MarkTable`), or null for the constructor's one mark on every surface. */
+  setMarks(marks: MarkTable | null): void {
+    this.marks = marks;
+    for (const m of this.markMaterials.values()) { (m as MeshBasicMaterial).map?.dispose(); m.dispose(); }
+    this.markMaterials.clear();
+  }
+
+  private markMaterial(texture: string): Material {
+    const known = this.markMaterials.get(texture);
+    if (known) return known;
+    const provided = this.marks?.material?.(texture) ?? null;
+    if (provided) { this.markMaterials.set(texture, provided); return provided; }
+    const m = this.material.clone();
+    const image = this.marks?.bitmap(texture) ?? darkDisc();
+    const t = new DataTexture(image.data, image.width, image.height, RGBAFormat, UnsignedByteType);
+    t.magFilter = LinearFilter;
+    t.minFilter = LinearFilter;
+    t.generateMipmaps = false;
+    t.needsUpdate = true;
+    m.map = t;
+    this.markMaterials.set(texture, m);
+    return m;
   }
 
   /** The trigger pressed: a round now if the rifle is ready; held, `update` keeps firing at the rate. */
@@ -288,7 +377,7 @@ export class Fire {
     return {
       shots: this.shots,
       magazine: { rounds: this.rounds, capacity: this.rifle.magazine, spare: this.spare, reloading: this.reloadLeft > 0 },
-      lastHit: this.lastHit ? { point: [...this.lastHit.point], normal: [...this.lastHit.normal], distance: this.lastHit.distance } : null,
+      lastHit: this.lastHit ? { ...this.lastHit, point: [...this.lastHit.point], normal: [...this.lastHit.normal] } : null,
       decals: this.decals.filter((d) => d.visible).length,
       kick: this.kick.stats(),
     };
@@ -363,8 +452,8 @@ export class Fire {
       // Newell's normal points either way: the mark faces the shooter.
       const d = h.normal[0] * dir[0] + h.normal[1] * dir[1] + h.normal[2] * dir[2];
       const normal: Vec3 = d > 0 ? [-h.normal[0], -h.normal[1], -h.normal[2]] : [...h.normal];
-      hit = { point: [...h.point], normal, distance: h.t * span };
-      this.place(hit);
+      hit = { point: [...h.point], normal, distance: h.t * span, material: h.poly.material };
+      this.place(hit, dir);
     }
     this.rounds--;
     this.shots++;
@@ -372,15 +461,21 @@ export class Fire {
     this.lastHit = hit;
     const { knock, knockMax } = this.rifle.knock;
     this.bloom = Math.min(1, this.bloom + knock / knockMax);
-    this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
+    // EFFECTS: the game's rule, when one is set (`setTracerRule`): the M4A1 SD draws none (research 89 §6).
+    if (!this.tracerRule || this.tracerRule(this.rifle.id, this.shots)) this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
     const shot: Shot = { from, to: hit ? [...hit.point] : end, hit };
     const aimNow = this.source.look?.() ?? null;
     if (aimNow) this.kick.round(aimNow.pitch, aimNow.stance);
-    this.emit({ type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds });
+    this.emit({
+      type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds,
+      normal: hit ? [...hit.normal] : null, material: hit?.material ?? null,
+    });
     return shot;
   }
 
-  private place(hit: ShotHit): void {
+  private place(hit: ShotHit, dir: Vec3): void {
+    const row = this.marks && hit.material !== undefined ? this.marks.row(hit.material) : this.mark;
+    if (!row) return;                                   // EFFECTS: a surface without a row takes no mark
     let mesh = this.decals.length < MAX_DECALS ? undefined : this.decals[this.nextDecal];
     if (!mesh) {
       mesh = new Mesh(this.geometry, this.material);
@@ -390,11 +485,25 @@ export class Fire {
     }
     this.nextDecal = (this.nextDecal + 1) % MAX_DECALS;
     const n = new Vector3(...hit.normal);
+    if (this.marks) {
+      // EFFECTS: the game's mark (`FUN_003d0ba0`, decomp 323789; research 89 §5): the size drawn once, the square
+      // projected along the round's direction onto the surface -- stretched on a slanting hit -- with no turn.
+      const side = row.minSize + this.random() * (row.maxSize - row.minSize);
+      mesh.material = this.markMaterial(row.texture);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.copy(projectedMark(hit.point, hit.normal, dir, side, DECAL_OFFSET));
+      mesh.position.setFromMatrixPosition(mesh.matrix);   // the matrix is sheared: position only, for the hook
+      mesh.visible = true;
+      mesh.updateMatrixWorld(true);
+      return;
+    }
+    mesh.matrixAutoUpdate = true;
     mesh.position.set(hit.point[0], hit.point[1], hit.point[2]).addScaledVector(n, DECAL_OFFSET);
     mesh.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), n);
     // A turn about the normal, so the marks do not all share one grain.
     mesh.rotateZ(this.random() * Math.PI * 2);
-    const side = this.mark.minSize + this.random() * (this.mark.maxSize - this.mark.minSize);
+    const side = row.minSize + this.random() * (row.maxSize - row.minSize);
+    mesh.material = this.material;
     mesh.scale.set(side, side, 1);
     mesh.visible = true;
     mesh.updateMatrixWorld();
