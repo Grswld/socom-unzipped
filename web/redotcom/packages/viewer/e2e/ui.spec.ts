@@ -94,7 +94,10 @@ test('without ?redotcom there is no walking anywhere on the page', async ({ page
   await expect(page.locator('#hint')).not.toContainText(/walk/i);
   const text = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll('[title],[aria-label]')]
     .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' '));
-  expect(text).not.toMatch(/\b(walk\w*|stance|crouch\w*|prone|redotcom)\b/i);
+  expect(text).not.toMatch(/\b(walk\w*|stance|crouch\w*|prone)\b/i);
+  // "redotcom" is the project's name (the owner's), no longer the walk flag's word: the kicker says it on every page,
+  // the fly-only one included (index.html:83; the unit twin is test/modes.test.ts). Never flip it back (b1eb349b).
+  await expect(page.locator('#panel-kicker')).toHaveText('redotcom · SOCOM II multiplayer');
 });
 
 test.describe('with ?redotcom&fly', () => {

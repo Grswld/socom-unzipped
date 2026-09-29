@@ -56,6 +56,9 @@ const plug = (page: Page, on: boolean): Promise<void> => page.evaluate((connecte
 
 const pose = (page: Page) => page.evaluate(() => window.__viewer.pose());
 const feet = (page: Page) => page.evaluate(() => window.__viewer.feet());
+/** The Controller list's row whose key cell reads exactly `keys` (a glyph row's cell holds the svg and the name). */
+const padRow = (page: Page, keys: string) => page.locator('#pad-list tbody tr:not(.pad-group)')
+  .filter({ has: page.locator('td:first-child', { hasText: new RegExp(`^${keys}$`) }) });
 
 test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camera (W2.7)', async ({ page }) => {
   const problems: string[] = [];
@@ -105,7 +108,10 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect(page.locator('#controls-tab-pad')).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Escape');
   await page.mouse.move(700, 500);
-  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(5);
+  // The flying controls: five flying rows, and (the play flag is on under ?fly&devmode) General's `Start = walk`
+  // (`padControlGroups('fly', true)`, pinned in test/controlsTabs.test.ts).
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(6);
+  await expect(padRow(page, 'Start').locator('td').nth(1)).toHaveText('walk');
   await expect(page.locator('#pad-list tbody')).toContainText('up');
   await expect(page.locator('#pad-list tbody')).not.toContainText('fire');
   expect(await page.evaluate(() => window.__viewer.pad().id)).toBe(PAD_ID);
@@ -226,7 +232,8 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await setPad(page, {});
   await expect(page.locator('#walk')).not.toBeChecked();
   await expect(page.locator('#mode button[data-mode="fly"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(5);           // and the list is the flying controls again
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(6);           // and the list is the flying controls again
+  await expect(padRow(page, 'Start').locator('td').nth(1)).toHaveText('walk');
 
   // Fly: the same stick flies along the look (yaw 0 looks down -z) and does not turn it.
   await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 160, z: 614, yaw: 0, pitch: 0 }));

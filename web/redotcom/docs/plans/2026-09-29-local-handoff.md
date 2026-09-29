@@ -22,9 +22,12 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
   claude/web-viewer-playtest-fixes`. Last pushed: d995b282 — everything after it is local.
 - **Dev server:** `npm --prefix C:/Projects/wt-web-play/web run dev -- --port 5181`; open `/?map=MP2&redotcom`. Port
   5181 is the owner's; agents use their own (5199 integration e2e, 5201+ per workstream).
-- **Verification (from `C:/Projects/wt-web-play/web`):** `npm run typecheck && npx vitest run` (last green 1550 passed
-  / 2 skipped, includes the server tests) and `E2E_PORT=5199 npx playwright test` (last full run 49+ passed; the
-  multiplayer spec needs `node --import tsx`, fixed in 055d52ec). Load test: `npx tsx tools/mp-bots.ts --spawn-server
+- **Verification (from `C:/Projects/wt-web-play/web`):** `npm run typecheck && npm test` -- each workspace's own vitest
+  (web/ has no vitest config: a bare `npx vitest run` there ignores the per-package configs). Last green (b6,
+  2026-09-29): redotcom 1772 passed / 2 skipped incl. the server tests, landing 206 passed; landing's globalSetup
+  (`tools/vitest-prepare.mjs`) makes story.html and public/story first, so a targeted run works too;
+  `S2U_TEST_FIXTURES=<empty dir>` points `archive/test/fixtures.ts` away (its users skip, as on CI).
+  Then `E2E_PORT=5199 npx playwright test` (last full run 49+ passed; the multiplayer spec needs `node --import tsx`, fixed in 055d52ec). Load test: `npx tsx tools/mp-bots.ts --spawn-server
   --disc test-fixtures --seconds 30` (60 ticks/s, 0 corrections at 16 players + 8 spectators). Sound/map data:
   `SOCOM_DISC=C:/projects/socom_pc/game/disc npm run extract-maps`.
 - **HOST RULE (owner, via the main-tree controller, 2026-09-29):** the web work must never collide with the game's
@@ -50,6 +53,8 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
 - **Jumping up a slope clipped through the ground:** the airborne tick now takes the ground's floor pick (traversal
   2a491b07, research 86 §6.3; now in `mover.ts`).
 - Mouse sensitivity goes down to 0.05.
+- **The panel kicker says `redotcom · SOCOM II multiplayer`** on every page, fly-only included: redotcom is the
+  project's name, no longer the walk flag's word (a9228a66 restored it over b1eb349b; ui.spec.ts pins it). Do not flip it.
 
 ## 4. Rounds since the first rewrite (all merged here, 2026-09-29 afternoon)
 
