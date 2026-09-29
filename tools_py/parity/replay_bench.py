@@ -24,6 +24,7 @@ still compares. `run` deletes any JSON already at the output path before the ben
 writes none, so a summary is never an earlier run's.
 
 Run: python -m tools_py.parity.replay_bench run <recording> [--exe dist/gs_replay_bench.exe] [--json out] [--warmup N] [--frames N]
+A relative --exe (and the default) is taken against the repository root and spawned by its absolute path (#117).
 """
 import argparse
 import json
@@ -33,6 +34,7 @@ import subprocess
 import sys
 
 SUMMARY_TAG = "[gs-replay-bench]"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_EXE = os.path.join("dist", "gs_replay_bench.exe")
 TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(\S+)")
 NUMBER_RE = re.compile(r"^(-?[0-9]+(?:\.[0-9]+)?)(ms/s|/s|ms)?$")
@@ -130,10 +132,22 @@ def format_compare(rows):
     return lines
 
 
+def resolve_exe(exe):
+    """The absolute path of a string `exe`, a relative one taken against the repository root (issue #117: a
+    relative path failed with WinError 2 under the Windows Store Python). RuntimeError, naming the resolved
+    path, when no file is there."""
+    path = os.path.normpath(exe if os.path.isabs(exe) else os.path.join(REPO_ROOT, exe))
+    if not os.path.isfile(path):
+        raise RuntimeError("gs_replay_bench not found: %s (build it, or pass --exe)" % path)
+    return path
+
+
 def run(exe, recording, json_out, warmup=None, frames=None, no_stats=False, timeout=3600, knobs=()):
     """Run the bench (`exe` a path, or an argv list) on `recording`, writing `json_out`; the summary dict read
-    back from the JSON (from the printed line when the JSON is missing). RuntimeError when the bench fails."""
-    argv = list(exe) if isinstance(exe, (list, tuple)) else [exe]
+    back from the JSON (from the printed line when the JSON is missing). A string `exe` is resolved by
+    resolve_exe (against the repository root); an argv list is spawned as given. RuntimeError when the bench
+    is missing or fails."""
+    argv = list(exe) if isinstance(exe, (list, tuple)) else [resolve_exe(exe)]
     argv += [recording, "--json", json_out]
     if warmup is not None:
         argv += ["--warmup", str(warmup)]

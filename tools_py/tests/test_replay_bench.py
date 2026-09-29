@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from tools_py.parity import replay_bench
 
@@ -157,6 +158,59 @@ class Run(unittest.TestCase):
             f.write("import sys\nsys.stderr.write('no GL\\n')\nsys.exit(3)\n")
         with self.assertRaises(RuntimeError):
             replay_bench.run([sys.executable, path], "rec.gsr", os.path.join(self.tmp, "b.json"))
+
+
+class ExePath(unittest.TestCase):
+    """Issue #117: `run --exe dist/gs_replay_bench.exe` (the usage line's form, and the default) failed with
+    WinError 2 from subprocess.run under the Windows Store Python, while an absolute path worked. A string exe is
+    now resolved against the repository root before the spawn, and a missing one is refused with a message that
+    names the resolved path. No exe is run: the root is a temp dir holding an empty stub file, and subprocess.run
+    is replaced by a stand-in that records its argv and writes the summary JSON."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="replay_bench_root_")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.spawned = []
+
+    def stub_exe(self):
+        os.makedirs(os.path.join(self.root, "dist"), exist_ok=True)
+        path = os.path.join(self.root, "dist", "gs_replay_bench.exe")
+        open(path, "wb").close()
+        return path
+
+    def fake_run(self, argv, **kw):
+        self.spawned.append(list(argv))
+        shutil.copyfile(BEFORE, argv[argv.index("--json") + 1])
+        return subprocess.CompletedProcess(argv, 0, stdout=LINE, stderr="")
+
+    def run_main(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(replay_bench, "REPO_ROOT", self.root, create=True), \
+                mock.patch.object(replay_bench.subprocess, "run", side_effect=self.fake_run), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = replay_bench.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_a_relative_exe_is_spawned_by_its_absolute_path_under_the_root(self):
+        exe = self.stub_exe()
+        rc, _, err = self.run_main(["run", "rec.gsr", "--exe", "dist/gs_replay_bench.exe",
+                                    "--json", os.path.join(self.root, "a.json")])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(len(self.spawned), 1)
+        self.assertTrue(os.path.isabs(self.spawned[0][0]), self.spawned[0])
+        self.assertEqual(os.path.normcase(self.spawned[0][0]), os.path.normcase(exe))
+
+    def test_the_default_exe_is_resolved_the_same_way(self):
+        exe = self.stub_exe()
+        rc, _, err = self.run_main(["run", "rec.gsr", "--json", os.path.join(self.root, "b.json")])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(os.path.normcase(self.spawned[0][0]), os.path.normcase(exe))
+
+    def test_a_missing_exe_is_refused_naming_the_resolved_path(self):
+        rc, _, err = self.run_main(["run", "rec.gsr", "--json", os.path.join(self.root, "c.json")])
+        self.assertEqual(rc, 1)
+        self.assertEqual(self.spawned, [], "nothing is spawned for a missing exe")
+        self.assertIn(os.path.join(self.root, "dist", "gs_replay_bench.exe"), err)
 
 
 class Cli(unittest.TestCase):
