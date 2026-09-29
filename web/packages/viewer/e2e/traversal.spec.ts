@@ -87,5 +87,39 @@ test('the ladder, the climb and the peek on Frostfire (web research 86)', async 
   await settle(page, 3);
   await page.evaluate(() => window.__viewer.walkFor(1, { forward: 0 }));
   expect(await page.evaluate(() => window.__viewer.traversal()?.peek)).toBeLessThan(0.01);
+
+  // The ladder from its head: walked into facing it from the 160 deck, the "180" turns the SEAL, then the climb-off
+  // backwards puts it on the rungs (web research 86 section 2.4).
+  await page.evaluate(() => window.__viewer.setCamera({ x: 547.5, y: 175.4, z: 842, yaw: 180, pitch: -5 }));
+  const head = await page.evaluate(() => {
+    const v = window.__viewer, seen: string[] = [];
+    for (let i = 0; i < 240; i++) {
+      v.walkFor(1 / 60, { forward: seen.length ? 0 : 1 });
+      const k = v.traversal()?.kind ?? 'none';
+      if (seen.at(-1) !== k && k !== 'none') seen.push(k);
+      if (k === 'ladder') break;
+    }
+    return seen;
+  });
+  expect(head).toEqual(['turn180', 'ladderMountTop', 'ladder']);
+  await settle(page);
+  await page.screenshot({ path: join(SCREENS, 'e2e-ladder-head.png') });
+
+  // The dive: a run on the open floor at spawn A, then prone (the stance button's full press) -- the dive, prone after.
+  await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 115.4, z: 614, yaw: 180, pitch: -5 }));
+  // In one go: the page's own frames would stop the run between two calls (a stick at rest stops at once).
+  const dived = await page.evaluate(() => {
+    const v = window.__viewer;
+    v.walkFor(0.6, { forward: 1 });
+    const prone = v.setStance('prone');
+    v.walkFor(0.25, { forward: 0 });
+    return { prone, kind: v.traversal()?.kind };
+  });
+  expect(dived).toEqual({ prone: true, kind: 'dive' });
+  await settle(page);
+  await page.screenshot({ path: join(SCREENS, 'e2e-dive.png') });
+  await page.evaluate(() => window.__viewer.walkFor(1.5, { forward: 0 }));
+  expect(await page.evaluate(() => window.__viewer.traversal()?.kind)).toBe('none');
+  expect(await page.evaluate(() => window.__viewer.stance())).toBe('prone');
   expect(problems).toEqual([]);
 });

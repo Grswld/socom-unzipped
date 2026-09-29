@@ -257,6 +257,7 @@ effects.setWorld(() => walk.grid());
 // The grenades' explosions through the effects' door: the game's own zAnim (`frag_grenade_stone`, `smoke_grenade`,
 // `flashcrash_grenade` ...) where the map has it; the grenade's placeholders only where it does not.
 grenade.setEffectPlayer((anim, at) => effects.play(anim, { position: at.position, normal: at.normal ?? null, velocity: at.velocity ?? null }));
+traversal.setEffects(effects);    // research 86: the water's ripples and a fall's splash
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -830,6 +831,7 @@ async function boot(): Promise<void> {
     reticle.render(created.renderer);
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
+    traversal.effectsFrame();       // research 86: the water's ripples (FUN_005b52b0)
     hud.setWeaponIcon(grenade.icon() ?? RIFLE_ICON);   // the throwable's HUDW icon while it is up
     hud.feed({
       // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.

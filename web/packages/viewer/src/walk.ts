@@ -398,6 +398,11 @@ export interface PlaySnapshot {
   turnRate: number;
   /** TRAVERSAL SEAM: the traversal move's clip, or null (`./animator` `MoverSnapshot.traversal`). */
   traversal?: TraversalPose | null;
+  /**
+   * TRAVERSAL SEAM: the peek held (state 3, `seal+0x375`: -1 left, 1 right; 0 none) -- `GetThrowAnim` takes the lean's
+   * toss from it (web research 86 section 4.4; `./grenade`).
+   */
+  peek?: -1 | 0 | 1;
 }
 
 /** The table's jump and landing fields (`./physics`): `jump_factor`, `gravity` and the landing rates. */
@@ -408,6 +413,11 @@ export interface TickDriver {
   tick(walker: Walker, input: WalkInput, dt: number): boolean;
   /** The stick's factor this tick (web research 86 section 5: the water's `FUN_005b56c0`), 1 when absent. */
   stickFactor?(walker: Walker): number;
+  /**
+   * The stick as `FUN_005b56c0` leaves it (web research 86 section 5.3): each axis by the ground's uphill factor, then
+   * the water's; unchanged when absent.
+   */
+  stickScale?(walker: Walker, forward: number, right: number): [number, number];
 }
 
 /**
@@ -421,11 +431,19 @@ export interface TraversalHooks extends TickDriver {
   yaw(): number | null;
   /** The camera's peek value `DAT_004161c0`, -1 left .. 1 right (`./playerCamera` `peekShift`). */
   peek(): number;
+  /** The peek held (state 3): -1 left, 1 right, 0 none -- the body's lean, not the camera's eased value. */
+  peeking(): -1 | 0 | 1;
   action(): void;
   lean(side: -1 | 0 | 1): void;
   reset(walker?: Walker): void;
   /** Whether a move holds the mover (a ladder, a climb, a hang): no jump and no stance change then. */
   busy(): boolean;
+  /** The jump while busy (hanging: let go); true when it did something. */
+  jump(walker: Walker): boolean;
+  /** The dive (`FUN_0057e540`) in place of a go-prone from a run; true when it dived. */
+  dive(walker: Walker): boolean;
+  /** A stance button while busy (hanging: stand climbs, crouch or prone let go); true when it did something. */
+  stanceButton(walker: Walker, stance: Stance): boolean;
 }
 
 /** `FUN_0057e1b0`: a take-off at this speed or more (`225 <= |v|^2`, the local velocity) is the running jump. */
@@ -707,6 +725,14 @@ export class Walker {
   driver: TickDriver | null = null;
 
   /**
+   * TRAVERSAL SEAM: moves the mover across the ground by (dx, dz) as a tick's step does -- the walls, the floors, a step
+   * down, an edge's fall -- for a move that carries it (the dive).
+   */
+  glide(dx: number, dz: number): void {
+    this.move(dx, dz);
+  }
+
+  /**
    * TRAVERSAL SEAM: puts the mover on the floor where it is (`on` false: `vy` zeroed, no landing recorded) or in the
    * air at `vy` (the `Jump fall` action) -- a climb takes it (a jump-grab ends the jump), a climb's end or a hang's
    * let-go hands it back. Either way the jump, the action and the carried velocity are dropped.
@@ -850,8 +876,7 @@ export class Walker {
     // The pad reader clamps each axis to +-1 and never puts the pair in the unit disc (`./moveStick`): a full
     // diagonal is (1, 1), which the standing blend takes as min(1, |stick|) and prone as one axis at 1.
     let forward = Math.max(-1, Math.min(1, input.forward)), right = Math.max(-1, Math.min(1, input.right));
-    const wade = this.driver?.stickFactor?.(this) ?? 1;          // TRAVERSAL SEAM: the water's slow-down
-    forward *= wade; right *= wade;
+    if (!this.inAir && this.driver?.stickScale) [forward, right] = this.driver.stickScale(this, forward, right);   // TRAVERSAL SEAM: slope, water
     if (this.inAir) { this.fall(dt, forward, right); return; }
     if (this.interrupted(forward, right)) {                     // FUN_00587c20: cut; the ground state takes over
       if (this.action_?.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
@@ -1270,7 +1295,11 @@ export class WalkMode {
    */
   setStance(stance: Stance): boolean {
     if (!STANCES.includes(stance)) return false;
-    if (this.walking && this.moves?.busy()) return false;         // TRAVERSAL SEAM: not on a ladder or mid-climb
+    if (this.walking && this.walker && this.moves?.busy()) return this.moves.stanceButton(this.walker, stance);   // TRAVERSAL SEAM
+    if (this.walking && this.walker && stance === 'prone' && this.stance_ !== 'prone' && this.moves?.dive(this.walker)) {   // TRAVERSAL SEAM: the dive
+      this.stance_ = 'prone';
+      return true;
+    }
     this.stance_ = stance;
     if (this.walker) {
       if (this.walking) this.walker.changeStance(stance);
@@ -1335,7 +1364,7 @@ export class WalkMode {
   /** Walk mode: the mover's jump (`Walker.jump`); false when flying, or in the air. */
   jump(): boolean {
     const w = this.walker;
-    if (this.moves?.busy()) return false;                        // TRAVERSAL SEAM: no jump off a ladder or mid-climb
+    if (this.moves?.busy()) return !!w && this.walking && this.moves.jump(w);   // TRAVERSAL SEAM: hanging, the jump lets go
     if (!this.walking || !w || !w.jump()) return false;
     this.stance_ = w.stance;
     this.jumps++;
@@ -1366,7 +1395,7 @@ export class WalkMode {
       airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
       landing: w.landing?.kind ?? null, jumps: this.jumps,
       ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate: this.turnRate,
-      traversal: this.moves?.pose() ?? null,
+      traversal: this.moves?.pose() ?? null, peek: this.moves?.peeking() ?? 0,
     };
   }
 

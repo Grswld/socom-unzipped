@@ -34,6 +34,9 @@ import type { FireEvent, MarkTable } from './fire';
 
 type Vec3 = [number, number, number];
 
+/** TRAVERSAL SEAM: a running effect as `spawn` hands it back. */
+export interface EffectHandle { readonly finished: boolean; stop(): void }
+
 /**
  * Where an effect plays: what the engine hands `FUN_00272bb0` (research 89 §1) -- the caller's node (type 3, the
  * commands' `NODE_CALLER`), a position (5), a velocity (6) and a direction (7). A round's muzzle animation gets the
@@ -177,6 +180,16 @@ export class Effects {
     if (!program) return false;
     this.start(program, place);
     return true;
+  }
+
+  /**
+   * TRAVERSAL SEAM (web research 86 section 5.4): `play`, handing back the run -- whether it has finished, and a stop --
+   * for an effect its caller keeps alive and replaces (`FUN_005b52b0`'s ripples: a new one only when the last ended).
+   * The place is held, not copied: moving `place.position` moves the effect (the engine's tag-3 pointer).
+   */
+  spawn(name: string, place: EffectPlace): EffectHandle | null {
+    const program = this.programs.get(name.toLowerCase());
+    return program ? this.start(program, place) : null;
   }
 
   private start(program: EffectProgram, place: EffectPlace): EffectRun {
