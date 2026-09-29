@@ -311,7 +311,11 @@ of the radius across instead [placeholder].
 `grenade_mark.tif` (`EFFE_TXR.ZED`) per material, `MIN_SIZE`-`MAX_SIZE` across: SAND 30-50; DIRT, STONE 20.2-30.9;
 SNOW, METAL_THICK, METAL_THIN, WOOD_THICK 10.2-20.9; WOOD_THIN, ASPHALT 10.2-16; GLASS 10-13. The viewer lays one
 under a grenade that went off at rest (STONE's size for an unlisted material) [reading: the decal's placement was not
-traced].
+traced]. Its colour: a `FUN_003139e0` decal like a bullet mark (`FUN_003d0ba0`, the permanent pool), so the GS
+modulates its texel by the vertex colour of the world triangles under it (research 89 §13, `FUN_003b3ab0` /
+`FUN_003beca0`). The viewer draws it with the marks' material (`markMaterial`: texel x vertex colour, brightened) and
+paints its corners with `surfaceShade`'s colour straight down under the blast (the 4.8-unit window), asking again each
+frame while the ground there is not drawn yet (`GrenadeThrower.setShade`, `stats().scorchShade`).
 
 ## 8. The model and the hold
 
@@ -349,10 +353,12 @@ the config's byte at `+0x12 + result`.
   L2 there and swapped to with one press.
 - The kit (`character.rdr` `mp_seal1`): 0 M4A1, 1 Mark 23, 2 M67, 3 HE, 4 Double Ammo Load.
 
-**The viewer**: L2 is `SwapWeapon2` to `L2_SLOT_PLACEHOLDER` = the M67 (the game's default slot 1 is the sidearm the
-viewer does not carry), a second press back to the rifle [reading]; R2 is the inventory as one press a step --
-rifle, M67, HE, AN-M8, Mark141, claymore, Detonator (only while a claymore is down) -- in place of the menu
-[placeholder]; keys `1` rifle, `4` M67, `5` HE, `6` AN-M8, `7` Mark141, `8` claymore, `9` the Detonator (§9.7.1). **L1** is the game's `SwapWeapon1` back to the rifle (bound at the round-2 merge). The HUD's box shows the item's
+**The viewer** (since the WEAPON workstream's round 3, the owner 2026-09-29): **L1** is the game's `SwapWeapon1`, the
+rifle, and **L2** its `SwapWeapon2`, the sidearm (the controller's default slots 0 and 1; `./kit`); R2 is the inventory
+as one press a step -- rifle, M67, HE, AN-M8, Mark141, claymore, Detonator (only while a claymore is down) -- in place
+of the menu [placeholder]. The PC's number keys: `1` the main weapon, `2` the sidearm, `3` and `4` the kit's first and
+second equipment slots in kit order (`equipmentSlots`: the M67 and the HE for `mp_seal1`); the rest of the pouch
+(AN-M8, Mark141, claymore, Detonator) is reached through R2's inventory only. The HUD's box shows the item's
 HUDW icon (`IconTextureName`: `grenade_frag_icon.tif`, `grenade_he_icon.tif`) and its count.
 
 ### 9.2 The HE
@@ -466,14 +472,15 @@ The claymore has **no trigger of its own** -- no tripwire, no proximity, no fuse
 `DAT_003dfe10` is not a constant: the world root's load (decomp 217163-217170) sets it to `1 / <key 0x3f6c70>`; its
 static 10 is what every MP map gives (the viewer's units are the game's).
 
-**The viewer** (`CLAYMORE_RULES`, `PLACE_CLAYMORE_ANIM` in `projectile.ts`; `grenade.ts`): key 8 / the inventory takes
-the claymore up; the trigger starts the placing -- `throwStart` with `PLACE_CLAYMORE_ANIM`, so the page's throw pose
-layer plays `seal_place_claymore` on the body -- and 1.3 s in the charge goes down under the posed right hand (the
+**The viewer** (`CLAYMORE_RULES`, `PLACE_CLAYMORE_ANIM` in `projectile.ts`; `grenade.ts`): R2's inventory takes the
+claymore up (the number keys reach only the kit's first two equipment slots, §9.1); the trigger starts the placing --
+`throwStart` with `PLACE_CLAYMORE_ANIM`, so the page's throw pose layer plays `seal_place_claymore` on the body -- and 1.3 s in the charge goes down under the posed right hand (the
 hull cast from the hand to the feet less 10; none there, nothing is placed) and the Detonator comes up (its model on
 the held node, its HUDW icon); the trigger with the Detonator sets off the SEAL's claymores within 500 units and puts
 the claymore back up (the rifle when none is left -- the game selects the empty slot [reading]). Four down at most:
 the fifth is refused with the game's message (the `refuse` event; the page toasts it [placeholder: the game's message
-line]); not while moving. `9` selects the Detonator. `detonateCharges()` (the hook) is the Detonator's fire.
+line]); not while moving. R2's inventory offers the Detonator while a claymore is down. `detonateCharges()` (the
+hook) is the Detonator's fire.
 
 The C4 (ID 151, `Timer1` 6, `Explosion_Radius` 5, `IgnoreExplosionDI`) is in no MP SEAL kit: not in the viewer.
 
