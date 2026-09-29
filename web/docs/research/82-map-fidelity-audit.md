@@ -22,6 +22,7 @@ where they are used.
 | `scripts/parity/refs/console_spawn_slot8.png` | **PCSX2**, the campaign's first mission (Seeding Chaos, `RUN/M51.ZDB`) at spawn, crouched | eye `939.439, -126.264, 832.160`, target `939.439, -130.489, 858.341` | read off the console's own memory, `logs/parity/spawn_pcsx2.rdram` (research 17 §1) -- exact |
 | `logs/parity/s4_pcsx2/A_ready027.png` | **PCSX2**, Vigilance (MP51) round 1, spawn A, standing | eye `540.8, 185.6, 1480.2`, target `539.96, 181.48, 1454.73` | fitted: the measured spawn A (`scene/spawns.ts`), the game's standing camera (README, "The player"), the yaw scanned in 5-degree steps for the least structural error |
 | `logs/parity/s11_r0004_round1/B_hold00.png` | the **recompiled game** (the real ELF, GS emulated), Frostfire (MP2) spawn B, crouched | eye `510.2, 162.6, 1258.9`, target `537.25, 158.4, 1253.78` | fitted as above, the crouched camera |
+| `logs/parity/s11_r0004_round1/A_hold01.png` | the **recompiled game**, Frostfire spawn A, crouched | eye `796, 119.5, 589.8`, target `796, 115.38, 615.27` | fitted as above |
 
 The task that opened this audit called the slot-8 frame "Frostfire"; it is not a multiplayer map. It is still the best
 instrument there is: its camera is exact, and M51 is built from the same formats (after D4 the viewer draws it with every
@@ -50,6 +51,7 @@ So a multiplayer round never runs the pass, and the campaign runs it **twice** (
 |---|---|---|---|
 | Vigilance, PCSX2 | 0.46-0.67 | 0.94-1.15 | 39.0/32.5/31.5 -> 19.1/16.2/15.7 |
 | Frostfire, recompiled | 0.46-0.67 | 0.80-1.16 | 23.5 -> 10.7 |
+| Frostfire spawn A, recompiled (after D1-D3) | -- | 0.95-1.07 in every band | 10.8/11.3/11.2 (edges and the HUD) |
 
 And the campaign frame at the two passes' equivalent (FIX 239, `2.87 = 1 + 239/128`) matches band for band (0.96-1.05
 in the unobstructed bands, MAE 45 -> 22). Regional samples on Vigilance after the fix: ground 1.00/1.00/1.00, house wall
