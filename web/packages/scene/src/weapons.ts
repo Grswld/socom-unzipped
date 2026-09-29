@@ -113,7 +113,7 @@ export interface WeaponRecord {
   ammoId: number;
   /**
    * That round's `Piercing` (`ZAMMO`, ammo `+0x14`, 0 when absent: `FUN_003cedb0`): a penetrated surface leaves the
-   * round `range x (1 + Piercing x 0.1) x PENETRATION` (`FUN_003c8920`; research 84 section 10). 5.56 x 45mm: 3.
+   * round `range x (1 + Piercing x 0.1) x PENETRATION` (`FUN_003c8920`; research 84 section 13). 5.56 x 45mm: 3.
    */
   piercing: number;
   /** `Maximum_Range`, metres (x `UNITS_PER_METRE` in the world). */

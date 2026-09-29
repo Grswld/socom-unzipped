@@ -132,7 +132,7 @@ export type FireEvent =
     type: 'round'; weapon: FireWeapon; from: Vec3; to: Vec3; hit: boolean; rounds: number;
     /** EFFECTS: the hit polygon's normal, facing the shooter, and its `material` byte (the SOILS index); null on a miss. */
     normal?: Vec3 | null; material?: number | null;
-    /** ACCURACY: the surfaces the round went through before `to`, each struck (research 84 section 10). */
+    /** ACCURACY: the surfaces the round went through before `to`, each struck (research 84 section 13). */
     through?: { point: Vec3; normal: Vec3; material: number | null }[];
   }
   | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
@@ -157,7 +157,7 @@ export interface MarkTable {
 /** One round: the segment tested and what it met. */
 /**
  * One round: the segment tested and what it met -- `hit` where it stopped (null: it stopped in the air), `through` the
- * surfaces it went through on the way (marked and struck, research 84 section 10).
+ * surfaces it went through on the way (marked and struck, research 84 section 13).
  */
 export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null; through?: ShotHit[] }
 export interface MagazineState { rounds: number; capacity: number; spare: number; reloading: boolean }
@@ -298,7 +298,7 @@ export class Fire {
 
   /** EFFECTS: the per-material marks (`MarkTable`), or null for the constructor's one mark on every surface. */
   /**
-   * ACCURACY (research 84 section 10): a polygon's material byte to its `PENETRATION` (`materials.rdr` SOILS), so the
+   * ACCURACY (research 84 section 13): a polygon's material byte to its `PENETRATION` (`materials.rdr` SOILS), so the
    * round passes over the 1.0 materials and goes through the others by the game's rule; null: every surface stops it.
    */
   setPenetration(penetrationOf: ((material: number | undefined) => number) | null): void {
@@ -506,7 +506,7 @@ export class Fire {
     let hit: ShotHit | null = null;
     const through: ShotHit[] = [];
     if (this.penetrationOf) {
-      // Research 84 section 10: the round's own path from where it leaves, its whole range, every surface in order.
+      // Research 84 section 13: the round's own path from where it leaves, its whole range, every surface in order.
       const far: Vec3 = [from[0] + dir[0] * reach, from[1] + dir[1] * reach, from[2] + dir[2] * reach];
       const hits = segmentHits(grid, from, far);
       const path = penetrate(hits.map((h) => ({ distance: h.t * reach, penetration: this.penetrationOf!(h.poly.material) })), reach, this.rifle.piercing ?? 0);

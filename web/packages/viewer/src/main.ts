@@ -435,11 +435,15 @@ function playLanes(before: Input, after: Input, dt: number): void {
 let nightLens: [number, number, number, number] | null = null;
 let nightOn = false;
 /**
- * The night vision's colour on the frame [reading, research 84 section 11]: the game loads a colour matrix whose rows
- * are all `(r x 0.33, g x 0.33, b x 0.33, a x 3.03)` of `LensFX_NVG` (0x3b78d0 from 0x5c1800) -- the frame's mean
- * brightness times the lens's green. The viewer puts it on the canvas as an SVG `feColorMatrix` (the rows' fourth
- * term, on the GS's vertex alpha, is left out: its input is not traced).
+ * The night vision's colour on the frame [approximation, research 84 section 14]. The game loads a colour matrix whose
+ * four rows are all `(r x 0.33, g x 0.33, b x 0.33, a x 3.03)` of `LensFX_NVG` (0.2, 0.898, 0.2, 0.24) -- `0x3b78d0`
+ * from `0x5c1800` -- i.e. every channel of a lit colour becomes `0.066 R + 0.296 G + 0.066 B + 0.727`: the night's
+ * dark vertex lighting lifted to a flat, bright grey the textures then modulate, the green coming from the goggles
+ * (`nvg_part.tif`, 17 % green inside) and the fog tinted by the lens. That is a per-vertex change the world renderer
+ * would make; until it does, the viewer puts a frame filter on the canvas: the rows' weights normalised to a
+ * luminance, a gain of `NIGHT_GAIN` for the lift, tinted by the lens's colour with green at 1.
  */
+const NIGHT_GAIN = 3;
 function setNightFilter(lens: [number, number, number, number] | null): void {
   if (!canvas) return;
   if (!lens) { canvas.style.filter = ''; return; }
@@ -454,8 +458,11 @@ function setNightFilter(lens: [number, number, number, number] | null): void {
     document.body.appendChild(made);
     svg = made;
   }
-  const row = (c: number): string => `${(c * 0.33).toFixed(4)} ${(c * 0.33).toFixed(4)} ${(c * 0.33).toFixed(4)} 0 0`;
-  svg.querySelector('feColorMatrix')!.setAttribute('values', `${row(lens[0])} ${row(lens[1])} ${row(lens[2])} 0 0 0 1 0`);
+  // The rows' weights (0.066, 0.296, 0.066 of the lens) as a luminance summing to 1, times the gain, times the tint.
+  const w = [lens[0], lens[1], lens[2]].map((c) => c / (lens[0] + lens[1] + lens[2]));
+  const tint = [lens[0] / lens[1], 1, lens[2] / lens[1]];
+  const row = (t: number): string => w.map((x) => (x * NIGHT_GAIN * t).toFixed(4)).join(' ') + ' 0 0';
+  svg.querySelector('feColorMatrix')!.setAttribute('values', `${row(tint[0]!)} ${row(tint[1]!)} ${row(tint[2]!)} 0 0 0 1 0`);
   canvas.style.filter = `url(#${id})`;
 }
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
@@ -545,7 +552,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
     fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
-    // ACCURACY (research 84 section 10): the round goes through what the game lets it -- the material byte's name
+    // ACCURACY (research 84 section 13): the round goes through what the game lets it -- the material byte's name
     // (the effects' table: built-ins, then SOILS; 0 the map's DefaultMaterial) to its PENETRATION.
     fire.setPenetration((byte) => {
       const name = byte === undefined ? undefined : effects.materialName(byte);
@@ -955,7 +962,7 @@ function show(map: LoadedMap): void {
   }
   zoom.reset();
   accuracy.reset();
-  // Research 84 section 11: a night map's zoom steps into the night vision (NightMission, CWorld+0x5dc), its lens colour.
+  // Research 84 section 14: a night map's zoom steps into the night vision (NightMission, CWorld+0x5dc), its lens colour.
   zoom.setNight(!!map.night?.mission);
   nightLens = map.night?.lens ?? null;
   fly.setFov(baseFov);

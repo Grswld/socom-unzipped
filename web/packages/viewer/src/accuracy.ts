@@ -320,7 +320,7 @@ export class Accuracy {
   }
 }
 
-// ---- Penetration (research 84 section 10) ----------------------------------------------------------------------------
+// ---- Penetration (research 84 section 13) ----------------------------------------------------------------------------
 
 /** One surface along a round's path: how far from the round's origin, and the surface material's `PENETRATION`. */
 export interface PathSurface { distance: number; penetration: number }

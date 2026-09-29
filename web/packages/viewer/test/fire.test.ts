@@ -213,7 +213,7 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
   });
 });
 
-describe('penetration (research 84 section 10: HandleIntersections 0x3c9b70, FUN_003c8920)', () => {
+describe('penetration (research 84 section 13: HandleIntersections 0x3c9b70, FUN_003c8920)', () => {
   const wall = (z: number, material: number): WorldPoly => ({ ...wallAt(z), material });
   // Materials by byte: 30 glass (0.99), 26 metal thin (0.35), 25 stone (0), 29 an action volume (1).
   const PEN: Record<number, number> = { 30: 0.99, 26: 0.35, 25: 0, 29: 1 };
