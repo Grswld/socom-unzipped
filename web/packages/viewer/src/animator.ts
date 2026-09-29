@@ -95,7 +95,11 @@ export interface MoverSnapshot {
  * as a one-node play keyed `trav:<clip>`, its phase set from the move's key, so its `zanim_callback`s (`ladder_rung`,
  * `climb_up`, `pull_up`, `jump_whoosh`) fire through `onEvent` like any other play's.
  */
-export interface TraversalPose { clip: string; frame: number; loop: boolean; rootY: number | null }
+export interface TraversalPose {
+  clip: string; frame: number; loop: boolean; rootY: number | null;
+  /** The clip's root rotation held at its key 0: the move turns the body by code (the "180"). */
+  holdRootTurn?: boolean;
+}
 
 /** An event for the page: `onEvent`'s listeners get each as the animator steps past it. */
 export type AnimEvent =
@@ -392,6 +396,8 @@ export class Animator {
   private lastTwist = 0;
   /** TRAVERSAL SEAM: the root's height over the feet a traversal move sets, or null for the clip's own. */
   private rootOverride: number | null = null;
+  /** TRAVERSAL SEAM: the root's rotation a traversal move holds (the clip's key 0), or null for the clip's own. */
+  private rootTurn: [number, number, number, number] | null = null;
   /** TRAVERSAL SEAM: the move's play has had its first key (its phase is the move's, not the one carried over). */
   private traversalStarted = false;
 
@@ -432,6 +438,7 @@ export class Animator {
   step(dt: number, mover: MoverSnapshot): void {
     if (mover.traversal) { this.traversalStep(dt, mover.traversal, mover); return; }
     this.rootOverride = null;
+    this.rootTurn = null;
     const wanted = this.wanted(mover);
     if (!wanted) return;
     let play = this.play;
@@ -477,6 +484,7 @@ export class Animator {
     play.phase = after;
     this.lastRate = dt > 0 ? ((after - before) * frames) / dt : 0;
     this.rootOverride = over.rootY;
+    this.rootTurn = over.holdRootTurn ? (sampleClip(m.clip, 0, { loop: false }).parts.find((p) => p.name === ROOT)?.rotation ?? null) : null;
     // A ladder or a climb holds the body to its clip: no aim twist, no run bank (FUN_005aca70, FUN_0057a330 are the
     // ground state's).
     this.pose({ ...mover, pitch: undefined, turnRate: 0 });
@@ -662,6 +670,7 @@ export class Animator {
       const t: [number, number, number] = [a.t[0] / a.w, a.t[1] / a.w, a.t[2] / a.w];
       if (i === this.root) { t[0] = this.bind[i]!.t[0]; t[2] = this.bind[i]!.t[2]; }
       if (i === this.root && this.rootOverride !== null) t[1] = this.rootOverride;   // TRAVERSAL SEAM: the move's root
+      if (i === this.root && this.rootTurn) return { q: [...this.rootTurn], t };           // TRAVERSAL SEAM: the move turns it
       return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
     });
     // The pose layers (`addPoseLayer`: the weapon's fire set and reload, `./weaponPose`), each over what is below it.

@@ -19,6 +19,10 @@ const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../test
 const MP2 = fixture('RUN/MP2.ZDB');
 const PACK = fixture('RUN/MOTION_P.ZAR');
 
+/** The pack's traversal clips, read once. */
+let packClips: ReturnType<typeof clipsFromPack> | null = null;
+const PACK_CLIPS = (): ReturnType<typeof clipsFromPack> => (packClips ??= clipsFromPack(PACK!, TRAVERSAL_CLIPS));
+
 const FORWARD: WalkInput = { forward: 1, right: 0, boost: false };
 const BACK: WalkInput = { forward: -1, right: 0, boost: false };
 const STILL: WalkInput = { forward: 0, right: 0, boost: false };
@@ -459,5 +463,91 @@ describe('the water (research 86 section 5)', () => {
     v.place(0, 20, 0);
     v.tick(STILL);
     expect(u.stickFactor(v)).toBeCloseTo(0.95, 6);
+  });
+});
+
+// ---- round 3: the head's "180" and slide, the hang's let-go (research 86 sections 2.4, 3.7) --------------------------
+
+describe('the ladder head, as the game plays it (research 86 section 2.4)', () => {
+  it('turns with "180" (0.883 s, by code) before the reversed climb-off when the SEAL faces the ladder from the deck', () => {
+    const { grid, polys } = ladderWorld();
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 60, -20); w.state.yaw = 180;                          // on the deck, walking toward the ladder (+z)
+    run(w, FORWARD, () => t.state().kind !== 'none', 400);
+    expect(t.state().kind).toBe('turn180');
+    expect(t.pose()?.holdRootTurn).toBe(true);
+    const ticks = run(w, STILL, () => t.state().kind !== 'turn180', 200);
+    expect(ticks * TICK).toBeCloseTo(0.95 * (27 / 28) ** 2, 1);      // FUN_0028c4f0 on seal_180's 28 keys
+    expect(((w.state.yaw % 360) + 360) % 360).toBeCloseTo(0, 6);     // facing the climb-off's way
+    expect(t.state().kind).toBe('ladderMountTop');
+    // Backing onto it needs no turn.
+    const v = new Walker(grid), u = new Traversal(grid, polys);
+    v.driver = u;
+    v.place(0, 60, -20); v.state.yaw = 0;
+    run(v, BACK, () => u.state().kind !== 'none', 400);
+    expect(u.state().kind).toBe('ladderMountTop');
+  });
+
+  it('slides from the head with the action held in the reversed climb-off\'s last 0.2 (FUN_00582540)', () => {
+    const { grid, polys } = ladderWorld();
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 60, -20); w.state.yaw = 0;
+    run(w, BACK, () => t.state().kind === 'ladderMountTop', 400);
+    t.holdAction(true);
+    run(w, STILL, () => t.state().kind !== 'ladderMountTop', 400);
+    expect(t.state().kind).toBe('ladderSlide');                     // straight into "Ladderslide", no "Ladder -> slide"
+    expect(w.state.z).toBeCloseTo(0.2 + LADDER_STANDOFF, 6);
+    run(w, STILL, () => t.state().kind === 'none', 800);
+    expect(w.state.y).toBe(0);
+  });
+});
+
+describe('the hang, as the game plays it (research 86 section 3.7)', () => {
+  const hanging = (): { w: Walker; t: Traversal; events: TraversalEvent[] } => {
+    const { grid, polys } = climbWorld(30, 1);
+    const k = climber(polys, grid);
+    if (PACK) k.t.setClips(PACK_CLIPS(), null);                    // the disc's own clips: the push's real rise
+    run(k.w, FORWARD, () => k.t.climbPrompt() !== null, 120);
+    k.t.action();
+    run(k.w, STILL, () => k.t.state().kind === 'hang', 400);
+    return k;
+  };
+
+  it('holds with the stick at rest, and lets go on the stick back: the push off the wall, then the walk\'s fall', () => {
+    const { w, t, events } = hanging();
+    for (let i = 0; i < 120; i++) w.tick(STILL);
+    expect(t.state().kind).toBe('hang');                            // no timer
+    const z0 = w.state.z, y0 = w.state.y;
+    w.tick(BACK);
+    expect(t.state().kind).toBe('hangDown');
+    run(w, STILL, () => t.state().kind !== 'hangDown', 200);
+    expect(t.state().kind).toBe('hangDropFall');
+    expect(w.state.z).toBeGreaterThan(z0);                          // pushed back from the wall
+    if (PACK) expect(w.state.y).toBeGreaterThan(y0);                // the push rises (the root 18.82 up to 21.3)
+    expect(w.airborne).toBe(true);
+    expect(t.pose()?.clip).toBe('seal_hang_jumpdown');
+    run(w, STILL, () => !w.airborne, 400);
+    expect(w.state.y).toBe(0);
+    expect(events.map((e) => e.type)).toContain('climbEnd');
+  });
+
+  it('lets go on the jump and on a crouch; climbs on a stand', () => {
+    const a = hanging();
+    expect(a.t.jump(a.w)).toBe(true);
+    a.w.tick(STILL);
+    expect(['hangDown', 'hangDropFall']).toContain(a.t.state().kind);
+    const b = hanging();
+    expect(b.t.stanceButton(b.w, 'crouch')).toBe(true);
+    b.w.tick(STILL);
+    expect(['hangDown', 'hangDropFall']).toContain(b.t.state().kind);
+    const c = hanging();
+    expect(c.t.stanceButton(c.w, 'stand')).toBe(true);
+    expect(c.t.state().kind).toBe('hangUp');
+    run(c.w, STILL, () => c.t.state().kind === 'none', 400);
+    expect(c.w.state.y).toBeCloseTo(30, 6);
   });
 });

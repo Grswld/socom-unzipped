@@ -50,12 +50,15 @@ const FORWARD: WalkInput = { forward: 1, right: 0, boost: false };
 const STILL: WalkInput = { forward: 0, right: 0, boost: false };
 
 describe('the pad on the traversal (research 86 section 7.4)', () => {
-  it('Cross presses the action on its press only; the d-pad sides hold the peek', () => {
+  it('Cross takes the action on its release (the game\'s state 3), once; the d-pad sides hold the peek', () => {
     const { p, actions, lean } = page();
     const down = { ...noInput(), action: true };
     p.padLanes(noInput(), down);
-    p.padLanes(down, down);                                         // held: no second press
+    p.padLanes(down, down);                                         // held: nothing yet
+    expect(actions()).toBe(0);
+    p.padLanes(down, noInput());
     expect(actions()).toBe(1);
+    p.padLanes(noInput(), down);
     p.padLanes(down, { ...noInput(), leanRight: true });
     p.input();
     expect(lean()).toBe(1);

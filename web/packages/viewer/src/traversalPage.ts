@@ -12,8 +12,9 @@ import { groundPolygons, type WalkMode } from './walk';
  *
  * **The bindings** (research 86 section 7.4): the game's action button is **Cross** (`controller.rdr` Default:
  * X -> Action, Square -> Jump), its peek **the d-pad's left and right, held** (`FUN_00594cf0`, decomp 453431-453457);
- * `./gamepad`'s `action`, `leanLeft` and `leanRight` lanes carry them. The keyboard, walking: **X** the action (on its
- * press), **Q** / **E** held the peek left / right (the fly camera's down / up, free on foot).
+ * `./gamepad`'s `action`, `leanLeft` and `leanRight` lanes carry them. The keyboard, walking: **X** the action (taken on
+ * its release, as the game takes the pad's; held, the slide from a ladder's head), **Q** / **E** held the peek left /
+ * right (the fly camera's down / up, free on foot).
  *
  * **The HUD** (`./hud`): the climb prompt goes to `Hud.feed`'s `climb` (`hudClimb`); on a ladder the action slot shows
  * the ladder slide's icon (`action_slide.tif`, entry 0x10 "LADDER SLIDE") through `Hud.setAction` (`hudFrame`).
@@ -62,6 +63,9 @@ export class TraversalPage {
   private clips: { clips: MotionClip[]; table: ReadonlyMap<string, MotionEntry> | null } | null = null;
   private readonly held = new Set<string>();
   private padLean: -1 | 0 | 1 = 0;
+  /** The action button held, on the keyboard (X) and on the pad (Cross). */
+  private keyHeld = false;
+  private padHeld = false;
   /** The hook's lean (`__viewer.setLean`), for the tests. */
   hookLean: -1 | 0 | 1 = 0;
   private readonly recent: TraversalEvent[] = [];
@@ -94,9 +98,15 @@ export class TraversalPage {
     return this.walk.action();
   }
 
-  /** The pad's lanes each frame (`padFrame`): the action on its press, the peek while held. */
+  /**
+   * The pad's lanes each frame (`padFrame`): the action held (the slide from a ladder's head reads it held) and taken on
+   * its release -- `FUN_00594cf0` (decomp 453194-453225) fires the context action on the button's release edge (state 3),
+   * the jump on its press -- and the peek while held.
+   */
   padLanes(before: Input, after: Input): void {
-    if (after.action && !before.action && this.walk.mode() === 'walk') this.action();
+    this.padHeld = after.action;
+    this.traversal()?.holdAction(this.keyHeld || this.padHeld);
+    if (before.action && !after.action && this.walk.mode() === 'walk') this.action();
     this.padLean = after.leanLeft === after.leanRight ? 0 : after.leanLeft ? -1 : 1;
   }
 
@@ -107,11 +117,17 @@ export class TraversalPage {
       if (this.walk.mode() !== 'walk') return;
       const el = e.target;
       if (typeof HTMLElement !== 'undefined' && el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) return;
-      if (e.code === 'KeyX') { if (!e.repeat) this.action(); return; }
+      if (e.code === 'KeyX') { this.keyHeld = true; this.traversal()?.holdAction(true); return; }
       this.held.add(e.code);
     }) as EventListener);
-    target.addEventListener('keyup', ((e: KeyboardEvent) => { this.held.delete(e.code); }) as EventListener);
-    target.addEventListener('blur', () => this.held.clear());
+    target.addEventListener('keyup', ((e: KeyboardEvent) => {
+      this.held.delete(e.code);
+      if (e.code !== 'KeyX' || !this.keyHeld) return;
+      this.keyHeld = false;
+      this.traversal()?.holdAction(this.padHeld);
+      if (this.walk.mode() === 'walk') this.action();              // the context action on the release, as the pad's
+    }) as EventListener);
+    target.addEventListener('blur', () => { this.held.clear(); this.keyHeld = false; this.traversal()?.holdAction(this.padHeld); });
   }
 
   /** One frame, before the walk's: the peek from the keys, the pad and the hook. */

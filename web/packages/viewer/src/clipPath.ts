@@ -75,6 +75,12 @@ export function reverseShape(shape: ClipShape): ClipShape {
   return { name: shape.name, keys: shape.keys, seconds: shape.seconds, root };
 }
 
+/** The clip's first `fraction` (of its keys and its seconds): a move that leaves the clip partway (the hang's push). */
+export function truncateShape(shape: ClipShape, fraction: number): ClipShape {
+  const keys = Math.max(2, Math.round(fraction * (shape.keys - 1)) + 1);
+  return { name: shape.name, keys, seconds: shape.seconds * ((keys - 1) / (shape.keys - 1)), root: shape.root.slice(0, keys * 3) };
+}
+
 /** The root at a fractional key, clamped to the clip's last real key. */
 export function rootAt(shape: ClipShape, key: number): [number, number, number] {
   const k = Math.max(0, Math.min(shape.keys - 1, key));

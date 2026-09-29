@@ -453,6 +453,8 @@ export class GrenadeThrower {
   // ---- the throw ----------------------------------------------------------------------------------------------
 
   private stance(snap: PlaySnapshot): ThrowStance {
+    // TRAVERSAL SEAM (web research 86 section 4.4): peeking is state 3, whose throw is the lean's toss.
+    if (snap.peek) return snap.peek < 0 ? 'peek-left' : 'peek-right';
     return snap.stance;
   }
 
@@ -460,6 +462,9 @@ export class GrenadeThrower {
   private startThrow(): void {
     const snap = this.source.snapshot();
     if (!snap) { this.phase_ = 'ready'; return; }
+    // TRAVERSAL SEAM (web research 86 section 4.4): a prone peek has no throw -- `GetThrowAnim` tests only the standing
+    // and crouched lean types, returns 0, and the caller clears the throw (decomp 475499-475510).
+    if (snap.peek && snap.stance === 'prone') { this.phase_ = 'ready'; return; }
     const aimSin = Math.sin((snap.pitch * Math.PI) / 180);
     const stance = this.stance(snap);
     const anim = throwAnim(this.power, aimSin, stance, snap.vx * snap.vx + snap.vz * snap.vz);
