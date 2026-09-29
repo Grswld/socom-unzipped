@@ -8,6 +8,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { loadMap } from '../src/loadMap';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
 import { groundGrid, groundPolygons, TICK, Walker, type WalkInput } from '../src/walk';
+import { simClipsFromBytes } from '../src/simMap';
 import { LADDER_STANDOFF, rippleAnimation, Traversal, TRAVERSAL_CLIPS, type TraversalEvent } from '../src/traversal';
 
 /**
@@ -465,6 +466,83 @@ describe('the water (research 86 section 5)', () => {
     expect(u.stickFactor(v)).toBeCloseTo(0.95, 6);
   });
 });
+
+describe('the stance press in water, as FUN_00581660 / FUN_00581990 take it (issue #22)', () => {
+  const pool = (depth: number): { w: Walker; t: Traversal } => {
+    const water = { ...floor(-50, -50, 50, 50, depth), material: 11 };
+    const polys = [floor(-100, -100, 100, 100, 0), water];
+    const grid = world(polys);
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    expect(w.place(0, 20, 0)).toBe(true);
+    for (let i = 0; i < 60; i++) w.tick(STILL);
+    return { w, t };
+  };
+
+  it('over 2 deep, a prone press crouches -- no prone clip, no root motion -- from crouch it changes nothing', () => {
+    const { w } = pool(5);
+    w.changeStance('prone');
+    expect(w.stance).toBe('crouch');                                  // FUN_00581660 -> FUN_00581990 from stand
+    expect(w.action?.name).toBe('standToCrouch');
+    for (let i = 0; i < 120; i++) w.tick(STILL);
+    const at = [w.state.x, w.state.z];
+    w.changeStance('prone');                                          // crouched: FUN_00581990 finds stance 1, nothing
+    expect(w.stance).toBe('crouch');
+    expect(w.action).toBeNull();
+    for (let i = 0; i < 360; i++) w.tick(STILL);
+    expect([w.state.x, w.state.z]).toEqual(at);
+  });
+
+  it('over 8.5 deep, a prone or a crouch press stands (FUN_00581990 -> FUN_00581c10); 2 deep or less, prone as ever', () => {
+    const deep = pool(9).w;
+    deep.changeStance('crouch');
+    expect(deep.stance).toBe('stand');
+    expect(deep.action).toBeNull();
+    deep.changeStance('prone');
+    expect(deep.stance).toBe('stand');
+    expect(deep.action).toBeNull();
+    const shallow = pool(2).w;
+    shallow.changeStance('prone');
+    expect(shallow.stance).toBe('prone');
+    expect(shallow.action?.name).toBe('standToProne');
+  });
+});
+
+/**
+ * Issue #22's three spawns: each is under water (5.3, 3.8 and 4.3 deep) on ground under 20 degrees, not a steep slope.
+ * The maps are read from the served tree `npm run extract-maps` fills (`public/maps/RUN`), not the fixtures' three.
+ */
+const SERVED = resolve(FIXTURES, '../public/maps');
+const WATER_SPAWNS = [['MP62', 'ENOWAPI'], ['MP64', 'SHADOW FALLS'], ['MP71', 'FISH HOOK']] as const;
+for (const [m, name] of WATER_SPAWNS) {
+  const there = existsSync(resolve(SERVED, `RUN/${m}.ZDB`));
+  describe.skipIf(!there)(`${name}'s spawn A in the water (issue #22)${there ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+    it('a prone press crouches there and the SEAL stays put with no input', async () => {
+      const map = await loadMap(new FsAssetSource(SERVED), `RUN/${m}.ZDB`);
+      const grid = groundGrid(map.ground!);
+      const w = new Walker(grid);
+      const t = new Traversal(grid, groundPolygons(map.ground!));
+      w.driver = t;
+      if (PACK) { const sim = simClipsFromBytes(PACK, fixture('RUN/READERC.ZAR')); t.setClips(sim.clips, sim.table); w.actionRoots = sim.roots; }
+      const stand = map.stand!;
+      expect(w.place(stand.position[0], stand.floor! + 15.4, stand.position[2])).toBe(true);
+      for (let i = 0; i < 60; i++) w.tick(STILL);
+      expect(t.depth()).toBeGreaterThan(2);
+      expect(t.depth()).toBeLessThan(8.5);
+      const at = [w.state.x, w.state.z];
+      w.changeStance('crouch');
+      for (let i = 0; i < 90; i++) w.tick(STILL);
+      const crouched = [w.state.x, w.state.z];
+      w.changeStance('prone');                                        // the hold of C, or setStance('prone')
+      expect(w.stance).toBe('crouch');
+      expect(w.action).toBeNull();
+      for (let i = 0; i < 360; i++) w.tick(STILL);                    // 6 s, no input
+      expect([w.state.x, w.state.z]).toEqual(crouched);
+      expect(Math.hypot(w.state.x - at[0]!, w.state.z - at[1]!)).toBeLessThan(3);   // the crouch clip's own root only
+    });
+  });
+}
 
 // ---- round 3: the head's "180" and slide, the hang's let-go (research 86 sections 2.4, 3.7) --------------------------
 

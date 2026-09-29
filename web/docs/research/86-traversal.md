@@ -495,6 +495,37 @@ Terrain without a floor beneath takes the slope as "the lowest" up to 20 under i
 landing (`FUN_0059ad30` puts the feet on the floor, the next `FUN_0059b440` zeroes the fall and clears bit 5) and the
 3-unit landing window -- the viewer lands on the tick of contact, as before.
 
+### 6.4 The prone press in water: issue #22 (round 5, 2026-09-29) [read, data]
+
+**The report** (research 90 section 9.4, #22): at spawn A of Enowapi (MP62), Shadow Falls (MP64) and Fish Hook (MP71),
+holding `C` gave crouch, not prone; `setStance('prone')` would not take; the SEAL crept ~15 units over the 6 s of
+the tap-hold-tap-tap run with no stick.
+
+**Not the slope** [data, `test/traversal.test.ts`, the served tree's maps]: the three spawns stand on the bed of water
+5.3, 3.8 and 4.3 deep (Enowapi's water at y -14.17 over the feet at -19.49), on ground 3.5, 20 and 1 degrees off
+flat. Nothing in the game refuses prone by slope: the stance functions below read the water, and the only slope gate
+on the SEAL's actions is the jump's (`FUN_0057e1b0`, decomp 440799, `actor+0x1348` against `max_slope`). The walk
+does not slide on a slope either; at rest the mover at each spawn holds its feet bit for bit.
+
+**What the game does** [read]: the stance request `actor+0x374` goes through `FUN_00552d60` (decomp 418866-418900):
+prone to the dive test (`FUN_00584b00`) and else `FUN_00581660`; crouch to `FUN_00581990`. `FUN_00581660` (442436)
+with the in-water bit (`+0x105e` bit 7) and the depth `+0xf88` over **2.0** does not go prone: it **rewrites the
+request to crouch** (`+0x374 = 1`) and calls `FUN_00581990` instead; that one, over **8.5**, rewrites it to stand
+(`+0x374 = 0`) and calls `FUN_00581c10`. So the game **substitutes** -- a prone press 2-8.5 deep is a crouch press
+(from stand the stand-to-crouch clip; already crouched, nothing), and deeper a stand. The viewer's crouch at those
+spawns is the game's answer; tap-hold-tap-tap there is crouch > crouch > stand > crouch, and a prone reading needs
+water no deeper than 2.
+
+**The viewer's defect, and the creep** [viewer]: `Walker.changeStance` took the prone request as asked -- the stance
+prone and the `Crouch -> Prone` (or `Stand -> Prone`) clip started, its root motion (`FUN_0028c250`, round 3) carrying
+the body ~8 units -- and only the next tick's water rule (`Traversal.water`, `FUN_005b56c0`'s stand-up) put the stance
+back to crouch, the clip still playing out. That clip's travel is the "creep"; the stand/crouch clips of the taps move
+the feet ~1.7 out and back. **The fix**: the seam `TickDriver.stanceFor` (`Traversal.stanceFor`, the water over the
+feet where they stand) rewrites the press as `FUN_00581660` / `FUN_00581990` do before `changeStance` starts any clip,
+for the page and the server's `MoverSim` alike (both call `changeStance`); `WalkMode.setStance` reads the stance back.
+The pad's Triangle and `C` need nothing of their own. `tools/release-sweep.ts`'s want of crouch > prone > crouch >
+stand holds only at a spawn in water 2 deep or less.
+
 ## 7. What the viewer does, the seams, the bindings, the events
 
 ### 7.1 Modelled

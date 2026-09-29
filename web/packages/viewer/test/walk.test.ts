@@ -718,6 +718,23 @@ describe('walk mode (W1.4 step 5)', () => {
     mode.setGround(undefined, null);                                 // a map with no hull: back to fly
     expect(mode.mode()).toBe('fly');
   });
+
+  it('setStance(\'prone\') 5 deep in water is the game\'s crouch at once (FUN_00581660; issue #22), not prone for a frame', () => {
+    const water = { ...floor(100, 100, 200, 200, 5), material: 11 };
+    const wet = packGround(
+      { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 4, cellsZ: 4, originX: -200, originZ: -200 },
+      [floor(-200, -200, 200, 200, 0), water],
+      [{ modelName: 'worldmodel', path: 'worldmodel/ground', first: 0, count: 1 }, { modelName: 'worldmodel', path: 'worldmodel/water', first: 1, count: 1 }],
+    );
+    const { fly, mode } = setUp(wet);
+    mode.useTraversal((w, g) => new Traversal(w.grid, groundPolygons(g)));
+    fly.setPose({ x: 150, y: 40, z: 150 });
+    expect(mode.setMode('walk')).toBe(true);
+    expect(mode.feet()).toEqual([150, 0, 150]);
+    expect(mode.setStance('prone')).toBe(true);                      // the press is taken; the game rewrites it
+    expect(mode.stance()).toBe('crouch');
+    expect(mode.mover()?.stance).toBe('crouch');
+  });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
