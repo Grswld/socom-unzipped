@@ -1,4 +1,4 @@
-import { capturePointer, releasePointer } from './pointer';
+import { capturePointer, releasePointer, requestLock } from './pointer';
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { padRaw, strongest } from './gamepad';
 import { moveStick } from './moveStick';
@@ -618,17 +618,11 @@ export class FlyCamera {
       if (e.button === 0) { this.triggerHeld = true; this.options.onFire?.(true); }
       return;
     }
-    if (e.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
-      // Raw mouse input where the browser offers it: the OS's pointer acceleration is for a cursor,
-      // not for a look, and Chrome lets a page ask for the unadjusted movement. A browser that does
-      // not know the option (or a Firefox that rejects it) gets the plain request instead.
-      try {
-        const lock = this.canvas.requestPointerLock as (options?: { unadjustedMovement?: boolean }) => unknown;
-        const r = lock.call(this.canvas, { unadjustedMovement: true });
-        if (r instanceof Promise) r.catch(() => { try { this.canvas.requestPointerLock(); } catch { /* dragging */ } });
-      } catch {
-        try { this.canvas.requestPointerLock(); } catch { /* fall through to dragging */ }
-      }
+    if (e.pointerType === 'mouse') {
+      // Raw mouse input where the browser offers it: the OS's pointer acceleration is for a cursor, not for a look. A
+      // refusal of the raw request falls back to the plain one, and a refusal of that to the drag; none of them may
+      // reach the console as an uncaught rejection (`./pointer`, `requestLock`).
+      requestLock(this.canvas);
     }
     if (this.dragging !== null) return;
     this.dragging = e.pointerId;

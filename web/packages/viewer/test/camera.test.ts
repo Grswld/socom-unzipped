@@ -341,6 +341,24 @@ describe('FlyCamera', () => {
     expect(fly.pose().yaw).toBeGreaterThan(0);
   });
 
+  it('a mouse press whose pointer lock is refused does not throw or reject, and the drag look still works', async () => {
+    const c = fly['canvas'];
+    const unhandled: unknown[] = [];
+    const seen = (r: unknown): void => { unhandled.push(r); };
+    process.on('unhandledRejection', seen);
+    let asks = 0;
+    c.requestPointerLock = (() => { asks++; return Promise.reject(new DOMException('exited', 'SecurityError')); }) as unknown as HTMLCanvasElement['requestPointerLock'];
+    fly.setPose({ yaw: 0, pitch: 0 });
+    expect(() => c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 8, pointerType: 'mouse', clientX: 100, clientY: 100, bubbles: true }))).not.toThrow();
+    c.dispatchEvent(new PointerEvent('pointermove', { pointerId: 8, pointerType: 'mouse', clientX: 40, clientY: 100, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8, pointerType: 'mouse', clientX: 40, clientY: 100, bubbles: true }));
+    await new Promise((done) => setTimeout(done, 20));
+    process.off('unhandledRejection', seen);
+    expect(asks).toBe(2);                                    // the raw ask, then the plain one
+    expect(unhandled).toEqual([]);
+    expect(fly.pose().yaw).toBeGreaterThan(0);               // dragged
+  });
+
   it('a release that throws is swallowed too', () => {
     const c = fly['canvas'];
     c.hasPointerCapture = () => true;
