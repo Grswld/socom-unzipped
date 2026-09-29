@@ -266,7 +266,9 @@ test_step() {
     socom_require_python build.sh
     ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v )
   fi
-  cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$(nproc)"
+  # gs_replay_bench (Sprint 17 F) is built here so every test run links it; it runs by hand, on a recording
+  # (python -m tools_py.parity.replay_bench), never in this step: it needs a desktop session and a recording.
+  cmake --build "$RTBUILD" --target ps2x_tests vu1_replay gs_replay_bench -j "$(nproc)"
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
   local ps2x_test_repeat="${PS2X_TEST_REPEAT:-1}"
   ( cd "$RTBUILD/ps2xTest" && for i in $(seq 1 "$ps2x_test_repeat"); do
@@ -278,6 +280,7 @@ test_step() {
     done )
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
+  cp "$RTBUILD/ps2xRuntime/gs_replay_bench.exe" "$ROOT/dist/gs_replay_bench.exe"
   # Four verify runs over the two fixture sets, then the two host-draw checks. The native registry is ON by default
   # (kVu1NativeDefault), so the path a run takes has to be selected explicitly: --no-native forces
   # the generated/interpreted path, --native forces the registry. Both flags must follow the golden

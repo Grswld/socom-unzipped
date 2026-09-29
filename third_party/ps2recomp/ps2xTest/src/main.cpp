@@ -18,6 +18,7 @@ void register_ps2_vu_tests();
 void register_ps2_gs_tests();
 void register_gs_frame_backpressure_tests();
 void register_shot_queue_tests();   // Sprint 17 F0 Step 5b
+void register_gs_replay_file_tests();   // Sprint 17 F: the replay bench file
 void register_ps2_iop_tests();
 void register_ps2_sif_rpc_tests();
 void register_ps2_sif_dma_tests();
@@ -111,6 +112,7 @@ int main()
     register_ps2_gs_tests();
     register_gs_frame_backpressure_tests();
     register_shot_queue_tests();
+    register_gs_replay_file_tests();
     register_ps2_iop_tests();
     register_ps2_sif_rpc_tests();
     register_ps2_sif_dma_tests();

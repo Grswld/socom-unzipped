@@ -96,6 +96,7 @@
     X("PS2X_GS_NO_ZTEST", Dev, Flag, "0", "Every draw passes the depth test (A/B).") \
     X("PS2X_GS_PENDING_CAP_MB", Dev, Int, "64", "Soft ceiling on pending render bytes.") \
     X("PS2X_GS_PENDING_HARD_CAP_MB", Dev, Int, "1024", "Hard ceiling on pending render bytes (R124).") \
+    X("PS2X_GS_RECORD", Dev, Spec, "", "<file>[:<present>|t<sec>|trig[:<presents>]]: record the GL replay stream for gs_replay_bench.") \
     X("PS2X_GS_RT_TEXTURE", Dev, Int, "1", "0 restores the readback + decode for render targets used as textures.") \
     X("PS2X_GS_SCALE", Shipping, Int, "1", "The GL backend's internal render scale, clamped to 1-4 (the CPU rasteriser ignores it).") /* read: ps2xRuntime/src/lib/gs/gs_gl_backend.cpp:renderScale */ \
     X("PS2X_GS_SCALE_FILTER", Dev, Text, "", "box = box-filter the resolve of a scaled target.") \
