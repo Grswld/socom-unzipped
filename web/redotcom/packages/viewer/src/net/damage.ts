@@ -1,7 +1,6 @@
 /**
  * The game's damage, headless (web sprint 3, M6; web research 91 sections 1-5): what the multiplayer server applies to
- * a SEAL when a round, a fragment or a fall reaches it. Every number is the decompilation's; the two it does not give
- * (constants in the ELF's `.data`, not in the handoff) are named placeholders.
+ * a SEAL when a round, a fragment or a fall reaches it. Every number is the decompilation's, or the ELF's `.data`.
  */
 
 /** The six hit locations, in the order `FUN_005a4840` loads the death lists (research 91, vocabulary). */
@@ -20,10 +19,11 @@ const RANGE_UNITS = 10;
 
 /**
  * `DAT_006508a8` / `DAT_006508b0`: a hit on an arm or leg already at 0 goes to BODY as `dmg x` this, at this piercing
- * (`FUN_005a5830` L461487-461490). The constants are in `.data`, not in the handoff: PLACEHOLDER -- 0.5 and the round's
- * own piercing, so limb shots can finish a SEAL, slower than body shots.
+ * (`FUN_005a5830` L461487-461490). Read from the ELF's `.data` (`socom2_game.elf`, file offset 0x2f7a80 + va - 0x4c5380):
+ * 0x3e99999a = 0.3 and 0x41200000 = 10 -- piercing 10 takes the armour out of the step (`A x (10 - P) / 10` = 0).
  */
-export const LIMB_SPILL_PLACEHOLDER = 0.5;
+export const LIMB_SPILL = 0.3;
+export const LIMB_SPILL_PIERCING = 10;
 
 /** A SEAL's health and armour per part. */
 export interface Health { hp: number[]; armour: number[] }
@@ -71,7 +71,7 @@ function armourStep(h: Health, part: number, dmg: number, piercing: number): voi
 
 /**
  * One hit on one part (`FUN_005a5830` L461469-461547): a live head, arm or leg takes the armour step; an arm or leg at
- * 0 passes `LIMB_SPILL_PLACEHOLDER` of it to the body; a head at 0 takes nothing; a body hit takes the step and then
+ * 0 passes `LIMB_SPILL` of it to the body at `LIMB_SPILL_PIERCING`; a head at 0 takes nothing; a body hit takes the step and then
  * caps each limb at `limb max x body / body max` (the head uncapped). Returns whether the SEAL died of it.
  */
 export function applyHit(h: Health, part: number, dmg: number, piercing: number): boolean {
@@ -83,7 +83,7 @@ export function applyHit(h: Health, part: number, dmg: number, piercing: number)
   } else if (h.hp[part]! > 0) {
     armourStep(h, part, dmg, piercing);
   } else if (part !== PART.HEAD) {
-    return applyHit(h, PART.BODY, dmg * LIMB_SPILL_PLACEHOLDER, piercing);
+    return applyHit(h, PART.BODY, dmg * LIMB_SPILL, LIMB_SPILL_PIERCING);
   }
   return isDead(h);
 }
@@ -126,9 +126,16 @@ export function fragmentDamage(explosionDamage: number, radius: number, distance
 }
 
 /**
- * The part a fragment strikes (`DAT_006508d0`/`e0`, in `.data`, not in the handoff): PLACEHOLDER -- every part alike,
- * at random (`FRAGMENT_PART_PLACEHOLDER`).
+ * The part a fragment strikes (`FUN_005a0e70` L459240-459252; the receiver's copy L464717-464721): the first of
+ * `FRAGMENT_ROLLS` (`DAT_006508e0`, six floats) over a draw in [0, 1) names the part at the same place in
+ * `FRAGMENT_PARTS` (`DAT_006508d0`, six bytes: 00 03 02 01 05 04); BODY when none is (never: the last is 1.0). Read
+ * from the ELF's `.data`: head 30 %, body 30 %, then the left arm, the right arm, the left leg, the right leg 10 % each.
  */
+export const FRAGMENT_ROLLS: readonly number[] = [0.3, 0.6, 0.7, 0.8, 0.9, 1.0];
+export const FRAGMENT_PARTS: readonly number[] = [PART.HEAD, PART.BODY, PART.LARM, PART.RARM, PART.LLEG, PART.RLEG];
+
 export function fragmentPart(random: () => number): number {
-  return Math.min(PARTS - 1, Math.floor(random() * PARTS));
+  const roll = random();
+  for (let i = 0; i < FRAGMENT_ROLLS.length; i++) if (roll < FRAGMENT_ROLLS[i]!) return FRAGMENT_PARTS[i]!;
+  return PART.BODY;
 }

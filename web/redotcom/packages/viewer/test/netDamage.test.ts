@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM } from '@s2u/scene';
-import { applyFall, applyHit, bulletDamage, fragmentCount, fragmentDamage, freshHealth, isDead, overall, PART } from '../src/net/damage';
+import {
+  applyFall, applyHit, bulletDamage, FRAGMENT_PARTS, FRAGMENT_ROLLS, fragmentCount, fragmentDamage, fragmentPart, freshHealth, isDead,
+  LIMB_SPILL, LIMB_SPILL_PIERCING, overall, PART,
+} from '../src/net/damage';
 
 /** The game's damage (web research 91 sections 1-5): the table's shots to kill, the falloff, the falls, the blasts. */
 
@@ -32,7 +35,14 @@ describe('bullets (research 91 section 1.2)', () => {
     expect(h.hp[PART.RLEG]).toBe(0);
     expect(h.hp[PART.BODY]).toBe(50);
     applyHit(h, PART.RLEG, 36.4, 3);
-    expect(h.hp[PART.BODY]).toBeLessThan(50);                      // LIMB_SPILL_PLACEHOLDER
+    // DAT_006508a8 = 0.3, DAT_006508b0 = 10 (the ELF's .data): 0.3 of the round at piercing 10 -- through the armour.
+    expect(h.hp[PART.BODY]).toBeCloseTo(50 - 36.4 * 0.3, 9);
+    expect(h.armour[PART.BODY]).toBe(25);
+  });
+
+  it('spills a spent limb hit into the body at the .data constants', () => {
+    expect(LIMB_SPILL).toBeCloseTo(0.3, 6);
+    expect(LIMB_SPILL_PIERCING).toBe(10);
   });
 
   it('falls off from Effective_Range to nothing at Maximum_Range, and ignores a round past it', () => {
@@ -82,5 +92,20 @@ describe('falls and blasts (research 91 section 5)', () => {
     expect(fragmentCount(10, 'crouch', r(0))).toBe(8);
     expect(fragmentCount(10, 'prone', r(0))).toBe(6);
     expect(fragmentCount(60, 'stand', r(0.99))).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('the part a fragment strikes (FUN_005a0e70 L459240-459252; .data DAT_006508e0 / DAT_006508d0)', () => {
+  it('reads the tables in the ELF: head 30 %, body 30 %, left arm, right arm, left leg, right leg 10 % each', () => {
+    expect(FRAGMENT_ROLLS).toEqual([0.3, 0.6, 0.7, 0.8, 0.9, 1.0]);
+    expect(FRAGMENT_PARTS).toEqual([PART.HEAD, PART.BODY, PART.LARM, PART.RARM, PART.LLEG, PART.RLEG]);
+    const at = (v: number): number => fragmentPart(() => v);
+    expect(at(0)).toBe(PART.HEAD);
+    expect(at(0.29)).toBe(PART.HEAD);
+    expect(at(0.3)).toBe(PART.BODY);
+    expect(at(0.65)).toBe(PART.LARM);
+    expect(at(0.75)).toBe(PART.RARM);
+    expect(at(0.85)).toBe(PART.LLEG);
+    expect(at(0.95)).toBe(PART.RLEG);
   });
 });
