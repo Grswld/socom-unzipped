@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ARM_TINT, CONSOLE_RETICLE, RETICLE_SETS, reticleLayout, reticleTint, reticleType, scopeLayout, nightLayout } from '../src/reticle';
+import { DoubleSide, Mesh, Vector2, type MeshBasicMaterial, type Scene } from 'three';
+import { ARM_TINT, CONSOLE_RETICLE, Reticle, RETICLE_SETS, reticleLayout, reticleTint, reticleType, scopeLayout, nightLayout } from '../src/reticle';
 
 /**
  * The reticle's place and size (web sprint 2, W2.4), against the console frame at spawn
@@ -115,5 +116,53 @@ describe('the reticle set, colour and scope (research 84)', () => {
     const { quads, bars } = nightLayout(PS2);
     expect(quads.map((q) => [q.x, q.y, q.width, q.height])).toEqual([[160, 112, 320, 224], [480, 112, 320, 224], [160, 336, 320, 224], [480, 336, 320, 224]]);
     expect(bars).toEqual([]);
+  });
+});
+
+describe('the scope drawn on a wide frame (the owner, 2026-09-29: the world showed beside the scope at 16:9)', () => {
+  const rgba = (w: number, h: number, alpha = 255) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4).fill(alpha) });
+  /** The HUD pass drawn on a `width` x `height` buffer: the meshes it would draw, by the scene it is handed. */
+  const drawn = (width: number, height: number, mode: 'reticle' | 'scope', night = false): Mesh[] => {
+    const r = new Reticle();
+    r.setBitmaps({
+      fixed: rgba(64, 64), floating: rgba(32, 32), accuracy: null,
+      sets: { 'ret_scope_01.tif': rgba(128, 128), 'ret_scope_02.tif': rgba(128, 128, 0), 'nvg_part.tif': rgba(256, 256) },
+    });
+    r.setVisible(true);
+    r.setMode(mode);
+    r.setNight(night);
+    let scene: Scene | null = null;
+    r.render({ autoClear: true, getDrawingBufferSize: (v: Vector2) => v.set(width, height), render: (s) => { scene = s; } });
+    const out: Mesh[] = [];
+    (scene as Scene | null)?.traverse((o) => { if (o instanceof Mesh && o.visible) out.push(o); });
+    return out;
+  };
+
+  it('fills the sides beyond the scope with its black, drawn from both faces (the HUD camera looks with y down)', () => {
+    const meshes = drawn(1920, 1080, 'scope');
+    const s = 1080 / 448, side = 960 - 320 * s;
+    const bars = meshes.filter((m) => (m.material as MeshBasicMaterial).map === null);
+    expect(bars.map((m) => [m.position.x, m.scale.x, m.scale.y])).toEqual([[side / 2, side, 1080], [1920 - side / 2, side, 1080]]);
+    // The y-down orthographic camera turns every quad's winding: a one-sided material is culled, and the bars were --
+    // the world showed through them. Every quad the pass draws is two-sided.
+    for (const m of meshes) expect((m.material as MeshBasicMaterial).side, m.name).toBe(DoubleSide);
+    expect(bars.every((m) => (m.material as MeshBasicMaterial).color.getHex() === 0x000000)).toBe(true);
+    // The scope's quads and the bars together span the frame: no column of the world left between them.
+    const quads = meshes.filter((m) => (m.material as MeshBasicMaterial).map !== null);
+    const spans = [...bars, ...quads].map((m) => [m.position.x - Math.abs(m.scale.x) / 2, m.position.x + Math.abs(m.scale.x) / 2]).sort((a, b) => a[0]! - b[0]!);
+    let reach = 0;
+    for (const [a, b] of spans) { expect(a!).toBeLessThanOrEqual(reach + 1e-6); reach = Math.max(reach, b!); }
+    expect(reach).toBeGreaterThanOrEqual(1920 - 1e-6);
+  });
+
+  it('keeps the PS2 frame as it was: no bars at 640x448; a phone held upright neither', () => {
+    expect(drawn(640, 448, 'scope').filter((m) => (m.material as MeshBasicMaterial).map === null)).toEqual([]);
+    expect(drawn(1080, 1920, 'scope').filter((m) => (m.material as MeshBasicMaterial).map === null)).toEqual([]);
+  });
+
+  it('fills the night goggles\' sides the same way', () => {
+    const bars = drawn(1920, 1080, 'reticle', true).filter((m) => (m.material as MeshBasicMaterial).map === null);
+    expect(bars).toHaveLength(2);
+    for (const m of bars) expect((m.material as MeshBasicMaterial).side).toBe(DoubleSide);
   });
 });

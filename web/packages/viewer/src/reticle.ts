@@ -337,7 +337,9 @@ export class Reticle {
       for (let i = 0; i < 4; i++) this.nightMeshes.push(this.addMesh(material, -1));
     }
     if (this.scopeMeshes.length > 0 || this.nightMeshes.length > 0) {
-      const black = new MeshBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, fog: false, toneMapped: false });
+      // Two-sided as every HUD quad is: the camera looks with y down, which turns a quad's winding, and a one-sided bar
+      // was culled -- the world showed beside the scope on a wide frame (the owner, 2026-09-29).
+      const black = new MeshBasicMaterial({ color: 0x000000, side: DoubleSide, depthTest: false, depthWrite: false, fog: false, toneMapped: false });
       this.materials.push(black);
       for (let i = 0; i < 2; i++) this.bars.push(this.addMesh(black, 2));
     }
