@@ -119,6 +119,12 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   const boom = await page.evaluate(() => window.__viewer.grenade());
   expect(boom.explosions[1]!.pos).toEqual(lie);
   expect(boom.explosions[1]!.material).toBe('METAL_THICK');         // Frostfire's DefaultMaterial, byte 0
+  // EFFECTS (research 89 §13): the scorch is a decal like a bullet mark, modulated by the drawn floor's own vertex
+  // colour under it -- never above unity on any map, so darker than the bare bitmap.
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().scorchShade), { timeout: 5_000 }).not.toBeNull();
+  const scorchShade = (await page.evaluate(() => window.__viewer.grenade())).scorchShade!;
+  for (const v of scorchShade.slice(0, 3)) { expect(v).toBeGreaterThan(0); expect(v).toBeLessThanOrEqual(1.001); }
+  expect(Math.min(...scorchShade.slice(0, 3))).toBeLessThan(0.99);
   expect(boom.explosions[1]!.anim).toBe('frag_grenade_metal_thick');
   expect(boom.explosions[1]!.byEffects).toBe(true);                  // the game's own zAnim, through the effects
   // EFFECTS: the game's own explosion -- frag_grenade_metal_thick, then the frag_grenade it calls and its parts.
@@ -175,8 +181,9 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   const flashNow = await page.evaluate(() => window.__viewer.whiteOut());
   expect(flashNow.opacity).toBeGreaterThan(flashNow.level !== null && flashNow.level >= 2 ? 0.5 : 0);
 
-  // The claymore (key 8): R1 plays `Place claymore` (seal_place_claymore) on the body; 1.3 s in the charge is down under
-  // the hand, facing the SEAL's way, and the Detonator comes up; R1 with the Detonator sets it off (research 85 §9.7.1).
+  // The claymore (R2's inventory; `3`/`4` take only the kit's first two equipment slots): R1 plays `Place claymore`
+  // (seal_place_claymore) on the body; 1.3 s in the charge is down under the hand, facing the SEAL's way, and the
+  // Detonator comes up; R1 with the Detonator sets it off (research 85 §9.7.1).
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 3_000 }).toBe('ready');
   await expect.poll(() => page.evaluate(() => window.__viewer.whiteOut().opacity), { timeout: 20_000 }).toBeLessThan(0.05);   // the flash gone
   expect(await page.evaluate(() => window.__viewer.selectItem('Claymore'))).toBe(true);

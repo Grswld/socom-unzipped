@@ -1,7 +1,7 @@
 import {
   AdditiveBlending, DataTexture, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, NormalBlending, PlaneGeometry,
   RGBAFormat, Sprite, SpriteMaterial, UnsignedByteType, BufferGeometry, Float32BufferAttribute, Line,
-  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Texture,
+  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Material, type Texture,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
@@ -14,6 +14,9 @@ import {
 } from '@s2u/scene';
 import type { GrenadeAssets } from './grenadeAssets';
 import { GRENADE_BITMAPS } from './grenadeAssets';
+import { markMaterial } from './effectMaterials';
+import { markGeometry, paintMark } from './fire';
+import type { SurfaceShade } from './surfaceShade';
 import type { PlaySnapshot, WalkView } from './walk';
 
 /**
@@ -263,7 +266,12 @@ export interface GrenadeStats {
   defaultMaterial: string;
   /** The yellow arc while the throw is held; null when none is drawn. */
   arc: ArcStats | null;
+  /** EFFECTS (research 89 §13): the colour the last scorch was modulated by (the world's under it); null: unity. */
+  scorchShade: [number, number, number, number] | null;
 }
+
+/** How many scorches without a drawn surface under them are asked again a frame (`GrenadeThrower.shadeLate`). */
+const SHADE_RETRIES_PER_FRAME = 4;
 
 const rand = (lo: number, hi: number, r: () => number): number => lo + (hi - lo) * r();
 
@@ -314,6 +322,15 @@ export class GrenadeThrower {
   private trail = false;
   private readonly listeners: Listeners = { equip: [], throwStart: [], place: [], throw: [], bounce: [], explode: [], refuse: [], detonate: [] };
   private readonly scorchGeometry = new PlaneGeometry(1, 1);
+  /** `grenade_mark.tif` as decoded (`GrenadeAssets.bitmaps`), for the scorch's material; null: the dark stand-in. */
+  private scorchBitmap: Rgba | null = null;
+  /** The scorches' one material (the marks' GS arithmetic, `markMaterial`), made on first use, a map's life. */
+  private scorchMaterial: Material | null = null;
+  /** EFFECTS: the world's drawn colour under a point (`./surfaceShade`), or null: every scorch at unity. */
+  private shade: SurfaceShade | null = null;
+  private scorchShade: [number, number, number, number] | null = null;
+  /** Scorches laid where no drawn surface was yet under them (the props stream in after the map shows), asked again. */
+  private readonly unshaded = new Map<Mesh, V3>();
   /** The held throw's arc (`FUN_005970b0`): one strip, refilled each frame while it shows. */
   private readonly arcLine: LineSegments;
   private arc: ArcStats | null = null;
@@ -378,6 +395,9 @@ export class GrenadeThrower {
     for (const t of this.textures.values()) t.dispose();
     this.textures.clear();
     for (const [name, rgba] of Object.entries(assets?.bitmaps ?? {})) this.textures.set(name, textureOf(rgba));
+    this.scorchBitmap = assets?.bitmaps?.[GRENADE_BITMAPS.scorch] ?? null;
+    if (this.scorchMaterial) { (this.scorchMaterial as MeshBasicMaterial).map?.dispose(); this.scorchMaterial.dispose(); }
+    this.scorchMaterial = null;
     this.defaultMaterial = assets?.defaultMaterial ?? '';
     this.cast = null;
     this.castGrid = null;
@@ -390,8 +410,10 @@ export class GrenadeThrower {
     for (const p of this.particles) { this.object.remove(p.sprite); p.sprite.material.dispose(); }
     this.particles.length = 0;
     this.smokes.length = 0;
-    for (const s of this.scorches) { this.object.remove(s); (s.material as MeshBasicMaterial).dispose(); }
+    for (const s of this.scorches) { this.object.remove(s); s.geometry.dispose(); }
     this.scorches.length = 0;
+    this.unshaded.clear();
+    this.scorchShade = null;
     this.left = capacities(this.records);
     this.thrown = 0;
     this.pending = null;
@@ -563,6 +585,7 @@ export class GrenadeThrower {
       if (this.recover <= 0) this.finishThrow();
     }
     this.fly(dt);
+    this.shadeLate();
     this.smokeFrame(dt);
     this.effects(dt);
     this.placeHand(snap);
@@ -589,7 +612,21 @@ export class GrenadeThrower {
         ...this.arc, color: [...this.arc.color], from: [...this.arc.from], velocity: [...this.arc.velocity],
         start: [...this.arc.start], end: [...this.arc.end],
       },
+      scorchShade: this.scorchShade && [...this.scorchShade],
     };
+  }
+
+  /**
+   * EFFECTS (research 89 §13, the mark's colour): the world's drawn vertex colour under a point, which the game
+   * modulates a scorch's texel by (`FUN_003beca0` puts the ground vertices' own colour words in its packet); null: unity.
+   */
+  setShade(shade: SurfaceShade | null): void {
+    this.shade = shade;
+  }
+
+  /** The scorches on the ground, oldest first (the tests read their colour). */
+  scorchMeshes(): readonly Mesh[] {
+    return this.scorches;
   }
 
   /**
@@ -1022,12 +1059,12 @@ export class GrenadeThrower {
    */
   private scorch(pos: V3, material: string): void {
     const [min, max] = GRENADE_BLAST[material] ?? GRENADE_BLAST.STONE!;
-    const map = this.textures.get(GRENADE_BITMAPS.scorch) ?? null;
-    const m = new MeshBasicMaterial({
-      map, color: map ? 0xffffff : 0x151210, transparent: true, depthWrite: false, side: DoubleSide, fog: true, toneMapped: false,
-      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, opacity: map ? 1 : 0.6,
-    });
-    const mark = new Mesh(this.scorchGeometry, m);
+    // Its own four corners, for its own colour (the shared quad's, cloned), as `./fire`'s marks.
+    const mark = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
+    // A `FUN_003139e0` decal like a bullet mark (research 89 §13): modulated by the ground's own drawn colour under it.
+    this.scorchShade = this.shade?.(pos, [0, 1, 0]) ?? null;
+    paintMark(mark.geometry, this.scorchShade);
+    if (this.shade && !this.scorchShade) this.unshaded.set(mark, [...pos]);
     const size = rand(min, max, this.random);
     mark.scale.set(size, size, 1);
     mark.rotation.set(-Math.PI / 2, 0, rand(0, Math.PI * 2, this.random));
@@ -1037,7 +1074,42 @@ export class GrenadeThrower {
     if (this.scorches.length > 16) {
       const old = this.scorches.shift()!;
       this.object.remove(old);
-      (old.material as MeshBasicMaterial).dispose();
+      old.geometry.dispose();
+      this.unshaded.delete(old);
+    }
+  }
+
+  /**
+   * The scorches' material: `grenade_mark.tif` in the marks' GS arithmetic (`markMaterial`: texel x the vertex colour,
+   * clamped, brightened with the frame; source alpha over, no depth write), pulled a step nearer than a bullet mark;
+   * without the bitmap a dark stand-in, modulated all the same.
+   */
+  private scorchMaterialOf(): Material {
+    if (this.scorchMaterial) return this.scorchMaterial;
+    const bitmap = this.scorchBitmap;
+    const m: Material = bitmap ? markMaterial({ rgba: bitmap, gs: null }) : new MeshBasicMaterial({
+      color: 0x151210, vertexColors: true, transparent: true, depthWrite: false, side: DoubleSide, fog: true, toneMapped: false,
+      opacity: 0.6,
+    });
+    m.polygonOffset = true;
+    m.polygonOffsetFactor = -2;
+    m.polygonOffsetUnits = -2;
+    this.scorchMaterial = m;
+    return m;
+  }
+
+  /** EFFECTS: a few of the scorches still without a drawn surface under them, asked again (`unshaded`). */
+  private shadeLate(): void {
+    if (!this.shade || this.unshaded.size === 0) return;
+    let asked = 0;
+    for (const [mesh, at] of this.unshaded) {
+      if (asked++ >= SHADE_RETRIES_PER_FRAME) break;
+      const rgba = this.shade(at, [0, 1, 0]);
+      this.unshaded.delete(mesh);
+      if (rgba) {
+        paintMark(mesh.geometry, rgba);
+        if (mesh === this.scorches.at(-1)) this.scorchShade = rgba;
+      } else this.unshaded.set(mesh, at);               // to the back of the queue: the others get their turn
     }
   }
 
