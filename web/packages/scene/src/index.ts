@@ -21,3 +21,4 @@ export * from './tuning';
 export * from './segment';
 export * from './weapons';
 export * from './projectile';
+export * from './ladder';

@@ -84,7 +84,18 @@ export interface MoverSnapshot {
   turnRate?: number;
   /** The aim's pitch, degrees, up positive (the camera's): the upper body takes it (`FUN_005aca70`). */
   pitch?: number;
+  /** TRAVERSAL SEAM (`./traversal`): a ladder, a climb or a lean playing its own clip; absent or null otherwise. */
+  traversal?: TraversalPose | null;
 }
+
+/**
+ * TRAVERSAL SEAM: a clip a traversal move plays in place of the mover's own play (web research 86): the clip, where it is (keys,
+ * the move's own clock: a ladder's phase follows the climbed height), whether it loops, and the skeleton root's height
+ * over the drawn feet when the move carries the root's rise in the mover (null: the clip's own). The animator plays it
+ * as a one-node play keyed `trav:<clip>`, its phase set from the move's key, so its `zanim_callback`s (`ladder_rung`,
+ * `climb_up`, `pull_up`, `jump_whoosh`) fire through `onEvent` like any other play's.
+ */
+export interface TraversalPose { clip: string; frame: number; loop: boolean; rootY: number | null }
 
 /** An event for the page: `onEvent`'s listeners get each as the animator steps past it. */
 export type AnimEvent =
@@ -379,6 +390,10 @@ export class Animator {
   private readonly poseLayers: PoseLayer[] = [];
   private lastBank = 0;
   private lastTwist = 0;
+  /** TRAVERSAL SEAM: the root's height over the feet a traversal move sets, or null for the clip's own. */
+  private rootOverride: number | null = null;
+  /** TRAVERSAL SEAM: the move's play has had its first key (its phase is the move's, not the one carried over). */
+  private traversalStarted = false;
 
   constructor(private readonly skeleton: Skeleton, clips: Iterable<MotionClip>, private readonly table: MotionTable | null, options: AnimatorOptions = {}) {
     for (const c of clips) this.motions.set(c.name, motionOf(c, entryOf(c.name, table)));
@@ -415,6 +430,8 @@ export class Animator {
 
   /** One frame of `dt` seconds with the mover as it now stands. */
   step(dt: number, mover: MoverSnapshot): void {
+    if (mover.traversal) { this.traversalStep(dt, mover.traversal, mover); return; }
+    this.rootOverride = null;
     const wanted = this.wanted(mover);
     if (!wanted) return;
     let play = this.play;
@@ -435,6 +452,35 @@ export class Animator {
     this.lastRate = rate * main.motion.frames;
     this.pose(mover);
     this.fire(play, before, after, rate < 0, wanted.locomotion === true && !mover.airborne && Math.hypot(mover.vx, mover.vz, mover.vy) > 0.5);
+  }
+
+  /**
+   * TRAVERSAL SEAM (`./traversal`, web research 86): the move's clip as a one-node play at the move's own key -- no
+   * advance of its own -- its callbacks fired as its phase passes them, the root's height the move's.
+   */
+  private traversalStep(dt: number, over: TraversalPose, mover: MoverSnapshot): void {
+    const m = this.motions.get(over.clip);
+    if (!m) return;
+    const key = `trav:${over.clip}`;
+    let play = this.play;
+    if (!play || play.key !== key) {
+      play = this.start({ key, nodes: () => [{ motion: m, weight: 1, speed: 0, offset: 0 }] });
+      play.looped = over.loop;
+      this.play = play;
+      this.traversalStarted = false;                             // a new move's first key fires nothing behind it
+    } else this.blendElapsed += dt;
+    const frames = m.clip.frameCount;
+    let after = over.frame / frames;
+    after = over.loop ? ((after % 1) + 1) % 1 : Math.max(0, Math.min(m.end, after));
+    const before = play === this.play && play.key === key && play.phase !== undefined && this.traversalStarted ? play.phase : after;
+    this.traversalStarted = true;
+    play.phase = after;
+    this.lastRate = dt > 0 ? ((after - before) * frames) / dt : 0;
+    this.rootOverride = over.rootY;
+    // A ladder or a climb holds the body to its clip: no aim twist, no run bank (FUN_005aca70, FUN_0057a330 are the
+    // ground state's).
+    this.pose({ ...mover, pitch: undefined, turnRate: 0 });
+    if (after !== before) this.fire(play, before, after, after < before && !over.loop, false);
   }
 
   /** The play the mover asks for (the header's rules), or null when there is nothing to play it with. */
@@ -615,6 +661,7 @@ export class Animator {
       const len = Math.hypot(...a.q) || 1;
       const t: [number, number, number] = [a.t[0] / a.w, a.t[1] / a.w, a.t[2] / a.w];
       if (i === this.root) { t[0] = this.bind[i]!.t[0]; t[2] = this.bind[i]!.t[2]; }
+      if (i === this.root && this.rootOverride !== null) t[1] = this.rootOverride;   // TRAVERSAL SEAM: the move's root
       return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
     });
     // The pose layers (`addPoseLayer`: the weapon's fire set and reload, `./weaponPose`), each over what is below it.

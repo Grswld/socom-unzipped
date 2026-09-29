@@ -1,5 +1,5 @@
 import { Vector3, type Camera } from 'three';
-import { isCameraSurface, segmentHit, segmentHits, SEAL_TUNING, type Grid } from '@s2u/scene';
+import { isCameraSurface, segmentHit, segmentHits, surfaceWord, SEAL_TUNING, SURFACE_SIDE, SURFACE_SKIP, type Grid, type WorldPoly } from '@s2u/scene';
 import { CROUCH_HEIGHT, HEAD_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import type { Stance } from './walk';
 
@@ -158,15 +158,42 @@ export interface LocalCamera {
   probe: boolean;
 }
 
-/** `FUN_0029a950` at a root height and a pitch (degrees, up positive), with no peek and the root's x, z at 0. */
-export function localCamera(rootY: number, pitchDegrees: number): LocalCamera {
+/**
+ * TRAVERSAL SEAM (web research 86 section 4): `FUN_0029a950`'s peek, the target's shift across the actor for the peek
+ * value `DAT_004161c0` (-1 left .. 1 right): `peek x 2.5` to the left, `peek x 2.8` to the right (decomp 142476-142484).
+ */
+export function peekShift(peek: number): number {
+  return peek < 0 ? peek * 2.5 : peek * 2.8;
+}
+
+/**
+ * TRAVERSAL SEAM: the first-person eye's shift across for the peek value (`FUN_0029ae50`, decomp 142613-142617):
+ * `peek x 3.3` to the left, `peek x 4.35` to the right.
+ */
+export function firstPersonPeekShift(peek: number): number {
+  return peek < 0 ? peek * 3.3 : peek * 4.35;
+}
+
+/**
+ * TRAVERSAL SEAM: the surfaces the pass tests while peeking -- `FUN_0029bf70` sets `FUN_002d4fd0(DAT_004161c0 == 0)`
+ * (decomp 143369-143373), so a peek puts the probes in the movement's mode: bit 18 skipped, not bit 19.
+ */
+export const isPeekCameraSurface = (p: WorldPoly): boolean => (surfaceWord(p) & (SURFACE_SIDE | SURFACE_SKIP)) === SURFACE_SIDE;
+
+/**
+ * `FUN_0029a950` at a root height and a pitch (degrees, up positive), the root's x, z at 0, and the peek value
+ * (`peekShift`; 0, no peek, by default): `v = (shift, 0, 28)`, `dist = |v|`, `n = normalize(pitch(v))`.
+ */
+export function localCamera(rootY: number, pitchDegrees: number, peek = 0): LocalCamera {
   const p = pitchDegrees * DEG;
-  // (0, 0, 28) turned about x by the pitch, normalised: looking down (p < 0) lifts the eye.
-  const back: Vec3 = [0, -Math.sin(p), Math.cos(p)];
+  const shift = peekShift(peek);
+  // (shift, 0, 28) turned about x by the pitch, normalised: looking down (p < 0) lifts the eye.
+  const back: Vec3 = unit([shift, -Math.sin(p) * CAM_BACK, Math.cos(p) * CAM_BACK]);
   const ny = back[1];
   const lead = ny < 0 ? ny * LEAD_UP : ny * LEAD_DOWN;
-  const dist = CAM_BACK + Math.abs(ny) * (CAM_CLOSE - CAM_BACK);
-  const target: Vec3 = [0, lookHeight(rootY), lead + 0];
+  const flat = Math.hypot(CAM_BACK, shift);
+  const dist = flat + Math.abs(ny) * (CAM_CLOSE - flat);
+  const target: Vec3 = [shift, lookHeight(rootY), lead + 0];
   return {
     target, dist, back, probe: ny >= 0 && lead < LEAD_PROBE,
     eye: [target[0] + back[0] * dist, target[1] + back[1] * dist, target[2] + back[2] * dist],
@@ -193,13 +220,14 @@ export interface PassState { dist: number; hold: number }
 export const newPassState = (): PassState => ({ dist: 10000, hold: 0 });
 
 /** `FUN_0029bf70`: the eye after the pass, from the target and the eye `FUN_00296f10` hands it (the header). */
-export function cameraPass(grid: Grid | null, target: Vec3, eye: Vec3, state: PassState, dt: number = TICK): Vec3 {
-  const hit = (a: Vec3, b: Vec3): Vec3 | null => (grid ? segmentHit(grid, a, b, isCameraSurface)?.point ?? null : null);
+export function cameraPass(grid: Grid | null, target: Vec3, eye: Vec3, state: PassState, dt: number = TICK,
+  accept: (p: WorldPoly) => boolean = isCameraSurface): Vec3 {
+  const hit = (a: Vec3, b: Vec3): Vec3 | null => (grid ? segmentHit(grid, a, b, accept)?.point ?? null : null);
   const toTarget = sub(target, eye);
   const dir = unit(toTarget);
   const reach = length(toTarget) + CAM_MARGIN;
   // FUN_0029cd20: the main probe's pick, and DAT_00416038 -- any hit at all, kept or passed over.
-  const hits = grid ? segmentHits(grid, target, sub(target, scale(dir, reach)), isCameraSurface) : [];
+  const hits = grid ? segmentHits(grid, target, sub(target, scale(dir, reach)), accept) : [];
   const any = hits.length > 0;
   const main = hits.find((h) => h.poly.cameratype !== 1 || length(sub(h.point, target)) > TYPE_ONE_CLEAR)?.point ?? null;
   if (state.hold > 0) state.hold -= dt;
@@ -258,6 +286,9 @@ export class PlayerCamera {
 
   constructor(private readonly grid: Grid | null) {}
 
+  /** TRAVERSAL SEAM (`./traversal`'s lean): the peek value `DAT_004161c0`, -1 left .. 1 right, the next tick reads. */
+  peek = 0;
+
   /** Forgets the camera: the next tick places it at the goal with no hold, as a new camera does. */
   reset(): void {
     this.pass = newPassState();
@@ -276,7 +307,7 @@ export class PlayerCamera {
     const root = this.root === null || posed ? rootY
       : Math.abs(rootY - this.root) <= ROOT_RATE * dt ? rootY : this.root + Math.sign(rootY - this.root) * ROOT_RATE * dt;
     this.root = root;
-    const local = localCamera(root, pitchDegrees);
+    const local = localCamera(root, pitchDegrees, this.peek);
     const world = (v: readonly number[]): Vec3 => toWorld(feet, yawDegrees, v);
     let lead = local.target[2];
     if (local.probe && this.grid) {
@@ -292,7 +323,7 @@ export class PlayerCamera {
     const eye0 = world(eyeL);
     // FUN_00296f10: the target on the line from the eye to the aim, `dist` from the eye.
     const target = add(eye0, scale(unit(sub(far, eye0)), local.dist));
-    const eye = cameraPass(this.grid, target, eye0, this.pass, dt);
+    const eye = cameraPass(this.grid, target, eye0, this.pass, dt, this.peek !== 0 ? isPeekCameraSurface : isCameraSurface);
     this.prev = this.cur ?? { eye, target, far };
     this.cur = { eye, target, far };
   }

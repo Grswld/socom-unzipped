@@ -28,6 +28,8 @@ import { HELD_RIFLE } from '@s2u/scene';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
+import { TRAVERSAL_CLIPS } from './traversal';
+import { TraversalPage } from './traversalPage';
 import { gameAudio } from './audio';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
@@ -76,6 +78,15 @@ const overlays = new Overlays(scene);
  * follows it (W2.1, `./playerCamera`), `V` for first person.
  */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
+/**
+ * Web research 86 (`./traversalPage`): the ladder, the climb, the peek and the water on the walk; X, Q and E, the pad's
+ * Cross and d-pad sides. The clips' callbacks sound through `Play.onEvent`; the slide's loop and landing through these.
+ */
+const traversal = new TraversalPage(walk, {
+  play: (name, at) => { audio.play(name, at); },
+  land: (speed, at) => { audio.onLand(speed, walkSounds.material(at), at); },
+});
+traversal.bindKeys();
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
 /** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
@@ -258,7 +269,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS] });
 }
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -325,7 +336,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.kind === 'play') {
-    if (message.id === wantedPlay) play.setClips(message.data);
+    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); }
     return;
   }
   if (message.kind === 'sound') {
@@ -402,6 +413,7 @@ function padFrame(dt: number): void {
   if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
   if (pressedSince(padLast, pad).includes('zoom') && walk.mode() === 'walk') onZoom();
   playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
+  traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
   padLast = pad;
   padMerged = input;
 }
@@ -541,6 +553,7 @@ async function boot(): Promise<void> {
     padFrame(dt);                   // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.setBody(walk.mode() === 'walk' && walk.view() === 'first', walk.posture() === 'prone');   // the bob's (research 83)
     fly.update(dt);
+    traversal.input();              // research 86: the peek held (Q / E, the pad's lean lanes)
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
@@ -564,10 +577,11 @@ async function boot(): Promise<void> {
     reticle.setVisible(walking);
     reticle.render(created.renderer);
     hud.setVisible(walking);
+    traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
     hud.feed({
       // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
-      yaw: fly.pose().yaw, stance: walk.posture(),
+      yaw: fly.pose().yaw, stance: walk.posture(), climb: traversal.hudClimb(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
     });
     hud.render(created.renderer);
@@ -822,6 +836,9 @@ window.__viewer = {
   setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
+  traversal: () => traversal.stats(),
+  action: () => traversal.action(),
+  setLean: (side) => { traversal.hookLean = side; },
   audio: () => audio.stats(),
   setAudio: (settings) => {
     if (settings.volume !== undefined) audio.setVolume(settings.volume);

@@ -652,3 +652,30 @@ describe('the aim\'s twist and the run\'s bank on the spine (FUN_005aca70, FUN_0
     expect(anim.stats().bank).toBe(0);
   });
 });
+
+// ---- TRAVERSAL SEAM: a traversal move's clip (web research 86) ----------------------------------------------------
+
+describe('a traversal move\'s clip in place of the mover\'s play (web research 86)', () => {
+  it('plays the move\'s clip at the move\'s key, the root at the move\'s height, and fires its callbacks as it passes them', () => {
+    const { clips, table } = standingKit();
+    const rung = clip('seal_climbladder', 16, [{ name: 'skel_root', t: keys(16, (i) => [0, 15.6 + 0.625 * i, -7.6]), q: [Q_ID] }]);
+    table.set('seal_climbladder', entry({ looped: true, playback: 3, maxVelocity: 1.35, callbacks: [{ name: 'ladder_rung', time: 0.01 }, { name: 'ladder_rung', time: 0.5 }] }));
+    const anim = new Animator(skeleton(), [...clips, rung], table);
+    const heard: string[] = [];
+    anim.onEvent((e) => { if (e.kind === 'callback') heard.push(e.name); });
+    anim.step(1 / 60, REST);
+    expect(anim.stats().clip).toBe('seal_stand');
+    const at = (frame: number): MoverSnapshot => ({ ...REST, traversal: { clip: 'seal_climbladder', frame, loop: true, rootY: 15.6 } });
+    anim.step(1 / 60, at(0));
+    expect(anim.stats().play).toBe('trav:seal_climbladder');
+    expect(anim.stats().frame).toBeCloseTo(0, 6);
+    for (let f = 0.7; f < 9; f += 0.7) anim.step(1 / 60, at(f));
+    anim.step(1 / 60, at(9));
+    expect(anim.stats().frame).toBeCloseTo(9, 6);
+    expect(heard).toEqual(['ladder_rung', 'ladder_rung']);           // 0.01 and 0.5 of the cycle, each crossed once
+    for (let i = 0; i < 60; i++) anim.step(1 / 60, at(9));           // the cross-fade settles
+    expect(anim.rootY()).toBeCloseTo(15.6, 6);                       // the move's root, not the clip's 15.6 + 0.625 x 9
+    anim.step(1 / 60, REST);
+    expect(anim.stats().play).toBe('idle:stand');                    // the move over: the mover's own play again
+  });
+});

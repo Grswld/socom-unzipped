@@ -615,7 +615,7 @@ export class Ui {
 
 /** The hint line's controls, by mode; the page's markup carries the same fly line for the first paint. */
 const FLY_HINT = 'WASD fly · space/shift up/down · double-tap W to boost';
-const WALK_HINT = 'WASD move · mouse look/turn · space jump · C stance · V first person · right button aim · d-pad Up zoom · click fire · R reload · G fly';
+const WALK_HINT = 'WASD move · mouse look/turn · space jump · C stance · V first person · right button aim · d-pad Up zoom · click fire · R reload · X action (Cross) · Q/E peek (d-pad left/right) · G fly';
 
 /** How long the Controls popover stays once the pointer has left the tab and the popover, ms. */
 export const POPOVER_GRACE_MS = 200;

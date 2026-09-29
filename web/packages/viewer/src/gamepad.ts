@@ -44,8 +44,8 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'leanLeft' | 'leanRight' | 'mode';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'leanLeft', 'leanRight', 'mode'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'action' | 'leanLeft' | 'leanRight' | 'mode';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'action', 'leanLeft', 'leanRight', 'mode'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
@@ -55,20 +55,21 @@ export type PadAction = 'move' | 'look' | PadFlag;
  * crouch on foot and down; `mode` is the walk/fly switch `G` is. `stance` is the game's stance button (Triangle): a tap
  * and a hold mean different things on foot (`./play`, `StanceButton`), and it is down in the fly camera like `crouch`.
  * `boost` is the fly camera's alone: the walk has no sprint. `zoom` is the scope (d-pad Up), the walk's alone: one press
- * a step (`pressedSince`).
+ * a step (`pressedSince`). `action` is the game's Action button (Cross: the climb, the ladder's slide) and `leanLeft` /
+ * `leanRight` its peek (the d-pad's left and right, held), the walk's alone (web research 86 section 7.4).
  */
 export interface Input {
   moveX: number; moveY: number;
   lookX: number; lookY: number;
   jump: boolean; crouch: boolean; stance: boolean; boost: boolean; fire: boolean; aim: boolean; zoom: boolean;
-  leanLeft: boolean; leanRight: boolean; mode: boolean;
+  action: boolean; leanLeft: boolean; leanRight: boolean; mode: boolean;
 }
 
 /** The input at rest: every axis 0, every action off. */
 export function noInput(): Input {
   return {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
-    jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, leanLeft: false, leanRight: false, mode: false,
+    jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, action: false, leanLeft: false, leanRight: false, mode: false,
   };
 }
 
@@ -93,7 +94,8 @@ export const OWNER = 'owner, 2026-09-28';
 /**
  * SOCOM II's layout as the owner gave it on 2026-09-28 (Square jumps, R1 fires, Triangle is the stance, L1 aims, Start
  * is the walk/fly switch, d-pad Up zooms, the left stick moves and the right looks), with what the repository documents beside it
- * where it does, and the viewer's own bindings marked `assumed`. Cross, Circle, Select and the d-pad but Up are left free.
+ * where it does, and the viewer's own bindings marked `assumed`. Cross is the action and the d-pad's left and right the
+ * peek (web research 86, from the game's own `controller.rdr` and pad read). Circle, Select and d-pad Down are left free.
  */
 export const PAD_LAYOUT: readonly PadRow[] = [
   {
@@ -145,15 +147,18 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'never prone. Down in the fly camera',
   },
   {
-    control: 'L2', action: 'leanLeft', documented: 'assumed',
-    note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"); the repository names the game\'s L2 the '
-      + 'second-weapon swap (launcher_config.cpp:572, host_crouch_shortcut.h:13-14). No lean in the viewer yet, so the '
-      + 'panel lists it in neither mode',
+    control: 'Cross', action: 'action', documented: 'web/docs/research/86-traversal.md §3.4; docs/KNOWN.md (R139 row)',
+    note: 'the action on foot: climbs what the climb icon offers (in the air too, after a jump), slides down a ladder. '
+      + 'The game\'s own: controller.rdr\'s Default maps X to Action (FUN_00594cf0 -> FUN_00592d50, decomp 452182)',
   },
   {
-    control: 'R2', action: 'leanRight', documented: 'assumed',
-    note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"). No lean in the viewer yet, so the panel '
-      + 'lists it in neither mode',
+    control: 'Left', action: 'leanLeft', documented: 'web/docs/research/86-traversal.md §4.1',
+    note: 'held, the peek left on foot, standing still: FUN_00594cf0 (decomp 453431-453457) reads the d-pad\'s left as '
+      + 'the peek, held, not toggled',
+  },
+  {
+    control: 'Right', action: 'leanRight', documented: 'web/docs/research/86-traversal.md §4.1',
+    note: 'held, the peek right on foot, standing still (the same read, the d-pad\'s right)',
   },
   {
     control: 'R3', action: 'boost', documented: 'assumed',
@@ -165,7 +170,7 @@ export const PAD_LAYOUT: readonly PadRow[] = [
 /**
  * What each action is called on the panel, on foot and in the fly camera: one button, the same motion in both where
  * there is one. `null` is an action the mode does not have -- fire and aim are the walk's alone, the boost the fly
- * camera's alone (no sprint on foot), and there is no lean yet -- and the panel leaves that row out of that mode's table.
+ * camera's alone (no sprint on foot), the action and the peek the walk's -- and the panel leaves that row out of that mode's table.
  */
 export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string | null }> = {
   move: { walk: 'move', fly: 'fly along the look' },
@@ -177,8 +182,9 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   fire: { walk: 'fire (held)', fly: null },
   aim: { walk: 'aim (held)', fly: null },
   zoom: { walk: 'zoom (scope)', fly: null },
-  leanLeft: { walk: null, fly: null },
-  leanRight: { walk: null, fly: null },
+  action: { walk: 'action (climb, ladder slide)', fly: null },
+  leanLeft: { walk: 'peek left (held)', fly: null },
+  leanRight: { walk: 'peek right (held)', fly: null },
   mode: { walk: 'fly (as G)', fly: 'walk (as G)' },
 };
 

@@ -126,17 +126,21 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[2]).toBeGreaterThan(start[2]);
   expect(walked[1]).toBeCloseTo(100, 3);
 
-  // On foot the table lists the walking controls: R1's fire, no boost.
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(9);
+  // On foot the table lists the walking controls: R1's fire, Cross's action, the d-pad's peek, no boost.
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(12);
+  await expect(page.locator('#pad-layout tbody')).toContainText('action (climb, ladder slide)');
   await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(0);
   await expect(page.locator('#pad-layout tbody')).toContainText('fire (held)');
   await expect(page.locator('#pad-layout tbody')).not.toContainText('boost');
   await expect(page.locator('#hint')).toContainText('click fire');
 
-  // Square is the jump on foot (the mover's jump is W2.3a's): what reaches the page is the jump; Cross does nothing.
+  // Square is the jump on foot (the mover's jump is W2.3a's): what reaches the page is the jump; Cross is the action
+  // (web research 86), not a jump.
   await setPad(page, { press: [0] });
-  await page.waitForTimeout(200);
+  await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.action)).toBe(true);
   expect((await page.evaluate(() => window.__viewer.pad().input)).jump).toBe(false);
+  await setPad(page, {});
+  await page.waitForTimeout(200);
   await setPad(page, { press: [SQUARE] });
   await expect.poll(() => page.evaluate(() => window.__viewer.pad().input.jump)).toBe(true);
   await setPad(page, {});

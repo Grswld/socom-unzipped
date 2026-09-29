@@ -163,6 +163,9 @@ the choice is remembered. A failed load unfolds the panel so the error is seen.
 | right button (held) | the aim view, first person from the SEAL's eyes |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
 | `R` | reloads; an empty magazine waits for it |
+| walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
+| `X` | the action, the pad's Cross: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
+| `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
 
 ### The controller
 
@@ -174,6 +177,8 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 |---|---|---|
 | left stick / right stick | move / look | fly along the look / look |
 | Square | jump | up |
+| Cross | action: the climb the icon offers, the ladder's slide ([research 86](docs/research/86-traversal.md)) | — |
+| d-pad Left / Right (held) | peek left / right, standing still | — |
 | R1 | fire (held fires at the rifle's rate; let go stops) | — |
 | Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
 | L1 (held) | aim view (first person) | — |
