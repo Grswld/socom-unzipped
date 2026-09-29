@@ -9,7 +9,8 @@ import { segmentHit, type Grid } from '@s2u/scene';
 import type { HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
-import { DEFAULT_PLAYER, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
+import { DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
+import type { Presentation } from './renderer';
 import { roundScreenLayout, type RoundScreen } from './roundScreens';
 import { roundBanner } from './net/rules';
 
@@ -499,11 +500,12 @@ export function hudLayout(
 /**
  * The pass's quads and shapes on a frame, pure: the in-round HUD less what the tactical map, the scoreboard or a round
  * screen hides, then the extra layer -- a round screen (over everything, replacing the scoreboard and the tactical
- * map), else the tactical map's overlay and the scoreboard.
+ * map), else the tactical map's overlay and the scoreboard. `presentation` places the scoreboard: the Modern one
+ * (`'native'`) raises it by `MODERN_SCOREBOARD_LIFT`; the PS2 one keeps the game's place.
  */
 export function hudPass(
   frame: { width: number; height: number }, model: HudModel, sizes: Record<string, { width: number; height: number }>,
-  timing: HudTiming, tacOpen: boolean, overlay: HudOverlay | null,
+  timing: HudTiming, tacOpen: boolean, overlay: HudOverlay | null, presentation: Presentation = 'ps2',
 ): { quads: HudQuad[]; tris: HudTri[] } {
   const { quads } = hudLayout(frame, model, sizes, timing);
   if (model.roundScreen) {
@@ -514,17 +516,19 @@ export function hudPass(
   // scoreboard hides the ammo box, the compass, the prompts and the timer (L56808-56828) and draws on layer 1.
   const base = tacOpen ? quads.filter((q) => q.element === 'fader')
     : model.scoreboard ? quads.filter((q) => !SCOREBOARD_HIDES.has(q.element)) : quads;
-  const board = model.scoreboard && !tacOpen ? boardLayout(frame, model, sizes) : null;
+  const board = model.scoreboard && !tacOpen ? boardLayout(frame, model, sizes, presentation) : null;
   const tac = overlay?.(frame, sizes) ?? null;
   return { quads: [...base, ...(tac?.quads ?? []), ...(board?.quads ?? [])], tris: [...(tac?.tris ?? []), ...(board?.tris ?? [])] };
 }
 
-/** The scoreboard's quads and shapes for the model. */
+/** The scoreboard's quads and shapes for the model, in the presentation's place (`MODERN_SCOREBOARD_LIFT`). */
 function boardLayout(
   frame: { width: number; height: number }, model: HudModel, sizes: Record<string, { width: number; height: number }>,
+  presentation: Presentation,
 ): ReturnType<typeof scoreboardLayout> {
   return scoreboardLayout(frame, { player: model.name || DEFAULT_PLAYER, game: model.game.name, type: model.game.type,
-    ...(model.scoreRows.rows ? { rows: model.scoreRows.rows, spectators: model.scoreRows.spectators, wins: model.scoreRows.wins } : {}) }, sizes);
+    ...(model.scoreRows.rows ? { rows: model.scoreRows.rows, spectators: model.scoreRows.spectators, wins: model.scoreRows.wins } : {}) }, sizes,
+    presentation === 'native' ? MODERN_SCOREBOARD_LIFT : 0);
 }
 
 /** What `Hud.feed` reads each frame. */
@@ -647,6 +651,7 @@ export class Hud {
   private climbing = false;
   private nearby: ActionPrompt | null = null;
   private overlay: HudOverlay | null = null;
+  private presentation: Presentation = 'native';
 
   /** The bitmaps of the map just loaded (`./hudAssets`), or none: the HUD then draws nothing. */
   setBitmaps(bitmaps: HudBitmaps | null | undefined): void {
@@ -740,6 +745,8 @@ export class Hud {
   setZoom(zoom: number): void { if (!this.frozen) this.model.zoom = zoom; }
   /** SELECT (Tab) held or let go: the scoreboard shows while it is held (research 87 §12). */
   setScoreboard(held: boolean): void { this.model.scoreboard = held; }
+  /** The page's presentation (`main`'s `fit`): the Modern one raises the scoreboard by `MODERN_SCOREBOARD_LIFT`. */
+  setPresentation(presentation: Presentation): void { this.presentation = presentation; }
   /** The game the scoreboard names: the viewer's map, and its game type (`./mapOrder`'s `mode`). */
   setGame(name: string, type: string): void { this.model.game = { name, type: type.toUpperCase() }; }
   /** The round's players for the scoreboard (`net`'s rows with `self`), the spectators' names and the rounds won; null rows: the single SEAL. */
@@ -881,7 +888,7 @@ export class Hud {
     const { width, height } = this.frame;
     this.camera.left = 0; this.camera.right = width; this.camera.top = 0; this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
-    const { quads: all, tris } = hudPass(this.frame, this.model, this.sizes(), this.timing(), this.tacOpen, this.overlay);
+    const { quads: all, tris } = hudPass(this.frame, this.model, this.sizes(), this.timing(), this.tacOpen, this.overlay, this.presentation);
     const byKey = new Map<string, HudQuad[]>();
     for (const q of all) {
       const key = `${q.layer ?? 0}:${q.texture}`;
@@ -897,7 +904,7 @@ export class Hud {
   }
 
   /** The scoreboard's quads and shapes on the last frame's size. */
-  private board(): ReturnType<typeof scoreboardLayout> { return boardLayout(this.frame, this.model, this.sizes()); }
+  private board(): ReturnType<typeof scoreboardLayout> { return boardLayout(this.frame, this.model, this.sizes(), this.presentation); }
 
   /** Each bitmap's texel size, for the layouts. */
   sizes(): Record<string, { width: number; height: number }> {

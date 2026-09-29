@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { cutLine, DEFAULT_PLAYER, SCORE_LAYOUT, scoreboardLayout } from '../src/scoreboard';
+import { cutLine, DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, SCORE_LAYOUT, SCORE_TOP, scoreboardLayout } from '../src/scoreboard';
 import { layoutText, textWidth } from '../src/hudFont';
 import type { ScoreRowInfo } from '../src/scoreboard';
-import { DEFAULT_MODEL, Hud, hudLayout } from '../src/hud';
+import { AT_REST, DEFAULT_MODEL, Hud, hudLayout, hudPass } from '../src/hud';
 
 /** The multiplayer round's scoreboard (web/docs/research/87-hud.md §12): SELECT held, `FUN_0022a8b0`'s layout. */
 
@@ -144,5 +144,69 @@ describe('scoreboardLayout with every player (research 91 §11, §18)', () => {
     expect(hud.state().model.scoreRows).toEqual({ rows, spectators: ['S'], wins: { seal: 1, terrorist: 0 } });
     hud.setScoreRows(null, []);
     expect(hud.state().model.scoreRows.rows).toBeNull();
+  });
+
+  describe("the Modern presentation's lift (owner ruling 2026-09-29)", () => {
+    const model = { ...DEFAULT_MODEL, scoreboard: true, name: 'SEAL', game: { name: 'FROSTFIRE', type: 'SUPPRESSION' }, message: 'SEAL falls to their death' };
+    const board = (frame: { width: number; height: number }, presentation: 'native' | 'ps2') =>
+      hudPass(frame, model, SIZES, AT_REST, false, null, presentation);
+    const boardQuads = (frame: { width: number; height: number }, presentation: 'native' | 'ps2') =>
+      board(frame, presentation).quads.filter((q) => q.element === 'scoreboard');
+    const top = (qs: { y: number; h: number }[]): number => Math.min(...qs.map((q) => q.y - q.h / 2));
+    // 16:9, 4:3, the narrowest (a phone held upright), and the PS2 frame itself.
+    const frames = [{ width: 1920, height: 1080 }, { width: 1024, height: 768 }, { width: 390, height: 844 }, PS2];
+
+    it('is a modest, positive lift', () => {
+      expect(MODERN_SCOREBOARD_LIFT).toBeGreaterThan(0);
+      expect(MODERN_SCOREBOARD_LIFT).toBeLessThanOrEqual(SCORE_TOP - 99);
+    });
+
+    it("raises the panel's top, the bars and every string by the lift in Modern, at every aspect", () => {
+      for (const f of frames) {
+        const s = f.height / 448;
+        const modern = board(f, 'native'), ps2 = board(f, 'ps2');
+        const m = modern.quads.filter((q) => q.element === 'scoreboard'), p = ps2.quads.filter((q) => q.element === 'scoreboard');
+        expect(top(m)).toBeCloseTo((SCORE_TOP - MODERN_SCOREBOARD_LIFT) * s, 6);
+        expect(top(p)).toBeCloseTo(SCORE_TOP * s, 6);
+        expect(m).toHaveLength(p.length);
+        m.forEach((q, i) => { expect(q.x).toBeCloseTo(p[i]!.x, 6); expect(q.y).toBeCloseTo(p[i]!.y - MODERN_SCOREBOARD_LIFT * s, 6); });
+        const mt = modern.tris.filter((t) => t.layer === 1), pt = ps2.tris.filter((t) => t.layer === 1);
+        mt.forEach((t, i) => t.p.forEach((v, k) => expect(v).toBeCloseTo(k % 2 ? pt[i]!.p[k]! - MODERN_SCOREBOARD_LIFT * s : pt[i]!.p[k]!, 6)));
+      }
+    });
+
+    it('stays clear of the message window above it at every aspect', () => {
+      for (const f of frames) {
+        const all = board(f, 'native').quads;
+        const above = all.filter((q) => q.element === 'banner' || q.element === 'message');
+        expect(above.length).toBeGreaterThan(0);
+        const bottom = Math.max(...above.map((q) => q.y + q.h / 2));
+        expect(top(boardQuads(f, 'native'))).toBeGreaterThanOrEqual(bottom - 1e-9);
+      }
+    });
+
+    it("leaves the PS2 presentation pixel-identical to the game's place", () => {
+      for (const f of frames) {
+        const direct = scoreboardLayout(f, { player: 'SEAL', game: 'FROSTFIRE', type: 'SUPPRESSION' }, SIZES);
+        const ps2 = board(f, 'ps2');
+        expect(ps2.quads.filter((q) => q.element === 'scoreboard')).toEqual(direct.quads);
+        expect(ps2.tris).toEqual(direct.tris);
+      }
+      // The default is the PS2 place: lift 0.
+      expect(scoreboardLayout(PS2, info, SIZES, 0)).toEqual(scoreboardLayout(PS2, info, SIZES));
+      // A digest of the PS2 board's quads and shapes, pinned (every place and size summed): any move shows here.
+      const pinned = scoreboardLayout(PS2, info, SIZES), sum = (ns: number[]): number => Math.round(ns.reduce((t, n) => t + n, 0) * 1000) / 1000;
+      expect({ quads: pinned.quads.length, x: sum(pinned.quads.map((q) => q.x)), y: sum(pinned.quads.map((q) => q.y)),
+        w: sum(pinned.quads.map((q) => q.w)), h: sum(pinned.quads.map((q) => q.h)), tris: sum(pinned.tris.flatMap((t) => t.p)) }).toMatchInlineSnapshot(`
+          {
+            "h": 5968,
+            "quads": 229,
+            "tris": 7074,
+            "w": 7494.2,
+            "x": 57616.5,
+            "y": 44094.4,
+          }
+        `);
+    });
   });
 });

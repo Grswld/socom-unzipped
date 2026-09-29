@@ -1149,6 +1149,7 @@ async function boot(): Promise<void> {
 
   fit = (): void => {
     created.setPresentation(presentation);
+    hud.setPresentation(presentation);
     if (presentation === 'ps2') {
       // The console's frame: 640 by 448 pixels, and a projection built in those pixels from the map's
       // own half-angles, which the page then stretches onto 4:3 exactly as the television did.
