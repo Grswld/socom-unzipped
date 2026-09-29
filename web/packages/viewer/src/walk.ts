@@ -1114,6 +1114,8 @@ export interface WalkCamera {
   setPitchLimits(minDegrees: number, maxDegrees: number): void;
   placeView(eye: readonly [number, number, number], target: readonly [number, number, number] | null): void;
   groundWish(): GroundWish;
+  /** The look law's state (web research 83, `./look`): its `turnRate`, rad/s left positive, is the actor's turn. */
+  lookState?(): { turnRate: number };
 }
 
 /** Third person (the game's camera, the default: W2.R1) or first person (`V`). */
@@ -1296,7 +1298,9 @@ export class WalkMode {
     if (!this.walking || !w) return;
     this.look(w);
     const yaw = w.state.yaw;
-    if (this.lastYaw !== null && dt > 0) {
+    const look = this.camera.lookState?.();
+    if (look) this.turnRate = look.turnRate;
+    else if (this.lastYaw !== null && dt > 0) {
       const turn = ((((yaw - this.lastYaw) % 360) + 540) % 360) - 180;
       this.turnRate = (turn * Math.PI) / 180 / dt;
     }

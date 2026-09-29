@@ -114,6 +114,10 @@ export interface Motion {
   band: { lo: number; hi: number } | null;
   /** The zAnim callbacks, each at its phase. */
   callbacks: { name: string; phase: number }[];
+  /** The `Lateral` flag: the node blend merges these first (`FUN_00577000`). */
+  lateral: boolean;
+  /** The `NoPitchtwist` flag: the upper body keeps the clip's pitch (`FUN_00587a30`). */
+  noPitchtwist: boolean;
 }
 
 /**
@@ -127,7 +131,7 @@ export function entryOf(name: string, table: MotionTable | null): MotionEntry | 
   if (!t) return undefined;
   return {
     looped: t.looped, playback: t.playback, maxVelocity: t.maxVelocity / 10, blendTime: null,
-    transitionA: t.from / 10, transitionB: t.to / 10, noInterrupt: null, callbacks: [],
+    transitionA: t.from / 10, transitionB: t.to / 10, noInterrupt: null, callbacks: [], lateral: t.lateral,
   };
 }
 
@@ -166,6 +170,7 @@ export function motionOf(clip: MotionClip, entry: MotionEntry | undefined): Moti
   return {
     clip, name: clip.name, frames: n, looped, locomotion, velocity, period, travel, scale, end,
     blendTime: entry?.blendTime ?? BLEND_TIME_DEFAULT, noInterrupt: entry?.noInterrupt ?? null, band, callbacks,
+    lateral: entry?.lateral ?? false, noPitchtwist: entry?.noPitchtwist ?? false,
   };
 }
 

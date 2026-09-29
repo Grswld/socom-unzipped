@@ -9,7 +9,8 @@ import {
 } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
 import {
-  Animator, HELD_ALIAS, HELD_PART, PLAY_CLIPS, blendWeight, crosses, isCycle, layerName, partIndex, quatOfMatrix, writePose,
+  Animator, BANK_FACTOR, HELD_ALIAS, HELD_PART, PLAY_CLIPS, TWIST_SHARE, blendWeight, crosses, isCycle, layerName,
+  mergeRotations, partIndex, qmul, qrot, quatOfMatrix, slerp, turnStepSpeed, writePose,
   type AnimEvent, type LayerContext, type MoverSnapshot,
 } from '../src/animator';
 import { BLEND_TIME_DEFAULT, MOTION_CLIPS, SEAL_ANIMS, oneShotSeconds } from '../src/locomotion';
@@ -540,5 +541,114 @@ describe.skipIf(noData)(`seal_A_scuba on MOTION_P.ZAR and motion.rdr${noData ? '
     run(60, { ...REST, stance: 'crouch' });
     expect(Object.keys(worst).sort()).toEqual(['seal_crouch', 'seal_run', 'seal_run_90r', 'seal_stand', 'seal_walk_alert']);
     for (const [c, y] of Object.entries(worst)) expect(y, c).toBeLessThan(1);
+  });
+});
+
+// ---- the engine's node blend, the turn in place, the aim's twist and the run's bank ------------------------------------
+
+/** A skeleton with the two spine nodes FUN_005aca70 turns: skel_root -> spinelo -> spinehi, bind at the identity. */
+function spine(): Skeleton {
+  const part = (index: number, name: string, parent: number, t: number[]): SkeletonPart => ({
+    index, name, parent, bindLocal: partMatrix(Q_ID, t as [number, number, number]), bbox: new Float32Array(6), type: 0, flags: 0,
+  });
+  return new Skeleton('spine', IDENTITY, [part(0, 'skel_root', -1, [0, 11, 0]), part(1, 'spinelo', 0, [0, 1, 0]), part(2, 'spinehi', 1, [0, 3, 0])]);
+}
+const still = (name: string): MotionClip => clip(name, 10, [
+  { name: 'skel_root', t: [[0, 11, 0]], q: [Q_ID] }, { name: 'spinelo', t: [[0, 1, 0]], q: [Q_ID] }, { name: 'spinehi', t: [[0, 3, 0]], q: [Q_ID] },
+]);
+/** The angle of a unit quaternion, radians. */
+const angleOf = (q: readonly number[]): number => 2 * Math.acos(Math.min(1, Math.abs(q[3]!)));
+
+describe('the engine\'s node blend (FUN_00577000, FUN_00576e30, FUN_00306ae0)', () => {
+  it('the slerp: the shorter arc, a normalised lerp over a dot of 0.95, the true slerp under it', () => {
+    const a = qx(0), b = qx(10);                                    // dot 0.996: the lerp
+    const mid = slerp(a, b, 0.5);
+    expect(angleOf(mid) * 180 / Math.PI).toBeCloseTo(5, 3);
+    const c = qx(90);                                               // dot 0.707: the slerp
+    expect(angleOf(slerp(a, c, 0.25)) * 180 / Math.PI).toBeCloseTo(22.5, 6);
+    expect(slerp(a, c.map((v) => -v), 0.5)[3]).toBeGreaterThan(0.9);   // -q is the same turn
+  });
+
+  it('merges the lateral clips first, then the others, then the two results, each pair by wb / (wa + wb)', () => {
+    const f1 = qx(0), f2 = qx(20), l1 = qx(60), l2 = qx(80);
+    const got = mergeRotations([
+      { q: f1, w: 0.3, lateral: false }, { q: f2, w: 0.3, lateral: false }, { q: l1, w: 0.2, lateral: true }, { q: l2, w: 0.2, lateral: true },
+    ])!;
+    const lat = slerp(l1, l2, 0.5), fwd = slerp(f1, f2, 0.5);
+    const want = slerp(lat, fwd, 0.6 / 1.0);                        // the lateral pair survives first in the list's order
+    got.forEach((v, i) => expect(v).toBeCloseTo(want[i]!, 9));
+    expect(mergeRotations([{ q: null, w: 0.5, lateral: false }, { q: f2, w: 0.5, lateral: false }])).toEqual(f2);
+  });
+});
+
+describe('the turn in place (FUN_00586050, FUN_00583960)', () => {
+  it('the step\'s speed: |turn / turn_maxrate| x the stance\'s share, capped; backwards turning left', () => {
+    expect(turnStepSpeed(-2.236, 'stand')).toBeCloseTo(0.6, 9);    // full right: 1.118 x 0.6 capped at 0.6
+    expect(turnStepSpeed(2.236, 'stand')).toBeCloseTo(-0.6, 9);    // full left: backwards
+    expect(turnStepSpeed(-1, 'stand')).toBeCloseTo(0.3, 9);
+    expect(turnStepSpeed(-1, 'crouch')).toBeCloseTo(0.15, 9);
+    expect(turnStepSpeed(-4, 'prone')).toBeCloseTo(0.35, 9);
+  });
+
+  it('standing still and turning plays seal_step, crouched seal_crouch_step, prone seal_prone_turn, at that speed', () => {
+    const clips = ['seal_stand', 'seal_step', 'seal_crouch', 'seal_crouch_step', 'seal_prone', 'seal_prone_turn'].map((n) => pose(n, 20, 0));
+    const table = new Map<string, MotionEntry>([
+      ['seal_step', entry({ looped: true, playback: 0.65, maxVelocity: -2, blendTime: 0.9 })],
+      ['seal_crouch_step', entry({ looped: true, playback: 0.4, maxVelocity: -2, blendTime: 0.9 })],
+    ]);
+    const anim = new Animator(skeleton(), clips, table);
+    anim.step(1 / 60, { ...REST, turnRate: -2.236 });
+    expect(anim.stats()).toMatchObject({ clip: 'seal_step', play: 'turn:stand' });
+    expect(anim.stats().nodes[0]!.speed).toBeCloseTo(0.6, 9);
+    expect(anim.stats().rate).toBeCloseTo((0.6 / 0.65) * 20, 6);   // 0.6 of a cycle per 0.65 s
+    anim.step(1 / 60, { ...REST, turnRate: -1 });
+    expect(anim.stats().nodes[0]!.speed).toBeCloseTo(0.3, 9);       // the speed follows the turn, no new play
+    anim.step(1 / 60, { ...REST, stance: 'crouch', turnRate: 1 });
+    expect(anim.stats()).toMatchObject({ clip: 'seal_crouch_step', play: 'turn:crouch' });
+    expect(anim.stats().nodes[0]!.speed).toBeCloseTo(-0.15, 9);
+    anim.step(1 / 60, { ...REST, stance: 'prone', turnRate: 1 });
+    expect(anim.stats().clip).toBe('seal_prone_turn');
+    anim.step(1 / 60, { ...REST, turnRate: 0 });
+    expect(anim.stats().clip).toBe('seal_stand');
+  });
+});
+
+describe('the aim\'s twist and the run\'s bank on the spine (FUN_005aca70, FUN_0057a330)', () => {
+  const at = (sk: Skeleton, name: string): number[] => quatOfMatrix(sk.local[sk.indexOf(name)]!);
+
+  it('the upper body takes the pitch: spinelo 2 x 0.1 x sin, spinehi 2 x 0.4 x sin, about x, upward for up', () => {
+    const sk = spine();
+    const anim = new Animator(sk, [still('seal_stand')], null);
+    anim.step(1 / 60, { ...REST, pitch: 30 });
+    const lo = at(sk, 'spinelo'), hi = at(sk, 'spinehi');
+    expect(angleOf(lo)).toBeCloseTo(2 * TWIST_SHARE.spinelo * Math.sin(Math.PI / 6), 5);
+    expect(angleOf(hi)).toBeCloseTo(2 * TWIST_SHARE.spinehi * Math.sin(Math.PI / 6), 5);
+    // the chest's forward (-z) turned up: y > 0
+    const fwd = qrot(qmul(lo, hi), [0, 0, -1]);
+    expect(fwd[1]).toBeGreaterThan(0.4);
+    expect(anim.stats().twist).toBeCloseTo(2 * 0.5 * 0.5, 5);
+  });
+
+  it('none on a NoPitchtwist clip, none prone, none with no pitch given', () => {
+    const table = new Map<string, MotionEntry>([['seal_stand', entry({ looped: true, playback: 6, maxVelocity: -0.1, noPitchtwist: true })]]);
+    const a = spine();
+    new Animator(a, [still('seal_stand')], table).step(1 / 60, { ...REST, pitch: 30 });
+    expect(angleOf(at(a, 'spinehi'))).toBeCloseTo(0, 9);
+    const b = spine();
+    new Animator(b, [still('seal_prone')], null).step(1 / 60, { ...REST, stance: 'prone', pitch: 30 });
+    expect(angleOf(at(b, 'spinehi'))).toBeCloseTo(0, 9);
+  });
+
+  it('the bank: -0.000375 x the turn x the local z speed about spinelo\'s parent z -- 3.1 degrees into a full turn at 65', () => {
+    const sk = spine();
+    const anim = new Animator(sk, [still('seal_stand'), still('seal_run')], new Map([['seal_run', cycle(6.5, 4.01, 6.5)]]));
+    anim.step(1 / 60, { ...running(1), turnRate: 2.236, pitch: 0 });
+    const want = 2.236 * -65 * BANK_FACTOR;
+    expect(want * 180 / Math.PI).toBeCloseTo(3.1, 1);
+    expect(anim.stats().bank).toBeCloseTo(want, 6);
+    const lo = at(sk, 'spinelo');
+    expect(lo[2]).toBeCloseTo(Math.sin(want / 2), 5);               // about z: a left turn leans left (+z)
+    anim.step(1 / 60, { ...running(1), turnRate: 2.236, airborne: true });
+    expect(anim.stats().bank).toBe(0);
   });
 });

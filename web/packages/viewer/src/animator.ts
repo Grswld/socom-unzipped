@@ -1,4 +1,4 @@
-import { partMatrix, sampleClip, type MotionClip, type PartPose, type Skeleton } from '@s2u/scene';
+import { partMatrix, sampleClip, SEAL_TUNING, type MotionClip, type PartPose, type Skeleton } from '@s2u/scene';
 import {
   BLEND_TIME_DEFAULT, CROUCH_IDLES, MOTION_CLIPS, SEAL_ANIMS, SEAL_SETS, crouchPlay, entryOf, motionOf, nodeSpeed,
   phaseRate, pronePlay, standPlay, type DirectionClass, type Motion, type MotionSets, type PlayNode, type SetName,
@@ -82,6 +82,8 @@ export interface MoverSnapshot {
    * and crouched a turn plays no clip -- the body pivots.
    */
   turnRate?: number;
+  /** The aim's pitch, degrees, up positive (the camera's): the upper body takes it (`FUN_005aca70`). */
+  pitch?: number;
 }
 
 /** An event for the page: `onEvent`'s listeners get each as the animator steps past it. */
@@ -109,6 +111,10 @@ export interface AnimStats {
   nodes: { clip: string; weight: number; speed: number }[];
   /** The play's key (`AnimEvent`'s `play`). */
   play: string;
+  /** The run's bank on `spinelo` this frame, radians about its parent's z (`FUN_0057a330`); 0 with none. */
+  bank: number;
+  /** The upper body's turn toward the aim this frame, radians, `spinelo` and `spinehi` together (`FUN_005aca70`). */
+  twist: number;
 }
 
 /** The play's main clip, as a pose layer sees it: the clip, its fractional key and its phase (0 to 1). */
@@ -200,14 +206,19 @@ export function quatOfMatrix(m: ArrayLike<number>): [number, number, number, num
   return [x, y, z, w];
 }
 
-/** Slerp on the shorter arc, normalised: `MOTION_BLEND` (77 §7; `@s2u/scene`'s `slerp` is the sampler's own). */
-function slerp(a: readonly number[], b: readonly number[], t: number): [number, number, number, number] {
+/**
+ * `FUN_00306ae0`, the engine's slerp: the shorter arc; over a dot of 0.95 a normalised lerp, else the true slerp (the
+ * node blend `FUN_00576e30`, the cross-fade `FUN_0028e040`).
+ */
+export function slerp(a: readonly number[], b: readonly number[], t: number): [number, number, number, number] {
+  if (t <= 0) return [a[0]!, a[1]!, a[2]!, a[3]!];
+  if (t >= 1) return [b[0]!, b[1]!, b[2]!, b[3]!];
   let [bx, by, bz, bw] = b as [number, number, number, number];
   const [ax, ay, az, aw] = a as [number, number, number, number];
   let dot = ax * bx + ay * by + az * bz + aw * bw;
   if (dot < 0) { bx = -bx; by = -by; bz = -bz; bw = -bw; dot = -dot; }
   let wa = 1 - t, wb = t;
-  if (dot < 0.9995) {
+  if (dot <= 0.95) {
     const theta = Math.acos(Math.min(1, dot)), s = Math.sin(theta);
     wa = Math.sin((1 - t) * theta) / s;
     wb = Math.sin(t * theta) / s;
@@ -215,6 +226,80 @@ function slerp(a: readonly number[], b: readonly number[], t: number): [number, 
   const x = wa * ax + wb * bx, y = wa * ay + wb * by, z = wa * az + wb * bz, w = wa * aw + wb * bw;
   const len = Math.hypot(x, y, z, w) || 1;
   return [x / len, y / len, z / len, w / len];
+}
+
+type Quat = [number, number, number, number];
+type Vec = [number, number, number];
+
+/** The Hamilton product `a b` (`FUN_003070c0`): `b` first, then `a` (three.js's `multiplyQuaternions`). */
+export function qmul(a: readonly number[], b: readonly number[]): Quat {
+  const [ax, ay, az, aw] = a as Quat, [bx, by, bz, bw] = b as Quat;
+  return [aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz];
+}
+
+/** `v` turned by the unit quaternion `q`. */
+export function qrot(q: readonly number[], v: readonly number[]): Vec {
+  const [x, y, z, w] = q as Quat;
+  const tx = 2 * (y * v[2]! - z * v[1]!), ty = 2 * (z * v[0]! - x * v[2]!), tz = 2 * (x * v[1]! - y * v[0]!);
+  return [v[0]! + w * tx + (y * tz - z * ty), v[1]! + w * ty + (z * tx - x * tz), v[2]! + w * tz + (x * ty - y * tx)];
+}
+
+/** The model's forward in its own frame (`DAT_003f6500`, set at start-up; the SEAL faces -z: research 77, 78). */
+const MODEL_FORWARD: Vec = [0, 0, -1];
+
+/**
+ * `FUN_005aca70`'s share of the aim each spine node takes (decomp 465019-465336): the cross of the forward and the aim,
+ * both in the node's frame, times the aim weight and this, is a rotation vector whose quaternion is
+ * `(v sin|v| / |v|, cos|v|)` (`FUN_003067b0`) -- so the node turns by twice it. `spinelo` 0.1, `spinehi` 0.4: the
+ * whole of a small pitch between them.
+ */
+export const TWIST_SHARE: Readonly<Record<'spinelo' | 'spinehi', number>> = Object.freeze({ spinelo: 0.1, spinehi: 0.4 });
+
+/**
+ * PLACEHOLDER (a reading): the aim weight `FUN_005aca70` scales the twist by -- `FUN_00286b80(actor+0x1160)`, the
+ * envelope `FUN_005dfc80` runs as the weapon comes up (`actor+0xf74`) and down. The walk's rifle is always up, so 1.
+ */
+export const AIM_WEIGHT_PLACEHOLDER = 1;
+
+/** `FUN_0057a330` (decomp 439197-439204): the run's bank on `spinelo`, radians, for a turn (rad/s) and the local z speed. */
+export const BANK_FACTOR = -0.000375;
+
+/**
+ * `FUN_00583960` (decomp 443497-443545): the turn-in-place clip's speed for the turn axis (`actor+0x23c`, the turn over
+ * `turn_maxrate`): |axis| times the stance's share, capped at it -- standing 0.6 (`Step`), crouched 0.3 (`Crouch
+ * step`), prone 0.35 (`Prone turn`) -- and backwards for a left turn (a positive axis).
+ */
+export const TURN_STEP: Readonly<Record<Stance, number>> = Object.freeze({ stand: 0.6, crouch: 0.3, prone: 0.35 });
+export function turnStepSpeed(turnRate: number, stance: Stance): number {
+  const axis = turnRate / SEAL_TUNING.turnMaxRate, cap = TURN_STEP[stance];
+  const speed = Math.min(cap, Math.abs(axis) * cap);
+  return -axis * 2 < 0 ? -speed : speed;
+}
+
+/**
+ * `FUN_00577000` with `FUN_00576e30` (decomp 436853-437136): the nodes' rotations for one part merged two at a time --
+ * the `Lateral` clips first, then the others, then what is left -- each pair by the engine's slerp at `wb / (wa + wb)`,
+ * the survivor carrying the summed weight. A node that lacks the part gives way to one that has it.
+ */
+export function mergeRotations(entries: { q: Quat | null; w: number; lateral: boolean }[]): Quat | null {
+  const live = entries.map((e) => ({ ...e, on: true }));
+  const pass = (pick: (e: { lateral: boolean }) => boolean): void => {
+    for (let guard = 0; guard < 30; guard++) {
+      const two = live.filter((e) => e.on && pick(e)).slice(0, 2);
+      if (two.length < 2) return;
+      const [a, b] = two as [typeof live[number], typeof live[number]];
+      const total = a.w + b.w;
+      const f = total > 0 ? Math.min(1, Math.max(0, b.w / total)) : 0;
+      if (!a.q) a.q = b.q;
+      else if (b.q && f > 0.001) a.q = f >= 0.999 ? b.q : slerp(a.q, b.q, f);
+      a.w = total;
+      b.on = false;
+    }
+  };
+  pass((e) => e.lateral);
+  pass((e) => !e.lateral);
+  pass(() => true);
+  return live.find((e) => e.on)?.q ?? null;
 }
 
 /** Each skeleton part's bind pose as a quaternion and a translation. */
@@ -257,6 +342,13 @@ interface Wanted {
   backwards?: boolean;
   /** A locomotion play: footfalls count. */
   locomotion?: boolean;
+  /** Rebuilt every tick (`FUN_0028bef0`'s swap, or a speed set each tick): the locomotion and the turn in place. */
+  rebuild?: boolean;
+  /**
+   * `FUN_00586050`: starting the turn in place from a loop whose phase x 60 is in 17..47, the phase goes to 0.5 (the
+   * other foot).
+   */
+  snapHalf?: boolean;
 }
 
 /**
@@ -285,6 +377,8 @@ export class Animator {
   private feet = { left: false, right: false };
   private readonly listeners = new Set<(e: AnimEvent) => void>();
   private readonly poseLayers: PoseLayer[] = [];
+  private lastBank = 0;
+  private lastTwist = 0;
 
   constructor(private readonly skeleton: Skeleton, clips: Iterable<MotionClip>, private readonly table: MotionTable | null, options: AnimatorOptions = {}) {
     for (const c of clips) this.motions.set(c.name, motionOf(c, entryOf(c.name, table)));
@@ -325,7 +419,7 @@ export class Animator {
     if (!wanted) return;
     let play = this.play;
     if (!play || play.key !== wanted.key) play = this.start(wanted);
-    else if (play.key.startsWith('loco:')) play.nodes = wanted.nodes();
+    else if (wanted.rebuild) play.nodes = wanted.nodes();
     if (!play.nodes.length) return;
     if (play !== this.play) this.play = play;
     else this.blendElapsed += dt;
@@ -339,7 +433,7 @@ export class Animator {
     play.phase = after;
     const main = this.main(play);
     this.lastRate = rate * main.motion.frames;
-    this.pose();
+    this.pose(mover);
     this.fire(play, before, after, rate < 0, wanted.locomotion === true && !mover.airborne && Math.hypot(mover.vx, mover.vz, mover.vy) > 0.5);
   }
 
@@ -358,12 +452,25 @@ export class Animator {
     }
     const g = mover.ground;
     const stance: Stance = mover.stance ?? (mover.crouched ? 'crouch' : 'stand');
-    if (g && g.state === 'stand') return { key: 'loco:stand', locomotion: true, nodes: () => standPlay(g.forward, g.right, this.sets) };
+    if (g && g.state === 'stand') return { key: 'loco:stand', locomotion: true, rebuild: true, nodes: () => standPlay(g.forward, g.right, this.sets) };
     if (g && g.state !== 'idle' && g.cls !== -1) {
       const cls = g.cls as DirectionClass;
-      if (g.state === 'crouch') return { key: `loco:crouch:${cls}`, locomotion: true, nodes: () => crouchPlay(g.forward, g.right, cls, this.sets) };
+      if (g.state === 'crouch') return { key: `loco:crouch:${cls}`, locomotion: true, rebuild: true, nodes: () => crouchPlay(g.forward, g.right, cls, this.sets) };
       const motions = { crawl: this.motions.get(SEAL_ANIMS.proneCrawl), right: this.motions.get(SEAL_ANIMS.proneRight), left: this.motions.get(SEAL_ANIMS.proneLeft) };
-      return { key: `loco:prone:${cls}`, locomotion: true, nodes: () => pronePlay(g.forward, g.right, cls, motions) };
+      return { key: `loco:prone:${cls}`, locomotion: true, rebuild: true, nodes: () => pronePlay(g.forward, g.right, cls, motions) };
+    }
+    const turn = mover.turnRate ?? 0;
+    if (turn !== 0 && !mover.airborne) {
+      // Turning in place, the move stick at rest (FUN_00586570 -> FUN_00586050, FUN_00584c60, FUN_005845c0): the
+      // stance's step clip, its speed set each tick by the turn (FUN_00583960).
+      const name = stance === 'prone' ? SEAL_ANIMS.proneTurn : stance === 'crouch' ? SEAL_ANIMS.crouchStep : SEAL_ANIMS.step;
+      const m = this.motions.get(name);
+      if (m) {
+        return {
+          key: `turn:${stance}`, rebuild: true, snapHalf: stance !== 'prone',
+          nodes: () => [{ motion: m, weight: 1, speed: nodeSpeed(m, turnStepSpeed(turn, stance)), offset: 0 }],
+        };
+      }
     }
     if (stance === 'crouch') {
       return {
@@ -373,7 +480,6 @@ export class Animator {
         },
       };
     }
-    if (stance === 'prone' && (mover.turnRate ?? 0) !== 0 && this.motions.has(SEAL_ANIMS.proneTurn)) return one('turn:prone', SEAL_ANIMS.proneTurn);
     return stance === 'prone' ? one('idle:prone', SEAL_ANIMS.prone) : one('idle:stand', SEAL_ANIMS.stand);
   }
 
@@ -402,6 +508,10 @@ export class Animator {
     let phase = 0;
     if (backwards && main) phase = main.end;
     else if (prev && prev.looped && looped) phase = prev.phase;
+    if (wanted.snapHalf && prev) {
+      const at = Math.trunc(prev.phase * 60);
+      if (at >= 17 && at <= 47) phase = 0.5;
+    }
     const play: Play = { key: wanted.key, nodes, phase, looped, backwards };
     if (wanted.key === 'idle:crouch' && main) play.pick = main;
     if (!nodes.length) return play;
@@ -450,23 +560,29 @@ export class Animator {
     return pistol && pistol.clip.parts.some((p) => p.name === ROOT) ? pistol.clip : motion.clip;
   }
 
-  /** Samples every node at the shared phase, blends them by weight, cross-fades from the frozen pose, writes the skeleton. */
-  private pose(): void {
+  /**
+   * Samples every node at the shared phase, merges them (`mergeRotations`; the translations a weighted sum,
+   * `FUN_00577000`), lays the pistol and the pose layers over, cross-fades from the frozen pose, writes the skeleton,
+   * then turns the spine toward the aim and banks the run (`aim`).
+   */
+  private pose(mover: MoverSnapshot): void {
     const play = this.play!;
     const n = this.bind.length;
     const acc: { q: [number, number, number, number]; t: [number, number, number]; w: number }[] =
       Array.from({ length: n }, () => ({ q: [0, 0, 0, 0], t: [0, 0, 0], w: 0 }));
-    const add = (parts: readonly PartPose[], weight: number): void => {
+    const rotations: { q: Quat | null; w: number; lateral: boolean }[][] = Array.from({ length: n }, () => []);
+    const add = (parts: readonly PartPose[], weight: number, lateral = false): void => {
+      const seen = new Array<boolean>(n).fill(false);
       for (const p of parts) {
         const i = partIndex(this.skeleton, parts, p.name);
         if (i < 0) continue;
         const a = acc[i]!;
-        let [x, y, z, w] = p.rotation;
-        if (a.w > 0 && a.q[0] * x + a.q[1] * y + a.q[2] * z + a.q[3] * w < 0) { x = -x; y = -y; z = -z; w = -w; }
-        a.q = [a.q[0] + x * weight, a.q[1] + y * weight, a.q[2] + z * weight, a.q[3] + w * weight];
+        seen[i] = true;
+        rotations[i]!.push({ q: [...p.rotation], w: weight, lateral });
         a.t = [a.t[0] + p.translation[0] * weight, a.t[1] + p.translation[1] * weight, a.t[2] + p.translation[2] * weight];
         a.w += weight;
       }
+      for (let i = 0; i < n; i++) if (!seen[i]) rotations[i]!.push({ q: null, w: weight, lateral });
     };
     for (const node of play.nodes) {
       if (!(node.weight > 0)) continue;
@@ -474,7 +590,11 @@ export class Animator {
       let frame: number;
       if (play.looped) frame = (((play.phase + node.offset) % 1) + 1) % 1 * clip.frameCount;
       else frame = Math.min(play.phase, node.motion.end) * clip.frameCount;
-      add(sampleClip(clip, frame / clip.rate, { loop: play.looped }).parts, node.weight);
+      add(sampleClip(clip, frame / clip.rate, { loop: play.looped }).parts, node.weight, node.motion.lateral);
+    }
+    for (let i = 0; i < n; i++) {
+      const q = mergeRotations(rotations[i]!);
+      if (q) acc[i]!.q = q;
     }
     this.layer = null;
     if (this.weapon === 'pistol') {
@@ -531,6 +651,54 @@ export class Animator {
       this.skeleton.setLocal(i, partMatrix(shown.q, shown.t));
     });
     this.skeleton.update();
+    this.aim(play, mover);
+  }
+
+  /**
+   * The spine after the clips (`FUN_0057a330` decomp 439152-439204): the upper body turned toward the aim
+   * (`FUN_005aca70`; not prone, not on a clip flagged `NoPitchtwist` -- `FUN_00587a30` reads the play's last node) and
+   * the run's bank on `spinelo` -- `BANK_FACTOR x` the turn `x` the local z speed about its parent's z, 3.1 degrees
+   * into a full turn at the run (web research 83), on the floor only. Written over the frame's pose, not kept in the
+   * pose the next cross-fade leaves (the game's snapshot would carry them; a tenth of a degree's difference).
+   */
+  private aim(play: Play, mover: MoverSnapshot): void {
+    this.lastBank = 0;
+    this.lastTwist = 0;
+    const lo = this.skeleton.indexOf('spinelo'), hi = this.skeleton.indexOf('spinehi');
+    if (lo < 0 || hi < 0) return;
+    const stance: Stance = mover.stance ?? (mover.crouched ? 'crouch' : 'stand');
+    const last = play.nodes[play.nodes.length - 1]?.motion;
+    const local = { lo: [...this.shown[lo]!.q] as Quat, hi: [...this.shown[hi]!.q] as Quat };
+    if (stance !== 'prone' && last && !last.noPitchtwist && mover.pitch !== undefined) {
+      const p = (mover.pitch * Math.PI) / 180;
+      const aimDir: Vec = [0, Math.sin(p), -Math.cos(p)];
+      const palette = this.skeleton.palette();
+      const turn = (i: number, share: number): Quat => {
+        const q = quatOfMatrix(palette[i]!);
+        const inv: Quat = [-q[0], -q[1], -q[2], q[3]];
+        const a = qrot(inv, MODEL_FORWARD), b = qrot(inv, aimDir);
+        const k = AIM_WEIGHT_PLACEHOLDER * share;
+        const v: Vec = [(a[1] * b[2] - a[2] * b[1]) * k, (a[2] * b[0] - a[0] * b[2]) * k, (a[0] * b[1] - a[1] * b[0]) * k];
+        const m = Math.hypot(...v);
+        this.lastTwist += 2 * m;
+        return m > 0 ? [(v[0] * Math.sin(m)) / m, (v[1] * Math.sin(m)) / m, (v[2] * Math.sin(m)) / m, Math.cos(m)] : [0, 0, 0, 1];
+      };
+      const tLo = turn(lo, TWIST_SHARE.spinelo), tHi = turn(hi, TWIST_SHARE.spinehi);
+      local.lo = qmul(tLo, local.lo);
+      local.hi = qmul(tHi, local.hi);
+    }
+    const yaw = (mover.yaw * Math.PI) / 180;
+    const vzLocal = -(mover.vx * -Math.sin(yaw) + mover.vz * -Math.cos(yaw));
+    const turnRate = mover.turnRate ?? 0;
+    if (!mover.airborne && turnRate !== 0 && vzLocal !== 0) {
+      const angle = turnRate * vzLocal * BANK_FACTOR;
+      this.lastBank = angle;
+      local.lo = qmul([0, 0, Math.sin(angle / 2), Math.cos(angle / 2)], local.lo);
+    }
+    if (this.lastTwist === 0 && this.lastBank === 0) return;
+    this.skeleton.setLocal(lo, partMatrix(local.lo, this.shown[lo]!.t));
+    this.skeleton.setLocal(hi, partMatrix(local.hi, this.shown[hi]!.t));
+    this.skeleton.update();
   }
 
   /** The clip, the frame, the blend: the hook's `stats().anim`. */
@@ -538,7 +706,7 @@ export class Animator {
     const play = this.play;
     const blend = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     if (!play || !play.nodes.length) {
-      return { clip: '', frame: 0, frames: 0, blend, from: this.from?.name ?? null, rate: 0, layer: null, nodes: [], play: play?.key ?? '' };
+      return { clip: '', frame: 0, frames: 0, blend, from: this.from?.name ?? null, rate: 0, layer: null, nodes: [], play: play?.key ?? '', bank: 0, twist: 0 };
     }
     const main = this.main(play);
     const phase = play.looped ? (((play.phase + main.offset) % 1) + 1) % 1 : Math.min(play.phase, main.motion.end);
@@ -546,6 +714,7 @@ export class Animator {
       clip: main.motion.name, frame: phase * main.motion.frames, frames: main.motion.frames, blend, from: this.from?.name ?? null, rate: this.lastRate,
       layer: this.layer?.name ?? null, play: play.key,
       nodes: play.nodes.map((n) => ({ clip: n.motion.name, weight: n.weight, speed: n.speed })),
+      bank: this.lastBank, twist: this.lastTwist,
     };
   }
 
