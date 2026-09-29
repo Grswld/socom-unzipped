@@ -17,7 +17,9 @@ interval lines whose preceding `[pc-sampler]` row falls inside it, frame_time's 
     python -m tools_py.parity.vu1_refusals <log> [--by reason|key] [--from <t>] [--to <t>] [--stamp <dir>]
 
 prints a table -- reason (or entry/reason/cmd), entries, share of all refusals, cycles, share of all fallback
-cycles, host ms -- sorted by cycles, then a total row; exits 1 when the log has no refusal line.
+cycles, host ms -- sorted by cycles, then a total row, then a WARNING line when an `overflow=` line says the key
+table was full (the rows are short by that many refusals); exits 1 when the log has no refusal line. A last line
+without its newline (a log cut off, or read while written) is not read.
 """
 import argparse
 import os
@@ -26,9 +28,36 @@ import sys
 
 from tools_py.parity import frame_time
 
+# Anchored at the line's end: a line that runs on into another (two writers, one stream) is not parsed short.
 LINE_RE = re.compile(r"\[vu1-refuse(-total)?\]"
                      r"(?: elapsed=[0-9.]+ms)? entry=0x([0-9a-fA-F]+) reason=([a-z_]+) cmd=(-|0x[0-9a-fA-F]+)"
-                     r" n=([0-9]+) cycles=([0-9]+) host_us=([0-9]+)")
+                     r" n=([0-9]+) cycles=([0-9]+) host_us=([0-9]+)\s*$")
+# The refusals a full key table could not count (runtime: cumulative, once a second; vu1_replay: once, at its end).
+OVERFLOW_RE = re.compile(r"\[vu1-refuse(-total)?\] overflow=([0-9]+) ")
+
+
+def _finished_lines(text):
+    """The log's lines, less a last one without its newline: a log read while it is written, or cut off, ends
+    mid-line, and such a line may be cut anywhere (host_us=91 read as host_us=9)."""
+    lines = text.splitlines(True)
+    if lines and not lines[-1].endswith("\n"):
+        lines.pop()
+    return lines
+
+
+def overflow(lines):
+    """The refusals not counted because the key table was full: the total line's value if there is one, else the
+    largest runtime value (it is cumulative); 0 when no overflow line."""
+    total, runtime = None, 0
+    for line in lines:
+        m = OVERFLOW_RE.search(line)
+        if not m:
+            continue
+        if m.group(1):
+            total = int(m.group(2))
+        else:
+            runtime = max(runtime, int(m.group(2)))
+    return total if total is not None else runtime
 
 
 def rows(lines, t_from=None, t_to=None):
@@ -78,8 +107,9 @@ def table(parsed, by="reason"):
     return out
 
 
-def format_table(result):
-    """The printed table: a header, one row per label, a total row."""
+def format_table(result, lost=0):
+    """The printed table: a header, one row per label, a total row, and a warning when `lost` refusals overflowed
+    the key table (the counts above are then short)."""
     width = max([len("reason")] + [len(r[0]) for r in result])
     head = "%-*s %10s %7s %14s %7s %10s" % (width, "reason", "entries", "share", "cycles", "share", "host_ms")
     lines = [head, "-" * len(head)]
@@ -89,16 +119,28 @@ def format_table(result):
     lines.append("%-*s %10d %6.1f%% %14d %6.1f%% %10.1f" % (
         width, "total", sum(r[1] for r in result), 100.0 if result else 0.0, sum(r[3] for r in result),
         100.0 if result else 0.0, sum(r[5] for r in result)))
+    if lost:
+        lines.append("WARNING: overflow=%d refusals were not counted (the runtime's key table was full); the rows "
+                     "above are short" % lost)
     return lines
 
 
-def read(log_path, by="reason", t_from=None, t_to=None):
-    """table() over one log file; [] when it has no refusal line (or cannot be read)."""
+def _read_lines(log_path):
     try:
         with open(log_path, encoding="utf-8", errors="replace") as f:
-            return table(rows(f, t_from, t_to), by)
+            return _finished_lines(f.read())
     except (OSError, TypeError):
         return []
+
+
+def read(log_path, by="reason", t_from=None, t_to=None):
+    """table() over one log file's finished lines; [] when it has no refusal line (or cannot be read)."""
+    return table(rows(_read_lines(log_path), t_from, t_to), by)
+
+
+def read_overflow(log_path):
+    """overflow() over one log file's finished lines."""
+    return overflow(_read_lines(log_path))
 
 
 def stamp_window(stamp_dir):
@@ -139,7 +181,7 @@ def main(argv=None):
         print("no [vu1-refuse] line in %s (PS2X_VU1_NATIVE_REFUSALS unset, not in developer mode, or the window is "
               "empty)" % log, file=sys.stderr)
         return 1
-    for line in format_table(result):
+    for line in format_table(result, read_overflow(log)):
         print(line)
     return 0
 

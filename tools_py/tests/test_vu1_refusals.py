@@ -16,12 +16,13 @@ import shutil
 import tempfile
 import unittest
 
-from tools_py.parity import vu1_refusals
+from tools_py.parity import frame_time, vu1_refusals
 
 SAMPLER = ("[pc-sampler] live pc=0x2cece4 ra=0x2cece4 sp=0x1f7fe60 t=%.2f vsync=%d ee=%.2f seq=1 dpc=0x1e70ec "
            "idle=1 running=1\n")
 LINE = "[vu1-refuse] elapsed=%dms entry=0x%x reason=%s cmd=%s n=%d cycles=%d host_us=%d\n"
 TOTAL = "[vu1-refuse-total] entry=0x%x reason=%s cmd=%s n=%d cycles=%d host_us=%d\n"
+OVERFLOW = "%s overflow=%d (keys past 128 slots not counted)\n"
 
 
 def walk_text():
@@ -104,6 +105,61 @@ class Vu1RefusalsTest(unittest.TestCase):
             rc = vu1_refusals.main([self.write("empty.log", "[vu1-stats] programs/s=1\n")])
         self.assertEqual(rc, 1)
         self.assertIn("no [vu1-refuse] line", err.getvalue())
+
+    def test_to_and_the_window_edges_are_inclusive(self):
+        path = self.write("game.log", walk_text())
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(path, t_to=15.0)), 5, "--to: only the t=10 row's lines")
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(path, t_to=10.0)), 5, "a row at t == --to is inside")
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(path, t_from=20.0)), 5, "a row at t == --from is inside")
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(path, t_from=10.0, t_to=20.0)), 10)
+        self.assertEqual(vu1_refusals.read(path, t_to=5.0), [], "before the first row: nothing")
+
+    def test_a_truncated_last_line_is_dropped_not_parsed_short(self):
+        last = LINE % (998, 0x1b50, "unknown_command", "0x52", 9, 9000, 91)
+        unfinished = walk_text() + last[:-2]              # host_us=91 cut to host_us=9, no newline: ends mid-line
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(self.write("cut.log", unfinished))), 10,
+                         "a last line without its newline may be cut anywhere, so it is not read")
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(self.write("done.log", walk_text() + last))), 19,
+                         "the same line, finished, is read")
+        runon = walk_text() + last[:-1] + "[gs-loop] elapsed=1000ms\n"
+        self.assertEqual(sum(r[1] for r in vu1_refusals.read(self.write("runon.log", runon))), 10,
+                         "a line that runs on into another is not parsed short")
+
+    def test_overflow_is_read_and_warned(self):
+        text = walk_text().replace("overflow=0", "overflow=3") + OVERFLOW % ("[vu1-refuse]", 5)
+        path = self.write("game.log", text)
+        self.assertEqual(vu1_refusals.read_overflow(path), 5, "the runtime's line is cumulative: the largest")
+        total = text + TOTAL % (0x1b50, "unknown_command", "0x52", 7, 7000, 700) + OVERFLOW % ("[vu1-refuse-total]", 2)
+        self.assertEqual(vu1_refusals.read_overflow(self.write("replay.txt", total)), 2, "the total line wins")
+        self.assertEqual(vu1_refusals.read_overflow(self.write("clean.log", walk_text())), 0)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = vu1_refusals.main([path])
+        self.assertEqual(rc, 0)
+        self.assertIn("WARNING: overflow=5", out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            vu1_refusals.main([self.write("clean.log", walk_text())])
+        self.assertNotIn("WARNING", out.getvalue())
+
+    def test_stamp_window_reads_the_scripted_walk(self):
+        stamp = os.path.join(self.tmp, "stamp")
+        os.makedirs(stamp)
+        self.write(os.path.join("stamp", "mission.game.log"), walk_text())
+        self.write(os.path.join("stamp", "mission.drive.log"),
+                   "s27_wait  t=  5.0s untilref(%s): score=0.1 matched=True\n"
+                   "s28_walk  t= 15.0s key w\n"
+                   "s29_walk  t= 25.0s key w\n" % frame_time.HUD_REF_NAME)
+        self.assertEqual(vu1_refusals.stamp_window(stamp), (os.path.join(stamp, "mission.game.log"), 15.0, 25.0))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = vu1_refusals.main(["--stamp", stamp])
+        self.assertEqual(rc, 0)
+        self.assertIn(" 5 ", out.getvalue().splitlines()[-1], "only the t=20 row's lines are in the walk")
+        os.makedirs(os.path.join(self.tmp, "nostamp"))
+        self.assertIsNone(vu1_refusals.stamp_window(os.path.join(self.tmp, "nostamp")))
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(vu1_refusals.main(["--stamp", os.path.join(self.tmp, "nostamp")]), 1)
 
 
 if __name__ == "__main__":
