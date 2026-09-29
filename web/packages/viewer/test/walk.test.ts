@@ -758,7 +758,7 @@ describe('the jump, as the decompilation has it (research 80)', () => {
     expect(top).toBeCloseTo(apex, 6);
     expect(apex).toBeCloseTo(11.95, 1);
     const air = ticks * TICK;
-    expect(air).toBeGreaterThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 - 2 * TICK);   // 0.78 s
+    expect(air).toBeGreaterThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 - 2 * TICK);   // 0.75 s from the sunk feet
     expect(air).toBeLessThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 + 2 * TICK);
     expect(w.state.x - x0).toBeCloseTo(v0 * air, 0);               // the take-off's 65, straight on
     expect(w.state.z).toBeCloseTo(0, 9);
@@ -962,5 +962,58 @@ describe('round 3: the turn axis cuts, the actions move by their root key by key
     const c = ACTION_CLIPS.crouchToProne;
     expect(x).toBeCloseTo(c.travel[0] / ACTION_SECONDS.crouchToProne, 9);
     expect(z).toBeCloseTo(c.travel[1] / ACTION_SECONDS.crouchToProne, 9);
+  });
+});
+
+describe("the running jump's clips: the launch over the flight, the fall only past it, no stand at the landing (FUN_005af930)", () => {
+  const plain = world([floor(-400, -400, 400, 400, 0)]);
+  const at = (y = 0): Walker => {
+    const w = new Walker(y === 0 ? plain : world([floor(-400, -400, 400, 400, y)]));
+    w.place(0, y, 0);
+    w.state.yaw = 0;                                                // facing -z
+    return w;
+  };
+  /** The action or, with none, the ground state each tick: what the animator is handed. */
+  const shown = (w: Walker): string => w.action?.name ?? `ground:${w.ground.state}`;
+
+  it('a flat running jump holds Jump launch the whole flight and lands straight into the run', () => {
+    const w = at();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    expect(w.ground.state).toBe('stand');
+    expect(w.jump()).toBe(true);
+    const seq: string[] = [];
+    while (w.airborne) { w.tick(FORWARD); seq.push(shown(w)); }
+    for (let i = 0; i < 5; i++) { w.tick(FORWARD); seq.push(shown(w)); }
+    const runs = seq.filter((x, i) => i === 0 || x !== seq[i - 1]);
+    // the launch (2.21 s) outlasts the 0.75 s flight: no Jump fall; the landing tick poses the run it left in
+    expect(runs).toEqual(['launch', 'ground:stand']);
+    expect(ACTION_SECONDS.launch).toBeCloseTo(2.4 * (24 / 25) ** 2, 9);
+    expect(w.landing?.clip).toBeNull();
+  });
+
+  it('a flight outlasting the launch gives way to Jump fall (FUN_0057e130 -> FUN_0057e050), then lands', () => {
+    // a running jump off a 700-unit drop: the floor is only far under the take-off's edge
+    const w = new Walker(world([floor(-400, -400, 400, -20, 0), floor(-400, -20, 400, 400, 700)]));
+    w.place(0, 700, 60);
+    w.state.yaw = 0;
+    for (let i = 0; i < 60 && w.state.z > 0; i++) w.tick(FORWARD);
+    expect(w.airborne).toBe(false);
+    expect(w.jump()).toBe(true);
+    const seq: string[] = [];
+    let ticks = 0;
+    while (w.airborne && ticks < 2000) { w.tick(FORWARD); seq.push(shown(w)); ticks++; }
+    const runs = seq.filter((x, i) => i === 0 || x !== seq[i - 1]);
+    expect(runs.slice(0, 2)).toEqual(['launch', 'fall']);
+    expect(seq.indexOf('fall')).toBe(Math.ceil(ACTION_SECONDS.launch / TICK - 1e-6) - 1);
+  });
+
+  it('a walk-off still falls in Jump fall, and lands on the run with the stick held', () => {
+    const w = new Walker(world([floor(-400, -400, 400, -20, 0), floor(-400, -20, 400, 400, 20)]));
+    w.place(0, 20, 60);
+    w.state.yaw = 0;
+    const seq: string[] = [];
+    for (let i = 0; i < 200; i++) { w.tick(FORWARD); seq.push(shown(w)); }
+    const runs = seq.filter((x, i) => i === 0 || x !== seq[i - 1]);
+    expect(runs).toEqual(['ground:stand', 'fall', 'ground:stand']);
   });
 });

@@ -299,6 +299,14 @@ slid. The game plays `seal_run_90r/l` at full stick (1.18x), `seal_rstrafe_fast`
   there is one, a sub-node at weight 1 that `FUN_00576bb0` lays over the parts it carries before the nodes are merged
   (`FUN_00577ea0`). Applied per node (`PISTOL_ANIMS`, pinned against `animset.rdr` by the `Pistol <action>` name
   rule); `Animator.setWeapon` switches with a cross-fade over the playing motion's `BlendTime` [reading].
+- **The launch covers a flat flight; the fall is for what outlasts it** (research 90 issue 10): `FUN_005af930`'s
+  airborne branch pushes `Jump fall` (`FUN_0057e130` -> `FUN_0057e050`, action 9) only with neither action 8 nor 9
+  current, and the launch (`NoInterrupt ()`) ends only with its play (`FUN_00582540` on `FUN_0028c6e0`, 2.21 s) or the
+  landing's pop. A flat running jump (0.75 s) lands in the launch, about its key 8; `seal_runningjump_in_air` plays on
+  a walk-off and after 2.21 s of a running jump's flight. At a landing with no clip, `FUN_00589aa0` pops the launch
+  and `FUN_0028da00` hands back the play it was pushed over -- the run -- so no frame of the stand shows; the viewer
+  showed one (the landing tick's ground state was at rest) and now poses the run it left in. The game pushes the fall
+  the tick after the launch's pop; the viewer on the same tick [reading].
 
 ## 7. Readings and placeholders (named in the code)
 

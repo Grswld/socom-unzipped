@@ -256,7 +256,7 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
   it("ACTION_CLIPS are motion.rdr's playback and NoInterrupt, and MOTION_P.ZAR's key counts and root travel", () => {
     const table = motionTableFromArchive(new Uint8Array(readFileSync(READERC)))!;
     const names: Record<keyof typeof ACTION_CLIPS, string> = {
-      jump: SEAL_ANIMS.jump, land: SEAL_ANIMS.land, landHard: SEAL_ANIMS.landHard,
+      jump: SEAL_ANIMS.jump, launch: SEAL_ANIMS.launch, land: SEAL_ANIMS.land, landHard: SEAL_ANIMS.landHard,
       standToCrouch: SEAL_ANIMS.standToCrouch, crouchToProne: SEAL_ANIMS.crouchToProne, standToProne: SEAL_ANIMS.standToProne,
       hit: SEAL_ANIMS.hit, hitStomach: SEAL_ANIMS.hitStomach, landDeath: SEAL_ANIMS.landDeath, getUp: SEAL_ANIMS.getUp,
     };

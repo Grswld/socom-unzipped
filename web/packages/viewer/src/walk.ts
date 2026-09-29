@@ -460,6 +460,7 @@ export function runningJumpSpeed(t: { jump_factor: number; gravity: number } = J
  */
 export const ACTION_CLIPS = Object.freeze({
   jump: { playback: 1.1, frames: 20, noInterrupt: 0.7, travel: [0, 0] },
+  launch: { playback: 2.4, frames: 25, noInterrupt: 1, travel: [0, 0] },
   land: { playback: 0.7, frames: 20, noInterrupt: 0, travel: [0.19, -2.09] },
   landHard: { playback: 1, frames: 20, noInterrupt: 0.35, travel: [0.19, -2.09] },
   standToCrouch: { playback: 0.65, frames: 27, noInterrupt: 1, travel: [-1.2, 1.27] },
@@ -508,7 +509,7 @@ export interface MoverAction {
   serial: number;
   /** Seconds since it started. */
   t: number;
-  /** How long it holds the mover, or null (the launch and the fall hold until the landing). */
+  /** How long it holds the mover, or null (the fall holds until the landing; the launch its clip's run, or the landing). */
   seconds: number | null;
   /** A transition played backwards: getting up. */
   reversed: boolean;
@@ -621,6 +622,8 @@ export class Walker {
   private floorNormalY = 1;
   /** The ground state as it last ran (`GroundMotion`). */
   private ground_: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
+  /** The ground state the feet left the floor in: the play the launch or the fall was pushed over (`land`). */
+  private groundBefore: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
 
   /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
   get stance(): Stance {
@@ -810,7 +813,7 @@ export class Walker {
       this.jumping = true;
       this.jumpDelay = JUMP_DELAY;
       this.jumpLock = JUMP_LOCK;
-      this.start('launch', null);
+      this.start('launch', ACTION_SECONDS.launch);             // its clip's 2.21 s, or the landing: whichever first
     } else {
       this.start('jump', ACTION_SECONDS.jump);
     }
@@ -819,6 +822,7 @@ export class Walker {
 
   /** Leaves the floor: the velocity across it carried (`actor+0x1350 = +0x38`), the fall from 0. */
   private takeOff(): void {
+    this.groundBefore = this.ground_;
     this.inAir = true;
     this.landing_ = null;
     this.airTime = 0;
@@ -1041,7 +1045,13 @@ export class Walker {
     const s = this.state;
     s.stickForward = 0; s.stickRight = 0;
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-    if (!this.jumping && this.action_?.name !== 'fall') this.start('fall', null);        // FUN_0057e050: `Jump fall`
+    // FUN_005af930 (466729-467019), the airborne branch: with neither action 8 (`Jump launch`) nor 9 (`Jump fall`)
+    // current, FUN_0057e130 -> FUN_0057e050 pushes `Jump fall`. The launch is `NoInterrupt ()` and ends only with its
+    // play (FUN_00582540 on FUN_0028c6e0's end, 2.21 s) or the landing's pop, so a flat running jump (0.75 s) lands in
+    // the launch -- about its key 8 -- and `seal_runningjump_in_air` plays only on a walk-off or a flight outlasting
+    // the launch [reading: the game pushes the fall the tick after the launch's pop; here the same tick].
+    const held = this.action_?.name;
+    if (held !== 'fall' && held !== 'launch') this.start('fall', null);                  // FUN_0057e050: `Jump fall`
     [s.vx, s.vz] = this.carried;
     this.airTime += dt;
     this.move(s.vx * dt, s.vz * dt);
@@ -1090,7 +1100,11 @@ export class Walker {
     this.jumpLock = JUMP_LOCK;
     if (clip) this.start(clip, ACTION_SECONDS[clip]);
     else {
+      // FUN_00589aa0 pops the launch or the fall, and FUN_0028da00 hands back the play it was pushed over -- the run
+      // the SEAL left the floor in -- so the landing tick poses the locomotion, never a frame of the stand; the next
+      // tick's ground state takes the stick on (FUN_005af930's no-clip branch, 0x248 = 0x244).
       this.action_ = null;
+      this.ground_ = this.groundBefore;
       s.stickForward = forward; s.stickRight = right;
     }
   }

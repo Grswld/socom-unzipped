@@ -15,7 +15,8 @@ import {
 } from '../src/animator';
 import { BLEND_TIME_DEFAULT, MOTION_CLIPS, SEAL_ANIMS, oneShotSeconds } from '../src/locomotion';
 import { clipsFromPack, motionTableFromArchive, type MotionEntry } from '../src/motionTable';
-import type { GroundMotion, MoverAction } from '../src/walk';
+import { Walker, type GroundMotion, type MoverAction } from '../src/walk';
+import { buildGrid, type CollisionOwner, type GridParams, type WorldPoly } from '@s2u/scene';
 
 /**
  * The animator (web sprint 2 W2.2b; the motion workstream, web/docs/research/80-the-jump.md): the mover's action or
@@ -714,5 +715,48 @@ describe('the pistol action set (FUN_0058c9e0, FUN_00576bb0)', () => {
     // each node's arm its own pistol clip's, merged half and half: 40 degrees
     expect(angleOf(quatOfMatrix(sk.local[2]!)) * 180 / Math.PI).toBeCloseTo(40, 1);
     expect(anim.stats().layer).not.toBeNull();
+  });
+});
+
+describe("the running jump through the animator: launch, then the run, never a frame of the stand (FUN_005af930, FUN_00589aa0)", () => {
+  it('each frame of a flat running jump with the stick held plays the run, the launch, the run', () => {
+    const poly: WorldPoly = {
+      modelName: 'worldmodel', path: 'worldmodel/floor', region: 0, ditype: 3, material: 25, ptcount: 4, cameratype: 0,
+      points: Float32Array.from([-400, 0, -400, 400, 0, -400, 400, 0, 400, -400, 0, 400]),
+    };
+    const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 200, cellsX: 4, cellsZ: 4, originX: -400, originZ: -400 };
+    const owners: CollisionOwner[] = [{ modelName: poly.modelName, path: poly.path, first: 0, count: 1 }];
+    const w = new Walker(buildGrid(params, [], [], [poly], owners));
+    w.place(0, 0, 300);
+    w.state.yaw = 0;
+    const clips = [
+      pose('seal_stand', 10, 0), walker('seal_run', 19, 57.7, 0), pose('seal_runningjump_launch', 25, 30),
+      pose('seal_runningjump_in_air', 14, 50), pose('seal_land_soft', 20, 10),
+    ];
+    const table = new Map<string, MotionEntry>([
+      ['seal_stand', cycle(-1, 0, 0)], ['seal_run', cycle(6.5, 4.01, 6.5)], ['seal_runningjump_launch', once(2.4)],
+      ['seal_runningjump_in_air', once(5)], ['seal_land_soft', once(0.7)],
+    ]);
+    const anim = new Animator(skeleton(), clips, table);
+    const plays: string[] = [];
+    const frame = (): void => {
+      w.tick({ forward: 1, right: 0, boost: false });
+      const s = w.state;
+      anim.step(1 / 60, {
+        vx: s.vx, vz: s.vz, vy: s.vy, yaw: s.yaw, airborne: w.airborne, crouched: false, stance: 'stand',
+        landing: w.landing?.kind ?? null, jumps: 0, ground: { ...w.ground }, action: w.action && { ...w.action },
+      });
+      plays.push(`${anim.stats().play}:${anim.stats().clip}`);
+    };
+    for (let i = 0; i < 60; i++) frame();
+    expect(w.jump()).toBe(true);
+    while (w.airborne) frame();
+    for (let i = 0; i < 10; i++) frame();
+    const runs = plays.filter((x, i) => i === 0 || x !== plays[i - 1]).map((x) => x.replace(/#\d+/, ''));
+    expect(runs.filter((x) => x.startsWith('loco') || x.startsWith('launch') || x.startsWith('idle'))).toEqual(
+      expect.arrayContaining(['launch:seal_runningjump_launch']));
+    const after = runs.slice(runs.indexOf('launch:seal_runningjump_launch'));
+    expect(after).toEqual(['launch:seal_runningjump_launch', 'loco:stand:seal_run']);
+    expect(plays.some((p) => p.includes('seal_runningjump_in_air'))).toBe(false);
   });
 });
