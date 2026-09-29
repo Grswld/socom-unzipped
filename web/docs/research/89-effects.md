@@ -706,3 +706,35 @@ takes the part past it on its own surface; a mark in a corner covers both faces,
 vertex's colour equals the world's interpolated at that point; the facing and 4.8 tests; instanced props through each
 instance's matrix, hidden draws skipped; the lift and the reused buffers; `Fire.setClip` (the clip, `lastShade`, a wall
 drawn late); the pool counting triangles; a footprint and a scorch over a step's edge.
+
+## 15. Round six: the clipped mark never clipped in the page (2026-09-29)
+
+**The report.** Controller, the integration head: on Frostfire, walk, `setCamera({ yaw: 100, pitch: -3 })`, every
+round on the container (material 25) left `lastShade` null and a light bare square -- `squareInto`, nothing kept;
+`e2e/effects.spec.ts` "the marks take the colour of the wall they are on" timed out on it; the MP71 release sweep's
+magazine at the nearest wall left no mark.
+
+**Not the streaming.** `MarkClipper` walks the live group on every clip; nothing is snapshotted. With every world and
+prop draw revealed, as `main.ts` builds it, the clip still kept nothing (`viewer/test/markClipMaps.test.ts`, RED).
+
+**The cause: the frame looked along the round.** The container side the round meets is two triangles 20 x 15 units
+(`container_blue01`, from (786.5, 115, 599.7) to (783.1, 130, 619.4)). The round comes in about 13 degrees off the
+wall's normal; along it, one vertex lies 4.88 units from the plane through the hit, past 4.8, and the 4.8 test drops
+the triangle whole. Every wall of the maps' size hit at any slant went the same way; the synthetic tests' small
+triangles square to the round never did. §14's reading "a big triangle sloping away along the round is dropped whole,
+as the game drops it" is **retracted**: the game shows these marks.
+
+**The game's vector is the hit's normal.** `FUN_003d0ba0` (323919) hands `FUN_003139e0` `&uStack_20`, the hit
+record's +0x10 scaled by -1 (`FUN_00309180(-1.0, record + 0x10)`, 323891); the record is `point, t, normal, node`
+(+0x1c the node, 323818; 0x20 a record, `FUN_002d4c20`). `FUN_00307810` looks along that one vector and picks its up by it
+(206461-206476), and `FUN_003b3950` tests facing against it: a triangle is kept when its normal is within 90 degrees
+of the hit's (`n . -N < -0.01`). So the square lies flat on the hit surface, and a flat wall is at depth 0 whatever its
+size and whatever the round's slant. [Reading: +0x10 as the normal rests on the record's layout and on the facing test
+making sense only so; the round's direction there would keep back faces.]
+
+**The fix.** `Fire.placeClipped` builds the frame along the hit normal negated (`markFrame(point, n, -n, side)`); the
+footprints already did (`Effects.footfall`). Verified: `markClipMaps.test.ts`, Frostfire's container four rounds at
+yaw 96.25-103.75 (0.508, 0.508, 0.523) and Desert Glory's stone at 36.25-43.75 (0.126, 0.124, 0.110), each equal to
+the probe's colour there to 5 places and the mark's own vertices that colour. Not done: the grenade's scorch still
+projects straight down (`grenade.ts` `scorchClipped`: the blast has no ground normal to hand); a big sloped ground
+triangle there can still drop it.
