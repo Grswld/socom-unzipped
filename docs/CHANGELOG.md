@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-286 merges (70 on the first-parent line, 216 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+287 merges (71 on the first-parent line, 216 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-61 merges.
+62 merges.
 
+- 2026-09-29 `1c27db5f` the mission-music instrument gains --stage lobby, the login held and captured (A1) [agent/s17-a1-lobby]
 - 2026-09-29 `1096b11c` #114 characterisation test [agent/s17-f1a3-hang]
 - 2026-09-29 `31aaa9fd` the card codec and the persona creator on the ONLINE page (#111, O25) [agent/persona-card]
 - 2026-09-29 `4f47e63e` research 80 [agent/s17-h1]
