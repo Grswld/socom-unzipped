@@ -416,6 +416,13 @@ rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAG
 every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
 `EFFE_TXR.ZED`, 1 to 1.8 units wide.
 
+**The gunplay is the game's** ([research 84](docs/research/84-accuracy-and-recoil.md)): the SEAL's M4A1 SD
+(`HELD_RIFLE`) fires to `Maximum_Range` x 10 units; its reticle opens with the walk, the look and each round and closes
+at the weapon's own per-stance rates (`viewer/src/accuracy.ts`), halved in third person; a round climbs the whole
+reticle up the screen (the recoil you see unscoped -- the camera does not kick there) and goes inside it by the
+game's cone; semi, burst and automatic (`B`, L3; burst at spawn); the right button steps the view third -> first person -> the 3x
+scope and back, d-pad Up and Down step it in and out (`viewer/src/zoom.ts`, the scope's tube and dashed cross off `HUD2_TXR`).
+
 **The rifle is in the SEAL's hands, raised to fire as the game raises it** (the sprint 2 player spec's §6, "The rifle
 in the hands, the Fire set, the kick and the satchel"). The body makes a `rifle` node under `rhand` with the rifle in
 hand (`FUN_00553290`); the clips' `rifle` track (`weapon` in the few SOCOM 1-named ones) poses it and the M4A1 SD
@@ -423,9 +430,9 @@ hangs on it at its grip (`viewer/src/heldItem.ts`). The trigger raises the rifle
 the last round, then falls over 0.5 s (`FUN_005dfe30`, `FUN_005dfc80`, the controller's 5.0 s at `FUN_00598280`;
 `viewer/src/weaponRaise.ts`); while up, each clip's **Fire** version (`seal_fp_stand`, `seal_fp_walk`,
 `seal_fp_crouch` ... twelve pairs, `FUN_005e0690`) blends in at that weight (`viewer/src/weaponPose.ts`, a pose layer
-over the clips). A round leaves the posed weapon's `firepoint` toward the point under the reticle; each kicks the
-aim's pitch by the stance's `FireRifleKick*` (`FUN_005b91c0`/`FUN_005b9280`, on in the image;
-`viewer/src/rifleKick.ts`), and `R` plays the stance's reload clip for its `motion.rdr` playback (1.6 s standing).
+over the clips). A round leaves the posed weapon's `firepoint` toward the point under the reticle; in a scope the
+first round of a pull kicks the aim's pitch by the stance's `FireRifleKick*` (`FUN_005b91c0`/`FUN_005b9280`, on in the
+image, gated to the scope as the game gates it: research 84 section 8; `viewer/src/rifleKick.ts`), and `R` plays the stance's reload clip for its `motion.rdr` playback (1.6 s standing).
 The satchel is hung but hidden, as the game hides it until the SEAL picks up the bomb (`FUN_0059df60`). `Fire`'s
 `subscribe` is the audio's hook: a `round` event (the weapon's name, id, muzzle animation and sound names, the fire
 point in the world, the end, the hit, the rounds left), `reloadStart` (its seconds) and `reloadEnd`.
@@ -445,10 +452,9 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
   the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
 - **The shot's effects are not drawn.** The round leaves the rifle's `firepoint` (above), but the muzzle's CZANIM
   animation (`muzzle_m4`: the shell, the flash hider's flash, the smoke; the M4A1 SD's `muzzle_m4SD` has no flash)
-  is not played -- the zAnim command payloads are not decoded (research 77 §10). The rifle fired is the kit's M4A1
-  (`FireWait` 0.12) while the model in the hands is W2.R4's M4A1 SD; an empty magazine does not reload by itself
-  (`R` does), the reticle's knock mapping is an estimate, and no bullet surface class was found, so every polygon
-  stops a round.
+  is not played -- the zAnim command payloads are not decoded (research 77 §10). An empty magazine does not reload by
+  itself (`R` does), and no bullet surface class was found, so every polygon stops a round. The scoped sway moves the
+  rounds but nothing on screen (no reader of it that draws was found: research 84 section 8).
 - **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
   the material half of the camera's surface test is left out.
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall

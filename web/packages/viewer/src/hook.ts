@@ -3,8 +3,10 @@ import type { Pose } from './camera';
 import type { Input } from './gamepad';
 import type { Backend } from './renderer';
 import type { FireState, Shot } from './fire';
-import type { Rect } from './reticle';
+import type { Rect, ReticleColour } from './reticle';
 import type { HudPatch, HudView } from './hud';
+import type { AccuracyState, Cone } from './accuracy';
+import type { ZoomView } from './zoom';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
@@ -97,7 +99,24 @@ export interface ViewerHook {
   /** An explosion this far from the player: the game's shake preset for it, if any (true when one started). */
   shake(distance: number): boolean;
   /** W2.4: the reticle -- drawn or not, and its rectangle in the drawing buffer's pixels (y down) on `frame`. */
-  reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
+  reticle(): {
+    visible: boolean; rect: Rect | null; frame: { width: number; height: number };
+    mode: 'reticle' | 'scope'; size: number; offset: [number, number]; colour: ReticleColour;
+  };
+  /**
+   * Research 84 (`./zoom`): the view state (`body+0x200`: 0 third person, 1 first, 4 the 9x view, 5+ the scope), its
+   * name, the magnification on screen, the vertical FOV it gives, and the look's scale.
+   */
+  zoom(): { state: number; view: ZoomView; magnification: number; fov: number; lookScale: number };
+  /** d-pad Up / Down (`FUN_005445b0` / `FUN_00544400`), and the right button's step (in, and out from the last). */
+  zoomIn(): number;
+  zoomOut(): number;
+  cycleZoom(): number;
+  /** The fire mode (SEMI, BURST, AUTO), and `B`'s switch (not while scoped): the new mode. */
+  fireMode(): string;
+  switchFireMode(): string;
+  /** Research 84 (`./accuracy`): the reticle's size, target, knock, sway, the pull's rounds, and the cone (tangents). */
+  accuracy(): AccuracyState & { cone: Cone };
   /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */
   stance(): Stance;
   /** Sets the stance, walking or not; false for a name that is not a stance. */

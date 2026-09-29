@@ -25,6 +25,17 @@ export const RETICLE_TEXTURES = {
   fixed: 'ret_rifle_01.tif', floating: 'ret_rifle_02.tif', accuracy: 'ret_accuracy.tif',
 } as const;
 
+/**
+ * Every reticle set's bitmaps (`BitmapReticule_Init` 0x2178c0 loads these 19 by name off `HUD2_TXR`; research 84 §8):
+ * decoded with the rifle's so a weapon's set is a table look-up (`./reticle`'s `RETICLE_SETS`).
+ */
+export const RETICLE_SET_TEXTURES = [
+  'ret_sidearm_01.tif', 'ret_sidearm_02.tif', 'ret_rifle_01.tif', 'ret_rifle_02.tif', 'ret_shotgun_01.tif',
+  'ret_shotgun_02.tif', 'ret_rocket_01.tif', 'ret_rocket_02.tif', 'ret_grenade_01.tif', 'ret_grenade_02.tif',
+  'ret_scope_01.tif', 'ret_scope_02.tif', 'ret_binocs.tif', 'ret_binocs2.tif', 'nvg_part.tif',
+  'ret_laser_designator.tif', 'ret_threat.tif', 'ret_accuracy.tif', 'noise50.tif',
+] as const;
+
 export interface ReticleBitmaps {
   /** `ret_rifle_01.tif`, 64x64 on Frostfire's archive. */
   fixed: Rgba;
@@ -32,6 +43,8 @@ export interface ReticleBitmaps {
   floating: Rgba;
   /** `ret_accuracy.tif`, 16x16: decoded for the bloom to come; not in the console frame at rest, not drawn yet. */
   accuracy: Rgba | null;
+  /** `RETICLE_SET_TEXTURES` by name, those the archive holds. */
+  sets?: Record<string, Rgba>;
 }
 
 /**
@@ -98,9 +111,10 @@ export function readReticle(bytes: Uint8Array, toc: ZdbEntry[]): { bitmaps: Reti
     return key && child ? txr.data(child) : null;
   };
   const { textures, diagnostics } = decodeNamedTextures(
-    texdat, PaletteTable.fromZars([pal]), Object.values(RETICLE_TEXTURES));
+    texdat, PaletteTable.fromZars([pal]), [...new Set<string>([...Object.values(RETICLE_TEXTURES), ...RETICLE_SET_TEXTURES])]);
   const fixed = textures[RETICLE_TEXTURES.fixed], floating = textures[RETICLE_TEXTURES.floating];
   const notes = diagnostics.map((d) => `reticle: ${d}`);
   if (!fixed || !floating) return { bitmaps: null, diagnostics: notes };
-  return { bitmaps: { fixed, floating, accuracy: textures[RETICLE_TEXTURES.accuracy] ?? null }, diagnostics: notes };
+  const sets = Object.fromEntries(RETICLE_SET_TEXTURES.filter((n) => textures[n]).map((n) => [n, textures[n]!]));
+  return { bitmaps: { fixed, floating, accuracy: textures[RETICLE_TEXTURES.accuracy] ?? null, sets }, diagnostics: notes };
 }

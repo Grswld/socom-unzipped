@@ -29,7 +29,7 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
     if (m.type() === 'error' || (m.type() === 'warning' && /GL_INVALID|WebGPU.*(error|fail)/i.test(m.text()))) problems.push(`console: ${m.text()}`);
   });
 
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -66,7 +66,7 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
 
   expect(await page.evaluate(() => window.__viewer.equipGrenade(true))).toBe(true);
   await settle(page);
-  await expect(page.locator('#ammo')).toHaveText('M67 x3');
+  expect((await page.evaluate(() => window.__viewer.hud())).model.rounds).toBe(3);   // the HUD's box counts the M67s
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-grenade-up.png') });
   await page.evaluate(() => window.__viewer.grenadeTrail(true));
   const thrown = await page.evaluate(() => window.__viewer.throwGrenade(1));

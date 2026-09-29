@@ -59,11 +59,13 @@ test('walk mode on Frostfire draws the rifle reticle at the console frame\'s pla
   expect(shown.visible).toBe(true);
   expect(shown.frame).toEqual({ width: 640, height: 448 });
   // `reticleLayout` at 640x448, the aim point at the centre: the console's 65 x 65 at (288, 192), within a pixel. The
-  // aim point is W2.1's projected aim (the frame's centre at rest, to float rounding), so the corner is to 0.01.
-  expect(shown.rect!.x).toBeCloseTo(288, 2);
-  expect(shown.rect!.y).toBeCloseTo(192, 2);
-  expect(shown.rect!.width).toBeCloseTo(64, 6);
-  expect(shown.rect!.height).toBeCloseTo(64, 6);
+  // aim point is W2.1's projected aim (the frame's centre at rest, to float rounding), so the corner is to 0.01. At
+  // rest in third person the HUD's size is TargetMin 1 halved (research 84 section 3): the arms half a pixel out.
+  expect(shown.size).toBe(0.5);
+  expect(shown.rect!.x).toBeCloseTo(287.5, 2);
+  expect(shown.rect!.y).toBeCloseTo(191.5, 2);
+  expect(shown.rect!.width).toBeCloseTo(65, 6);
+  expect(shown.rect!.height).toBeCloseTo(65, 6);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-ps2-spawn-reticle.png') });
 
   expect(await page.evaluate(() => window.__viewer.setMode('fly'))).toBe(true);

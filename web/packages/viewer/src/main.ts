@@ -2,7 +2,7 @@
 import { Scene, Timer } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { SEAL_TUNING, spawnsFor, type Spawns } from '@s2u/scene';
+import { HELD_RIFLE, SEAL_TUNING, spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -14,7 +14,7 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
-import { stanceBody, WalkMode } from './walk';
+import { WalkMode } from './walk';
 import { aimPoint } from './playerCamera';
 import { explosionShake } from './look';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
@@ -24,7 +24,8 @@ import { Reticle } from './reticle';
 import { Hud, RangeFinder } from './hud';
 import { buildBody, type BodyView } from './bodyView';
 import { Fire } from './fire';
-import { HELD_RIFLE } from '@s2u/scene';
+import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
+import { Zoom } from './zoom';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
@@ -111,13 +112,79 @@ if (PLAY) fire.bindKey();
 const grenade = new GrenadeThrower({ grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view() });
 scene.add(grenade.object);
 if (PLAY) grenade.bindKey();
-grenade.on('equip', (on) => { fire.release(); play.setRifleStowed(on); });   // a slot change lets a held trigger go; the rifle away while the grenade is up
+grenade.on('equip', (on) => {
+  fire.release(); play.setRifleStowed(on);   // a slot change lets a held trigger go; the rifle away while the grenade is up
+  // Out of the scope with the rifle away [reading: the game's weapon switch, FUN_005c4b10, drops only the night vision
+  // to first person; what a scoped grenade does was not traced -- research 84 section 7].
+  if (on && zoom.state() >= 4) setZoom(1);
+});
 grenade.on('throw', () => { audio.play('.THROW_OBJECT', walk.drawnFeet()); });
 grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
 grenade.on('explode', (info) => {
   audio.onAnimCallback(info.anim, info.pos);        // frag_grenade: .GREN_MED
   // The game's screen shake by the distance (research 83, `./look`).
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
+});
+/**
+ * Research 84 (`./accuracy`, `./zoom`): the M4A1 SD's gunplay -- the SEAL's rifle (the player spec's W2.R4) -- its
+ * reticle's bloom and climb, where each round goes inside it, its fire modes (`B`; L3 on the pad, the UI's lane), and
+ * the view states the scope steps through (the right button; d-pad Up / Down on the pad, the UI's `zoom` lane).
+ */
+const accuracy = new Accuracy(HELD_RIFLE);
+const zoom = new Zoom(HELD_RIFLE);
+let fireMode = defaultFireMode(HELD_RIFLE);
+/** The map camera's vertical FOV in degrees; the zoom divides its tangent. */
+let baseFov = 49;
+fire.setGun({
+  trigger: () => accuracy.trigger(),
+  roundsPerPull: () => roundsPerPull(fireMode),
+  interval: (fireWait) => fireInterval(fireWait, fireMode),
+  round: (dir) => {
+    // The round goes by the cone as the frame left it (FUN_005bd100 runs before the shot), then counts.
+    const out = perturb(dir, accuracy.cone(zoom.state()));
+    const stance = walk.mover()?.stance ?? 'stand';
+    if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(1);
+    return out;
+  },
+  // Research 84 section 8: the camera kicks only scoped, on a pull's first round, and the kick ticks only scoped.
+  kickStarts: () => kickStarts(zoom.state(), accuracy.rounds()),
+  kickTicks: () => kickTicks(zoom.state()),
+});
+/** The HUD's name for a fire mode (`./hud`: the `firemode.tif` rounds, 1 / 3 / 4 of them). */
+const HUD_FIRE_MODE = { 1: 'single', 2: 'burst', 3: 'auto' } as const;
+function showFireMode(): void {
+  const m = HUD_FIRE_MODE[fireMode as 1 | 2 | 3];
+  if (m) hud.setFireMode(m);
+}
+showFireMode();
+/** The fire-mode switch (`FUN_005c4600`; L3, `B`): not while scoped, nor while the grenade is up (it has one mode). */
+function switchFireMode(): string {
+  if (!grenade.equipped()) fireMode = nextFireMode(HELD_RIFLE, fireMode, zoom.target() > 1.01);
+  showFireMode();
+  return FIRE_MODE_NAMES[fireMode] ?? String(fireMode);
+}
+/** A view state, the way the game's own changes go: the knock cleared on leaving the scope (`FUN_005b9020`). */
+function setZoom(state: number): void {
+  const before = zoom.state();
+  zoom.set(state);
+  if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
+}
+/**
+ * The zoom's steps, walking and with the rifle up: `in` d-pad Up (`FUN_005445b0`), `out` d-pad Down (`FUN_00544400`),
+ * `cycle` the right button (in, and from the last level back to third person). The knock is cleared leaving a scope.
+ */
+function stepZoom(how: 'in' | 'out' | 'cycle'): number {
+  if (walk.mode() !== 'walk' || grenade.equipped()) return zoom.state();
+  const before = zoom.state();
+  if (how === 'in') zoom.zoomIn(); else if (how === 'out') zoom.zoomOut(); else zoom.cycle();
+  if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
+  return zoom.state();
+}
+if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
+  const target = e.target;
+  if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+  switchFireMode();
 });
 /** The trigger, pressed or let go: the grenade's while it is up, else the rifle's -- only while walking. */
 function trigger(down: boolean): void {
@@ -145,8 +212,6 @@ const walkSounds = new WalkSounds(audio, {
   wish: () => fly.groundWish(),
   grid: () => walk.grid(),
 });
-/** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
-const RUN_SPEED = stanceBody('stand').bands.forward;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -274,18 +339,11 @@ function askPlay(from: SourceRequest): void {
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
 /**
- * The aim view is held: the pad's aim lane (L1, W2.R5) or the right mouse button on the canvas (a `mousedown`, which
- * fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
+ * The aim view: held on the pad's aim lane (L1, W2.R5), or stepped into by the zoom (research 84: the game's first zoom
+ * step is the first-person view, state 1) -- the right mouse button on the canvas is the zoom's press (a `mousedown`,
+ * which fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
  */
-let mouseAim = false;
-canvas.addEventListener('mousedown', (e) => { if (e.button === 2) mouseAim = true; });
-globalThis.addEventListener('mouseup', (e) => { if (e.button === 2) mouseAim = false; });
-globalThis.addEventListener('blur', () => { mouseAim = false; });
-/**
- * The scope (d-pad Up, owner 2026-09-28; the right mouse button too): one press a step. A STUB -- the zoom state is the
- * accuracy workstream's (`zoom.cycle()`), wired here at the merge; until then a press does nothing.
- */
-function onZoom(): void { /* wired to the accuracy workstream's zoom.cycle() at merge */ }
+canvas.addEventListener('mousedown', (e) => { if (e.button === 2) stepZoom('cycle'); });
 
 /**
  * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
@@ -305,7 +363,47 @@ function playLanes(before: Input, after: Input, dt: number): void {
   // Fed a released button off foot, so a press begun in the fly camera is not a tap when the walk begins.
   const go = stanceButton.update(walking && after.stance, dt, walk.stance());
   if (go !== null) walk.setStance(go);
-  walk.setAiming(walking && (aimForced || act.aim || mouseAim));
+  // First person while the pad's aim lane is held or the zoom is at 1 or more (research 84: its first step is that view).
+  walk.setAiming(walking && (aimForced || act.aim || zoom.firstPerson()));
+}
+
+/** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
+let lastLook: { yaw: number; pitch: number } | null = null;
+let lastFov = -1;
+/** Degrees of look in one frame past which the change is a placement, not a turn (no bloom). */
+const LOOK_JUMP = 45;
+/**
+ * One frame of the gun (research 84): the bloom's 60 Hz ticks off the mover and the look's rates (`FUN_005c2670`), the
+ * zoom's run and the FOV it sets, the look's scale for the scope. Leaving the walk drops the zoom.
+ */
+function gunFrame(dt: number, walking: boolean): void {
+  const snap = walking ? walk.snapshot() : null;
+  if (!snap) {
+    if (zoom.state() !== 0) { zoom.reset(); accuracy.leaveScope(); }
+    lastLook = null;
+  } else {
+    const pose = fly.pose();
+    let yawRate = 0, pitchRate = 0;
+    if (lastLook && dt > 0) {
+      const dy = ((pose.yaw - lastLook.yaw + 540) % 360) - 180, dp = pose.pitch - lastLook.pitch;
+      // A jump of more than a quarter turn in one frame is a placement (the hook, a respawn), not a turn.
+      if (Math.abs(dy) < LOOK_JUMP && Math.abs(dp) < LOOK_JUMP) {
+        yawRate = (dy * Math.PI / 180) / dt;
+        pitchRate = (dp * Math.PI / 180) / dt;
+      }
+    }
+    lastLook = { yaw: pose.yaw, pitch: pose.pitch };
+    accuracy.update(dt, {
+      stance: snap.stance, velocity: [snap.vx, snap.vy, snap.vz], airborne: snap.airborne,
+      yawRate, pitchRate, zoomState: zoom.state(),
+    });
+  }
+  zoom.update(dt);
+  const fov = zoom.fov(baseFov);
+  if (Math.abs(fov - lastFov) > 1e-6) { fly.setFov(fov); lastFov = fov; }
+  // The look's divisor (FUN_005966a0, `FUN_005be660`): the LOOK workstream's law takes the magnification and mode 4.
+  fly.setZoom(1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
+  hud.setZoom(zoom.magnification());
 }
 
 /**
@@ -411,7 +509,11 @@ function padFrame(dt: number): void {
   // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
   if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
-  if (pressedSince(padLast, pad).includes('zoom') && walk.mode() === 'walk') onZoom();
+  // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up).
+  const pressed = pressedSince(padLast, pad);
+  if (pressed.includes('zoom')) stepZoom('in');
+  if (pressed.includes('zoomOut')) stepZoom('out');
+  if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
   playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
   traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
   padLast = pad;
@@ -556,6 +658,7 @@ async function boot(): Promise<void> {
     traversal.input();              // research 86: the peek held (Q / E, the pad's lean lanes)
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
+    gunFrame(dt, walking);          // research 84: the bloom, the zoom and its FOV
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
@@ -571,8 +674,10 @@ async function boot(): Promise<void> {
       const [nx, ny] = aimPoint(fly.camera, aim);
       const [sx, sy] = fly.screenShift();   // the shake and the bob move the world, not the HUD (research 83)
       reticle.setAimPoint(nx - sx, ny - sy);
-      // The run's spread (W2.4's estimate) or a round's knock (W2.5, `ZWEAPON.ZAR/zweapon.rdr`), the larger.
-      reticle.setSpread(Math.max(walk.speed() / RUN_SPEED, fire.spread()));
+      // Research 84: the HUD's size (halved in third person) and the knock's climb; the scope's overlay at 5 and up.
+      const r = accuracy.reticle(zoom.state());
+      reticle.setSize(r.size, r.offset);
+      reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
     }
     reticle.setVisible(walking);
     reticle.render(created.renderer);
@@ -709,7 +814,13 @@ function show(map: LoadedMap): void {
   fly.setScale(map.metersPerUnit);
   // The map's own vertical field of view: `m_vfov` is a half-angle in radians, 24.5 degrees on all but
   // one map, so the picture is the 49-degree one a player saw rather than a wide-angle survey.
-  if (map.camera) fly.setFov(2 * map.camera.vfov * 180 / Math.PI);
+  if (map.camera) {
+    baseFov = 2 * map.camera.vfov * 180 / Math.PI;
+    accuracy.setFov({ hfov: map.camera.hfov, vfov: map.camera.vfov });
+  }
+  zoom.reset();
+  accuracy.reset();
+  fly.setFov(baseFov);
   fit?.();                                        // the PS2 presentation's aspect is the map's own
 
   // W1.4b: the stand the worker worked out (`LoadedMap.stand`, `./stand`): A's (x, z), `EYE` over the ground
@@ -829,6 +940,13 @@ window.__viewer = {
   setLook: (opts) => { fly.setLookOptions(opts); return fly.lookOptions(); },
   setZoom: (magnification, mode4) => fly.setZoom(magnification, mode4),
   shake: (distance) => { const s = explosionShake(distance); if (s) fly.shakeScreen(s); return s !== null; },
+  zoom: () => ({ state: zoom.state(), view: zoom.view(), magnification: zoom.magnification(), fov: zoom.fov(baseFov), lookScale: zoom.lookScale() }),
+  zoomIn: () => stepZoom('in'),
+  zoomOut: () => stepZoom('out'),
+  cycleZoom: () => stepZoom('cycle'),
+  fireMode: () => FIRE_MODE_NAMES[fireMode] ?? String(fireMode),
+  switchFireMode: () => switchFireMode(),
+  accuracy: () => ({ ...accuracy.state(), cone: accuracy.cone(zoom.state()) }),
   reticle: () => reticle.state(),
   stance: () => walk.stance(),
   setStance: (stance) => walk.setStance(stance),

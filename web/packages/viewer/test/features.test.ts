@@ -73,7 +73,7 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
       expect(hint).not.toMatch(/walk|jump|stance|fire|reload/i);
       ui.showPadLayout(PAD_LAYOUT);
       const rows = [...document.querySelectorAll('#pad-layout tbody tr')].map((r) => r.querySelector('td')!.textContent);
-      expect(rows).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'L3', 'R3']);
+      expect(rows).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'R3']);
     });
   });
 });

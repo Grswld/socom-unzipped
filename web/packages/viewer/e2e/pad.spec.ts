@@ -104,7 +104,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect(page.locator('#pad-box')).toBeVisible();
   await page.keyboard.press('Escape');
   await page.mouse.move(700, 500);
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(7);
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(6);
   await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(1);
   await expect(page.locator('#pad-layout tbody')).toContainText('boost');
   await expect(page.locator('#pad-layout tbody')).not.toContainText('fire');
@@ -126,8 +126,8 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[2]).toBeGreaterThan(start[2]);
   expect(walked[1]).toBeCloseTo(100, 3);
 
-  // On foot the table lists the walking controls: R1's fire, Cross's action, the d-pad's peek, no boost.
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(12);
+  // On foot the table lists the walking controls: R1's fire, the zoom and fire mode, Cross's action, the d-pad's peek, no boost.
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(13);
   await expect(page.locator('#pad-layout tbody')).toContainText('action (climb, ladder slide)');
   await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(0);
   await expect(page.locator('#pad-layout tbody')).toContainText('fire (held)');
@@ -192,7 +192,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await setPad(page, {});
   await expect(page.locator('#walk')).not.toBeChecked();
   await expect(page.locator('#mode button[data-mode="fly"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(7);         // and the table is the flying controls again
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(6);         // and the table is the flying controls again
 
   // Fly: the same stick flies along the look (yaw 0 looks down -z) and does not turn it.
   await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 160, z: 614, yaw: 0, pitch: 0 }));

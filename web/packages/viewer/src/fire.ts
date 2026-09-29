@@ -3,7 +3,7 @@ import {
   MeshBasicMaterial, PlaneGeometry, RGBAFormat, UnsignedByteType, Vector3,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
-import { BULLET_MARK, DEFAULT_RIFLE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 
 /**
@@ -38,15 +38,19 @@ import { RifleKick, type KickStance, type KickStats } from './rifleKick';
  *   of `seal_reload` 1.6, `seal_crouch_reload` 1.9, `seal_prone_reload` 1.7, `seal_mv_reload` 1.2 -- the M4A1's
  *   record has no `ReloadTime`, so the game's reload is its animation's), else over `RELOAD_SECONDS` [estimate]; a
  *   partly spent magazine is dropped, as a spare is a whole magazine.
- * - **The bloom.** A round adds `ReticuleKnock / ReticuleKnockMax` (12 / 45) to W2.4's 0..1 spread and it returns at
- *   `ReticuleKnockReturn / ReticuleKnockMax` (70 / 45) a second, capped at 1 -- the file's `STANCE_STAND` numbers,
- *   mapped onto the reticle's spread as a ratio [estimate: their units are not traced].
- * - **The trigger.** A press fires at once if `FireWait` has passed since the last round; held, it fires at the rate
- *   (the M4A1's `MaxFireMode 3`, read as automatic [reading]). The tracer is drawn for one frame, from the muzzle (or,
- *   without one, a stand-in beside the eye: a line along the view's own centre line would be a point on the screen)
- *   to the hit.
- * - **The kick** (WEAPON, `./rifleKick`): each round kicks the aim's pitch by the stance's `FireRifleKick*` and lets it
- *   back, as the game's `FUN_005b91c0` / `FUN_005b9280` do, through the source's `look` and `kickPitch`.
+ * - **The range** is `Maximum_Range` x `UNITS_PER_METRE` (10): the file's ranges are metres (research 84 §2).
+ * - **The gun** (`setGun`, `./accuracy` through `main.ts`; research 84): the eye's ray leaves off the view's centre
+ *   line by the reticle's cone and knock (`FUN_005bd100` / `FUN_00592260`), so the point it finds -- the one the
+ *   muzzle's leg then fires at -- lies inside the reticle; the fire mode's rounds a pull (single 1, burst 3,
+ *   automatic unlimited) and its wait (`FireWait`, x 0.8 in burst and automatic). Without one: straight down the
+ *   aim, one round a `FireWait`, held for automatic.
+ * - **The trigger.** A press fires at once if the wait has passed since the last round; held, it fires at the rate
+ *   while the pull has rounds left. The tracer is drawn for one frame, from the muzzle (or, without one, a stand-in
+ *   beside the eye: a line along the view's own centre line would be a point on the screen) to the hit.
+ * - **The kick** (WEAPON, `./rifleKick`): the aim's pitch kicked by the stance's `FireRifleKick*` and let back, as the
+ *   game's `FUN_005b91c0` / `FUN_005b9280` do, through the source's `look` and `kickPitch` -- **only scoped**: the
+ *   game starts it only on a pull's first round in a scope and ticks it only in the 9x view or a scope (research 84
+ *   §8), which the gun says (`kickStarts`, `kickTicks`). Unscoped the recoil is the reticle's knock alone.
  * - **The events** (`subscribe`, for the audio and the body): `round` each time a round leaves, with the weapon's
  *   name and id, the fire point in the world, the aim's end and whether it met the hull; `reloadStart` with the
  *   reload's length; `reloadEnd` when the fresh magazine is in (`completed`), or when a reset cut it short.
@@ -67,6 +71,21 @@ const AIM_MARGIN = 0.01;
 
 /** Where the shot comes from and goes toward: the camera's eye and the aim point (`WalkMode.fireAim`). */
 export interface FireAim { eye: Vec3; far: Vec3 }
+/**
+ * The gunplay a round is shot through (`./accuracy`, research 84): `trigger` on each press and release (the pull's
+ * count restarts), `roundsPerPull` for the fire mode, `interval` for its wait, `round` for the eye ray's direction
+ * off the aim -- called once per round that leaves, which counts it -- and the scoped kick's gate: `kickStarts`
+ * (asked after `round`) and `kickTicks`.
+ */
+export interface FireGun {
+  trigger(down: boolean): void;
+  roundsPerPull(): number;
+  interval(fireWait: number): number;
+  round(dir: Vec3): Vec3;
+  kickStarts?(): boolean;
+  kickTicks?(): boolean;
+}
+
 /**
  * What the shot reads from the page: the walk's hull and its aim, each null when there is none (not walking); and,
  * WEAPON, the posed rifle's muzzle in the world (`Play.muzzle`) and the reload clip's length (`Play.reloadSeconds`),
@@ -156,8 +175,10 @@ export class Fire {
   private held = false;
   private shots = 0;
   private lastHit: ShotHit | null = null;
-  private bloom = 0;
   private bound: EventTarget | null = null;
+  private gun: FireGun | null = null;
+  /** Rounds fired since the trigger was pressed (the fire mode's limit). */
+  private pulled = 0;
   private readonly listeners = new Set<FireListener>();
   private readonly kick: RifleKick;
 
@@ -197,14 +218,30 @@ export class Fire {
     this.material.needsUpdate = true;
   }
 
+  /** The gunplay the rounds go through (`FireGun`), or null for a straight shot at `FireWait`. */
+  setGun(gun: FireGun | null): void {
+    this.gun = gun;
+  }
+
   /** The trigger pressed: a round now if the rifle is ready; held, `update` keeps firing at the rate. */
   pull(): Shot | null {
+    if (!this.held) { this.pulled = 0; this.gun?.trigger(true); }
     this.held = true;
-    return this.tryFire();
+    return this.pullRound();
   }
 
   release(): void {
+    if (this.held) this.gun?.trigger(false);
     this.held = false;
+    this.pulled = 0;
+  }
+
+  /** A round of the pull, if the fire mode has one left. */
+  private pullRound(): Shot | null {
+    if (this.gun && this.pulled >= this.gun.roundsPerPull()) return null;
+    const shot = this.tryFire();
+    if (shot) this.pulled++;
+    return shot;
   }
 
   /** Whether the trigger is down (the rifle's raise reads it: `./weaponRaise`). */
@@ -242,7 +279,7 @@ export class Fire {
   }
 
   /**
-   * One frame, before it is drawn: the reload, the bloom's return, the rate's wait, a held trigger's rounds, and the
+   * One frame, before it is drawn: the reload, the rate's wait, a held trigger's rounds, the scoped kick, and the
    * tracer's one frame -- a tracer lit since the last frame is drawn in this one and gone in the next.
    */
   update(dt: number): number {
@@ -253,26 +290,20 @@ export class Fire {
         this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: true });
       }
     }
-    const { knockReturn, knockMax } = this.rifle.knock;
-    this.bloom = Math.max(0, this.bloom - (knockReturn / knockMax) * dt);
     if (this.tracerFrames > 0) this.tracerFrames--;
     else this.tracer.visible = false;
     this.wait -= dt;
     let fired = 0;
-    while (this.held && this.wait <= 1e-9 && this.tryFire()) fired++;
+    while (this.held && this.wait <= 1e-9 && this.pullRound()) fired++;
     if (this.wait < 0) this.wait = 0;
     if (fired > 0) this.tracerFrames = 0;           // lit in this frame: drawn in it, gone in the next
     const look = this.source.look?.() ?? null;
-    if (look) {
+    const ticks = !this.gun?.kickTicks || this.gun.kickTicks();   // research 84 §8: the kick ticks only scoped
+    if (look && ticks) {
       const turn = this.kick.frame(dt, look.pitch);
       if (turn !== 0) this.source.kickPitch?.(turn);
     } else this.kick.reset();
     return fired;
-  }
-
-  /** The reticle's bloom, 0..1 (W2.4's `setSpread`). */
-  spread(): number {
-    return this.bloom;
   }
 
   tracerVisible(): boolean {
@@ -306,7 +337,7 @@ export class Fire {
     this.wait = 0;
     this.held = false;
     this.lastHit = null;
-    this.bloom = 0;
+    this.pulled = 0;
     this.kick.reset();
     this.tracerFrames = 0;
     this.tracer.visible = false;
@@ -337,10 +368,12 @@ export class Fire {
     const aim = this.source.aim(), grid = this.source.grid();
     if (!aim || !grid) return null;
     const look = unit(sub(aim.far, aim.eye));
-    const reach = this.rifle.maximumRange;
-    const eyeEnd: Vec3 = [aim.eye[0] + look[0] * reach, aim.eye[1] + look[1] * reach, aim.eye[2] + look[2] * reach];
+    // Research 84: the eye's ray leaves by the reticle's cone and knock (without a gun, straight down the view).
+    const ray = this.gun ? unit(this.gun.round(look)) : look;
+    const reach = this.rifle.maximumRange * UNITS_PER_METRE;
+    const eyeEnd: Vec3 = [aim.eye[0] + ray[0] * reach, aim.eye[1] + ray[1] * reach, aim.eye[2] + ray[2] * reach];
     const muzzle = this.source.muzzle?.() ?? null;
-    let from: Vec3 = [...aim.eye], dir = look, end = eyeEnd, fromMuzzle = false;
+    let from: Vec3 = [...aim.eye], dir = ray, end = eyeEnd, fromMuzzle = false;
     if (muzzle) {
       // Two legs: the eye's ray finds the point under the reticle, the muzzle's segment what the round meets on the
       // way to it (see the header). The segment runs a hair past the aim point, so rounding cannot stop it short.
@@ -368,14 +401,12 @@ export class Fire {
     }
     this.rounds--;
     this.shots++;
-    this.wait += this.rifle.fireWait;
+    this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
     this.lastHit = hit;
-    const { knock, knockMax } = this.rifle.knock;
-    this.bloom = Math.min(1, this.bloom + knock / knockMax);
     this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
     const shot: Shot = { from, to: hit ? [...hit.point] : end, hit };
     const aimNow = this.source.look?.() ?? null;
-    if (aimNow) this.kick.round(aimNow.pitch, aimNow.stance);
+    if (aimNow && (!this.gun?.kickStarts || this.gun.kickStarts())) this.kick.round(aimNow.pitch, aimNow.stance);
     this.emit({ type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds });
     return shot;
   }

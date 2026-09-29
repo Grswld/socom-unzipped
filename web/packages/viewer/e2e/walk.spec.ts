@@ -216,8 +216,11 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
     expect(seen.body?.visible).toBe(true);
     // The aim is on the view line: the reticle at the frame's centre, the console's 65 x 65 at (288, 192).
     expect(seen.reticle.visible).toBe(true);
-    expect(seen.reticle.rect!.x).toBeCloseTo(288, 2);
-    expect(seen.reticle.rect!.y).toBeCloseTo(192, 2);
+    // At rest in third person the HUD's size is the stance's TargetMin halved (research 84: the M4A1 SD's 1 standing,
+    // 0.75 crouched): the arms that many pixels further out.
+    expect(seen.reticle.size).toBe(stance === 'crouch' ? 0.375 : 0.5);
+    expect(seen.reticle.rect!.x).toBeCloseTo(288 - seen.reticle.size, 2);
+    expect(seen.reticle.rect!.y).toBeCloseTo(192 - seen.reticle.size, 2);
     await page.locator('#view').screenshot({ path: join(CAMERA_SCREENS, `frostfire-ps2-spawn-a-${name}.png`) });
   }
 

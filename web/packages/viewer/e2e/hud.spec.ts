@@ -108,7 +108,7 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
     }
   });
 
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

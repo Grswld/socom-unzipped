@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONSOLE_RETICLE, reticleLayout } from '../src/reticle';
+import { ARM_TINT, CONSOLE_RETICLE, RETICLE_SETS, reticleLayout, reticleTint, reticleType, scopeLayout } from '../src/reticle';
 
 /**
  * The reticle's place and size (web sprint 2, W2.4), against the console frame at spawn
@@ -37,14 +37,25 @@ describe('reticleLayout', () => {
     expect([right!.x, right!.y]).toEqual([320 + 16, 224 + 14.5]);
   });
 
-  it('follows the aim point, and the spread pushes the arms out to 1.5x the rest reach', () => {
+  it('follows the aim point; the HUD size pushes each arm out by its own pixels; the knock moves the whole reticle', () => {
     const moved = reticleLayout(PS2, [0.25, 0.75], 0).rect;
     expect([moved.x, moved.y]).toEqual([160 - 32, 336 - 32]);
-    const wide = reticleLayout(PS2, [0.5, 0.5], 1).rect;
+    // FUN_00215250: each arm's quad starts `size` pixels from the centre, so the outer ends sit at 32 + size.
+    const wide = reticleLayout(PS2, [0.5, 0.5], 16).rect;
     expect(wide).toEqual({ x: 320 - 48, y: 224 - 48, width: 96, height: 96 });
-    const half = reticleLayout(PS2, [0.5, 0.5], 0.5).rect;
-    expect(half.width).toBe(80);
-    expect(reticleLayout(PS2, [0.5, 0.5], 7).rect).toEqual(wide);   // clamped to 0..1
+    // TargetMax 26, drawn full in first person: the outer ends 58 out.
+    expect(reticleLayout(PS2, [0.5, 0.5], 26).rect.width).toBe(116);
+    expect(reticleLayout(PS2, [0.5, 0.5], -3).rect.width).toBe(64);       // never inside the rest
+    // The knock (FUN_00216770: centre + kit+0x20/+0x24): 12 pixels up moves ring and arms alike.
+    const { centre, quads } = reticleLayout(PS2, [0.5, 0.5], 0, [0, -12]);
+    expect(centre).toEqual([320, 212]);
+    expect(quads.find((q) => q.part === 'fixed')).toMatchObject({ x: 320, y: 212 });
+  });
+
+  it('the rest in third person: TargetMin 1 halved is the console frame within its pixel', () => {
+    const { rect } = reticleLayout(PS2, [0.5, 0.5], 0.5);
+    const m = CONSOLE_RETICLE.rect;
+    expect(near(rect.x, m.x) && near(rect.width, m.width)).toBe(true);
   });
 
   it('keeps the console\'s proportion on any frame: the PS2 pixel scaled by the frame height / 448', () => {
@@ -53,5 +64,41 @@ describe('reticleLayout', () => {
     expect(rect.width).toBeCloseTo(64 * scale, 9);
     expect(rect.x + rect.width / 2).toBeCloseTo(960, 9);
     expect(rect.y + rect.height / 2).toBeCloseTo(540, 9);
+  });
+});
+
+describe('the reticle set, colour and scope (research 84)', () => {
+  it('picks the set by the view, then the weapon ID (FUN_005be300)', () => {
+    expect(reticleType(62, 0, 1)).toBe(1);        // the M4A1 SD: a rifle
+    expect(reticleType(54, 1, 1.01)).toBe(1);     // first person is still the rifle's
+    expect(reticleType(62, 5, 3)).toBe(5);        // scoped: the scope
+    expect(reticleType(62, 4, 9)).toBe(7);        // the 9x view
+    expect(reticleType(5, 0, 1)).toBe(0);         // the M9: the sidearm's
+    expect(reticleType(84, 0, 1)).toBe(2);        // the 870: the shotgun's
+    expect(reticleType(101, 0, 1)).toBe(1);       // the M82A1A unscoped: a rifle's
+    expect(reticleType(121, 0, 1)).toBe(4);       // the M67: the grenade's
+    expect(reticleType(11, 0, 1)).toBe(9);        // the designator
+    expect(reticleType(0x98, 0, 1)).toBe(-1);
+    expect(RETICLE_SETS[1]).toEqual({ fixed: 'ret_rifle_01.tif', floating: 'ret_rifle_02.tif' });
+  });
+
+  it('colours the arms as FUN_00215c10 does, the rest one the measured tint', () => {
+    expect(reticleTint('rest')).toEqual(ARM_TINT);
+    const [r, g, b] = reticleTint('friendly');
+    expect(g).toBeCloseTo(ARM_TINT[1], 9);
+    expect(r).toBeLessThan(0.15);
+    expect(b).toBeGreaterThan(ARM_TINT[2]);
+    expect(reticleTint('hostile')[1]).toBeLessThan(0.15);
+  });
+
+  it('lays the scope as four 320-pixel quads around the frame centre, mirrored to meet there', () => {
+    const { quads, bars } = scopeLayout(PS2);
+    expect(quads.map((q) => [q.x, q.y, q.size])).toEqual([[160, 64, 320], [480, 64, 320], [160, 384, 320], [480, 384, 320]]);
+    expect(quads.map((q) => [q.flipX, q.flipY])).toEqual([[false, true], [true, true], [false, false], [true, false]]);
+    expect(bars).toEqual([]);
+    const wide = scopeLayout({ width: 1920, height: 1080 });
+    const s = 1080 / 448;
+    expect(wide.quads[0]!.size).toBeCloseTo(320 * s, 9);
+    expect(wide.bars[0]!.width).toBeCloseTo(960 - 320 * s, 9);
   });
 });

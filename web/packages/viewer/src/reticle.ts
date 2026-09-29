@@ -35,9 +35,19 @@ import type { ReticleBitmaps } from './hudBitmaps';
  * keeps the PS2 pixel's size relative to the frame's height -- a scale of height / 448 -- so the cross keeps the
  * console's proportion on any screen. Nearest-neighbour: the console's HUD is pixel art.
  *
- * **The spread** (the floating part's bloom, `m_minsize` to `m_maxsize`): the game's numbers are not in hand, so
- * 0 is the measured rest reach (the arms' outer ends 32 pixels out) and 1 is 1.5x it [estimate], the arms moving
- * outwards and the ring staying.
+ * **The size and the climb** (research 84 §3-§4, `./accuracy`): SOCOM II's HUD (`BitmapReticule_UpdateAccuracy`
+ * 0x215250) pushes each arm's quad out from the centre by the kit's reticle size `kit+0x84c` (`hud+0x44b4`), halved in
+ * the third-person view (view state 0), in PS2 pixels -- so the measured rest (outer ends 32 out) is size 0 and an arm's
+ * outer end is `32 + size` out; `TargetMin` 1 halved is the console frame's half pixel. The whole reticle, ring and arms,
+ * is drawn at the aim point plus the knock's offset (`FUN_00216770`: (320, 224) + `kit+0x18/+0x20`, `+0x1c/+0x24`).
+ * There is no `m_minsize`/`m_maxsize` in SOCOM II's HUD: the range is the weapon's, per stance (`TargetMin`/`TargetMax`).
+ * - **The colour** (`FUN_00215c10`, `FUN_003590e0` on the four arms): (200, 200, 24) at rest -- the measured (204, 204,
+ *   31) -- (24, 200, 44) on a teammate, (200, 24, 44) on an identified enemy, (130, 130, 130) out of a launcher's range.
+ * - **The scope** (view state 5+, `ChangeReticule` 0x213e20 type 5): no ring and no arms; `ret_scope_01` and
+ *   `ret_scope_02` each drawn as four mirrored 320x320 quads over (0, -96)-(640, 544), centred on the frame (not the
+ *   aim point), as decoded: `ret_scope_01` the black tube (radius 81 of its 128 texels, 202 pixels on the frame),
+ *   clear inside, with a one-texel grey (79, PS2 alpha 94) cross along the centre lines, dashed for its inner 22
+ *   texels; `ret_scope_02` the soft black ring inside the tube (alpha 255 at radius 95 fading to 0 at 44).
  */
 
 /** The console frame's cross, measured (above): its pixel bounding box and centre, 640x448 pixels. */
@@ -52,10 +62,61 @@ const PS2_HEIGHT = 448;
 const FIXED = 64, ARM = 32;
 /** Where the arm's core lies across its bitmap: texel column 30, whose centre is 30.5 texels in. */
 const ARM_CORE = 30.5;
-/** The arms' outer ends at rest, in PS2 pixels from the aim point (measured), and at spread 1 [estimate]. */
-const REST_REACH = 32, MAX_REACH_SCALE = 1.5;
+/** The arms' outer ends at size 0, in PS2 pixels from the aim point (measured on the console frame). */
+const REST_REACH = 32;
+/** The scope's quads: 320 PS2 pixels a side, the four around the frame's centre (`ChangeReticule` type 5). */
+const SCOPE_QUAD = 320;
 /** The arms' colour (measured, above), as 0..1 in the working space: the frame goes out unconverted (`./renderer`). */
 export const ARM_TINT: [number, number, number] = [204 / 255, 204 / 255, 31 / 255];
+
+/** The arms' colours (`FUN_00215c10`'s vertex colours, scaled so the rest one is the measured `ARM_TINT`). */
+export type ReticleColour = 'rest' | 'friendly' | 'hostile' | 'range';
+const GAME_COLOUR: Record<ReticleColour, [number, number, number]> = {
+  rest: [200, 200, 24], friendly: [24, 200, 44], hostile: [200, 24, 44], range: [130, 130, 130],
+};
+export function reticleTint(colour: ReticleColour): [number, number, number] {
+  const g = GAME_COLOUR[colour], r = GAME_COLOUR.rest;
+  return [0, 1, 2].map((i) => Math.min(1, (g[i]! / r[i]!) * ARM_TINT[i]!)) as [number, number, number];
+}
+
+/**
+ * The reticle set a weapon draws (`FUN_005be300`, the kit's `+0x54`): by the view first -- the 9x view 7
+ * (`ret_binocs`), a magnification over 1.01 5 (the scope) -- then by the weapon's `ID` (`EQUIP_ITEM`): 11 (the
+ * designator) 9; 4-30 0 (sidearm); 31-80 1 (rifle); 81-90 2 (shotgun); 91-120 1; 121-140 and 151-189 4 (grenade);
+ * 190-253 0; 151/152 none. A weapon with a launcher fitted is 3 (rocket). -1 draws nothing.
+ */
+export function reticleType(weaponId: number, zoomState: number, magnification: number): number {
+  if (zoomState === 4) return 7;
+  if (magnification > 1.01) return 5;
+  const id = weaponId & 0xff;
+  if (id === 0x98 || id === 0x97) return -1;
+  if (id === 0x0b) return 9;
+  if (id >= 4 && id <= 0x1e) return 0;
+  if (id >= 0x1f && id <= 0x50) return 1;
+  if (id >= 0x51 && id <= 0x5a) return 2;
+  if (id >= 0x5b && id <= 0x78) return 1;
+  if (id >= 0x79 && id <= 0x8c) return 4;
+  if (id >= 0x97 && id <= 0xbd) return 4;
+  if (id >= 0xbe && id <= 0xfd) return 0;
+  return -1;
+}
+
+/**
+ * The sets' bitmaps (`BitmapReticule_Init` 0x2178c0: `hud+0x44bc + 4 x type` the fixed part, `hud+0x44e8 + 4 x type`
+ * the floating one). Only the rifle (1) and the scope (5) are drawn today; the rest load with them, ready.
+ */
+export const RETICLE_SETS: Record<number, { fixed: string; floating: string | null }> = {
+  0: { fixed: 'ret_sidearm_01.tif', floating: 'ret_sidearm_02.tif' },
+  1: { fixed: 'ret_rifle_01.tif', floating: 'ret_rifle_02.tif' },
+  2: { fixed: 'ret_shotgun_01.tif', floating: 'ret_shotgun_02.tif' },
+  3: { fixed: 'ret_rocket_01.tif', floating: 'ret_rocket_02.tif' },
+  4: { fixed: 'ret_grenade_02.tif', floating: null },
+  5: { fixed: 'ret_scope_02.tif', floating: null },
+  6: { fixed: 'ret_scope_01.tif', floating: null },
+  7: { fixed: 'ret_binocs.tif', floating: 'ret_binocs2.tif' },
+  8: { fixed: 'nvg_part.tif', floating: null },
+  9: { fixed: 'ret_sidearm_01.tif', floating: 'ret_laser_designator.tif' },
+};
 
 export interface Rect { x: number; y: number; width: number; height: number }
 
@@ -66,15 +127,16 @@ export interface Rect { x: number; y: number; width: number; height: number }
 export interface Quad { part: 'fixed' | 'floating'; x: number; y: number; width: number; height: number; turns: 0 | 1 | 2 | 3 }
 
 /**
- * The reticle's quads on a frame of `frame` pixels, centred on the aim point `aim` (0..1 across and down), with
- * the floating part at `spread` (0..1, clamped). `rect` is the quads' bounding box.
+ * The reticle's quads on a frame of `frame` pixels, centred on the aim point `aim` (0..1 across and down) moved by
+ * `offset` (PS2 pixels, y down: the knock), the arms pushed out by `size` (PS2 pixels, the HUD's drawn size, >= 0).
+ * `rect` is the quads' bounding box.
  */
 export function reticleLayout(
-  frame: { width: number; height: number }, aim: [number, number], spread: number,
+  frame: { width: number; height: number }, aim: [number, number], size: number, offset: [number, number] = [0, 0],
 ): { scale: number; centre: [number, number]; quads: Quad[]; rect: Rect } {
   const s = frame.height / PS2_HEIGHT;
-  const cx = aim[0] * frame.width, cy = aim[1] * frame.height;
-  const reach = REST_REACH * (1 + (MAX_REACH_SCALE - 1) * Math.min(1, Math.max(0, spread)));
+  const cx = aim[0] * frame.width + offset[0] * s, cy = aim[1] * frame.height + offset[1] * s;
+  const reach = REST_REACH + Math.max(0, size);
   const quads: Quad[] = [{ part: 'fixed', x: cx, y: cy, width: FIXED * s, height: FIXED * s, turns: 0 }];
   // The arm as stored, pointing down: its core on the vertical through the aim point, its outer end `reach` out.
   let dx = (ARM / 2 - ARM_CORE) * s, dy = (reach - ARM / 2) * s;
@@ -90,6 +152,28 @@ export function reticleLayout(
   }
   return { scale: s, centre: [cx, cy], quads, rect: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } };
 }
+
+/**
+ * The scope's four quads on a frame (`ChangeReticule` type 5): 320 PS2 pixels a side around the frame's centre, each
+ * the bitmap mirrored so the tube's centre -- the decoded bitmap's top-right corner -- meets the frame's centre.
+ * `flipX`/`flipY` mirror the stored bitmap. The black bars beyond the 640-wide square fill a wider frame.
+ */
+export function scopeLayout(frame: { width: number; height: number }): {
+  quads: { x: number; y: number; size: number; flipX: boolean; flipY: boolean }[]; bars: Rect[];
+} {
+  const s = frame.height / PS2_HEIGHT, q = SCOPE_QUAD * s;
+  const cx = frame.width / 2, cy = frame.height / 2;
+  const quads = [
+    { x: cx - q / 2, y: cy - q / 2, size: q, flipX: false, flipY: true },      // top-left: centre at its bottom-right
+    { x: cx + q / 2, y: cy - q / 2, size: q, flipX: true, flipY: true },       // top-right
+    { x: cx - q / 2, y: cy + q / 2, size: q, flipX: false, flipY: false },     // bottom-left: as stored
+    { x: cx + q / 2, y: cy + q / 2, size: q, flipX: true, flipY: false },      // bottom-right
+  ];
+  const side = Math.max(0, cx - q);
+  const bars = side > 0 ? [{ x: 0, y: 0, width: side, height: frame.height }, { x: frame.width - side, y: 0, width: side, height: frame.height }] : [];
+  return { quads, bars };
+}
+
 
 /** What the HUD pass needs of three's renderer (a `WebGPURenderer` in the page). */
 export interface HudRenderer {
@@ -118,10 +202,16 @@ export class Reticle {
   private readonly camera = new OrthographicCamera(0, 1, 0, 1, -1, 1);
   private readonly geometry = new PlaneGeometry(1, 1);
   private meshes: { part: Quad['part']; mesh: Mesh }[] = [];
+  private scopeMeshes: Mesh[] = [];
+  private bars: Mesh[] = [];
   private textures: DataTexture[] = [];
   private materials: MeshBasicMaterial[] = [];
+  private armMaterial: MeshBasicMaterial | null = null;
   private aim: [number, number] = [0.5, 0.5];
-  private spread = 0;
+  private drawSize = 0;
+  private offset: [number, number] = [0, 0];
+  private mode: 'reticle' | 'scope' = 'reticle';
+  private colour: ReticleColour = 'rest';
   private on = false;
   private frame = { width: 0, height: 0 };
   private readonly size = new Vector2();
@@ -141,9 +231,22 @@ export class Reticle {
       return material;
     };
     const fixed = make(bitmaps.fixed, null);
-    const floating = make(bitmaps.floating, ARM_TINT);
+    const floating = make(bitmaps.floating, reticleTint(this.colour));
+    this.armMaterial = floating;
     this.add('fixed', fixed);
     for (let i = 0; i < 4; i++) this.add('floating', floating);
+    // The scope (type 5): the tube's mask, then its soft inner ring, four mirrored quads each; black bars beside.
+    const scope01 = bitmaps.sets?.['ret_scope_01.tif'], scope02 = bitmaps.sets?.['ret_scope_02.tif'];
+    for (const rgba of [scope01 ?? null, scope02 ?? null]) {
+      if (!rgba) continue;
+      const material = make(rgba, null);
+      for (let i = 0; i < 4; i++) this.scopeMeshes.push(this.addMesh(material, 2));
+    }
+    if (this.scopeMeshes.length > 0) {
+      const black = new MeshBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, fog: false, toneMapped: false });
+      this.materials.push(black);
+      for (let i = 0; i < 2; i++) this.bars.push(this.addMesh(black, 2));
+    }
   }
 
   /** The aim point in normalised screen coordinates, 0..1 across and down; the frame's centre by default. */
@@ -151,13 +254,32 @@ export class Reticle {
 
   setVisible(on: boolean): void { this.on = on; }
 
-  /** The floating part's spread, 0 (rest, measured) to 1 (1.5x the rest reach) [estimate]. */
-  setSpread(spread: number): void { this.spread = spread; }
+  /**
+   * The HUD's drawn size and the knock's offset, PS2 pixels (`./accuracy`'s `reticle()`): the arms pushed out by
+   * `size`, the whole reticle moved by `offset` (y down).
+   */
+  setSize(size: number, offset: [number, number] = [0, 0]): void {
+    this.drawSize = size;
+    this.offset = [offset[0], offset[1]];
+  }
+
+  /** The rifle's reticle, or the scope's overlay (view state 5 and up). */
+  setMode(mode: 'reticle' | 'scope'): void { this.mode = mode; }
+
+  /** The arms' colour: at rest, on a teammate, on an enemy, out of range (`FUN_00215c10`). */
+  setColour(colour: ReticleColour): void {
+    this.colour = colour;
+    this.armMaterial?.color.setRGB(...reticleTint(colour));
+  }
 
   /** Whether it is being drawn, and where, in the drawing buffer's pixels (y down) of the last frame drawn. */
-  state(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } } {
+  state(): {
+    visible: boolean; rect: Rect | null; frame: { width: number; height: number };
+    mode: 'reticle' | 'scope'; size: number; offset: [number, number]; colour: ReticleColour;
+  } {
     const visible = this.on && this.meshes.length > 0 && this.frame.height > 0;
-    return { visible, rect: visible ? reticleLayout(this.frame, this.aim, this.spread).rect : null, frame: { ...this.frame } };
+    const rect = visible && this.mode === 'reticle' ? reticleLayout(this.frame, this.aim, this.drawSize, this.offset).rect : null;
+    return { visible, rect, frame: { ...this.frame }, mode: this.mode, size: this.drawSize, offset: [...this.offset], colour: this.colour };
   }
 
   /** Draws the HUD over whatever the renderer last drew: nothing is cleared. */
@@ -168,34 +290,54 @@ export class Reticle {
     const { width, height } = this.frame;
     this.camera.left = 0; this.camera.right = width; this.camera.top = 0; this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
-    const quads = reticleLayout(this.frame, this.aim, this.spread).quads;
+    const scoped = this.mode === 'scope' && this.scopeMeshes.length > 0;
+    const quads = reticleLayout(this.frame, this.aim, this.drawSize, this.offset).quads;
     const fixed = quads.filter((q) => q.part === 'fixed'), floating = quads.filter((q) => q.part === 'floating');
     let f = 0, a = 0;
     for (const { part, mesh } of this.meshes) {
       const q = part === 'fixed' ? fixed[f++] : floating[a++];
-      if (!q) { mesh.visible = false; continue; }
+      if (!q || scoped) { mesh.visible = false; continue; }
       mesh.visible = true;
       mesh.position.set(q.x, q.y, 0);
       mesh.scale.set(q.width, q.height, 1);
       mesh.rotation.z = (q.turns * Math.PI) / 2;   // +z turns clockwise on a y-down screen
     }
+    const scope = scopeLayout(this.frame);
+    this.scopeMeshes.forEach((mesh, i) => {
+      const q = scope.quads[i % 4]!;
+      mesh.visible = scoped;
+      mesh.position.set(q.x, q.y, 0);
+      mesh.scale.set(q.flipX ? -q.size : q.size, q.flipY ? -q.size : q.size, 1);
+    });
+    this.bars.forEach((mesh, i) => {
+      const r = scope.bars[i];
+      mesh.visible = scoped && !!r;
+      if (r) { mesh.position.set(r.x + r.width / 2, r.y + r.height / 2, 0); mesh.scale.set(r.width, r.height, 1); }
+    });
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     try { renderer.render(this.scene, this.camera); } finally { renderer.autoClear = autoClear; }
   }
 
   private add(part: Quad['part'], material: MeshBasicMaterial): void {
+    this.meshes.push({ part, mesh: this.addMesh(material, part === 'fixed' ? 0 : 1) });
+  }
+
+  private addMesh(material: MeshBasicMaterial, order: number): Mesh {
     const mesh = new Mesh(this.geometry, material);
     mesh.frustumCulled = false;
-    mesh.renderOrder = part === 'fixed' ? 0 : 1;
+    mesh.renderOrder = order;
+    mesh.visible = false;
     this.scene.add(mesh);
-    this.meshes.push({ part, mesh });
+    return mesh;
   }
 
   private clear(): void {
     for (const { mesh } of this.meshes) this.scene.remove(mesh);
+    for (const mesh of [...this.scopeMeshes, ...this.bars]) this.scene.remove(mesh);
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
-    this.meshes = []; this.materials = []; this.textures = [];
+    this.meshes = []; this.scopeMeshes = []; this.bars = []; this.materials = []; this.textures = [];
+    this.armMaterial = null;
   }
 }
