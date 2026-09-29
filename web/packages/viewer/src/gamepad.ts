@@ -42,8 +42,8 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
@@ -64,6 +64,8 @@ export interface Input {
   jump: boolean; crouch: boolean; stance: boolean; boost: boolean; fire: boolean; aim: boolean; zoom: boolean;
   zoomOut: boolean; fireMode: boolean;
   action: boolean; leanLeft: boolean; leanRight: boolean; mode: boolean;
+  /** The game's `SwapWeapon1` (L1), `SwapWeapon2` (L2) and `Inventory` (R2): the kit's slots, walking only (`./grenade`). */
+  swap1: boolean; swap2: boolean; inventory: boolean;
 }
 
 /** The input at rest: every axis 0, every action off. */
@@ -71,7 +73,7 @@ export function noInput(): Input {
   return {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
     jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, zoomOut: false,
-    fireMode: false, action: false, leanLeft: false, leanRight: false, mode: false,
+    fireMode: false, action: false, leanLeft: false, leanRight: false, mode: false, swap1: false, swap2: false, inventory: false,
   };
 }
 
@@ -90,6 +92,10 @@ const HOST_INPUT = 'third_party/ps2recomp/ps2xRuntime/src/lib/socom2_host_input.
 const CROUCH_H = 'third_party/ps2recomp/ps2xRuntime/include/runtime/host_crouch_shortcut.h';
 const LAUNCHER = 'third_party/ps2recomp/ps2xShared/src/launcher_config.cpp';
 const STICKS = `${MAPPING_H}:25-27; ${HOST_INPUT}:297, :336`;
+/** The grenades workstream's note on the kit's slots and the controls that select them. */
+const GRENADES = 'web/docs/research/85-grenades.md §9';
+/** The disc's control map: `READERC.ZAR/controller.rdr`, `ControllerConfigs` `Default`. */
+const CONTROLLER_RDR = 'READERC.ZAR controller.rdr (Default)';
 /** A binding the owner stated in words (the play-test of walk mode), not one the repository documents on its own. */
 export const OWNER = 'owner, 2026-09-28';
 
@@ -129,9 +135,9 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'length is a guess (`STANCE_HOLD_S_PLACEHOLDER`, ./play). Down in the fly camera',
   },
   {
-    control: 'L1', action: 'aim', documented: OWNER,
-    note: 'held on foot, the first-person aim view (W2.6). The owner\'s word (socom2_host_input.cpp:297 puts aim '
-      + 'among the shoulder buttons without saying which)',
+    control: 'L1', action: 'swap1', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
+    note: 'the game\'s L1: SwapWeapon1, the primary\'s slot (controller.rdr\'s Default; CSealCtrl 0x598280) -- back to the '
+      + 'rifle. SOCOM II has no held aim: the first-person view is the zoom\'s first step (research 84; right click, d-pad Up)',
   },
   {
     control: 'Up', action: 'zoom', documented: OWNER,
@@ -168,6 +174,17 @@ export const PAD_LAYOUT: readonly PadRow[] = [
     note: 'held, the peek right on foot, standing still (the same read, the d-pad\'s right)',
   },
   {
+    control: 'L2', action: 'swap2', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
+    note: 'the game\'s L2: SwapWeapon2, the second-weapon swap (controller.rdr\'s Default; launcher_config.cpp:572, '
+      + 'host_crouch_shortcut.h:13-14) -- a press takes up the kit slot assigned to L2 (FUN_00594cf0 0x5957d8). The '
+      + 'viewer assigns it the M67 (the game\'s default slot is the sidearm it does not carry); again, the rifle',
+  },
+  {
+    control: 'R2', action: 'inventory', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
+    note: 'the game\'s R2: Inventory (controller.rdr\'s Default), the menu of the kit\'s slots (FUN_0021bda0). The viewer '
+      + 'steps to the next item it carries -- rifle, M67, HE -- one press each, in place of the menu',
+  },
+  {
     control: 'R3', action: 'boost', documented: 'assumed',
     note: 'the fly camera\'s boost, as a double-tapped W or the touch stick held at its rim, not a game control; what '
       + 'R3 does in SOCOM II the repository does not say. There is no sprint on foot (the owner, 2026-09-28)',
@@ -195,6 +212,9 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   leanLeft: { walk: 'peek left (held)', fly: null },
   leanRight: { walk: 'peek right (held)', fly: null },
   mode: { walk: 'fly (as G)', fly: 'walk (as G)' },
+  swap1: { walk: 'weapon swap 1: the rifle (1)', fly: null },
+  swap2: { walk: 'weapon swap 2: the M67 (4)', fly: null },
+  inventory: { walk: 'inventory: next item (1 rifle, 4 M67, 5 HE)', fly: null },
 };
 
 /** A citation with each path cut to its file's name, for the panel: `docs/INSTALL.md §6` is `INSTALL.md §6`. */

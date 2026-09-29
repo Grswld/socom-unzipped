@@ -126,13 +126,34 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[2]).toBeGreaterThan(start[2]);
   expect(walked[1]).toBeCloseTo(100, 3);
 
-  // On foot the table lists the walking controls: R1's fire, the zoom and fire mode, Cross's action, the d-pad's peek, no boost.
-  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(13);
+  // On foot the table lists the walking controls: R1's fire, the zoom and fire mode, Cross's action, the d-pad's peek, the
+  // game's weapon slots (L1, L2, R2), no boost.
+  await expect(page.locator('#pad-layout tbody tr')).toHaveCount(15);
   await expect(page.locator('#pad-layout tbody')).toContainText('action (climb, ladder slide)');
   await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(0);
   await expect(page.locator('#pad-layout tbody')).toContainText('fire (held)');
   await expect(page.locator('#pad-layout tbody')).not.toContainText('boost');
   await expect(page.locator('#hint')).toContainText('click fire');
+
+  // L2 is the game's SwapWeapon2 (the viewer's slot: the M67), again the rifle; R2 its Inventory, one item a press; L1 its
+  // SwapWeapon1, the rifle.
+  const item = (): Promise<string> => page.evaluate(() => (window.__viewer.grenade().equipped ? window.__viewer.grenade().item : 'rifle'));
+  const tap = async (button: number, lane: 'swap2' | 'inventory'): Promise<void> => {
+    await setPad(page, { press: [button] });
+    await expect.poll(() => page.evaluate((l) => window.__viewer.pad().input[l], lane)).toBe(true);
+    await setPad(page, {});
+    await expect.poll(() => page.evaluate((l) => window.__viewer.pad().input[l], lane)).toBe(false);
+  };
+  await tap(6, 'swap2');
+  await expect.poll(item).toBe('M67');
+  await tap(6, 'swap2');
+  await expect.poll(item).toBe('rifle');
+  await tap(7, 'inventory');
+  await expect.poll(item).toBe('M67');
+  await tap(7, 'inventory');
+  await expect.poll(item).toBe('HE');
+  await tap(7, 'inventory');
+  await expect.poll(item).toBe('rifle');
 
   // Square is the jump on foot (the mover's jump is W2.3a's): what reaches the page is the jump; Cross is the action
   // (web research 86), not a jump.

@@ -15,7 +15,8 @@ import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
 import type { ViewStats, WeaponStats } from './play';
 import type { AudioStats } from './audio';
-import type { GrenadeStats, ThrowInfo } from './grenade';
+import type { GrenadeItem, GrenadeStats, ThrowInfo } from './grenade';
+import type { ThrowPoseStats } from './throwPose';
 import type { TraversalStats } from './traversalPage';
 
 /**
@@ -183,6 +184,10 @@ export interface ViewerHook {
   grenadeTrail(on: boolean): void;
   /** Clears the grenades, the effects and the marks, and refills the pouch. */
   resetGrenades(): void;
+  /** Takes up a kit item (`rifle`, `M67`, `HE`), as the keys 1, 4, 5 do; false when it cannot be. */
+  selectItem(item: 'rifle' | GrenadeItem): boolean;
+  /** The throw's clip on the body (`./throwPose`): the clip, its phase, its weight over the locomotion. */
+  throwClip(): ThrowPoseStats;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

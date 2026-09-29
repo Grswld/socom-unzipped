@@ -161,7 +161,12 @@ export class GameAudio {
         const bank = parseBankFile(bytes);
         const loaded = { bank, samples: new SampleCache(bank.vag) };
         this.banks.push(loaded);
-        for (const [name, index] of bank.names) if (!this.lookup.has(name)) this.lookup.set(name, { loaded, index });
+        for (const [name, index] of bank.names) {
+          if (!this.lookup.has(name)) this.lookup.set(name, { loaded, index });
+          // A bank name can carry trailing blanks the zAnims do not (MP2_am's `.THROW_OBJECT `): found by either.
+          const bare = name.trim();
+          if (bare !== name && !this.lookup.has(bare)) this.lookup.set(bare, { loaded, index });
+        }
       } catch (e) {
         this.missing.push(`${file}: ${e instanceof Error ? e.message : String(e)}`);
       }

@@ -28,7 +28,10 @@ Code: `@s2u/scene`'s `packages/scene/src/projectile.ts` (pure, tested in `test/p
 - **The explosion** (§7): `Explosion_Damage` 10 in full to half of `Explosion_Radius` 15 m = 150 units, falling
   linearly to 0 at 150. Its picture is the zAnim `frag_grenade`: sparks, a long dust, a light flash (radius 100 -> 190
   over 0.5 s), black smoke with a fireball, a ground dust roll, the sound `.GREN_MED`; the scorch `grenade_mark.tif`.
-- **The model** is `WEAP_GEO`'s `grenade` (81 vertices, 82 triangles, `G11b.tif` + `m79.tif`).
+- **The model** is `WEAP_GEO`'s `grenade` (81 vertices, 82 triangles, `G11b.tif` + `m79.tif`), held on the right
+  hand's item node through the throw clip, released from the posed hand (§8).
+- **The slots** (§9.1): SOCOM II selects a grenade with R2's inventory, or with L1/L2 (`SwapWeapon1/2`) swapping to the
+  slot assigned to them; the HE (§9.2) goes off on impact.
 
 ## 1. The record: `RUN/ZWEAPON.ZAR/zweapon.rdr`
 
@@ -113,10 +116,14 @@ the animset names (decomp 495211-495236), which fixes the states' meaning: **0 s
 The crouch's moving test is `|m_velM|^2 <= DAT_00650578` (225, `0x43610000`: 15 u/s). The peek row tests which lean
 clip is playing (`FUN_00577e40` with 0x1d/0x1f and 0x1e/0x20). Clips run at 30 frames a second (research 77).
 
-**The release time.** `FUN_005802b0` returns `0 + fraction x clip(+0x10) x FUN_0028ada0(clip)`; the two factors are
-not decoded. The viewer takes `fraction x duration / playback` [reading] -- the standing throw lets go 0.268 s after
-the button; `motion.rdr`'s `throw_whoosh` callback on `seal_throwgrenade` at 0.45 sits beside its 0.46, so the
-fraction is of the clip. `NoInterrupt` (0.49 on the throw, 0.75 on the toss) is not modelled.
+**The release time.** `FUN_005802b0` returns `0 + fraction x clip(+0x10) x FUN_0028ada0(clip)`. The motion
+workstream read both factors (research 80, `viewer/src/locomotion.ts`): a one-shot's `+0x10` is `motion.rdr`'s
+`playback` (`FUN_00287620`), `FUN_0028ada0` is `(n - 1) / n`, and the phase runs at `1 / (playback (n - 1) / n)` a
+second (`FUN_0028c4f0`) -- so the release is the moment the clip's own phase reaches the fraction:
+`release x playback x (n - 1) / n`. The standing throw lets go **0.71 s** after the button (0.46 x 1.6 x 27/28), the
+toss 1.07 s, the crouched throw 0.73 s; the whole clip plays in `playback ((n - 1) / n)^2` (1.49 s standing).
+`motion.rdr`'s `throw_whoosh` callback (the grunt `.MALE_GRUNT`) at phase 0.45 fires one frame before the 0.46.
+`NoInterrupt` (0.49 on the throw, 0.75 on the toss) is not modelled.
 
 `FUN_005499e0` is a line-of-sight check from the hand to a second point per row (e.g. (1.155, 13.354, -15.75)
 standing) through the hull (`FUN_0031e250`); its caller was not traced, so the viewer does not refuse a blocked throw.
@@ -300,34 +307,93 @@ traced].
 `WEAP_GEO.ZED`'s `grenade` (every map carries it with the weapons, research 79 §2's form): 81 vertices, 82 triangles,
 `G11b.tif` and `m79.tif`, bbox (-0.60, -0.80, -0.52)-(0.67, 1.03, 0.52). `character.rdr`'s `body_items` list a
 `grenade` attachment part beside `rifle` and `pistol` (research 78 §3.1); the skeleton's hands are `rhand` (17) and
-`lhand` (24). The viewer holds the model at `HAND_PLACEHOLDER` (3.5, 12.5, -4) in the actor frame and slides it to the
-clip's release point, until the motion workstream offers the hand bone (§9).
+`lhand` (24). The throw clips animate the held item's node `rifle` under `rhand` (`seal_throwgrenade` and the rest
+carry a `rifle` track; the crouched and prone ones SOCOM 1's `weapon`), so the viewer hangs the grenade on that node
+(`Play.heldNode`, the weapon workstream's `rifle` node) while it is up -- the rifle stowed -- and it rides the hand
+through the clip. The release point is the **posed** right hand's (2, 0, 0) (`Play.partPoint('rhand', ...)`; the left
+hand's for the left lean), carried into the actor frame for `throwVelocity`: standing, about 23 over the feet at the
+release frame, against the table's 19.35. Without a posed body the table's point stands in (`HAND_PLACEHOLDER` for the
+hold).
+
+The HE (`HEgrenade`: 56 vertices, 50 triangles, `HEgrenade.tif`, `smoke_grenade02.tif`) is decoded beside it.
 
 ## 9. What the viewer does, and asks
 
-- **Input**: `4` takes the grenade (again, or `1`, the rifle); the fire trigger (left button captured, the touch fire
-  button) holds and throws while it is up; the ammo box reads `M67 x<left>`. The pad binding (the d-pad / Select to
-  change slots, R1 to throw, and R1's analog value as the pressure if a pad offers one) is the UI workstream's.
-- **Events** (`GrenadeThrower.on`): `equip(equipped)` -- the weapon workstream hides the rifle while true;
-  `throwStart({ anim, power, releaseIn })` -- the motion workstream plays `anim.clip` at `anim.playback`;
+### 9.1 How SOCOM II selects a grenade
+
+`READERC.ZAR/controller.rdr`'s `ControllerConfigs` `Default` (and `Reverse`) bind **L1 `SwapWeapon1`, L2
+`SwapWeapon2`, R2 `Inventory`**, R1 `Fire`, X `Action`, Square `Jump`, Circle `TeamCommand`, Select `TACMAP`, L3
+`FireMode`, R3 `Reload`. The digital results are indexed in the order of the name table at 0x3f2bdc (0 `Action`, 1
+`AimMode`, 2 `Fire`, 3 `FireMode`, 4 `Inventory`, 5 `Jump`, 6 `Reload`, 7/8 the strafes, 9 `SwapWeapon1`, 10
+`SwapWeapon2`, 11 `TeamCommand`, 12 `TACMAP`); `FUN_002c64e0(result, pad)` answers a result's button state through
+the config's byte at `+0x12 + result`.
+
+- **L1 / L2** (the player update `FUN_00594cf0`, 0x595728 and 0x5957d4): a press of result 9 or 10 takes the kit slot
+  the controller keeps at `+0x224` (L1) or `+0x228` (L2) -- `FUN_005bdc30` (the slot holds an item), `FUN_005c4fd0`
+  (a change is allowed), `FUN_005c4b10(kit, slot)` (the change) -- or plays `FUN_003419c0`'s refusal. `CSealCtrl`'s
+  constructor (0x598280) sets them to **slot 0 (the primary) and slot 1 (the sidearm)**.
+- **R2** opens the inventory (`FUN_0021bda0`, reached from result 4 in the UI code at 0x219ce4/0x21c2cc): the kit's
+  slots listed; in it, the pad's button 0xd assigns the highlighted slot to L1 (`+0x224`), 0xe to L2 (`+0x228`) --
+  refused when it is the other's -- and 7 takes it up. So a grenade is selected from the inventory, or put on L1 or
+  L2 there and swapped to with one press.
+- The kit (`character.rdr` `mp_seal1`): 0 M4A1, 1 Mark 23, 2 M67, 3 HE, 4 Double Ammo Load.
+
+**The viewer**: L2 is `SwapWeapon2` to `L2_SLOT_PLACEHOLDER` = the M67 (the game's default slot 1 is the sidearm the
+viewer does not carry), a second press back to the rifle [reading]; R2 is the inventory as one press a step --
+rifle, M67, HE -- in place of the menu [placeholder]; keys `1` rifle, `4` M67, `5` HE. **L1 is the owner's aim (W2.R5)
+in the viewer, but the game's `SwapWeapon1`** -- a conflict reported, not overridden. The HUD's box shows the item's
+HUDW icon (`IconTextureName`: `grenade_frag_icon.tif`, `grenade_he_icon.tif`) and its count.
+
+### 9.2 The HE
+
+`HE` (ID 126) is outside `HandleIntersections`' bounce list, so its projectile takes `HandleImpact` (0x3c8920), which
+sets an explosive round (the `Explosion_Radius` non-zero, the shooter local) to detonate at the first surface that is
+not LIQUID (state 3, grenade state 2): **the HE goes off where it lands**, its fuse notwithstanding. `Explosion_Radius`
+10 (100 units), `Explosion_Damage` 11, its zAnims `HE_start` (`.THROW_OBJECT`) and `HE_grenade` (sparks, long dust, a
+plume, black smoke, the flash, a small fire, `.GREN_MED`). The viewer draws it with the frag's burst [placeholder].
+
+### 9.3 The sounds on Frostfire
+
+- `.THROW_OBJECT` is `MP2_am.bnk`'s `.THROW_OBJECT ` -- with a trailing blank the zAnims' name lacks; the audio's
+  lookup now finds a bank name by its trimmed form too (`audio.ts`).
+- `grenade_hit_metal_thick` (and `_metal_grate`) play `.GREN_METAL`, which **no MP2 bank holds** (`MP2_am` has
+  `.GREN_TIN`, `.GREN_STONE`, `.GREN_SNOW`, `.GREN_WOOD`): silent on the console too, where `FUN_00344f30` answers no
+  handle. Frostfire's default material is METAL_THICK, so most of its bounces are silent.
+- The material explosions (`frag_grenade_metal_thick` ...) reach `.GREN_MED` through a call (set 0 command 0x45) to
+  `frag_grenade_stone` and on to `frag_grenade`; the audio's zAnim map lists direct sounds only, so the page falls back
+  to the base zAnim (`ExplosionInfo.baseAnim`). Following the calls in `@s2u/sound`'s `callbackSounds` would be the
+  audio workstream's fix.
+- `MP2_fx.bnk` also holds `.GREN_PIN_PULL1`, `.GREN_NEAR`, `.GREN_FAR`; no zAnim on the disc names them (the ELF may,
+  by a computed name): not played.
+
+### 9.4 The page's API
+
+- **Input**: the fire trigger (left button captured, the touch fire button, R1) holds and throws while a grenade is
+  up. R1's analog value is not read (a browser pad's R1 is on or off): the pressure is 1 while held.
+- **Events** (`GrenadeThrower.on`): `equip(equipped, item)` -- the rifle stowed while true (`Play.setRifleStowed`);
+  `throwStart({ anim, power, releaseIn })` -- the throw clip on the body (`./throwPose`, a pose layer the page adds
+  with `Play.addPoseLayer`);
   `throw(info)` -- audio `.THROW_OBJECT`; `bounce({ material, pos, speed, sound, anim })` -- audio
   `grenade_hit_<material>` when `sound`; `explode({ pos, radius, anim, material, damageToPlayer, distanceToPlayer })`
   -- audio `.GREN_MED`, and the look workstream's shake by distance (a marked `MERGE(look)` call in `main.ts`).
 - **Hook**: `grenade()` (the slot, phase, power, left, the grenades in the air, the last throw, bounces, explosions,
-  the M67's numbers), `throwGrenade(holdSeconds = 1, immediate = true)`, `equipGrenade(on?)`, `grenadeTrail(on)`
-  (a debug line along each flight), `resetGrenades()`.
-- **Asks**: the hand bone's world point from the posed skeleton (`rhand`, and the game's (2, 0, 0) in its frame) to
-  release from, as `CZKit_TickExplosives` does; the peek state, for the lean tosses; `FUN_005802b0`'s two factors, to
-  settle the release time; the particle command 0x27's layout, to replace `EXPLOSION_READING`; `SetModelOrientation`
-  (0x3cabe0) for the grenade's spin in flight (`SPIN_PLACEHOLDER` 14 rad/s); the decal placement.
+  the M67's numbers), `throwGrenade(holdSeconds = 1, immediate = true)` (`immediate` false: the clip plays and the
+  hand lets go at its release), `equipGrenade(on?)`, `selectItem(item)`, `throwClip()`, `grenadeTrail(on)` (a debug
+  line along each flight), `resetGrenades()`.
+- **Asks**: the peek state, for the lean tosses (the table and clips are in; the walk has no lean yet); the particle
+  command 0x27's layout, to replace `EXPLOSION_READING`; `SetModelOrientation` (0x3cabe0) for the grenade's spin in
+  flight (`SPIN_PLACEHOLDER` 14 rad/s); the decal placement; the inventory menu's own picture.
 
 ## 10. The placeholders and readings, by name
 
 | name | value | stands for |
 |---|---|---|
-| `HAND_PLACEHOLDER` | (3.5, 12.5, -4) | the hand bone before the release |
-| release point | `GetThrowAnim`'s table | the hand bone at release (`FUN_002869d0`) |
-| `releaseSeconds` | fraction x duration / playback | `FUN_005802b0`'s two factors |
+| `HAND_PLACEHOLDER` | (3.5, 12.5, -4) | the hold, only without a posed body |
+| release point | `GetThrowAnim`'s table | the posed hand, only without a posed body |
+| `L2_SLOT_PLACEHOLDER` | the M67 | the slot the player assigns to L2 (default the sidearm) |
+| R2 | one press a step | the inventory menu |
+| the throw clip's blend out | 0.4 s | the play after a throw |
+| the HE's burst | the frag's | `HE_grenade`'s parts |
 | `FLIGHT_TICK` | 1/60 | the projectile runs on the frame's dt |
 | `SPIN_PLACEHOLDER` | 14 rad/s | `SetModelOrientation` |
 | `EXPLOSION_READING` | §7.2 | the particle commands |

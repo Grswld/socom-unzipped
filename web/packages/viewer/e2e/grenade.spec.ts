@@ -66,15 +66,27 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
 
   expect(await page.evaluate(() => window.__viewer.equipGrenade(true))).toBe(true);
   await settle(page);
-  expect((await page.evaluate(() => window.__viewer.hud())).model.rounds).toBe(3);   // the HUD's box counts the M67s
+  // The HUD's box: the M67's HUDW icon and its count (`hud.setWeaponIcon`, `IconTextureName grenade_frag_icon.tif`).
+  await expect.poll(() => page.evaluate(() => window.__viewer.hud().model.weaponIcon)).toBe('grenade_frag_icon.tif');
+  expect((await page.evaluate(() => window.__viewer.hud().model)).rounds).toBe(3);
+  expect((await page.evaluate(() => window.__viewer.grenade())).inHand).toBe(true);   // on the right hand's held node
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-grenade-up.png') });
   await page.evaluate(() => window.__viewer.grenadeTrail(true));
-  const thrown = await page.evaluate(() => window.__viewer.throwGrenade(1));
+  // Held a second and let go: the throw's clip plays on the body and the hand opens at its 0.46 (0.71 s in).
+  expect(await page.evaluate(() => window.__viewer.throwGrenade(1, false))).toBeNull();
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_throwgrenade');
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().lastThrow !== null), { timeout: 5_000 }).toBe(true);
+  const thrown = (await page.evaluate(() => window.__viewer.grenade())).lastThrow;
   expect(thrown).not.toBeNull();
-  expect(thrown!.anim.clip).toBe('seal_throwgrenade');
+  expect(thrown!.clip).toBe('seal_throwgrenade');
   expect(thrown!.power).toBeCloseTo(1 - 0.95 ** 60, 6);
-  expect(thrown!.launch.maxSpeed).toBeCloseTo(238.66, 1);
-  expect(thrown!.launch.speed).toBeCloseTo(238.66, 1);
+  // It leaves the posed right hand (CZKit_TickExplosives' (2, 0, 0) in `rhand`), ComputeMaxVel's speed for that height.
+  expect(thrown!.fromHand).toBe(true);
+  const feet = (await page.evaluate(() => window.__viewer.feet()))!;
+  const h = thrown!.from[1] - feet[1];
+  expect(h).toBeGreaterThan(12);
+  expect(thrown!.maxSpeed).toBeCloseTo(600 / (0.707107 * Math.sqrt(((h + 600) * 2) / 98)), 0);
+  expect(thrown!.speed).toBeCloseTo(thrown!.maxSpeed, 3);
   const after = await page.evaluate(() => window.__viewer.grenade());
   expect(after.left).toBe(2);
   expect(after.live.length).toBe(1);
@@ -82,7 +94,7 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   // The arc from beside it, above the warehouse roofs: the debug trail drawn over the world.
   await page.waitForTimeout(2300);
   const from = thrown!.from, v = thrown!.velocity;
-  const h = Math.hypot(v[0], v[2]), dx = v[0] / h, dz = v[2] / h;
+  const hv = Math.hypot(v[0], v[2]), dx = v[0] / hv, dz = v[2] / hv;
   const mid = [from[0] + dx * 230, from[1] + 40, from[2] + dz * 230];
   await lookAt([mid[0]! - dz * 360, mid[1]! + 200, mid[2]! + dx * 360], mid);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-full-throw-arc.png') });
@@ -113,11 +125,35 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   await settle(page);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-explosion-smoke.png') });
 
+  // The HE (key 5): the same throw, but it goes off where it first lands (HandleImpact) -- here the container 15 east.
+  await stand(90, REST_PITCH);
+  expect(await page.evaluate(() => window.__viewer.selectItem('HE'))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__viewer.hud().model.weaponIcon)).toBe('grenade_he_icon.tif');
+  const he = await page.evaluate(() => window.__viewer.throwGrenade(1));
+  expect(he!.item).toBe('HE');
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().explosions.length), { timeout: 3_000 }).toBe(3);
+  const heBoom = (await page.evaluate(() => window.__viewer.grenade())).explosions[2]!;
+  expect(heBoom.radius).toBe(100);
+  expect(heBoom.baseAnim).toBe('HE_grenade');
+  expect((await page.evaluate(() => window.__viewer.grenade())).live.at(-1)!.age).toBeLessThan(1);   // well before its fuse
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 3_000 }).toBe('ready');   // the clip's tail
+  expect(await page.evaluate(() => window.__viewer.selectItem('M67'))).toBe(true);
+
   // A light press aimed low: the underhand toss.
-  await stand(210, -20);
-  const toss = await page.evaluate(() => window.__viewer.throwGrenade(0.1));
-  expect(toss!.anim.clip).toBe('seal_tossgrenade');
-  expect(toss!.anim.toss).toBe(true);
-  expect((await page.evaluate(() => window.__viewer.grenade())).left).toBe(0);
+  // Its clip on the body, the camera pitched down over the SEAL to see it.
+  await stand(210, -35);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__viewer.throwGrenade(0.1, false))).toBeNull();
+  await page.waitForTimeout(450);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-toss-clip.png') });
+  expect(await page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_tossgrenade');
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().lastThrow?.clip), { timeout: 5_000 }).toBe('seal_tossgrenade');
+  const toss = (await page.evaluate(() => window.__viewer.grenade())).lastThrow!;
+  expect(toss.toss).toBe(true);
+  expect(toss.fromHand).toBe(true);
+  // The last M67 gone: after the clip's tail the rifle is back in the hand.
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().equipped), { timeout: 5_000 }).toBe(false);
+  expect((await page.evaluate(() => window.__viewer.grenade())).leftByItem).toEqual({ M67: 0, HE: 2 });
   expect(problems).toEqual([]);
 });

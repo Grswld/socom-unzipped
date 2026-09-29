@@ -1,13 +1,13 @@
 import type { Group, Object3D, PerspectiveCamera } from 'three';
 import { IDENTITY, multiply, Skeleton, transformPoint, type MotionClip, type Pnt3D, type WeaponPoint } from '@s2u/scene';
-import { Animator, type AnimEvent, type AnimStats, type MoverSnapshot } from './animator';
+import { Animator, type AnimEvent, type AnimStats, type MoverSnapshot, type PoseLayer } from './animator';
 import { EYE_MODEL, type LoadedBody } from './body';
 import type { BodyView } from './bodyView';
 import type { Pose } from './camera';
 import type { FireEvent } from './fire';
 import { pressedSince, releasedSince, type Input } from './gamepad';
 import { HELD_ITEM, heldSkeleton, muzzleOf, muzzlePoint } from './heldItem';
-import type { MotionEntry } from './motionTable';
+import type { MotionEntry, MotionTable } from './motionTable';
 import type { MoverActionName, Stance, WalkMode } from './walk';
 import { STILL_CLIPS, WeaponPose, type WeaponPoseStats } from './weaponPose';
 import { WeaponRaise, type RaiseStats } from './weaponRaise';
@@ -188,6 +188,8 @@ export class Play {
   private readonly listeners = new Set<(e: PlayEvent) => void>();
   /** The rifle put away while another item is in the hand (the grenade: `./grenade`'s `equip`). */
   private stowed = false;
+  /** GRENADES: pose layers laid over the clips from outside (the throw, `./throwPose`), kept across a new body or pack. */
+  private readonly extraLayers: PoseLayer[] = [];
   private unhook: (() => void) | null = null;
   /** The last action seen, by its serial: a take-off and a landing are told once. */
   private seenAction: { name: MoverActionName; serial: number } | null = null;
@@ -306,6 +308,36 @@ export class Play {
     this.stowed = on;
   }
 
+  /** GRENADES: a pose layer over the clips after the weapon's (the throw's clip, `./throwPose`); kept on a rebuild. */
+  addPoseLayer(layer: PoseLayer): void {
+    this.extraLayers.push(layer);
+    this.animator?.addPoseLayer(layer);
+  }
+
+  /** GRENADES: the source's clips by name and their `motion.rdr` table, or null before the pack is in. */
+  motionSource(): { clips: ReadonlyMap<string, MotionClip>; table: MotionTable | null } | null {
+    if (!this.clips) return null;
+    return { clips: new Map(this.clips.clips.map((c) => [c.name, c])), table: this.clips.table ? new Map(this.clips.table) : null };
+  }
+
+  /** GRENADES: the held item's node under `rhand` (`HELD_ITEM`), to hang another item on while the rifle is stowed. */
+  heldNode(): Group | null {
+    return this.hand;
+  }
+
+  /**
+   * GRENADES: a point in a posed part's own frame (`rhand`, `lhand`, the held item's node), in the world -- null with no
+   * body, no clips or before the first play. `CZKit_TickExplosives` releases a grenade from the hand's (2, 0, 0).
+   */
+  partPoint(name: string, p: Pnt3D): [number, number, number] | null {
+    const last = this.last, skeleton = this.skeleton;
+    if (!last || !skeleton || !this.animator) return null;
+    const i = skeleton.indexOf(name);
+    if (i < 0) return null;
+    const at = transformPoint(skeleton.world[i]!, p[0], p[1], p[2]);
+    return actorToWorld(last.feet, last.yaw, [at[0], at[1], at[2]]);
+  }
+
   onEvent(listener: (e: PlayEvent) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -387,6 +419,7 @@ export class Play {
       this.animator.addPoseLayer(this.weaponPose.fireLayer);
       this.animator.addPoseLayer(this.weaponPose.reloadLayer);
     }
+    if (this.animator) for (const layer of this.extraLayers) this.animator.addPoseLayer(layer);
     if (this.animator) this.unhook = this.animator.onEvent((e) => this.relay(e));
   }
 }

@@ -4,7 +4,7 @@ import { fixture } from '../../archive/test/fixtures';
 import {
   actorToWorldPoint, BOUNCE_LIFT, decalEntry, GRENADE_BLAST, buildGrid, CROUCH_MOVING_SPEED_SQ, explosionDamage, FIRST_BOUNCE_DAMPING, gridCast,
   heldPower, impactRange, isToss, launchGrenade, M67, materialTable, maxThrowDistance, maxThrowSpeed, parseMotionZar,
-  releaseSeconds, REST_SPEED, SOILS, soilsTable, stepGrenade, stepThrowPower, surfaceMaterial, THROW_ANIMS, THROW_PARAMS,
+  releaseSeconds, throwClipSeconds, HE, REST_SPEED, SOILS, soilsTable, stepGrenade, stepThrowPower, surfaceMaterial, THROW_ANIMS, THROW_PARAMS,
   throwableRecord, throwAnim, throwElevation, throwVelocity,
   type CollisionOwner, type Grenade, type GrenadeEvent, type GridParams, type HullCast, type V3, type WorldPoly,
 } from '../src/index';
@@ -77,8 +77,10 @@ describe('the throw\'s clip (GetThrowAnim 0x57fce0)', () => {
     expect(maxThrowDistance('prone')).toBe(300);
   });
 
-  it('releases at the fraction of the clip at its playback: the standing throw 0.46 x 28/30 s / 1.6', () => {
-    expect(releaseSeconds(THROW_ANIMS.standThrow)).toBeCloseTo((0.46 * 28) / 30 / 1.6, 12);
+  it('releases when the one-shot phase reaches the fraction: the standing throw 0.46 x 1.6 x 27/28 s in (FUN_005802b0)', () => {
+    expect(releaseSeconds(THROW_ANIMS.standThrow)).toBeCloseTo(0.46 * 1.6 * (27 / 28), 12);
+    expect(throwClipSeconds(THROW_ANIMS.standThrow)).toBeCloseTo(1.6 * (27 / 28) ** 2, 12);
+    expect(THROW_ANIMS.crouchThrow.frames).toBe(19);
   });
 });
 
@@ -222,6 +224,19 @@ describe('the flight against a hull (PreTick 0x3ca5a0, HandleBounce 0x3c8f50, Ha
     expect(materialTable().length).toBe(46);
   });
 
+  it('HE goes off where it first lands (HandleImpact), and passes over water', () => {
+    const cast = hull([floorAt(0, byte('WATER')), floorAt(-50)]);
+    const g = launchGrenade([0, 10, 0], [40, -100, 0], HE);
+    const events = fly(g, cast, 1);
+    expect(events.find((x) => x.e.kind === 'bounce')).toBeUndefined();
+    const boom = events.find((x) => x.e.kind === 'explode')!;
+    expect(boom.t).toBeLessThan(1);                      // slowed to a quarter by the water, then 50 down
+    expect((boom.e as { point: V3 }).point[1]).toBeCloseTo(-50, 6);
+    expect(events.some((x) => x.e.kind === 'pass')).toBe(true);
+    expect(HE.explosionRadius).toBe(100);
+    expect(explosionDamage(50, HE)).toBe(11);
+  });
+
   it('the explosion: Explosion_Damage to half the radius, to nothing at Explosion_Radius (150 units)', () => {
     expect(M67.explosionRadius).toBe(150);
     expect(explosionDamage(0)).toBe(10);
@@ -242,6 +257,7 @@ describe('the transcribed tables against the game\'s files', () => {
 
   it.skipIf(!zweapon)('M67 is zweapon.rdr\'s M67 and its M67 Ammo', () => {
     expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'M67')).toEqual(M67);
+    expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'HE')).toEqual(HE);
   });
 
   it.skipIf(!readerc)('SOILS is materials.rdr\'s, and the clips\' playback is motion.rdr\'s', () => {

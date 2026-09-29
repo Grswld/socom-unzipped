@@ -109,28 +109,29 @@ describe('padInput: the sticks', () => {
 
 describe('padInput: the buttons', () => {
   const EXPECT: [keyof typeof PAD_BUTTON, keyof Input][] = [
-    ['Square', 'jump'], ['L3', 'fireMode'], ['Triangle', 'stance'], ['R1', 'fire'], ['L1', 'aim'],
+    ['Square', 'jump'], ['L3', 'fireMode'], ['Triangle', 'stance'], ['R1', 'fire'], ['L1', 'swap1'],
     ['Cross', 'action'], ['Left', 'leanLeft'], ['Right', 'leanRight'], ['Start', 'mode'], ['R3', 'boost'], ['Up', 'zoom'], ['Down', 'zoomOut'],
+    ['L2', 'swap2'], ['R2', 'inventory'],
   ];
   it.each(EXPECT)('%s alone is %s alone', (button, action) => {
     expect(padInput(pad({ press: [PAD_BUTTON[button]] }))).toEqual({ ...REST, [action]: true });
   });
 
-  it('leaves Circle, L2, R2, Select and the home button free (Cross is the action, not the jump)', () => {
-    for (const free of [1, 6, 7, 8, 16]) expect(padInput(pad({ press: [free] })), `button ${free}`).toEqual(REST);
+  it('leaves Circle, Select and the home button free (Cross is the action, not the jump)', () => {
+    for (const free of [1, 8, 16]) expect(padInput(pad({ press: [free] })), `button ${free}`).toEqual(REST);
   });
 
   it('counts a button by its value when the browser does not say pressed: past half is down', () => {
-    expect(padInput(pad({ values: { 14: 0.8 } }))).toEqual({ ...REST, leanLeft: true });
-    expect(padInput(pad({ values: { 15: 0.3 } }))).toEqual(REST);
+    expect(padInput(pad({ values: { 6: 0.8 } }))).toEqual({ ...REST, swap2: true });
+    expect(padInput(pad({ values: { 7: 0.3 } }))).toEqual(REST);
   });
 
   it('holds every button at once, and a stick with them', () => {
     const all = padInput(pad({ axes: [0, -1, 1, 0], press: EXPECT.map(([b]) => PAD_BUTTON[b]) }));
     expect(all).toEqual({
       moveX: 0, moveY: 1, lookX: 1, lookY: 0,
-      jump: true, crouch: false, stance: true, boost: true, fire: true, aim: true, zoom: true, zoomOut: true, fireMode: true,
-      action: true, leanLeft: true, leanRight: true, mode: true,
+      jump: true, crouch: false, stance: true, boost: true, fire: true, aim: false, zoom: true, zoomOut: true, fireMode: true,
+      action: true, leanLeft: true, leanRight: true, mode: true, swap1: true, swap2: true, inventory: true,
     });
   });
 
@@ -147,16 +148,17 @@ describe('PAD_LAYOUT: the owner\'s layout (2026-09-28), each row stated, documen
   const assumed = PAD_LAYOUT.filter((r) => r.documented === 'assumed');
   const row = (control: string): PadRow => PAD_LAYOUT.find((r) => r.control === control)!;
 
-  it('has fourteen rows: six the owner stated, seven documented (zoom out and fire mode by research 84, the action and the peek by 86), the fly boost assumed', () => {
-    expect(PAD_LAYOUT).toHaveLength(14);
-    expect(owner.map((r) => r.control)).toEqual(['Square', 'R1', 'Triangle', 'L1', 'Up', 'Start']);
-    expect(documented.map((r) => r.control)).toEqual(['L-stick', 'R-stick', 'Down', 'L3', 'Cross', 'Left', 'Right']);
+  it('has sixteen rows: five the owner stated, ten documented (the slots by controller.rdr, zoom out and fire mode by research 84, the action and the peek by 86), the fly boost assumed', () => {
+    expect(PAD_LAYOUT).toHaveLength(16);
+    expect(owner.map((r) => r.control)).toEqual(['Square', 'R1', 'Triangle', 'Up', 'Start']);
+    expect(documented.map((r) => r.control)).toEqual(['L-stick', 'R-stick', 'L1', 'Down', 'L3', 'Cross', 'Left', 'Right', 'L2', 'R2']);
     expect(assumed.map((r) => r.control)).toEqual(['R3']);
   });
 
-  it('is the owner\'s: Square jumps, R1 fires, Triangle is the stance, L1 aims, Start switches mode, d-pad Up zooms; Cross the action, the d-pad sides the peek', () => {
-    expect([row('Square').action, row('R1').action, row('Triangle').action, row('L1').action, row('Start').action, row('Up').action])
-      .toEqual(['jump', 'fire', 'stance', 'aim', 'mode', 'zoom']);
+  it('is the owner\'s: Square jumps, R1 fires, Triangle is the stance, Start switches mode, d-pad Up zooms; L1, L2, R2 the game\'s slots; Cross the action, the d-pad sides the peek', () => {
+    expect([row('Square').action, row('R1').action, row('Triangle').action, row('Start').action, row('Up').action])
+      .toEqual(['jump', 'fire', 'stance', 'mode', 'zoom']);
+    expect([row('L1').action, row('L2').action, row('R2').action]).toEqual(['swap1', 'swap2', 'inventory']);
     expect([row('Cross').action, row('Left').action, row('Right').action]).toEqual(['action', 'leanLeft', 'leanRight']);
     expect(row('Cross').documented).toMatch(/86-traversal\.md §3\.4/);
     expect(OWNER).toBe('owner, 2026-09-28');
@@ -180,8 +182,9 @@ describe('PAD_LAYOUT: the owner\'s layout (2026-09-28), each row stated, documen
   it('gives every action a control, and each control one row', () => {
     const actions = new Set(PAD_LAYOUT.map((r) => r.action));
     // `crouch` has no pad button since L3 went back to the game's fire mode (research 84): the stance is Triangle's tap,
-    // the lane stays the touch pad's down button.
-    for (const a of ['move', 'look', ...PAD_FLAGS.filter((f) => f !== 'crouch')]) expect(actions.has(a as PadRow['action']), a).toBe(true);
+    // the lane stays the touch pad's down button. `aim` has none since L1 went back to the game's SwapWeapon1: SOCOM II
+    // has no held aim, the first-person view is the zoom's first step (research 84).
+    for (const a of ['move', 'look', ...PAD_FLAGS.filter((f) => f !== 'crouch' && f !== 'aim')]) expect(actions.has(a as PadRow['action']), a).toBe(true);
     expect(new Set(PAD_LAYOUT.map((r) => r.control)).size).toBe(PAD_LAYOUT.length);
   });
 
@@ -433,10 +436,10 @@ describe('the page: the toast and the layout table', () => {
       expect(table().find((r) => r[0] === 'Square')![2]).toMatch(/^owner, 2026-09-28/);
     });
 
-    it('lists only the walking controls in walk mode: fire, aim, the stance, the action and the peek, no boost', () => {
+    it('lists only the walking controls in walk mode: fire, the stance, the zoom, the action, the peek and the slots, no boost', () => {
       ui.showPadLayout(PAD_LAYOUT);
       ui.setWalk(true);
-      expect(table().map((r) => r[0])).toEqual(['L-stick', 'R-stick', 'Square', 'R1', 'Triangle', 'L1', 'Up', 'Down', 'Start', 'L3', 'Cross', 'Left', 'Right']);
+      expect(table().map((r) => r[0])).toEqual(['L-stick', 'R-stick', 'Square', 'R1', 'Triangle', 'L1', 'Up', 'Down', 'Start', 'L3', 'Cross', 'Left', 'Right', 'L2', 'R2']);
       expect(table().find((r) => r[0] === 'L3')![1]).toBe('fire mode');
       expect(table().find((r) => r[0] === 'Cross')![1]).toBe('action (climb, ladder slide)');
       expect(document.getElementById('pad-mode')!.textContent).toBe('on foot');
