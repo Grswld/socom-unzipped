@@ -12,6 +12,8 @@
  * velocity model the keys drive (`./camera`), and the ramp and the glide come out of that for free.
  */
 import type { FlyCamera } from './camera';
+import type { PadFlag } from './gamepad';
+import { capturePointer, releasePointer } from './pointer';
 
 /**
  * What the stick and the buttons write: the camera's three touch lanes. The page may hand over its own lane instead of
@@ -127,7 +129,7 @@ export function attachTouchControls(
     base.style.top = `${e.clientY}px`;
     base.hidden = false;
     knob.style.transform = 'translate(-50%, -50%)';
-    zone.setPointerCapture(e.pointerId);
+    capturePointer(zone, e.pointerId);
     e.preventDefault();
   });
 
@@ -155,7 +157,7 @@ export function attachTouchControls(
     camera.setStick(0, 0);
     leaveRim();
     base.hidden = true;
-    if (zone.hasPointerCapture(e.pointerId)) zone.releasePointerCapture(e.pointerId);
+    releasePointer(zone, e.pointerId);
   };
   zone.addEventListener('pointerup', release);
   zone.addEventListener('pointercancel', release);
@@ -173,7 +175,7 @@ export function attachTouchControls(
     fire.addEventListener('pointerdown', (e) => {
       firing = true;
       onFire(true);
-      fire.setPointerCapture?.(e.pointerId);
+      capturePointer(fire, e.pointerId);
       e.preventDefault();
     });
     for (const event of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
@@ -184,7 +186,7 @@ export function attachTouchControls(
   for (const [button, direction] of [[up, 1], [down, -1]] as [HTMLElement, number][]) {
     button.addEventListener('pointerdown', (e) => {
       camera.setLift(direction);
-      button.setPointerCapture(e.pointerId);
+      capturePointer(button, e.pointerId);
       e.preventDefault();
     });
     // Up, cancelled, or the finger slid off the button: all of them mean stop.
@@ -192,4 +194,50 @@ export function attachTouchControls(
       button.addEventListener(event, () => camera.setLift(0));
     }
   }
+}
+
+/**
+ * Walk mode's touch layout (round 3; `index.html`, `#touch-walk`): the buttons that stand for the PS2 pad's, each carrying
+ * the lane it holds in `data-lane` -- `stance`, `jump`, `action`, `fire`, `zoom`, `zoomOut`, `fireMode`, `swap1`, `swap2`,
+ * `inventory`, `leanLeft`, `leanRight`: the `PadFlag`s `./gamepad` names -- and one, reload, that has no lane (it is the
+ * `R` key's) and carries `data-do="reload"`. A press holds its lane down and a release lets it go (`hold`), so the page
+ * merges it with the pad's own lanes and everything downstream (the stance's tap and hold, the zoom's steps, the peek held)
+ * behaves as it does for a pad. Each button owns its pointer, so the thumb can be on the stick, the fire button and the jump at
+ * once. The layout is the play's: with the play off the element is not on the page and nothing is wired.
+ */
+export function attachWalkTouch(hold: (lane: PadFlag, down: boolean) => void, onReload: () => void): number {
+  const root = document.getElementById('touch-walk');
+  if (!root) return 0;
+  // A long press on a button must not open the browser's menu, and a drag from it must not scroll or select.
+  root.addEventListener('contextmenu', (e) => e.preventDefault());
+  let wired = 0;
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>('button[data-lane], button[data-do]'))) {
+    const lane = button.dataset['lane'] as PadFlag | undefined;
+    const reload = button.dataset['do'] === 'reload';
+    if (!lane && !reload) continue;
+    wired++;
+    let down: number | null = null;
+    /** Whether the browser holds the pointer for this button: if not, sliding off it is the release. */
+    let held = true;
+    const press = (e: PointerEvent): void => {
+      e.preventDefault();
+      if (down !== null) return;
+      down = e.pointerId;
+      held = capturePointer(button, e.pointerId);
+      button.classList.add('is-down');
+      try { globalThis.navigator?.vibrate?.(8); } catch { /* not offered */ }
+      if (lane) hold(lane, true); else onReload();
+    };
+    const lift = (e: PointerEvent): void => {
+      if (down === null || (e.pointerId !== undefined && e.pointerId !== down)) return;
+      down = null;
+      releasePointer(button, e.pointerId);
+      button.classList.remove('is-down');
+      if (lane) hold(lane, false);
+    };
+    button.addEventListener('pointerdown', press);
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) button.addEventListener(type, lift);
+    button.addEventListener('pointerleave', (e) => { if (!held) lift(e); });
+  }
+  return wired;
 }
