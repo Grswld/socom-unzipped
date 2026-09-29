@@ -115,6 +115,8 @@ export interface LoadedMap {
    * `reflect` names one draws with. Only those whose texture decoded; empty on most maps.
    */
   envMaterials?: EnvMaterial[];
+  /** The world root's `ShadowVector` (every map has one): the direction the characters' shadow maps look down. */
+  shadowVector?: [number, number, number];
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
    * GS state the record's bind packet sets -- blend equation, alpha test, filtering, wrap. See
@@ -449,6 +451,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     textures,
     textureMips,
     envMaterials: usedEnv.filter((e) => e.texture in textures),
+    shadowVector: shadowVectorOf(bytes, toc, stem),
     textureFlags,
     detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
@@ -918,6 +921,15 @@ function lods(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, Lod
   } catch (e) {
     notes.add(`lod table: ${say(e)}`);
     return new Map();
+  }
+}
+
+/** The world root's `ShadowVector`, or undefined when the root will not read (the shadow takes the engine's default). */
+function shadowVectorOf(bytes: Uint8Array, toc: ZdbEntry[], stem: string): [number, number, number] | undefined {
+  try {
+    return parseWorldRoot(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`))).shadowVector;
+  } catch {
+    return undefined;
   }
 }
 

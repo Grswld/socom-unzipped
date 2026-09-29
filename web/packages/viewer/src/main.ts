@@ -28,6 +28,7 @@ import { ScoreboardKeys } from './scoreboardKeys';
 import { DEFAULT_PLAYER } from './scoreboard';
 import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
+import { CharacterShadow } from './charShadow';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
@@ -315,6 +316,8 @@ let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
 /** W2.1: the player's body, rebuilt with every map; shown by the panel's `body` switch (`./bodyView`). */
 let body: BodyView | null = null;
+/** The characters' shadow (`./charShadow`): the SEAL's render map, projected on the world. */
+const charShadow = new CharacterShadow();
 let backend: Backend = 'webgl2';
 /** The maps the index listed, so a path can be turned back into its archive for the URL. */
 let mapList: MapInfo[] = [];
@@ -899,6 +902,7 @@ async function boot(): Promise<void> {
     grenade.update(dt);
     whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    if (body?.group.visible) charShadow.update(created.renderer, scene, body.group); else charShadow.clear();
     render(scene, fly.camera);
     const aim = walk.aim();
     if (aim) {
@@ -1054,6 +1058,7 @@ function show(map: LoadedMap): void {
   // W2.1: the player's body, in its bind pose at slot A (`./body`, `./bodyView`); the switch below shows it.
   if (body) { scene.remove(body.group); body.dispose(); }
   body = map.body ? buildBody(map.body, map, lighting) : null;
+  charShadow.setVector(map.shadowVector ?? null);
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
