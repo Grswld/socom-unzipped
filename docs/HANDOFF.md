@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-29 11:20Z, LATEST) -- Sprint 17, `sprint-17` at 8429cab7: batch 4 PROVED by the chain `s17_b4d` (last green 881c5a18; FRAME 16.90/17.86, SYNCV 23.4; two quiet gates agree). #114 is the main thread's replay stall, not attempt 3 (KNOWN §2); `PS2X_GS_DOUBLE_SWIZZLE` stays 1 until the pick. The secrets CI red from a cloud web branch's dot-env file name: allow lines at 8429cab7. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
-  Then: the 3x3 title runs' verdict (#114), the logoff run, the stats walk for attempt 2, the bench recording, the profile, A1, #110's quiet window, the PCSX2 boots (#112).
+- **Where the loop is now (2026-09-29 12:35Z, LATEST) -- Sprint 17, `sprint-17` at 9b1978db: batch 4 PROVED (`s17_b4d`, FRAME 16.90/17.86, SYNCV 23.4); Q2 Step 3 confirmed; #114 is the main thread's replay stall (KNOWN §2), attempt 3 exonerated; attempt 2 PICKED for instruments; A1's lobby stage merged. The owner's window to ~17:30Z (R335); the web session's browser gap 13:10-14:05Z. One controller in the main tree (owner).**
+  Running under the lock: the bench recording, the GL profile, attempt 3's one-holding pair. Then (14:05Z): A1's lobby recording (`logs/s17_controller/a1_lobby_ours.sh`), #110's quiet window, the PCSX2 boots (#112), the day's report.
 - **Next free ruling number: R336** (R322-R335 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
