@@ -1,31 +1,30 @@
 /**
- * Moving on a touch screen.
+ * Moving and looking on a touch screen.
  *
- * A one-finger drag already looks around, which is the half of it the canvas gives for free; what a
- * phone has no way to do is *move*. So the left half of the screen becomes a virtual stick -- a circle
- * that appears wherever the thumb lands and follows it -- and two buttons in the bottom-right corner
- * do what Q and E do, with a third beside them for the walk's stance (C) and a fourth, the trigger (W2.5). The
- * right half is left alone,
- * so looking still works while the stick is held.
- *
- * Deliberately small. No sprint, no tuning, no gestures: the stick feeds an axis pair into the same
- * velocity model the keys drive (`./camera`), and the ramp and the glide come out of that for free.
+ * Two floating sticks (owner, 2026-09-29): a finger landing on the left half is the move stick, one on the right half
+ * (while walking; flying keeps the canvas's one-finger drag) the look stick. Each is born where its thumb lands, its knob
+ * follows the thumb clamped to the base, and it is let go on the lift; each half tracks its own finger, so both are
+ * held at once. The sticks are a pad: their knobs are the standard layout's axes 0/1 and 2/3 (`sticksPad`), read by
+ * `./gamepad`'s `padInput` -- the same dead zone, rescale and everything downstream a pad's sticks get. The buttons
+ * (the lift pair, the stance, the fire, and walk mode's layout) are elements above the zones: a press on one never
+ * reaches a zone, and a zone holds its finger, so a stick never presses a button.
  */
 import type { FlyCamera } from './camera';
-import type { PadFlag } from './gamepad';
+import { padInput, type GamepadLike, type Input, type PadFlag } from './gamepad';
 import { capturePointer, releasePointer } from './pointer';
 
 /**
- * What the stick and the buttons write: the camera's three touch lanes. The page may hand over its own lane instead of
- * the camera, to merge the stick with a pad's before the camera sees either (`./gamepad`, `mergeInput`; W2.7).
+ * What the sticks and the buttons write: the camera's touch lanes, and the look's. The page hands over its own lane
+ * instead of the camera, to merge the sticks with a pad's before the camera sees either (`./gamepad`, `mergeInput`).
  */
-export type TouchTarget = Pick<FlyCamera, 'setStick' | 'setLift' | 'setStickBoost'>;
+export type TouchTarget = Pick<FlyCamera, 'setStick' | 'setLift' | 'setStickBoost'> & { setLook?(x: number, y: number): void };
 
 /** How far from the centre counts as nothing, as a fraction of the base's radius. */
 export const DEAD_ZONE = 0.15;
 
-/** The stick's travel in CSS pixels: past this it is fully pushed. */
-const RADIUS = 52;
+/** The stick's travel in CSS pixels: past this it is fully pushed (the base is 116px across, its knob 46px). */
+export const STICK_RADIUS = 52;
+const RADIUS = STICK_RADIUS;
 /** How far a push counts as the rim, and how long it has to stay there to mean a boost. */
 export const RIM = 0.97;
 export const RIM_HOLD_MS = 400;
@@ -87,33 +86,123 @@ export function wantsTouchControls(): boolean {
   }
 }
 
+/**
+ * One floating stick: born where its finger lands (`down`), its knob following the finger clamped to `radius`
+ * (`move`), let go on the lift (`up`). It answers only the finger that started it. What it reports is a pad stick's:
+ * `axes` is the knob over the radius, in the unit disc, x right and y growing *down* as the Gamepad API gives them, with
+ * no dead zone -- the pad pipeline applies that (`stickInput`).
+ */
+export class FloatingStick {
+  private id: number | null = null;
+  private ox = 0;
+  private oy = 0;
+  private dx = 0;
+  private dy = 0;
+
+  constructor(readonly radius = STICK_RADIUS) {}
+
+  get held(): boolean {
+    return this.id !== null;
+  }
+
+  /** A finger lands: the stick is born under it, unless another finger holds it already. */
+  down(id: number, x: number, y: number): boolean {
+    if (this.id !== null) return false;
+    this.id = id;
+    this.ox = x;
+    this.oy = y;
+    this.dx = 0;
+    this.dy = 0;
+    return true;
+  }
+
+  /** Its finger moved; any other finger's move is not this stick's. */
+  move(id: number, x: number, y: number): boolean {
+    if (id !== this.id) return false;
+    this.dx = x - this.ox;
+    this.dy = y - this.oy;
+    return true;
+  }
+
+  /** Its finger lifted (or was cancelled): centred and free for the next. */
+  up(id: number): boolean {
+    if (id !== this.id) return false;
+    this.release();
+    return true;
+  }
+
+  /** Let go whatever holds it. */
+  release(): void {
+    this.id = null;
+    this.dx = 0;
+    this.dy = 0;
+  }
+
+  origin(): { x: number; y: number } {
+    return { x: this.ox, y: this.oy };
+  }
+
+  /** The knob's offset from the base's centre, in pixels, clamped to the rim. */
+  knob(): { x: number; y: number } {
+    const k = knobOffset(this.dx, this.dy, this.radius);
+    return { x: k.x + 0, y: k.y + 0 };
+  }
+
+  /** How far it is pushed, 0 to 1. */
+  pushed(): number {
+    return Math.min(Math.hypot(this.dx, this.dy) / this.radius, 1);
+  }
+
+  /** The stick as a pad's axis pair: x right, y down, in the unit disc, unshaped. */
+  axes(): [number, number] {
+    const k = this.knob();
+    return [k.x / this.radius + 0, k.y / this.radius + 0];
+  }
+}
+
+/** The two sticks as a pad with no buttons: the move stick on the standard layout's axes 0/1, the look stick on 2/3. */
+export function sticksPad(move: FloatingStick, look: FloatingStick | null): GamepadLike {
+  return { axes: [...move.axes(), ...(look ? look.axes() : [0, 0])], buttons: [] };
+}
+
+/** The two sticks read through the pad's own pipeline (`padInput`): the pad's dead zone, rescale and y flip. */
+export function stickInput(move: FloatingStick, look: FloatingStick | null): Input {
+  return padInput(sticksPad(move, look));
+}
+
 /** What the touch C button reports: pressed, let go, or cancelled (the finger taken by the system: no tap). */
 export type StanceTouch = 'down' | 'up' | 'cancel';
 
+/** What `attachTouchControls` hands back: a way to let both sticks go (a pad connecting hides the touch layer). */
+export interface TouchControls { release(): void }
+
 /**
- * Wires the stick and the two lift buttons to a camera, or to a lane that stands in for one; the stance button beside
- * them to `onStance` (the walk's `C`, W2.2b: its press, release and cancel), and the fire button to `onFire` -- pressed true, let go false (W2.5,
- * `./fire`). Returns nothing: there is nothing to take back.
+ * Wires the two sticks and the lift buttons to a camera, or to a lane that stands in for one; the stance button beside
+ * them to `onStance` (the walk's `C`: its press, release and cancel), and the fire button to `onFire` -- pressed true,
+ * let go false. The move stick is `#stick-zone` (with `#stick-base`/`#stick-knob`), the look stick `#aim-zone` (with
+ * `#aim-base`/`#aim-knob`), which the stylesheet shows only while walking.
  */
 export function attachTouchControls(
   camera: TouchTarget, onStance: (event: StanceTouch) => void = () => undefined, onFire: (down: boolean) => void = () => undefined,
-): void {
-  const zone = document.getElementById('stick-zone');
-  const base = document.getElementById('stick-base');
-  const knob = document.getElementById('stick-knob');
+): TouchControls {
+  const none: TouchControls = { release: () => undefined };
   const up = document.getElementById('touch-up');
   const down = document.getElementById('touch-down');
-  if (!zone || !base || !knob || !up || !down) return;
+  const moveStick = new FloatingStick();
+  const lookStick = new FloatingStick();
+  /** Both sticks, through the pad's pipeline, into the lanes. */
+  const feed = (): void => {
+    const v = stickInput(moveStick, lookStick);
+    camera.setStick(v.moveX, v.moveY);
+    camera.setLook?.(v.lookX, v.lookY);
+  };
 
   const show = (): void => document.body.classList.add('touch');
   if (wantsTouchControls()) show();
   // A hybrid device only gives itself away by being touched. Once, then the listener is done.
   globalThis.addEventListener('touchstart', show, { once: true, passive: true });
 
-  let held: number | null = null;
-  let originX = 0;
-  let originY = 0;
-  /** The timer that turns a held rim into a boost, or null while the stick is short of it. */
+  /** The timer that turns a held rim into a boost (the fly camera's), or null while the move stick is short of it. */
   let rimTimer: ReturnType<typeof setTimeout> | null = null;
   const leaveRim = (): void => {
     if (rimTimer !== null) clearTimeout(rimTimer);
@@ -121,49 +210,59 @@ export function attachTouchControls(
     camera.setStickBoost(false);
   };
 
-  zone.addEventListener('pointerdown', (e) => {
-    if (held !== null) return;
-    held = e.pointerId;
-    originX = e.clientX;
-    originY = e.clientY;
-    // The base is placed where the thumb landed rather than sitting in a fixed corner: a thumb reaches
-    // where it reaches, and a stick that starts under it never has to be found first.
-    base.style.left = `${e.clientX}px`;
-    base.style.top = `${e.clientY}px`;
-    base.hidden = false;
-    knob.style.transform = 'translate(-50%, -50%)';
-    capturePointer(zone, e.pointerId);
-    e.preventDefault();
-  });
+  const releases: Array<() => void> = [];
+  const wire = (zoneId: string, baseId: string, knobId: string, stick: FloatingStick, onMove: () => void, onLift: () => void): void => {
+    const zone = document.getElementById(zoneId);
+    const base = document.getElementById(baseId);
+    const knob = document.getElementById(knobId);
+    if (!zone || !base || !knob) return;
+    let captured: number | null = null;
+    const lift = (): void => {
+      if (captured !== null) releasePointer(zone, captured);
+      captured = null;
+      stick.release();
+      base.hidden = true;
+      knob.style.transform = 'translate(-50%, -50%)';
+      onLift();
+      feed();
+    };
+    releases.push(lift);
+    zone.addEventListener('pointerdown', (e) => {
+      if (e.target !== zone || !stick.down(e.pointerId, e.clientX, e.clientY)) return;
+      // The base is placed where the thumb landed rather than sitting in a fixed corner: a thumb reaches where it
+      // reaches, and a stick that starts under it never has to be found first.
+      base.style.left = `${e.clientX}px`;
+      base.style.top = `${e.clientY}px`;
+      base.hidden = false;
+      knob.style.transform = 'translate(-50%, -50%)';
+      captured = e.pointerId;
+      capturePointer(zone, e.pointerId);
+      e.preventDefault();
+    });
+    zone.addEventListener('pointermove', (e) => {
+      if (!stick.move(e.pointerId, e.clientX, e.clientY)) return;
+      const at = stick.knob();
+      knob.style.transform = `translate(calc(-50% + ${at.x}px), calc(-50% + ${at.y}px))`;
+      onMove();
+      feed();
+      e.preventDefault();
+    });
+    const end = (e: PointerEvent): void => { if (stick.up(e.pointerId)) lift(); };
+    zone.addEventListener('pointerup', end);
+    zone.addEventListener('pointercancel', end);
+  };
 
-  zone.addEventListener('pointermove', (e) => {
-    if (held !== e.pointerId) return;
-    const dx = e.clientX - originX;
-    const dy = e.clientY - originY;
-    const v = stickVector(dx, dy);
-    camera.setStick(v.x, v.y);
+  wire('stick-zone', 'stick-base', 'stick-knob', moveStick, () => {
     // A thumb held still at the rim sends no more events, so the hold is a timer rather than a poll.
-    const pushed = Math.min(Math.hypot(dx, dy) / RADIUS, 1);
-    if (boostFromRim(pushed, RIM_HOLD_MS)) {
+    if (boostFromRim(moveStick.pushed(), RIM_HOLD_MS)) {
       if (rimTimer === null) rimTimer = setTimeout(() => camera.setStickBoost(true), RIM_HOLD_MS);
     } else {
       leaveRim();
     }
-    const at = knobOffset(dx, dy);
-    knob.style.transform = `translate(calc(-50% + ${at.x}px), calc(-50% + ${at.y}px))`;
-    e.preventDefault();
-  });
-
-  const release = (e: PointerEvent): void => {
-    if (held !== e.pointerId) return;
-    held = null;
-    camera.setStick(0, 0);
-    leaveRim();
-    base.hidden = true;
-    releasePointer(zone, e.pointerId);
-  };
-  zone.addEventListener('pointerup', release);
-  zone.addEventListener('pointercancel', release);
+  }, leaveRim);
+  wire('aim-zone', 'aim-base', 'aim-knob', lookStick, () => undefined, () => undefined);
+  const controls: TouchControls = { release: () => { for (const r of releases) r(); } };
+  if (!up || !down) return releases.length > 0 ? controls : none;
 
   // The stance: C on a keyboard (owner, 2026-09-29) -- the walk tells the tap from the hold (`WalkMode.stanceTouch`), so the
   // button reports its press and its release; one finger at a time, and a cancel (the system took the finger) is no tap.
@@ -220,6 +319,7 @@ export function attachTouchControls(
       button.addEventListener(event, () => camera.setLift(0));
     }
   }
+  return controls;
 }
 
 /**

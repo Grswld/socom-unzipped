@@ -68,16 +68,15 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
       expect(ui.toggles().body).toBe(false);
     });
 
-    it('the hint line and the pad table list the fly camera alone, and no walk, no Start', () => {
+    it('the hint line and both lists name the fly camera alone, and no walk, no Start', () => {
       ui.setCameraHint(1, false);
       expect(document.getElementById('hint')!.textContent).toBe('click to look · wheel speed 1.0×');
       const keys = [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
-      expect(keys).toMatch(/W A S Dfly along the look/);
+      expect(keys).toMatch(/W A S Dfly/);
       expect(keys).toMatch(/Ffullscreen/);
       expect(keys).not.toMatch(/walk|jump|stance|fire|reload|peek|grenade|zoom/i);
-      ui.showPadLayout(PAD_LAYOUT);
-      const rows = [...document.querySelectorAll('#pad-layout tbody tr:not(.pad-group)')].map((r) => r.querySelector('td')!.textContent);
-      expect(rows).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'R3']);
+      const rows = [...document.querySelectorAll('#pad-list tbody tr:not(.pad-group)')].map((r) => r.querySelector('td')!.textContent);
+      expect(rows).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle']);
       for (const id of ['sound-section', 'look-section', 'mute', 'volume', 'mouselaw', 'sensitivity']) expect(document.getElementById(id), id).toBeNull();
     });
   });
@@ -212,24 +211,24 @@ describe('the Mouse look section (round 2): the law, the sensitivity, the pitch,
   });
 });
 
-describe('the Controls popover list (round 2)', () => {
-  it('groups the walk keys as move, combat, stance and traversal, weapons, general; the fly keys as move and general', () => {
-    expect(controlGroups('walk', true).map((g) => g.name)).toEqual(['Move', 'Combat', 'Stance & traversal', 'Weapons', 'General']);
+describe('the Controls popover list (round 2; simplified 2026-09-29)', () => {
+  it('groups the walk keys as move, combat, stance and action, weapons, general; the fly keys as move and general', () => {
+    expect(controlGroups('walk', true).map((g) => g.name)).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
     expect(controlGroups('fly', true).map((g) => g.name)).toEqual(['Move', 'General']);
   });
   it('names every key the page binds on foot', () => {
     const keys = controlGroups('walk', true).flatMap((g) => g.rows.map((r) => r.keys)).join(' ');
-    for (const k of ['W A S D', 'Space', 'click', 'right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '2', '3', '4', 'G', 'F']) expect(keys, k).toContain(k);
+    for (const k of ['W A S D', 'Space', 'Left click', 'Right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '2', '3 / 4', 'Tab', 'M', 'G', 'F']) expect(keys, k).toContain(k);
     // The number keys (the owner, 2026-09-29): 1 main, 2 sidearm, 3 and 4 the equipment slots -- no per-grenade keys.
     const weapons = controlGroups('walk', true).find((g) => g.name === 'Weapons')!.rows;
-    expect(weapons.map((r) => r.keys)).toEqual(['1', '2', '3', '4']);
-    expect(weapons.map((r) => r.does)).toEqual(['main weapon (the rifle)', 'sidearm (the Mark 23)', 'equipment slot 1 (the M67 grenade)', 'equipment slot 2 (the HE grenade)']);
+    expect(weapons.map((r) => r.keys)).toEqual(['1', '2', '3 / 4']);
+    expect(weapons.map((r) => r.does)).toEqual(['main weapon', 'sidearm', 'grenades and equipment']);
   });
   it('lists no first-person key, and C as a tap and a hold (owner, 2026-09-29)', () => {
     const rows = controlGroups('walk', true).flatMap((g) => g.rows);
     expect(rows.find((r) => r.keys === 'V')).toBeUndefined();
     expect(rows.some((r) => /first/i.test(r.does))).toBe(false);
-    expect(rows.find((r) => r.keys === 'C')?.does).toBe('stance: tap crouch / stand, hold prone');
+    expect(rows.find((r) => r.keys === 'C')?.does).toBe('crouch (tap), prone (hold)');
   });
   it('lists no walk in the flying list without the play, and every group has rows', () => {
     const fly = controlGroups('fly', false);
@@ -240,15 +239,15 @@ describe('the Controls popover list (round 2)', () => {
     const names = new Set(controlGroups('walk', true).map((g) => g.name));
     for (const r of PAD_LAYOUT) for (const mode of ['walk', 'fly'] as const) expect(names.has(padGroup(r.action, mode)), `${r.control} ${mode}`).toBe(true);
     expect(padGroup('fire', 'walk')).toBe('Combat');
-    expect(padGroup('leanLeft', 'walk')).toBe('Stance & traversal');
+    expect(padGroup('leanLeft', 'walk')).toBe('Stance & action');
     expect(padGroup('swap2', 'walk')).toBe('Weapons');
     expect(padGroup('jump', 'fly')).toBe('Move');
   });
-  it('the popover holds the hint, the keys list and the pad table, in that order', () => {
+  it('the popover holds the two tabs, then the Controller list, then the hint and the keys list', () => {
     load();
     const pop = document.getElementById('controls')!;
-    const order = [...pop.querySelectorAll('#hint, #keys-list, #pad-box')].map((e) => e.id);
-    expect(order).toEqual(['hint', 'keys-list', 'pad-box']);
+    const order = [...pop.querySelectorAll('#controls-tabs, #pad-list, #hint, #keys-list')].map((e) => e.id);
+    expect(order).toEqual(['controls-tabs', 'pad-list', 'hint', 'keys-list']);
   });
 });
 
@@ -407,10 +406,10 @@ describe('the Controls popover', () => {
     spy.mockRestore();
   });
 
-  it('holds the hint and, once a pad is connected, the layout table, each for the current mode', () => {
+  it('holds the hint and both lists, and a pad connecting shows the Controller list', () => {
     expect(pop().contains(document.getElementById('hint'))).toBe(true);
-    expect(pop().contains(document.getElementById('pad-box'))).toBe(true);
-    ui.showPadLayout(PAD_LAYOUT);
-    expect(document.getElementById('pad-box')!.hidden).toBe(false);
+    expect(pop().contains(document.getElementById('pad-list'))).toBe(true);
+    ui.setPadConnected(true);
+    expect(document.getElementById('controls-pad')!.hidden).toBe(false);
   });
 });

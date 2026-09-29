@@ -125,7 +125,7 @@ describe('W2.0: the cog beside the brand, the GitHub mark', () => {
     }
     expect(css).toMatch(/\.s2u-bar__end \.s2u-tab\s*{[^}]*height:\s*30px[^}]*padding:\s*0 12px/);
   });
-  it('the controls tab opens a dialog popover after the panel, hidden, that holds the hint and the pad table', () => {
+  it('the controls tab opens a dialog popover after the panel, hidden, that holds the two tabs and their lists', () => {
     const tab = doc.getElementById('controls-toggle')!;
     expect(tab.getAttribute('aria-haspopup')).toBe('dialog');
     expect(tab.getAttribute('aria-expanded')).toBe('false');
@@ -135,8 +135,9 @@ describe('W2.0: the cog beside the brand, the GitHub mark', () => {
     expect(pop.hidden).toBe(true);
     expect(pop.compareDocumentPosition(doc.getElementById('panel')!) & 2).toBe(2);   // the panel precedes it
     expect(pop.querySelector('#hint')).not.toBeNull();
-    expect(pop.querySelector('#pad-box')).not.toBeNull();
-    expect(doc.querySelector('#panel #hint, #panel #pad-box')).toBeNull();
+    expect(pop.querySelector('#controls-tabs.s2u-tabs')).not.toBeNull();
+    expect(pop.querySelector('#pad-list')).not.toBeNull();
+    expect(doc.querySelector('#panel #hint, #panel #pad-list')).toBeNull();
   });
   it('the panel has no title bar left in it: the kicker is its body\'s first line', () => {
     const panel = doc.getElementById('panel')!;

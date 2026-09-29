@@ -15,7 +15,7 @@ import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
-import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touch';
+import { attachTouchControls, attachWalkTouch, wantsTouchControls, type TouchControls } from './touch';
 import { WalkMode } from './walk';
 import { RemotePlayers } from './remotePlayers';
 import type { PlayClips } from './play';
@@ -23,8 +23,9 @@ import { NetPage } from './netPage';
 import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
 import { explosionShake, MAX_PITCH_RATE } from './look';
-import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
+import { mergeInput, noInput, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
 import type { TouchTarget } from './touch';
+import { MobileTip, storeOf, tipText } from './mobileTip';
 import { openingStand } from './stand';
 import { Reticle, reticleType } from './reticle';
 import { Hud, RangeFinder } from './hud';
@@ -814,15 +815,19 @@ ui.onFullscreen();
 
 // ---- W2.7: the controller (`./gamepad`, ruling W2.R5) ------------------------------------------------------------
 /**
- * The touch stick's lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
- * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Square and L3 are.
+ * The touch sticks' lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
+ * each frame (`padFrame`). The two sticks come already read through the pad's pipeline (`stickInput`), so they are a
+ * pad's left and right sticks from here on. The up and down buttons are the same `jump` and `crouch` a pad's are.
  */
 const touchInput: Input = noInput();
 const touchLane: TouchTarget = {
   setStick: (x, y) => { touchInput.moveX = x; touchInput.moveY = y; },
+  setLook: (x, y) => { touchInput.lookX = x; touchInput.lookY = y; },
   setLift: (v) => { touchInput.jump = v > 0; touchInput.crouch = v < 0; },
   setStickBoost: (on) => { touchInput.boost = on; },
 };
+/** The touch layer's sticks, let go when a pad connects and the layer hides (`body.pad-on`). */
+let touchControls: TouchControls | null = null;
 /**
  * Walk mode's touch buttons (`attachWalkTouch`) hold the same lanes a pad's buttons do, in `touchInput`. A release is
  * kept until the frame after the press was read (`touchReleased`, cleared at the end of `padFrame`), so a tap shorter
@@ -836,8 +841,8 @@ function holdTouch(lane: PadFlag, down: boolean): void {
 const pads = new PadWatch({
   connected: (id) => {
     ui.toast(`Controller connected: ${id}`);
-    ui.showPadLayout(PAD_LAYOUT);                 // the first connect shows the layout; a later one finds it there
-    ui.setPadConnected(true);
+    ui.setPadConnected(true);                     // the Controls popover's Controller tab; on a phone the touch layer hides
+    touchControls?.release();
   },
   disconnected: () => {
     ui.toast('Controller disconnected');
@@ -888,11 +893,20 @@ function padFrame(dt: number): void {
   for (const lane of touchReleased) touchInput[lane] = false;   // read this frame; let go for the next
   touchReleased.clear();
 }
-attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
+touchControls = attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
 attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
 ui.onControlsPopover();
+/**
+ * The phone's tip (owner, 2026-09-29; `./mobileTip`): a controller and landscape recommended on a touch device, once a
+ * visit and again on each turn to portrait, until the player dismisses it (remembered). A pad connected hides it.
+ */
+const mobileTip = new MobileTip(storeOf(() => localStorage), storeOf(() => sessionStorage));
+const portraitQuery = ((): MediaQueryList | null => { try { return globalThis.matchMedia?.('(orientation: portrait)') ?? null; } catch { return null; } })();
+const offerTip = (show: boolean): void => { if (show) ui.showTip(tipText(pads.count() > 0), () => mobileTip.dismiss()); };
+offerTip(mobileTip.start(wantsTouchControls(), portraitQuery?.matches ?? false));
+portraitQuery?.addEventListener?.('change', (e) => offerTip(mobileTip.rotate(e.matches)));
 // Round 2: the panel's Sound and Mouse look sections (each is on the page only in reCOM mode), remembered in this browser.
 ui.onSound({ volume: (v) => audio.setVolume(v), muted: (m) => audio.setMuted(m) });
 ui.onLookControls((opts) => fly.setLookOptions(opts));

@@ -372,14 +372,12 @@ describe('the page: the toast and the layout table', () => {
     expect(css).toMatch(/#toast\s*{[^}]*pointer-events:\s*none/);
   });
 
-  it('has the layout table in a disclosure under the hint line, hidden until a pad connects', () => {
+  it('has the Controller list in the Controls popover, over its status line', () => {
     const doc = new JSDOM(html).window.document;
-    const box = doc.getElementById('pad-box')!;
-    expect(box.tagName).toBe('DETAILS');
-    expect(box.classList.contains('s2u-disclosure')).toBe(true);
-    expect(box.hidden).toBe(true);
-    expect(box.querySelector('table#pad-layout > thead')).not.toBeNull();
-    expect(doc.getElementById('keys-list')!.nextElementSibling).toBe(box);          // under the hint line and the keys' list
+    const panel = doc.getElementById('controls-pad')!;
+    expect(panel.getAttribute('role')).toBe('tabpanel');
+    expect(panel.closest('#controls')).not.toBeNull();
+    expect(doc.getElementById('pad-status')!.nextElementSibling).toBe(doc.getElementById('pad-list'));
   });
 
   describe('Ui', () => {
@@ -416,45 +414,29 @@ describe('the page: the toast and the layout table', () => {
       expect(toast.hidden).toBe(true);
     });
 
-    /** The table's rows as [control, does, source-cell text]. */
-    const table = (): string[][] => [...document.querySelectorAll('#pad-layout tbody tr:not(.pad-group)')]
+    /** The Controller list's rows as [button, does]. */
+    const table = (): string[][] => [...document.querySelectorAll('#pad-list tbody tr:not(.pad-group)')]
       .map((r) => [...r.querySelectorAll('td')].map((td) => td.textContent ?? ''));
 
     /** The group headings, in order. */
-    const groups = (): string[] => [...document.querySelectorAll('#pad-layout tbody tr.pad-group')].map((r) => r.textContent ?? '');
+    const groups = (): string[] => [...document.querySelectorAll('#pad-list tbody tr.pad-group')].map((r) => r.textContent ?? '');
 
-    it('lists only the flying controls in fly mode, and marks the assumed rows', () => {
-      ui.showPadLayout(PAD_LAYOUT);
-      ui.showPadLayout(PAD_LAYOUT);
-      const box = document.getElementById('pad-box')!;
-      expect(box.hidden).toBe(false);
-      const rows = [...box.querySelectorAll('#pad-layout tbody tr:not(.pad-group)')];
-      expect(table().map((r) => r[0])).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'Start', 'R3']);
+    it('lists only the flying controls in fly mode, the face buttons with their glyphs, and no sources', () => {
+      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle', 'Start']);
       expect(groups()).toEqual(['Move', 'General']);
-      expect(document.getElementById('pad-mode')!.textContent).toBe('flying');
-      const marked = rows.filter((r) => r.classList.contains('is-assumed'));
-      expect(marked.map((r) => r.textContent)).toHaveLength(1);                // R3 alone, of the rows a flyer sees
-      for (const r of marked) expect(r.querySelector('.s2u-label--warn')?.textContent).toBe('assumed');
-      expect(rows[0]!.textContent).toMatch(/L-stick/);
-      expect(rows.find((r) => /Square/.test(r.textContent ?? ''))!.querySelector('svg.s2u-hint__glyph--square')).not.toBeNull();
-      expect(table().find((r) => r[0] === 'R3')![1]).toBe('boost');
-      expect(table().find((r) => r[0] === 'Square')![2]).toMatch(/^owner, 2026-09-28/);
+      expect(document.querySelector('#pad-list svg.s2u-hint__glyph--square')).not.toBeNull();
+      expect(table().find((r) => r[0] === 'Square')![1]).toBe('up');
+      expect(document.getElementById('pad-list')!.textContent).not.toMatch(/assumed|owner|\.md/);
     });
 
-    it('lists only the walking controls in walk mode: fire, the stance, the zoom, the action, the peek and the slots, no boost', () => {
-      ui.showPadLayout(PAD_LAYOUT);
+    it('lists only the walking controls in walk mode: fire, reload on R3, the stance, the zoom, the action, the peek and the slots', () => {
       ui.setWalk(true);
-      expect(groups()).toEqual(['Move', 'Combat', 'Stance & traversal', 'Weapons', 'General']);
-      expect(table().map((r) => r[0])).toEqual(['L-stick', 'R-stick', 'Square', 'R1', 'Up', 'Down', 'L3', 'Triangle', 'Cross', 'Left', 'Right', 'L1', 'L2', 'R2', 'Start', 'Select']);
-      expect(table().find((r) => r[0] === 'L3')![1]).toBe('fire mode');
-      expect(table().find((r) => r[0] === 'Cross')![1]).toBe('action (climb, ladder slide)');
-      expect(document.getElementById('pad-mode')!.textContent).toBe('on foot');
-      expect(table().find((r) => r[0] === 'R1')![1]).toBe('fire (held)');
-      expect(table().find((r) => r[0] === 'Up')![1]).toBe('zoom (scope)');
-      expect(table().find((r) => r[0] === 'Triangle')![1]).toBe('stance: tap crouch, hold prone');
+      expect(groups()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
+      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'R1', 'D-pad Up / Down', 'R3', 'L3', 'Triangle', 'Cross', 'D-pad Left / Right', 'L1', 'L2', 'R2', 'Select (hold)', 'Start']);
+      expect(table().find((r) => r[0] === 'R3')![1]).toBe('reload');
+      expect(table().find((r) => r[0] === 'R1')![1]).toBe('fire');
       expect(table().flat().join(' ')).not.toMatch(/boost/);
       ui.setWalk(false);
-      expect(table().map((r) => r[0])).toContain('R3');
       expect(table().map((r) => r[0])).not.toContain('R1');
     });
 
@@ -487,40 +469,41 @@ describe('the page: the toast and the layout table', () => {
       expect(seen).toEqual([true]);
     });
 
-    it('the hint line is the mouse and the pad, and the keys list is the mode you are in, grouped, rebuilt on every change', () => {
+    it('the hint line is the mouse, and the keys list is the mode you are in, grouped, rebuilt on every change', () => {
       const hint = document.getElementById('hint')!;
       const keys = (): string => [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
       const heads = (): string[] => [...document.querySelectorAll('#keys-list tbody tr.pad-group')].map((r) => r.textContent ?? '');
       ui.setCameraHint(1, false);
       expect(hint.textContent).toBe('click to look · wheel speed 1.0×');
       expect(heads()).toEqual(['Move', 'General']);
-      expect(keys()).toMatch(/W A S Dfly along the look/);
-      expect(keys()).toMatch(/double-tap Wboost, held/);
-      expect(keys()).toMatch(/Gwalk \| Ffullscreen/);
+      expect(keys()).toMatch(/W A S Dfly/);
+      expect(keys()).toMatch(/Double-tap Wboost \(hold\)/);
+      expect(keys()).toMatch(/Gwalk/);
+      expect(keys()).toMatch(/Ffullscreen/);
       expect(keys()).not.toMatch(/jump|stance|fire|reload|peek/i);
       ui.setWalk(true);
       expect(hint.textContent).toBe('click to look');
-      expect(heads()).toEqual(['Move', 'Combat', 'Stance & traversal', 'Weapons', 'General']);
-      for (const want of [/W A S Dmove/, /Spacejump/, /right clickzoom/, /clickfire/, /Rreload/, /Bfire mode/, /Cstance/, /Xaction/, /Q \/ Epeek left \/ right/, /1main weapon \(the rifle\)/, /2sidearm \(the Mark 23\)/, /3equipment slot 1 \(the M67 grenade\)/, /4equipment slot 2 \(the HE grenade\)/, /Gfly/, /Ffullscreen/]) {
+      expect(heads()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
+      for (const want of [/W A S Dmove/, /Spacejump/, /Right clickzoom/, /Left clickfire/, /Rreload/, /Bfire mode/, /Ccrouch/, /Xaction/, /Q \/ Epeek left \/ right/, /1main weapon/, /2sidearm/, /3 \/ 4grenades and equipment/, /Gfly camera/, /Ffullscreen/]) {
         expect(keys()).toMatch(want);
       }
-      expect(keys()).not.toMatch(/boost|wheel|arrows|W A S Dfly/);
+      expect(keys()).not.toMatch(/boost|Wheel|arrows|W A S Dfly/);
       ui.setCameraHint(2, true);
       expect(hint.textContent).toBe('esc to release');
       ui.setWalk(false);
       expect(hint.textContent).toBe('esc to release · wheel speed 2.0×');
     });
 
-    it('says "pad: connected" on the hint line while one is, whatever rebuilds the line', () => {
+    it('says whether a pad is connected on the Controller tab\'s status line, not the mouse\'s hint line', () => {
       const hint = document.getElementById('hint')!;
+      const status = document.getElementById('pad-status')!;
       ui.setPadConnected(true);
-      expect(hint.textContent).toMatch(/ · pad: connected$/);
-      ui.setCameraHint(2, true);
-      expect(hint.textContent).toMatch(/^esc to release/);
-      expect(hint.textContent).toMatch(/ · pad: connected$/);
+      expect(status.textContent).toBe('Controller connected');
+      expect(hint.textContent).not.toMatch(/pad/);
+      expect(document.body.classList.contains('pad-on')).toBe(true);
       ui.setPadConnected(false);
-      expect(hint.textContent).not.toMatch(/pad: connected/);
-      expect(hint.textContent).toMatch(/^esc to release/);
+      expect(status.textContent).toMatch(/^No controller connected/);
+      expect(document.body.classList.contains('pad-on')).toBe(false);
     });
   });
 });

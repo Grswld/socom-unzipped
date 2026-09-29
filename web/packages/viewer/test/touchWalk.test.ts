@@ -28,18 +28,19 @@ describe('the layout in the page', () => {
     expect(button('touch-walk').closest('#touch')).not.toBeNull();
   });
 
-  it('has a button for each of the pad\'s walking actions, each carrying a real lane', () => {
+  it('has a button for each action a player needs (owner, 2026-09-29), each carrying a real lane', () => {
     const lanes = [...document.querySelectorAll<HTMLElement>('#touch-walk button[data-lane]')].map((b) => b.dataset['lane']!);
-    expect(lanes.sort()).toEqual(['action', 'fire', 'fireMode', 'inventory', 'jump', 'leanLeft', 'leanRight', 'scoreboard', 'stance', 'swap1', 'swap2', 'zoom', 'zoomOut'].sort());
+    expect(lanes.sort()).toEqual(['action', 'fire', 'inventory', 'jump', 'stance', 'zoom', 'zoomOut'].sort());
     for (const lane of lanes) expect(PAD_FLAGS.includes(lane as PadFlag), lane).toBe(true);
     expect(document.querySelectorAll('#touch-walk button[data-do="reload"]')).toHaveLength(1);
   });
 
-  it('covers every walking action of the pad layout but the ones a phone has by other means', () => {
+  it('leaves out only what the owner\'s tidy list drops, and the mode and the boost', () => {
     const lanes = new Set([...document.querySelectorAll<HTMLElement>('#touch-walk button[data-lane]')].map((b) => b.dataset['lane']));
     const skipped = PAD_LAYOUT.filter((r) => r.action !== 'move' && r.action !== 'look' && !lanes.has(r.action)).map((r) => r.action);
-    // The stick and the drag move and look; the mode is the panel's switch; the boost is the fly camera's alone.
-    expect(skipped.sort()).toEqual(['boost', 'mode']);
+    // The sticks move and look; the mode is the panel's switch; the boost is the fly camera's alone; the fire mode, the
+    // weapon slots (NEXT steps through them), the peek and the scoreboard are left to a pad (owner, 2026-09-29: tidied).
+    expect(skipped.sort()).toEqual(['boost', 'fireMode', 'leanLeft', 'leanRight', 'mode', 'scoreboard', 'swap1', 'swap2']);
   });
 
   it('every button is named, and the face buttons wear the pad\'s glyphs', () => {
@@ -79,7 +80,7 @@ describe('attachWalkTouch', () => {
 
   it('wires every button', () => {
     document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
-    expect(attachWalkTouch(() => undefined, () => undefined)).toBe(14);
+    expect(attachWalkTouch(() => undefined, () => undefined)).toBe(8);
   });
 
   it('a press holds the lane and a release lets it go, once', () => {
@@ -95,8 +96,8 @@ describe('attachWalkTouch', () => {
   it('holds many at once, each by its own pointer: the thumb on fire and jump together', () => {
     ptr(button('tw-fire'), 'pointerdown', 1);
     ptr(button('tw-stance'), 'pointerdown', 2);
-    ptr(button('tw-peek-left'), 'pointerdown', 3);
-    expect(log).toEqual(['fire:down', 'stance:down', 'leanLeft:down']);
+    ptr(button('tw-jump'), 'pointerdown', 3);
+    expect(log).toEqual(['fire:down', 'stance:down', 'jump:down']);
     ptr(button('tw-fire'), 'pointerup', 1);
     expect(log.at(-1)).toBe('fire:up');
     expect(button('tw-stance').classList.contains('is-down')).toBe(true);
@@ -112,9 +113,9 @@ describe('attachWalkTouch', () => {
   });
 
   it('a cancelled touch is a release', () => {
-    ptr(button('tw-swap1'), 'pointerdown');
-    ptr(button('tw-swap1'), 'pointercancel');
-    expect(log).toEqual(['swap1:down', 'swap1:up']);
+    ptr(button('tw-inventory'), 'pointerdown');
+    ptr(button('tw-inventory'), 'pointercancel');
+    expect(log).toEqual(['inventory:down', 'inventory:up']);
   });
 
   it('reload has no lane: a press calls it, a release does nothing', () => {
