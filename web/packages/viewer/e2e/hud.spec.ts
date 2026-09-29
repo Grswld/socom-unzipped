@@ -204,6 +204,33 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
   expect((await page.evaluate(() => window.__viewer.hud())).timing.fade).toBeLessThan(1);
   await page.evaluate(() => window.__viewer.setHud({ settled: true }));
 
+  // The scoreboard (research 87 section 12): Tab held, as SELECT held in a round -- the panels over x 10..630, y
+  // 104..430, the reticle and the ammo box hidden; let go, gone.
+  await page.keyboard.down('Tab');
+  await settle(page);
+  const board = await page.evaluate(() => window.__viewer.hud());
+  expect(board.model.scoreboard).toBe(true);
+  expect(board.rects.scoreboard!.x).toBeCloseTo(10, 0);
+  expect(board.rects.scoreboard!.y).toBeCloseTo(104, 0);
+  expect(board.rects.scoreboard!.x + board.rects.scoreboard!.width).toBeCloseTo(630, 0);
+  expect(board.rects.scoreboard!.y + board.rects.scoreboard!.height).toBeCloseTo(430, 0);
+  expect(board.rects.panel).toBeUndefined();
+  expect((await page.evaluate(() => window.__viewer.reticle())).visible).toBe(false);
+  writeFileSync(join(SCREENS, 'frostfire-ps2-scoreboard.png'), Buffer.from((await grab(page)).split(',')[1]!, 'base64'));
+  await page.keyboard.up('Tab');
+  await settle(page);
+  expect((await page.evaluate(() => window.__viewer.hud())).model.scoreboard).toBe(false);
+
+  // The zoom readout and the scope's range (research 87 section 13): magnified 3x, "ZOOM: 3.0x" at (20, 420) where the
+  // hidden ammo box was, "RANGE(m): 37" at (415, 215).
+  const zoomed = await page.evaluate(() => window.__viewer.setHud({ frozen: true, zoom: 3, range: 37.4 }));
+  expect(zoomed.rects.zoom!.x).toBeCloseTo(20 - 0.6, 3);
+  expect(zoomed.rects.scopeRange!.x).toBeCloseTo(415 - 0.6, 3);
+  expect(zoomed.rects.panel).toBeUndefined();
+  await settle(page);
+  writeFileSync(join(SCREENS, 'frostfire-ps2-zoom-readout.png'), Buffer.from((await grab(page)).split(',')[1]!, 'base64'));
+  await page.evaluate(() => window.__viewer.setHud({ frozen: false, zoom: 1, settled: true }));
+
   // The native presentation: the HUD scaled by the height / 448, the compass kept to the right edge.
   await setToggle(page, 'ps2look', false);
   await settle(page);
