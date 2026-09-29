@@ -10,7 +10,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-29 08:00Z, LATEST) -- Sprint 17 day two, `sprint-17` at b6745191: the whole batch merged (twelve merges since the last green da29683b); the chain `s17_b4b` on 666f3b7a RED at its gate: F1 attempt 3 froze the intro (#114, KNOWN §2; the A/B on one exe proved it), so `PS2X_GS_DOUBLE_SWIZZLE` defaults to 1 and the chain reruns as `s17_b4c`. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
+- **Where the loop is now (2026-09-29 08:00Z, LATEST) -- Sprint 17, `sprint-17` at b6745191: the whole batch merged (twelve merges since the last green da29683b); the chain `s17_b4b` RED at its gate: F1 attempt 3 froze the intro (#114, KNOWN §2), so `PS2X_GS_DOUBLE_SWIZZLE` defaults to 1; `s17_b4c` RED on host load; the gate alone PASS 3/3 (FRAME 16.92/17.72, SYNCV 23.6); `s17_b4d` reruns for the record. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
   Then: the logoff run, the stats walk for the F1 picks, the bench recording, the profile, A1, #110's quiet window, the PCSX2 boots (#112); #114 hunted in `wt-s17-f1a3-hang`.
 - **Next free ruling number: R336** (R322-R335 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
