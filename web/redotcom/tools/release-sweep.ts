@@ -6,11 +6,13 @@
  * - the load (wall clock to the first triangles and the hull, and the page's own `stats().loadMs`), the audio unlock's
  *   cost on the first gesture (`audio().timing.unlockMs`), the untextured draws and the page's diagnostics;
  * - the walk's entry (the frames for 3 s after `setMode('walk')`, standing) and a 10 s walk at full stick with a slow
- *   turn and a jump every 2 s (frame time p50/p95/max; the feet: NaN, the lowest y against the spawn's, the longest
- *   airborne spell -- a fall through the map);
+ *   turn and a jump every 2 s (frame time p50/p95/max; the feet: NaN, the feet under the floor the walk picks under
+ *   them -- a fall through the map (`./sweepFall`) -- the longest airborne spell, and the descent from the spawn's floor
+ *   as information);
  * - the smoke: `C` tapped (crouch), held (prone), tapped (crouch); the zoom stepped in three times and out three times
  *   (the views seen: first person must be unreachable); the pistol (`2`, and `3`), the zoom with it, the rifle back
- *   (`1`); a reload; a magazine in AUTO held at the nearest wall (the frames, the rounds, the marks); a grenade (`4`,
+ *   (`1`); a reload; a magazine in AUTO held down the heading whose first strikable surface is nearest (`./sweepHeading`:
+ *   the frames, the rounds, the marks); a grenade (`4`,
  *   R1 held: the yellow arc sampled while held; the frames from the release to 2 s after the blast, the blast's
  *   freeze #19 read as the longest frame in the 1.5 s after it);
  * - the console's errors and warnings and the uncaught page errors, and every screenshot's blankness (the share of
@@ -27,6 +29,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import type {} from '../packages/viewer/src/hook';
+import { descentBelow, fallThroughs, type FallFrame } from './sweepFall';
+import { levelDirection, SWEEP_YAWS, sweepHeading, type HeadingCandidate } from './sweepHeading';
 
 const require = createRequire(import.meta.url);
 const { PNG } = require('playwright-core/lib/utilsBundle') as { PNG: { sync: { read(b: Buffer): { width: number; height: number; data: Buffer } } } };
@@ -52,23 +56,28 @@ const INIT = `
   window.__pad = { id: 'sweep pad (STANDARD GAMEPAD)', index: 0, connected: true, mapping: 'standard', timestamp: 0,
     axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })) };
   navigator.getGamepads = () => [window.__pad];
-  window.__sw = { on: false, rec: [], last: 0, shots: [] };
+  window.__sw = { on: false, rec: [], last: 0, shots: [], prev: null };
   requestAnimationFrame(function tick(t) {
     const s = window.__sw, v = window.__viewer;
+    const feet = v ? v.feet() : null;
     if (s.on && v) {
       let g = null; try { g = v.grenade(); } catch (e) {}
       const z = v.zoom ? v.zoom() : null;
-      s.rec.push({ t, dt: t - s.last, feet: v.feet(), view: v.stats().view.kind, zoomState: z ? z.state : null, zoomView: z ? z.view : null,
-        stance: v.stance(), air: v.mover() ? v.mover().airborne : false, blasts: g ? g.explosions.length : 0,
+      const air = v.mover() ? v.mover().airborne : false;
+      // The floor the walk picks under the feet (./sweepFall): from the feet as they were in the air, the feet on the ground.
+      const floor = feet && v.floorUnder ? v.floorUnder(feet[0], feet[2], feet[1], air && s.prev ? s.prev[1] : feet[1]) : null;
+      s.rec.push({ t, dt: t - s.last, feet, floor, view: v.stats().view.kind, zoomState: z ? z.state : null, zoomView: z ? z.view : null,
+        stance: v.stance(), air, blasts: g ? g.explosions.length : 0,
         arc: g && g.arc ? { visible: g.arc.visible, color: g.arc.color } : null });
     }
+    s.prev = feet;
     s.last = t;
     requestAnimationFrame(tick);
   });
 `;
 const HIDE_GPU = `Object.defineProperty(Navigator.prototype, 'gpu', { get: () => undefined, configurable: true });`;
 
-interface Rec { t: number; dt: number; feet: number[] | null; view: string; zoomState: number | null; zoomView: string | null; stance: string; air: boolean; blasts: number; arc: { visible: boolean; color: number[] } | null }
+interface Rec { t: number; dt: number; feet: number[] | null; floor: number | null; view: string; zoomState: number | null; zoomView: string | null; stance: string; air: boolean; blasts: number; arc: { visible: boolean; color: number[] } | null }
 interface Frames { n: number; p50: number; p95: number; max: number; over50: number; over100: number; worst: string[] }
 interface Shot { name: string; file: string; blackShare: number; lumaSd: number; blank: boolean }
 interface Run {
@@ -184,7 +193,8 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
     await s.record();
     if (!(await p.evaluate(() => window.__viewer.setMode('walk')))) throw new Error('walk refused');
     await p.waitForTimeout(3000);
-    r.entry = frames(await s.stop());
+    const entry = await s.stop();
+    r.entry = frames(entry);
     await s.shot('01-walk-entry');
     const stand = await p.evaluate(() => window.__viewer.stats().stand);
     const spawn: number[] = stand ? [stand.position[0], stand.floor ?? stand.position[1], stand.position[2]] : (await p.evaluate(() => window.__viewer.feet()))!;
@@ -192,12 +202,21 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
 
     // The open heading and the nearest wall: of eight, the headings 2.5 s of the run gets furthest and least far along.
     const reach: number[] = [];
-    for (let yaw = 0; yaw < 360; yaw += 45) {
+    for (const yaw of SWEEP_YAWS) {
       await s.place(spawn, yaw);
       reach.push(await p.evaluate(() => { const a = window.__viewer.feet()!; window.__viewer.walkFor(2.5, { forward: 1 }); const b = window.__viewer.feet()!; return Math.hypot(b[0] - a[0], b[2] - a[2]); }));
     }
-    const open = reach.indexOf(Math.max(...reach)) * 45, wall = reach.indexOf(Math.min(...reach)) * 45;
+    const open = SWEEP_YAWS[reach.indexOf(Math.max(...reach))]!, wall = SWEEP_YAWS[reach.indexOf(Math.min(...reach))]!;
     r.walkNumbers['reach'] = reach.map((v) => +v.toFixed(0));
+    // The mark heading: the nearest surface a round strikes, level from the spawn's eye (./sweepHeading) -- not the walk's
+    // nearest wall, which may be invisible collision a round passes over by rule (MP71: INVISIBLE_DI, PENETRATION 1).
+    const eye: [number, number, number] = [spawn[0]!, spawn[1]! + EYE, spawn[2]!];
+    const candidates: HeadingCandidate[] = [];
+    for (const yaw of SWEEP_YAWS) {
+      const surfaces = await p.evaluate(([e, d]) => window.__viewer.surfacesAlong(e, d), [eye, levelDirection(yaw)] as const);
+      candidates.push({ yaw, surfaces: surfaces ?? [] });
+    }
+    const mark = sweepHeading(candidates);
 
     // 10 s at full stick, a slow turn, a jump every 2 s.
     await s.place(spawn, open);
@@ -213,16 +232,20 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
     await s.pad([0, 0, 0, 0]);
     const walk = await s.stop();
     r.walk = frames(walk, s.stallTimes);
-    const ys = walk.filter((w) => w.feet).map((w) => w.feet![1]!);
     const nan = walk.some((w) => w.feet && w.feet.some((v) => !Number.isFinite(v)));
     let air = 0, airMax = 0;
     for (let i = 1; i < walk.length; i++) { air = walk[i]!.air ? air + walk[i]!.dt : 0; airMax = Math.max(airMax, air); }
     const end = walk[walk.length - 1]?.feet, begin = walk.find((w) => w.feet)?.feet;
-    r.walkNumbers['minYBelowSpawn'] = ys.length ? +(spawn[1]! - Math.min(...ys)).toFixed(1) : null;
+    // Information only: terrain that drops away descends as far as a fall does (MP1, MP11). The fall-through is below.
+    r.walkNumbers['minYBelowSpawn'] = descentBelow(spawn[1]!, walk);
     r.walkNumbers['travelled'] = end && begin ? +Math.hypot(end[0]! - begin[0]!, end[2]! - begin[2]!).toFixed(0) : null;
     r.walkNumbers['longestAirMs'] = Math.round(airMax);
     if (nan) f.push('NaN in the feet while walking');
-    if ((r.walkNumbers['minYBelowSpawn'] as number) > 150) f.push(`feet ${r.walkNumbers['minYBelowSpawn']} below the spawn's floor while walking (a fall through?)`);
+    for (const [what, rec] of [['standing after the switch to walk', entry], ['walking', walk]] as [string, FallFrame[]][]) {
+      const t0 = rec[0]?.t ?? 0, through = fallThroughs(rec);
+      if (what === 'walking') r.walkNumbers['fallThroughs'] = through;
+      for (const x of through) f.push(`feet ${x.depth} under the floor the walk picks, ${x.frames} frame(s) from ${((x.t - t0) / 1000).toFixed(2)} s ${what}${x.air ? ' (airborne)' : ''} (a fall through)`);
+    }
     if (airMax > 2500) f.push(`airborne ${Math.round(airMax)} ms at a stretch while walking (a fall through?)`);
     if ((r.walkNumbers['travelled'] as number) < 20) f.push(`the 10 s walk travelled ${r.walkNumbers['travelled']} units (stuck?)`);
 
@@ -281,8 +304,8 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
     if (!String(swap['after2']).startsWith('pistol')) f.push(`2 did not take the pistol up (${swap['after2']})`);
     if (!String(swap['after1']).startsWith('rifle')) f.push(`1 did not bring the rifle back (${swap['after1']})`);
 
-    // A magazine in AUTO at the nearest wall, level.
-    await s.place(spawn, wall, 0);
+    // A magazine in AUTO down the mark heading, level (with none strikable, the walk's nearest wall, and no mark owed).
+    await s.place(spawn, mark?.yaw ?? wall, 0);
     await p.waitForTimeout(500);
     for (let i = 0; i < 4 && (await p.evaluate(() => window.__viewer.fireMode())) !== 'AUTO'; i++) await p.evaluate(() => window.__viewer.switchFireMode());
     const before = await p.evaluate(() => { const x = window.__viewer.fire(); return { shots: x.shots, decals: x.decals, mag: x.magazine }; });
@@ -294,9 +317,11 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
     r.mag = frames(await s.stop());
     await s.shot('06-marks');
     const after = await p.evaluate(() => { const x = window.__viewer.fire(); return { shots: x.shots, decals: x.decals, mag: x.magazine, hit: x.lastHit }; });
-    r.smoke['magazine'] = { fired: after.shots - before.shots, decalsAdded: after.decals - before.decals, before: before.mag, after: after.mag, lastHitDistance: after.hit ? +after.hit.distance.toFixed(1) : null, wallYaw: wall, wallReach: +Math.min(...reach).toFixed(0) };
+    r.smoke['magazine'] = { fired: after.shots - before.shots, decalsAdded: after.decals - before.decals, before: before.mag, after: after.mag, lastHitDistance: after.hit ? +after.hit.distance.toFixed(1) : null, wallYaw: wall, wallReach: +Math.min(...reach).toFixed(0),
+      markYaw: mark?.yaw ?? null, markDistance: mark ? +mark.distance.toFixed(1) : null, noSurface: mark === null };
     if (after.shots - before.shots < 20) f.push(`AUTO held 3.6 s fired ${after.shots - before.shots}`);
-    if (after.decals - before.decals <= 0) f.push('a magazine at the nearest wall left no mark');
+    // A round that meets nothing strikable marks nothing by the game's rule (FUN_003c9b70): no mark is owed then.
+    if (mark && after.decals - before.decals <= 0) f.push(`a magazine at yaw ${mark.yaw} (a strikable surface ${mark.distance.toFixed(1)} out) left no mark`);
 
     // The reload (the magazine above is empty or near it).
     await p.waitForTimeout(3000);

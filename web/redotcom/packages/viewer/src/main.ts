@@ -2,7 +2,10 @@
 import { Matrix4, Scene, Timer, Vector3, type Object3D } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { HELD_RIFLE, HELD_SIDEARM, materialTable, polygonNormal, probeFloor, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
+import {
+  HELD_RIFLE, HELD_SIDEARM, materialTable, polygonNormal, PROBE_LIFT, probeFloor, probeGround, SEAL_TUNING, selectFloor, spawnsFor, tracerRound,
+  type Spawns,
+} from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -1595,6 +1598,10 @@ window.__viewer = {
   online: () => ({ ...(net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn }), choice: NET.choice, url: NET.url }),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
+  floorUnder: (x, z, y, from = y) => {
+    const grid = walk.grid();
+    return grid ? (selectFloor(probeGround(grid, x, z), from + PROBE_LIFT, y)?.y ?? null) : null;
+  },
   pad: () => ({ id: pads.id(), input: { ...padMerged } }),
   mover: () => walk.mover(),
   jump: () => walk.jump(),
@@ -1615,6 +1622,7 @@ window.__viewer = {
   setStance: (stance) => walk.setStance(stance),
   camera: () => walk.cameraState(),
   fire: () => fire.state(),
+  surfacesAlong: (from, dir) => fire.surfacesAlong(from, dir),
   shoot: () => fire.shoot(),
   traversal: () => traversal.stats(),
   net: () => net && {

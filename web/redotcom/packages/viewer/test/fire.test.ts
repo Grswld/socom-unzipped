@@ -363,6 +363,20 @@ describe('penetration (research 84 section 13: HandleIntersections 0x3c9b70, FUN
     expect(stopped.fire.state().lastHit!.distance).toBeCloseTo(60, 6);
   });
 
+  it('surfacesAlong: every surface down a line, the rifle\'s whole range, with its PENETRATION (the sweep\'s mark heading)', () => {
+    // M4A1 Maximum_Range 1000 x UNITS_PER_METRE 10: a wall at 12,000 is past the round's reach and not listed.
+    const { fire } = rig(world([wall(-60, 25), wall(-10, 29), wall(-30, 30), wall(-12_000, 25)]));
+    // No table yet: as the shot without one, every surface stops the round (PENETRATION 0).
+    expect(fire.surfacesAlong([0, 20, 0], [0, 0, -1])!.map((s) => s.penetration)).toEqual([0, 0, 0]);
+    fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    const along = fire.surfacesAlong([0, 20, 0], [0, 0, -2])!;                  // any length: the direction is made unit
+    expect(along.map((s) => [+s.distance.toFixed(6), s.penetration, s.material])).toEqual([[10, 1, 29], [30, 0.99, 30], [60, 0, 25]]);
+    expect(DEFAULT_RIFLE.maximumRange * UNITS_PER_METRE).toBe(10_000);
+    const blind = rig(null);
+    blind.fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    expect(blind.fire.surfacesAlong([0, 20, 0], [0, 0, -1])).toBeNull();       // no hull: null, not "nothing there"
+  });
+
   it('stone stops it at once; without a table every surface stops it', () => {
     const { fire } = rig(world([wall(-30, 25), wall(-60, 25)]));
     fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
