@@ -782,7 +782,7 @@ export class Fire {
       this.object.add(mesh);
     }
     this.nextDecal = (this.nextDecal + 1) % MAX_DECALS;
-    if (this.clipper) { this.placeClipped(mesh, hit, dir, row); return; }
+    if (this.clipper) { this.placeClipped(mesh, hit, row); return; }
     if (mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markGeometry(this.geometry); }
     this.markTriangles.delete(mesh);
     // EFFECTS (research 89 §5): the wall's own drawn colour under the hit modulates the mark, as the GS does it.
@@ -816,15 +816,21 @@ export class Fire {
   }
 
   /**
-   * EFFECTS (research 89 §5 and §13): the game's mark -- the size drawn once, the square across the round's direction
+   * EFFECTS (research 89 §5, §13 and §15): the game's mark -- the size drawn once, the square flat on the hit surface
    * with no turn -- clipped to the drawn world under it, each vertex the world's colour there (`./markClip`). Where
    * nothing is drawn under it yet, the bare square at unity, clipped again a few a frame (`clipLate`).
+   *
+   * Projected along the hit polygon's normal, not the round: `FUN_003d0ba0` (323919) hands `FUN_003139e0` the hit
+   * record's +0x10 negated, and `FUN_00307810` looks along that one vector. Along the round, a wall's 15-20 unit
+   * triangles hit at a slant put a vertex past the 4.8 test and the whole wall was dropped (every mark on Frostfire's
+   * container and Desert Glory's stone the bare square at unity, `test/markClipMaps.test.ts`).
    */
-  private placeClipped(mesh: Mesh, hit: ShotHit, dir: Vec3, row: DecalEntry): void {
+  private placeClipped(mesh: Mesh, hit: ShotHit, row: DecalEntry): void {
     if (!mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markClipGeometry(); }
     const side = row.minSize + this.random() * (row.maxSize - row.minSize);
     mesh.material = this.marks ? this.markMaterial(row.texture) : this.material;
-    const frame = markFrame(hit.point, hit.normal, dir, side);
+    const n = hit.normal;
+    const frame = markFrame(hit.point, n, [-n[0], -n[1], -n[2]], side);
     const kept = this.clipper!.clip(frame, mesh.geometry, DECAL_OFFSET);
     this.unshaded.delete(mesh);
     if (kept > 0) {

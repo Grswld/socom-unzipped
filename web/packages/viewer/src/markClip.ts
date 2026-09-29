@@ -76,8 +76,10 @@ export interface MarkFrame {
 }
 
 /**
- * The game's frame for a round's mark (`FUN_00307810`, research 89 §5): square to the round's direction `dir`, its up
- * the world axis least aligned with the surface normal -- no turn. Writes into `out` when given.
+ * The game's frame for a mark (`FUN_00307810`, research 89 §5): square to `dir`, its up the world axis least aligned
+ * with the surface normal -- no turn. Writes into `out` when given. For a round's mark the game's `dir` is the hit
+ * polygon's normal negated (research 89 §15; `Fire` passes it so): along the round instead, a wall's big triangles hit
+ * at a slant fail the 4.8 test at their far vertices and the mark is dropped.
  */
 export function markFrame(point: Vec3, normal: Vec3, dir: Vec3, side: number, out?: MarkFrame): MarkFrame {
   const f = out ?? { origin: [0, 0, 0], right: [0, 0, 0], up: [0, 0, 0], forward: [0, 0, 0], side: 0 };
