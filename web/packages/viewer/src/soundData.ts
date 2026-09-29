@@ -13,7 +13,8 @@ import {
  *
  * - **the banks**: the map's `<map>_am.bnk` (the steps, the landings, the jump, the world's impacts), `_fx.bnk` (the
  *   weapons) and `_vc.bnk` (the voices), out of `RUN/SOUNDS/BNKSTORE.ZAR` by range -- 1.1 to 1.4 MB of its 67 --
- *   sent as their bytes; the page parses and decodes them (`./audio`);
+ *   and `HUDUI.bnk` (the interface's, the night vision's goggles among them), which the game loads with every map
+ *   (`SOUND_GLOBAL_BANKS`), sent as their bytes; the page parses and decodes them (`./audio`);
  * - **the script**: `RUN/SOUNDRDR.ZAR/sounds.rdr`, each of those banks' sounds' `RANGE` and flags, by name;
  * - **the materials**: `READERC.ZAR/materials.rdr`, the step, stealth, crawl and landing sound of every surface;
  * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s fire and reload sounds for `SOUND_WEAPONS`;
@@ -41,6 +42,15 @@ export const SOUND_LIBSD_PATH = 'RUN/IRX/LIBSD.IRX';
 export const SOUND_CHARACTER = 'mp_seal1';
 /** A map's three banks, in the order a name is looked up in them. */
 export const SOUND_BANK_KINDS = ['am', 'fx', 'vc'] as const;
+/**
+ * The banks the game loads with every map, before the map's own: `FUN_00344450` (decomp 242785, called from the map's
+ * load at 152105) loads `HUDUI`, `SMUS` and `TCM_ECHO`, then `<map>_vc`, `_fx`, `_am`, `_svo`, `_smu` (and `MULTI`,
+ * `HOSTAGE` or a mission's cast). Of these only `HUDUI` is on the disc (`BNKSTORE.ZAR` holds HUDUI and the maps' three);
+ * it holds the interface's 24 sounds -- `.NV_GOGGLES_ON` and `_OFF` (research 90 item 24), the countdowns, the menus'.
+ * No name of it is in any map's bank, so where it sits in the lookup does not matter (the game's is one sorted table,
+ * `FUN_00344bf0`); the viewer looks it up after the map's.
+ */
+export const SOUND_GLOBAL_BANKS: readonly string[] = ['HUDUI.bnk'];
 /** The weapons whose sounds are read: the SEAL's rifle as held (W2.R4) and as the fire table reads it (W2.5). */
 export const SOUND_WEAPONS: readonly string[] = ['M4A1 SD', 'M4A1', 'Mark 23'];
 
@@ -83,6 +93,34 @@ export interface SoundData {
 
 const why = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/**
+ * Where an emitter sounds: the play-sound command's place (`FUN_002659c0`, decomp 112317) starts at 0, adds the
+ * command's offset with flag 4 (`FUN_00309240`) and is carried through the node's matrices up to the world
+ * (`FUN_00310980`) only when the node resolves. Vigilance's `water_drain` (a copy of Crossroads', whose node is
+ * `waterpipe`) names a node `pipe` that no model of the map has, so the game sounds it at its bare offset (0, -60, 30).
+ * `world` is the node's world matrix, column-major (`flattenScene`); null when the scene has no such node. Null back:
+ * no node and no offset -- the game plays that without a place, which the emitters do not model.
+ */
+export function emitterPosition(world: ArrayLike<number> | null, offset: readonly number[] | undefined): [number, number, number] | null {
+  const [x, y, z] = offset ?? [0, 0, 0];
+  if (!world) return offset ? [x!, y!, z!] : null;
+  const w = world;
+  return [
+    w[0]! * x! + w[4]! * y! + w[8]! * z! + w[12]!,
+    w[1]! * x! + w[5]! * y! + w[9]! * z! + w[13]!,
+    w[2]! * x! + w[6]! * y! + w[10]! * z! + w[14]!,
+  ];
+}
+
+/**
+ * The SOILS index a map's `DefaultMaterial` names, matched without case (MP64 writes `stone`); 0 -- the engine's
+ * `UNKNOWN`, no sounds -- for a name no entry spells, as `FUN_002de9e0` answers (MP11's `none`).
+ */
+export function defaultMaterialIndex(materials: readonly Material[], name: string): number {
+  const i = materials.findIndex((m) => m.name.toUpperCase() === name.toUpperCase());
+  return i > 0 ? i : 0;
+}
+
 /** Data with no banks: the walk is silent, and `missing` says why (the page warns once). */
 function silent(archive: string, missing: string[]): SoundData {
   return {
@@ -96,7 +134,7 @@ function silent(archive: string, missing: string[]): SoundData {
  * 81) gives data with no banks and the archive named in `missing`.
  */
 export async function soundFromDisc(source: AssetSource, mapPath: string, archive: string): Promise<SoundData> {
-  const files = SOUND_BANK_KINDS.map((k) => `${archive}_${k}.bnk`);
+  const files = [...SOUND_BANK_KINDS.map((k) => `${archive}_${k}.bnk`), ...SOUND_GLOBAL_BANKS];
   let found: Map<string, Uint8Array>;
   try {
     found = await readZarMembers(source, SOUND_BANKS_PATH, files);
@@ -105,7 +143,7 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
   }
   // A member of a whole-archive read is a view of the 67 MB buffer: copied, so only its own bytes cross.
   const banks: SoundData['banks'] = files.filter((f) => found.has(f)).map((file) => ({ file, bytes: found.get(file)!.slice() }));
-  if (banks.length === 0) return silent(archive, [`${SOUND_BANKS_PATH}: no bank of ${archive}`]);
+  if (!banks.some((b) => !SOUND_GLOBAL_BANKS.includes(b.file))) return silent(archive, [`${SOUND_BANKS_PATH}: no bank of ${archive}`]);
   const missing: string[] = files.filter((f) => !found.has(f)).map((f) => `${f}: not in ${SOUND_BANKS_PATH}`);
   const one = async (path: string, member: string): Promise<Uint8Array | null> => {
     try {
@@ -170,12 +208,12 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
     }
     const wanted = zanimEmitters(infos);
     if (wanted.length > 0 && models) {
-      const at = new Map<string, [number, number, number]>();
+      const at = new Map<string, number[]>();
       for (const inst of flattenScene(models)) {
-        if (!at.has(inst.node.name)) at.set(inst.node.name, [inst.world[12]!, inst.world[13]!, inst.world[14]!]);
+        if (!at.has(inst.node.name)) at.set(inst.node.name, Array.from(inst.world));
       }
       emitters = wanted.flatMap((e) => {
-        const position = at.get(e.node);
+        const position = emitterPosition(at.get(e.node) ?? null, e.offset);
         if (!position) { missing.push(`emitter ${e.anim}: no node ${e.node}`); return []; }
         return [{ anim: e.anim, sound: e.sound, node: e.node, position }];
       });
@@ -186,9 +224,10 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
   let defaultMaterial = 0;
   try {
     const name = parseWorldRoot(Zar.parse(await readZdbMember(source, mapPath, `${archive}.ZED`))).defaultMaterial;
-    const i = materials.findIndex((m) => m.name.toUpperCase() === name.toUpperCase());   // MP64 writes `stone`
-    if (i > 0) defaultMaterial = i;
-    else missing.push(`${archive}.ZED: DefaultMaterial ${JSON.stringify(name)} is no SOILS entry`);
+    // A name no SOILS entry spells is the game's 0, UNKNOWN, which has no sounds: `FUN_002de9e0` (decomp, the map's
+    // load at 152109) answers 0 for a name its table lacks, and `FUN_002ddc30` sets that as the default. Death Trap
+    // (MP11) writes `none`, so its byte-0 floors are silent on the console too (research 90 item 26): no error.
+    defaultMaterial = defaultMaterialIndex(materials, name);
   } catch (e) { missing.push(`${archive}.ZED: ${why(e)}`); }
 
   // The reverb: libsd's preset, and the mission's zones.

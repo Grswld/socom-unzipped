@@ -670,7 +670,7 @@ function gunFrame(dt: number, walking: boolean): void {
     nightOn = night;
     setNightVision(night ? nightLens : null);   // the lit colours through VU1 command 0x5c (`./nightVision`)
     refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
-    if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', walk.drawnFeet());
+    if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', null);   // without a place: vtable+0xc (decomp 410944)
   }
 }
 

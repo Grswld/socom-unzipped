@@ -94,6 +94,10 @@ export const ZANIM_START_ANIM = 45;
 export const ZANIM_STOP_ANIM = 46;
 /** A play-sound command's node byte (+16) naming the animation's own root node rather than a node reference. */
 export const ZANIM_ROOT_NODE = 0xf9;
+/** A play-sound command's size: 32 bytes, the offset's f32 triple at +0x14..+0x1f. */
+export const ZANIM_SOUND_SIZE = 32;
+/** A play-sound command's flag 4: its place starts from the offset at +0x14 (`FUN_002659c0`, `FUN_00309240`). */
+export const ZANIM_SOUND_OFFSET = 4;
 
 /** The shape of `@s2u/scene`'s `parseAnimSets` this reads (kept structural so the package needs no scene). */
 export interface ZAnimSetsLike {
@@ -112,8 +116,12 @@ export interface ZAnimSetsLike {
 /** A command's bytes out of its animation's `Seq_Data` (set, animation, offset, length), or null when not to hand. */
 export type ZAnimPayload = (set: string, anim: string, offset: number, length: number) => Uint8Array | null;
 
-/** One play-sound command: the sound, its flag half-word (+4), and the scene node it sounds at (null: no place). */
-export interface ZAnimSoundCommand { sound: string; flags: number; node: string | null }
+/**
+ * One play-sound command: the sound, its flag half-word (+4), the scene node it sounds at (null: no place), and, with
+ * flag 4, the offset (the f32 triple at +0x14) its place starts from -- in the node's frame, or the world's when the
+ * node does not resolve (`FUN_002659c0`: the offset, then `FUN_00310980` through the node only when there is one).
+ */
+export interface ZAnimSoundCommand { sound: string; flags: number; node: string | null; offset?: [number, number, number] }
 
 /** What an animation does with sound: its activation (`params.flags & 3`), the sounds it plays, the animations it starts. */
 export interface ZAnimSoundInfo {
@@ -148,13 +156,19 @@ export function zanimSounds(archives: readonly ZAnimSetsLike[], payload?: ZAnimP
           for (const c of q.commands) {
             if (c.set !== 0) continue;
             if (c.cmd === ZANIM_PLAY_SOUND) {
-              const b = payload?.(set.name, anim.name, c.offset, 20) ?? null;
+              const b = payload?.(set.name, anim.name, c.offset, ZANIM_SOUND_SIZE) ?? payload?.(set.name, anim.name, c.offset, 20) ?? null;
               const name = b && b.length >= 20 ? anim.names[b[6]! | (b[7]! << 8)] : anim.names.find((n) => SIGIL.test(n));
               if (!name || !SIGIL.test(name)) continue;
               const nodeByte = b && b.length >= 20 ? b[16]! : 0;
               const nodeIndex = nodeByte === ZANIM_ROOT_NODE ? root : nodeByte;
               const node = nodeIndex > 0 ? anim.nodeRefs?.[nodeIndex]?.name ?? null : null;
-              info.sounds.push({ sound: name, flags: b && b.length >= 20 ? b[4]! | (b[5]! << 8) : 0, node: node === 'NA' ? null : node });
+              const flags = b && b.length >= 20 ? b[4]! | (b[5]! << 8) : 0;
+              const cmd: ZAnimSoundCommand = { sound: name, flags, node: node === 'NA' ? null : node };
+              if (flags & ZANIM_SOUND_OFFSET && b && b.length >= ZANIM_SOUND_SIZE) {
+                const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
+                cmd.offset = [v.getFloat32(0x14, true), v.getFloat32(0x18, true), v.getFloat32(0x1c, true)];
+              }
+              info.sounds.push(cmd);
             } else if (c.cmd === ZANIM_START_ANIM || c.cmd === ZANIM_STOP_ANIM) {
               const b = payload?.(set.name, anim.name, c.offset, 8) ?? null;
               if (!b || b.length < 8) continue;
@@ -201,8 +215,11 @@ export function callbackSounds(archives: ZAnimSetsLike | readonly ZAnimSetsLike[
   return out;
 }
 
-/** A looping sound a mission starts at a place: the ambience emitters (`~FAN_ROTATE` at `fan1`, `~RIVER` ...). */
-export interface ZAnimEmitter { anim: string; sound: string; node: string; flags: number }
+/**
+ * A looping sound a mission starts at a place: the ambience emitters (`~FAN_ROTATE` at `fan1`, `~RIVER` ...), with the
+ * command's offset where it has one (flag 4: Foxhunt's spray, the two water drains).
+ */
+export interface ZAnimEmitter { anim: string; sound: string; node: string; flags: number; offset?: [number, number, number] }
 
 /**
  * The mission's self-starting animations (activation 1) that play a looping (`~`) sound at a node -- 0 to 18 a map:
@@ -215,7 +232,9 @@ export function zanimEmitters(infos: ReadonlyMap<string, ZAnimSoundInfo>): ZAnim
     if (info.activation !== 1) continue;
     for (const s of info.sounds) {
       if (!s.sound.startsWith('~') || !s.node) continue;
-      if (!out.some((e) => e.anim === info.anim && e.sound === s.sound)) out.push({ anim: info.anim, sound: s.sound, node: s.node, flags: s.flags });
+      if (!out.some((e) => e.anim === info.anim && e.sound === s.sound)) {
+        out.push({ anim: info.anim, sound: s.sound, node: s.node, flags: s.flags, ...(s.offset ? { offset: s.offset } : {}) });
+      }
     }
   }
   return out;

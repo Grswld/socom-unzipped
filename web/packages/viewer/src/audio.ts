@@ -32,8 +32,9 @@ import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopL
  * the game names it -- a material's `STEPSOUND`, a weapon's `FireSoundClose`, a zAnim callback's -- and a name the
  * map's banks do not hold is silent, as `FUN_00344f30` answers no handle for it on the console.
  *
- * **Unlock.** A browser starts no audio before a gesture: the `AudioContext` is made on the first pointer or key
- * press (`unlockOn`); an event before that is counted (`stats().dropped.locked`) and not played.
+ * **Unlock.** A browser starts no audio before a gesture: the `AudioContext` is made suspended at page start
+ * (`unlockOn`) and resumed by the first pointer or key press; an event before that is counted (`stats().dropped.locked`)
+ * and not played.
  */
 
 /**
@@ -427,8 +428,14 @@ export class GameAudio {
     this.speeds = landSpeeds(gravity, fallDistances);
   }
 
-  /** Makes the output on the first pointer or key press on `target` (and resumes it on any later one). */
+  /**
+   * Makes the output on the first pointer or key press on `target` (and resumes it on any later one) -- and, ahead of
+   * it, at page start: the output is prepared (the `AudioContext` made, suspended, as the autoplay rules leave it) on
+   * the task after this call, so a press that lands before the map's banks (research 90 item 27: 9-69 ms, 887 ms once,
+   * when the press made the context) only resumes it. The banks decode into it as they come (`setData`).
+   */
   unlockOn(target: EventTarget): void {
+    setTimeout(() => { if (!this.out.ready) this.out.prepare?.(); }, 0);
     const unlock = (): void => {
       const t0 = performance.now();
       const was = this.out.unlocked;
