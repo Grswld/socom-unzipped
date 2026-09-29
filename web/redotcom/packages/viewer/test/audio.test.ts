@@ -7,8 +7,8 @@ import { FsAssetSource } from '@s2u/archive/node';
 import { parseZdb, Zar, zdbMember } from '@s2u/archive';
 import { parseSceneGraph, worldCollision } from '@s2u/scene';
 import type { RenderedSound, ReverbImpulse } from '@s2u/sound';
-import { GameAudio, LISTENING_GAIN_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER, panGains, type AudioOut, type LoopHandle } from '../src/audio';
-import { emitterPosition, soundFromDisc, type SoundData } from '../src/soundData';
+import { GameAudio, LISTENING_GAIN_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER, panGains, WebAudioOut, type AudioOut, type LoopHandle } from '../src/audio';
+import { emitterPosition, loopKey, renderAmbienceLoops, soundFromDisc, type SoundData } from '../src/soundData';
 import { WalkSounds, type WalkSignals } from '../src/walkSounds';
 import type { AnimStats } from '../src/animator';
 
@@ -115,6 +115,62 @@ describe('the output controls', () => {
       expect(audio.stats().unlocked).toBe(true);
     } finally { vi.useRealTimers(); }
   });
+
+  /**
+   * `unlocked` is "the context runs", not "a gesture was seen": a touch `pointerdown` or an Escape is no user activation
+   * in Chromium, so its `resume()` stays pending until a later event; plays until then are counted as locked, and a
+   * rejected resume is warned once and kept in the stats.
+   */
+  class StubContext {
+    static last: StubContext | null = null;
+    state = 'suspended';
+    sampleRate = 48_000;
+    currentTime = 0;
+    destination = {};
+    settle: { resolve: () => void; reject: (e: unknown) => void } | null = null;
+    constructor() { StubContext.last = this; }
+    private node() { return { gain: { value: 1, setTargetAtTime() {}, cancelScheduledValues() {}, setValueAtTime() {}, linearRampToValueAtTime() {} }, connect() {}, disconnect() {} }; }
+    createGain() { return this.node(); }
+    resume(): Promise<void> {
+      return new Promise<void>((resolve, reject) => {
+        this.settle = { resolve: () => { this.state = 'running'; resolve(); }, reject };
+      });
+    }
+  }
+  const withContext = async (run: () => Promise<void>): Promise<void> => {
+    const g = globalThis as unknown as { AudioContext?: unknown };
+    const was = g.AudioContext;
+    g.AudioContext = StubContext;
+    try { await run(); } finally { g.AudioContext = was; }
+  };
+  const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+
+  it('is unlocked only once the context runs: a pending resume leaves it locked (web platform; 81 section 8)', () => withContext(async () => {
+    const out = new WebAudioOut(), audio = new GameAudio(out), target = new EventTarget();
+    audio.unlockOn(target);
+    target.dispatchEvent(new Event('pointerdown'));
+    expect(audio.stats()).toMatchObject({ unlocked: false, state: 'suspended' });
+    StubContext.last!.settle!.resolve();
+    await tick();
+    expect(audio.stats()).toMatchObject({ unlocked: true, state: 'running' });
+  }));
+
+  it('warns once when a resume is refused, keeps the reason in the stats and stays locked', () => withContext(async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const out = new WebAudioOut(), audio = new GameAudio(out), target = new EventTarget();
+      audio.unlockOn(target);
+      target.dispatchEvent(new Event('keydown'));
+      StubContext.last!.settle!.reject(new Error('not allowed'));
+      await tick();
+      target.dispatchEvent(new Event('keydown'));
+      StubContext.last!.settle!.reject(new Error('not allowed'));
+      await tick();
+      expect(audio.stats().unlocked).toBe(false);
+      expect(audio.stats().resumeError).toMatch(/not allowed/);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally { warn.mockRestore(); }
+  }));
 });
 
 describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
@@ -123,6 +179,9 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     // The map's three and HUDUI, which the game loads with every map (FUN_00344450: HUDUI, SMUS, TCM_ECHO, then the
     // map's; only HUDUI is on the disc): the night vision's `.NV_GOGGLES_ON/_OFF` are its (research 90 item 24).
     expect(d.banks.filter((b) => !b.only).map((b) => b.file)).toEqual(['MP2_am.bnk', 'MP2_fx.bnk', 'MP2_vc.bnk', 'HUDUI.bnk']);
+    // About 1.9 MB of the store's 67 for Frostfire (81 s1: 986,408 + 687,344 + 176,088 B, and HUDUI's): never the
+    // "1.1-1.4 MB" an older summary said.
+    expect(d.banks.filter((b) => !b.only).reduce((n, b) => n + b.bytes.byteLength, 0)).toBeGreaterThan(1_849_840);
     // Borrowed (PLACEHOLDER): the tin steps Frostfire's METAL_THIN floors ask for, the metal bounce of a grenade.
     expect(d.banks.find((b) => b.only?.includes('.STEP_TIN'))).toBeDefined();
     expect(d.banks.some((b) => b.only?.includes('.GREN_METAL'))).toBe(true);
@@ -257,6 +316,90 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     // full-suite runs on a loaded host: a slow-down past 8x, which solo x 6 (3.4 s) would not cover, so
     // the budget is solo x ~26 -- this test's alone; the suite keeps the default.
   }, 15_000);
+
+  it('picks a remote round by WEAPON_GLOBAL distance: close to 90 units, medium to 500, far beyond (FUN_003d2c50)', async () => {
+    const d = await mp2();
+    expect(d.fireDistances).toEqual({ close: 0, med: 90, far: 500 });     // 0, 9, 50 m at 10 units a metre
+    const out = new Recorder(), audio = new GameAudio(out, seeded(3));
+    audio.setData(d);
+    audio.setListener(IDENTITY);
+    out.unlock();
+    expect(audio.onFire('M4A1', [0, 0, -50])).toBe('.M4A1');
+    expect(audio.onFire('M4A1', [0, 0, -100])).toBe('.M4A1_M');
+    expect(audio.onFire('M4A1', [0, 0, -600])).toBe('.M4A1_F');
+    const range = audio.stats().dropped.range;
+    expect(audio.onFire('M4A1', [0, 0, -1800])).toBeNull();             // the far sound's own RANGE (85-1700)
+    expect(audio.stats().dropped.range).toBe(range + 1);
+    // The M4A1 SD has no FireSoundMed/Far: its slots are empty and an empty slot plays nothing -- no fall back to the
+    // close sound. PLAUSIBLE: the empty name's lookup to a null handle (FUN_00344f30) was not read to the end.
+    expect(audio.onFire('M4A1 SD', [0, 0, -80])).toBe('.M4A1_SIL');
+    expect(audio.onFire('M4A1 SD', [0, 0, -150])).toBeNull();
+  });
+
+  it('plays a zAnim sound at its command volume (flag 0x10, FUN_002659c0): the app volume is 0x400 x volume', async () => {
+    const d = await mp2();
+    const out = new Recorder(), audio = new GameAudio(out, seeded(3));
+    audio.setData(d);
+    audio.setListener(IDENTITY);
+    out.unlock();
+    audio.play('.M4A1_SIL', [0, 0, -10], 'play', 0.5);
+    expect(audio.stats().recent.at(-1)).toMatchObject({ name: '.M4A1_SIL', vol: 0x200 });
+    // The flashbang's zAnim plays its bang at 2.0 (common set, every map).
+    expect(new Map(d.callbackVolumes).get('flashcrash_grenade')?.[new Map(d.callbacks).get('flashcrash_grenade')!.indexOf('.MARK_141_FLASH')]).toBe(2);
+    expect(new Map(d.callbackVolumes).get('jump_whoosh')).toEqual([1]);
+    expect(audio.onAnimCallback('flashcrash_grenade')).toBe('.MARK_141_FLASH');     // played without a place: 0x400 x 2
+    expect(audio.stats().recent.at(-1)).toMatchObject({ name: '.MARK_141_FLASH', vol: 0x800 });
+  });
+
+  it('walks Frostfire\'s camera-state scripts: the beds on PLAYER_INDOORS, the wind gusts on CAMERA_INDOORS after 8 s (81 s10)', async () => {
+    const d = await mp2();
+    const gust = (sound: string, volume: number, base: number, range: number) =>
+      ({ anim: volume === 1 ? 'wind_outside' : 'wind_inside', sound, volume, kind: 'repeat', wait: { base, range }, test: 'camera', delay: 8 });
+    // The mission's scripts in its order: check_camera_inside_state (the wind), then check_camera_inside_state1 (the beds).
+    expect(d.layers!.outside).toEqual([
+      gust('.OUTDR_WND_GST2', 1, 5, 15), gust('.OUTDR_WND_GST3', 1, 2, 14),
+      { anim: 'outside_noise', sound: '~OUTDOOR_AMB', volume: 1, kind: 'loop', test: 'player', delay: 0 },
+    ]);
+    expect(d.layers!.inside).toEqual([
+      gust('.OUTDR_WND_GST2', Math.fround(0.6), 5, 15), gust('.OUTDR_WND_GST3', Math.fround(0.6), 2, 14),
+      { anim: 'inside_noise', sound: '~INDOOR_AMB', volume: 1, kind: 'loop', test: 'player', delay: 0 },
+    ]);
+    expect(d.emitters.some((e) => /OUTDR_WND/.test(e.sound))).toBe(false);
+    // Played: nothing for 8 s, then each gust at once and again after its wait, at its volume, without a place.
+    let now = 0;
+    const out = new Recorder(), audio = new GameAudio(out, () => 0.5, { now: () => now });
+    audio.setData(d);
+    out.unlock();
+    audio.setAmbience(true);
+    audio.setEnvironment(false, 0);
+    audio.pump(1e9);
+    const gusts = (): { name: string; vol: number }[] => audio.stats().recent.filter((r) => r.event === 'ambience');
+    now = 7.9; audio.setListener(IDENTITY);
+    expect(gusts()).toEqual([]);
+    now = 8; audio.setListener(IDENTITY);
+    expect(gusts().map((g) => [g.name, g.vol])).toEqual([['.OUTDR_WND_GST2', 0x400], ['.OUTDR_WND_GST3', 0x400]]);
+    now = 8 + 2 + 14 * 0.5; audio.setListener(IDENTITY);                  // GST3's wait at U = 0.5: 9 s
+    expect(gusts().length).toBe(3);
+    // Indoors the script stops wind_outside and starts wind_inside: its gusts at once, at 0.6.
+    audio.setEnvironment(true, 0);
+    audio.setListener(IDENTITY);
+    expect(gusts().slice(3).map((g) => [g.name, g.vol])).toEqual([['.OUTDR_WND_GST2', Math.round(0x400 * Math.fround(0.6))], ['.OUTDR_WND_GST3', Math.round(0x400 * Math.fround(0.6))]]);
+  });
+
+  it('resolves Desert Glory\'s indoor bed in the mission set: ~OUTDOOR_AMB at 0.6, not the common ~INDOOR_AMB (FUN_0026a250)', async () => {
+    const d6 = await soundFromDisc(new FsAssetSource(fixtures), 'RUN/MP6.ZDB', 'MP6');
+    expect(d6.beds).toEqual({ outside: ['~OUTDOOR_AMB'], inside: ['~OUTDOOR_AMB'] });
+    expect(d6.layers!.inside).toEqual([{ anim: 'inside_noise', sound: '~OUTDOOR_AMB', volume: Math.fround(0.6), kind: 'loop', test: 'player', delay: 0 }]);
+    expect((await mp2()).beds.inside).toEqual(['~INDOOR_AMB']);
+    // Its fires sound at the command's 3.0 (flag 0x10), rendered at that volume: one loop per sound and volume.
+    expect(d6.emitters.filter((e) => e.anim === 'flame_in_rubble1').map((e) => [e.sound.trim(), e.volume])).toEqual([['~FIRE_SM', 3]]);
+    const loops = renderAmbienceLoops(d6, 1, 0.1);
+    const names = loops.map((l) => l.name);
+    expect(names).toContain('~OUTDOOR_AMB');
+    expect(names).toContain(loopKey('~OUTDOOR_AMB', Math.fround(0.6)));
+    const peak = (n: string): number => loops.find((l) => l.name === n)!.sound.peak;
+    expect(peak(loopKey('~OUTDOOR_AMB', Math.fround(0.6)))).toBeLessThan(peak('~OUTDOOR_AMB'));
+  }, 30_000);
 
   it('plays .BUL_PASSING at the nearest point of another shooter round within 20 units', async () => {
     const out = new Recorder(), audio = new GameAudio(out, seeded(6));

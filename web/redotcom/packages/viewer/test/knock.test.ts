@@ -58,6 +58,30 @@ describe('the knock on the mover', () => {
     expect(seen).toEqual(['fallBackwards', 'landBackwards', 'getUpBackwards', 'none']);
   });
 
+  it('dead (the server\'s `kill`), the knocked SEAL stays down in its landing: no get-up follows', () => {
+    for (const fall of ['fallForward', 'fallBackwards'] as const) {
+      const w = flat();
+      w.knock([fall === 'fallForward' ? 5 : -5, 40, 0], fall);
+      w.dead = true;
+      const seen: string[] = [];
+      for (let i = 0; i < 6 * 60; i++) {
+        w.tick(still);
+        const n = w.action?.name ?? 'none';
+        if (seen[seen.length - 1] !== n) seen.push(n);
+      }
+      expect(seen).toEqual([fall, fall === 'fallForward' ? 'landDeath' : 'landBackwards']);
+    }
+  });
+
+  it('a kill heard after the get-up began puts the landing back', () => {
+    const w = flat();
+    w.knock([-5, 40, 0], 'fallBackwards');
+    for (let i = 0; i < 6 * 60 && w.action?.name !== 'getUpBackwards'; i++) w.tick(still);
+    expect(w.action?.name).toBe('getUpBackwards');
+    w.dead = true;
+    expect(w.action?.name).toBe('landBackwards');
+  });
+
   it('holds the SEAL: no jump while knocked', () => {
     const w = flat();
     w.knock(PUSH.velocity, PUSH.fall);

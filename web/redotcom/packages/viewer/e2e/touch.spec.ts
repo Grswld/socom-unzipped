@@ -224,10 +224,14 @@ test.describe('the dual sticks and the buttons, landscape', () => {
         buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
       };
     });
-    await expect(page.locator('#touch')).toBeHidden();
+    // Never assert visibility on `#touch` itself: it is a zero-size box (its sticks and buttons are fixed-position
+    // children), so Playwright reads it hidden whether the layer shows or not. The switch is `body.pad-on`
+    // (`src/styles.css`: `body.touch.pad-on #touch { display: none }`), and a control inside the layer shows it.
+    await expect(page.locator('body')).toHaveClass(/(^|\s)pad-on(\s|$)/);
+    await expect(page.locator('#tw-fire')).toBeHidden();
     await expect.poll(async () => (await input(page)).moveY).toBe(1);
     await page.evaluate(() => { (window as unknown as { __pad: unknown }).__pad = null; });
-    await expect(page.locator('#touch')).toBeVisible();
+    await expect(page.locator('body')).not.toHaveClass(/(^|\s)pad-on(\s|$)/);
     await expect(page.locator('#tw-fire')).toBeVisible();
   });
 });

@@ -26,8 +26,10 @@ function page(rules: Rules) {
   } as unknown as WalkMode;
   const bodies: { id: number; flags: number; feet: [number, number, number]; yaw: number }[] = [];
   const remote = { setTeam: () => undefined, forget: () => undefined, died: () => undefined, clear: () => undefined, frame: () => undefined } as unknown as RemotePlayers;
+  const respawns: number[] = [];
   const deps: NetPageDeps = {
     walk, remote, hud, clips: () => null, remoteGrenade: () => undefined, spectate: (p) => { poses.push(p); },
+    respawned: () => { respawns.push(respawns.length + 1); },
     roundEffects: () => undefined, weapons: [HELD_RIFLE, HELD_SIDEARM],
     socket: () => {
       socket = { binaryType: '', readyState: 1, send: (d: string | Uint8Array) => { if (typeof d === 'string') sent.push(d); }, close: () => undefined } as unknown as WebSocketLike;
@@ -44,13 +46,13 @@ function page(rules: Rules) {
     type: 'welcome', id: 1, version: 4, map: 'MP2', tick: 0, role: 'player', team: 'seal', queue: 0, name: 'Tester',
     players: [], rules, round: 1, rounds: 11, ghost: false, ...over,
   });
-  return { net, hud, sent, server, banner, welcome, bodies, modes, poses };
+  return { net, hud, sent, server, banner, welcome, bodies, modes, poses, respawns };
 }
 
 describe('the round-start banner online (FUN_001fb420 L57633-57648)', () => {
   it('the hello names the rules', () => {
     const { sent } = page('classic');
-    expect(JSON.parse(sent[0]!)).toMatchObject({ type: 'hello', version: 4, map: 'MP2', rules: 'classic' });
+    expect(JSON.parse(sent[0]!)).toMatchObject({ type: 'hello', version: 6, map: 'MP2', rules: 'classic' });
   });
 
   it('respawn keeps the original\'s quirk: STARTING ROUND 1 OF 11 for its one round, at the join and at each match', () => {
@@ -114,6 +116,23 @@ describe('the classic round on the page', () => {
     net.frame(0.016, {} as never, false);
     expect(modes).toContain('fly');
     expect(poses.at(-1)!.x).toBeCloseTo(100, 0);                // the living teammate, not the foe nor the dead one
+    net.close();
+  });
+});
+
+describe('the kit of the page at a spawn (research 91 §4.3: FUN_00598b90 -> FUN_00599b60 -> FUN_00599f00)', () => {
+  it('its own spawn refreshes the kit as the server does; another player spawn never; each round spawn again', () => {
+    const { net, server, welcome, respawns } = page('classic');
+    welcome();
+    server({ type: 'kill', killer: 3, victim: 1, weapon: '552', how: 'weapon', clip: null });
+    expect(respawns).toHaveLength(0);
+    server({ type: 'spawn', id: 1, at: [0, 0, 0], yaw: 0, after: 0 });
+    expect(respawns).toHaveLength(1);
+    server({ type: 'spawn', id: 2, at: [10, 0, 0], yaw: 0, after: 0 });
+    expect(respawns).toHaveLength(1);                           // another player's spawn is theirs
+    server({ type: 'roundStart', round: 2, seconds: 360, wins: { seal: 1, terrorist: 0 }, rounds: 11 });
+    server({ type: 'spawn', id: 1, at: [0, 0, 0], yaw: 0, after: 0 });
+    expect(respawns).toHaveLength(2);                           // a classic round's start is a spawn too
     net.close();
   });
 });

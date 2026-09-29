@@ -7,6 +7,8 @@ import {
   landingClass, landingSounds, landSpeeds, makeVolume, materialsFromArchive, note2Pitch, panDegrees, parseBankFile,
   parseSoils, rangeGain, renderSound, SampleCache, sdNote2Pitch, soundHash, soundNameHash, soundParams,
   soundScriptFromArchive, voiceLevel, weaponScriptFromArchive, weaponSounds, type Material, type SoundBank,
+  ambienceLayers, callbackPlays, commandVolume, fireVariant, weaponGlobals, ZANIM_CAMERA_INDOORS, ZANIM_ELSEIF, ZANIM_IF,
+  ZANIM_LOOP, ZANIM_PLAYER_INDOORS, ZANIM_WAIT,
 } from '../src/index';
 
 /** A deterministic `rand()` source. */
@@ -149,6 +151,115 @@ describe('the rules (81 §4-§6)', () => {
     const infos = zanimSounds([mission], payload);
     expect(infos.get('water_drain')!.sounds).toEqual([{ sound: '~WATER_LEAK', flags: 0x86, node: 'pipe', offset: [0, -60, 30] }]);
     expect(zanimEmitters(infos)).toEqual([{ anim: 'water_drain', sound: '~WATER_LEAK', node: 'pipe', flags: 0x86, offset: [0, -60, 30] }]);
+  });
+  it('resolves a name both sets carry in the mission set first, the first of the name within a set (FUN_0026a250, FUN_0026c600)', () => {
+    // Desert Glory's bytes: the common set's inside_noise loops ~INDOOR_AMB (flags 0x280); the mission set carries two
+    // inside_noise, the first ~OUTDOOR_AMB at 0.6 (0x290: the volume at +8), the second ~INDOOR_AMB.
+    const bytes: Record<string, Uint8Array> = {};
+    const sound = (key: string, nameIndex: number, flags: number, volume: number): { offset: number; set: number; cmd: number } => {
+      const d = new Uint8Array(32); d[0] = 30; d[4] = flags & 0xff; d[5] = flags >> 8; d[6] = nameIndex;
+      new DataView(d.buffer).setFloat32(8, volume, true);
+      bytes[key] ??= d;                                   // the ZAR's first key of the name
+      return { offset: Number(key.split(':')[2]), set: 0, cmd: 30 };
+    };
+    const noise = (set: string, snd: string, flags: number, volume: number, at: number) => ({
+      name: 'inside_noise', names: ['NA', 'inside_noise', snd], params: { flags: 0x22, rootNodeIndex: 0 },
+      sequences: [{ commands: [sound(`${set}:inside_noise:${at}`, 2, flags, volume)] }],
+    });
+    const common = { sets: [{ name: 'common', anims: [noise('common', '~INDOOR_AMB', 0x280, 0, 72)] }] };
+    const mission = { sets: [{ name: 'mission', anims: [noise('mission', '~OUTDOOR_AMB', 0x290, 0.6, 72), noise('mission', '~INDOOR_AMB', 0x280, 0, 72)] }] };
+    // The payload by set: the first inside_noise's Seq_Data in each (as the ZAR's first key of the name).
+    const payload = (set: string, anim: string, offset: number, length: number): Uint8Array | null =>
+      bytes[`${set}:${anim}:${offset}`]?.subarray(0, length) ?? null;
+    const infos = zanimSounds([common, mission], payload);
+    expect(infos.get('inside_noise')!.set).toBe('mission');
+    expect(infos.get('inside_noise')!.sounds).toEqual([{ sound: '~OUTDOOR_AMB', flags: 0x290, node: null, volume: Math.fround(0.6) }]);
+    // A name only the common set has falls through to it; one set alone resolves in itself.
+    expect(zanimSounds([common], payload).get('inside_noise')!.sounds).toEqual([{ sound: '~INDOOR_AMB', flags: 0x280, node: null }]);
+  });
+  it('reads a play-sound command\'s own volume (flag 0x10, the f32 at +8; FUN_002659c0) onto the callbacks and the emitters', () => {
+    const d = (flags: number, nameIndex: number, volume: number, node = 0): Uint8Array => {
+      const b = new Uint8Array(32); b[0] = 30; b[4] = flags & 0xff; b[5] = flags >> 8; b[6] = nameIndex; b[16] = node;
+      new DataView(b.buffer).setFloat32(8, volume, true);
+      return b;
+    };
+    const bytes: Record<string, Uint8Array> = {
+      'satchel:8': d(0x92, 2, 0.5), 'flame_in_rubble1:8': d(0x292, 3, 3, 1), 'jump_whoosh:8': d(0x82, 2, 7),   // 7: no flag 0x10, ignored
+    };
+    const mission = { sets: [{ name: 'mission', anims: [
+      { name: 'satchel', names: ['NA', 'satchel', '.MK138_SAT_CHRG'], sequences: [{ commands: [{ offset: 8, set: 0, cmd: 30 }] }] },
+      { name: 'flame_in_rubble1', names: ['NA', 'fire_coals', 'flame_in_rubble1', '~FIRE_SM'], params: { flags: 33, rootNodeIndex: 1 },
+        nodeRefs: [{ name: 'NA' }, { name: 'fire_coals' }], sequences: [{ commands: [{ offset: 8, set: 0, cmd: 30 }] }] },
+      { name: 'jump_whoosh', names: ['NA', 'jump_whoosh', '.JUMP_WHOOSH'], sequences: [{ commands: [{ offset: 8, set: 0, cmd: 30 }] }] },
+    ] }] };
+    const payload = (_s: string, anim: string, offset: number, length: number): Uint8Array | null => bytes[`${anim}:${offset}`]?.subarray(0, length) ?? null;
+    expect(callbackPlays([mission], payload).get('satchel')).toEqual([{ sound: '.MK138_SAT_CHRG', volume: 0.5 }]);
+    expect(callbackPlays([mission], payload).get('jump_whoosh')).toEqual([{ sound: '.JUMP_WHOOSH', volume: 1 }]);
+    expect(callbackSounds([mission], payload).get('satchel')).toEqual(['.MK138_SAT_CHRG']);
+    expect(zanimEmitters(zanimSounds([mission], payload))).toEqual([{ anim: 'flame_in_rubble1', sound: '~FIRE_SM', node: 'fire_coals', flags: 0x292, volume: 3 }]);
+    expect(commandVolume({})).toBe(1);
+  });
+  it('walks the camera-state scripts: the sides a script starts its animations on, their sounds, volumes and waits (81 §10)', () => {
+    // Frostfire's mission check_camera_inside_state, command for command: START snd_wind_outside (no such animation),
+    // WAIT 8, WHILE, IF CAMERA_INDOORS { START wind_inside, STOP wind_outside } ELSEIF !CAMERA_INDOORS { START
+    // wind_outside, STOP wind_inside } ENDIF END_WHILE; and its wind_outside / wind_inside: a gust sequence each,
+    // SOUND, WAIT (random: 5 + 15 U), LOOP -1.
+    const bytes: Record<string, Uint8Array> = {};
+    let at = 0;
+    const cmd = (anim: string, b: number[], floats: [number, number][] = []): { offset: number; set: number; cmd: number; size: number } => {
+      const size = Math.max(b.length, ...floats.map(([o]) => o + 4));
+      const d = new Uint8Array(size); b.forEach((v, i) => { d[i] = v; });
+      for (const [o, v] of floats) new DataView(d.buffer).setFloat32(o, v, true);
+      const offset = (at += 32);
+      bytes[`${anim}:${offset}`] = d;
+      return { offset, set: 0, cmd: d[0]!, size };
+    };
+    const script = 'check_camera_inside_state';
+    const cam = { name: script, names: ['NA', script, 'snd_wind_outside', 'windblowing', 'wind_inside', 'wind_outside'],
+      params: { flags: 0x21, rootNodeIndex: 0 },
+      sequences: [{ commands: [
+        cmd(script, [45, 0, 0x52, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        cmd(script, [15, 0, 0x30, 0, 9, 0, 0, 0], [[8, 8]]),
+        cmd(script, [39, 0, 0x22, 0, 1, 0, 0xe4, 0]),
+        cmd(script, [2, 0, 0x32, 0, 1, 0, 0, 0, 66, 0, 0x12, 0]),
+        cmd(script, [45, 0, 0x52, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        cmd(script, [46, 0, 0x22, 0, 5, 0, 0, 0]),
+        cmd(script, [3, 0, 0x52, 0, 1, 0, 0, 0, 43, 0, 0x22, 0, 1, 0, 0, 0, 66, 0, 0x12, 0]),
+        cmd(script, [45, 0, 0x52, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        cmd(script, [46, 0, 0x22, 0, 4, 0, 0, 0]),
+        cmd(script, [5, 0, 0x22, 0, 1, 0, 0, 0]),
+        cmd(script, [40, 0, 0x22, 0, 0, 0, 0x4c, 0]),
+      ] }] };
+    const wind = (name: string, volume: number) => ({
+      name, names: ['NA', name, 'SND_OUTDOOR_WIND_GUST_LOOP', '.OUTDR_WND_GST2'], params: { flags: 0x22, rootNodeIndex: 0 },
+      sequences: [
+        { commands: [cmd(name, [30, 0, 0x82, 0, 0x90, 2, 2, 0], [[8, volume], [28, 0]])] },   // no sigil: in no bank
+        { commands: [
+          cmd(name, [30, 0, 0x82, 0, 0x90, 2, 3, 0], [[8, volume], [28, 0]]),
+          cmd(name, [15, 0, 0x50, 0, 0x29, 0, 0, 0], [[8, 5], [12, 5], [16, 15]]),
+          cmd(name, [14, 0, 0x32, 0, 1, 0, 0, 0, 0xff, 0xff, 0xff, 0xff]),
+        ] },
+      ],
+    });
+    const mission = { sets: [{ name: 'mission', anims: [cam, wind('wind_outside', 1), wind('wind_inside', 0.6)] }] };
+    const payload = (_s: string, anim: string, offset: number, length: number): Uint8Array | null => bytes[`${anim}:${offset}`]?.subarray(0, length) ?? null;
+    const layers = ambienceLayers([mission], payload);
+    const gust = { sound: '.OUTDR_WND_GST2', kind: 'repeat', wait: { base: 5, range: 15 }, test: 'camera', delay: 8 };
+    expect(layers.outside).toEqual([{ anim: 'wind_outside', volume: 1, ...gust }]);
+    expect(layers.inside).toEqual([{ anim: 'wind_inside', volume: Math.fround(0.6), ...gust }]);
+    // Without an indoors test a self-starting animation is not the ambience's.
+    expect(ambienceLayers([{ sets: [{ name: 'mission', anims: [wind('wind_outside', 1)] }] }], payload)).toEqual({ outside: [], inside: [] });
+    expect([ZANIM_IF, ZANIM_ELSEIF, ZANIM_LOOP, ZANIM_WAIT, ZANIM_CAMERA_INDOORS, ZANIM_PLAYER_INDOORS]).toEqual([2, 3, 14, 15, 66, 72]);
+  });
+  it('picks a remote round\'s fire sound by the squared distance against WEAPON_GLOBAL\'s (FUN_003d2c50)', () => {
+    const med = 90 ** 2, far = 500 ** 2;                                // 9 and 50 metres at 10 units a metre
+    expect(fireVariant(89.9 ** 2, med, far)).toBe(0);
+    expect(fireVariant(90 ** 2, med, far)).toBe(0);                     // not over: still close
+    expect(fireVariant(90.1 ** 2, med, far)).toBe(1);
+    expect(fireVariant(499.9 ** 2, med, far)).toBe(1);
+    expect(fireVariant(500.1 ** 2, med, far)).toBe(2);
+    // The light landing's LANDSOUND carries no voice: the hurt voice is landingHurts' (the FUN_00578150 call is a meter).
+    expect(landingSounds({ index: 7, name: 'STONE', step: null, stealthStep: null, crawl: null, land: '.STONE_JUMP', fall: null, stealthFactor: 1, footStepOffset: null }, 1)).toEqual(['.STONE_JUMP']);
   });
   it('hears another shooter round passing within 20 units, never the player own', () => {
     expect(passingSound([0, 0, 0], [-50, 10, 0], [50, 10, 0])).toEqual({ sound: '.BUL_PASSING', at: [0, 10, 0] });
@@ -303,6 +414,9 @@ describe.skipIf(!zweapon)('zweapon.rdr sounds (81 §5)', () => {
     expect(weaponSounds(script, 'M4A1 SD')).toEqual({ name: 'M4A1 SD', fireClose: '.M4A1_SIL', fireMed: null, fireFar: null, reload: '.M4A1_SIL_RLD' });
     expect(weaponSounds(script, 'M4A1')).toMatchObject({ fireClose: '.M4A1', fireMed: '.M4A1_M', fireFar: '.M4A1_F', reload: '.M4A1_RLD' });
     expect(weaponSounds(script, 'NOPE')).toBeNull();
+  });
+  it('reads WEAPON_GLOBAL\'s fire sound distances: close 0, medium 9 and far 50 metres (FUN_003cd810)', () => {
+    expect(weaponGlobals(weaponScriptFromArchive(zweapon!))).toEqual({ soundDistanceClose: 0, soundDistanceMed: 9, soundDistanceFar: 50 });
   });
 });
 

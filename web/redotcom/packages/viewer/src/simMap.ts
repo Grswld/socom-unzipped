@@ -8,6 +8,7 @@ import { actionRoots, ACTION_CLIPS, groundGrid, HOLD_CODES, packGround, type Gro
 import { SEAL_ANIMS } from './locomotion';
 import { clipsFromPack, motionTableFromArchive, MOTION_PACK_PATH, type MotionEntry } from './motionTable';
 import { TRAVERSAL_CLIPS } from './traversal';
+import { ALL_RELOAD_CLIPS } from './reloadClip';
 import { readDoors, type DoorSpec } from './doors';
 
 /**
@@ -90,7 +91,10 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: string[]): strin
   }
 }
 
-/** The clips the sim reads: the mover's action clips (their root motion) and the traversal moves', with the table. */
+/**
+ * The clips the sim reads: the mover's action clips (their root motion), the traversal moves', and the eight reload
+ * clips (`./reloadClip`: the room locks a weapon for its reload clip's `playback`, as the page's reload runs), with the table.
+ */
 export interface SimClips {
   clips: MotionClip[];
   table: Map<string, MotionEntry> | null;
@@ -100,7 +104,9 @@ export interface SimClips {
 
 /** Every clip name the sim asks the pack for. */
 export const SIM_CLIPS: readonly string[] = [
-  ...new Set([...Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]), ...HOLD_CODES, ...TRAVERSAL_CLIPS]),
+  ...new Set([
+    ...Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]), ...HOLD_CODES, ...TRAVERSAL_CLIPS, ...ALL_RELOAD_CLIPS,
+  ]),
 ];
 
 /** `MOTION_P.ZAR`'s sim clips and `READERC.ZAR`'s `motion.rdr` (null when it will not read). */

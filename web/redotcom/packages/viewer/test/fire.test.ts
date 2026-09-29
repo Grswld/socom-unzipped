@@ -159,11 +159,15 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
     expect(fire.shoot()).toBeNull();                         // no round while the reload plays
     fire.update(0.2);
     expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: false });
-    expect(fire.reload()).toBe(false);                       // a full magazine
+    // A full magazine reloads too: no gate on the chain reads fullness (FUN_00594cf0 453459-453463 -> FUN_005c32b0 ->
+    // FUN_005c2a90); its walk from m_currentmag + 1 (477462-477483) takes the third, the full second keeps its 30.
+    expect(fire.reload()).toBe(true);
+    fire.update(RELOAD_DELAY + RELOAD_SECONDS);
+    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: false });
     fire.shoot(); fire.update(0.2);
     expect(fire.reload()).toBe(true);
     fire.update(RELOAD_DELAY + RELOAD_SECONDS);
-    // the third magazine in; the part-used one (29) keeps its rounds in the ring
+    // round the ring past the empty first: the second (30) in; the part-used third (29) keeps its rounds in the ring
     expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: false });
     for (let i = 0; i < 30; i++) { fire.shoot(); fire.update(0.2); }
     fire.update(RELOAD_DELAY + RELOAD_SECONDS);
@@ -233,6 +237,87 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
     fire.pull();
     for (let i = 0; i < 20; i++) fire.update(DEFAULT_RIFLE.fireWait);
     expect(fire.state().shots).toBe(5);                    // single: one a pull, held or not
+  });
+});
+
+describe('the reload gates and the fresh kit of a spawn (research 84 §18, research 91 §4.3)', () => {
+  /** A shooter whose swap lock (`ready`) and airborne bit the test sets. */
+  function gated(rifle = DEFAULT_RIFLE) {
+    const grid = world([wallAt(-30)]);
+    const state = { ready: true, airborne: false };
+    const eye: V3 = [0, 20, 0];
+    const fire = new Fire({
+      grid: () => grid, aim: () => ({ eye, far: [0, 20, -1000] }),
+      ready: () => state.ready, airborne: () => state.airborne,
+    }, rifle, undefined, () => 0.5);
+    return { fire, state };
+  }
+
+  it('a full magazine reloads when another slot holds rounds; a one-magazine kit does not (FUN_005c2a90 477462-477483)', () => {
+    const { fire } = gated();
+    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 2, reloading: false });
+    expect(fire.reload()).toBe(true);
+    fire.update(RELOAD_DELAY + RELOAD_SECONDS);
+    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 2, reloading: false });   // the second in
+    const single = gated({ ...DEFAULT_RIFLE, mags: 1 }).fire;
+    expect(single.state().magazine.spare).toBe(0);
+    expect(single.reload()).toBe(false);                     // the walk comes back to m_currentmag: nothing to take
+  });
+
+  it('R is refused while an action holds the weapon (a swap: FUN_005a7ab0, FUN_00594cf0 453460-453463)', () => {
+    const { fire, state } = gated();
+    fire.shoot(); fire.update(0.2);
+    state.ready = false;
+    expect(fire.reload()).toBe(false);
+    expect(fire.state().magazine.reloading).toBe(false);
+    state.ready = true;
+    expect(fire.reload()).toBe(true);
+    expect(fire.state().magazine.reloading).toBe(true);
+  });
+
+  it('an asked reload does not begin in the air (FUN_005c2a90 477394, +0x105e bit 5): the ask is spent, no magazine moves', () => {
+    const { fire, state } = gated();
+    const events: string[] = [];
+    fire.subscribe((e) => events.push(e.type));
+    fire.shoot(); fire.update(0.2);
+    expect(fire.reload()).toBe(true);
+    state.airborne = true;
+    fire.update(RELOAD_DELAY + 0.001);
+    expect(fire.state().magazine).toEqual({ rounds: 29, capacity: 30, spare: 2, reloading: false });
+    expect(events).not.toContain('reloadStart');
+    state.airborne = false;
+    fire.update(1);
+    expect(fire.state().magazine.rounds).toBe(29);           // dropped, as FUN_005c0fd0 clears the timer (476557-476559)
+    expect(fire.reload()).toBe(true);
+    fire.update(RELOAD_DELAY + 0.001);
+    expect(events).toContain('reloadStart');
+  });
+
+  it('refill: every magazine full again, a reload cut short, the marks left where they are (FUN_00599f00)', () => {
+    const { fire } = gated();
+    for (let i = 0; i < 30; i++) { fire.shoot(); fire.update(0.2); }
+    fire.update(RELOAD_DELAY + 0.001);                       // the automatic reload is playing
+    for (let i = 0; i < 10; i++) { fire.shoot(); fire.update(0.2); }
+    const decals = fire.state().decals;
+    expect(decals).toBeGreaterThan(0);
+    const events: FireEvent[] = [];
+    fire.subscribe((e) => events.push(e));
+    fire.refill();
+    expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 2, reloading: false });
+    expect(fire.magazineTotal()).toBe(90);
+    expect(fire.state().decals).toBe(decals);
+    expect(fire.shoot()).not.toBeNull();                     // no wait carried over
+  });
+
+  it('refill also fills the stowed weapon ring: the next draw of it is full', () => {
+    const { fire } = gated();
+    const pistol = { ...DEFAULT_RIFLE, name: 'MK23', id: 7, magazine: 12, mags: 3 };
+    fire.setWeapon(pistol);
+    for (let i = 0; i < 5; i++) { fire.shoot(); fire.update(0.5); }
+    fire.setWeapon(DEFAULT_RIFLE);
+    fire.refill();
+    fire.setWeapon(pistol);
+    expect(fire.state().magazine).toEqual({ rounds: 12, capacity: 12, spare: 2, reloading: false });
   });
 });
 

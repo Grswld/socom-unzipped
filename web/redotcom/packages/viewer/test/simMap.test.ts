@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { loadMap } from '../src/loadMap';
+import { PROBE_LIFT } from '@s2u/scene';
 import { groundGrid, Walker, type WalkInput } from '../src/walk';
 import { loadSimClips, loadSimMap, SIM_CLIPS, Traversal, groundPolygons } from '../src/sim';
+import { ALL_RELOAD_CLIPS, reloadSeconds } from '../src/reloadClip';
 
 /**
  * The server's map (web sprint 3, M2): `loadSimMap` reads the same hull `loadMap` packs for the page's walk, and the
@@ -36,6 +38,27 @@ function script(w: Walker): number[] {
   }
   return trace;
 }
+
+describe('the sim\'s clips (MJ-1): the eight reload clips ride with the mover\'s', () => {
+  it('SIM_CLIPS names every reload clip, so loadSimClips carries them to the room', () => {
+    for (const name of ALL_RELOAD_CLIPS) expect(SIM_CLIPS, name).toContain(name);
+  });
+});
+
+describe.skipIf(!PACK)(`the reload clips from the disc${PACK ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+  it('loadSimClips carries the eight with motion.rdr: the rifle\'s stand 1.6, crouch 1.9, prone 1.7, moving 1.2', async () => {
+    const clips = await loadSimClips(new FsAssetSource(FIXTURES));
+    for (const name of ALL_RELOAD_CLIPS) expect(clips.clips.some((c) => c.name === name), name).toBe(true);
+    expect(clips.table).not.toBeNull();
+    expect(reloadSeconds(clips.clips, clips.table, 'stand', false)).toBe(1.6);
+    expect(reloadSeconds(clips.clips, clips.table, 'crouch', false)).toBe(1.9);
+    expect(reloadSeconds(clips.clips, clips.table, 'prone', false)).toBe(1.7);
+    expect(reloadSeconds(clips.clips, clips.table, 'stand', true)).toBe(1.2);
+    for (const stance of ['stand', 'crouch', 'prone'] as const) {
+      expect(reloadSeconds(clips.clips, clips.table, stance, false, 'pistol')).toBeGreaterThan(0);
+    }
+  });
+});
 
 describe.skipIf(!MP2 || !PACK)(`the server's Frostfire${MP2 && PACK ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
   it('is the page\'s hull: the same polygons, fields, nodes and grid', async () => {
@@ -71,5 +94,19 @@ describe.skipIf(!MP2 || !PACK)(`the server's Frostfire${MP2 && PACK ? '' : ` (${
     expect(b).toEqual(a);
     // It went somewhere: the script is not a stand-still.
     expect(Math.hypot(a[a.length - 6]! - 796, a[a.length - 4]! - 614)).toBeGreaterThan(50);
+  });
+});
+
+describe.skipIf(!MP2)(`Frostfire's respawn records stand on their floor (PL-2)${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+  it('(935.7, 100, 863.6) and (395.7, 100, 1103.6): the record + 1 + PROBE_LIFT stands at 100, not on the object 12 over it', async () => {
+    const sim = await loadSimMap(new FsAssetSource(FIXTURES), 'RUN/MP2.ZDB');
+    for (const [x, z] of [[935.7, 863.6], [395.7, 1103.6]] as const) {
+      const rec = sim.respawns.find((r) => Math.abs(r.position[0] - x) < 0.2 && Math.abs(r.position[2] - z) < 0.2)?.position;
+      expect(rec, `respawn at ${x}, ${z}`).toBeDefined();
+      expect(rec![1]).toBeCloseTo(100, 1);
+      const w = new Walker(sim.grid);
+      expect(w.place(rec![0], rec![1] + 1 + PROBE_LIFT, rec![2])).toBe(true);
+      expect(w.state.y).toBeCloseTo(100, 1);
+    }
   });
 });

@@ -1,12 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, openSync, readSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { FsAssetSource } from '../src/fsAssetSource';
 import { IsoAssetSource, ISO_READ_CHUNK } from '../src/isoAssetSource';
 import { listMaps } from '../src/mapIndex';
+import { parseRdr } from '../src/rdr';
+import { Zar } from '../src/zar';
 import { parseZdb } from '../src/zdb';
-import { buildIso, SECTOR, type IsoMember } from './isoImage';
+import { buildDualLayerIso, buildIso, SECTOR, type IsoMember } from './isoImage';
 
 /** A member whose every byte says where it is, so a read from the wrong offset cannot pass by luck. */
 const pattern = (length: number, seed: number): Uint8Array => {
@@ -30,6 +32,16 @@ const MEMBERS: IsoMember[] = [
   { path: 'DEEP/ER/LEAF.BIN', bytes: pattern(4097, 4) },
   ...Array.from({ length: 60 }, (_, i) => ({ path: `RUN/F${String(i).padStart(2, '0')}.DAT`, bytes: pattern(i + 1, 10 + i) })),
 ];
+
+/** Where the directory record whose identifier (BP34) is `id` starts (BP1), in a built image. */
+const recordOf = (iso: Uint8Array, id: string): number => {
+  const needle = new TextEncoder().encode(id);
+  outer: for (let i = 33; i + needle.length <= iso.length; i++) {
+    for (let j = 0; j < needle.length; j++) if (iso[i + j] !== needle[j]) continue outer;
+    if (iso[i - 1] === needle.length) return i - 33;
+  }
+  throw new Error(`no record for ${id}`);
+};
 
 const image = (members = MEMBERS): Blob => new Blob([buildIso(members)]);
 
@@ -121,6 +133,49 @@ describe('IsoAssetSource over a synthetic ISO9660 image', () => {
     await expect(new IsoAssetSource(new Blob([iso])).list()).rejects.toThrow(/2352.*2048/);
   });
 
+  it('refuses a multi-extent file by name, still lists it, and still reads its neighbours', async () => {
+    const iso = buildIso(MEMBERS);
+    // ECMA-119 §9.1.6 bit 7 on BP26: the file continues in a further record.
+    iso[recordOf(iso, 'MP6.ZDB;1') + 25]! |= 0x80;
+    const source = new IsoAssetSource(new Blob([iso]));
+    await expect(source.read('RUN/MP6.ZDB')).rejects.toThrow(/several extents/);
+    await expect(source.size('RUN/MP6.ZDB')).rejects.toThrow(/several extents/);
+    await expect(source.readRange('RUN/MP6.ZDB', 0, 1)).rejects.toThrow(/several extents/);
+    expect(await source.list()).toContain('RUN/MP6.ZDB');
+    expect(await source.read('RUN/MP2.ZDB')).toEqual(MEMBERS[0]!.bytes);
+  });
+
+  it('refuses an interleaved file by name, whether the unit size or the gap is set', async () => {
+    // §9.1.7-9.1.8: BP27 file unit size, BP28 interleave gap size; either one set means interleaved.
+    for (const [unit, gap] of [[1, 1], [1, 0], [0, 1]] as const) {
+      const iso = buildIso(MEMBERS);
+      const at = recordOf(iso, 'README.;1');
+      iso[at + 26] = unit;
+      iso[at + 27] = gap;
+      const source = new IsoAssetSource(new Blob([iso]));
+      await expect(source.read('RUN/README'), `unit ${unit} gap ${gap}`).rejects.toThrow(/is interleaved/);
+      expect(await source.read('RUN/MP2.ZDB')).toEqual(MEMBERS[0]!.bytes);
+    }
+  });
+
+  it('refuses an image shorter than the volume its descriptor declares, naming the 4 GiB Node wrap', async () => {
+    const iso = buildIso(MEMBERS);
+    // A truncated file: the PVD (BP81) still counts the missing sector.
+    await expect(new IsoAssetSource(new Blob([iso.subarray(0, iso.length - SECTOR)])).list())
+      .rejects.toThrow(/the volume is \d+ bytes but the image is \d+.*truncated.*4 GiB/);
+    // A Blob whose size under-reports the file, as Node's fs.openAsBlob does above 4 GiB on Windows (the
+    // retail image's 4,380,753,920 bytes read as 85,786,624): the bytes are all there, the size is not.
+    class WrappedBlob extends Blob { override get size(): number { return super.size - 3 * SECTOR; } }
+    await expect(new IsoAssetSource(new WrappedBlob([iso])).read('RUN/MP2.ZDB')).rejects.toThrow(/fs\.openAsBlob/);
+    // An image longer than its volume (padding after it) still reads.
+    const padded = new Uint8Array(iso.length + 4 * SECTOR);
+    padded.set(iso);
+    const source = new IsoAssetSource(new Blob([padded]));
+    expect(await source.read('RUN/MP2.ZDB')).toEqual(MEMBERS[0]!.bytes);
+    expect(await source.list()).toEqual(MEMBERS.map((m) => m.path).sort());
+    await expect(source.read('RUN/MP9.ZDB')).rejects.toThrow('RUN/MP9.ZDB');
+  });
+
   it('names a raw 2352-byte-sector image (.bin) as such rather than calling it garbage', async () => {
     // A MODE1/2352 track: each 2048-byte sector behind 12 bytes of sync and a 4-byte header.
     const cooked = buildIso(MEMBERS);
@@ -143,6 +198,63 @@ describe('IsoAssetSource over a synthetic ISO9660 image', () => {
     iso.fill(0, 16 * SECTOR, 17 * SECTOR);
     iso.set([0, 0x43, 0x44, 0x30, 0x30, 0x31, 1], 16 * SECTOR);
     expect(await new IsoAssetSource(new Blob([iso])).read('RUN/MP2.ZDB')).toEqual(MEMBERS[0]!.bytes);
+  });
+});
+
+/**
+ * A dual-layer PS2 DVD dumped whole: layer 1's volume follows layer 0's, its PVD at the sector layer 0's
+ * space size names and its LBNs counted from 16 sectors before that (PCSX2 `FindLayer1Start`, Open PS2
+ * Loader's `layer1_start`; `buildDualLayerIso` has the cites). No retail SOCOM II disc is dual-layer, so the
+ * layout is proven here on a synthetic image.
+ */
+describe('IsoAssetSource over a synthetic dual-layer image', () => {
+  const LAYER0: IsoMember[] = [
+    { path: 'RUN/MP2.ZDB', bytes: pattern(5000, 1) },
+    { path: 'SYSTEM.CNF', bytes: pattern(40, 2) },
+    { path: 'BOTH.BIN', bytes: pattern(100, 3) },
+  ];
+  const LAYER1: IsoMember[] = [
+    { path: 'RUN/MP9.ZDB', bytes: pattern(7000, 4) },
+    { path: 'LAYER1/DEEP.BIN', bytes: pattern(3000, 5) },
+    { path: 'BOTH.BIN', bytes: pattern(100, 6) },
+  ];
+
+  it('finds a path layer 0 lacks in layer 1, at an LBN counted from layer 1\'s start', async () => {
+    const { iso, layer1Start } = buildDualLayerIso(LAYER0, LAYER1);
+    // The layout the readers expect: layer 1's PVD sits at the sector layer 0's BP81 names.
+    const layer0Blocks = new DataView(iso.buffer).getUint32(16 * SECTOR + 80, true);
+    expect(layer0Blocks).toBe(layer1Start + 16);
+    expect(String.fromCharCode(...iso.subarray(layer0Blocks * SECTOR + 1, layer0Blocks * SECTOR + 6))).toBe('CD001');
+
+    const source = new IsoAssetSource(new Blob([iso]));
+    expect(await source.read('RUN/MP9.ZDB')).toEqual(LAYER1[0]!.bytes);
+    expect(await source.read('layer1/deep.bin')).toEqual(LAYER1[1]!.bytes);
+    expect(await source.readRange('RUN/MP9.ZDB', 2040, 20)).toEqual(LAYER1[0]!.bytes.subarray(2040, 2060));
+    const extent = await source.extent('RUN/MP9.ZDB');
+    expect(extent.lbn).toBeGreaterThan(layer1Start);
+    expect(iso.subarray(extent.lbn * SECTOR, extent.lbn * SECTOR + extent.size)).toEqual(LAYER1[0]!.bytes);
+    // Layer 0 still answers first, and a path neither volume holds is still named.
+    expect(await source.read('RUN/MP2.ZDB')).toEqual(LAYER0[0]!.bytes);
+    expect(await source.read('BOTH.BIN')).toEqual(LAYER0[2]!.bytes);
+    await expect(source.read('RUN/MP7.ZDB')).rejects.toThrow('ISO: no RUN/MP7.ZDB on the disc image');
+  });
+
+  it('lists both volumes, a path both hold once', async () => {
+    const source = new IsoAssetSource(new Blob([buildDualLayerIso(LAYER0, LAYER1).iso]));
+    expect(await source.list()).toEqual(['BOTH.BIN', 'LAYER1/DEEP.BIN', 'RUN/MP2.ZDB', 'RUN/MP9.ZDB', 'SYSTEM.CNF']);
+  });
+
+  it('reads layer 1 only when a path needs it', async () => {
+    const blob = new CountingBlob([buildDualLayerIso(LAYER0, LAYER1).iso]);
+    await new IsoAssetSource(blob).read('SYSTEM.CNF');
+    expect(blob.ranges.length).toBe(3);   // layer 0's PVD, its root, the file
+  });
+
+  it('refuses a layer 1 volume cut short', async () => {
+    const { iso } = buildDualLayerIso(LAYER0, LAYER1);
+    const source = new IsoAssetSource(new Blob([iso.subarray(0, iso.length - SECTOR)]));
+    expect(await source.read('RUN/MP2.ZDB')).toEqual(LAYER0[0]!.bytes);
+    await expect(source.read('RUN/MP9.ZDB')).rejects.toThrow(/layer 1's volume ends at byte \d+ but the image is \d+/);
   });
 });
 
@@ -199,4 +311,56 @@ describe.skipIf(!haveFixtures)('IsoAssetSource over the fixture archives', () =>
     // The same answer the whole-archive path gives over the tree.
     expect(await listMaps(fs)).toEqual(maps);
   }, 60_000);
+});
+
+/**
+ * The retail image, when a developer points SOCOM_ISO at it (never in CI: no disc lives in the repository).
+ * Read through an fs-backed Blob stand-in, one readSync per slice -- not fs.openAsBlob, whose size wraps
+ * modulo 2^32 above 4 GiB on Windows. The pins are the disc record: the US image is 4,380,753,920 bytes, one
+ * volume of 2,139,040 blocks, 349 files (DEVELOPING.md's extract count), 22 RUN/MP*.ZDB, and
+ * `python tools_py/iso_lbn.py <image> list` prints `0x01cff3a 7985152 /RUN/MP2.ZDB`.
+ */
+const RETAIL = process.env.SOCOM_ISO;
+describe.skipIf(!RETAIL || !existsSync(RETAIL))('IsoAssetSource over the retail image (SOCOM_ISO)', () => {
+  const fsBlob = (path: string): Blob => {
+    const fd = openSync(path, 'r');
+    const size = fstatSync(fd).size;
+    const slice = (start = 0, end = size): Blob => ({
+      size: end - start,
+      arrayBuffer: async () => {
+        const out = new Uint8Array(end - start);
+        let got = 0;
+        while (got < out.length) {
+          const n = readSync(fd, out, got, out.length - got, start + got);
+          if (n === 0) break;
+          got += n;
+        }
+        return out.buffer;
+      },
+    }) as unknown as Blob;
+    return { size, slice, close: () => closeSync(fd) } as unknown as Blob;
+  };
+
+  it('lists 349 files, names the 22 maps and puts MP2.ZDB where iso_lbn.py does', async () => {
+    const blob = fsBlob(RETAIL!);
+    try {
+      expect(blob.size).toBe(4_380_753_920);
+      const source = new IsoAssetSource(blob);
+      expect((await source.list()).length).toBe(349);
+      expect(await source.extent('RUN/MP2.ZDB')).toEqual({ lbn: 0x01cff3a, size: 7_985_152 });
+      const problems: string[] = [];
+      const maps = await listMaps(source, (path, message) => problems.push(`${path}: ${message}`));
+      expect(problems).toEqual([]);
+      expect(maps.length).toBe(22);
+      expect(maps.find((m) => m.archive === 'MP1')?.name).toBe('BLIZZARD');
+      expect(maps.find((m) => m.archive === 'MP83')?.name).toBe('REQUIEM');
+      expect(maps.find((m) => m.archive === 'MP2')?.name).toBe('FROSTFIRE');
+      // The two most-shared scripts on the disc (8.08x and 5.57x their node arrays) parse inside the rdr
+      // visit budget (RDR_VISIT_FACTOR, PL-11).
+      const ui = Zar.parse(await source.read('RUN/UI/READERC.ZAR'));
+      for (const name of ['UiParams.rdr', 'mp_rooms.rdr']) expect(() => parseRdr(ui.data(ui.find(name)!)), name).not.toThrow();
+    } finally {
+      (blob as unknown as { close(): void }).close();
+    }
+  }, 120_000);
 });

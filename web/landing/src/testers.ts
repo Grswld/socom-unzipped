@@ -26,13 +26,13 @@ export function buildSignup(v: SignupValues, version: string): Record<string, un
   };
 }
 
-export type SignupState = 'new' | 'already' | 'bad';
+export type SignupState = 'new' | 'bad';
 
-/** One line for the screen, and which of the three outcomes it is. */
+/** One line for the screen, and which outcome it is. A repeat signup is answered like a new one (the inbox never says
+ * whether an address is already on the list), so there is no "already" answer to show. */
 export function replySignup(status: number, body: unknown): { state: SignupState; text: string } {
   const b = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
   if (status === 201 && b.ok === true) return { state: 'new', text: "YOU'RE ON THE LIST. ONE EMAIL WHEN A BUILD IS READY TO TRY." };
-  if (status === 200 && b.ok === true && b.already === true) return { state: 'already', text: 'THAT ADDRESS IS ALREADY ON THE LIST. NOTHING MORE TO DO.' };
   if (status === 429) return { state: 'bad', text: 'NOT SENT. TOO MANY TRIES FROM HERE; TRY AGAIN IN AN HOUR.' };
   if (status === 400 && typeof b.error === 'string') return { state: 'bad', text: `NOT SENT. ${b.error.slice(0, 80).toUpperCase()}` };
   if (status === 503) return { state: 'bad', text: 'NOT SENT. THE LIST IS FULL; TRY AGAIN LATER.' };

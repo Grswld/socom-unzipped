@@ -5,30 +5,48 @@ import { dirname, resolve } from 'node:path';
 import { PAD_LAYOUT, padGroup } from '../src/gamepad';
 import { controlGroups } from '../src/controlsList';
 import type { LookOptions } from '../src/look';
-import { PLAY_ATTRIBUTE, PLAY_PARAM, playEnabled, removePlayUi } from '../src/features';
+import { PLAY_ATTRIBUTE, removePlayUi } from '../src/features';
 import { POPOVER_GRACE_MS, Ui } from '../src/ui';
 
 /**
- * The play (walk mode, the SEAL, the rifle) is behind `?redotcom` (owner, 2026-09-28), and the settings panel starts
- * folded with the Controls popover in the bar.
+ * The play (walk mode, the SEAL, the rifle) is the settings' Mode switch's Play (owner, 2026-09-29; `mode=play` in the
+ * address, `?redotcom` read as it: `./shareUrl`), its markup marked `data-play`; the settings panel starts folded with
+ * the Controls popover in the bar.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
 const load = (): void => { document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML; };
 
-describe('playEnabled: the URL parameter', () => {
-  it('names the parameter redotcom', () => {
-    expect(PLAY_PARAM).toBe('redotcom');
-  });
-  it('is on when the parameter is there, with or without a value or a leading ?', () => {
-    for (const q of ['?redotcom', '?redotcom=1', 'redotcom', '?redotcom=', '?redotcom=0', '?map=MP2&redotcom', '?redotcom&map=MP2', '?map=MP2&redotcom=yes&x=1']) {
-      expect(playEnabled(q), q).toBe(true);
+/**
+ * The six segmented switches are groups of toggle buttons (`aria-pressed`), not radio groups: a radiogroup must own
+ * `role="radio"` children with `aria-checked` (WAI-ARIA 1.2), and the design system keys its lit state and the High
+ * Contrast outline on `[aria-pressed="true"]` (web/shared/ds/components.css, base.css; its own showcase's `.s2u-tabs`
+ * is `role="group"`).
+ */
+describe('the segmented switches', () => {
+  beforeEach(load);
+  const SWITCHES = ['recom', 'look', 'mode', 'online', 'rules', 'mouselaw'];
+
+  it('are role=group with a name, each child a button with aria-pressed, exactly one pressed', () => {
+    for (const id of SWITCHES) {
+      const group = document.getElementById(id)!;
+      expect(group, id).not.toBeNull();
+      expect(group.classList.contains('s2u-tabs'), id).toBe(true);
+      expect(group.getAttribute('role'), id).toBe('group');
+      expect(group.getAttribute('aria-label') ?? group.getAttribute('aria-labelledby'), id).toBeTruthy();
+      const kids = [...group.children];
+      expect(kids.length, id).toBeGreaterThanOrEqual(2);
+      for (const k of kids) {
+        expect(k.tagName, id).toBe('BUTTON');
+        expect(k.getAttribute('role'), id).toBeNull();
+        expect(['true', 'false'], id).toContain(k.getAttribute('aria-pressed'));
+      }
+      expect(kids.filter((k) => k.getAttribute('aria-pressed') === 'true'), id).toHaveLength(1);
     }
   });
-  it('is off without it: nothing, other parameters, near misses, the value of another', () => {
-    for (const q of ['', '?', '?map=MP2', '?redot', '?redotcoms', '?Redotcom', '?x=redotcom', '?map=redotcom', '?walk']) {
-      expect(playEnabled(q), q).toBe(false);
-    }
+
+  it('no radiogroup is left on the page', () => {
+    expect(document.querySelectorAll('[role="radiogroup"], [role="radio"]')).toHaveLength(0);
   });
 });
 
@@ -159,7 +177,7 @@ describe('the Mouse look section (round 2): the law, the sensitivity, the pitch,
   it('is the play\'s, in the panel, as the same segmented markup as the picture switch', () => {
     expect(document.getElementById('look-section')!.hasAttribute(PLAY_ATTRIBUTE)).toBe(true);
     expect(document.getElementById('mouselaw')!.className).toBe(document.getElementById('look')!.className);
-    expect(document.getElementById('mouselaw')!.getAttribute('role')).toBe('radiogroup');
+    expect(document.getElementById('mouselaw')!.getAttribute('role')).toBe('group');
   });
 
   it('starts at the raw default the look law ships with, and tells the handler', () => {

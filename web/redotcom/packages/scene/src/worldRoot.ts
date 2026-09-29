@@ -64,21 +64,47 @@ export const DEFAULT_GRID_PARAMS: GridParams = Object.freeze({
   atomCount: 8192, posts: 16, cellDim: 640, cellsX: 8, cellsZ: 8, originX: 0, originZ: 0,
 });
 
-/** The 20 bytes of `tag_GRID_PARAMS`, or null when short or when they describe no grid at all. */
+/**
+ * The most cells a `grid_params` may ask for (PL-11). A hardening ceiling for a dropped file, not a game value:
+ * reCOM's `CGrid::Create` allocates whatever the tag holds (`grid_main.cpp:82-142`), and every disc map is at
+ * most 36 x 25 = 900 cells (the M51 grid, research 23 section 2.1). Two i32 counts of 46,341 would otherwise
+ * have `buildGrid` make 2.1e9 cells in the worker and twice again on the page (research 93 section 2).
+ */
+export const GRID_CELLS_MAX = 65536;
+
+/** The 20 bytes of `tag_GRID_PARAMS`, or null when short, when they describe no grid at all, or one above
+ *  `GRID_CELLS_MAX` cells. */
 export function decodeGridParams(bytes: Uint8Array): GridParams | null {
   if (bytes.byteLength < GRID_PARAMS_SIZE) return null;
   const r = new Reader(bytes);
   const grid: GridParams = {
     atomCount: r.i32(0), posts: r.i32(4), cellDim: r.f32(8), cellsX: r.i32(12), cellsZ: r.i32(16), originX: 0, originZ: 0,
   };
-  const usable = Number.isFinite(grid.cellDim) && grid.cellDim > 0 && grid.cellsX > 0 && grid.cellsZ > 0;
+  const usable = Number.isFinite(grid.cellDim) && grid.cellDim > 0 && grid.cellsX > 0 && grid.cellsZ > 0
+    && grid.cellsX * grid.cellsZ <= GRID_CELLS_MAX;
   return usable ? grid : null;
 }
 
-/** `grid_params` from a world root, or the engine's default grid when it is absent or unusable. */
+/**
+ * `grid_params` from a world root, or the engine's default grid when it is absent or unusable. A grid above
+ * `GRID_CELLS_MAX` is refused by name instead: falling back to 8 x 8 would put the walk and the engine order
+ * on the wrong grid without a word; the callers (the viewer's loadMap and simMap) turn the throw into a named
+ * `grid_params: ...` diagnostic.
+ */
 export function parseGridParams(zar: Zar): GridParams {
   const key = zar.find('grid_params');
-  return (key ? decodeGridParams(zar.data(key)) : null) ?? { ...DEFAULT_GRID_PARAMS };
+  if (!key) return { ...DEFAULT_GRID_PARAMS };
+  const bytes = zar.data(key);
+  const grid = decodeGridParams(bytes);
+  if (grid) return grid;
+  if (bytes.byteLength >= GRID_PARAMS_SIZE) {
+    const r = new Reader(bytes);
+    const cellsX = r.i32(12), cellsZ = r.i32(16);
+    if (cellsX > 0 && cellsZ > 0 && cellsX * cellsZ > GRID_CELLS_MAX) {
+      throw new Error(`grid_params: ${cellsX} x ${cellsZ} cells is not a grid this reads (at most ${GRID_CELLS_MAX})`);
+    }
+  }
+  return { ...DEFAULT_GRID_PARAMS };
 }
 
 /** One `CScrollingTexture_band` (`zRender/zrender.h:241`): two 256-byte names and the uv step. */

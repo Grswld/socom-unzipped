@@ -599,8 +599,9 @@ export function reloadHold(stance: Stance, pistol: boolean): HoldClip | null {
 export interface MoverHold { clip: HoldClip; t: number; seconds: number }
 
 /**
- * `DAT_00650638`: the move stick in the 9x view or a scope (`FUN_005966a0` 453818-453821: both axes x 0.2 when
- * `FUN_005b9990` or `FUN_005b90f0` answers, before the controller stores them) -- `./zoom`'s `SCOPE_SLOW`.
+ * The move stick in the 9x view or a scope: `FUN_005966a0` 453818-453821 multiplies both move axes by the literal 0.2
+ * when `FUN_005b9990` or `FUN_005b90f0` answers, before the controller stores them. The same value as `./zoom`'s
+ * `SCOPE_SLOW` (the look's `DAT_00650638`, 453813-453817, a different variable), kept as one constant.
  */
 export const SCOPED_STICK = SCOPE_SLOW;
 
@@ -649,6 +650,17 @@ export function landingClass(speed: number, g: number = SEAL_TUNING.gravity, hei
 export const ACTION_SECONDS: Readonly<Record<keyof typeof ACTION_CLIPS, number>> = Object.freeze(Object.fromEntries(
   Object.entries(ACTION_CLIPS).map(([k, c]) => [k, oneShotSeconds(c.playback, c.frames)]),
 ) as Record<keyof typeof ACTION_CLIPS, number>);
+
+/**
+ * PLACEHOLDER (named; research 80 s6c and s7, research 86 s7.2): offline, the deadly fall's `Land forward` gets up
+ * (`Get up forward`), since the viewer's walk alone has no death. In the game `FUN_005af590` (decomp 466641-466728)
+ * pushes `Land forward` in state 8 and the SEAL dies there (the vtable's +0x90, `FUN_005a5da0`): the controller's
+ * `FUN_005979a0` (454470-454495) spectates, or in a respawn game fades the body out (alpha 0 at 0.1 a second,
+ * `FUN_00552780`) and `FUN_00599b60` (455695) fades the new SEAL in at a spawn. No get-up follows a death; `Get up
+ * forward` is the game's own action, not one it plays after `Land forward`. Online the server's fall death is the
+ * game's: `Walker.dead` (set by the net client's `kill`) holds `Land forward` at its last key instead.
+ */
+export const DEATH_LANDING_GETUP_PLACEHOLDER = true;
 
 /**
  * What the mover is doing besides the ground state (the game's action stack, `actor+0x1c0`): the standing jump
@@ -790,6 +802,34 @@ export class Walker {
   private stickSnaps_ = 0;
   /** The kit's one-shot holding the mover (`HOLD_CLIPS`: a throw, the claymore's placing, a still reload), or null. */
   private hold_: MoverHold | null = null;
+  /** Dead (online: the server's `kill`): a death landing stays down (`DEATH_LANDING_GETUP_PLACEHOLDER`). */
+  private dead_ = false;
+  /** The last landing was a blast's knock-down (`knock`): its `Land forward` gets up, the game's own get-up. */
+  private knockLanding_ = false;
+
+  /**
+   * Dead, as the match server has it (the net client's `kill`; a respawn makes a new mover): `Land forward` holds its
+   * last key and no `Get up forward` follows (`FUN_005af590`: the SEAL dies in state 8). A kill heard after the offline
+   * get-up began puts the landing's last key back.
+   */
+  get dead(): boolean {
+    return this.dead_;
+  }
+
+  set dead(on: boolean) {
+    this.dead_ = on;
+    if (on && this.action_?.name === 'getUp') this.holdDeathLanding();
+    else if (on && this.action_?.name === 'getUpBackwards') this.holdDeathLanding('landBackwards');   // BLAST KNOCK
+  }
+
+  /**
+   * `Land forward` (or a blast's `Land backwards`) at its last key, held: the dead SEAL's pose (the clip ends; the body
+   * stays down).
+   */
+  private holdDeathLanding(name: 'landDeath' | 'landBackwards' = 'landDeath'): void {
+    const seconds = ACTION_SECONDS[name];
+    this.action_ = { name, serial: ++this.serial, t: seconds, seconds, reversed: false };
+  }
 
   /**
    * In the 9x view or a scope (the page: `./zoom`'s state 4 and up; the server: the command's `Button.Scope`): the move
@@ -1052,8 +1092,11 @@ export class Walker {
 
   /**
    * Stands the mover on the floor under (x, fromY, z): the probe's highest floor at or under `fromY` + 1, else
-   * the lowest within 20 over `fromY` - 5 -- the selection with the origin at `fromY`. Pass the camera's eye to
-   * drop from where the camera is. False, and nothing moves, when there is no floor there.
+   * the lowest within 20 over `fromY` - 5 -- the selection with the origin at `fromY`. A spawn passes its feet +
+   * `PROBE_LIFT`, so the pick is the tick's own (`FUN_005b5d40` 470230-470240 from the feet + 5, research 86 s6.3; the
+   * record lifted a unit first, `FUN_002b8100` 158793, research 91 s4.2): the server's spawn and the page's respawn
+   * alike. Only the page dropping from the camera passes the camera's eye. False, and nothing moves, when there is no
+   * floor there.
    */
   place(x: number, fromY: number, z: number): boolean {
     const floor = selectFloor(probeGround(this.grid, x, z), fromY, fromY - PROBE_LIFT);
@@ -1204,14 +1247,16 @@ export class Walker {
     if (a) {
       a.t += dt;
       if (a.seconds !== null && a.t >= a.seconds - 1e-9) {
-        // PLACEHOLDER (the viewer has no death): the deadly fall's `Land forward` gets up (`Get up forward`). In the game
-        // FUN_005af590 pushes `Land forward` in state 8 and the SEAL dies there (the vtable's +0x90, FUN_005a5da0): the
-        // controller's FUN_005979a0 (454470-454495) spectates, or in a respawn game fades the body out (alpha 0 at 0.1 a
-        // second, FUN_00552780) and FUN_00599b60 (455695) fades the new SEAL in at a spawn (1.0 at 4 a second). No
-        // get-up follows a death; `Get up forward` is the game's own action, not one it plays after `Land forward`.
-        if (a.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
-        else if (a.name === 'landBackwards') this.start('getUpBackwards', ACTION_SECONDS.getUpBackwards);   // BLAST KNOCK
-        else this.action_ = null;
+        // DEATH_LANDING_GETUP_PLACEHOLDER: offline the deadly fall's `Land forward` gets up (`Get up forward`); dead
+        // (online, the server's fall death) it holds its last key, as the game's SEAL dies in it (FUN_005af590). A blast's
+        // knock-down landing (BLAST KNOCK, `knockLanding_`) gets up as the game's own (L446653-446700) unless dead.
+        if (a.name === 'landDeath') {
+          if (this.dead_ || (!DEATH_LANDING_GETUP_PLACEHOLDER && !this.knockLanding_)) a.t = a.seconds;
+          else this.start('getUp', ACTION_SECONDS.getUp);
+        } else if (a.name === 'landBackwards') {                  // BLAST KNOCK
+          if (this.dead_) a.t = a.seconds;
+          else this.start('getUpBackwards', ACTION_SECONDS.getUpBackwards);
+        } else this.action_ = null;
       }
     }
     const h = this.hold_;
@@ -1223,9 +1268,13 @@ export class Walker {
     if (this.inAir) { this.fall(dt, forward, right); return; }
     if (this.interrupted(forward, right)) {                     // FUN_00587c20: cut; the ground state takes over
       const cut = this.action_!;
-      if (cut.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
-      else if (cut.name === 'landBackwards') this.start('getUpBackwards', ACTION_SECONDS.getUpBackwards);   // BLAST KNOCK
-      else if (cut.name === 'swapStand') {
+      if (cut.name === 'landDeath') {
+        if (this.dead_ || (!DEATH_LANDING_GETUP_PLACEHOLDER && !this.knockLanding_)) this.holdDeathLanding();   // dead: stays down
+        else this.start('getUp', ACTION_SECONDS.getUp);
+      } else if (cut.name === 'landBackwards') {                  // BLAST KNOCK
+        if (this.dead_) this.holdDeathLanding('landBackwards');
+        else this.start('getUpBackwards', ACTION_SECONDS.getUpBackwards);
+      } else if (cut.name === 'swapStand') {
         // FUN_00550ef0 418226-418245: the standing swap cut by the stick goes on as `Moving rifle -> Pistol` over the
         // locomotion, at the phase it had reached.
         const seconds = oneShotSeconds(SWAP_OVERLAY.playback, SWAP_OVERLAY.frames);
@@ -1259,7 +1308,10 @@ export class Walker {
       // transition played backwards (getting up). The ground state does not run (FUN_005870e0).
       s.stickForward = forward; s.stickRight = right;
       this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-      const [tx, tz] = this.actionVelocity(held, this.action_!.t, this.action_!.reversed);
+      const act = this.action_!;
+      // A dead SEAL's `Land forward` held at its last key has no root travel left: the body stays where it fell.
+      const ended = act.seconds !== null && act.t >= act.seconds - 1e-9;
+      const [tx, tz] = ended ? [0, 0] : this.actionVelocity(held, act.t, act.reversed);
       const yaw = (s.yaw * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
       s.vx = tx * c + tz * sn;
       s.vz = -tx * sn + tz * c;
@@ -1445,6 +1497,7 @@ export class Walker {
     const still = idle(forward, right) || Math.hypot(s.vx, s.vy, s.vz) <= LAND_STILL;
     let clip: Landing['clip'] = null;
     const knocked = this.action_?.name;
+    this.knockLanding_ = knocked === 'fallForward' || knocked === 'fallBackwards';
     if (knocked === 'fallForward' || knocked === 'fallBackwards') {
       // BLAST KNOCK: on the ground in `Fall forward` / `Fall backwards`, `FUN_005805b0` (via L441960-441985) pushes
       // `Land forward` / `Land backwards`; its end pushes the get-up (L446653-446700).
@@ -1471,14 +1524,19 @@ export class Walker {
   }
 
   /**
-   * An airborne sub-step: the walls push, and a column with no floor within `step_height` over the feet is not
-   * entered -- the step's own allowance, so a flight up a slope goes on over ground rising under it (the tick's
-   * floor then lifts the feet onto it, `fall`), and the wind-up's sunk feet still move.
+   * An airborne sub-step: the walls push, then the column is the ground's own pick, as every tick's probe takes it
+   * (`FUN_005b0420` 467037-467110 through `FUN_005b5d40` 470163-470290: the highest floor at or under the origin + 1,
+   * else the lowest, refused only when more than 20 over the feet) -- `selectFloor` from the feet + `PROBE_LIFT`. A
+   * floor found up to 20 over the feet is entered, and the tick's floor then puts the feet on it (`fall`; `FUN_0059ad30`
+   * 456313-456322, `FUN_0059b440` 456502-456512). No floor -- the map's edge, a hole, a top more than 20 over the feet
+   * -- is the probe's miss, which with `DAT_003df1c8` set (1 in the ELF) puts the actor back at its last hit
+   * (`FUN_003157d0` on `+0x400..+0x408`): the sub-step is not taken (research 86 s6.3; OWNER-5 2026-09-29 retired the
+   * viewer's former `step_height` allowance here).
    */
   private airStep(dx: number, dz: number): void {
     const s = this.state;
     const [x, z] = this.slide(s.x + dx, s.z + dz, s.x, s.z);
-    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + SEAL_TUNING.stepHeight + 1e-9)) return;
+    if (!selectFloor(probeGround(this.grid, x, z), s.y + PROBE_LIFT, s.y)) return;
     s.x = x; s.z = z;
   }
 

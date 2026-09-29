@@ -459,7 +459,7 @@ describe('the page: the toast and the layout table', () => {
       const group = document.getElementById('mode')!;
       const look = document.getElementById('look')!;
       expect(group.className).toBe(look.className);
-      expect(group.getAttribute('role')).toBe('radiogroup');
+      expect(group.getAttribute('role')).toBe('group');
       const buttons = [...group.querySelectorAll('button')];
       expect(buttons.map((b) => b.dataset['mode'])).toEqual(['fly', 'walk']);
       for (const b of buttons) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseRdr, rdrGet, type RdrNode } from '../src/rdr';
+import { parseRdr, rdrGet, RDR_VISIT_FACTOR, type RdrNode } from '../src/rdr';
 import { parseZdb, zdbMember } from '../src/zdb';
 import { Zar } from '../src/zar';
 import { fixture } from './fixtures';
@@ -43,12 +43,52 @@ function syntheticRdr(): Uint8Array {
   return out;
 }
 
-/** A root list whose only child is itself: nothing but the depth cap ends this walk. */
-function selfReferentialRdr(): Uint8Array {
-  const out = new Uint8Array(12 + 8);
+/** A root list whose only child is itself, in an array of `nodes` (the rest unused): with enough nodes that
+ *  the visit budget outlasts 64 levels, only the depth cap ends this walk. */
+function selfReferentialRdr(nodes = 8): Uint8Array {
+  const out = new Uint8Array(12 + 8 * nodes);
   const dv = new DataView(out.buffer);
   dv.setUint32(0, 1, true); dv.setUint32(4, 0, true); dv.setUint32(8, 12, true);
   dv.setUint32(12, T_LIST | (1 << 16), true); dv.setUint32(16, 0, true);
+  return out;
+}
+
+/**
+ * A root list of `width` lists, every one of them pointing at the same next level of `width` lists, `levels`
+ * deep, ints at the bottom: a 2 KB file whose tree has width^levels leaves. Each read is in range and the
+ * nesting is shallow, so only a count of the nodes visited ends the walk (PL-11).
+ */
+function wideDagRdr(levels = 4, width = 64): Uint8Array {
+  const count = 1 + levels * width;
+  const out = new Uint8Array(12 + 8 * count);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, 1, true); dv.setUint32(4, 0, true); dv.setUint32(8, 12, true);
+  const level = (k: number): number => 8 * (1 + k * width);        // node byte of level k's array
+  dv.setUint32(12, T_LIST | (width << 16), true); dv.setUint32(16, level(0), true);
+  for (let k = 0; k < levels; k++) {
+    for (let i = 0; i < width; i++) {
+      const at = 12 + level(k) + 8 * i;
+      if (k < levels - 1) { dv.setUint32(at, T_LIST | (width << 16), true); dv.setUint32(at + 4, level(k + 1), true); }
+      else { dv.setUint32(at, T_INT, true); dv.setUint32(at + 4, i, true); }
+    }
+  }
+  return out;
+}
+
+/** `( (a) (a) )` where both value lists are one node pair: the retail files share subtrees this way (the
+ *  isclone hint), so a walk visits more nodes than the array holds -- 5 visits of 4 nodes here. */
+function sharedSubtreeRdr(): Uint8Array {
+  const out = new Uint8Array(12 + 2 + 8 * 4);
+  const dv = new DataView(out.buffer);
+  dv.setUint32(0, 1, true); dv.setUint32(4, 2, true); dv.setUint32(8, 14, true);
+  out[12] = 0x61; out[13] = 0;                                       // "a"
+  const node = (i: number, type: number, length: number, value: number): void => {
+    dv.setUint32(14 + 8 * i, type | (length << 16), true); dv.setUint32(14 + 8 * i + 4, value, true);
+  };
+  node(0, T_LIST, 2, 8);      // root: two children at node byte 8
+  node(1, T_LIST, 1, 24);     // (a)
+  node(2, T_LIST, 1, 24);     // (a), the same child node
+  node(3, T_STRING, 0, 0);    // "a"
   return out;
 }
 
@@ -78,6 +118,23 @@ describe('parseRdr', () => {
 
   it('stops at the nesting cap instead of looping forever', () => {
     expect(() => parseRdr(selfReferentialRdr())).toThrow(/nesting/);
+    // In a one-node file the visit budget (16 visits) ends it first.
+    expect(() => parseRdr(selfReferentialRdr(1))).toThrow(/rdr walks more than 16 nodes/);
+  });
+
+  it('stops at the node budget instead of allocating without end on a wide shared tree', () => {
+    const dag = wideDagRdr();
+    expect(dag.length).toBeLessThan(2100);
+    const nodes = (dag.length - 12) / 8;
+    expect(() => parseRdr(dag)).toThrow(new RegExp(`rdr walks more than ${RDR_VISIT_FACTOR * nodes} nodes`));
+  });
+
+  it('allows the shared subtrees retail files carry, up to the measured factor', () => {
+    // The 734 .rdr files on the US disc (measured 2026-09-29) visit at most 8.08 times their node count
+    // (RUN/UI/READERC.ZAR UiParams.rdr, 22,554 of 2,791); the budget is twice that.
+    expect(RDR_VISIT_FACTOR).toBe(16);
+    expect(parseRdr(sharedSubtreeRdr())).toEqual([['a'], ['a']]);
+    expect(parseRdr(syntheticRdr())).toEqual([['description', ['FROSTFIRE'], 'count', ['7'], 'scale', ['0.5']]]);
   });
 });
 

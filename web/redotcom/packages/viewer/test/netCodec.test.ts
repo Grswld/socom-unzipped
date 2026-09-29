@@ -182,4 +182,12 @@ describe('a body from the mover and back (M3/M5)', () => {
   it('knows every action the mover has', () => {
     expect([...ACTION_CODES].sort()).toEqual((Object.keys(ACTION_CLIPS) as MoverActionName[]).concat(['jump', 'launch', 'fall'] as MoverActionName[]).filter((v, i, a) => a.indexOf(v) === i).sort());
   });
+
+  it('carries the blast\'s knock actions in the codes they took (protocol 6)', () => {
+    expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(6);
+    const knock = ['fallForward', 'fallBackwards', 'landBackwards', 'getUpBackwards'] as const;
+    // Appended after the protocol 5 codes, so the earlier codes keep their bytes.
+    expect(ACTION_CODES.slice(-knock.length)).toEqual([...knock]);
+    expect(ACTION_CODES.indexOf('swapProne')).toBe(ACTION_CODES.length - knock.length - 1);
+  });
 });

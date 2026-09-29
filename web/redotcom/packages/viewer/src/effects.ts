@@ -208,6 +208,8 @@ export class Effects {
   /** A map's effect data (`./effectData`), or null: the effects stop and their objects go. */
   setData(data: EffectData | null): void {
     this.reset();
+    // The models' packet geometries are the map's own (`buildEffectModel`: one per packet); the runs' clones share them.
+    for (const model of this.models.values()) model.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose(); });
     this.models.clear();
     for (const m of this.materials.values()) { m.map?.dispose(); m.dispose(); }
     this.materials.clear();
@@ -245,10 +247,16 @@ export class Effects {
     for (const m of this.particles.warm(particleTextures)) { m.visible = true; }
     // With the marks' own `color` lane (`markGeometry`): a quad without one linked another program, and the first mark
     // drawn linked its own (research 90 §9).
-    const quad = markGeometry(new PlaneGeometry(1, 1));
-    for (const tex of [...d.marks.map((r) => r.texture), ...d.footprints.map(([, t]) => t)]) {
+    // One material a bitmap, kept in `materials` (a footprint's the one `footfall` draws with) so the next `setData`
+    // disposes it; one quad for the effects' life -- a material and a bitmap a row a map were never freed before.
+    const rows: [string, string][] = [...d.marks.map((r): [string, string] => ['mark', r.texture]), ...d.footprints.map(([, t]): [string, string] => ['footprint', t])];
+    for (const [kind, tex] of rows) {
       const t = this.textures.get(tex.toLowerCase());
-      if (t) g.add(new Mesh(quad, markMaterial(t)));
+      if (!t) continue;
+      const key = kind === 'footprint' ? `footprint|${tex}` : `mark|${tex.toLowerCase()}`;
+      let material = this.materials.get(key);
+      if (!material) { material = markMaterial(t); this.materials.set(key, material); }
+      g.add(new Mesh(this.warmQuad, material));
     }
     // The light passes' overlays, beside what they re-draw: the page compiles them with the scene.
     this.lights.warmMeshes();
@@ -310,6 +318,8 @@ export class Effects {
   private readonly footprints: Mesh[] = [];
   private nextFootprint = 0;
   private readonly footprintGeometry = new PlaneGeometry(1, 1);
+  /** The warm-up's mark quad, with the marks' own `color` lane (`markGeometry`), made once. */
+  private readonly warmQuad = markGeometry(new PlaneGeometry(1, 1));
   private water = { splashes: 0, ripples: '' as string, footprints: 0 };
   /** The world's drawn colour under a footprint (`./surfaceShade`), or null: unity (research 89 §5, the mark's colour). */
   private shade: SurfaceShade | null = null;

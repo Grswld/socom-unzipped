@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import type { MeshData } from '@s2u/mesh';
 import { fixture } from '../../archive/test/fixtures';
@@ -30,8 +30,13 @@ describe('the position form a chunk is decoded with', () => {
 const MP2 = fixture('RUN/MP2.ZDB');
 
 describe.skipIf(!MP2)('EFFE_GEO + EFFE_MDL on Frostfire', () => {
-  const toc = parseZdb(MP2!);
-  const lib = effectLibrary(Zar.parse(zdbMember(MP2!, toc, EFFECT_MEMBERS.geo)), Zar.parse(zdbMember(MP2!, toc, EFFECT_MEMBERS.mdl)));
+  // Built in beforeAll, never in the factory: vitest runs a skipped describe's factory to collect it, and an eager
+  // `MP2!` there threw at collection without fixtures (release review BL-7; tools/test/skipIfFactories.test.ts).
+  let lib: ReturnType<typeof effectLibrary>;
+  beforeAll(() => {
+    const toc = parseZdb(MP2!);
+    lib = effectLibrary(Zar.parse(zdbMember(MP2!, toc, EFFECT_MEMBERS.geo)), Zar.parse(zdbMember(MP2!, toc, EFFECT_MEMBERS.mdl)));
+  });
 
   it('holds the 18 effect models, the casings and the flashes among them', () => {
     expect(lib.names()).toHaveLength(18);

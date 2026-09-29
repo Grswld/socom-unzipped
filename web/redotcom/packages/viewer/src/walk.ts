@@ -1,5 +1,5 @@
-import { groundGrid, moverSnapshot, reloadHold, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type HoldClip, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type SwapProgress, type TraversalHooks, type WalkInput } from './mover';
-import type { Grid } from '@s2u/scene';
+import { groundGrid, moverSnapshot, reloadHold, rootY, STANCES, TICK, Walker, type GroundData, type HoldClip, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type SwapProgress, type TraversalHooks, type WalkInput } from './mover';
+import { PROBE_LIFT, type Grid } from '@s2u/scene';
 import type { TraversalPose } from './animator';
 import { Button, holdBits, STANCE_CODES, type Command } from './net/protocol';
 import { MoverSim } from './net/moverSim';
@@ -261,7 +261,9 @@ export class WalkMode {
 
   /**
    * A spawn from the server: a new mover (the server makes a fresh one too) stood at `at` facing `yaw`, then the
-   * commands the server has not run on it replayed through the shared apply (`MoverSim`). False with no ground.
+   * commands the server has not run on it replayed through the shared apply (`MoverSim`). False with no ground. `at` is
+   * the feet: the floor is picked from the feet + `PROBE_LIFT`, the tick's own origin (`Walker.place`; the server's
+   * spawn does the same, so the two stand on one floor).
    */
   respawn(at: readonly [number, number, number], yaw: number, replay: readonly Command[] = []): boolean {
     const grid = this.walker?.grid ?? (this.ground ? groundGrid(this.ground) : null);
@@ -271,7 +273,7 @@ export class WalkMode {
     this.walker = w;
     if (!this.player) this.player = new PlayerCamera(grid);
     this.attachMoves(w);
-    if (!w.place(at[0], at[1] + EYE_HEIGHT, at[2])) return false;
+    if (!w.place(at[0], at[1] + PROBE_LIFT, at[2])) return false;
     w.state.yaw = yaw;
     this.stance_ = 'stand';
     this.jumps = 0;
@@ -289,6 +291,14 @@ export class WalkMode {
   /** A blast's knock from the server (`./net/blast`): the same `applyKnock` the room laid on its mover. */
   knock(k: Knock): boolean {
     return !!this.walker && this.walking && applyKnock(this.walker, this.moves, k);
+  }
+
+  /**
+   * Dead or alive, as the match server has it (the net client's `kill` and `spawn`): a dead mover's death landing stays
+   * down (`Walker.dead`, `DEATH_LANDING_GETUP_PLACEHOLDER` is the offline walk's alone).
+   */
+  setDead(on: boolean): void {
+    if (this.walker) this.walker.dead = on;
   }
 
   /** A correction from the server: the mover moved by (dx, dy, dz) now (a small one is spread over ticks by the caller). */
@@ -610,7 +620,7 @@ export class WalkMode {
     w.stance = this.stance_;
     const at = this.camera.pose();
     if (w.place(at.x, at.y, at.z)) return true;
-    return this.spawn !== null && w.place(this.spawn[0], this.spawn[1] + EYE_HEIGHT, this.spawn[2]);
+    return this.spawn !== null && w.place(this.spawn[0], this.spawn[1] + PROBE_LIFT, this.spawn[2]);   // the spawn's feet: the tick's pick
   }
 
   private leave(): void {

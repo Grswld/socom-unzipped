@@ -21,8 +21,13 @@ import { HOLD_CODES, type HoldClip } from '../mover';
  * 3 (2026-09-29): a command carries the scope's slowed stick (`Button.Scope`) and the kit's hold (`HOLD_SHIFT`).
  * 4 (2026-09-29): the rules -- the hello asks for `respawn` or `classic` (rooms are keyed by map and rules), the welcome
  * and the round start name the rules, the round and the game's round count, and classic's `eliminated` event.
+ * 5 (2026-09-29, the launch review): a `fire` names the eye its aim left from and that aim (`eye`, `aim`: the server's
+ * accuracy cone, OWNER-3, `./shotCone`); `promoted` says whether the seat is a ghost's; an idle player moved out gets
+ * `demoted` (its role is a spectator's from then).
+ * 6 (2026-09-29, grenade harm): the snapshot's action codes take the blast's knock (`fallForward`, `fallBackwards`,
+ * `landBackwards`, `getUpBackwards`, `./blast`), and the server sends a `blast` event (the ringing ears and the knock).
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 6;
 
 /** The game's tick (`CGame::Tick`): the mover's `TICK`, the server's loop. */
 export const TICK_HZ = 60;
@@ -246,9 +251,15 @@ export type ClientEvent =
   | { type: 'ping'; t: number }
   /**
    * A round fired (W3.R4): the tick it left on, where from and along what (the client's cone and kick already in),
-   * the weapon, and the view tick the shooter saw the others at.
+   * the weapon, and the view tick the shooter saw the others at. Protocol 5: `eye` and `aim`, the eye's ray the round
+   * was aimed down (the camera's eye and its look after the cone, `./fire`): the server checks them against its own
+   * run of the cone (`./shotCone`) and that the round goes where that ray points. The server takes the weapon from its
+   * own mover, not from `weapon` (kept for the wire's shape).
    */
-  | { type: 'fire'; seq: number; from: [number, number, number]; dir: [number, number, number]; weapon: number; viewTick: number }
+  | {
+    type: 'fire'; seq: number; from: [number, number, number]; dir: [number, number, number]; weapon: number; viewTick: number;
+    eye: [number, number, number]; aim: [number, number, number];
+  }
   | { type: 'reload'; seq: number }
   /** A throw (research 85): the grenade's kind, launch point and velocity as the client's `launchGrenade` made them. */
   | { type: 'throw'; seq: number; kind: string; from: [number, number, number]; velocity: [number, number, number] }
@@ -284,8 +295,16 @@ export type ServerEvent =
   | { type: 'renamed'; id: number; name: string }
   /** The recipient's place in the spectators' queue (1 = next), or 0 when promoted. */
   | { type: 'queue'; position: number }
-  /** The recipient became a player: its team and where it stands. */
-  | { type: 'promoted'; team: Team }
+  /**
+   * The recipient became a player: its team, and (protocol 5) whether it is seated as a ghost -- a classic round in
+   * play, "You are a ghost." until the next round (research 91 section 12), as the welcome's `ghost`.
+   */
+  | { type: 'promoted'; team: Team; ghost: boolean }
+  /**
+   * W3.R13, protocol 5: the recipient, idle past the kick with someone waiting, was moved out to the back of the
+   * spectators' queue (`position`): a spectator from now, its mover no longer run.
+   */
+  | { type: 'demoted'; position: number }
   /**
    * A mover placed (a spawn or a respawn): the recipient's own when `id` is its own, the commands after `after` run on
    * the new mover (the client rewinds and replays them).

@@ -203,10 +203,19 @@ export class MarkClipper {
   /** The world's colour under the square's centre after a clip (rgba, 1.0 = 0x80), when `centreFound`. */
   readonly centre = new Float32Array(4);
   centreFound = false;
+  /**
+   * The chosen node's scene path after a clip that kept triangles, when the node is a prop placement that carries one
+   * (`./world` puts it on the mesh: `userData.nodePath`, an `InstancedMesh`'s `userData.nodePaths[i]`); else null. The
+   * game's decal entries are the hit visual's own list (`FUN_003b3800` 306396-306416), so a mark rides its node
+   * (research 92 §6: a door's leaf).
+   */
+  lastNodePath: string | null = null;
 
   private readonly geometries = new WeakMap<BufferGeometry, GeometryIndex>();
   private readonly meshes = new WeakMap<Mesh, MeshEntry>();
   private readonly nodeIds = new Map<string, number>();
+  /** A node id's scene path, where its placement has one. */
+  private readonly nodePaths = new Map<number, string>();
   private query = 0;
   private readonly stack: Object3D[] = [];
   private readonly candidates = new Float64Array(CANDIDATE_MAX * CAND_STRIDE);
@@ -224,6 +233,7 @@ export class MarkClipper {
    */
   clip(frame: MarkFrame, target: BufferGeometry, lift: number): number {
     this.centreFound = false;
+    this.lastNodePath = null;
     this.candidateCount = 0;
     const { origin: o, right: r, up: u, forward: f, side } = frame;
     // The query's world box: the square, MARK_DEPTH either side along the round.
@@ -417,6 +427,7 @@ export class MarkClipper {
       vertices += count;
     }
     if (kept === 0) return 0;
+    this.lastNodePath = this.nodePaths.get(node) ?? null;
     p.needsUpdate = uv.needsUpdate = col.needsUpdate = index.needsUpdate = true;
     target.setDrawRange(0, indices);
     const sphere = target.boundingSphere ?? (target.boundingSphere = new Sphere());
@@ -530,6 +541,8 @@ export class MarkClipper {
       let id = this.nodeIds.get(key);
       if (id === undefined) { id = this.nodeIds.size; this.nodeIds.set(key, id); }
       e.node[n] = id;
+      const path: unknown = instanced ? (mesh.userData.nodePaths as unknown[] | undefined)?.[n] : mesh.userData.nodePath;
+      if (typeof path === 'string') this.nodePaths.set(id, path);
     }
     this.meshes.set(mesh, e);
     return e;

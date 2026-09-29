@@ -40,6 +40,12 @@ export interface NetPageDeps {
   spectate(pose: { x: number; y: number; z: number; yaw: number; pitch: number } | null): void;
   /** A round's effects and sound at a point (`Effects.onRound`, `GameAudio.onFire`). */
   roundEffects(e: Extract<FireEvent, { type: 'round' }>, muzzleOf: number): void;
+  /**
+   * The page's own mover placed by the server (a respawn, and every round's start in classic): the kit fresh as the
+   * server's (`FUN_00598b90` -> `FUN_00599b60` -> `FUN_00599f00`, research 91 §4.3) -- every magazine full, the rifle
+   * in the hand, the pouch refilled.
+   */
+  respawned(): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
   weapons: readonly [WeaponRecord, WeaponRecord];
   /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default -- or the single-player room's. */
@@ -271,9 +277,12 @@ export class NetPage {
     if (e.type === 'round') {
       const d = [e.to[0] - e.from[0], e.to[1] - e.from[1], e.to[2] - e.from[2]];
       const l = Math.hypot(d[0]!, d[1]!, d[2]!) || 1;
+      // Protocol 5: the eye's ray the round was aimed down, for the server's cone (a round without it is refused there).
+      const eye = e.eye ?? e.from, aim = e.aim ?? [d[0]! / l, d[1]! / l, d[2]! / l];
       this.client.send({
         type: 'fire', seq: this.client.lastSeq(), from: [...e.from], dir: [d[0]! / l, d[1]! / l, d[2]! / l],
         weapon: e.weapon.id === this.deps.weapons[1].id ? 1 : 0, viewTick: this.client.viewTick(),
+        eye: [eye[0], eye[1], eye[2]], aim: [aim[0]!, aim[1]!, aim[2]!],
       });
     } else if (e.type === 'reloadStart') this.client.send({ type: 'reload', seq: this.client.lastSeq() });
   }
@@ -427,7 +436,10 @@ export class NetPage {
         } else remote.died(ev.victim, ev.clip);
         break;
       case 'spawn':
-        if (ev.id === this.client.id) { this.dead = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null); }
+        if (ev.id === this.client.id) {
+          this.dead = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null);
+          this.deps.respawned();                        // the server refilled its kit at this spawn (room.ts)
+        }
         break;
       case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
       case 'blast': if (ev.ring) this.deps.ring?.(ev.ring.seconds, ev.ring.volume); break;   // the knock: `NetClient`
@@ -458,7 +470,15 @@ export class NetPage {
         if (ev.timeLeft !== null) this.endsAt = performance.now() + ev.timeLeft * 1000;
         break;
       case 'queue': if (ev.position > 0) hud.postMessage(queueLine(ev.position)); break;
-      case 'promoted': this.deps.spectate(null); hud.postMessage('YOU ARE IN: A PLACE IS FREE'); break;
+      case 'promoted':
+        this.deps.spectate(null);
+        this.unbench();
+        // Protocol 5 (PL-8): seated in a classic round in play, a ghost until the next -- the welcome's lines.
+        if (ev.ghost) { this.benched = true; hud.postMessage(GHOST_LINES.map((text) => ({ text, scale: 0.8 }))); }
+        else hud.postMessage('YOU ARE IN: A PLACE IS FREE');
+        break;
+      // Protocol 5 (PL-8): moved out for idling (W3.R13) -- a spectator's view and the queue's line.
+      case 'demoted': this.spectatorWelcome(ev.position); break;
       case 'refused': this.reconnect.stopped = true; this.refusal = ev.reason; hud.postMessage(ev.reason); break;
       case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
       case 'kicked': this.reconnect.stopped = true; this.refusal = ev.reason === 'vote' ? 'kicked by a vote' : 'kicked for inactivity';

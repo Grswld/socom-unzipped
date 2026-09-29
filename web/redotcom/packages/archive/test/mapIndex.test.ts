@@ -3,7 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { FsAssetSource, readServedIndex } from '../src/fsAssetSource';
+import { IsoAssetSource } from '../src/isoAssetSource';
 import { COMMON_ARCHIVES, listMaps, parseServedIndex, servedIndex } from '../src/mapIndex';
+import { fixture } from './fixtures';
+import { buildIso } from './isoImage';
 
 const served = resolve(import.meta.dirname, '../../../public/maps');
 
@@ -26,6 +29,46 @@ describe('listMaps', () => {
     expect(maps[0]!.archive).toBe('MP1'); expect(maps[1]!.archive).toBe('MP2'); expect(maps[2]!.archive).toBe('MP5');
     expect(maps[0]!.path).toBe('RUN/MP1.ZDB');
   }, 120_000);
+
+  // PL-11: one unreadable archive costs its own name, not the whole listing -- the contract a map's own load
+  // keeps (loadMap: each failure a diagnostic, the rest still draws). The bad archive stays offered under its
+  // archive id, as parseServedIndex names a bare path, and the reason goes to `onProblem`.
+  const JUNK = new Uint8Array([1, 2, 3]);
+  const withTree = async (files: Record<string, Uint8Array>, body: (root: string) => Promise<void>): Promise<void> => {
+    const tmp = mkdtempSync(join(tmpdir(), 's2u-maps-'));
+    try {
+      mkdirSync(join(tmp, 'RUN'));
+      for (const [path, bytes] of Object.entries(files)) writeFileSync(join(tmp, path), bytes);
+      await body(tmp);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+
+  it('offers an unreadable archive under its id and reports why, instead of failing the listing', async () => {
+    await withTree({ 'RUN/MP2.ZDB': JUNK }, async (root) => {
+      const problems: [string, string][] = [];
+      const maps = await listMaps(new FsAssetSource(root), (path, message) => problems.push([path, message]));
+      expect(maps).toEqual([{ archive: 'MP2', path: 'RUN/MP2.ZDB', name: 'MP2' }]);
+      expect(problems.length).toBe(1);
+      expect(problems[0]![0]).toBe('RUN/MP2.ZDB');
+      expect(problems[0]![1].length).toBeGreaterThan(0);
+      // With no one listening the listing still resolves.
+      expect(await listMaps(new FsAssetSource(root))).toEqual(maps);
+    });
+  });
+
+  const MP6 = fixture('RUN/MP6.ZDB');
+  it.skipIf(!MP6)('names the good archives beside a bad one, whole and by range', async () => {
+    await withTree({ 'RUN/MP2.ZDB': JUNK, 'RUN/MP6.ZDB': MP6! }, async (root) => {
+      const want = [{ archive: 'MP2', path: 'RUN/MP2.ZDB', name: 'MP2' }, { archive: 'MP6', path: 'RUN/MP6.ZDB', name: 'DESERT GLORY' }];
+      const problems: string[] = [];
+      expect(await listMaps(new FsAssetSource(root), (path) => problems.push(path))).toEqual(want);
+      const iso = new IsoAssetSource(new Blob([buildIso([{ path: 'RUN/MP2.ZDB', bytes: JUNK }, { path: 'RUN/MP6.ZDB', bytes: MP6! }])]));
+      expect(await listMaps(iso, (path) => problems.push(path))).toEqual(want);
+      expect(problems).toEqual(['RUN/MP2.ZDB', 'RUN/MP2.ZDB']);
+    });
+  }, 60_000);
 });
 
 describe('FsAssetSource', () => {

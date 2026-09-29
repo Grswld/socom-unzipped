@@ -25,8 +25,9 @@ An agent working on the recomp can skip this directory entirely.
   motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
   accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
   no first person (the owner's ruling). Today reCOM mode is behind the `?redotcom` URL flag and opens on foot.
-- **Multiplayer.** Respawn matches of up to 16 players plus spectators on a Node server, one match per map, the round's
-  damage, death, respawn, teams, scoring and scoreboard read from the game ([Multiplayer server](#multiplayer-server-web-sprint-3)).
+- **Multiplayer.** Respawn and classic matches of up to 16 players plus spectators on a Node server, one match per map
+  and rules, the round's damage, death, respawn, teams, scoring and scoreboard read from the game
+  ([Multiplayer server](#multiplayer-server-web-sprint-3)).
 - **A worked example of recreating a PS2 game in the browser** from its own data: see
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for which parts are general PS2 and where to start with another game.
 
@@ -136,12 +137,18 @@ the same by hand, e.g. `http://localhost:5173/?map=MP2&redotcom&devmode`. It is 
 
 ### Deploying
 
-`dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
+`dist/viewer/` is a static site. By default the page reads the visitor's own disc image in the browser and asks the
+server for no game data. `?devmode` reads a `maps/` directory beside it instead, holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
 `maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
 `maps/RUN/SOUNDS/BNKSTORE.ZAR`, and `maps/RUN/IRX/LIBSD.IRX` for the SPU2's reverb presets). The archives are the game's and are never part of the build. The sound banks are read
 **by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
 (nginx and Vite do); one that does not still works, fetching the whole store.
+
+**socomunzipped.com serves `maps/` today, by the owner's choice and for now.** The site's nginx
+(`web/shared/deploy/site/nginx.conf`, `location /redotcom/maps/`) serves the owner's extracted archives, mounted from
+the box (`docker-compose.yml`) and uploaded by `web/shared/deploy/site/deploy.sh maps`; the plan is to take it down
+and leave the site disc-only. The landing's credits say so (`web/landing/src/claims.test.ts` pins the wording).
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -159,7 +166,7 @@ Everything below is relative to `web/redotcom/`.
 | `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`), the zAnim effect commands, the thrown casing's flight, the particle sources and the effect models (`effects.ts`, `effectMotion.ts`, `effectParticles.ts`, `effectModels.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
-| `packages/server` | the multiplayer match server (Node, `ws`): one room per map running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
+| `packages/server` | the multiplayer match server (Node, `ws`): one room per map and rules (respawn, classic; the two share the map's parse) running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
 | `tools/` | the extractor, the dump/export tools, the comparison instruments, the release sweep, the bot load test, `build-corpus.ts` |
 | `docs/research/`, `docs/corpus/` | the research notes (71-91) and the AI-readable corpus built from them (`llms.txt`, `records.jsonl`, `sections.jsonl`) |
 | `deploy/` | the multiplayer server's Docker image, Compose with Caddy, systemd unit and `deploy.sh` |
@@ -663,12 +670,13 @@ code and documentation only, never the game or its data. CI for this directory i
 ## Multiplayer server (web sprint 3)
 
 `packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a match per map and rules (a
-timed respawn match, or classic), HTTP `/health`, `/metrics` and `/rooms` (each room's map, rules, players and round)
-and a WebSocket on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
+timed respawn match, or classic; the two rooms share one parse of the map), HTTP `/health`, `/metrics` (host only) and
+`/rooms` (each room's map, rules, players and round: anonymous counts, public by the owner's ruling) and a WebSocket
+on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 `READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
 
 ```
-SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS, RULES
+SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS, RULES, TRUST_PROXY
 ```
 
 `RULES` (respawn by default) is the rules of a join that names none; `MAX_ROUNDS` is the game's `mp_max_rounds` (11,
