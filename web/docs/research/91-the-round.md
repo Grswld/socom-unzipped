@@ -811,3 +811,56 @@ The script side (MP51 seq `start` / `start2`): WAIT 5, then the objective pair b
 | `CLIENT_FINAL_EXIT_PLACEHOLDER` | whether non-host clients really leave `FinalReally` at once (`CloseAndSwitch` under `!IsSessionMaster`) or wait for the host | MPZANIM `ExitOnStart` | a two-client capture of a match end |
 | `RESPAWN_BANNER_PLACEHOLDER` | that a respawn match's banner reads "STARTING ROUND 1 OF 11" although it lasts one round | `FUN_001fb420` | a capture of a respawn round |
 | `MSG_COLOUR_WORD_PLACEHOLDER` | the MESSAGE command's second word `0x01c8c8c8` (read here as flag 1 + RGB 200, 200, 200) and its window (assumed the main one) | MZANIM streams | the MESSAGE tick in the decomp (command 55) |
+
+## 19. Classic mode as implemented (web sprint 3, 2026-09-29)
+
+This section records what the match server and the page implement for respawn off, the create-game default ("Respawn
+is disabled."). The owner's ruling of 2026-09-29 applies: every rule comes from the decompilation, the disc's scripts
+or reCOM, and what cannot be sourced is a named placeholder.
+
+The code is in these files:
+- `packages/viewer/src/net/rules.ts`: the shared rules.
+- `packages/server/src/room.ts`: the room. The `rules` option is `respawn` or `classic`.
+- `packages/server/src/server.ts`: rooms keyed by map and rules; `/rooms`.
+- `packages/viewer/src/netPage.ts`: the page's side.
+- `packages/viewer/src/rules.ts` and `shareUrl.ts`: the Rules setting and the `rules=` link parameter.
+
+The wire is protocol 4:
+- The hello carries `rules`.
+- The welcome carries `rules`, `round`, `rounds` and `ghost`.
+- The round start carries `rounds`.
+- There is a new `eliminated` event.
+
+The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZAR`, with `parseAnimSets` and
+`decodeEffectProgram`, for the `start`, `mission_timer`, `abort`, `success`, `failure` and `game_over` sequences.
+
+| rule | implemented | source |
+|---|---|---|
+| rooms | one per map and rules; a hello without `rules` takes the server's `RULES` (respawn) | the owner's brief; W3.R11 |
+| launch | a classic room starts round 1 once both sides have a player; until then its players walk and respawn as in a respawn room | "There must be players on both teams to launch" `FUN_002c3cf0` L165325-165352, UIMnLOC 350/356; the walking room: `CLASSIC_WAITING_PLACEHOLDER` |
+| rounds | `mp_max_rounds` 11 (`MAX_ROUNDS`); the match goes to `mp_half_rounds` = (11 + 1) >> 1 = 6 | `FUN_002a6c50` L149073-149082; frame `A_49`; `FUN_001f5e70` L55628-55631 |
+| match end | after a round: if rounds played >= 11, over unless level (level plays a tiebreaker); else over at 6 wins | MP51 `objectives` seq `game_over` (read this round: `end_of_round_round_count` >= `mp_max_rounds` -> IF `mp_score00` == `mp_score08` stop, ELSE `mp_game_over` = 1; ELSEIF either >= `mp_half_rounds`) |
+| tiebreaker | another round while level after the last, again after a drawn tiebreaker; banner "PLAYING TIEBREAKER ROUND" | `game_over` above; `FUN_001fb420` L57633-57648 (0x3e3540 when `mp_max_rounds` < `mp_round_count` + 1) |
+| elimination | from 15 s into the round, a side with no living player loses the round: `aiteam_08` == 0 is tested first (the SEALs win; also when both fell together), then `aiteam_00` == 0 | seq `start`: WAIT 5, WAIT 10, then the WHILE loop's IF chain |
+| elimination's result | the winner's round win counted at once; "ALL TERRORISTS ELIMINATED" (0.7) / "SEALS VICTORIOUS!" (0.9), or "ALL SEALS ELIMINATED" / "TERRORISTS WIN!"; the result 23 s later; then the engine's 3 s and ROUND COMPLETE's 5 s | seq `start` (`mp_score0x` += 1, `mp_winner`, two MESSAGEs, WAIT 2); `success` / `failure` (WAIT 20, `round_count` += 1, `game_over`, WAIT 1); `mp51LOC` 5103-5106; `FUN_002a9b30` L150612-150672 |
+| time-out | at 00:00, and not before 15 s, the round is a draw: no message, no hold, nobody gets the win | seq `mission_timer` (WAIT 15, WHILE `mp_timer` != 0) -> `abort` (`round_count` += 1, `mp_winner` = 99, `game_over`, `mission_timeout` = 1) |
+| no respawn | the Action press does nothing while a classic round is on | `FUN_002a7560` L149405-149431 (respawn needs the option) |
+| the dead | "You have died.  R2 Select new weapons." and the "cycle through living teammates" lines are posted to the message window; Space follows each living teammate in turn (the page's fly camera behind the body, as the spectator's) | `FUN_001f97b0` L57000-57007 (0x3e32e0, 0x3e3350, 0x3e3380); `FUN_005979a0` L454484-454489; key: `SPECTATOR_PAD_PLACEHOLDER`; the leading words: `HELP_GLYPH_LEAD_PLACEHOLDER` |
+| late joiners | a player seated mid-round is a ghost: not alive, not counted, placed at the next round; the page posts the ghost lines | UIMnLOC 352-353; `FUN_001f97b0` L57047-57062 (0x3e31c0, 0x3e31f0, 0x3e3280, 0x3e32b0) |
+| between rounds | everyone, the ghosts too, is placed at a round-start slot of the side with a full kit; the team scores reset | `FUN_00223680` L75913-75931 (`FUN_00598b90(p,0)` for every non-ghost player; `FUN_002a7d40`) |
+| start slot | the player slot's own record, not a random one | L158760-158787; the player slot is stood in for by the player's place among its side's ids: `START_SLOT_LINK_PLACEHOLDER` |
+| magazines per round | restored: every round start rebuilds the kit at `Ammo_Capacity` x `NumMags` | `FUN_00598b90` -> `FUN_00599b60` L455158 -> `FUN_00599f00` L455674 (section 4.3); the kit: `KIT_PLACEHOLDER` (the M4A1 SD and the Mark 23 for everyone) |
+| scoring | kills +2, suicides and team kills -2 (section 8), +1 each alive at the round's end, +5 each on `mp_winner`'s side (none on a draw), the same as the respawn match | `FUN_00223970` L76146-76165: the bonus loop has no respawn test |
+| screens | ROUND COMPLETE between rounds; FINAL ROUND and GAME COMPLETE after the match; WINNER / LOSER / DRAW as the respawn match | section 18.2.4-3; `CallRoundATie` |
+| idle kick | the dead and the ghosts do not age toward W3.R13's idle kick while a classic round is on (they can only watch) | the owner's addition (W3.R13); the original has none |
+| the banner | "STARTING ROUND r OF 11" on each round start, from the server's round; respawn keeps the original's "STARTING ROUND 1 OF 11" for its one round (the owner's ruling) | `FUN_001fb420` L57633-57648 reads `mp_max_rounds` and `mp_round_count` and no respawn flag; `RESPAWN_BANNER_PLACEHOLDER` (not captured) |
+| objective | "OBJECTIVE:" / "ELIMINATE THE TERRORISTS" for the SEALs, "ELIMINATE THE SEALS" for the Terrorists, on every map | seq `start` / `start2` (raw names 38-40); other game types' objectives: `OBJECTIVE_BY_MAP_PLACEHOLDER` |
+
+The placeholders this adds:
+- `CLASSIC_WAITING_PLACEHOLDER`: the room before both sides are seated, and after a side empties. The original never
+  plays that state: it stays in its lobby, or abandons the game (`FUN_002bc530` L161130-161140).
+- `START_SLOT_LINK_PLACEHOLDER`: the link from the player slot `+0xfc8` to the lobby (section 4.2, open).
+- `HELP_GLYPH_LEAD_PLACEHOLDER`: the words before the pad glyph in 0x3e3350 and 0x3e3280. The strings dump cuts at the
+  glyph. "Use the" is taken from the spectator's 0x3e30f0.
+- `OBJECTIVE_BY_MAP_PLACEHOLDER`: the non-SUPPRESSION maps' objectives. The rooms run SUPPRESSION's rules everywhere.
+- The standing placeholders `KIT_PLACEHOLDER`, `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
