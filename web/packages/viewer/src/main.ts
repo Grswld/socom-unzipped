@@ -14,12 +14,15 @@ import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, wantsTouchControls } from './touch';
-import { stanceBody, WalkMode, type Stance } from './walk';
-import { aimPoint } from './playerCamera';
+import { WalkMode } from './walk';
+import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
+import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
-import { Reticle } from './reticle';
-import { Body } from './body';
-import { ammoText, Fire } from './fire';
+import { buildBody, type BodyView } from './bodyView';
+import { RECOIL_PLACEHOLDER, Shooter, type Mover, type ShotRecord } from './shot';
+import { Play, playActions } from './play';
+import { PLAY_CLIPS } from './animator';
+import { sealTuning } from './physics';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -49,39 +52,36 @@ const scene = new Scene();
 const fly = new FlyCamera(canvas, {
   onSpeedChange: (m) => ui.setCameraHint(m, fly.isLocked()),
   onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
-  onFire: (down) => trigger(down),
 });
 const overlays = new Overlays(scene);
-/**
- * Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the game's third-person camera
- * follows it (W2.1, `./playerCamera`), `V` for first person.
- */
+/** Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the camera rides its eye. */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
-/** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
-const reticle = new Reticle();
-/** W2.3 (`./body`): the stand-in body on the walker's feet, in the world's shading (the brighten, the fog). */
-const body = new Body(() => brightenOf(lighting));
-scene.add(body.object);
-/**
- * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
- * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
- */
-const fire = new Fire({ grid: () => walk.grid(), aim: () => walk.fireAim() });
-scene.add(fire.object);
-fire.bindKey();
-/** The trigger, pressed or let go: it fires only while walking (`Fire` asks the walk for its aim). */
-function trigger(down: boolean): void {
-  if (down) fire.pull();
-  else fire.release();
-}
-/** The body's pose last set: `setStance` re-poses the mannequin, so it is called on a change only. */
-let bodyStance: Stance | null = null;
-/** The reticle's spread at the standing run (W2.4's estimate, W2.1's first wiring): 65 units a second. */
-const RUN_SPEED = stanceBody('stand').bands.forward;
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+/**
+ * W2.4 (`./shot`): the held weapon, the fire point and the shot. The left button fires in walk mode once the mouse
+ * is captured -- the click that captures it is the camera's (`camera.ts`), so it is not a shot; the hook's `fire`
+ * is the same shot for Playwright, which has no pointer lock. The kick is `RECOIL_PLACEHOLDER`'s: none until W2.5.
+ */
+const shooter = new Shooter();
+scene.add(shooter.group);
+const mover = (): Mover => {
+  const pose = fly.pose();
+  return { mode: walk.mode(), feet: walk.feet(), eye: [pose.x, pose.y, pose.z], yaw: pose.yaw, pitch: pose.pitch };
+};
+const fire = (): ShotRecord | null => {
+  const shot = shooter.fire(mover());
+  if (shot && RECOIL_PLACEHOLDER.kickPitchDegrees !== 0) fly.setPose({ pitch: fly.pose().pitch + RECOIL_PLACEHOLDER.kickPitchDegrees });
+  return shot;
+};
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button === 0 && e.pointerType === 'mouse' && fly.isLocked() && walk.mode() === 'walk') fire();
+});
 
 let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
+/** W2.1: the player's body, rebuilt with every map; shown by the panel's `body` switch (`./bodyView`). */
+let body: BodyView | null = null;
 let backend: Backend = 'webgl2';
 /** The maps the index listed, so a path can be turned back into its archive for the URL. */
 let mapList: MapInfo[] = [];
@@ -175,6 +175,54 @@ function askIndex(from: SourceRequest): void {
 }
 
 /**
+ * The seal table from the disc (W2.3a, W2.R6): asked of each source once the picker has switched to it -- the served
+ * tree's `RUN/READERC.ZAR` when it has one, the disc image's always -- and handed to the walk; the mover runs on the
+ * defaults until it arrives, and on them when the source has none.
+ */
+let wantedDynamics = -1;
+function askDynamics(from: SourceRequest): void {
+  wantedDynamics = ++requests;
+  ask({ kind: 'dynamics', id: wantedDynamics, source: from });
+}
+
+// ---- W2.2b: the play mode -- the walk with the body, the game's clips on the mover (`./play`, `./animator`) ---------
+/**
+ * The body and its clips: the map's body (`show`), the source's clips (`RUN/MOTION_P.ZAR` and `motion.rdr`, asked of
+ * each source once its map list is in, as the seal table is), stepped once a frame after the walk. Without the pack
+ * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
+ */
+const play = new Play();
+let wantedPlay = -1;
+function askPlay(from: SourceRequest): void {
+  wantedPlay = ++requests;
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS] });
+}
+
+// ---- W2.6: the shoulder camera, the aim view, and the pad's lanes in play (`./play`, `./thirdPerson`) --------------
+/**
+ * The aim view is held: the pad's aim lane (L1, W2.R5) or the right mouse button on the canvas (a `mousedown`, which
+ * fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
+ */
+let mouseAim = false;
+canvas.addEventListener('mousedown', (e) => { if (e.button === 2) mouseAim = true; });
+globalThis.addEventListener('mouseup', (e) => { if (e.button === 2) mouseAim = false; });
+globalThis.addEventListener('blur', () => { mouseAim = false; });
+/**
+ * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
+ * (docs/PLAYTEST.md step 8), the aim while held (`playActions`). In the fly camera the same lanes are up and down.
+ */
+function playLanes(before: Input, after: Input): void {
+  const act = playActions(before, after);
+  if (walk.mode() === 'walk') {
+    if (act.jump) walk.jump();
+    if (act.crouch) walk.crouch();
+  }
+  play.setAimLane(act.aim || mouseAim);
+}
+/** The rig switch: the disc's cam_back, or research 18's measured ring (the default); the switch mirrors the refusal. */
+ui.onCameraRigSwitch((on) => { if (!play.useDiscRig(on)) ui.setCameraRigSwitch(false); });
+
+/**
  * The player's own disc (W1.7, milestone M5): a `File` from the panel's file input or dropped on the page,
  * handed to the worker, which lists its maps by range and reads the chosen archive out of it. The image is
  * never uploaded and the page itself reads none of it.
@@ -198,6 +246,20 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id !== wantedIndex) return;
     source = wantedIndexFrom;
     showMaps(message.maps);
+    askDynamics(source);
+    askPlay(source);
+    return;
+  }
+  if (message.kind === 'dynamics') {
+    if (message.id !== wantedDynamics) return;
+    walk.setTuning(message.tuning);
+    // W2.6: the same file's cam_back rig and cam_tether_stiff for the shoulder camera; the switch offers the rig when read
+    play.setCameraTable(message.camera, sealTuning(message.tuning).cam_tether_stiff);
+    ui.setCameraRigAvailable(message.camera !== null);
+    return;
+  }
+  if (message.kind === 'play') {
+    if (message.id === wantedPlay) play.setClips(message.data);
     return;
   }
   if (message.kind === 'progress') {
@@ -220,7 +282,55 @@ ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
 ui.onFullscreen();
-attachTouchControls(fly, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
+
+// ---- W2.7: the controller (`./gamepad`, ruling W2.R5) ------------------------------------------------------------
+/**
+ * The touch stick's lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
+ * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Cross and L3 are.
+ */
+const touchInput: Input = noInput();
+const touchLane: TouchTarget = {
+  setStick: (x, y) => { touchInput.moveX = x; touchInput.moveY = y; },
+  setLift: (v) => { touchInput.jump = v > 0; touchInput.crouch = v < 0; },
+  setStickBoost: (on) => { touchInput.boost = on; },
+};
+/** The pads, from the events and the poll: a toast names each that comes, and says when one goes (W2.R5). */
+const pads = new PadWatch({
+  connected: (id) => {
+    ui.toast(`Controller connected: ${id}`);
+    ui.showPadLayout(PAD_LAYOUT);                 // the first connect shows the layout; a later one finds it there
+    ui.setPadConnected(true);
+  },
+  disconnected: () => {
+    ui.toast('Controller disconnected');
+    ui.setPadConnected(pads.count() > 0);
+  },
+});
+pads.attach(globalThis);
+/** The pad's own input last frame, for its edges; and what the camera and the mover were fed, for the hook. */
+let padLast: Input = noInput();
+let padMerged: Input = noInput();
+/**
+ * One frame of the controller, before the camera's: the pad read through the layout (`padInput`), merged with the
+ * touch stick (the larger push on each axis, the buttons OR-ed; `mergeInput`) and fed to the camera's lanes -- which
+ * the fly camera flies by and the walk's mover steps by (`groundWish`), so one mapping drives both (W2.R5). The right
+ * stick turns at the arrow keys' rate, scaled (`setLook`). Up and down are the fly camera's; on foot the jump and the
+ * crouch are the mover's (W2.3a), to be read from `padMerged` there -- the game's crouch acts on the release
+ * (docs/PLAYTEST.md step 8; `releasedSince`). Start toggles walk and fly on its press, as `G` does on its keydown.
+ */
+function padFrame(): void {
+  const pad = padInput(pads.poll(navigator));
+  const input = mergeInput(touchInput, pad);
+  fly.setStick(input.moveX, input.moveY);
+  fly.setLift((input.jump ? 1 : 0) - (input.crouch ? 1 : 0));
+  fly.setStickBoost(input.boost);
+  fly.setLook(input.lookX, input.lookY);
+  if (pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  playLanes(padMerged, input);      // W2.6: jump, crouch and aim on foot
+  padLast = pad;
+  padMerged = input;
+}
+attachTouchControls(touchLane);
 walk.bindKey();
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
@@ -265,6 +375,7 @@ function applySlider(name: SliderName, value: number): void {
   else if (name === 'fognear') { if (fogIsMine) { fog.near = value; refreshFog(); } return; }
   else if (name === 'fogfar') { if (fogIsMine) { fog.far = value; refreshFog(); } return; }
   view?.setLighting(lighting);
+  body?.setLighting(lighting);
 }
 
 function applyToggle(name: ToggleName, on: boolean): void {
@@ -282,6 +393,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else if (name === 'rigeverywhere') { lighting.rigEverywhere = on; view?.setLighting(lighting); }
+  else if (name === 'body') play.setFlyToggle(on);        // W2.2b: the body in fly mode; in play it is always shown
   else if (name === 'ps2look') {
     presentation = on ? 'ps2' : 'native';
     document.body.classList.toggle('ps2-look', on);
@@ -348,29 +460,16 @@ async function boot(): Promise<void> {
   const frame = (): void => {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
+    padFrame();                     // W2.7: the pad and the touch stick into the camera's lanes, before it steps
     fly.update(dt);
-    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
-    const walking = walk.mode() === 'walk';
-    if (walk.posture() !== bodyStance) { bodyStance = walk.posture(); body.setStance(bodyStance); }
-    // The body on the feet as drawn (between ticks, like the camera), facing the body's yaw, seen whole in third person.
-    body.update(walk.drawnFeet(), fly.pose().yaw, dt, fly.camera.position);
-    body.setVisible(walking && walk.view() === 'third');
-    if (!walking) fire.release();  // leaving the walk lets a held trigger go
-    fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
-    ui.setAmmo(walking ? ammoText(fire.state().magazine) : null);
-    view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
-    render(scene, fly.camera);
-    const aim = walk.aim();
-    if (aim) {
-      // The reticle on the aim point (FUN_00297410's, 1000 ahead along the look): the frame's centre at rest.
-      fly.camera.updateMatrixWorld();
-      const [nx, ny] = aimPoint(fly.camera, aim);
-      reticle.setAimPoint(nx, ny);
-      // The run's spread (W2.4's estimate) or a round's knock (W2.5, `ZWEAPON.ZAR/zweapon.rdr`), the larger.
-      reticle.setSpread(Math.max(walk.speed() / RUN_SPEED, fire.spread()));
-    }
-    reticle.setVisible(walking);
-    reticle.render(created.renderer);
+    walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, then the camera to its eye
+    shooter.frame(dt, mover());     // W2.4: the held weapon at the fire point, along the aim
+    // W2.2b/W2.6: the body at the feet in its clip, and the camera the frame is drawn with -- over the shoulder in
+    // play, at the eyes when aiming, the fly camera otherwise (which stays the look and the walk's eye throughout)
+    const camera = play.frame(dt, walk, fly.camera);
+    shooter.follow(camera, play.viewStats().kind);   // the held weapon rides the drawn camera in the aim view only
+    view?.frame(camera, dt);       // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    render(scene, camera);
 
     if (dt > 0) {
       smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
@@ -455,9 +554,6 @@ function show(map: LoadedMap): void {
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
   }
-  reticle.setBitmaps(map.reticle);
-  fire.reset();                                   // a new map: no marks, full magazines
-  fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
   scene.add(built.group);
@@ -480,6 +576,11 @@ function show(map: LoadedMap): void {
   // `AIMAPS.MPS` (W1.5b). Which slot a player gets is game logic, so the stand is not moved to one (W1.R9).
   const spawn: Spawns | undefined = spawnsFor(map.name);
   overlays.placeSpawns(spawn ?? null, map.slots);
+  // W2.1: the player's body, in its bind pose at slot A (`./body`, `./bodyView`); the switch below shows it.
+  if (body) { scene.remove(body.group); body.dispose(); }
+  body = map.body ? buildBody(map.body, map, lighting) : null;
+  if (body) scene.add(body.group);
+  play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -504,9 +605,11 @@ function show(map: LoadedMap): void {
   // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
   // just placed, or at spawn A's (x, z) on the stand's floor (A's recorded y where the probe found none).
   walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
+  // W2.4: the shot's hull and the held weapon; the count starts again on every map.
+  shooter.setMap(map.ground, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null);
 
   ui.select(map.path);
-  ui.setPanelTitle(`${map.name} (${map.archive})`);   // the folded cog's tooltip
+  ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
   ui.setDiagnostics(map.diagnostics);
 
   // The status line is written **when the world is on screen**, not when the map is decoded. Everything
@@ -570,6 +673,7 @@ window.__viewer = {
   setCamera: (pose: Partial<Pose>) => walk.setCamera(pose),
   pose: () => fly.pose(),
   stats: () => ({
+    tuning: walk.tuningSource(),
     triangles: view?.triangles ?? 0,
     backend,
     diagnostics: loaded?.diagnostics ?? [],
@@ -584,6 +688,11 @@ window.__viewer = {
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
     stand: loaded?.stand ?? null,
     slots: overlays.slotCounts(),
+    body: body ? { ...body.stats, visible: body.group.visible } : null,
+    shots: shooter.stats().shots,
+    lastShot: shooter.stats().lastShot,
+    anim: play.animStats(),
+    camera: play.viewStats(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -595,13 +704,12 @@ window.__viewer = {
   setMode: (mode) => walk.setMode(mode),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
-  reticle: () => reticle.state(),
-  body: () => body.state(),
-  stance: () => walk.stance(),
-  setStance: (stance) => walk.setStance(stance),
-  camera: () => walk.cameraState(),
-  setView: (view) => walk.setView(view),
-  fire: () => fire.state(),
-  shoot: () => fire.shoot(),
+  pad: () => ({ id: pads.id(), input: { ...padMerged } }),
+  mover: () => walk.mover(),
+  jump: () => walk.jump(),
+  crouch: (on) => walk.crouch(on),
+  fire: () => fire(),
+  setAim: (on) => play.setAimForced(on),
+  setCameraRig: (rig) => { const ok = play.useDiscRig(rig === 'disc'); ui.setCameraRigSwitch(play.viewStats().rig === 'disc'); return ok; },
   revision,
 } satisfies ViewerHook;

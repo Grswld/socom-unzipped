@@ -65,8 +65,8 @@ const settle = (page: Page): Promise<void> => page.evaluate(
 );
 
 /**
- * The panel folds away behind the cog on a coarse pointer by design -- the map shows first on a phone --
- * so a phone test opens it before measuring anything inside the body.
+ * The panel folds to a bar on a coarse pointer by design -- the map shows first on a phone -- so a
+ * phone test opens it before measuring anything inside the body.
  */
 async function unfoldPanel(page: Page): Promise<void> {
   if (await page.evaluate(() => document.body.classList.contains('panel-collapsed'))) {
@@ -275,37 +275,10 @@ test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/
   expect(res.headers()['content-type']).toMatch(/^font\/woff2/);
 });
 
-/**
- * W2.0: the fold control is a cog in the site bar, beside the brand; folded, nothing of the panel shows;
- * the backtick hides the panel but not the bar, so the cog stays; the GitHub link wears its mark.
- */
-test('the cog in the site bar folds the panel away entirely; the backtick leaves the cog', async ({ page }) => {
-  await page.goto('/');
-  const cog = page.locator('#site-links > #panel-toggle');
-  await expect(cog).toBeVisible();
-  await expect(page.locator('#source svg')).toHaveCount(1);
-  await expect(page.locator('#panel')).toBeVisible();
-  await expect(cog).toHaveAttribute('aria-expanded', 'true');
-  await cog.click();
-  await expect(cog).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.locator('#panel')).toBeHidden();
-  expect(await page.locator('#panel').boundingBox()).toBeNull();
-  expect(await page.evaluate(() => window.__viewer.panelCollapsed())).toBe(true);
-  await cog.click();
-  await expect(page.locator('#panel')).toBeVisible();
-  await page.locator('#view').focus();
-  await page.keyboard.press('Backquote');
-  await expect(page.locator('#panel')).toBeHidden();
-  await expect(cog).toBeVisible();
-});
-
 test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   await page.goto('/');
-  // Folded on a coarse pointer: no strip of it left, only the cog in the bar.
-  await expect(page.locator('#panel')).toBeHidden();
-  await expect(page.locator('#site-links > #panel-toggle')).toBeVisible();
   await unfoldPanel(page);
   const panel = await page.locator('#panel').boundingBox();
   const fab = await page.locator('#fullscreen').boundingBox();

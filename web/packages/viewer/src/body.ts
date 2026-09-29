@@ -1,319 +1,332 @@
-import { Box3, BufferAttribute, CapsuleGeometry, Group, Mesh, SphereGeometry, Vector3, type BufferGeometry } from 'three';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { uniform, vec4, vertexColor } from 'three/tsl';
+import { parseRdr, Zar, zdbMember, type AssetSource, type ZdbEntry } from '@s2u/archive';
+import {
+  interpretScaledChain, meshNames, modelNodes, readMeshLibrary, skinSubMesh, topInfluences, walkModel, type MeshData,
+} from '@s2u/mesh';
+import {
+  gearMatrix, IDENTITY, multiply, NODE_INSTANCE, parseCharacterTable, parseSceneGraph, playerCharacter, readSkeleton,
+  transformPoint, VISUAL_FLAG_CULL, type CharacterTable, type SceneNode, type SpawnSlot,
+} from '@s2u/scene';
 
 /**
- * The stand-in body (web sprint 2, W2.3; the spec's W2.R3): a mannequin at the SEAL's measured proportions, drawn
- * on the walker's feet, facing the body's yaw, in the world's own shading path. The real model (`CLIB_GEO.ZED`'s
- * skinned `CMesh` chain) and its animations (`MPZANIM.ZAR`) are web sprint 3's first candidate; this is the size
- * and the place, measured.
- *
- * **The height: 19.6 units over the feet (1.96 m at `MetersPerUnit 0.1`), by two routes that share one number.**
- *
- * - **The skeleton (the console dump `logs/parity/spawn_pcsx2.rdram`, research 17 section 8).** The instance at
- *   `actor+0x170` holds a count (32, `+0x60`) and a pointer to a table of 32 *node pointers* (`+0x64`, `0x1715940`
- *   for the player), not an array of nodes: 26 live, six null. Each node is one `CZBodyPart` (reCOM
- *   `research/recom/src/gamez/zBody/zbody.h:54-71`; SOCOM II's field order, confirmed on the dump): `+0x00` vec3
- *   local translation, `+0x0c` its `zdb::CNode` (whose first 64 bytes are the local matrix, and whose `+0x90`
- *   points to the node's name), `+0x10` saved translation, `+0x1c` the parent part, `+0x20` quat (x, y, z, w; the
- *   CNode's matrix is exactly this quat's rotation, row-vector convention, on all 26), `+0x30` saved quat, `+0x40`
- *   u16 id. The names are reCOM's `CSeal` parts (`research/recom/src/gamez/zSeal/zseal.h:534-567`): `skel_root`,
- *   `hips`, `spinelo`, `spinehi`, `neck`, `head`, `l/rscap`, `l/rshoulder_wgt`, `l/rbicep`, `l/rforearm`,
- *   `l/rhand`, `l/rthigh`, `l/rcalf`, `l/rfoot`, `l/rtoe`, `aimnodes`, `rifle`; no eyeball or eyelid part is live.
- *   Composing parent-first from the root (`t * R(q)` under the parent) puts, **on the upright standing actors of
- *   the dump** (root Y 11.08-11.57; the SEALs' own skeleton, the bone lengths the player's within 0.7 -- the hips
- *   and shoulders differ that much; a fifth standing actor is bent, its head at 15.03, and is left out), the `head`
- *   joint at **17.28-17.48 (17.37 at the bind root 11.484)**, the `neck` at 16.50, the shoulder joints at 15.4-15.7
- *   and 4.0 apart, the `hips` at 11.48, the knees (`calf`) at 5.7-5.9, the ankles (`foot`) at 1.15, the toes at
- *   0.3-0.5 -- the model's origin is the soles. The player at spawn is **crouched** (root 5.504, under the 9.0
- *   stance test research 17 section 8 cites; right knee at 0.54, kneeling): its `head` joint composes to 10.16.
- * - **The console frame (`scripts/parity/refs/console_spawn_slot8.png`, 640x448, the SEAL's back).** The camera is
- *   research 17 section 1's at spawn: the smoothed eye (939.439, -126.264, 832.160), the target (939.439, -130.489,
- *   858.341), the projection the map's half-angles `fov (0.6109 0.4276)` over 320 and 224 pixels, screen right
- *   world -x (the view runs +z). The player (939.4391, -145.8672, 857.0661) is 27.71 units from that eye along the
- *   view (24.91 level, 19.60 below it; 26.96 from the unsmoothed `cam+0x2c` eye). Projecting the dump's composed
- *   skeleton through it (the actor matrix at `actor+0x80` turns the model half a turn) lands the `head` joint at
- *   x 348.3 where the frame's head is centred at 351 -- the camera, the convention and the skeleton agree. The
- *   helmet's top row is **269** (the first dark row over the ground, x 338-352). Back-projected onto the vertical
- *   through the feet it is 13.21 over them (the crude route: it assumes the crown above the feet); onto the
- *   vertical through the head joint (29.24 deep: the crouched SEAL leans forward) it is **12.39**, which is
- *   **2.23 above the head joint** and is the crouch height used here. [unsmoothed eye: 13.28 and 12.46.]
- * - **Standing = the standing head joint + the head's measured 2.23 = 17.37 + 2.23 = 19.6.** The frame gives the
- *   head (joint to crown, the SEAL's beanie included), the dump gives the standing joint. Assumptions: the crown
- *   is above the head joint in both stances (the head upright; a crown one unit deeper would lower the crouch
- *   number by 0.26); the standing actors' pose is the player's stand (same skeleton, root within 0.1 of the bind);
- *   the soles are at the model origin (the toe joints 0.3-0.5 over it). Research 17 section 1 has the actor's
- *   feet 0.504 over the collision hit; the stand-in stands on the viewer's floor and does not add it. Cross-check:
- *   the neck (C7) at 16.50 is 0.84 of 19.6, a human's 0.85; the knees 0.30 (human 0.29). Row 269 +/- 1 pixel is
- *   +/- 0.06; the whole is good to about +/- 0.3.
- * - **The width: 5.1** -- the frame's body at the shoulder rows (318-330) spans x 293-375, 82 pixels at the
- *   shoulders' 28.3 depth, 0.0618 units a pixel. The skeleton's shoulder joints are 3.8-4.0 apart; a deltoid's
- *   0.6 each side makes the same 5.1. (Walls still take the body radius 3.5, W1.R2.)
- * - **The eye: `HEAD_HEIGHT` 18.3 [estimate].** No eyeball part is live on the dump (`m_leyeball`/`m_reyeball`,
- *   `zseal.h:563-564`, `CSeal::SetupEyes`, `zseal.h:347`), so the eye is the head's: the anthropometric eye height
- *   0.936 of the stature (18.35), which lies 0.9 over the head joint and 1.3 under the crown.
- * - **Prone: 3.0 over the feet [estimate]** -- the torso's depth lying on the floor; no prone actor is on the dump.
- *
- * **The stride** is a model, not the animation: a full cycle (two steps) is `height * (0.55 + 0.025 * speed)` units
- * long -- a human's 0.8 of stature at a walk (1.4 m/s) and 2.2 at a run (6.5 m/s: `READERC.ZAR/motion.rdr`'s
- * `seal_run` `max_velocity`, 65 units/s) -- and the cadence is the speed over it: 1.52 cycles a second at 65
- * [estimate]. The speed is the feet's own, frame to frame, so `walk.ts` is not asked for it.
- *
- * **The shading** is the world's untextured path (`world.ts`'s `SHADED_PLAIN`): the vertex colour clamped, times
- * the brighten `1 + FIX/128` as a uniform (`./lighting`), fogged by the scene's GS fog node (`./fog`: the material's
- * `fog` flag, as a world draw with `PRIM.FGE` set). The colours are the console frame's own, sampled on the SEAL and
- * divided by the frame's brighten of 1.727 (FIX 93): pack (23.6, 26.5, 26.9), camouflage sleeve (28.5, 31.5, 25.4),
- * beanie (14.1, 13.6, 12.6), trousers (17.2, 19.9, 18.9) -- dark, as the SEAL in that shade is.
- *
- * **First person.** W2.1's walk is seen in the third person, the body whole; its first person (`V`) puts the eye at
- * `HEAD_HEIGHT` and hides the body (`main.ts`). Should an eye be within the body's column all the same (the body
- * radius 3.5 around the feet, from the feet to the crown), the upper body -- torso, neck, head, arms -- is not drawn
- * and the legs are; from outside, it is drawn whole.
+ * The player's body, decoded in the worker (web sprint 2, W2.1): the map's player character as the game dresses
+ * it -- its mesh out of `CLIB_MDL.ZED`, its skeleton out of `CLIB_GEO.ZED`, its default gear out of `FLIB_MDL.ZED`
+ * hung where `READERC.ZAR/character.rdr` says -- stood in its bind pose at spawn slot A. Pure data; `./bodyView`
+ * makes the three objects on the page. The format is web/docs/research/78.
  */
 
-/** The crown over the feet, standing (above: the dump's head joint 17.37 + the frame's head 2.23). */
-export const STANDING_HEIGHT = 19.6;
-/** The crown over the feet, crouched: the console frame at spawn, the SEAL crouched (above). */
-export const CROUCH_HEIGHT = 12.4;
-/** The body's top lying prone [estimate: the torso's depth on the floor]. */
-export const PRONE_HEIGHT = 3;
-/** The eye over the feet, standing [estimate: 0.936 of the stature], for the first-person switch (W2.1). */
-export const HEAD_HEIGHT = 18.3;
-/** The body's width at the shoulders, arms in (the console frame). */
-export const SHOULDER_WIDTH = 5.1;
+/** W2.R4: the default target is the SEAL model, `seal_A_scuba` (the owner's word, 2026-09-28). */
+export const DEFAULT_BODY = 'seal_A_scuba';
+/**
+ * The eye height W1.R2 walks at, 15.4 over the feet: research 17 §1's camera *target* over the actor (15.378,
+ * with the console's root node at 5.5 of its 11.48 bind height), not the model's eye. The bind-pose SEAL's eyes
+ * are 18.16 up (`LoadedBody.eye`, 78 §6); the two are kept apart and the difference is reported.
+ */
+export const EYE_HEIGHT_W1R2 = 15.4;
+/** three's skinning takes four influences a vertex; the disc has up to six (78 §4). */
+const RENDER_INFLUENCES = 4;
+/** A LOD copy's suffix on a mesh name, `_1` and `_2` (78 §4: `seal_A_scuba_1`, `seal_A_scuba_2`). */
+const LOD_SUFFIX = /_\d+$/;
+/** The eye gear's models (78 §5): `seal_A_right_eye` is `right_eye.flt`, `left_eye_blue` is `left_eye_blue.flt`. */
+export const EYE_MODEL = /(^|_)(right|left)_eye/i;
+/** `READERC.ZAR` sits in `RUN/` beside the maps on the disc, and beside them in a served tree (78 §5). */
+const READERC = 'READERC.ZAR';
 
-export type Stance = 'stand' | 'crouch' | 'prone';
-
-/** The dump's standing skeleton (above), over the feet: the hips, and the hip joints under them. */
-const HIPS = 11.48, HIP_DROP = 11.48 - 9.83, HIP_SPREAD = 1.0;
-/** The crouch's hips: the player's root at spawn, 5.504 (research 17 section 1). */
-const CROUCH_HIPS = 5.504;
-/** The torso over the hips to the neck's base (16.50), and the shoulder joints (15.5) and their half-span. */
-const NECK_BASE = 16.5 - HIPS, SHOULDER = 15.5 - HIPS;
-const HEAD_R = 1.2, HEAD_CENTRE = STANDING_HEIGHT - HEAD_R - HIPS;
-const TORSO_DEPTH = 1.5, ARM_R = 0.6;
-const TORSO_HALF_WIDTH = SHOULDER_WIDTH / 2 - ARM_R;
-/** Upper arm, forearm and hand: `bicep` 3.37 + `forearm` 2.83 + the hand. */
-const ARM_LENGTH = 6.2;
-/** The `thigh`-to-`calf` bone (4.33) and the shin to the sole (the knee's 5.8 standing, the leg bent a little). */
-const THIGH = 4.33, THIGH_R = 0.8, SHIN = 5.6, SHIN_R = 0.7;
-/** Prone: the hips at the torso's depth, so its back is `PRONE_HEIGHT` up. */
-const PRONE_HIPS = PRONE_HEIGHT - TORSO_DEPTH;
-/** The swing: the hips' largest angle (radians), and how much of it each stance keeps [estimates]. */
-const MAX_SWING = 0.6;
-const SWING_SCALE: Record<Stance, number> = { stand: 1, crouch: 0.5, prone: 0.25 };
-/** A frame's move faster than this is a placement (a map load, the hook), not a stride. */
-const PLACEMENT_SPEED = 300;
-/** The colours (above), 0..1 before the brighten. */
-const PACK = rgb(23.6, 26.5, 26.9), SLEEVE = rgb(28.5, 31.5, 25.4), BEANIE = rgb(14.1, 13.6, 12.6), TROUSERS = rgb(17.2, 19.9, 18.9);
-
-function rgb(r: number, g: number, b: number): [number, number, number] {
-  const k = 1 / (1.7266 * 255);
-  return [r * k, g * k, b * k];
+/** A sub-mesh ready for a `SkinnedMesh`: the bind pose's positions and normals, and four influences a vertex. */
+export interface BodySubMesh {
+  textureName: string | null;
+  fog: boolean;
+  /** xyz per vertex, model space, the bind pose: the game's own sum over the bind palette (`skinSubMesh`). */
+  positions: Float32Array;
+  normals: Float32Array;
+  uvs: Float32Array;
+  indices: Uint32Array;
+  /** Four palette slots a vertex, the largest weights (`topInfluences`). */
+  skinIndex: Uint16Array;
+  skinWeight: Float32Array;
 }
 
-/** The body's forward on the ground, (x, z), at a yaw in degrees: the camera looks down its own -z (`walk.ts`). */
-export function bodyForward(yawDegrees: number): [number, number] {
-  const yaw = (yawDegrees * Math.PI) / 180;
-  return [-Math.sin(yaw), -Math.cos(yaw)];
-}
-
-/** Stride cycles a second at a speed in units/s (the model above); 0 standing still. */
-export function strideCadence(speed: number): number {
-  if (!(speed > 0)) return 0;
-  return speed / (STANDING_HEIGHT * (0.55 + 0.025 * speed));
-}
+/** One part of the skeleton, as the page builds its bone. Matrices row-major, row-vector (24 §1.1). */
+export interface BodyPart { name: string; parent: number; bindLocal: Float32Array; bindWorld: Float32Array }
 
 /**
- * The hip and knee angles (radians about the body's x; positive swings the limb forward) that put the sole straight
- * under the hip joint `hip` over the floor: two-bone IK, the knee forward. The shin's end is its cap's centre, so
- * the rounded sole touches the floor at any tilt.
+ * A gear mesh, in its model's own frame, with its visual's cull: `FLIB_GEO` `vparams` word 0 bit 3
+ * (`VISUAL_FLAG_CULL`), which is clear on the eyelids, the holster's strap, the sheath's loop and the goggles.
  */
-function restLeg(hip: number): { hip: number; knee: number } {
-  const a = THIGH, b = SHIN - SHIN_R, h = hip - SHIN_R;
-  if (h >= a + b) return { hip: 0, knee: 0 };
-  const alpha = Math.acos(Math.min(1, (a * a + h * h - b * b) / (2 * a * h)));
-  const beta = Math.acos(Math.min(1, (b * b + h * h - a * a) / (2 * b * h)));
-  return { hip: alpha, knee: -(alpha + beta) };
+export type FittingMesh = MeshData & { cull: boolean };
+
+/**
+ * A piece of gear: the `character.rdr` entry's name, the `FLIB_MDL.ZED` model it draws, the part it hangs from,
+ * its offset under that part (`gearMatrix`), and the model's meshes, each already in the model's own frame.
+ */
+export interface BodyFitting { name: string; model: string; part: number; offset: Float32Array; meshes: FittingMesh[] }
+
+/** Where the body stands: slot A's centre and floor, turned to its facing. */
+export interface BodyPlacement {
+  position: [number, number, number];
+  facing: [number, number];
+  /** The turn about y, three's convention, that takes the model's forward (-z) onto `facing`. */
+  yaw: number;
+  side: 0 | 1;
+  index: number;
 }
 
-/** A capsule from its origin down to -`length` (caps included), coloured. */
-function limb(radius: number, length: number, colour: [number, number, number]): BufferGeometry {
-  const g = new CapsuleGeometry(radius, Math.max(0, length - 2 * radius), 4, 12);   // 12 round: a vertex on each axis, so the bounds are the radius
-  g.translate(0, -length / 2, 0);
-  return paint(g, colour);
+export interface BodyStats {
+  vertices: number; triangles: number; parts: number; subMeshes: number; batches: number;
+  /** The most bones one vertex is weighted to on disc. */
+  maxInfluences: number;
+  /** The largest weight any vertex lost to the renderer's four (`topInfluences`). */
+  droppedWeight: number;
+  fittings: number;
 }
 
-function paint(g: BufferGeometry, [r, gr, b]: [number, number, number]): BufferGeometry {
-  const n = g.getAttribute('position').count;
-  const colours = new Float32Array(n * 4);
-  for (let i = 0; i < n; i++) colours.set([r, gr, b, 1], i * 4);
-  g.setAttribute('color', new BufferAttribute(colours, 4));
-  return g;
-}
-
-export interface BodyState {
-  visible: boolean;
-  /** The body's top over the feet it stands on. */
+export interface LoadedBody {
+  /** The `character.rdr` character (`mp2_seal1`), or null when the table did not read. */
+  character: string | null;
+  model: string;
+  /** Where the character and its gear came from: `character.rdr`, or why the table was not there. */
+  dressedBy: string;
+  parts: BodyPart[];
+  subMeshes: BodySubMesh[];
+  fittings: BodyFitting[];
+  /** Default gear the map's `FLIB_MDL.ZED` does not carry, or whose part the skeleton lacks: not drawn. */
+  missing: string[];
+  /** Null until placed, and on a map with no slot A. */
+  at: BodyPlacement | null;
+  /** The bind pose's height over its feet (its soles are at the model's y 0). */
   height: number;
-  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  /** The eye line over the feet: the eye gear's offset up its part, or null where the character has none. */
+  eye: number | null;
+  stats: BodyStats;
 }
 
 /**
- * The mannequin. `main.ts` adds `object` to the scene, calls `update` with the walker's feet, the camera's yaw and
- * position each frame, and `setVisible` with the walk mode. `setStance` is for the walk's stances (W2.2b).
+ * The fallback choice when `character.rdr` is not on hand: `seal_A_scuba` (W2.R4) where the map has it, else the
+ * map's first `seal_A*` that is not a LOD copy, else its first SEAL that is not.
  */
-export class Body {
-  readonly object = new Group();
-  private readonly pelvis = new Group();
-  private readonly upper = new Group();
-  private readonly hips: [Group, Group] = [new Group(), new Group()];
-  private readonly knees: [Group, Group] = [new Group(), new Group()];
-  private readonly arms: [Group, Group] = [new Group(), new Group()];
-  private readonly head: Mesh;
-  private readonly brighten = uniform(1);
-  private stance: Stance = 'stand';
-  private asked = false;
-  private feet: [number, number, number] | null = null;
-  private lastSpeed = 0;
-  private cycle = 0;
-  private upperOn = true;
+export function chooseBodyModel(names: readonly string[]): string | null {
+  if (names.includes(DEFAULT_BODY)) return DEFAULT_BODY;
+  const whole = names.filter((n) => /^seal_/i.test(n) && !LOD_SUFFIX.test(n));
+  return whole.find((n) => /^seal_A/i.test(n)) ?? whole[0] ?? null;
+}
 
-  /** `brighten` reads the frame's `1 + FIX/128` (`./lighting`'s `brightenOf`) each update. */
-  constructor(private readonly brightenOf: () => number = () => 1) {
-    const material = new MeshBasicNodeMaterial();
-    material.vertexColors = false;                 // the graph reads the attribute itself, as the world's does
-    const plain = vec4(vertexColor()).clamp(0, 1);
-    material.colorNode = vec4(plain.rgb.mul(this.brighten), 1);
-    material.fog = true;                           // the scene's GS fog, as a world draw with FGE set
+/**
+ * The turn about y that faces the model along a slot's facing. The model faces -z (its toes lead its ankles,
+ * 78 §3), which is facing step 0, `(sin 0, -cos 0)` (research 75 §11); three turns (x, z) by `yaw` to
+ * `(x cos + z sin, -x sin + z cos)`, so (0, -1) goes to `(-sin yaw, -cos yaw)`.
+ */
+export function bodyYaw(facing: readonly [number, number]): number {
+  return Math.atan2(-facing[0], -facing[1]);
+}
 
-    const torso = new Mesh(limb(TORSO_DEPTH, NECK_BASE + HIP_DROP, PACK), material);
-    torso.position.y = NECK_BASE;
-    torso.scale.x = TORSO_HALF_WIDTH / TORSO_DEPTH;
-    const neck = new Mesh(limb(0.55, 1.6, SLEEVE), material);
-    neck.position.y = NECK_BASE + 1.3;
-    this.head = new Mesh(paint(new SphereGeometry(HEAD_R, 12, 8), BEANIE), material);
-    this.head.position.y = HEAD_CENTRE;
-    this.upper.add(torso, neck, this.head);
-    for (const [i, side] of [[0, -1], [1, 1]] as const) {
-      const arm = this.arms[i];
-      arm.position.set(side * TORSO_HALF_WIDTH, SHOULDER, 0);
-      arm.add(new Mesh(limb(ARM_R, ARM_LENGTH, SLEEVE), material));
-      this.upper.add(arm);
-      const hip = this.hips[i], knee = this.knees[i];
-      hip.position.set(side * HIP_SPREAD, -HIP_DROP, 0);
-      hip.add(new Mesh(limb(THIGH_R, THIGH, TROUSERS), material));
-      knee.position.y = -THIGH;
-      knee.add(new Mesh(limb(SHIN_R, SHIN, TROUSERS), material));
-      hip.add(knee);
-      this.pelvis.add(hip);
+/** The character table a source serves, or why not; read once a source. */
+export interface CharacterSource { table: CharacterTable | null; why: string }
+const tables = new WeakMap<AssetSource, Map<string, Promise<CharacterSource>>>();
+
+/**
+ * `RUN/READERC.ZAR/character.rdr` from the same source as the map (78 §5), parsed once a source. Any failure --
+ * the file absent from an older extraction or a one-archive image, or a server's page in its place -- is the
+ * fallback, not a diagnostic: the map and the body both draw without it, the body bare, and `dressedBy` says why.
+ */
+export function characterTableFor(source: AssetSource, mapPath: string): Promise<CharacterSource> {
+  const path = mapPath.replace(/[^/]*$/, READERC);
+  let bySource = tables.get(source);
+  if (!bySource) tables.set(source, bySource = new Map());
+  let pending = bySource.get(path);
+  if (!pending) {
+    pending = (async (): Promise<CharacterSource> => {
+      let bytes: Uint8Array;
+      try {
+        bytes = await source.read(path);
+      } catch (e) {
+        return { table: null, why: `no ${path}: ${e instanceof Error ? e.message : String(e)}` };
+      }
+      try {
+        const zar = Zar.parse(bytes);
+        const key = zar.root.children.find((k) => k.name.toLowerCase() === 'character.rdr');
+        if (!key) return { table: null, why: `${path} holds no character.rdr` };
+        return { table: parseCharacterTable(parseRdr(zar.data(key))), why: 'character.rdr' };
+      } catch (e) {
+        return { table: null, why: `${path} will not read: ${e instanceof Error ? e.message : String(e)}` };
+      }
+    })();
+    bySource.set(path, pending);
+  }
+  return pending;
+}
+
+/** The player's character off the map's `READERM.ZAR/chartype.rdr`, or null. */
+function mapPlayer(bytes: Uint8Array, toc: ZdbEntry[]): string | null {
+  try {
+    const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
+    const key = readerm.root.children.find((k) => k.name.toLowerCase() === 'chartype.rdr');
+    return key ? playerCharacter(parseRdr(readerm.data(key))) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Each visual-bearing node's model-space matrix and visual flags in `hookupVisuals`' order -- depth first, the
+ * model first, never through an instance (`visualNodes`, `zVisual/vis_main.cpp:58-175`) -- so chunk `N%03d_%03d`
+ * (node, visual) can be placed and culled: the eye's lid hangs 0.03 in front of its eyeball (78 §5.3).
+ */
+function visualNodesOf(model: SceneNode): { matrix: Float32Array; visualParams: number[] }[] {
+  const out: { matrix: Float32Array; visualParams: number[] }[] = [];
+  const rec = (node: SceneNode, parent: Float32Array): void => {
+    const world = multiply(node.matrix, parent);
+    if (node.visuals > 0) out.push({ matrix: world, visualParams: node.visualParams });
+    for (const child of node.children) if (child.type !== NODE_INSTANCE) rec(child, world);
+  };
+  rec(model, IDENTITY);
+  return out;
+}
+
+/** A mesh carried through a node matrix, positions and normals (the 3x3 is a rotation on every fitting node). */
+function placed(mesh: MeshData, m: Float32Array): MeshData {
+  if (m.every((x, i) => x === IDENTITY[i])) return mesh;
+  const positions = new Float32Array(mesh.positions.length);
+  for (let i = 0; i < positions.length; i += 3) positions.set(transformPoint(m, mesh.positions[i]!, mesh.positions[i + 1]!, mesh.positions[i + 2]!), i);
+  let normals: Float32Array | null = null;
+  if (mesh.normals) {
+    const n = mesh.normals;
+    normals = new Float32Array(n.length);
+    for (let i = 0; i < n.length; i += 3) {
+      normals[i] = n[i]! * m[0]! + n[i + 1]! * m[4]! + n[i + 2]! * m[8]!;
+      normals[i + 1] = n[i]! * m[1]! + n[i + 1]! * m[5]! + n[i + 2]! * m[9]!;
+      normals[i + 2] = n[i]! * m[2]! + n[i + 1]! * m[6]! + n[i + 2]! * m[10]!;
     }
-    this.pelvis.add(this.upper);
-    this.object.add(this.pelvis);
-    this.object.visible = false;
-    this.pose();
   }
+  return { ...mesh, positions, normals, faceNormals: null };
+}
 
-  setStance(stance: Stance): void {
-    this.stance = stance;
-    this.pose();
+/**
+ * Decodes the player's body out of a map archive, unplaced. The character is the map's first `navyseals` entry
+ * (`chartype.rdr`) and its mesh and gear are `character.rdr`'s; without that table the body is `chooseBodyModel`'s,
+ * bare. Null, with a diagnostic, when the map has no such mesh or its mesh or skeleton will not read: the body is
+ * an overlay, and the map draws without it.
+ */
+export function loadBody(bytes: Uint8Array, toc: ZdbEntry[], characters: CharacterSource, note: (line: string) => void): LoadedBody | null {
+  let mdl: Zar, geo: Zar;
+  try {
+    mdl = Zar.parse(zdbMember(bytes, toc, 'CLIB_MDL.ZED'));
+    geo = Zar.parse(zdbMember(bytes, toc, 'CLIB_GEO.ZED'));
+  } catch (e) {
+    note(`body: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
-
-  /** Drawn when asked and stood somewhere (`main.ts`: in walk mode). */
-  setVisible(on: boolean): void {
-    this.asked = on;
-    this.object.visible = on && this.feet !== null;
+  const table = characters.table;
+  const character = table ? mapPlayer(bytes, toc) : null;
+  const model = (character && table?.model(character)) || chooseBodyModel(meshNames(mdl));
+  // One mesh of the library's 14 to 30: decoding them all would cost 70 to 115 ms a load.
+  const entry = model ? readMeshLibrary(mdl, [model])[0] : undefined;
+  if (!model || !entry) {
+    note(`body: the character library holds no ${model ?? 'SEAL'}`);
+    return null;
   }
-
-  /**
-   * One frame: stand on `feet` (null in fly mode: hidden), face `yawDegrees`, swing the legs at the feet's own speed,
-   * and leave the upper body undrawn while `eye` is inside the body's column.
-   */
-  update(feet: readonly [number, number, number] | null, yawDegrees: number, dt: number, eye: { x: number; y: number; z: number } | readonly [number, number, number]): void {
-    if (!feet) {
-      this.feet = null;
-      this.object.visible = false;
-      this.lastSpeed = 0;
-      return;
-    }
-    const was = this.feet;
-    this.feet = [feet[0], feet[1], feet[2]];
-    const moved = was && dt > 0 ? Math.hypot(feet[0] - was[0], feet[2] - was[2]) / dt : 0;
-    this.lastSpeed = moved > PLACEMENT_SPEED ? 0 : moved;
-    this.cycle = (this.cycle + 2 * Math.PI * strideCadence(this.lastSpeed) * dt) % (2 * Math.PI);
-    this.object.position.set(feet[0], feet[1], feet[2]);
-    this.object.rotation.set(0, (yawDegrees * Math.PI) / 180, 0);
-    this.brighten.value = this.brightenOf();
-    const [ex, ey, ez] = Array.isArray(eye) ? eye : [(eye as Vector3).x, (eye as Vector3).y, (eye as Vector3).z];
-    const inside = Math.hypot(ex - feet[0], ez - feet[2]) < 3.5 && ey >= feet[1] && ey <= feet[1] + STANDING_HEIGHT + 1;
-    this.upperOn = !inside;
-    this.upper.visible = this.upperOn;
-    this.object.visible = this.asked;
-    this.pose();
+  if (!entry.mesh) {
+    note(`body ${model}: ${entry.error}`);
+    return null;
   }
-
-  /** The hook's view (`hook.ts`): drawn or not, the top over the feet, the world bounds. */
-  state(): BodyState {
-    const visible = this.object.visible;
-    if (!this.feet) return { visible, height: 0, bounds: null };
-    this.object.updateMatrixWorld(true);
-    const box = new Box3().setFromObject(this.object, true);
+  let skeleton;
+  try {
+    skeleton = readSkeleton(geo, model);
+  } catch (e) {
+    note(`body ${model}: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+  const mesh = entry.mesh;
+  let droppedWeight = 0;
+  let height = -Infinity;
+  const subMeshes: BodySubMesh[] = mesh.subMeshes.map((sub) => {
+    // The bind pose is the palette the mesh was exported against (78 §3), so this is the game's own sum.
+    const { positions, normals } = skinSubMesh(sub, skeleton.bindWorld);
+    for (let i = 1; i < positions.length; i += 3) height = Math.max(height, positions[i]!);
+    const top = topInfluences(sub, RENDER_INFLUENCES);
+    droppedWeight = Math.max(droppedWeight, top.droppedMax);
     return {
-      visible,
-      height: box.max.y - this.feet[1],
-      bounds: { min: [box.min.x, box.min.y, box.min.z], max: [box.max.x, box.max.y, box.max.z] },
+      textureName: sub.textureName === null ? null : sub.textureName.toLowerCase(),
+      fog: sub.fog, positions, normals, uvs: sub.uvs, indices: sub.indices,
+      skinIndex: top.index, skinWeight: top.weight,
     };
-  }
+  });
 
-  /** The body's forward on the ground, (x, z), from its own turn. */
-  forward(): [number, number] {
-    const f = new Vector3(0, 0, -1).applyQuaternion(this.object.quaternion);
-    return [f.x, f.z];
-  }
-
-  /** The head sphere in world space. */
-  headSphere(): { centre: [number, number, number]; radius: number } {
-    this.object.updateMatrixWorld(true);
-    const c = this.head.getWorldPosition(new Vector3());
-    return { centre: [c.x, c.y, c.z], radius: HEAD_R };
-  }
-
-  /** The feet's speed over the last frame, units/s. */
-  speed(): number {
-    return this.lastSpeed;
-  }
-
-  /** The stride's phase, radians. */
-  phase(): number {
-    return this.cycle;
-  }
-
-  /** The left and right hip angles, radians (positive: forward). */
-  legAngles(): [number, number] {
-    return [this.hips[0].rotation.x, this.hips[1].rotation.x];
-  }
-
-  /** Whether the torso, neck, head and arms are drawn (not while the eye is inside them). */
-  upperShown(): boolean {
-    return this.upperOn;
-  }
-
-  /** The stance's pose, plus the stride's swing. */
-  private pose(): void {
-    const hipsY = this.stance === 'stand' ? HIPS : this.stance === 'crouch' ? CROUCH_HIPS : PRONE_HIPS;
-    this.pelvis.position.y = hipsY;
-    this.pelvis.rotation.x = this.stance === 'prone' ? -Math.PI / 2 : 0;
-    // Crouched, the torso leans until the crown is at the measured 12.4.
-    const lean = this.stance === 'crouch' ? Math.acos((CROUCH_HEIGHT - HEAD_R - hipsY) / HEAD_CENTRE) : 0;
-    this.upper.rotation.x = -lean;
-    const rest = this.stance === 'prone' ? { hip: 0, knee: 0 } : restLeg(hipsY - HIP_DROP);
-    const stride = strideCadence(this.lastSpeed) > 0 ? this.lastSpeed / strideCadence(this.lastSpeed) : 0;
-    const amp = Math.min(MAX_SWING, Math.atan2(stride / 4, HIPS - HIP_DROP)) * SWING_SCALE[this.stance];
-    const s = Math.sin(this.cycle), c = Math.cos(this.cycle);
-    for (const [i, sign] of [[0, 1], [1, -1]] as const) {
-      this.hips[i].rotation.x = rest.hip + sign * amp * s;
-      this.knees[i].rotation.x = rest.knee - 1.2 * amp * Math.max(0, sign * c);
-      this.arms[i].rotation.x = lean - sign * 0.8 * amp * s;   // hanging plumb, swinging against the legs
+  // The default gear, where character.rdr hangs it (78 §5).
+  const fittings: BodyFitting[] = [];
+  const missing: string[] = [];
+  const eyes: number[] = [];
+  const gearNames = character && table ? table.defaultGear(character) : [];
+  if (gearNames.length) {
+    let flib: Zar | null = null, flibGeo: SceneNode[] = [];
+    try {
+      flib = Zar.parse(zdbMember(bytes, toc, 'FLIB_MDL.ZED'));
+      flibGeo = parseSceneGraph(Zar.parse(zdbMember(bytes, toc, 'FLIB_GEO.ZED')));
+    } catch { /* no fittings library: every piece is missing, below */ }
+    for (const name of gearNames) {
+      const gear = table!.gear.get(name);
+      const key = gear && flib?.find(gear.model);
+      const part = gear ? skeleton.indexOf(gear.part) : -1;
+      if (!gear || !key || part < 0) { missing.push(name); continue; }
+      try {
+        const node = flibGeo.find((m) => m.name === gear.model);
+        const visuals = node ? visualNodesOf(node) : [];
+        const meshes: FittingMesh[] = [];
+        for (const chain of walkModel(flib!.data(key), modelNodes(flib!, key))) {
+          // `N%03d_%03d`: the chunk's node and visual (`hookupVisuals`), whose matrix places it within the model.
+          const [, n = '0', v = '0'] = /^N(\d{3})_(\d{3})/.exec(chain.nodeName) ?? [];
+          const visual = visuals[Number(n)];
+          const at = visual?.matrix ?? IDENTITY;
+          const cull = ((visual?.visualParams[Number(v)] ?? VISUAL_FLAG_CULL) & VISUAL_FLAG_CULL) !== 0;
+          // 78 §5.1: the fittings are the scaled (0x70) form, research 15 §2.
+          for (const m of interpretScaledChain(chain)) {
+            meshes.push({ ...placed({ ...m, textureName: m.textureName === null ? null : m.textureName.toLowerCase() }, at), cull });
+          }
+        }
+        const offset = gearMatrix(gear, table!.angleUnits);
+        fittings.push({ name, model: gear.model, part, offset, meshes });
+        if (EYE_MODEL.test(gear.model)) eyes.push(transformPoint(multiply(offset, skeleton.bindWorld[part]!), 0, 0, 0)[1]);
+      } catch (e) {
+        note(`body ${model} gear ${name}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
+
+  return {
+    character, model, dressedBy: characters.why,
+    parts: skeleton.parts.map((p) => ({ name: p.name, parent: p.parent, bindLocal: p.bindLocal, bindWorld: Float32Array.from(skeleton.bindWorld[p.index]!) })),
+    subMeshes, fittings, missing, at: null, height,
+    eye: eyes.length ? eyes.reduce((a, b) => a + b, 0) / eyes.length : null,
+    stats: {
+      vertices: mesh.vertexCount, triangles: mesh.triangleCount, parts: skeleton.size, subMeshes: subMeshes.length,
+      batches: mesh.batches.length, maxInfluences: mesh.maxInfluences, droppedWeight, fittings: fittings.length,
+    },
+  };
+}
+
+/**
+ * Stands the body at slot A -- side 0, slot #0 of the disc's spawn list (`LoadedMap.slots`, W1.5b) -- its model
+ * origin, which is its soles (78 §3), on the slot's floor and its forward along the slot's facing. Which slot a
+ * player is given is game logic (W1.R9); slot A is W2.1's choice, not the game's.
+ */
+export function placeBody(body: LoadedBody, slots: readonly SpawnSlot[]): LoadedBody {
+  const a = slots.find((s) => s.side === 0 && s.index === 0);
+  if (!a) return body;
+  return { ...body, at: { position: a.position, facing: a.facing, yaw: bodyYaw(a.facing), side: 0, index: 0 } };
+}
+
+/** Every texture the body draws with, lower-cased as `LoadedMap.textures` keys them. */
+export function bodyTextureNames(body: LoadedBody): string[] {
+  const names = [...body.subMeshes.map((s) => s.textureName), ...body.fittings.flatMap((f) => f.meshes.map((m) => m.textureName))];
+  return [...new Set(names.filter((n): n is string => n !== null))];
+}
+
+/** The body's typed arrays, for the worker's transfer list, each buffer once. */
+export function bodyTransferables(body: LoadedBody): Transferable[] {
+  const out = new Set<ArrayBufferLike>();
+  for (const s of body.subMeshes) for (const a of [s.positions, s.normals, s.uvs, s.indices, s.skinIndex, s.skinWeight]) out.add(a.buffer);
+  for (const f of body.fittings) {
+    for (const m of f.meshes) {
+      for (const a of [m.positions, m.uvs, m.colors, m.indices, m.normals, m.faceNormals]) if (a) out.add(a.buffer);
+    }
+  }
+  return [...out] as Transferable[];
 }

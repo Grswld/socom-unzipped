@@ -123,6 +123,12 @@ export interface WorldView {
    * (`record2 * lit`, see `./lighting`), about a millisecond on the largest map.
    */
   setLighting(light: Lighting): void;
+  /**
+   * The held weapon (W2.4, `LoadedMap.weapon`), in its own frame and outside `group`: `./shot` puts it at the fire
+   * point every frame. Drawn with the world's own materials, so the same GS path shades it. Null when the map
+   * decoded none.
+   */
+  weapon: Group | null;
   dispose(): void;
 }
 
@@ -640,6 +646,20 @@ export function buildWorld(map: LoadedMap): WorldView {
     later(revealProps, segments, strip.order, strip.cells ?? [], false, null, true);
   }
 
+  // W2.4: the held weapon, built like a prop placed once -- the world's materials, lit by the map's rig -- but kept
+  // out of `group`, the reveal queues, the extent and the triangle count: it belongs to the player, not the map,
+  // and `./shot` moves it every frame. Its normals are lit in the weapon's own frame, not re-lit as it turns.
+  let weapon: Group | null = null;
+  if (map.weapon) {
+    weapon = new Group();
+    weapon.name = map.weapon.name;
+    for (const part of map.weapon.parts) {
+      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
+      mesh.name = `${map.weapon.name} (${part.textureName ?? 'untextured'})`;
+      weapon.add(mesh);
+    }
+  }
+
   /**
    * Numbers every draw by its place in the engine order from a camera at (x, z) in the group's frame, and
    * each detail pass half a step behind its base (`detailRenderOrder`). three's opaque list sorts by
@@ -717,6 +737,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         v.y = (v.y + s.dv * dt * SCROLL_TICKS_PER_SECOND) % 1;
       }
     },
+    weapon,
     flarePositions: () => billboards.map((m) => [m.position.x, m.position.y, m.position.z]),
     lineGroups: () => lineObjects.map((line) => {
       const b = new Box3().setFromBufferAttribute(line.geometry.getAttribute('position') as BufferAttribute);
@@ -759,6 +780,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const twin of fades.values()) twin.dispose();
       for (const { material } of detailMaterials.values()) material.dispose();
       for (const { mesh } of details) if (mesh instanceof InstancedMesh) mesh.dispose();
+      for (const child of weapon?.children ?? []) if (child instanceof Mesh) child.geometry.dispose();
       for (const texture of textures.values()) texture.dispose();
     },
   };
@@ -837,7 +859,7 @@ function geometryOf(
   return geometry;
 }
 
-function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
+export function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
   const texture = new DataTexture(new Uint8Array(rgba.data.buffer, rgba.data.byteOffset, rgba.data.length), rgba.width, rgba.height, RGBAFormat);
   texture.flipY = FLIP_Y;
   // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on

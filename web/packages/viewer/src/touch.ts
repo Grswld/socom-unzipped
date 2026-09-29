@@ -4,14 +4,18 @@
  * A one-finger drag already looks around, which is the half of it the canvas gives for free; what a
  * phone has no way to do is *move*. So the left half of the screen becomes a virtual stick -- a circle
  * that appears wherever the thumb lands and follows it -- and two buttons in the bottom-right corner
- * do what Q and E do, with a third beside them for the walk's stance (C) and a fourth, the trigger (W2.5). The
- * right half is left alone,
- * so looking still works while the stick is held.
+ * do what Q and E do. The right half is left alone, so looking still works while the stick is held.
  *
  * Deliberately small. No sprint, no tuning, no gestures: the stick feeds an axis pair into the same
  * velocity model the keys drive (`./camera`), and the ramp and the glide come out of that for free.
  */
 import type { FlyCamera } from './camera';
+
+/**
+ * What the stick and the buttons write: the camera's three touch lanes. The page may hand over its own lane instead of
+ * the camera, to merge the stick with a pad's before the camera sees either (`./gamepad`, `mergeInput`; W2.7).
+ */
+export type TouchTarget = Pick<FlyCamera, 'setStick' | 'setLift' | 'setStickBoost'>;
 
 /** How far from the centre counts as nothing, as a fraction of the base's radius. */
 export const DEAD_ZONE = 0.15;
@@ -79,13 +83,10 @@ export function wantsTouchControls(): boolean {
 }
 
 /**
- * Wires the stick and the two lift buttons to a camera, the stance button beside them to `onStance` (the walk's
- * `C`, W2.2b), and the fire button to `onFire` -- pressed true, let go false (W2.5, `./fire`). Returns nothing:
- * there is nothing to take back.
+ * Wires the stick and the two buttons to a camera, or to a lane that stands in for one. Returns nothing: there is
+ * nothing to take back.
  */
-export function attachTouchControls(
-  camera: FlyCamera, onStance: () => void = () => undefined, onFire: (down: boolean) => void = () => undefined,
-): void {
+export function attachTouchControls(camera: TouchTarget): void {
   const zone = document.getElementById('stick-zone');
   const base = document.getElementById('stick-base');
   const knob = document.getElementById('stick-knob');
@@ -152,27 +153,6 @@ export function attachTouchControls(
   };
   zone.addEventListener('pointerup', release);
   zone.addEventListener('pointercancel', release);
-
-  // The stance: a tap cycles stand, crouch, prone, as C does on a keyboard.
-  document.getElementById('touch-stance')?.addEventListener('pointerdown', (e) => {
-    onStance();
-    e.preventDefault();
-  });
-
-  // The trigger: held, the rifle fires at its rate (`./fire`); up, cancelled or slid off, it is let go.
-  const fire = document.getElementById('touch-fire');
-  if (fire) {
-    let firing = false;
-    fire.addEventListener('pointerdown', (e) => {
-      firing = true;
-      onFire(true);
-      fire.setPointerCapture?.(e.pointerId);
-      e.preventDefault();
-    });
-    for (const event of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
-      fire.addEventListener(event, () => { if (firing) { firing = false; onFire(false); } });
-    }
-  }
 
   for (const [button, direction] of [[up, 1], [down, -1]] as [HTMLElement, number][]) {
     button.addEventListener('pointerdown', (e) => {
