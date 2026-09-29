@@ -18,13 +18,15 @@
 namespace GsGlStateTags
 {
     // `statsKnob`: ps2x::knob("PS2X_GS_STATS") -- a Presence knob, so any value (0 too) turns the line on.
-    // `setupFormatKnob`: the raw value of the PS2X_GS_SETUP_FORMAT flag, three-way so the A/B can be read under PS2X_GS_STATS
-    // (the [gs-submit] setup= column prints only there): unset follows PS2X_GS_STATS; 0/false/off never formats
-    // (the stats line's states= and blends= print empty); anything else formats on every draw, as before attempt 2.
-    // The one flag rule (ps2x::knobOn), with PS2X_GS_STATS's presence as the default.
-    inline bool enabled(const char *statsKnob, const char *setupFormatKnob)
+    // `setupFormatOn(dflt)`: reads the PS2X_GS_SETUP_FORMAT flag by the one flag rule with `dflt` for unset --
+    // setupDrawState passes ps2x::knobOn on that name, the test passes ps2x::knobs::flagValue on a planted value.
+    // Three-way so the A/B can be read under PS2X_GS_STATS (the [gs-submit] setup= column prints only there):
+    // unset follows PS2X_GS_STATS; 0/false/off never formats (the stats line's states= and blends= print empty);
+    // anything else formats on every draw, as before attempt 2. The production line calls this, so the case pins it.
+    template<typename SetupFormatOn>
+    inline bool enabled(const char *statsKnob, SetupFormatOn setupFormatOn)
     {
-        return ps2x::knobs::flagValue(setupFormatKnob, statsKnob != nullptr);
+        return setupFormatOn(statsKnob != nullptr);
     }
 
     // " T<TEST & 0x7FFFF>/M<FBMSK>/tfx<TFX>[t]", appended once per distinct value while the log is under 600.

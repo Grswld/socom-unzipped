@@ -6344,14 +6344,17 @@ void register_ps2_gs_tests()
             // setupDrawState calling these under the decision -- needs a context; the decision and the tags do not.
             // The knob is three-way so the A/B can be read under PS2X_GS_STATS, where the [gs-submit] setup= column is:
             // unset follows PS2X_GS_STATS, 0 never formats (the tags print empty), anything else always formats.
-            t.IsTrue(!GsGlStateTags::enabled(nullptr, nullptr), "no stats and no A/B knob: nothing is formatted per draw");
-            t.IsTrue(GsGlStateTags::enabled("1", nullptr), "PS2X_GS_STATS=1, A/B knob unset: formatted, as the stats line prints them");
-            t.IsTrue(GsGlStateTags::enabled("0", nullptr), "PS2X_GS_STATS is a Presence knob: any value, 0 too, prints the line");
-            t.IsTrue(GsGlStateTags::enabled(nullptr, "1"), "PS2X_GS_SETUP_FORMAT=1 restores the per-draw formatting");
-            t.IsTrue(GsGlStateTags::enabled("1", "1"), "both on: formatted");
-            t.IsTrue(!GsGlStateTags::enabled("1", "0"), "PS2X_GS_SETUP_FORMAT=0 never formats, even under PS2X_GS_STATS (the A/B's new arm)");
-            t.IsTrue(!GsGlStateTags::enabled("1", "off"), "off is 0, the one flag rule");
-            t.IsTrue(!GsGlStateTags::enabled(nullptr, "0"), "0 without stats: not formatted");
+            // setupDrawState calls GsGlStateTags::enabled with ps2x::knobOn on the name; here the flag reads a planted value
+            // by the same rule (ps2x::knobs::flagValue), so this pins the production decision, not a copy of it.
+            const auto flag = [](const char *value) { return [value](bool dflt) { return ps2x::knobs::flagValue(value, dflt); }; };
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, flag(nullptr)), "no stats and no A/B knob: nothing is formatted per draw");
+            t.IsTrue(GsGlStateTags::enabled("1", flag(nullptr)), "PS2X_GS_STATS=1, A/B knob unset: formatted, as the stats line prints them");
+            t.IsTrue(GsGlStateTags::enabled("0", flag(nullptr)), "PS2X_GS_STATS is a Presence knob: any value, 0 too, prints the line");
+            t.IsTrue(GsGlStateTags::enabled(nullptr, flag("1")), "PS2X_GS_SETUP_FORMAT=1 restores the per-draw formatting");
+            t.IsTrue(GsGlStateTags::enabled("1", flag("1")), "both on: formatted");
+            t.IsTrue(!GsGlStateTags::enabled("1", flag("0")), "PS2X_GS_SETUP_FORMAT=0 never formats, even under PS2X_GS_STATS (the A/B's new arm)");
+            t.IsTrue(!GsGlStateTags::enabled("1", flag("off")), "off is 0, the one flag rule");
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, flag("0")), "0 without stats: not formatted");
 
             // The tags the stats line prints are the ones setupDrawState wrote before the move, byte for byte.
             std::string states;
@@ -6471,6 +6474,10 @@ void register_ps2_gs_tests()
                 {GS_PSM_CT16S, 0x140u, 1u, 0u, 16u, 32u, 8u, 512u, "CT16S 32x8"},
                 {GS_PSM_T8, 0x180u, 2u, 16u, 16u, 16u, 16u, 256u, "T8 16x16"},
                 {GS_PSM_T4, 0x200u, 2u, 32u, 16u, 32u, 16u, 256u, "T4 32x16"},
+                {GS_PSM_Z16, 0x240u, 1u, 16u, 8u, 16u, 8u, 256u, "Z16 16x8"},
+                // dbp 0x2C8 is block 8 of page 0x16, and (56,24)-(72,40) at FBW 2 crosses the 64x32 page corner:
+                // the blocks land in four pages and past the base page's 32 blocks (the carry into the next page).
+                {GS_PSM_CT32, 0x2C8u, 2u, 56u, 24u, 16u, 16u, 1024u, "CT32 16x16 across a page corner, dbp mid-page"},
             };
             uint32_t seed = 1u;
             for (const Shape &s : shapes)
@@ -6482,6 +6489,38 @@ void register_ps2_gs_tests()
                 gl->replayPendingForTest();
                 t.Equals(gl->replaySwizzlesForTest() - swizzles, 0ull, std::string(s.name) + ": no second swizzle");
                 t.IsTrue(gl->shadowVramForTest() == vram, std::string(s.name) + ": the shadow equals the game VRAM");
+            }
+
+            // 2b. Two uploads to one rectangle before the replay ("CT32 16x16 twice before the replay"): each command carries
+            //     its own bytes (a pointer into the game VRAM would hand the first command the second's pixels), and the
+            //     second wins in the shadow as in the game VRAM.
+            {
+                const std::vector<uint8_t> first = pattern(1024u, seed++), second = pattern(1024u, seed++);
+                upload(0x400u, 1u, GS_PSM_CT32, 0u, 0u, 16u, 16u, first);
+                upload(0x400u, 1u, GS_PSM_CT32, 0u, 0u, 16u, 16u, second);
+                ups = gl->pendingUploadsForTest();
+                t.IsTrue(ups.size() == 2u && ups[0].swizzledByRecorder && ups[1].swizzledByRecorder,
+                         "CT32 16x16 twice before the replay: two swizzled Upload commands");
+                if (ups.size() == 2u && ups[0].data.size() == 4u * 260u && ups[1].data.size() == 4u * 260u)
+                {
+                    t.IsTrue(std::memcmp(ups[0].data.data(), ups[1].data.data(), 16u) == 0, "the same four blocks");
+                    t.IsTrue(std::memcmp(ups[0].data.data() + 16u, ups[1].data.data() + 16u, 1024u) != 0,
+                             "the first command still carries the first upload's bytes, not the second's");
+                }
+                swizzles = gl->replaySwizzlesForTest();
+                gl->replayPendingForTest();
+                t.Equals(gl->replaySwizzlesForTest() - swizzles, 0ull, "twice before the replay: no second swizzle");
+                t.IsTrue(gl->shadowVramForTest() == vram, "twice before the replay: the shadow equals the game VRAM");
+                std::vector<uint8_t> shadow = gl->shadowVramForTest();
+                bool secondWins = true;
+                for (uint32_t y = 0; y < 16u; ++y)
+                    for (uint32_t x = 0; x < 16u; ++x)
+                    {
+                        uint32_t want = 0u;
+                        std::memcpy(&want, second.data() + (y * 16u + x) * 4u, 4u);
+                        secondWins = secondWins && GSMem::ReadCT32(shadow.data(), 0x400u, 1u, x, y) == want;
+                    }
+                t.IsTrue(secondWins, "the second upload's pixels are what the shadow holds");
             }
 
             // 3. Not whole blocks, or split over two calls, or CT24 (its alpha byte is not the transfer's): the old path.

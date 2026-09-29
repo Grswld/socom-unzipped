@@ -1515,7 +1515,8 @@ bool GSCpuBackend::UploadImageAsBlocks(const uint8_t *data, uint32_t sizeBytes, 
 bool GSCpuBackend::WriteUploadBlocks(const uint8_t *payload, size_t sizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (!payload || !m_vram || sizeBytes == 0u || (sizeBytes % (4u + 256u)) != 0u)
+    // The old path's guard (UploadImageUnlocked writes nothing without an open host->local transfer).
+    if (!payload || !m_vram || sizeBytes == 0u || (sizeBytes % (4u + 256u)) != 0u || m_transferState.direction != 0u)
         return false;
     const size_t blocks = sizeBytes / (4u + 256u);
     const uint8_t *const bytes = payload + blocks * 4u;
