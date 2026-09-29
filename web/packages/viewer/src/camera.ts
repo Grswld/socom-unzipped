@@ -3,7 +3,7 @@ import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
 import { padRaw, strongest } from './gamepad';
 import { moveStick } from './moveStick';
 import {
-  FirstPersonBob, LookLaw, nudgePitch, ScreenShake, SCREEN, stepPitch, viewOffset,
+  LookLaw, nudgePitch, ScreenShake, SCREEN, stepPitch, viewOffset, ViewBob,
   type LookOptions, type LookState, type Shake,
 } from './look';
 
@@ -96,9 +96,8 @@ const approach = (a: number, b: number, k: number, dt: number): number =>
 /**
  * Every code the camera consumes. A keydown on one of these is prevented, so the browser chords that
  * share them -- Ctrl+D bookmark, Ctrl+A select-all, Ctrl+S save, Space page-scroll -- never fire while
- * the viewer has the keyboard. `C` (the walk's stance) and `V` (its first-person switch, W2.1) are not here:
- * `WalkMode` prevents a bare C or V while walking itself, and owning them here would take Ctrl+C / Ctrl+V (copy,
- * paste) from the page everywhere.
+ * the viewer has the keyboard. `C` (the walk's stance) is not here: `WalkMode` prevents a bare C while walking
+ * itself, and owning it here would take Ctrl+C (copy) from the page everywhere.
  */
 const OWNED = new Set([
   'keyw', 'keya', 'keys', 'keyd', 'keyq', 'keye', 'space', 'shiftleft', 'shiftright',
@@ -180,11 +179,11 @@ export class FlyCamera {
   private walkPitch: [number, number] = [-PITCH_LIMIT, PITCH_LIMIT];
   /** The left button pressed while locked and not yet let go (`onFire`). */
   private triggerHeld = false;
-  /** Walking: the game's look law (`./look`), the screen shake, the first-person bob and what they last gave. */
+  /** Walking: the game's look law (`./look`), the screen shake, the view bob and what they last gave. */
   private readonly law = new LookLaw();
   private readonly shake = new ScreenShake();
-  private readonly bob = new FirstPersonBob();
-  private firstPerson = false;
+  private readonly bob = new ViewBob();
+  private eyeView = false;
   private prone = false;
   private scoped = false;
   private turnRate = 0;
@@ -344,16 +343,16 @@ export class FlyCamera {
 
   /**
    * The scope's magnification (the weapon's `ZoomModeN`, 1 unscoped; `mode4` the 9x view): the look divides by it, and
-   * the bob's phase slows by 0.2 (`FUN_005966a0`). The first-person aim view is not a scope: 1.
+   * the bob's phase slows by 0.2 (`FUN_005966a0`). The night vision is not a scope: 1.
    */
   setZoom(magnification: number, mode4 = false): void {
     this.law.setZoom(magnification, mode4);
     this.scoped = magnification > 1.01 || mode4;
   }
 
-  /** The body the look rides (the bob's inputs): first person or not, prone or not. `main.ts` sets it each frame. */
-  setBody(firstPerson: boolean, prone: boolean): void {
-    this.firstPerson = firstPerson;
+  /** The body the look rides (the bob's inputs): a view from the head or not, prone or not. `main.ts` sets it each frame. */
+  setBody(eyeView: boolean, prone: boolean): void {
+    this.eyeView = eyeView;
     this.prone = prone;
   }
 
@@ -385,7 +384,7 @@ export class FlyCamera {
 
   /**
    * Walking, where the page puts the view (W2.1): the eye, and the target it looks at with no roll -- `FUN_0029bc90`'s
-   * placement, which is three's `lookAt` with y up -- or with no target, the look yaw and pitch give (first person).
+   * placement, which is three's `lookAt` with y up -- or with no target, the look yaw and pitch give (the scope).
    * The yaw and pitch themselves are untouched: they are the body's turn and the camera's pitch.
    */
   placeView(eye: readonly [number, number, number], target: readonly [number, number, number] | null): void {
@@ -529,7 +528,7 @@ export class FlyCamera {
    * Walking, one frame of the game's look: the right stick -- the push as the pad itself gave it, `./gamepad`'s radial
    * 0.15 dead zone and rescale undone so the game's own 0.3 per axis is the only one -- or the arrow keys, a full
    * push, the larger on each axis; the look law's rates; the pitch stepped (`stepPitch`); then the screen shake and
-   * the first-person bob, as a view offset.
+   * the view bob, as a view offset.
    */
   private walkLook(dt: number, arrowTurn: number, arrowTilt: number): void {
     const [padX, padY] = padRaw(this.lookX, this.lookY);
@@ -553,7 +552,7 @@ export class FlyCamera {
     if (turned) this.apply();
     const [sx, sy] = this.shake.step(dt);
     const wish = this.groundWish(), slow = this.scoped ? 0.2 : 1;
-    const bob = this.firstPerson ? this.bob.step(dt, wish.right * slow, wish.forward * slow, this.prone) : 0;
+    const bob = this.eyeView ? this.bob.step(dt, wish.right * slow, wish.forward * slow, this.prone) : 0;
     this.setScreenOffset(sx, sy + bob);
   }
 

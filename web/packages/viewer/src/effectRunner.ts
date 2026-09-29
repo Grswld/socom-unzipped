@@ -77,11 +77,29 @@ export class EffectRun {
 
   constructor(readonly program: EffectProgram, private readonly host: EffectHost, readonly context: unknown = null) {
     this.tables = program.sequences.map((s) => branchTable(s.ops));
-    this.seqs = program.sequences.map(() => ({ pc: 0, done: false, tick: null, waitLeft: 0, waitFrames: null, loops: 0, loopTime: 0 }));
+    // A sequence of activation 2 that the animation's own `CALL_SEQUENCE` names waits for the call (Frostfire's
+    // `firey_flames` turns its vent lights on and off so); one no call names runs from the start, as the activation
+    // gate does (`shell_eject`'s range test, `Anim_Params`' second offset) [reading: research 89 §12].
+    const called = new Set<string>();
+    for (const s of program.sequences) for (const o of s.ops) if (o.op === 'callSequence') called.add(o.sequence);
+    this.seqs = program.sequences.map((s) => ({
+      pc: 0, done: s.activation === 2 && called.has(s.name), tick: null, waitLeft: 0, waitFrames: null, loops: 0, loopTime: 0,
+    }));
   }
 
+  /** `CALL_SEQUENCE`: the named sequence starts again from its top. */
+  callSequence(name: string): void {
+    this.program.sequences.forEach((s, i) => {
+      if (s.name !== name) return;
+      Object.assign(this.seqs[i]!, { pc: 0, done: false, tick: null, waitLeft: 0, waitFrames: null, loops: 0, loopTime: 0 });
+    });
+  }
+
+  /** Paused (`PAUSE_ANIMATION`): alive -- its sources emit, its nodes stay -- with nothing run. */
+  paused = false;
+
   get finished(): boolean {
-    return this.failed || this.seqs.every((s) => s.done);
+    return this.failed || (!this.paused && this.seqs.every((s) => s.done));
   }
 
   /** Stops the whole animation (`FAIL`, or its owner). */
@@ -96,7 +114,7 @@ export class EffectRun {
 
   /** One tick of `dt` seconds for every sequence (the first tick with `dt` 0 runs the timeless commands at once). */
   update(dt: number): void {
-    if (this.finished) return;
+    if (this.finished || this.paused) return;
     this.time += dt;
     this.program.sequences.forEach((seq, i) => this.step(i, seq.ops, dt));
   }
@@ -153,6 +171,13 @@ export class EffectRun {
           return;                                   // once a tick: the sequence runs again from its start next tick
         }
         case 'stopSequence': this.stopSequence(op.sequence); s.pc++; continue;
+        case 'callSequence': this.callSequence(op.sequence); s.pc++; continue;
+        case 'pauseAnimation':
+          // Index 0 (`NA`) names the animation itself (the torches'): paused, it stays alive with its sources.
+          if (op.anim === this.program.name || op.anim === 'NA') { this.paused = true; s.pc++; return; }
+          this.host.begin(op, this);
+          s.pc++;
+          continue;
         case 'while': {
           // Only the endless form is on the effects' path (the ripples); a conditional one is taken as false.
           s.pc = op.forever || table.end[s.pc]! < 0 ? s.pc + 1 : table.end[s.pc]! + 1;

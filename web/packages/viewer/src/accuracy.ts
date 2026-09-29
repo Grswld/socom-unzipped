@@ -20,7 +20,8 @@ import type { WeaponRecord, WeaponStance, WeaponStanceName } from '@s2u/scene';
  *   tan(tan(hfov) x 448/640) / 224` -- and a round's direction is `dir + right x (ox + r x s1) + up x (oy + r x s2)`,
  *   `s = u|u|` for `u` uniform in [-1, 1): a square, densest at its centre, its corners on the reticle's circle.
  * - **Scoped** (view state >= 4): no bloom and no knock; the cone is a point, moved by the sway (`SniperDist*`); a
- *   second round of a pull drops the scope back to first person (`FUN_005c5340`). The first round kicks the aim pitch
+ *   second round of a pull drops the scope back to first person (`FUN_005c5340`; third person here: the viewer has no
+ *   first person, owner 2026-09-29). The first round kicks the aim pitch
  *   (`FireRifleKick*`) -- **only scoped**: `FUN_005c5340` calls the kick's start `FUN_005b91c0` only when
  *   `body+0x200 > 4` and the pull's count is under 2, and `FUN_00550ef0` runs its tick `FUN_005b9280` only when
  *   `FUN_005b9990 || FUN_005b90f0` (state >= 4). The kick itself is the WEAPON workstream's `rifleKick.ts`; this file

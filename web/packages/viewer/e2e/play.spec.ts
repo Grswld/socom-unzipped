@@ -112,17 +112,18 @@ test('the play mode: the SEAL at A in the game\'s clips, over its shoulder, jump
   await settle(page);
   await page.screenshot({ path: join(SCREENS, 'frostfire-play-shoulder.png') });
 
-  // Aiming: from the eyes, the body hidden; then back over the shoulder.
-  expect(await page.evaluate(() => window.__viewer.setAim(true))).toBe('first');
+  // The scope (the zoom; no first person, owner 2026-09-29): from the eyes, the body hidden; then over the shoulder.
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(5);
   await settle(page);
   const aiming = await stats(page);
-  expect(aiming.view.kind).toBe('aim');
+  expect(aiming.view.kind).toBe('scope');
   expect(aiming.body?.visible).toBe(false);
   const feet = (await page.evaluate(() => window.__viewer.feet()))!;
   expect(aiming.view.pose.y - feet[1]).toBeGreaterThan(15);         // the head, 18.3 over the feet standing (./stature)
   expect(aiming.view.pose.y - feet[1]).toBeLessThan(20);
-  await page.screenshot({ path: join(SCREENS, 'frostfire-play-aim.png') });
-  expect(await page.evaluate(() => window.__viewer.setAim(false))).toBe('third');
+  await page.screenshot({ path: join(SCREENS, 'frostfire-play-scope.png') });
+  expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(0);
+  await expect.poll(async () => (await stats(page)).view.kind).toBe('third');
 
   // Fly mode again: the body hidden, the fly camera drawing, left where the eye was.
   const eye = await page.evaluate(() => window.__viewer.pose());

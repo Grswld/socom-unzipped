@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Box3, Matrix4, PerspectiveCamera, Vector3 } from 'three';
+import { Box3, BoxGeometry, Group, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera, Vector3 } from 'three';
 import { FsAssetSource } from '@s2u/archive/node';
-import { buildGrid, type CollisionOwner, type GridParams, type WorldPoly } from '@s2u/scene';
+import { buildGrid, type CollisionOwner, type GridParams, type WorldPoly, type ZAnimLight } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { effectsFromDisc, type EffectData } from '../src/effectData';
-import { Effects, impactAnimation, markTable, muzzleAnimation, RIPPLES, soundFor, speedClass, valveApply, valveTest } from '../src/effects';
+import { soundFor } from '@s2u/sound';
+import { Effects, impactAnimation, markTable, muzzleAnimation, RIPPLES, speedClass, valveApply, valveTest } from '../src/effects';
 import { flatCorners, rotatedCorners } from '../src/particles';
+import { EffectLights } from '../src/effectLights';
 
 /**
  * The gunplay's effects (web/docs/research/89): the names a round plays, the valves, the mark table, and -- on the
@@ -44,6 +46,39 @@ describe('what a round plays', () => {
     expect(soundFor('.BUL_CAS_DIRT', has)).toBe('.BUL_CAS_GRASS');     // Blood Lake's banks
     expect(soundFor('.BUL_CAS_STONE', has)).toBe('.BUL_CAS_STONE');
     expect(soundFor('.BUL_CAS_WOOD', has)).toBe('.BUL_CAS_WOOD');      // none held, none stood in: silence as the game
+    const frost = (n: string) => ['.SG_SHELL_METAL', '.SG_SHELL_STONE'].includes(n);
+    expect(soundFor('.SG_SHELL_TIN', frost)).toBe('.SG_SHELL_METAL');   // research 90 item 18
+    expect(soundFor('.SG_SHELL_SAND', frost)).toBe('.SG_SHELL_STONE');
+  });
+
+  it('the light passes draw with pooled objects: a second blast makes no material and no overlay', () => {
+    const lights = new EffectLights();
+    const world = new Group();
+    for (let i = 0; i < 4; i++) {
+      const m = new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial());
+      m.position.set(i * 3, 0, 0);
+      world.add(m);
+    }
+    lights.setReceivers(() => [world]);
+    lights.setTexture(null);
+    lights.warmMeshes();
+    const pooled = lights.stats().pooled;
+    expect(pooled).toBe(4 * 2);                                    // every receiver, in both passes
+    lights.warmDone();
+    expect(world.children.filter((o) => o.visible)).toHaveLength(4);  // the overlays hide after the warm-up
+    const light = { flags: 0, node: null, atContext: false, offset: [0, 0, 0], rgb: [255, 200, 120], opacity: 64, blend: 0x48,
+      ranges: [[0, 0, 5], [0.2, 0, 5]], duration: 0.2 } as unknown as ZAnimLight;
+    let alive = true;
+    lights.begin(light, [0, 0, 0], () => alive);
+    const first = lights.stats();
+    expect(first.overlays).toBeGreaterThan(0);
+    expect(first.overlays).toBeLessThan(4);                         // only what its reach meets
+    alive = false;
+    lights.update(0.1);
+    expect(world.children.filter((o) => o.visible)).toHaveLength(4);
+    alive = true;
+    lights.begin(light, [0, 0, 0], () => alive);
+    expect(lights.stats()).toMatchObject({ pooled, overlays: first.overlays, live: 1 });
   });
 
   it('the mark table: the polygon byte to its SOILS name to its row, byte 0 the map\'s DefaultMaterial, no row no mark', () => {
@@ -120,7 +155,7 @@ describe.skipIf(!MP2)(`the M4A1 SD's round on the game's data${MP2 ? '' : ` (${F
     const sounds: string[] = [];
     let r = 0;
     const fx = new Effects(() => ((r = (r * 9301 + 49297) % 233280) / 233280), (name) => sounds.push(name));
-    fx.setData(d);
+    fx.setData({ ...d, ambient: [] });             // the mission's own flames would emit beside the round
     fx.setWorld(() => deck(25));
     // The weapon 12 units over the deck, its barrel along -x (west), so its right (+z of its frame) is -z.
     const x = new Vector3(-1, 0, 0), y = new Vector3(0, 1, 0), z = new Vector3().crossVectors(x, y);
@@ -208,6 +243,55 @@ describe.skipIf(!MP2)(`the M4A1 SD's round on the game's data${MP2 ? '' : ` (${F
     expect(fx.footfall([0, 0, 0], sand, [0, 1, 0], [0, 0, -1], true)).toBe(false);
     expect(fx.footfall([0, 0, 0], metal, [0, 1, 0], [0, 0, -1], false)).toBe(false);
     expect(fx.stats().water.footprints).toBe(1);
+  });
+
+  it('the smoke grenade pours a screen: two sources on the canister, puffs growing tenfold, 20 s of it', async () => {
+    const d = await load();
+    let r = 0.37;
+    const fx = new Effects(() => ((r = (r * 9.7 + 0.31) % 1)));
+    fx.setData(d);
+    const at: [number, number, number] = [100, 0, 100];
+    const node = new Matrix4().makeTranslation(...at);
+    expect(fx.play('smoke_grenade', { node, position: at, normal: [0, 1, 0], velocity: [0, 0, 0] })).toBe(true);
+    const camera = new PerspectiveCamera();
+    camera.position.set(100, 10, 200);
+    camera.updateMatrixWorld();
+    for (let i = 0; i < 6 * 30; i++) fx.update(1 / 30, camera);
+    const s6 = fx.stats();
+    expect(s6.played['smoke_stream']).toBe(1);
+    expect(s6.particles).toBeGreaterThan(25);            // 2.5 puffs a second a source, 5-7 s each
+    for (let i = 0; i < 22 * 30; i++) fx.update(1 / 30, camera);
+    expect(fx.stats().particles).toBeLessThan(s6.particles);   // the stream stops at 20 s, the screen thins
+  });
+
+  it('every _zoom muzzle is a light, a hidden casing or nothing; the M4A1 zoomed lights its surroundings', async () => {
+    const d = await load();
+    const calls = new Set<string>();
+    for (const p of d.programs) {
+      if (!/^muzzle_.*_zoom$/.test(p.name) || /turret|law|m203/i.test(p.name)) continue;
+      for (const q of p.sequences) for (const o of q.ops) if (o.op === 'call') calls.add(o.anim);
+    }
+    expect([...calls].sort()).toEqual(['shell_smoke_med', 'zoom_fire_silent', 'zoom_flash_fire']);
+    const fx = new Effects(() => 0.5);
+    fx.setData(d);
+    expect(fx.play('muzzle_m4_zoom', { node: new Matrix4(), position: [7.8, 0.8, 0] })).toBe(true);
+    expect(fx.lights.stats().started).toBe(1);
+    expect(fx.stats().shown).toEqual([]);                 // no flash model in the aim view
+  });
+
+  it('starts the mission ambient effects: Frostfire tower flames at their scene node', async () => {
+    const d = await load();
+    expect(d.ambient).toEqual(['firey_flames']);
+    const node = d.sceneNodes.find(([n]) => n === 'r_tower_flames');
+    expect(node).toBeDefined();
+    const fx = new Effects(() => 0.5);
+    fx.setData(d);
+    const camera = new PerspectiveCamera();
+    camera.position.set(node![1][12]!, node![1][13]! + 20, node![1][14]! + 100);
+    camera.updateMatrixWorld();
+    for (let i = 0; i < 30; i++) fx.update(1 / 30, camera);
+    expect(fx.stats().ambient).toContain('firey_flames');
+    expect(fx.stats().particles).toBeGreaterThan(20);
   });
 
   it('plays the surface\'s impact at the hit: sparks off METAL_THICK, the stone\'s dust and chunks off STONE', async () => {

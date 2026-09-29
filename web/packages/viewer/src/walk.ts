@@ -4,7 +4,8 @@ import {
   type CollisionOwner, type Grid, type GridParams, type Hit, type WorldPoly,
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
-import { firstPersonHeight, firstPersonPeekShift, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
+import { pitchLimits, PlayerCamera, INIT_AIM_PITCH, scopeEyeHeight, scopePeekShift, type Vec3 } from './playerCamera';
+import { KEY_STANCE, StanceButton, STANCE_HOLD_S_PLACEHOLDER } from './stanceButton';
 import { airBands, oneShotSeconds, SEAL_ANIMS } from './locomotion';
 import { landingKind, sealTuning, type LandingKind } from './physics';
 import type { TraversalPose } from './animator';
@@ -68,7 +69,8 @@ import type { TraversalPose } from './animator';
  *   faster along its class's axis (19.8 at 45 degrees). Research 18 section 3.13's 0.9 s "lead" and its average of
  *   40 are the orbit camera trailing the actor on our recomp at 18.7 frames a second, not this ramp. [reading of
  *   the decompilation; W2.2c measures it on the console, W2.R7]
- * - **Stances.** `C` cycles stand, crouch, prone (the game's d-pad; nothing on Ctrl -- `camera.ts` says why); each
+ * - **Stances.** A tap of `C` toggles stand and crouch (prone to crouch), a hold goes prone (owner, 2026-09-29; the
+ *   touch button cycles stand, crouch, prone; nothing on Ctrl -- `camera.ts` says why); each
  *   has its bands, its body column and its skeleton root height (`STANCE`). `Walker.posture` is the body in use:
  *   `stand` while a crouch runs at full stick.
  * - **The floor.** After each sub-step `probeGround` at the new (x, z) and `selectFloor` from the origin y + 5 with
@@ -95,9 +97,10 @@ import type { TraversalPose } from './animator';
  *   planes at 4.4-5.8 (section 4.1).
  * - **The view (W2.1, W2.R1).** The game's third-person camera (`playerCamera.ts`): its target `rootY + ramp` over
  *   the feet at the posture's root, its eye behind and over, the pass against the hull, a tick at a time after the
- *   mover's and drawn between ticks. `V` switches to first person at the head (`firstPersonHeight`). The mouse turns
- *   the body's yaw and the camera's pitch (`camera.ts`). Sprint 1's first-person eye 15.4 (`EYE_HEIGHT`, W1.R2) is
- *   retired as a view; it stays the height a pose drops the mover from.
+ *   mover's and drawn between ticks; zoomed, the scope's view from the head (`scopeEyeHeight`). There is no first
+ *   person (the owner, 2026-09-29: the views are third person and scoped, as SOCOM II's). The mouse turns the body's
+ *   yaw and the camera's pitch (`camera.ts`). Sprint 1's eye 15.4 (`EYE_HEIGHT`, W1.R2) is retired as a view; it
+ *   stays the height a pose drops the mover from.
  * - **The jump** (web/docs/research/80-the-jump.md, read from the decompilation). `FUN_0057e1b0` (decomp
  *   440776-440867) takes the press when the SEAL is on walkable ground (`actor+0x1348` >= cos `max_slope`), not prone
  *   (`FUN_005b4340(.., 0xb)` refuses stance 2), and not within 0.4 s (`actor+0x135c`) of a running jump's take-off or
@@ -134,7 +137,7 @@ export const BODY_RADIUS = 3.5;
 /** No step moves further than this at once, so a wall 3.5 away cannot be stepped through at any speed. */
 const MAX_SUBSTEP = 1;
 
-/** The SEAL's three stances, in the order `C` cycles them (`zSeal/zseal.h`'s `SEAL_STANCE`). */
+/** The SEAL's three stances, in the order the touch button cycles them (`zSeal/zseal.h`'s `SEAL_STANCE`). */
 export type Stance = 'stand' | 'crouch' | 'prone';
 export const STANCES: readonly Stance[] = ['stand', 'crouch', 'prone'];
 
@@ -1357,8 +1360,8 @@ export interface WalkCamera {
   lookState?(): { turnRate: number };
 }
 
-/** Third person (the game's camera, the default: W2.R1) or first person (`V`). */
-export type WalkView = 'third' | 'first';
+/** Third person (the game's camera: W2.R1) or the scope's view from the head, while zoomed (`setScoped`). */
+export type WalkView = 'third' | 'scope';
 
 /**
  * The hook's view of the walk's camera (W2.1): which view, the eye and target drawn, the root, the pitch, and the
@@ -1385,13 +1388,20 @@ export class WalkMode {
   private stance_: Stance = 'stand';
   /** The game's camera over the mover (W2.1), made with it. */
   private player: PlayerCamera | null = null;
-  private view_: WalkView = 'third';
   /** The view last placed: what the hook and the reticle read. */
   private placed: { eye: Vec3; target: Vec3; far: Vec3 } | null = null;
   /** Jumps taken: the animator sees a take-off by the count, whenever between two frames it came. */
   private jumps = 0;
-  /** The aim view held (L1, the right button): first person while held, back to `view_` on release. */
-  private aiming = false;
+  /** In the scope (the zoom's lens views, `main.ts`): the view from the head while on, third person after. */
+  private scoped = false;
+  /**
+   * `C`, the PC's stance button (owner, 2026-09-29): held or not, a press not yet seen by a frame (a tap quicker than
+   * a frame still counts), and its tap-and-hold machine -- a tap toggles stand and crouch (prone to crouch), a hold of
+   * `STANCE_HOLD_S_PLACEHOLDER` goes prone -- run once a frame in `frame`.
+   */
+  private stanceKeyHeld = false;
+  private stanceKeyPressed = false;
+  private readonly stanceKey = new StanceButton(STANCE_HOLD_S_PLACEHOLDER, KEY_STANCE);
   /** TRAVERSAL SEAM: the factory `useTraversal` set, and the moves on the current mover. */
   private traversalFactory: ((walker: Walker, ground: GroundData) => TraversalHooks) | null = null;
   private moves: TraversalHooks | null = null;
@@ -1439,7 +1449,7 @@ export class WalkMode {
     w.driver = this.moves;
   }
 
-  /** The mover's stance (W2.2b): what `C` cycles and the hook reads. */
+  /** The mover's stance (W2.2b): what `C` and the touch button change and the hook reads. */
   stance(): Stance {
     return this.stance_;
   }
@@ -1463,7 +1473,7 @@ export class WalkMode {
     return true;
   }
 
-  /** `C`: stand, crouch, prone, stand (the game's d-pad cycles them). */
+  /** The touch stance button: stand, crouch, prone, stand (the game's d-pad cycles them). `C` is `KEY_STANCE`'s. */
   cycleStance(): Stance {
     this.setStance(STANCES[(STANCES.indexOf(this.stance_) + 1) % STANCES.length]!);
     return this.stance_;
@@ -1504,15 +1514,15 @@ export class WalkMode {
     return true;
   }
 
-  /** Third or first person (`V`), or first person while the aim is held. */
+  /** Third person, or the scope's view while zoomed. */
   view(): WalkView {
-    return this.aiming ? 'first' : this.view_;
+    return this.scoped ? 'scope' : 'third';
   }
 
-  /** The aim view, held: first person from the head while on, the chosen view after. */
-  setAiming(on: boolean): void {
-    if (this.aiming === on) return;
-    this.aiming = on;
+  /** The scope (the zoom in a lens view, `main.ts`): the view from the head while on, third person after. */
+  setScoped(on: boolean): void {
+    if (this.scoped === on) return;
+    this.scoped = on;
     if (this.walking && this.walker) this.follow();
   }
 
@@ -1584,14 +1594,6 @@ export class WalkMode {
     this.posedRoot = rootY !== null && Number.isFinite(rootY) ? rootY : null;
   }
 
-  /** Sets the view, walking or not; false for a name that is not one. */
-  setView(view: WalkView): boolean {
-    if (view !== 'third' && view !== 'first') return false;
-    this.view_ = view;
-    if (this.walking && this.walker) this.follow();
-    return true;
-  }
-
   /**
    * One frame: the look goes to the mover (the pitch clamped to the posture's limits), real time goes in -- the
    * camera ticking after each of the mover's ticks -- and the view is placed between the last two.
@@ -1608,6 +1610,7 @@ export class WalkMode {
       this.turnRate = (turn * Math.PI) / 180 / dt;
     }
     this.lastYaw = yaw;
+    this.stanceKeyFrame(dt);
     w.turn = this.turnRate;
     w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
     this.stance_ = w.stance;                                     // TRAVERSAL SEAM: a move or the water may stand the SEAL up
@@ -1674,7 +1677,7 @@ export class WalkMode {
     const w = this.walker, placed = this.placed;
     if (!this.walking || !w || !placed) return null;
     return {
-      mode: this.view_, eye: [...placed.eye], target: [...placed.target],
+      mode: this.view(), eye: [...placed.eye], target: [...placed.target],
       rootY: this.player?.rootY() ?? rootY(w.posture), pitch: this.camera.pose().pitch,
       pass: { distance: this.player?.distance() ?? 0, hold: this.player?.hold() ?? 0 },
     };
@@ -1696,32 +1699,55 @@ export class WalkMode {
   }
 
   /**
-   * `G` (walk and fly), `C` (the stance, while walking) and `V` (first or third person, while walking) on `target`,
-   * ignored with a modifier -- so Ctrl+C and Ctrl+V stay the browser's -- on auto-repeat, and while a control has the
-   * keyboard.
+   * `G` (walk and fly), `Space` (the jump) and `C` (the stance: its press and release, while walking) on `target`,
+   * ignored with a modifier -- so Ctrl+C stays the browser's -- on auto-repeat, and while a control has the keyboard.
+   * A lost keyboard (`blur`) lets `C` go without a tap.
    */
   bindKey(target: EventTarget = globalThis): void {
     this.unbindKey();
     target.addEventListener('keydown', this.onKey as EventListener);
+    target.addEventListener('keyup', this.onKeyUp as EventListener);
+    target.addEventListener('blur', this.onBlur);
     this.bound = target;
   }
 
   unbindKey(): void {
     this.bound?.removeEventListener('keydown', this.onKey as EventListener);
+    this.bound?.removeEventListener('keyup', this.onKeyUp as EventListener);
+    this.bound?.removeEventListener('blur', this.onBlur);
     this.bound = null;
+    this.onBlur();
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
-    if (!['KeyG', 'KeyC', 'KeyV', 'Space'].includes(e.code) || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (!['KeyG', 'KeyC', 'Space'].includes(e.code) || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if (e.code !== 'KeyG' && !this.walking) return;          // in fly mode Space stays the camera's "up"
     const target = e.target;
     if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
     e.preventDefault();
     if (e.code === 'Space') this.jump();
-    else if (e.code === 'KeyC') this.cycleStance();
-    else if (e.code === 'KeyV') this.setView(this.view_ === 'third' ? 'first' : 'third');
+    else if (e.code === 'KeyC') { this.stanceKeyHeld = true; this.stanceKeyPressed = true; }
     else this.setMode(this.walking ? 'fly' : 'walk');
   };
+
+  /** `C` let go: the tap (or nothing, after a hold) is the next frame's. Taken with a modifier too: a release is a release. */
+  private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (e.code === 'KeyC') this.stanceKeyHeld = false;
+  };
+
+  private readonly onBlur = (): void => {
+    this.stanceKeyHeld = false;
+    this.stanceKeyPressed = false;
+    this.stanceKey.reset();
+  };
+
+  /** One frame of `C`'s machine: a press between two frames is down for one; the stance it asks for, set. */
+  private stanceKeyFrame(dt: number): void {
+    const down = this.stanceKeyHeld || this.stanceKeyPressed;
+    this.stanceKeyPressed = false;
+    const go = this.stanceKey.update(down, dt, this.stance_);
+    if (go !== null) this.setStance(go);
+  }
 
   /** The floor under the camera, else spawn A's. */
   private stand(): boolean {
@@ -1741,6 +1767,7 @@ export class WalkMode {
 
   private leave(): void {
     this.walking = false;
+    this.onBlur();                                               // a C press under way is no tap on the next walk
     this.placed = null;
     this.camera.setWalking(false);
     this.onChange(false);
@@ -1776,7 +1803,7 @@ export class WalkMode {
     this.follow();
   }
 
-  /** The view to the camera: the game's, between the last two ticks, or the head's in first person. */
+  /** The view to the camera: the game's, between the last two ticks, or the head's in the scope. */
   private follow(): void {
     const w = this.walker!;
     const third = this.player?.view(w.alpha());
@@ -1788,9 +1815,9 @@ export class WalkMode {
     }
     const [x, y, z] = w.drawnFeet();
     const look = this.camera.pose(), yaw = (look.yaw * Math.PI) / 180, pitch = (look.pitch * Math.PI) / 180;
-    const side = firstPersonPeekShift(this.moves?.peek() ?? 0);  // TRAVERSAL SEAM: the peek moves the eye across
+    const side = scopePeekShift(this.moves?.peek() ?? 0);        // TRAVERSAL SEAM: the peek moves the eye across
     const moveRoot = this.moves?.rootY() ?? null;                // a move's root carries the head with it
-    const height = moveRoot === null ? firstPersonHeight(w.posture) : firstPersonHeight('stand') + moveRoot - rootY('stand');
+    const height = moveRoot === null ? scopeEyeHeight(w.posture) : scopeEyeHeight('stand') + moveRoot - rootY('stand');
     const eye: Vec3 = [x + Math.cos(yaw) * side, y + height, z - Math.sin(yaw) * side];
     const ahead: Vec3 = [-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
     const far: Vec3 = [eye[0] + ahead[0] * 1000, eye[1] + ahead[1] * 1000, eye[2] + ahead[2] * 1000];

@@ -134,10 +134,21 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   expect(held[2]).toBeGreaterThan(SPAWN_A[2]);
   expect(held[1]).toBeCloseTo(100, 3);
 
-  // The stance (W2.2b): C cycles it while walking, and the hook reads and sets it.
-  expect(await page.evaluate(() => window.__viewer.stance())).toBe('stand');
+  // The stance (W2.2b; owner, 2026-09-29): a tap of C toggles stand and crouch, a hold goes prone, a tap from prone
+  // crouches; the hook reads and sets it. The tap acts at the release, a frame later.
+  const stanceNow = () => page.evaluate(() => window.__viewer.stance());
+  expect(await stanceNow()).toBe('stand');
   await page.keyboard.press('KeyC');
-  expect(await page.evaluate(() => window.__viewer.stance())).toBe('crouch');
+  await expect.poll(stanceNow).toBe('crouch');
+  await page.keyboard.press('KeyC');
+  await expect.poll(stanceNow).toBe('stand');
+  await page.keyboard.down('KeyC');
+  await expect.poll(stanceNow).toBe('prone');                     // at the 0.4 s hold, still down
+  await page.keyboard.up('KeyC');
+  await page.waitForTimeout(200);
+  expect(await stanceNow()).toBe('prone');                         // the hold's release is no tap
+  await page.keyboard.press('KeyC');
+  await expect.poll(stanceNow).toBe('crouch');
   expect(await page.evaluate(() => window.__viewer.setStance('stand'))).toBe(true);
 
   // The route, from the spawn again, at the game's 65 a second (the steer eases in over the last 10 units).
@@ -239,14 +250,18 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
     await page.locator('#view').screenshot({ path: join(CAMERA_SCREENS, `frostfire-ps2-spawn-a-${name}.png`) });
   }
 
-  // V's first person: the eye at the head, the body not drawn.
-  expect(await page.evaluate(() => window.__viewer.setView('first'))).toBe(true);
+  // No first person (owner, 2026-09-29): V is not bound; the zoom's scope is the one view from the head, the body
+  // not drawn.
+  await page.keyboard.press('KeyV');
   await settle(page);
-  const first = await page.evaluate(() => ({ camera: window.__viewer.camera(), body: window.__viewer.stats().body }));
-  expect(first.camera!.mode).toBe('first');
-  expect(first.camera!.eye[1] - SPAWN_A[1]).toBeCloseTo(18.3, 3);
-  expect(first.body?.visible).toBe(false);
-  await page.locator('#view').screenshot({ path: join(CAMERA_SCREENS, 'frostfire-ps2-spawn-a-first-person.png') });
-  expect(await page.evaluate(() => window.__viewer.setView('third'))).toBe(true);
+  expect((await page.evaluate(() => window.__viewer.camera()))!.mode).toBe('third');
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(5);
+  await settle(page);
+  const scoped = await page.evaluate(() => ({ camera: window.__viewer.camera(), body: window.__viewer.stats().body }));
+  expect(scoped.camera!.mode).toBe('scope');
+  expect(scoped.camera!.eye[1] - SPAWN_A[1]).toBeCloseTo(18.3, 3);
+  expect(scoped.body?.visible).toBe(false);
+  await page.locator('#view').screenshot({ path: join(CAMERA_SCREENS, 'frostfire-ps2-spawn-a-scope.png') });
+  expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(0);
   expect(problems).toEqual([]);
 });

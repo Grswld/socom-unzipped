@@ -42,7 +42,8 @@ import { TRAVERSAL_EVENT, TraversalPage } from './traversalPage';
 import type { TraversalEvent } from './traversal';
 import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import { gameAudio } from './audio';
-import { Effects, soundFor } from './effects';
+import { soundFor } from '@s2u/sound';
+import { Effects } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
@@ -92,7 +93,7 @@ const fly = new FlyCamera(canvas, {
 const overlays = new Overlays(scene);
 /**
  * Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the game's third-person camera
- * follows it (W2.1, `./playerCamera`), `V` for first person.
+ * follows it (W2.1, `./playerCamera`); the zoom's lens views are drawn from the head. No first person (owner, 2026-09-29).
  */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 /**
@@ -140,6 +141,7 @@ const grenade = new GrenadeThrower({
   grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view(),
   handPoint: (part, p) => play.partPoint(part, p), heldNode: () => play.heldNode(),
   peek: () => traversal.stats()?.peek ?? 0,           // research 86's lean: the lean tosses
+  viewState: () => zoom.state(),                      // the arc: none in the 9x view or a scope, pale in the night vision
 });
 scene.add(grenade.object);
 /** The throw's clip over the locomotion, a pose layer as the reload is. */
@@ -150,8 +152,8 @@ grenade.on('equip', (on) => {
   fire.release(); play.setRifleStowed(on);   // a slot change lets a held trigger go; the rifle away while the grenade is up
   if (!on) throwPose.stop();
   // Out of the scope with the rifle away [reading: the game's weapon switch, FUN_005c4b10, drops only the night vision
-  // to first person; what a scoped grenade does was not traced -- research 84 section 7].
-  if (on && zoom.state() >= 4) setZoom(1);
+  // (to its first person, here third: owner, 2026-09-29); what a scoped grenade does was not traced -- research 84 section 7].
+  if (on && zoom.state() >= 4) setZoom(0);
 });
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
 grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
@@ -201,7 +203,7 @@ fire.setGun({
     // The round goes by the cone as the frame left it (FUN_005bd100 runs before the shot), then counts.
     const out = perturb(dir, accuracy.cone(zoom.state()));
     const stance = walk.mover()?.stance ?? 'stand';
-    if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(1);
+    if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(0);   // the game's first person: third (owner, 2026-09-29)
     return out;
   },
   // Research 84 section 8: the camera kicks only scoped, on a pull's first round, and the kick ticks only scoped.
@@ -266,8 +268,8 @@ const kit: Kit = new Kit({
     showFireMode();
     play.setItem(item);
   },
-  // FUN_005c4b10: the trigger lets go, and a scope drops to first person.
-  started: () => { fire.release(); if (zoom.state() >= 4) setZoom(1); },
+  // FUN_005c4b10: the trigger lets go, and a scope drops (the game's first person; third here, owner 2026-09-29).
+  started: () => { fire.release(); if (zoom.state() >= 4) setZoom(0); },
 });
 /** L1 / L2: the grenade put away, then the firearm (`Kit.select`); the one in the hand does nothing. */
 function selectFirearm(to: Firearm): boolean {
@@ -349,7 +351,7 @@ const walkSounds = new WalkSounds(audio, {
  * `effects.play(name, place)` is the grenades' door to their impacts and explosions.
  */
 // The effects' sounds through the map's banks: the data's slips mended and a stand-in for a casing sound a map lacks
-// (`soundFor`, research 90 items 4 and 12).
+// (`@s2u/sound`'s `soundFor`, the one name table: research 90 items 4 and 12).
 const effects = new Effects(Math.random, (name, at) => { audio.play(soundFor(name, (n) => audio.has(n)), at); });
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
@@ -364,13 +366,19 @@ grenade.setEffectPlayer((anim, at) => effects.play(anim, { ...grenadePlace(at.po
  * data arrives, not in the frame of the first explosion. Set once the renderer is up.
  */
 let compileEffects: ((g: ReturnType<typeof effects.warmUp>) => Promise<void>) | null = null;
+/** The world whose warm-up (`warmScene`, after its props) has run. */
+let worldWarmed: WorldView | null = null;
 function warmEffects(): void {
-  if (!compileEffects || !effects.stats().loaded) return;
+  // Before the world's own warm-up the effects ride in it (`show`: one pass over the scene, not two).
+  if (!compileEffects || !effects.stats().loaded || !view || worldWarmed !== view) return;
   const g = effects.warmUp();
-  void compileEffects(g).catch(() => {}).finally(() => effects.warmDone(g));
+  const compiling = compileEffects(g);
+  effects.warmStarted(g);                           // the list is taken: the frames meanwhile do not draw the warm-up
+  void compiling.catch(() => {}).finally(() => effects.warmDone(g));
 }
-// The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
-effects.setLightReceivers(() => [view?.group, view?.weapon, view?.sidearm].filter((o): o is NonNullable<typeof o> => !!o));
+// The `LIGHT` passes re-draw the lit world, the held weapons and the SEAL's body (`./effectLights`: the game's second
+// pass, research 89 §10).
+effects.setLightReceivers(() => [view?.group, view?.weapon, view?.sidearm, body?.group].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -510,7 +518,7 @@ const play = new Play();
 play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locomotion (`./throwPose`)
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
-play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
+play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'scope' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
@@ -533,10 +541,10 @@ globalThis.addEventListener?.(TRAVERSAL_EVENT, ((e: CustomEvent<TraversalEvent>)
   const feet = walk.drawnFeet();
   if (e.detail?.type === 'waterLand' && feet) effects.splash(feet, e.detail.depth);
 }) as EventListener);
-// EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in first person (the aim view).
+// EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in the scope (the view from the head).
 fire.subscribe((e) => {
   if (e.type !== 'round') return;
-  effects.onRound(e, weaponFrame(), walk.view() === 'first');
+  effects.onRound(e, weaponFrame(), walk.view() === 'scope');
   // ACCURACY: every surface the round went through is struck too (FUN_003c8920 per hit), its impact without a muzzle.
   for (const t of e.through ?? []) effects.onRound({ ...e, to: t.point, normal: t.normal, material: t.material, hit: true, through: undefined }, null, false);
 });
@@ -558,22 +566,20 @@ function askPlay(from: SourceRequest): void {
   ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS] });
 }
 
-// ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
+// ---- W2.6: the scope and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
 /**
- * The aim view: held on the pad's aim lane (L1, W2.R5), or stepped into by the zoom (research 84: the game's first zoom
- * step is the first-person view, state 1) -- the right mouse button on the canvas is the zoom's press (a `mousedown`,
- * which fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
+ * The scope: stepped into by the zoom (research 84; no first-person step, owner 2026-09-29) -- the right mouse button
+ * on the canvas is the zoom's press (a `mousedown`, which fires for each button, where a `pointerdown` does not while
+ * another is held). The fire button is W2.4's.
  */
 canvas.addEventListener('mousedown', (e) => { if (e.button === 2) stepZoom('cycle'); });
 
 /**
  * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
- * (docs/PLAYTEST.md step 8), the aim while held (`playActions`), and the stance button's tap (crouch) and hold (prone;
+ * (docs/PLAYTEST.md step 8; `playActions`), and the stance button's tap (crouch) and hold (prone;
  * `StanceButton`, one step a frame). In the fly camera the same lanes are up and down.
  */
 const stanceButton = new StanceButton();
-/** The hook's aim (`setAim(true)`), over the lanes until `setAim(false)` hands it back: Playwright holds no button. */
-let aimForced = false;
 function playLanes(before: Input, after: Input, dt: number): void {
   const act = playActions(before, after);
   const walking = walk.mode() === 'walk';
@@ -584,8 +590,8 @@ function playLanes(before: Input, after: Input, dt: number): void {
   // Fed a released button off foot, so a press begun in the fly camera is not a tap when the walk begins.
   const go = stanceButton.update(walking && after.stance, dt, walk.stance());
   if (go !== null) walk.setStance(go);
-  // First person while the pad's aim lane is held or the zoom is at 1 or more (research 84: its first step is that view).
-  walk.setAiming(walking && (aimForced || act.aim || zoom.firstPerson()));
+  // The view from the head in the zoom's lens views (the scope, the 9x, the night vision); third person otherwise.
+  walk.setScoped(walking && zoom.lens());
 }
 
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
@@ -878,7 +884,9 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
-  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.renderer.compileAsync(effects.object, fly.camera, scene); };
+  // The effects with the scene they light, the way the world is warmed (the PS2 frame's target, the hidden through
+  // stand-ins): research 90 item 19, a light pass compiled for the canvas alone still stalled the first blast.
+  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.warm(scene, fly.camera); };
   warmEffects();
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
@@ -943,7 +951,7 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     padFrame(dt);                   // W2.7: the pad and the touch stick into the camera's lanes, before it steps
-    fly.setBody(walk.mode() === 'walk' && walk.view() === 'first', walk.posture() === 'prone');   // the bob's (research 83)
+    fly.setBody(walk.mode() === 'walk' && walk.view() === 'scope', walk.posture() === 'prone');   // the bob's (research 83)
     fly.update(dt);
     traversal.input();              // research 86: the peek held (Q / E, the pad's lean lanes)
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
@@ -952,7 +960,7 @@ async function boot(): Promise<void> {
     for (const name of throwPose.step(dt)) audio.onAnimCallback(name, walk.drawnFeet());   // the throw clip's `throw_whoosh`
     if (walking) kit.frame(dt); else kit.settle();   // WEAPON: the swap's hand-off and end (`./kit`)
     play.setMounts(kit.state().mounts);
-    play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
+    play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in the scope
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     effects.setBrighten(brightenOf(lighting));
@@ -1238,10 +1246,19 @@ function show(map: LoadedMap): void {
       // The props follow, over further frames. The map is already drawn and flyable while they arrive,
       // and the flares among them are turned by the render loop on the frame after they land. Then every
       // program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
+      // The effects' warm-up rides along when their data is in (one pass: their models, particles and marks, and the
+      // light passes' overlays over every prop -- research 90 item 19); data coming later warms by itself.
       void prepared(built0.propObjects).then(() => {
         if (stale()) return;
         revealing = spreadAcrossFrames(built0.revealProps);
-        void revealing.done.then(() => { if (!stale()) void warmScene?.(built0.warmExtras()); });
+        void revealing.done.then(async () => {
+          if (stale()) return;
+          const g = effects.stats().loaded ? effects.warmUp() : null;
+          const warming = warmScene?.(built0.warmExtras());
+          if (g) effects.warmStarted(g);
+          try { await warming; } finally { if (g) effects.warmDone(g); }
+          if (!stale()) worldWarmed = built0;
+        });
       });
     });
   });
@@ -1288,7 +1305,6 @@ window.__viewer = {
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
-  setAim: (on) => { aimForced = on; walk.setAiming(walk.mode() === 'walk' && on); return walk.view(); },
   look: () => fly.lookState(),
   setLook: (opts) => { fly.setLookOptions(opts); return fly.lookOptions(); },
   setZoom: (magnification, mode4) => fly.setZoom(magnification, mode4),
@@ -1304,7 +1320,6 @@ window.__viewer = {
   stance: () => walk.stance(),
   setStance: (stance) => walk.setStance(stance),
   camera: () => walk.cameraState(),
-  setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
   traversal: () => traversal.stats(),
@@ -1348,7 +1363,8 @@ window.__viewer = {
       const node = new Matrix4().makeBasis(x, y, z).setPosition(where);
       return effects.play(name, { node, position: [0, 0, 0], velocity: forward.toArray() as [number, number, number] });
     }
-    return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
+    // As a grenade's (`grenadePlace`): a node at the point too, for the sources that follow their caller's node.
+    return effects.play(name, { ...grenadePlace(where.toArray()), velocity: forward.toArray() as [number, number, number] });
   },
   pauseEffects: (on) => { effects.paused = on; },
   tacMap: () => tacMap.state(),

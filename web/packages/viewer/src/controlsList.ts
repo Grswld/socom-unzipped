@@ -3,7 +3,7 @@
  * are in and no other. Data, so the page's list and its test read one table. The pad's layout is `./gamepad`'s
  * `PAD_LAYOUT`, grouped by `padGroup` under the same names.
  *
- * The keys are the ones the page binds: `WASD` and the fly keys (`./camera`), `G`, `C`, `V`, `Space` (`./walk`), `R`
+ * The keys are the ones the page binds: `WASD` and the fly keys (`./camera`), `G`, `C`, `Space` (`./walk`), `R`
  * (`./fire`), `B` (`./main`), `X`, `Q`, `E` (`./traversalPage`), `1` to `4` (`./main`, `./kit`'s `hotkey`), `F` and the backtick
  * (`./ui`); the mouse's click fires and the right click steps the zoom (`./main`, `./fire`).
  */
@@ -53,7 +53,6 @@ export function controlGroups(mode: ControlMode, play: boolean): ControlGroup[] 
         { keys: 'W A S D', does: 'move' },
         { keys: 'mouse', does: 'look, turn' },
         { keys: 'Space', does: 'jump' },
-        { keys: 'V', does: 'first / third person' },
       ],
     },
     {
@@ -68,7 +67,7 @@ export function controlGroups(mode: ControlMode, play: boolean): ControlGroup[] 
     {
       name: GROUP_STANCE,
       rows: [
-        { keys: 'C', does: 'stance: stand, crouch, prone' },
+        { keys: 'C', does: 'stance: tap crouch / stand, hold prone' },
         { keys: 'X', does: 'action: climb, ladder slide' },
         { keys: 'Q / E', does: 'peek left / right (held)' },
       ],

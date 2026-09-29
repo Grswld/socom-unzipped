@@ -1,12 +1,12 @@
 import {
   AdditiveBlending, DataTexture, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, NormalBlending, PlaneGeometry,
   RGBAFormat, Sprite, SpriteMaterial, UnsignedByteType, BufferGeometry, Float32BufferAttribute, Line,
-  LineBasicMaterial, Points, PointsMaterial, type Texture,
+  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Texture,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
   actorToWorldDir, actorToWorldPoint, AN_M8, CLAYMORE, CLAYMORE_RULES, claymoreCone, explosionDamage, flashLevel, GRENADE_BLAST, gridCast, heldPower, HE,
-  launchGrenade, M67, MARK141,
+  launchGrenade, M67, MARK141, THROW_ARC, throwArc,
   materialAnim, maxThrowDistance, PLACE_CLAYMORE_ANIM, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
   throwVelocity,
   type Grenade, type GrenadeEvent, type Grid, type HullCast, type ThrowAnim, type ThrowLaunch, type ThrowStance,
@@ -39,7 +39,8 @@ import type { PlaySnapshot, WalkView } from './walk';
  * - **Drawn.** The `grenade` model (`WEAP_GEO`; the HE's `HEgrenade`) on the right hand's held node (`heldNode`;
  *   `HAND_PLACEHOLDER` without a posed body) and in flight (tumbling at `SPIN_PLACEHOLDER`); the explosion as the `frag_grenade` zAnim's parts read off their
  *   commands (`EXPLOSION_READING`): the flash, a fireball, sparks, smoke, dust and a ground roll, with the bitmaps
- *   `GRENADE_BITMAPS` names; the scorch from `GRENADE_BLAST`. Optionally the flight's trail (a debug line, off).
+ *   `GRENADE_BITMAPS` names; the scorch from `GRENADE_BLAST`; while the throw is held, the game's yellow arc
+ *   (`drawArc`, `FUN_005970b0`: research 85 §11). Optionally the flight's trail (a debug line, off).
  */
 
 /** The flight's fixed step: the walk's 60 Hz (`walk.ts` `TICK`) [reading: the projectile runs on the frame's dt]. */
@@ -110,10 +111,11 @@ export const isPlaced = (r: ThrowableRecord): boolean => r.muzzleVelocity === 0;
  */
 export const SMOKE_PLACEHOLDER = { every: 0.2, rise: [0, 17] as const, spread: 20, size: [30, 45] as const, grow: 1.6, life: [5, 7] as const, grey: [0.6, 0.4] as const };
 /**
- * PLACEHOLDER (named): the smoke screen is drawn here even when the effects ran `smoke_grenade`, whose `large_smoke`
- * puffs do not yet read as a screen in the effects' particles; false once they do (the EFFECTS workstream's call).
+ * PLACEHOLDER (named): whether the smoke screen is drawn here even when the effects ran `smoke_grenade`. False since the
+ * effects' `large_smoke` puffs read as a wall (effects round 3, research 89 §12); this screen is the stand-in only on a
+ * map whose archives lack `smoke_grenade`.
  */
-export const SMOKE_ALWAYS_PLACEHOLDER = true;
+export const SMOKE_ALWAYS_PLACEHOLDER = false;
 
 /** What a throwable does when it goes off: the frag's blast, the smoke's screen, the flash's white-out. */
 export type Detonation = 'blast' | 'smoke' | 'flash';
@@ -135,6 +137,27 @@ export interface GrenadeSource {
   heldNode?(): Group | null;
   /** The peek (`DAT_004161c0`, -1 left .. 1 right; the traversal's): past half a side, the body is in state 3. */
   peek?(): number;
+  /**
+   * The view mode, the actor's byte `+0x200` (`./zoom`'s state: 0 third person, 1-3 first person, 3 the night vision,
+   * 4 the 9x view, 5 and up a scope): the arc is drawn below 4, pale in 3. Without it, 0.
+   */
+  viewState?(): number;
+}
+
+/** What the held throw's arc shows (`FUN_005970b0`; `GrenadeStats.arc`). */
+export interface ArcStats {
+  visible: boolean;
+  /** The strip's segments (`throwArc`: 101 for the game's 100). */
+  segments: number;
+  /** `THROW_ARC.color`, or `nightColor` in view mode 3. */
+  color: V3;
+  /** The launch the arc draws: `GetThrowAnim`'s table point in the world and the throw's velocity for the power now. */
+  from: V3;
+  velocity: V3;
+  /** The strip's first point (a second before the hand) and last (twice the fall to the feet's level). */
+  start: V3;
+  end: V3;
+  t1: number;
 }
 
 /** A throw as it left the hand: for the hook, the audio and the tests. */
@@ -238,6 +261,8 @@ export interface GrenadeStats {
   model: boolean;
   trail: boolean;
   defaultMaterial: string;
+  /** The yellow arc while the throw is held; null when none is drawn. */
+  arc: ArcStats | null;
 }
 
 const rand = (lo: number, hi: number, r: () => number): number => lo + (hi - lo) * r();
@@ -289,6 +314,9 @@ export class GrenadeThrower {
   private trail = false;
   private readonly listeners: Listeners = { equip: [], throwStart: [], place: [], throw: [], bounce: [], explode: [], refuse: [], detonate: [] };
   private readonly scorchGeometry = new PlaneGeometry(1, 1);
+  /** The held throw's arc (`FUN_005970b0`): one strip, refilled each frame while it shows. */
+  private readonly arcLine: LineSegments;
+  private arc: ArcStats | null = null;
 
   constructor(
     private readonly source: GrenadeSource,
@@ -298,6 +326,8 @@ export class GrenadeThrower {
     this.left = capacities(records);
     this.object.add(this.hand);
     this.hand.visible = false;
+    this.arcLine = arcStrip();
+    this.object.add(this.arcLine);
   }
 
   /**
@@ -536,6 +566,7 @@ export class GrenadeThrower {
     this.smokeFrame(dt);
     this.effects(dt);
     this.placeHand(snap);
+    this.drawArc(snap);
   }
 
   stats(): GrenadeStats {
@@ -554,6 +585,10 @@ export class GrenadeThrower {
       model: this.template !== null,
       trail: this.trail,
       defaultMaterial: this.defaultMaterial,
+      arc: this.arc && {
+        ...this.arc, color: [...this.arc.color], from: [...this.arc.from], velocity: [...this.arc.velocity],
+        start: [...this.arc.start], end: [...this.arc.end],
+      },
     };
   }
 
@@ -683,10 +718,7 @@ export class GrenadeThrower {
     // the hand when there is no posed body (`GetThrowAnim`'s, as the game's own arc preview uses).
     const part = p.anim === THROW_ANIMS.peekLeftToss ? 'lhand' : 'rhand';
     const hand = this.source.handPoint?.(part, RELEASE_POINT) ?? null;
-    const local = hand ? worldToActor(snap.feet, snap.yaw, hand) : p.anim.offset;
-    const launch = throwVelocity(p.power, p.aimSin, local, maxThrowDistance(p.stance));
-    const from = hand ?? actorToWorldPoint(snap.feet, snap.yaw, p.anim.offset);
-    const velocity = actorToWorldDir(snap.yaw, launch.velocity);
+    const { launch, from, velocity } = launchOf(snap, p.power, p.aimSin, p.stance, p.anim, hand);
     const record = this.record;
     const g = launchGrenade(from, velocity, record);
     const model = this.template ? this.template.clone() : null;
@@ -710,6 +742,35 @@ export class GrenadeThrower {
     };
     this.emit('throw', info);
     return info;
+  }
+
+  // ---- the arc ------------------------------------------------------------------------------------------------
+
+  /**
+   * The yellow arc (`FUN_005970b0`, the player controller's draw; web/docs/research/85 §11): while the fire button
+   * holds a hand grenade (`+0x170` bit 6, set on the press for category 0x79 with one left) and it has not been let go
+   * (bit 7), in view modes under 4 (`FUN_005b90f0`, `FUN_005b9990`), the throw the release would make now -- the
+   * power, the aim, `GetThrowAnim`'s clip and its table point (not the hand bone), the same `throwVelocity` -- drawn
+   * as `ai::DrawFunc<CDynGrenade>`'s parabola (`throwArc`): no hull, no bounce, no marker.
+   */
+  private drawArc(snap: PlaySnapshot | null): void {
+    this.arc = null;
+    const mode = this.source.viewState?.() ?? 0;
+    const show = !!snap && this.phase_ === 'holding' && this.equipped_ && !this.detonatorUp && !isPlaced(this.record) &&
+      this.left[this.item_] > 0 && mode < 4 && !(snap.peek && snap.stance === 'prone');
+    if (!show || !snap) { this.arcLine.visible = false; return; }
+    const aimSin = Math.sin((snap.pitch * Math.PI) / 180);
+    const stance = this.stance(snap);
+    const anim = throwAnim(this.power, aimSin, stance, snap.vx * snap.vx + snap.vz * snap.vz);
+    const { from, velocity } = launchOf(snap, this.power, aimSin, stance, anim, null);
+    const arc = throwArc(from, velocity, anim.offset[1]);
+    const color: V3 = [...(mode === 3 ? THROW_ARC.nightColor : THROW_ARC.color)];
+    fillStrip(this.arcLine, arc.points, arc.alphas, color);
+    this.arcLine.visible = arc.alphas.length > 0;
+    this.arc = {
+      visible: this.arcLine.visible, segments: arc.alphas.length, color, from, velocity,
+      start: arc.points[0] ?? from, end: arc.points[arc.points.length - 1] ?? from, t1: arc.t1,
+    };
   }
 
   // ---- the flight ---------------------------------------------------------------------------------------------
@@ -1008,6 +1069,61 @@ export function worldToActor(feet: readonly number[], yawDeg: number, w: readonl
   const r = (yawDeg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
   const dx = w[0]! - feet[0]!, dz = w[2]! - feet[2]!;
   return [dx * c - dz * s, w[1]! - feet[1]!, dx * s + dz * c];
+}
+
+/**
+ * The throw's launch in the world, as `CZKit_TickExplosives` (the release) and `FUN_005970b0` (the arc) both work it
+ * out: `throwVelocity` from the release point in the actor frame -- the posed `hand` when given, else `GetThrowAnim`'s
+ * table point -- turned by the SEAL's yaw.
+ */
+export function launchOf(
+  snap: PlaySnapshot, power: number, aimSin: number, stance: ThrowStance, anim: ThrowAnim, hand: V3 | null,
+): { launch: ThrowLaunch; from: V3; velocity: V3 } {
+  const local = hand ? worldToActor(snap.feet, snap.yaw, hand) : anim.offset;
+  const launch = throwVelocity(power, aimSin, local, maxThrowDistance(stance));
+  const from = hand ?? actorToWorldPoint(snap.feet, snap.yaw, anim.offset);
+  return { launch, from, velocity: actorToWorldDir(snap.yaw, launch.velocity) };
+}
+
+/**
+ * PLACEHOLDER (named): the arc's lines are translucent, so they go to the line list `FUN_003373b0` (0x488df8), whose
+ * drawing was not traced; the opaque line path beside it (`FUN_00360030`) tests Z (`TEST_1` = 0x5000c), so the list
+ * is taken to as well -- the ground hides the arc's part under it.
+ */
+export const ARC_DEPTH_TEST_PLACEHOLDER = true;
+
+/**
+ * The arc's strip: a line segment a pair of points, each end the colour with the segment's alpha (both ends alike, as
+ * `FUN_005fff40` sends them), blended, unfogged (the line's `PRIM` 0x49 has no FGE), one pixel wide as a GS line.
+ */
+function arcStrip(): LineSegments {
+  const n = (THROW_ARC.segments + 1) * 2;
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array(n * 3), 3));
+  geometry.setAttribute('color', new Float32BufferAttribute(new Float32Array(n * 4), 4));
+  const line = new LineSegments(geometry, new LineBasicMaterial({
+    vertexColors: true, transparent: true, depthWrite: false, depthTest: ARC_DEPTH_TEST_PLACEHOLDER, fog: false, toneMapped: false,
+  }));
+  line.name = 'throwArc';
+  line.frustumCulled = false;
+  line.visible = false;
+  return line;
+}
+
+function fillStrip(line: LineSegments, points: readonly V3[], alphas: readonly number[], color: V3): void {
+  const pos = line.geometry.getAttribute('position') as Float32BufferAttribute;
+  const col = line.geometry.getAttribute('color') as Float32BufferAttribute;
+  const n = Math.min(alphas.length, pos.count / 2);
+  for (let i = 0; i < n; i++) {
+    const a = points[i]!, b = points[i + 1]!, w = alphas[i]!;
+    pos.setXYZ(2 * i, a[0], a[1], a[2]);
+    pos.setXYZ(2 * i + 1, b[0], b[1], b[2]);
+    col.setXYZW(2 * i, color[0], color[1], color[2], w);
+    col.setXYZW(2 * i + 1, color[0], color[1], color[2], w);
+  }
+  pos.needsUpdate = true;
+  col.needsUpdate = true;
+  line.geometry.setDrawRange(0, n * 2);
 }
 
 /** Every throwable's pouch, full. */

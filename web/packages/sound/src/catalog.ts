@@ -56,6 +56,36 @@ export function fixSoundName(name: string): string {
   return SOUND_NAME_FIXES[name] ?? SOUND_NAME_FIXES[name.trim()] ?? name;
 }
 
+/**
+ * The casing sounds a map's banks may lack, and what stands in -- **a departure from the retail game** (the feel-QA
+ * playtest, research 90 item 12). The game resolves a sound by its name's CRC among the loaded banks' sounds, a binary
+ * search over one sorted table (`FUN_00344f30` -> `FUN_00344bf0`, decomp 243197): no fallback bank, no other name, so a
+ * name the map's banks lack plays nothing. The shell table sends grass and dirt (materials 4 and 8) to `.BUL_CAS_DIRT`,
+ * which 13 banks hold and Blood Lake's (MP10) does not, beside its own `.BUL_CAS_GRASS`; so on the console its casings
+ * land on the ground in silence. The viewer plays the first of these the map holds.
+ */
+export const SOUND_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
+  '.BUL_CAS_DIRT': ['.BUL_CAS_GROUND', '.BUL_CAS_GRASS', '.BUL_CAS_SAND'],
+  '.BUL_CAS_SAND': ['.BUL_CAS_GROUND', '.BUL_CAS_DIRT'],
+  '.BUL_CAS_METAL': ['.BUL_CAS_GR8ING'],
+  // The shotgun's shell on tin: two banks hold it (MP8's, MP61's); a map whose borrowing does not reach one plays its
+  // shell on metal (research 90 item 18).
+  '.SG_SHELL_TIN': ['.SG_SHELL_METAL'],
+  // On sand: three banks (MP6's, MP7's, MP73's); elsewhere the casing's sand, else the shell on stone (every `_am` bank).
+  '.SG_SHELL_SAND': ['.BUL_CAS_SAND', '.SG_SHELL_STONE'],
+};
+
+/**
+ * The sound to play for a data sound name, the one path every play takes (the effects' casings and impacts, the
+ * audio's callbacks, the list of names a map wants): the data's slips mended (`fixSoundName`), then the first
+ * stand-in the banks hold (`SOUND_FALLBACKS`) when they lack it.
+ */
+export function soundFor(name: string, has: (name: string) => boolean): string {
+  const fixed = fixSoundName(name);
+  if (has(fixed)) return fixed;
+  return SOUND_FALLBACKS[fixed]?.find(has) ?? fixed;
+}
+
 /** The zAnim command that plays a sound: set 0, command 30 (`_zanim_cmd_hdr`'s type 0x1e). */
 export const ZANIM_PLAY_SOUND = 30;
 /** The zAnim command that starts another animation by name: set 0, command 45 (0x2d). */

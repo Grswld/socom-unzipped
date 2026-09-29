@@ -37,6 +37,10 @@ Code: `@s2u/scene`'s `packages/scene/src/projectile.ts` (pure, tested in `test/p
 - **The claymore is remote** (§9.7.1): no tripwire, no proximity (only the PMN mine has `ProximityDistance`), no fuse.
   R1 plays `seal_place_claymore`; 1.3 s in it is down under the right hand and the kit's **Detonator** (ID 193) comes
   up; R1 with the Detonator sets off the SEAL's claymores within 500 units. Four down at most.
+- **The yellow arc** (§11) is the player controller's draw `FUN_005970b0`: from the fire press to the let-go, with a
+  hand grenade, outside the 9x view and the scopes, the throw's own parabola from `GetThrowAnim`'s table point at the
+  power of the moment -- 100 steps from 1 s before the hand to twice the fall to the feet, (0.78, 0.78, 0) fading from
+  alpha 0.75 to 0.1 ((1, 1, 0.8) in the night vision); no collision, no bounce, no impact marker.
 - **The bounce materials** (§9.9) resolve on all 22 maps with the archive's own names; the silent metal and asphalt
   bounces are the game's data (MP2's banks have no `.GREN_METAL`; no bank has `.GREN_ASPHALT`).
 
@@ -157,9 +161,9 @@ The dynamics block is the global at 0x44c250 (`FUN_0058ce60` returns it); `CAMER
 At the release frame (decomp 477024-477130; instructions 0x5c20f8-0x5c22f4):
 
 1. **The hand's point**: `FUN_002869d0(body+0x170, bone, (2, 0, 0), &out, 0)` carries the point (2, 0, 0) in the hand
-   bone's frame (`body+0x300`; `+0x2f8` for the left-lean toss) up the skeleton into the actor frame. The arc preview
-   (`FUN_005970b0`, the debug `DrawFunc<11CDynGrenade>`, behind `DAT_003df1b0`) uses `GetThrowAnim`'s table point
-   instead; the viewer does too, as it has no hand bone to offer yet.
+   bone's frame (`body+0x300`; `+0x2f8` for the left-lean toss) up the skeleton into the actor frame. The yellow arc
+   the held throw shows (`FUN_005970b0`, §11 -- not a debug draw: `DAT_003df1b0` is the player's control flag, 1 in
+   `.data`) uses `GetThrowAnim`'s table point instead.
 2. **The farthest distance**: `max_distance_stand` when the state is 0, `max_distance_crouch` otherwise.
 3. **`ComputeMaxVel`** (0x5976e0, demo `ComputeMaxVel__11CDynGrenadeFffPf`): `t = sqrt(2 (h + 1 x d) / 98)`,
    `speed = d / (0.707107 t)` with `h` the hand's height; `DAT_006505b8` = 1, `DAT_006505c0` = 0.707107. It is the
@@ -488,7 +492,7 @@ The C4 (ID 151, `Timer1` 6, `Explosion_Radius` 5, `IgnoreExplosionDI`) is in no 
   -- audio `.GREN_MED`, and the look workstream's shake by distance (a marked `MERGE(look)` call in `main.ts`).
 - **Hook**: `grenade()` (the slot, `held` -- what is in the hand, `'Detonator'` included -- `placed`, `placing`,
   `message`, phase, power, left, the grenades in the air, the last throw, bounces, explosions,
-  the M67's numbers), `throwGrenade(holdSeconds = 1, immediate = true)` (`immediate` false: the clip plays and the
+  the M67's numbers, `arc` -- the held throw's yellow arc, §11), `throwGrenade(holdSeconds = 1, immediate = true)` (`immediate` false: the clip plays and the
   hand lets go at its release), `equipGrenade(on?)`, `selectItem(item)` (`'rifle'`, a throwable, `'Detonator'`),
   `detonateCharges()` (the Detonator's fire), `throwClip()`, `grenadeTrail(on)` (a debug
   line along each flight), `resetGrenades()`.
@@ -549,3 +553,72 @@ What it found:
 | the flash glow | a fifth of 100 -> 190 | the light |
 | the scorch | at rest only | the decal's placement |
 | hull surfaces | bit 18 skipped (`isShotSurface`) | the projectile query's class |
+| `ARC_DEPTH_TEST_PLACEHOLDER` | true | the translucent line list's (`FUN_003373b0`) Z test (§11) |
+
+## 11. The yellow arc (round 5)
+
+The owner's request: while a grenade is held, a yellow arc shows where it will go. It is the player controller's own
+draw, not a debug aid, and it is the throw's parabola, not a trace.
+
+**Who draws it.** `FUN_005970b0` is a slot of `CSealCtrl`'s vtable (the pointer at 0x6694ec, beside the flash
+reaction's 0x669500; also at 0x40630c and 0x669a2c), the per-frame draw of the player's controller. Its gate
+`DAT_003df1b0` is **1 in `.data`**; `FUN_00598840` writes it, cleared when a scripted camera takes the player's
+control (decomp 78454) and set back after (78609, `FUN_005cf800`) -- the same flag gates `FUN_00596f10` beside it. The
+draw proper is `FUN_00598860`, the SOCOM 1 demo's `ai::DrawFunc<CDynGrenade>(LINE_TYPE, float, float, uint,
+CDynGrenade)` (research 44's matches); its lines go through `FUN_005fff40` (the running point `DAT_0066bac8`, the colour
+`DAT_0066bae0`, the alpha `DAT_00650d48`) to `FUN_0033b5f0`, the renderer's line (clipped to the view by
+`FUN_0035f9c0`; an alpha under 0.992 goes to the translucent line list `FUN_003373b0` at 0x488df8, else
+`FUN_00360030`'s packet: `PRIM` 0x49 -- a Gouraud line, blended, no fog -- and `TEST_1` 0x5000c, the Z test on).
+
+**When.** Every frame, if all hold (the instructions 0x5970d4-0x597130, 0x597424):
+
+- `DAT_003df1b0` (the player has control) and `DAT_006505f0` (the segment count, 100) are not 0;
+- the controller's `+0x170` **bit 6 is set and bit 7 is clear**. Bit 6 is set in the player update (`FUN_00594cf0`,
+  decomp 453627) on the fire button's press (the fire state 2) when the item is a hand grenade (category `'y'` = 0x79,
+  §9.2) with one left (`FUN_005bdb00`); bit 7 is set at the release (decomp 453534, where the pressure falls under
+  0.15 of the power and `FUN_005dfe30(body, 1)` fires); a weapon switch clears bit 6 (decomp 473853, 478914, 481592).
+  So **the arc shows from the press to the let-go** -- through the whole power build-up, and gone as the throw clip
+  starts, before the hand opens. The claymore (0x97) and the Detonator never show it; there is no cooking (§6).
+- the view mode (`body+0x200`, research 83 §4) is **under 4** (`FUN_005b90f0`: not 4; `FUN_005b9990`: not above 4):
+  third person and first person, not the 9x view nor a scope.
+
+**What.** The throw the release would make now, worked out as `CZKit_TickExplosives` does (§4, instruction for
+instruction: `GetThrowAnim` at 0x597178, `ComputeMaxVel` 0x597194, the aim's `asinf` clamped and `ComputeElevOfs`,
+`lerp(0.05 max, max, power)`, `ComputeTimeToImpact`, the aimed correction under `DAT_006505c8`), from the controller's
+power `+0x11c` as it is this frame -- **except the point**: `GetThrowAnim`'s table point (§3) through the body node's
+matrix, where the release takes the hand bone's (2, 0, 0). Then (0x59732c-0x5974b0):
+
+- `t_fall` = the later root of `-49 t^2 + vy t + h = 0` (`FUN_0050de20` with `0xc2440000`, `FUN_00575c50`), with
+  `vy` the world velocity's y (sp+0x70) and `h` the table point's height: the time to fall to the feet's level.
+- The impact point `p + v t_fall + (0, -49 t_fall^2, 0)` is worked out (sp+0xb0) and **never read**: no marker.
+- `FUN_00598860(-1.0, 2 t_fall, 0, 100, {p, v})`: the curve `p + v t + (0, -49 t^2, 0)` from **t = -1 s** (the
+  `lui 0xbf80` at 0x597498) to **`DAT_00650608` (2) x t_fall**, in `DAT_006505f0` = **100** steps. It is the analytic
+  parabola: **no hull query, no bounce, no stop at the first collision**; it runs on under the ground to twice the
+  fall, and starts a second back down the curve, behind and below the SEAL -- the Z test hides what is underground.
+- The step is a float added up while under 1 (`add.s` 0x598a9c, `c.lt.s` 0x598aac): 100 steps of 0.01 reach
+  0.99999934, and a closing segment ends on `t1` -- 101 segments. Each segment takes the alpha of its far end,
+  `FUN_006000a0(f)` = `0.1 f + 0.75 (1 - f)` (`FUN_006000f0(DAT_006505f8 0.75, DAT_00650600 0.1)`), clamped to 0..1:
+  **0.75 at the start fading to 0.1 at the end**.
+- **The colour** (0x59742c-0x59747c): **(0.78, 0.78, 0)** -- `0x3f47ae14` twice and 0: the yellow -- or **(1, 1,
+  0.8)** when the view mode is 3, the night vision (`FUN_005c80f0`). The colour is pushed (`FUN_00600190`) and popped
+  (`FUN_00600150`) around the draw.
+
+**The viewer** (`@s2u/scene` `throwArc.ts`: `THROW_ARC`, `throwArcTime`, `arcPoint`, `throwArc`; `viewer/src/grenade.ts`
+`drawArc`): the same gate (holding, a thrown throwable with one left, `GrenadeSource.viewState` -- `./zoom`'s state --
+under 4, pale in 3), the same launch as the release's through one function (`launchOf`, which `letGo` now uses too)
+with the table point, and the strip as a `LineSegments` of 101 segments with per-vertex RGBA, blended, depth-tested,
+unfogged, one pixel wide as the GS draws a line. The hook's `grenade().arc` gives its colour, segments, launch and ends.
+
+**Does the toss follow it?** `test/throwArc.test.ts` flies `stepGrenade` from the arc's launch over an empty hull: every
+frame's x and z are the arc's to 1e-6, and y sits exactly `g t dt / 2` under it (the flight is symplectic Euler, the
+arc the closed form -- 0.8 units a second into the flight at 60 Hz, as in the game); the drawn strip is within 1.5
+units of every frame to the fall. Without a posed body the throw that follows the let-go leaves from the arc's point at
+its velocity (`test/grenade.test.ts`). With the posed body the release is the hand bone's, as in the game, so the toss
+starts a few units off the arc's start (about 23 over the feet at the release frame against the table's 19.35, §8) --
+the game's own mismatch, kept.
+
+**Not found / not traced**: no console frame of the arc is in `scripts/parity/refs/` or `logs/parity/` (no grenade
+frame at all); reCOM has no `CDynGrenade` or arc code. The translucent line list's own Z test (`FUN_003373b0`'s
+renderer) is taken from the opaque path's (`ARC_DEPTH_TEST_PLACEHOLDER`). The line is one pixel of the PS2's 512x448
+frame, which reads thinner on a large canvas; WebGL lines are one pixel wide, so the viewer's is thinner still at
+high resolution. `FUN_005c9b30`, called first in the draw, was not read (it does not touch the arc's inputs).

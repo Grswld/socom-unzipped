@@ -2,7 +2,7 @@ import { parseRdr, rdrGet, readZarMembers, readZdbMember, Zar, type AssetSource,
 import { flattenScene, parseAnimSets, parseSceneGraph, parseWorldRoot, spawnsFor, worldCollision, type SceneNode } from '@s2u/scene';
 import {
   callbackSounds, findReverbPresets, fixSoundName, globalRegister2, parseBankFile, parseSoils, parseSoundScript, renderLoopAtLeastOneVoice,
-  reverbImpulse, SampleCache, type ReverbImpulse,
+  reverbImpulse, SampleCache, SOUND_FALLBACKS, type ReverbImpulse,
   SOCOM_REVERB_MODE, soundHash, soundParams, weaponSounds, zanimEmitters, zanimSounds, type Material, type RenderedSound,
   type SoundParams, type SoundSet, type WeaponSounds, type ZAnimPayload,
 } from '@s2u/sound';
@@ -302,7 +302,9 @@ export async function borrowMissing(
     banks.push({ file: best[0], bytes: bytes.slice(), only });
     need = need.filter((n) => !only.includes(n));
   }
-  for (const n of need) missing.push(`${archive}: no bank holds ${n}`);
+  // A name with a stand-in the banks now hold is not missing: the play takes the stand-in (`soundFor`).
+  const held = new Set([...have, ...banks.flatMap((b) => b.only ?? [])]);
+  for (const n of need) if (!SOUND_FALLBACKS[n]?.some((f) => held.has(f))) missing.push(`${archive}: no bank holds ${n}`);
 }
 
 /**

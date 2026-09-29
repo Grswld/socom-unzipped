@@ -130,7 +130,7 @@ describe('padInput: the buttons', () => {
     const all = padInput(pad({ axes: [0, -1, 1, 0], press: EXPECT.map(([b]) => PAD_BUTTON[b]) }));
     expect(all).toEqual({
       moveX: 0, moveY: 1, lookX: 1, lookY: 0,
-      jump: true, crouch: false, stance: true, boost: true, fire: true, aim: false, zoom: true, zoomOut: true, fireMode: true,
+      jump: true, crouch: false, stance: true, boost: true, fire: true, zoom: true, zoomOut: true, fireMode: true,
       action: true, leanLeft: true, leanRight: true, mode: true, swap1: true, swap2: true, inventory: true, scoreboard: true,
     });
   });
@@ -182,9 +182,8 @@ describe('PAD_LAYOUT: the owner\'s layout (2026-09-28), each row stated, documen
   it('gives every action a control, and each control one row', () => {
     const actions = new Set(PAD_LAYOUT.map((r) => r.action));
     // `crouch` has no pad button since L3 went back to the game's fire mode (research 84): the stance is Triangle's tap,
-    // the lane stays the touch pad's down button. `aim` has none since L1 went back to the game's SwapWeapon1: SOCOM II
-    // has no held aim, the first-person view is the zoom's first step (research 84).
-    for (const a of ['move', 'look', ...PAD_FLAGS.filter((f) => f !== 'crouch' && f !== 'aim')]) expect(actions.has(a as PadRow['action']), a).toBe(true);
+    // the lane stays the touch pad's down button.
+    for (const a of ['move', 'look', ...PAD_FLAGS.filter((f) => f !== 'crouch')]) expect(actions.has(a as PadRow['action']), a).toBe(true);
     expect(new Set(PAD_LAYOUT.map((r) => r.control)).size).toBe(PAD_LAYOUT.length);
   });
 
@@ -195,8 +194,10 @@ describe('PAD_LAYOUT: the owner\'s layout (2026-09-28), each row stated, documen
     expect(ACTION_WORDS.stance.walk).toMatch(/tap crouch, hold prone/);
     expect(ACTION_WORDS.boost.walk).toBeNull();
     expect(ACTION_WORDS.boost.fly).toBe('boost');
-    expect(ACTION_WORDS.fire.fly).toBeNull();               // fire and aim are the walk's
-    expect(ACTION_WORDS.aim.fly).toBeNull();
+    expect(ACTION_WORDS.fire.fly).toBeNull();               // fire is the walk's
+    // No held aim, no first person (the owner, 2026-09-29): the views are third person and the zoom's scope.
+    expect(PAD_FLAGS as readonly string[]).not.toContain('aim');
+    expect('aim' in ACTION_WORDS).toBe(false);
     expect(ACTION_WORDS.zoom).toEqual({ walk: 'zoom (scope)', fly: null });
     expect(ACTION_WORDS.action).toEqual({ walk: 'action (climb, ladder slide)', fly: null });
     expect(ACTION_WORDS.leanLeft.fly).toBeNull();

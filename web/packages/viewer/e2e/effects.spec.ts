@@ -113,14 +113,15 @@ test('Desert Glory: stone and sand take their own marks and impacts; the M4A1 fl
   await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-stone-marks.png') });
 
   // The M4A1's flash (`muzzle_m4` calls `flash_fire_hider`), played ahead of the camera as a muzzle effect.
-  // The flash lives three or four frames, so the effects are held for the picture.
+  // The flash lives three or four frames, so the effects are held for the picture: played inside a frame (after its
+  // update) and held right after the next frame's update, so it has run exactly one frame's step. Two slow frames under
+  // SwiftShader (each clamped to 0.1 s) outlast it.
   await page.evaluate(() => window.__viewer.setCamera({ yaw: 38, pitch: 10 }));
   await settle(page);
-  expect(await page.evaluate(() => window.__viewer.playEffect('muzzle_m4', undefined, 'muzzle'))).toBe(true);
-  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
-    window.__viewer.pauseEffects(true);
-    done();
-  }))));
+  expect(await page.evaluate(() => new Promise<boolean>((done) => requestAnimationFrame(() => {
+    const played = window.__viewer.playEffect('muzzle_m4', undefined, 'muzzle');
+    requestAnimationFrame(() => { window.__viewer.pauseEffects(true); done(played); });
+  })))).toBe(true);
   expect((await page.evaluate(() => window.__viewer.effects())).shown).toContain('muzzle_flash_hider');
   await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-m4a1-flash.png') });
   await page.evaluate(() => window.__viewer.pauseEffects(false));
@@ -194,4 +195,41 @@ test('water and footprints: the splash and the ripples on Enowapi, the prints on
   await page.waitForTimeout(500);
   expect((await page.evaluate(() => window.__viewer.effects())).water.footprints).toBeGreaterThan(2);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-footprints.png') });
+});
+
+/**
+ * The smoke grenade's screen (`smoke_grenade` -> `smoke_stream`: two sources on the canister, a puff each every 0.4 s
+ * growing tenfold over 5-7 s, 20 s of it) on Desert Glory, from outside and from inside; and a mission's ambient
+ * effects, started with the map (Frostfire's tower flames).
+ */
+test('the smoke screen reads as a screen; the mission ambient effects burn', async ({ page }) => {
+  test.setTimeout(170_000);
+  mkdirSync(SCREENS, { recursive: true });
+  await page.goto('/?map=MP6&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(() => window.__viewer.walkFor(0.4, { forward: 0 }));
+  await page.evaluate(() => window.__viewer.setCamera({ yaw: 200, pitch: -5 }));
+  await page.waitForTimeout(1000);
+  const feet = (await page.evaluate(() => window.__viewer.feet()))!;
+  const r = (200 * Math.PI) / 180;
+  const at: [number, number, number] = [feet[0] - Math.sin(r) * 60, feet[1] + 1, feet[2] - Math.cos(r) * 60];
+  expect(await page.evaluate((p) => window.__viewer.playEffect('smoke_grenade', p), at)).toBe(true);
+  await page.waitForTimeout(6000);
+  expect((await page.evaluate(() => window.__viewer.effects())).particles).toBeGreaterThan(25);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-smoke-screen.png') });
+  await page.evaluate(() => window.__viewer.walkFor(1.4, { forward: 1 }));   // into it
+  await page.waitForTimeout(300);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-smoke-inside.png') });
+
+  await page.goto('/?map=MP2&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  await page.evaluate(() => window.__viewer.setCamera({ x: 1055, y: 250, z: 1530, yaw: 0, pitch: -6 }));
+  await page.waitForTimeout(2500);
+  const fx = await page.evaluate(() => window.__viewer.effects());
+  expect(fx.ambient).toContain('firey_flames');
+  expect(fx.particles).toBeGreaterThan(20);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-tower-flames.png') });
 });

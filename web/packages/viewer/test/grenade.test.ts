@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Group } from 'three';
-import { buildGrid, CLAYMORE_RULES, HE, M67, PLACE_CLAYMORE_ANIM, releaseSeconds, THROW_ANIMS, throwClipSeconds, type Grid, type GridParams, type V3, type WorldPoly } from '@s2u/scene';
+import { Group, type LineSegments } from 'three';
+import { arcPoint, THROW_ARC, buildGrid, CLAYMORE_RULES, HE, M67, PLACE_CLAYMORE_ANIM, releaseSeconds, THROW_ANIMS, throwClipSeconds, type Grid, type GridParams, type V3, type WorldPoly } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
 import { equipmentSlots, GrenadeThrower, KIT_ITEMS, RELEASE_POINT, THROWABLES, worldToActor, type GrenadeSource } from '../src/grenade';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
@@ -285,5 +285,92 @@ describe('the smoke and the flash going off', () => {
     expect(h.stats().leftByItem.Claymore).toBe(2);
     expect(refused).toEqual(['Unable To Deploy: Max Equipment Items Placed (4)']);
     expect(h.stats().message).toBeNull();                      // 2 s on screen, then gone
+  });
+});
+
+describe('the yellow arc while the throw is held (FUN_005970b0, research 85 §11)', () => {
+  /** Holds the trigger `frames` frames of 1/60 s. */
+  const hold = (g: GrenadeThrower, frames: number): void => {
+    g.pull();
+    for (let i = 0; i < frames; i++) g.update(1 / 60);
+  };
+
+  it('shows from the press, grows with the power, and is gone at the let-go', () => {
+    const { g } = thrower();
+    g.select('M67');
+    g.update(1 / 60);
+    expect(g.stats().arc).toBeNull();                          // up, not held: no arc
+    hold(g, 6);
+    const early = g.stats().arc!;
+    expect(early.visible).toBe(true);
+    expect(early.segments).toBe(101);
+    expect(early.color).toEqual([...THROW_ARC.color]);
+    for (let i = 0; i < 30; i++) g.update(1 / 60);
+    const late = g.stats().arc!;
+    expect(Math.hypot(...late.velocity)).toBeGreaterThan(Math.hypot(...early.velocity));
+    g.release();
+    g.update(1 / 60);                                          // the let-go: the clip starts, the arc goes
+    expect(g.stats().phase).toBe('throwing');
+    expect(g.stats().arc).toBeNull();
+  });
+
+  it('is the throw that follows: without a posed body the toss leaves from the arc\'s point at the arc\'s velocity', () => {
+    const { g } = thrower();
+    g.select('M67');
+    hold(g, 40);
+    const arc = g.stats().arc!;
+    g.release();
+    g.update(1 / 60);
+    for (let i = 0; i < 60 && !g.stats().lastThrow; i++) g.update(1 / 60);
+    const t = g.stats().lastThrow!;
+    expect(t.fromHand).toBe(false);
+    t.from.forEach((c, i) => expect(c).toBeCloseTo(arc.from[i]!, 9));
+    t.velocity.forEach((c, i) => expect(c).toBeCloseTo(arc.velocity[i]!, 9));
+  });
+
+  it('starts from GetThrowAnim\'s table point, as the game\'s does, even with a posed hand', () => {
+    const { g } = thrower({ handPoint: () => [104, 69, 199] });
+    g.select('M67');
+    hold(g, 40);
+    const arc = g.stats().arc!;
+    expect(worldToActor([100, 50, 200], 90, arc.from).map((v) => Math.round(v * 1e6) / 1e6)).toEqual(THROW_ANIMS.standThrow.offset);
+    expect(arc.start).toEqual(arcPoint(arc.from, arc.velocity, -1));
+  });
+
+  it('pale in the night vision (view mode 3), none in the 9x view or a scope (4 and up), none for the claymore', () => {
+    let mode = 3;
+    const { g } = thrower({ viewState: () => mode });
+    g.select('M67');
+    hold(g, 10);
+    expect(g.stats().arc!.color).toEqual([...THROW_ARC.nightColor]);
+    mode = 4;
+    g.update(1 / 60);
+    expect(g.stats().arc).toBeNull();
+    mode = 5;
+    g.update(1 / 60);
+    expect(g.stats().arc).toBeNull();
+    mode = 1;
+    g.update(1 / 60);
+    expect(g.stats().arc!.color).toEqual([...THROW_ARC.color]);
+    const c = thrower().g;
+    c.select('Claymore');
+    hold(c, 10);
+    expect(c.stats().arc).toBeNull();
+  });
+
+  it('draws the strip as line segments, each with its alpha, and hides it after the throw', () => {
+    const { g } = thrower();
+    g.select('M67');
+    hold(g, 20);
+    const line = g.object.getObjectByName('throwArc') as LineSegments;
+    expect(line.visible).toBe(true);
+    const pos = line.geometry.getAttribute('position'), col = line.geometry.getAttribute('color');
+    expect(pos.count).toBe(202);
+    expect(col.itemSize).toBe(4);
+    expect(col.getW(0)).toBeCloseTo(0.75 * 0.99 + 0.1 * 0.01, 5);
+    expect(col.getW(201)).toBeCloseTo(0.1, 5);
+    g.release();
+    g.update(1 / 60);
+    expect(line.visible).toBe(false);
   });
 });

@@ -65,7 +65,7 @@ interface Source {
 }
 
 /** The most particles drawn at once (the game sorts up to 5000: `FUN_00326c30`). */
-export const MAX_PARTICLES = 2000;
+export const MAX_PARTICLES = 5000;
 
 const lerp = (r: readonly [number, number], u: number): number => r[0] + (r[1] - r[0]) * u;
 /** A number an owner (a run) keys its sources by. */
@@ -123,7 +123,9 @@ export class ParticleSystem {
     const add = (v: Vec3): void => { position = position ? [position[0] + v[0], position[1] + v[1], position[2] + v[2]] : [...v]; };
     if (config.atContext && ctx.position) add(ctx.position);
     if ((config.flagsA & 0x4) !== 0) add(config.offset);
-    if (config.atNode && node) add([node.elements[12]!, node.elements[13]!, node.elements[14]!]);
+    // A source that follows its node (flag A 0x10) keeps its place in the node's frame: Blizzard's snow falls 50 ahead
+    // of the camera and 20 over it wherever the camera looks [reading: +0x54 is local while the node is followed].
+    if (config.atNode && node && !config.follow) add([node.elements[12]!, node.elements[13]!, node.elements[14]!]);
     if (position && config.positionBlock) {
       const { base, range } = config.positionBlock;
       add([base[0] + range[0] * this.random(), base[1] + range[1] * this.random(), base[2] + range[2] * this.random()]);
@@ -160,7 +162,7 @@ export class ParticleSystem {
     for (const [key, s] of this.sources) {
       if (!s.alive()) { this.sources.delete(key); continue; }
       if (!s.active || s.config.interval === null || s.config.interval <= 0) continue;
-      if (s.follow && !s.position) { const m = s.follow(); if (m) s.node = m.clone(); }
+      if (s.follow) { const m = s.follow(); if (m) s.node = m.clone(); }
       if (!s.started) { s.started = true; continue; }       // the first tick records the place and emits nothing
       s.acc += dt;
       let n = Math.floor(s.acc / s.config.interval + 1e-9);
@@ -214,12 +216,21 @@ export class ParticleSystem {
     let rand: Vec3 = [lerp(c.randomVelocity[0], r()), lerp(c.randomVelocity[1], r()), lerp(c.randomVelocity[2], r())];
     if ((c.flagsB & PARTICLE_B.LOCAL_RANDOM) !== 0) rand = local(rand);
     const velocity: Vec3 = [base[0] + s.world[0] + rand[0], base[1] + s.world[1] + rand[1], base[2] + s.world[2] + rand[2]];
-    const at: Vec3 = s.position ?? (m ? [m[12]!, m[13]!, m[14]!] : [0, 0, 0]);
-    const position: Vec3 = [
-      at[0] + lerp(c.box[0], r()) + velocity[0] * sub,
-      at[1] + lerp(c.box[1], r()) + velocity[1] * sub,
-      at[2] + lerp(c.box[2], r()) + velocity[2] * sub,
-    ];
+    const boxed: Vec3 = [lerp(c.box[0], r()), lerp(c.box[1], r()), lerp(c.box[2], r())];
+    let at: Vec3;
+    if (c.follow && m) {
+      // In the followed node's frame: its place plus the box, carried by the node's matrix.
+      const l: Vec3 = [(s.position?.[0] ?? 0) + boxed[0], (s.position?.[1] ?? 0) + boxed[1], (s.position?.[2] ?? 0) + boxed[2]];
+      at = [
+        m[0]! * l[0] + m[4]! * l[1] + m[8]! * l[2] + m[12]!,
+        m[1]! * l[0] + m[5]! * l[1] + m[9]! * l[2] + m[13]!,
+        m[2]! * l[0] + m[6]! * l[1] + m[10]! * l[2] + m[14]!,
+      ];
+    } else {
+      const o = s.position ?? (m ? [m[12]!, m[13]!, m[14]!] : [0, 0, 0]);
+      at = [o[0] + boxed[0], o[1] + boxed[1], o[2] + boxed[2]];
+    }
+    const position: Vec3 = [at[0] + velocity[0] * sub, at[1] + velocity[1] * sub, at[2] + velocity[2] * sub];
     const texture = c.textureMode === 'random' && c.textures.length > 1
       ? c.textures[Math.min(c.textures.length - 1, Math.floor(r() * c.textures.length))]!.name : c.texture ?? '';
     // A rotated particle's spin (`FUN_00327cd0`); its angle is whatever the pool's slot last held: random here.

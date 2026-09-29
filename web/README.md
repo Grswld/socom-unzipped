@@ -165,9 +165,8 @@ Move and General), and the pad's layout under them, grouped the same way, once a
 | `W`/`S`, `A`/`D` | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
 | mouse (captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
 | `Space` | jump |
-| `V` | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
-| `C` | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
-| right click | the zoom, a step a click: first person from the SEAL's eyes, then the rifle's scope, then back to third person. The Mark 23 has no scope (the owner's ruling, 2026-09-29): with it the click goes between third and first person. On a wide screen the scope's black fills the frame beside it |
+| `C` | the stance: a tap toggles stand and crouch (from prone, a tap crouches); held 0.4 s, prone (`STANCE_HOLD_S_PLACEHOLDER`, the pad's Triangle's too); `Ctrl+C` stays the browser's. On a touch screen, the **C** button beside the lift buttons cycles stand → crouch → prone |
+| right button | steps the zoom: third person → the scope (drawn from the SEAL's eyes, the body hidden) → third person. There is no first person: the views are third person and scoped, as SOCOM II's (the owner, 2026-09-29). The Mark 23 has no scope: with it the zoom does nothing (the owner's ruling, 2026-09-29). On a wide screen the scope's black fills the frame beside it |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
 | `R` | reloads; an empty magazine waits for it |
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
@@ -192,14 +191,14 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | d-pad Left / Right (held) | peek left / right, standing still | — |
 | R1 | fire (held fires at the rifle's rate; let go stops) | — |
 | Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
-| L1 (held) | aim view (first person) | — |
+| L1 | the rifle (the game's SwapWeapon1); no held aim, no first person | — |
 | d-pad Up | zoom (scope): the lane is read, the zoom itself is a stub until the accuracy work merges | — |
 | Start | fly (as `G`) | walk (as `G`) |
 | L3 | crouch toggle on release (the launcher's crouch shortcut) | down |
 | R3 | — | boost |
 
-Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/play.ts`): the game reads the button's
-pressure, which a browser pad does not give.
+Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/stanceButton.ts`, `C`'s too): the game
+reads the button's pressure, which a browser pad does not give.
 
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
@@ -248,7 +247,7 @@ constants, which are meant to be tuned.
 A one-finger drag looks around, which the canvas gives for free. Moving is the part a phone had no way
 to do, so the left half of the screen is a virtual stick — a circle that appears wherever the thumb
 lands and follows it — and two buttons in the bottom-right corner do what Q and E do. Beside them, for the
-walk, a **C** button cycles the stance as `C` does, and a round **fire** button is the trigger: held, the rifle
+walk, a **C** button cycles the stance (stand, crouch, prone), and a round **fire** button is the trigger: held, the rifle
 fires at its rate. The right half is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
@@ -445,7 +444,7 @@ console's spawn dump holds a crouched player"). The skeleton root is 11.484 over
 the bind pose) and 5.504 crouched -- the dump's player is crouched: its root under the game's own stance test of 9.0,
 a knee on the ground; prone 1.8 is an estimate. The body (`viewer/src/body.ts`) is a stand-in at 19.6 units
 standing (1.96 m: the standing head joint 17.37 plus the head's 2.23 measured on the frame), 12.4 crouched and 5.1
-across the shoulders, in the world's shading with the frame's own colours; the first-person eye, 18.3, is an
+across the shoulders, in the world's shading with the frame's own colours; the scope's eye, 18.3, is an
 estimate.
 
 **The reticle and the rifle are the disc's** ("The console's reticle: two bitmaps at one texel per pixel, a
@@ -461,8 +460,8 @@ every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rd
 (`HELD_RIFLE`) fires to `Maximum_Range` x 10 units; its reticle opens with the walk, the look and each round and closes
 at the weapon's own per-stance rates (`viewer/src/accuracy.ts`), halved in third person; a round climbs the whole
 reticle up the screen (the recoil you see unscoped -- the camera does not kick there) and goes inside it by the
-game's cone; semi, burst and automatic (`B`, L3; burst at spawn); the right button steps the view third -> first person -> the 3x
-scope and back, d-pad Up and Down step it in and out (`viewer/src/zoom.ts`, the scope's tube and dashed cross off `HUD2_TXR`).
+game's cone; semi, burst and automatic (`B`, L3; burst at spawn); the right button steps the view third person -> the 3x
+scope and back (no first person: the owner, 2026-09-29), d-pad Up and Down step it in and out (`viewer/src/zoom.ts`, the scope's tube and dashed cross off `HUD2_TXR`).
 
 **The rifle is in the SEAL's hands, raised to fire as the game raises it** (the sprint 2 player spec's §6, "The rifle
 in the hands, the Fire set, the kick and the satchel"). The body makes a `rifle` node under `rhand` with the rifle in
@@ -483,8 +482,8 @@ point in the world, the end, the hit, the rounds left), `reloadStart` (its secon
 takes the rifle and L2 (`2`) the Mark 23 (`a_mark23`, `scene/src/weapons.ts` `HELD_SIDEARM`: 12 rounds, semi, `FireWait`
 0.2, reticle set 0, `mark23_icon.tif`, `.MARK_23`); R2 steps the inventory through them and the throwables, and the
 M67 is no longer on L2 (`viewer/src/kit.ts`); on the PC `3` and `4` take up the kit's equipment slots 1 and 2 (the M67
-and the HE, `grenade.ts` `equipmentSlots`). The Mark 23 zooms no further than first person (`zoom.ts`
-`zoomsPastFirst`: the owner's ruling of 2026-09-29, over the game's one-mode rule that sent it to the 9x view). The
+and the HE, `grenade.ts` `equipmentSlots`). The Mark 23 does not zoom (`zoom.ts` `zoomsIn`: the
+owner's ruling of 2026-09-29, over the game's one-mode rule that sent it to the 9x view). The
 swap plays the game's clip (the MOTION workstream's
 `WalkMode.swapWeapon`): the rifle rides `spinelo` on the clip's own track and is slung at `character.rdr`'s offset, the
 pistol comes out of the hips or the holster at the clip's hand-off (0.72 standing) and goes back into the `rthigh`
@@ -495,7 +494,7 @@ the hand's and the back's (`Animator.heldLocal`), and eases over 0.4 s from wher
 `m_item`. A reload puts the next magazine in at its start and keeps a part-used one in the ring; an empty magazine
 reloads by itself 0.01 s later, a dry trigger clicks (`dry`); walking faster than 20 a second turns a still reload
 into the moving one. The accuracy pip (`ret_accuracy`) marks a raised muzzle blocked short of the point under the
-reticle (`FUN_005aa6e0`, `FUN_00215250`). In first person the game draws none of the SEAL -- nor does the page.
+reticle (`FUN_005aa6e0`, `FUN_00215250`). In the scope the page draws none of the SEAL, as the game draws none in its views from the eye.
 
 **The HUD is the game's** ([`docs/research/87-hud.md`](docs/research/87-hud.md)): `CHUD`'s own rectangles read out
 of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, the weapon icon at (20, 389), "30/30" and
@@ -520,7 +519,7 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall
   are the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement
   (W2.2c: the instruments and the recipe are in the tree, [research 79](../docs/research/79-seal-speed-on-the-console.md))
-  waits for a window the owner names. Until it runs the prone root (1.8), the prone body (3.0), the first-person
+  waits for a window the owner names. Until it runs the prone root (1.8), the prone body (3.0), the scope's eye
   heights (the eye 18.3 standing, and the crouched and prone eyes derived from it) and the crouch and prone body
   columns are estimates, and two numbers are readings only: the crouch diagonal's speed-up along its axis (19.8 at
   45°) and the headroom ray's start (the feet + 14). The slope and water slow-down are not modelled.

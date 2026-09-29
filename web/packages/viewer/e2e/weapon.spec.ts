@@ -132,7 +132,6 @@ test('the owner\'s rulings of 2026-09-29: keys 1-4, no scope on the Mark 23, the
   await page.waitForTimeout(1500);
 
   // The rifle's scope on a 16:9 frame: its black reaches the frame's left and right edges (the bars were culled).
-  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(1);
   expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(5);
   await expect.poll(async () => (await page.evaluate(() => window.__viewer.zoom())).magnification).toBe(3);
   expect((await page.evaluate(() => window.__viewer.reticle())).mode).toBe('scope');
@@ -142,22 +141,19 @@ test('the owner\'s rulings of 2026-09-29: keys 1-4, no scope on the Mark 23, the
   for (const [i, l] of wide.luma.slice(0, edges.length).entries()) expect(l, `edge ${edges[i]}`).toBeLessThan(4);
   expect(wide.luma[edges.length]!).toBeGreaterThan(20);           // the world inside the tube
   await page.screenshot({ path: join(SCREENS, 'frostfire-a-scope-16x9.png') });
-  expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(1);
   expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(0);
 
-  // 2: the Mark 23 (L2's swap), and no scope on it: the zoom stops at first person, the sidearm's reticle.
+  // 2: the Mark 23 (L2's swap), and no scope on it: the zoom does nothing, the sidearm's reticle.
   await page.keyboard.press('Digit2');
   expect((await page.evaluate(() => window.__viewer.kit())).swap).not.toBeNull();
   await expect.poll(async () => (await page.evaluate(() => window.__viewer.kit())).swap).toBeNull();
   expect(await page.evaluate(() => window.__viewer.weapon())).toMatchObject({ item: 'pistol', mounts: { rifle: 'carry', pistol: 'hand' } });
-  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(1);
-  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(1);
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(0);
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(0);
   await page.waitForTimeout(300);
   const pistolView = await page.evaluate(() => ({ z: window.__viewer.zoom(), r: window.__viewer.reticle() }));
-  expect(pistolView.z).toMatchObject({ state: 1, view: 'first' });
-  expect(pistolView.z.magnification).toBeLessThan(1.02);
+  expect(pistolView.z).toMatchObject({ state: 0, view: 'third', magnification: 1 });
   expect(pistolView.r).toMatchObject({ mode: 'reticle', type: 0 });   // the sidearm's set, not the scope or the binoculars
-  expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(0);
 
   // 3 and 4: the kit's equipment slots 1 and 2 (the M67, the HE); 1 the rifle back.
   await page.keyboard.press('Digit3');

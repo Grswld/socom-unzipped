@@ -92,9 +92,10 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     // Borrowed (PLACEHOLDER): the tin steps Frostfire's METAL_THIN floors ask for, the metal bounce of a grenade.
     expect(d.banks.find((b) => b.only?.includes('.STEP_TIN'))).toBeDefined();
     expect(d.banks.some((b) => b.only?.includes('.GREN_METAL'))).toBe(true);
-    // The names no bank on the disc holds: the game's own shell_eject spells the metal casing `.BUL_CASE_METAL` (the
-    // banks: `.BUL_CAS_METAL`), and names a shotgun shell on tin that no bank has.
-    expect(d.missing).toEqual(['MP2: no bank holds .SG_SHELL_TIN']);             // .BUL_CASE_METAL: read as .BUL_CAS_METAL
+    // Nothing wanted is missing (research 90 item 18): the casing names go through the one name table (`@s2u/sound`) --
+    // shell_eject's `.BUL_CASE_METAL` is the banks' `.BUL_CAS_METAL`, and the shotgun's `.SG_SHELL_TIN` (MP8's and
+    // MP61's banks, past the borrowing's reach here) stands in as the map's `.SG_SHELL_METAL`.
+    expect(d.missing).toEqual([]);
     expect(new Map(d.params).get('.STEP_STONE')?.range).toEqual([30, 200]);
     expect(d.materials[STONE]!.step).toBe('.STEP_STONE');
     expect(d.weapons.find((w) => w.name === 'M4A1 SD')).toMatchObject({ fireClose: '.M4A1_SIL', reload: '.M4A1_SIL_RLD' });
@@ -207,7 +208,8 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     const out = new Recorder(), audio = new GameAudio(out, seeded(2));
     audio.setData(d72);
     out.unlock();
-    expect(audio.onAnimCallback('grenade_hit_asphalt')).toBe('.GREN_ASPHALT');
+    // The name played, through the one name table (`@s2u/sound`'s `soundFor`): the stone's bounce.
+    expect(audio.onAnimCallback('grenade_hit_asphalt')).toBe('.GREN_STONE');
     expect(audio.has('.BUL_CASE_METAL')).toBe(true);                               // the misspelt casing, mended
   });
 
@@ -296,7 +298,7 @@ describe.skipIf(!haveSound)('every map steps on every floor', () => {
       if (audio.onLand(50, m).length === 0 && mat.land) silent.set(`${mat.name}/land`, 1);
     }
     expect([...silent.keys()]).toEqual([]);
-    // Only the casings' names the disc holds nowhere (`.BUL_CASE_METAL`, `.SG_SHELL_*`) may be missing.
-    expect(d.missing.filter((x) => /no bank holds/.test(x) && !/BUL_CASE_METAL|SG_SHELL_/.test(x))).toEqual([]);
+    // No casing name is missing: the data's slip is mended and a shell no bank reached stands in (research 90 item 18).
+    expect(d.missing.filter((x) => /no bank holds/.test(x))).toEqual([]);
   }, 60_000);
 });

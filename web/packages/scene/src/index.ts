@@ -21,6 +21,7 @@ export * from './tuning';
 export * from './segment';
 export * from './weapons';
 export * from './projectile';
+export * from './throwArc';
 export * from './ladder';
 export * from './effectModels';
 export * from './effects';
