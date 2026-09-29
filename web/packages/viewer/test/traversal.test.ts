@@ -8,7 +8,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { loadMap } from '../src/loadMap';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
 import { groundGrid, groundPolygons, TICK, Walker, type WalkInput } from '../src/walk';
-import { LADDER_STANDOFF, Traversal, TRAVERSAL_CLIPS, type TraversalEvent } from '../src/traversal';
+import { LADDER_STANDOFF, rippleAnimation, Traversal, TRAVERSAL_CLIPS, type TraversalEvent } from '../src/traversal';
 
 /**
  * The traversal moves (web research 86): synthetic hulls pin the rules, Frostfire's ladders (MP2, the fixture) pin the
@@ -549,5 +549,114 @@ describe('the hang, as the game plays it (research 86 section 3.7)', () => {
     expect(c.t.state().kind).toBe('hangUp');
     run(c.w, STILL, () => c.t.state().kind === 'none', 400);
     expect(c.w.state.y).toBeCloseTo(30, 6);
+  });
+});
+
+describe('the climb, as the game weighs it (research 86 section 3.3)', () => {
+  it('plays the crate and the medium as one play between 12 and 26.5, the crate at 1 - (h - 12) / 14.5', () => {
+    const { grid, polys } = climbWorld(18, 1);
+    const { w, t } = climber(polys, grid);
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    t.action();
+    run(w, STILL, () => t.state().kind === 'climb', 120);
+    const pose = t.pose()!;
+    expect(pose.clip).toBe('seal_climbcrate');
+    expect(pose.blend?.clip).toBe('seal_climb_medium');
+    expect(pose.blend?.weight).toBeCloseTo(1 - 6 / 14.5, 6);
+    run(w, STILL, () => t.state().kind === 'none', 400);
+    expect(w.state.y).toBeCloseTo(18, 6);
+  });
+
+  it('adds the contact material\'s FOOT_STEP_OFFSET to the height: 12.5 of grass is an 11.7 crate climb, not a blend', () => {
+    const polys = [floor(-100, -100, 100, 100, 0), ...box(-10, -30, 10, 0, 12.5, 1).map((p) => ({ ...p, material: 4 }))];
+    const grid = world(polys);
+    const { w, t } = climber(polys, grid);
+    run(w, FORWARD, () => t.climbPrompt() !== null, 120);
+    t.action();
+    run(w, STILL, () => t.state().kind === 'climb', 120);
+    expect(t.pose()?.blend).toBeUndefined();
+    expect(t.pose()?.clip).toBe('seal_climbcrate');
+  });
+
+  it('the obstacle ray (FUN_0054e430): a wall standing at the ledge\'s top replaces the contact, and a plain wall is not climbed', () => {
+    const wall = quad([-10, 12, -0.2, 10, 12, -0.2, 10, 40, -0.2, -10, 40, -0.2], 2, 0, 'worldmodel/wall');
+    const polys = [floor(-100, -100, 100, 100, 0), ...box(-10, -30, 10, 0, 12, 4), wall];
+    const grid = world(polys);
+    const { w, t } = climber(polys, grid);
+    run(w, FORWARD, () => false, 60);
+    expect(t.climbPrompt()).toBeNull();
+  });
+});
+
+describe('the dive (research 86 section 6.1)', () => {
+  const plain = (): { grid: Grid; polys: WorldPoly[] } => { const polys = [floor(-200, -200, 200, 200, 0)]; return { grid: world(polys), polys }; };
+
+  it('dives from a run into prone: the run kept, the root down at gravity after 0.2 s, the speed bled at 150', () => {
+    const { grid, polys } = plain();
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 10, 100); w.state.yaw = 0;
+    run(w, FORWARD, () => Math.hypot(w.state.vx, w.state.vz) > 60, 60);
+    const v0 = Math.hypot(w.state.vx, w.state.vz), z0 = w.state.z;
+    expect(t.dive(w)).toBe(true);
+    expect(w.stance).toBe('prone');
+    expect(t.pose()?.clip).toBe('seal_dive2prone');
+    const ticks = run(w, FORWARD, () => t.state().kind === 'none', 200);
+    const fall = Math.sqrt((2 * (11.484 - 2.2)) / 235);
+    expect(ticks * TICK).toBeCloseTo(0.2 + fall + v0 / 150, 1);
+    expect(z0 - w.state.z).toBeCloseTo(v0 * (0.2 + fall) + (v0 * v0) / 300, -1);
+    expect(w.stance).toBe('prone');
+  });
+
+  it('is refused walking (under 30 a second), prone, or in water over 2 deep', () => {
+    const { grid, polys } = plain();
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 10, 100); w.state.yaw = 0;
+    run(w, { forward: 0.3, right: 0, boost: false }, () => false, 60);
+    expect(t.dive(w)).toBe(false);
+    w.stance = 'prone';
+    expect(t.dive(w)).toBe(false);
+  });
+});
+
+describe('the ground and the water on the stick, and the ripples (research 86 section 5.3)', () => {
+  it('slows each axis going uphill by 1 - d^2 (FUN_005b56c0), not downhill or across', () => {
+    // A 30-degree ramp rising toward -z: its normal (0, cos 30, sin 30) tilts toward +z, back at a mover going up it.
+    const k = Math.tan(Math.PI / 6);
+    const ramp = quad([-100, 0, 0, 100, 0, 0, 100, 100 * k, -100, -100, 100 * k, -100], 3);
+    const polys = [ramp, floor(-100, 0, 100, 100, 0)];
+    const grid = world(polys);
+    const w = new Walker(grid);
+    const t = new Traversal(grid, polys);
+    w.driver = t;
+    w.place(0, 60, -40); w.state.yaw = 0;
+    const d = Math.sin(Math.PI / 6);
+    const [up] = t.stickScale(w, 1, 0);
+    expect(up).toBeCloseTo(1 - d * d, 3);                            // 0.75 up a 30-degree ramp
+    expect(t.stickScale(w, -1, 0)[0]).toBeCloseTo(-1, 6);           // down it: no factor
+    expect(t.stickScale(w, 0, 1)[1]).toBeCloseTo(1, 6);             // across it: no factor
+  });
+
+  it('asks for the big ripple with the water between the feet and the body\'s top, the small within 10 over it', () => {
+    const at = (depth: number, pace = 0): ReturnType<Traversal['ripple']> => {
+      const water = { ...floor(-50, -50, 50, 50, depth), material: 11 };
+      const polys = [floor(-100, -100, 100, 100, 0), water];
+      const grid = world(polys);
+      const w = new Walker(grid);
+      const t = new Traversal(grid, polys);
+      w.driver = t;
+      w.place(0, 40, 0); w.state.yaw = 0;
+      for (let i = 0; i < 30; i++) w.tick({ forward: pace, right: 0, boost: false });
+      return t.ripple();
+    };
+    expect(at(6)).toEqual({ size: 'big', pace: 'anim', at: [0, 6, 0] });
+    expect(at(6, 1)?.pace).toBe('run');
+    expect(at(25)?.size).toBe('small');                            // over the 19.6 top, within 10
+    expect(at(35)).toBeNull();                                      // 10 or more over it: nothing
+    expect(rippleAnimation({ size: 'big', pace: 'walk' })).toBe('big_ripple_anim_walk');
+    expect(rippleAnimation({ size: 'small', pace: 'anim' })).toBe('small_ripple_anim');
   });
 });

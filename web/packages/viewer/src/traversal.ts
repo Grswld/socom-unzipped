@@ -1,12 +1,15 @@
 import {
-  findLadders, ladderFrame, probeGround, probeWater, segmentHits, surfaceWord, APP_LADDER, SEAL_TUNING, SURFACE_SIDE, SURFACE_SKIP,
+  findLadders, ladderFrame, probeFloor, probeGround, probeWater, segmentHits, surfaceWord, APP_LADDER, SEAL_TUNING, SURFACE_SIDE, SURFACE_SKIP,
   type Grid, type Ladder, type MotionClip, type WorldPoly,
 } from '@s2u/scene';
 import type { TraversalPose } from './animator';
 import { oneShotSeconds } from './locomotion';
-import { ClipPath, clipShape, reverseShape, rootAt, shapeTravel, straightShape, truncateShape, type ClipShape } from './clipPath';
-import { contactHolds, floorUnder, planClimb, topFloor, touchClimbable, type ClimbClass, type ClimbContact, type ClimbPlan } from './climb';
+import { blendShapes, ClipPath, clipShape, reverseShape, rootAt, shapeTravel, straightShape, truncateShape, type ClipShape } from './clipPath';
+import {
+  contactHolds, floorUnder, obstacleRay, planClimb, topFloor, touchClimbable, type ClimbClass, type ClimbContact, type ClimbPlan,
+} from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
+import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './walk';
 
 /**
@@ -53,7 +56,7 @@ export const TRAVERSAL_CLIP = {
   toSlide: 'seal_ladder2slide', slide: 'seal_ladderslide', slideLand: 'seal_ladderslide_land',
   stepUp: 'seal_step_up', climbLow: 'seal_climbcrate', climbMed: 'seal_climb_medium', toHang: 'seal_stand2hang',
   hang: 'seal_hang', hangUp: 'seal_hang2climbup', hangDown: 'seal_hang_jumpdown', over: 'seal_climb_over',
-  turn180: 'seal_180',
+  turn180: 'seal_180', dive: 'seal_dive2prone',
   stand2llean: 'seal_stand2llean', stand2rlean: 'seal_stand2rlean', crouch2llean: 'seal_crouch2llean',
   crouch2rlean: 'seal_crouch2rlean', prone2llean: 'seal_prone2llean', prone2rlean: 'seal_prone2rlean',
   lleanStep: 'seal_llean_rstep', rleanStep: 'seal_rlean_rstep',
@@ -80,6 +83,7 @@ const FALLBACK: Record<string, [seconds: number, rootY: number, rise: number, ah
   [TRAVERSAL_CLIP.hang]: [2.2, 18.14, 0, 0, 2],
   [TRAVERSAL_CLIP.hangDown]: [1.5, 18.82, -7.42, -5.0, 45],
   [TRAVERSAL_CLIP.turn180]: [0.95, 11.5, 0, -5.68, 28],
+  [TRAVERSAL_CLIP.dive]: [1.6, 9.76, -7.66, 27.9, 16],
   [TRAVERSAL_CLIP.climbMed]: [1.5, 11.52, 21.48, 11.44, 32],
   [TRAVERSAL_CLIP.hangUp]: [2.8, 18.14, 22.56, 5.1, 63],
   [TRAVERSAL_CLIP.over]: [1, 10.96, -0.96, 16.28, 19],
@@ -142,6 +146,14 @@ const WATER_PRONE = 2, WATER_CROUCH = 8.5, WATER_CRAWL = 1.5;
 const TOP_SLIDE_WINDOW = 0.2;
 /** `FUN_0059afd0`: the jump down's height is the clip root's for its first 0.2, the fall's after. */
 const HANG_PUSH = 0.2;
+/** The body's box top over the feet, by posture (`./stature`'s heights): the ripple's big / small split. */
+const BODY_TOP: Readonly<Record<Stance, number>> = { stand: STANDING_HEIGHT, crouch: CROUCH_HEIGHT, prone: PRONE_HEIGHT };
+/** `FUN_00584b00`: the dive wants the body moving at 30 a second (speed^2 900) or more, and water no deeper than 2. */
+const DIVE_SPEED2 = 900, DIVE_WATER = 2;
+/** `FUN_0057e540`: the dive holds its height 0.2 s; `FUN_0059b870` drops the root at gravity to the prone's 2.2. */
+const DIVE_HOLD = 0.2, DIVE_ROOT = 2.2;
+/** `FUN_0054d9a0` (decomp 416527-416545): the carried speed runs down by 150 a second each second on the ground. */
+const DIVE_BLEED = 150;
 /** `FUN_0059b870`: the root's height through the slide. */
 const SLIDE_ROOT = 11.44;
 /** `FUN_0059b440`: the slide falls at gravity x 0.8. */
@@ -156,7 +168,7 @@ const STAND_ROOT = stanceRootY('stand');
 /** What a move is doing: the hook's `traversal()` and the audio's `TraversalEvent` read it. */
 export type TraversalKind =
   | 'none' | 'ladderMount' | 'ladderMountTop' | 'ladder' | 'ladderOffTop' | 'ladderOffBottom' | 'ladderSlide' | 'ladderSlideLand'
-  | 'climbAlign' | 'climb' | 'hang' | 'hangUp' | 'hangDown' | 'hangDropFall' | 'turn180';
+  | 'climbAlign' | 'climb' | 'hang' | 'hangUp' | 'hangDown' | 'hangDropFall' | 'turn180' | 'dive';
 
 /**
  * What the audio (and anything else) hears (research 86 section 6): `ladderRung` is `motion.rdr`'s `ladder_rung`
@@ -175,8 +187,16 @@ export type TraversalEvent =
   | { type: 'jumpWhoosh' }
   | { type: 'climbEnd'; kind: ClimbClass }
   | { type: 'waterEnter'; depth: number }
-  | { type: 'waterLand'; depth: number }
+  | { type: 'waterLand'; depth: number; at: [number, number, number] }
   | { type: 'waterLeave' };
+
+/** A ripple the water asks for (`FUN_005b52b0`): its size, its pace, where. */
+export interface Ripple { size: 'big' | 'small'; pace: 'anim' | 'walk' | 'run'; at: [number, number, number] }
+
+/** The ripple's zAnim animation (`FUN_0026a250`'s names, decomp 460997-461003): `big_ripple_anim_walk` ... */
+export function rippleAnimation(r: Pick<Ripple, 'size' | 'pace'>): string {
+  return `${r.size}_ripple_anim${r.pace === 'anim' ? '' : `_${r.pace}`}`;
+}
 
 /** What the HUD's climb icon reads (`action_climb.tif`, research 86 section 3.4): shown, and for which climb. */
 export interface ClimbPrompt { visible: boolean; kind: ClimbClass; automatic: boolean }
@@ -205,6 +225,8 @@ interface Running {
   /** Callbacks at a fraction of the clip, fired once. */
   calls: { at: number; event: TraversalEvent; fired: boolean }[];
   done: (w: Walker) => void;
+  /** A second node playing with the clip at the same phase (the crate/medium blend). */
+  blend?: { clip: string; weight: number } | null;
 }
 
 /** What `state()` reports. */
@@ -256,6 +278,9 @@ export class Traversal implements TraversalHooks {
   private lock: number | null = null;
   /** The water line over the feet (`actor+0xf88`), and whether the mover was in the air last tick. */
   private depth_ = 0;
+  private ripple_: Ripple | null = null;
+  /** The dive under way: its saved velocity, its clock, the virtual root falling to the prone's. */
+  private diving: { vx: number; vz: number; t: number; root: number; vy: number } | null = null;
   private wasAirborne = false;
   /** The jump down's clock, through its fall. */
   private dropTime = 0;
@@ -349,7 +374,7 @@ export class Traversal implements TraversalHooks {
     const r = this.running;
     if (r) {
       const p = r.path.at(r.time);
-      return { clip: r.clip, frame: this.key(r), loop: false, rootY: p.rootY };
+      return { clip: r.clip, frame: this.key(r), loop: false, rootY: p.rootY, ...(r.blend ? { blend: r.blend } : {}) };
     }
     if (this.kind_ === 'ladder') return { clip: TRAVERSAL_CLIP.ladder, frame: this.phase, loop: true, rootY: this.ladderRoot() };
     if (this.kind_ === 'climbAlign' && this.climbing) return { clip: this.climbing.plan.clip, frame: 0, loop: false, rootY: null };
@@ -358,6 +383,10 @@ export class Traversal implements TraversalHooks {
       const shape = this.shapes.get(TRAVERSAL_CLIP.turn180);
       // The yaw turns by code (`+0x48`, decomp 468245-468252), so the clip's own root turn is held at its key 0.
       return { clip: TRAVERSAL_CLIP.turn180, frame: Math.min(shape.keys - 1, (this.turn.time / this.turn.seconds) * (shape.keys - 1)), loop: false, rootY: null, holdRootTurn: true };
+    }
+    if (this.kind_ === 'dive' && this.diving) {
+      const shape = this.shapes.get(TRAVERSAL_CLIP.dive);
+      return { clip: TRAVERSAL_CLIP.dive, frame: Math.min(shape.keys - 1, (this.diving.t / shape.seconds) * (shape.keys - 1)), loop: false, rootY: this.diving.root };
     }
     if (this.kind_ === 'hangDropFall') {
       const shape = this.shapes.get(TRAVERSAL_CLIP.hangDown);
@@ -472,6 +501,7 @@ export class Traversal implements TraversalHooks {
       case 'climbAlign': this.align(w, dt); return true;
       case 'hang': this.hang(w, input, pressed); return true;
       case 'turn180': this.turning(w, dt); return true;
+      case 'dive': return this.diveTick(w, dt);
       case 'hangDropFall': this.dropping(w, dt); return false;
       default: break;
     }
@@ -490,6 +520,28 @@ export class Traversal implements TraversalHooks {
     return this.depth_;
   }
 
+  /** The ripple the water line asks for this tick (`FUN_005b52b0`), or null: the page's effects spawn it. */
+  ripple(): Ripple | null {
+    return this.ripple_;
+  }
+
+  /**
+   * `FUN_005b56c0` (469966-470138) on the stick: each axis pushed past 0.03 by the ground's uphill factor -- `d` the
+   * floor's normal against the axis's way (its negative for a negative push): `1 - d^2` for `d < 0` (uphill), 1 for
+   * `d >= 0` -- then, in water, the water's factor (`stickFactor`). Grounded only (the walk calls it so).
+   */
+  stickScale(w: Walker, forward: number, right: number): [number, number] {
+    const s = w.state, a = axes(s.yaw);
+    const n = probeFloor(this.grid, s.x, s.y, s.z)?.normal;
+    const uphill = (v: number, ax: number, az: number): number => {
+      if (!n || Math.abs(v) < DEAD) return v;
+      const d = Math.sign(v) * (n[0] * ax + n[2] * az);
+      return d >= 0 ? v : d <= -1 ? 0 : v * (1 - d * d);
+    };
+    const f = this.stickFactor(w);
+    return [uphill(forward, a.fx, a.fz) * f, uphill(right, a.rx, a.rz) * f];
+  }
+
   /**
    * `FUN_005b52b0` (469852): the depth, the water line over the feet, from the water surface over them
    * (`probeWater`); on entering and leaving, `waterEnter` / `waterLeave`, and a fall landing in it `waterLand`
@@ -502,9 +554,18 @@ export class Traversal implements TraversalHooks {
     const depth = line === null ? 0 : line - s.y;
     const was = this.depth_;
     this.depth_ = depth;
-    if (depth > 0 && was <= 0) this.emit(w.airborne || this.wasAirborne ? { type: 'waterLand', depth } : { type: 'waterEnter', depth });
+    const at: [number, number, number] = [s.x, line ?? s.y, s.z];
+    if (depth > 0 && was <= 0) this.emit(w.airborne || this.wasAirborne ? { type: 'waterLand', depth, at } : { type: 'waterEnter', depth });
     if (depth <= 0 && was > 0) this.emit({ type: 'waterLeave' });
     this.wasAirborne = w.airborne;
+    // `FUN_005b52b0` (469810-469920): the ripple by the water line against the body's box -- over the feet and under its
+    // top the big one, within 10 over its top the small one -- by the speed class (`FUN_0058a820`: speed^2 under 0.25
+    // still, under 400 walk, else run); at the water's point over the feet.
+    const top = s.y + BODY_TOP[w.posture];
+    const speed2 = s.vx * s.vx + s.vz * s.vz + s.vy * s.vy;
+    const pace = speed2 < 0.25 ? 'anim' : speed2 < 400 ? 'walk' : 'run';
+    this.ripple_ = line === null || line <= s.y ? null
+      : line < top ? { size: 'big', pace, at } : line < top + 10 ? { size: 'small', pace, at } : null;
     if (w.airborne || this.kind_ !== 'none') return;
     if (w.stance === 'prone' && depth > WATER_PRONE) w.stance = 'crouch';
     if (w.stance === 'crouch' && depth > WATER_CROUCH) w.stance = 'stand';
@@ -546,6 +607,7 @@ export class Traversal implements TraversalHooks {
     const touched = touchClimbable(this.grid, s.x, s.y, s.z, TOUCH);
     if (touched) this.contact = touched;
     if (this.contact && !contactHolds(this.contact, s.x, s.z, a.fx, a.fz)) this.contact = null;
+    if (this.contact) this.contact = obstacleRay(this.grid, this.contact, s.x, s.y, s.z) ?? this.contact;   // FUN_0054e430
     this.plan = this.contact && w.stance !== 'prone' ? planClimb(this.grid, this.contact, s.x, s.y, s.z, a.fx, a.fz) : null;
   }
 
@@ -599,6 +661,17 @@ export class Traversal implements TraversalHooks {
       this.run('climb', plan.clip, path, false, () => { this.kind_ = 'hang'; }, [{ at: 0.5, event: { type: 'jumpWhoosh' }, fired: false }]);
       return;
     }
+    if (plan.blend) {
+      // FUN_00581110: the crate and the medium as one play's two nodes (the blended root carries the feet).
+      const blended = blendShapes(shape, this.shapes.get(plan.blend.clip), plan.blend.weight);
+      const bt = shapeTravel(blended);
+      const [bx, bz] = ahead(bt.ahead);
+      const past = Math.max(0.5, bt.ahead - (REF_AHEAD[plan.clip] ?? 8.92));
+      const path = new ClipPath(blended, from, [bx, topFloor(this.grid, plan.target, c, past) ?? c.top, bz], startRoot, STAND_ROOT);
+      this.run('climb', plan.clip, path, false, (m) => this.endClimb(m), [{ at: 0.1, event: { type: 'climbUp' }, fired: false }]);
+      this.running!.blend = plan.blend;
+      return;
+    }
     let to: [number, number, number];
     const [x, z] = ahead(travel.ahead);
     if (plan.kind === 'over') {
@@ -612,7 +685,6 @@ export class Traversal implements TraversalHooks {
     this.run('climb', plan.clip, path, false, (m) => this.endClimb(m), [{ at: 0.1, event: { type: 'climbUp' }, fired: false }]);
   }
 
-  /** The hang (state 4, `FUN_00581c10`): the stick ahead or the action button pulls up, the stick back lets go. */
   /**
    * The hang (state 4, `FUN_00584390`, decomp 443780): held while the stick rests (0.03, no timer); the stick ahead
    * pulls up ("Hang -> Climb", 443810), any other push -- back or aside -- lets go ("Hang jump down", 443830), as do
@@ -669,6 +741,49 @@ export class Traversal implements TraversalHooks {
   private dropping(w: Walker, dt: number): void {
     this.dropTime += dt;
     if (!w.airborne || this.dropTime >= this.shapes.get(TRAVERSAL_CLIP.hangDown).seconds) this.kind_ = 'none';
+  }
+
+  /**
+   * The dive (`FUN_0057e540`, decomp 440870-440920), in place of going prone: a full press of the stance button
+   * (Triangle past 0.3, `FUN_00594cf0` 453331-453390) from a stand or a crouch passing `FUN_00584b00` (443977-444010) --
+   * moving at 30 a second or more, in water no deeper than 2, no action holding the body. The world velocity is kept
+   * (`+0x1350`), the clip's own root travel is not applied (decomp 416510-416514); the height holds 0.2 s, then the
+   * root falls at gravity to the prone's 2.2 (`FUN_0059b870` 456585-456600); on the ground the speed runs down at 150 a
+   * second each second (416527-416545) and the dive ends at rest, prone. `dive_prone` sounds at 0.45 (`motion.rdr`).
+   */
+  dive(w: Walker): boolean {
+    const s = w.state;
+    if (this.kind_ !== 'none' || w.airborne || w.stance === 'prone' || w.action) return false;
+    if (this.depth_ > DIVE_WATER || s.vx * s.vx + s.vz * s.vz < DIVE_SPEED2) return false;
+    this.diving = { vx: s.vx, vz: s.vz, t: 0, root: stanceRootY(w.posture), vy: 0 };
+    this.leanOn = null;
+    this.kind_ = 'dive';
+    this.lock = s.yaw;
+    w.stance = 'prone';
+    return true;
+  }
+
+  private diveTick(w: Walker, dt: number): boolean {
+    const d = this.diving!, s = w.state;
+    d.t += dt;
+    if (d.t > DIVE_HOLD && d.root > DIVE_ROOT) {
+      d.vy -= SEAL_TUNING.gravity * dt;
+      d.root = Math.max(DIVE_ROOT, d.root + d.vy * dt);
+    }
+    if (d.root <= DIVE_ROOT) {                                    // down: the carried speed bleeds off
+      const v = Math.hypot(d.vx, d.vz), cut = DIVE_BLEED * dt;
+      if (v <= cut) { d.vx = 0; d.vz = 0; } else { d.vx -= (d.vx / v) * cut; d.vz -= (d.vz / v) * cut; }
+    }
+    s.vx = d.vx; s.vz = d.vz;
+    w.glide(d.vx * dt, d.vz * dt);
+    s.yaw = this.lock ?? s.yaw;
+    if (w.airborne || (d.vx === 0 && d.vz === 0 && d.root <= DIVE_ROOT)) {   // off an edge, or down and at rest: prone (decomp 418158-418167)
+      this.diving = null;
+      this.kind_ = 'none';
+      this.lock = null;
+      return w.airborne ? false : true;
+    }
+    return true;
   }
 
   /**
@@ -967,6 +1082,7 @@ export class Traversal implements TraversalHooks {
     this.plan = null;
     this.climbing = null;
     this.turn = null;
+    this.diving = null;
     this.actionHeld = false;
     if (w) w.setAirborne(false);
   }

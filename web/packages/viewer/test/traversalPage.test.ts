@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CollisionOwner, GridParams, WorldPoly } from '@s2u/scene';
 import { noInput } from '../src/gamepad';
 import type { ActionPrompt } from '../src/hud';
-import { LADDER_SLIDE_SOUND, TraversalPage } from '../src/traversalPage';
+import { FALL_IN_WATER, LADDER_SLIDE_SOUND, TraversalPage } from '../src/traversalPage';
 import { groundGrid, packGround, Walker, type GroundData, type TraversalHooks, type WalkInput, type WalkMode } from '../src/walk';
 
 /**
@@ -22,6 +22,7 @@ function ground(): GroundData {
     quad([-10, 0, 0, 10, 0, 0, 10, 12, 0, -10, 12, 0], 2, 4), floor(-10, -30, 10, 0, 12),
     quad([50, 0, 0, 100, 0, 0, 100, 40, 0, 50, 40, 0], 2),
     quad([57, 0, 0.2, 63, 0, 0.2, 63, 40, 0.2, 57, 40, 0.2], 2, 2), quad([63, 40, 0.2, 57, 40, 0.2, 57, 50, 0.2, 63, 50, 0.2], 2, 2),
+    { ...floor(-100, 20, -60, 60, 6), material: 11 },               // a pool 6 deep (WATER)
   ];
   const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 4, cellsZ: 4, originX: -200, originZ: -200 };
   const owners: CollisionOwner[] = polys.map((p, i) => ({ modelName: p.modelName, path: `${p.path}${i}`, first: i, count: 1 }));
@@ -101,5 +102,30 @@ describe('the HUD and the sounds (research 86 sections 3.4, 7.5)', () => {
     expect(played).toEqual([LADDER_SLIDE_SOUND]);
     expect(landed.length).toBe(1);
     expect(landed[0]).toBeGreaterThan(0);
+  });
+});
+
+describe('the water effects (research 86 section 5.4)', () => {
+  it('keeps one ripple running, following the SEAL, a new one only when it ends; a fall into the pool splashes', () => {
+    const { p, walker } = page();
+    const spawned: string[] = [], played: string[] = [];
+    let live = { finished: false, stopped: false };
+    p.setEffects({
+      spawn: (name) => { spawned.push(name); live = { finished: false, stopped: false }; const h = live; return { get finished() { return h.finished; }, stop: () => { h.stopped = true; h.finished = true; } }; },
+      play: (name) => { played.push(name); return true; },
+    });
+    walker.place(-80, 10, 40);
+    walker.tick(STILL);
+    p.effectsFrame();
+    p.effectsFrame();
+    expect(spawned).toEqual(['big_ripple_anim']);                  // still: the anim pace; one at a time
+    live.finished = true;
+    p.effectsFrame();
+    expect(spawned).toEqual(['big_ripple_anim', 'big_ripple_anim']);
+    walker.place(-80, 40, 40);
+    walker.setAirborne(true, 0);
+    walker.state.y = 30;
+    for (let i = 0; i < 120 && walker.airborne; i++) walker.tick(STILL);
+    expect(played).toContain(FALL_IN_WATER);
   });
 });

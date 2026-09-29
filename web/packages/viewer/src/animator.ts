@@ -99,6 +99,8 @@ export interface TraversalPose {
   clip: string; frame: number; loop: boolean; rootY: number | null;
   /** The clip's root rotation held at its key 0: the move turns the body by code (the "180"). */
   holdRootTurn?: boolean;
+  /** A second node at the same phase and its share (the crate/medium climb, `FUN_00581110`); `clip` has the rest. */
+  blend?: { clip: string; weight: number };
 }
 
 /** An event for the page: `onEvent`'s listeners get each as the animator steps past it. */
@@ -468,17 +470,23 @@ export class Animator {
   private traversalStep(dt: number, over: TraversalPose, mover: MoverSnapshot): void {
     const m = this.motions.get(over.clip);
     if (!m) return;
-    const key = `trav:${over.clip}`;
+    const second = over.blend ? this.motions.get(over.blend.clip) : undefined;
+    const key = second ? `trav:${over.clip}+${second.name}` : `trav:${over.clip}`;
     let play = this.play;
     if (!play || play.key !== key) {
-      play = this.start({ key, nodes: () => [{ motion: m, weight: 1, speed: 0, offset: 0 }] });
+      // A blend's play is made for its second node (the medium: `FUN_00581110` starts "Climb medium", then swaps in
+      // the two), whose end and phase the move's key is laid out on.
+      play = this.start({ key, nodes: () => second && over.blend
+        ? [{ motion: second, weight: 1 - over.blend.weight, speed: 0, offset: 0 }, { motion: m, weight: over.blend.weight, speed: 0, offset: 0 }]
+        : [{ motion: m, weight: 1, speed: 0, offset: 0 }] });
       play.looped = over.loop;
       this.play = play;
       this.traversalStarted = false;                             // a new move's first key fires nothing behind it
     } else this.blendElapsed += dt;
-    const frames = m.clip.frameCount;
+    const lead = second ?? m;
+    const frames = lead.clip.frameCount;
     let after = over.frame / frames;
-    after = over.loop ? ((after % 1) + 1) % 1 : Math.max(0, Math.min(m.end, after));
+    after = over.loop ? ((after % 1) + 1) % 1 : Math.max(0, Math.min(lead.end, after));
     const before = play === this.play && play.key === key && play.phase !== undefined && this.traversalStarted ? play.phase : after;
     this.traversalStarted = true;
     play.phase = after;
