@@ -122,6 +122,12 @@ export interface WorldView {
    * this, at `SCROLL_TICKS_PER_SECOND` steps a second (1: the step is per second, see the constant).
    */
   frame(camera: Camera, dt: number): void;
+  /**
+   * DOORS (`./doors`): moves every prop placement at or under the scene node `path` (its own path, or one starting
+   * `path/` or `path=`) by `delta`, a column-major 4x4 applied after the placement's own matrix from the disc -- the
+   * door leaf's swing. The identity puts them back. Returns how many placements it moved.
+   */
+  moveNode(path: string, delta: ArrayLike<number>): number;
   /** Whether the flares are turned at all, for seeing the pose the disc actually holds. */
   setBillboards(on: boolean): void;
   /** Where the flares are, in world space -- for aiming a camera at one. */
@@ -657,6 +663,12 @@ export function buildWorld(map: LoadedMap): WorldView {
     triangles += part.indices.length / 3;
   }
 
+  /** DOORS: every prop placement by its node's path, and how to put it at a matrix (`moveNode`). */
+  const movable: { path: string; base: Matrix4; set: (m: Matrix4) => void }[] = [];
+  const movableMesh = (path: string | undefined, mesh: Mesh, base: Matrix4): void => {
+    if (!path) return;
+    movable.push({ path, base: base.clone(), set: (m) => { m.decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.updateMatrix(); } });
+  };
   for (const prop of map.props) {
     const count = prop.matrices.length / 16;
     /** A placement's cells; an instanced draw is filed under all of its placements' (`LoadedMesh.cells`). */
@@ -702,6 +714,7 @@ export function buildWorld(map: LoadedMap): WorldView {
           mesh.name = `${prop.modelName} (lod)`;
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
           mesh.applyMatrix4(m);
+          movableMesh(prop.paths?.[i], mesh, m);
           const at = new Vector3().setFromMatrixPosition(m);
           later(revealProps, mesh, part.order, cellsOf(i), prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0), last: false });
           if (rest) lodRest.set(mesh, rest);
@@ -715,6 +728,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
         mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
+        movableMesh(prop.paths?.[0], mesh, new Matrix4().fromArray(prop.matrices, 0));
         later(revealProps, mesh, part.order, cellsOf(0), prop.alternate, part.textureName);
         addDetail(mesh, part);
         addEnv(mesh, part);
@@ -723,6 +737,11 @@ export function buildWorld(map: LoadedMap): WorldView {
         mesh.name = prop.modelName;
         for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
         mesh.instanceMatrix.needsUpdate = true;
+        for (let i = 0; i < count; i++) {
+          const path = prop.paths?.[i];
+          // The detail and env passes share `instanceMatrix` (`addDetail`, `addEnv`): one write moves them too.
+          if (path) movable.push({ path, base: new Matrix4().fromArray(prop.matrices, i * 16), set: (m) => { mesh.setMatrixAt(i, m); mesh.instanceMatrix.needsUpdate = true; mesh.boundingSphere = null; } });
+        }
         later(revealProps, mesh, part.order, allCells, prop.alternate, part.textureName);
         addDetail(mesh, part);
         addEnv(mesh, part);
@@ -913,6 +932,17 @@ export function buildWorld(map: LoadedMap): WorldView {
       const b = new Box3().setFromBufferAttribute(line.geometry.getAttribute('position') as BufferAttribute);
       return { texture: line.name, min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] };
     }),
+    moveNode: (path, delta) => {
+      const d = new Matrix4().fromArray(Array.from(delta));
+      const under = (p: string): boolean => p === path || p.startsWith(`${path}/`) || p.startsWith(`${path}=`);
+      let moved = 0;
+      for (const m of movable) {
+        if (!under(m.path)) continue;
+        m.set(d.clone().multiply(m.base));
+        moved++;
+      }
+      return moved;
+    },
     setBillboards: (on) => {
       billboardsOn = on;
       if (!on) for (const mesh of billboards) mesh.quaternion.identity();   // back to the pose on disc

@@ -47,6 +47,13 @@ export interface CollisionOwner {
    * graph (`collisionRuns`), which the gate lets through.
    */
   flags?: number;
+  /**
+   * DOORS (`web/docs/research/92-doors.md`): the ground-plane box a moving node's polygons can reach -- a door leaf's
+   * whole swing. The grid links the owner into every cell it covers and keeps it as the object's footprint, so the
+   * polygons can be turned in place (their points rewritten) without relinking; the mover re-reads such an owner's
+   * walls every step rather than caching them. Absent on every static node.
+   */
+  sweep?: Footprint;
 }
 
 interface ObjectBase {
@@ -280,6 +287,10 @@ export function buildGrid(
     const polys = collision.slice(owner.first, owner.first + owner.count);
     const footprint = polysFootprint(polys);
     if (!(footprint.minX <= footprint.maxX)) return;               // no points: nothing to find it by
+    if (owner.sweep) {                                             // a door: every cell its swing reaches
+      footprint.minX = Math.min(footprint.minX, owner.sweep.minX); footprint.maxX = Math.max(footprint.maxX, owner.sweep.maxX);
+      footprint.minZ = Math.min(footprint.minZ, owner.sweep.minZ); footprint.maxZ = Math.max(footprint.maxZ, owner.sweep.maxZ);
+    }
     link({ kind: 'collision', index, owner, polys, footprint, cells: cellRange(grid, footprint) });
   });
   return grid;

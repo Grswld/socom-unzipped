@@ -1,7 +1,7 @@
 import {
-  buildGrid, cellAt, footprintDistance, isWallSurface, planeHeightAt, probeGround, ringCells, selectFloor, surfaceWord, upNormal,
+  buildGrid, cellAt, footprintDistance, isWallSurface, planeHeightAt, polygonNormal, probeGround, ringCells, selectFloor, surfaceWord, upNormal,
   PROBE_LIFT, SEAL_LOCOMOTION, SEAL_TUNING, SURFACE_SKIP,
-  type CollisionOwner, type MotionClip, type Grid, type GridParams, type Hit, type WorldPoly,
+  type CollisionObject, type CollisionOwner, type MotionClip, type Grid, type GridParams, type Hit, type WorldPoly,
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
 import { airBands, oneShotSeconds, SEAL_ANIMS } from './locomotion';
@@ -594,6 +594,12 @@ export interface MoverAction {
  */
 export interface GroundMotion { state: 'idle' | Stance; forward: number; right: number; cls: MoveClass }
 
+/** A polygon's unit normal turned up, computed now (`upNormal` without its cache). */
+function freshUpNormal(poly: WorldPoly): [number, number, number] | null {
+  const n = polygonNormal(poly.points);
+  return n === null ? null : n[1] < 0 ? [-n[0], -n[1], -n[2]] : n;
+}
+
 /** A wall polygon with what the step needs of it computed once. */
 interface Wall {
   poly: WorldPoly;
@@ -602,8 +608,9 @@ interface Wall {
   nx: number; nz: number;
 }
 
-function wallOf(poly: WorldPoly): Wall | null {
-  const n = upNormal(poly);
+/** DOORS: `fresh` for a moving owner's polygon (`CollisionOwner.sweep`), whose normal turns with it: not the cached one. */
+function wallOf(poly: WorldPoly, fresh = false): Wall | null {
+  const n = fresh ? freshUpNormal(poly) : upNormal(poly);
   if (n === null) return null;
   const h = Math.hypot(n[0], n[2]);
   if (h < 1e-9) return null;
@@ -876,7 +883,7 @@ export class Walker {
   private accumulator = 0;
   private readonly wallsByCell = new Map<number, Wall[]>();
   /** The walls of the 3 x 3 cells around the mover's cell, kept until it changes cell. */
-  private near: { cell: number; walls: Wall[] } | null = null;
+  private near: { cell: number; walls: Wall[]; moving: CollisionObject[] } | null = null;
 
   constructor(readonly grid: Grid) {}
 
@@ -1361,20 +1368,36 @@ export class Walker {
     return [x, z];
   }
 
-  /** The wall polygons of the mover's cell and its eight neighbours (`ringCells`' square ring 1), each once. */
+  /**
+   * The wall polygons of the mover's cell and its eight neighbours (`ringCells`' square ring 1), each once. DOORS: a
+   * moving owner's (`CollisionOwner.sweep`, a door leaf) are read fresh every call, after the cached static ones.
+   */
   private wallsNear(x: number, z: number): Wall[] {
     const cell = cellAt(this.grid, x, z).index;
-    if (this.near?.cell === cell) return this.near.walls;
-    const seen = new Set<WorldPoly>();
-    const walls: Wall[] = [];
-    for (const { cell: c } of ringCells(this.grid, x, z, 1, 'square')) {
-      for (const w of this.wallsOf(c.index)) {
-        if (seen.has(w.poly)) continue;
-        seen.add(w.poly);
-        walls.push(w);
+    if (this.near?.cell !== cell) {
+      const seen = new Set<WorldPoly>();
+      const walls: Wall[] = [];
+      const moving = new Set<CollisionObject>();
+      for (const { cell: c } of ringCells(this.grid, x, z, 1, 'square')) {
+        for (const w of this.wallsOf(c.index)) {
+          if (seen.has(w.poly)) continue;
+          seen.add(w.poly);
+          walls.push(w);
+        }
+        for (const atom of this.grid.cells[c.index]!.atoms) if (atom.object.kind === 'collision' && atom.object.owner.sweep) moving.add(atom.object);
+      }
+      this.near = { cell, walls, moving: [...moving] };
+    }
+    const near = this.near;
+    if (near.moving.length === 0) return near.walls;
+    const walls = [...near.walls];
+    for (const object of near.moving) {
+      for (const poly of object.polys) {
+        if (!isWallSurface(poly)) continue;
+        const w = wallOf(poly, true);
+        if (w) walls.push(w);
       }
     }
-    this.near = { cell, walls };
     return walls;
   }
 
@@ -1383,7 +1406,7 @@ export class Walker {
     if (known) return known;
     const walls: Wall[] = [];
     for (const atom of this.grid.cells[index]!.atoms) {
-      if (atom.object.kind !== 'collision') continue;
+      if (atom.object.kind !== 'collision' || atom.object.owner.sweep) continue;     // DOORS: a moving owner, read fresh
       for (const poly of atom.object.polys) {
         if (!isWallSurface(poly)) continue;
         const w = wallOf(poly);
