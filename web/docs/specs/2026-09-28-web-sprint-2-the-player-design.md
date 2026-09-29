@@ -93,6 +93,9 @@ bodies are supplied, else a placeholder named and the task carried; (7) nothing 
 ## 5. Rulings
 
 - **W2.R1** — the player is drawn as SOCOM draws it: third-person over the shoulder by default, first-person aim (§1).
+  *Amended by the owner, 2026-09-29:* there is no first-person view -- the views are third person and scoped, as
+  SOCOM II's. `V` and the held aim are gone; the zoom steps third person -> scope (`viewer/src/zoom.ts`), and the
+  scope is drawn from the head (`WalkMode.setScoped`; `stats().view.kind` is `third` / `scope` / `fly`).
   **Confirmed by the owner, 2026-09-28.**
 - **W2.R2** — every number is the game's or a named placeholder (§1).
 - **W2.R3** — web sprint 2 continues on the cloud branch of sprint 1 (`claude/web-sprint-cloud-8wa72q`, PR #100 grows)

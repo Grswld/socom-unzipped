@@ -538,22 +538,30 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(changes).toEqual([true, false, true]);
   });
 
-  it('C cycles the stance stand, crouch, prone, stand; not on Ctrl or a repeat; setStance for the hook', () => {
+  it('a tap of C toggles stand and crouch, a hold goes prone (owner, 2026-09-29); not on Ctrl; setStance for the hook', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });
+    const tap = (init: KeyboardEventInit = {}): void => { key('KeyC', 'keydown', init); key('KeyC', 'keyup', init); mode.frame(TICK); mode.frame(TICK); };
     expect(mode.stance()).toBe('stand');
-    key('KeyC');
+    tap();
     expect(mode.stance()).toBe('stand');                            // in fly mode C does nothing
     mode.setMode('walk');
-    key('KeyC');
+    tap();
     expect(mode.stance()).toBe('crouch');
-    key('KeyC', 'keydown', { ctrlKey: true });
-    key('KeyC', 'keydown', { repeat: true });
+    tap({ ctrlKey: true });
     expect(mode.stance()).toBe('crouch');
-    key('KeyC');
-    expect(mode.stance()).toBe('prone');
-    key('KeyC');
+    tap();
     expect(mode.stance()).toBe('stand');
+    key('KeyC');                                                    // held: prone at 0.4 s, the repeats ignored
+    for (let t = 0; t < 0.5; t += TICK) { key('KeyC', 'keydown', { repeat: true }); mode.frame(TICK); }
+    expect(mode.stance()).toBe('prone');
+    key('KeyC', 'keyup');
+    mode.frame(TICK);
+    expect(mode.stance()).toBe('prone');
+    tap();
+    expect(mode.stance()).toBe('crouch');                           // from prone a tap crouches
+    expect(mode.setStance('stand')).toBe(true);
+    for (let t = 0; t < 2; t += TICK) mode.frame(TICK);             // the transitions' clips run out
     expect(mode.setStance('crouch')).toBe(true);
     const at = mode.feet()!;
     mode.walkFor(10, { forward: 0.5, right: 0, boost: false });
@@ -571,6 +579,8 @@ describe('walk mode (W1.4 step 5)', () => {
       const e = new KeyboardEvent('keydown', { code: 'KeyC', cancelable: true, ...init });
       globalThis.dispatchEvent(e);
       globalThis.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyC' }));
+      mode.frame(TICK);                                             // the tap acts at the release, on the next frame
+      mode.frame(TICK);
       return e.defaultPrevented;
     };
     expect(press({ ctrlKey: true })).toBe(false);

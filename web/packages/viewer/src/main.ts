@@ -93,7 +93,7 @@ const fly = new FlyCamera(canvas, {
 const overlays = new Overlays(scene);
 /**
  * Walk mode (W1.4, `./walk`): `G` and the panel's switch; the mover steps at 60 Hz and the game's third-person camera
- * follows it (W2.1, `./playerCamera`), `V` for first person.
+ * follows it (W2.1, `./playerCamera`); the zoom's lens views are drawn from the head. No first person (owner, 2026-09-29).
  */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
 /**
@@ -152,8 +152,8 @@ grenade.on('equip', (on) => {
   fire.release(); play.setRifleStowed(on);   // a slot change lets a held trigger go; the rifle away while the grenade is up
   if (!on) throwPose.stop();
   // Out of the scope with the rifle away [reading: the game's weapon switch, FUN_005c4b10, drops only the night vision
-  // to first person; what a scoped grenade does was not traced -- research 84 section 7].
-  if (on && zoom.state() >= 4) setZoom(1);
+  // (to its first person, here third: owner, 2026-09-29); what a scoped grenade does was not traced -- research 84 section 7].
+  if (on && zoom.state() >= 4) setZoom(0);
 });
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
 grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
@@ -203,7 +203,7 @@ fire.setGun({
     // The round goes by the cone as the frame left it (FUN_005bd100 runs before the shot), then counts.
     const out = perturb(dir, accuracy.cone(zoom.state()));
     const stance = walk.mover()?.stance ?? 'stand';
-    if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(1);
+    if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(0);   // the game's first person: third (owner, 2026-09-29)
     return out;
   },
   // Research 84 section 8: the camera kicks only scoped, on a pull's first round, and the kick ticks only scoped.
@@ -267,8 +267,8 @@ const kit: Kit = new Kit({
     showFireMode();
     play.setItem(item);
   },
-  // FUN_005c4b10: the trigger lets go, and a scope drops to first person.
-  started: () => { fire.release(); if (zoom.state() >= 4) setZoom(1); },
+  // FUN_005c4b10: the trigger lets go, and a scope drops (the game's first person; third here, owner 2026-09-29).
+  started: () => { fire.release(); if (zoom.state() >= 4) setZoom(0); },
 });
 /** L1 / L2: the grenade put away, then the firearm (`Kit.select`); the one in the hand does nothing. */
 function selectFirearm(to: Firearm): boolean {
@@ -505,7 +505,7 @@ const play = new Play();
 play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locomotion (`./throwPose`)
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
-play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
+play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'scope' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
@@ -528,10 +528,10 @@ globalThis.addEventListener?.(TRAVERSAL_EVENT, ((e: CustomEvent<TraversalEvent>)
   const feet = walk.drawnFeet();
   if (e.detail?.type === 'waterLand' && feet) effects.splash(feet, e.detail.depth);
 }) as EventListener);
-// EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in first person (the aim view).
+// EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in the scope (the view from the head).
 fire.subscribe((e) => {
   if (e.type !== 'round') return;
-  effects.onRound(e, weaponFrame(), walk.view() === 'first');
+  effects.onRound(e, weaponFrame(), walk.view() === 'scope');
   // ACCURACY: every surface the round went through is struck too (FUN_003c8920 per hit), its impact without a muzzle.
   for (const t of e.through ?? []) effects.onRound({ ...e, to: t.point, normal: t.normal, material: t.material, hit: true, through: undefined }, null, false);
 });
@@ -553,22 +553,20 @@ function askPlay(from: SourceRequest): void {
   ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS] });
 }
 
-// ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
+// ---- W2.6: the scope and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
 /**
- * The aim view: held on the pad's aim lane (L1, W2.R5), or stepped into by the zoom (research 84: the game's first zoom
- * step is the first-person view, state 1) -- the right mouse button on the canvas is the zoom's press (a `mousedown`,
- * which fires for each button, where a `pointerdown` does not while another is held). The fire button is W2.4's.
+ * The scope: stepped into by the zoom (research 84; no first-person step, owner 2026-09-29) -- the right mouse button
+ * on the canvas is the zoom's press (a `mousedown`, which fires for each button, where a `pointerdown` does not while
+ * another is held). The fire button is W2.4's.
  */
 canvas.addEventListener('mousedown', (e) => { if (e.button === 2) stepZoom('cycle'); });
 
 /**
  * The merged lanes (the pad and the touch buttons, `padFrame`) in play: the jump on the press, the crouch on the release
- * (docs/PLAYTEST.md step 8), the aim while held (`playActions`), and the stance button's tap (crouch) and hold (prone;
+ * (docs/PLAYTEST.md step 8; `playActions`), and the stance button's tap (crouch) and hold (prone;
  * `StanceButton`, one step a frame). In the fly camera the same lanes are up and down.
  */
 const stanceButton = new StanceButton();
-/** The hook's aim (`setAim(true)`), over the lanes until `setAim(false)` hands it back: Playwright holds no button. */
-let aimForced = false;
 function playLanes(before: Input, after: Input, dt: number): void {
   const act = playActions(before, after);
   const walking = walk.mode() === 'walk';
@@ -579,8 +577,8 @@ function playLanes(before: Input, after: Input, dt: number): void {
   // Fed a released button off foot, so a press begun in the fly camera is not a tap when the walk begins.
   const go = stanceButton.update(walking && after.stance, dt, walk.stance());
   if (go !== null) walk.setStance(go);
-  // First person while the pad's aim lane is held or the zoom is at 1 or more (research 84: its first step is that view).
-  walk.setAiming(walking && (aimForced || act.aim || zoom.firstPerson()));
+  // The view from the head in the zoom's lens views (the scope, the 9x, the night vision); third person otherwise.
+  walk.setScoped(walking && zoom.lens());
 }
 
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
@@ -940,7 +938,7 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     padFrame(dt);                   // W2.7: the pad and the touch stick into the camera's lanes, before it steps
-    fly.setBody(walk.mode() === 'walk' && walk.view() === 'first', walk.posture() === 'prone');   // the bob's (research 83)
+    fly.setBody(walk.mode() === 'walk' && walk.view() === 'scope', walk.posture() === 'prone');   // the bob's (research 83)
     fly.update(dt);
     traversal.input();              // research 86: the peek held (Q / E, the pad's lean lanes)
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
@@ -949,7 +947,7 @@ async function boot(): Promise<void> {
     for (const name of throwPose.step(dt)) audio.onAnimCallback(name, walk.drawnFeet());   // the throw clip's `throw_whoosh`
     if (walking) kit.frame(dt); else kit.settle();   // WEAPON: the swap's hand-off and end (`./kit`)
     play.setMounts(kit.state().mounts);
-    play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
+    play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in the scope
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     effects.setBrighten(brightenOf(lighting));
@@ -1294,7 +1292,6 @@ window.__viewer = {
   mover: () => walk.mover(),
   jump: () => walk.jump(),
   crouch: (on) => walk.crouch(on),
-  setAim: (on) => { aimForced = on; walk.setAiming(walk.mode() === 'walk' && on); return walk.view(); },
   look: () => fly.lookState(),
   setLook: (opts) => { fly.setLookOptions(opts); return fly.lookOptions(); },
   setZoom: (magnification, mode4) => fly.setZoom(magnification, mode4),
@@ -1310,7 +1307,6 @@ window.__viewer = {
   stance: () => walk.stance(),
   setStance: (stance) => walk.setStance(stance),
   camera: () => walk.cameraState(),
-  setView: (view) => walk.setView(view),
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
   traversal: () => traversal.stats(),

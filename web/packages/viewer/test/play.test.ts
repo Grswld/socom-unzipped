@@ -84,19 +84,19 @@ describe('the mover as the body reads it (WalkMode.snapshot)', () => {
 });
 
 describe('who sees the body (W2.2b, W2.R1)', () => {
-  it('shows it in the third-person play view, hides it in the aim view, and in fly mode only when the switch asks', () => {
+  it('shows it in the third-person play view, hides it in the scope, and in fly mode only when the switch asks', () => {
     expect(bodyVisible('third', false)).toBe(true);
     expect(bodyVisible('third', true)).toBe(true);
-    expect(bodyVisible('aim', true)).toBe(false);
+    expect(bodyVisible('scope', true)).toBe(false);
     expect(bodyVisible('fly', false)).toBe(false);
     expect(bodyVisible('fly', true)).toBe(true);
   });
 });
 
-describe('the pad\'s lanes in play (W2.R5): jump on the press, crouch on the release, aim held', () => {
+describe('the pad\'s lanes in play (W2.R5): jump on the press, crouch on the release', () => {
   it('jumps when the jump lane goes down, once however long it is held', () => {
     const up = { ...noInput(), jump: true };
-    expect(playActions(noInput(), up)).toMatchObject({ jump: true, crouch: false, aim: false });
+    expect(playActions(noInput(), up)).toEqual({ jump: true, crouch: false });
     expect(playActions(up, up).jump).toBe(false);
     expect(playActions(up, noInput()).jump).toBe(false);
   });
@@ -108,12 +108,6 @@ describe('the pad\'s lanes in play (W2.R5): jump on the press, crouch on the rel
     expect(playActions(held, noInput()).crouch).toBe(true);
   });
 
-  it('aims while the aim lane is held', () => {
-    const aim = { ...noInput(), aim: true };
-    expect(playActions(noInput(), aim).aim).toBe(true);
-    expect(playActions(aim, aim).aim).toBe(true);
-    expect(playActions(aim, noInput()).aim).toBe(false);
-  });
 });
 
 describe('the stance button (owner, 2026-09-28): a tap toggles crouch, a hold goes prone, a tap from prone stands', () => {
@@ -304,7 +298,7 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     walk.unbindKey();
   });
 
-  it('reports the view: the game camera in play, the aim (first person, the body hidden) while held, fly otherwise', async () => {
+  it('reports the view: the game camera in play, the scope (the body hidden) while zoomed, fly otherwise', async () => {
     const map = await loaded();
     const fly = new FlyCamera(canvas());
     const walk = new WalkMode(fly);
@@ -320,11 +314,11 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('third');
     expect(view.group.visible).toBe(true);
-    walk.setAiming(true);
+    walk.setScoped(true);
     play.frame(1 / 60, walk, fly.camera);
-    expect(play.viewStats().kind).toBe('aim');
+    expect(play.viewStats().kind).toBe('scope');
     expect(view.group.visible).toBe(false);
-    walk.setAiming(false);
+    walk.setScoped(false);
     play.frame(1 / 60, walk, fly.camera);
     expect(play.viewStats().kind).toBe('third');
     walk.setMode('fly');

@@ -2,7 +2,7 @@ import { SEAL_TUNING } from '@s2u/scene';
 
 /**
  * The look law (web research 83): how SOCOM II turns a right stick into a turn and a pitch, and the view's two screen
- * shifts -- the explosion / machine-gun shake and the first-person bob -- read from `game/analysis/socom2_game.elf.decomp.c`
+ * shifts -- the explosion / machine-gun shake and the view bob -- read from `game/analysis/socom2_game.elf.decomp.c`
  * and the console's own RAM at the spawn (`logs/parity/spawn_pcsx2.rdram`). Everything here is pure or a small state
  * machine; `camera.ts` (`FlyCamera`, walking) drives it.
  *
@@ -20,7 +20,7 @@ import { SEAL_TUNING } from '@s2u/scene';
  *   turn = v.x * 1.72 (DAT_00650630), pitch = v.y * 1.72 (DAT_00650628; DAT_003df198 = +1, not inverted)
  *   [the throttle turn/pitch_throttle_a/b only when DAT_0066b3e8 -- 0 on the dump: off]
  *   both / the scope's magnification (FUN_005be660: 1 unscoped); x 0.2 more in view mode 4 (DAT_00650638)
- *   first person (view modes 1-3), moving: the bob (below)
+ *   the game's view modes 1-3 (its first person and the night vision), moving: the bob (below)
  * FUN_00550ef0 (decomp 418340): the angular velocity actor+0x48 = turn_maxrate 2 x the turn axis (research 22: 128.1
  *   deg/s at full push = 2 x 0.65 x 1.72 rad/s, to the tenth)
  * FUN_00594600 (decomp 452781-452958): pitch += pitch_rate 0.85 x axis x dt toward a limit and not past it; a pitch
@@ -407,13 +407,14 @@ export class ScreenShake {
 }
 
 /**
- * The first-person bob (`FUN_005966a0`, decomp 453823-453849; `BOBBING_FIRSTPERSON`): in the first-person view modes,
+ * The view bob (`FUN_005966a0`, decomp 453823-453849; `BOBBING_FIRSTPERSON`): in the game's first-person view modes,
  * moving, the view drops by amplitude x cos(phase) PS2 pixels (`FUN_005b90c0` into the offset `FUN_005b9030` zeroes
  * each frame, handed to the camera's y), and the phase grows by the move stick's push x `Walk_Rate` (`Crawl_*` prone) a
  * second -- 15 rad/s is 2.4 swings a second at a full stick, 6 pixels either way. The push is one axis' when the
- * other is 0, else the mean of the two. Standing still the offset is 0 at once and the phase is kept.
+ * other is 0, else the mean of the two. Standing still the offset is 0 at once and the phase is kept. The viewer has
+ * no first person (the owner, 2026-09-29): the bob runs in its views from the head, the scope and the night vision.
  */
-export class FirstPersonBob {
+export class ViewBob {
   private phase = 0;
 
   /** One frame: the move stick (either sign), prone or not; the vertical offset, PS2 pixels down. */

@@ -43,8 +43,8 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory' | 'scoreboard';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory', 'scoreboard'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory' | 'scoreboard';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory', 'scoreboard'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
@@ -62,7 +62,7 @@ export type PadAction = 'move' | 'look' | PadFlag;
 export interface Input {
   moveX: number; moveY: number;
   lookX: number; lookY: number;
-  jump: boolean; crouch: boolean; stance: boolean; boost: boolean; fire: boolean; aim: boolean; zoom: boolean;
+  jump: boolean; crouch: boolean; stance: boolean; boost: boolean; fire: boolean; zoom: boolean;
   zoomOut: boolean; fireMode: boolean;
   action: boolean; leanLeft: boolean; leanRight: boolean; mode: boolean;
   /** The game's `SwapWeapon1` (L1), `SwapWeapon2` (L2) and `Inventory` (R2): the kit's slots, walking only (`./grenade`). */
@@ -75,7 +75,7 @@ export interface Input {
 export function noInput(): Input {
   return {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
-    jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, zoomOut: false,
+    jump: false, crouch: false, stance: false, boost: false, fire: false, zoom: false, zoomOut: false,
     fireMode: false, action: false, leanLeft: false, leanRight: false, mode: false, swap1: false, swap2: false, inventory: false,
     scoreboard: false,
   };
@@ -104,7 +104,7 @@ const CONTROLLER_RDR = 'READERC.ZAR controller.rdr (Default)';
 export const OWNER = 'owner, 2026-09-28';
 
 /**
- * SOCOM II's layout as the owner gave it on 2026-09-28 (Square jumps, R1 fires, Triangle is the stance, L1 aims, Start
+ * SOCOM II's layout as the owner gave it on 2026-09-28 (Square jumps, R1 fires, Triangle is the stance, Start
  * is the walk/fly switch, d-pad Up zooms, the left stick moves and the right looks), with what the repository documents beside it
  * where it does, and the viewer's own bindings marked `assumed`. Cross is the action and the d-pad's left and right the
  * peek (web research 86, from the game's own `controller.rdr` and pad read); research 84 adds the d-pad's Down (zoom
@@ -141,16 +141,17 @@ export const PAD_LAYOUT: readonly PadRow[] = [
   {
     control: 'L1', action: 'swap1', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
     note: 'the game\'s L1: SwapWeapon1, the primary\'s slot (controller.rdr\'s Default; CSealCtrl 0x598280) -- back to the '
-      + 'rifle. SOCOM II has no held aim: the first-person view is the zoom\'s first step (research 84; right click, d-pad Up)',
+      + 'rifle. SOCOM II has no held aim, and the viewer no first person (the owner, 2026-09-29): the views are third '
+      + 'person and the zoom\'s scope (research 84; right click, d-pad Up)',
   },
   {
     control: 'Up', action: 'zoom', documented: OWNER,
-    note: 'the zoom in: third person, first person, the scope (FUN_005445b0, research 84 section 7), a step a press, '
-      + 'on foot only, no wrap. The owner\'s word (2026-09-28); the right mouse button steps it too, and wraps',
+    note: 'the zoom in: third person, then the scope (FUN_005445b0 without its first-person step, research 84 '
+      + 'section 7), a step a press, on foot only, no wrap. The owner\'s word (2026-09-28); the right mouse button steps it too, and wraps',
   },
   {
     control: 'Down', action: 'zoomOut', documented: 'web/docs/research/84-accuracy-and-recoil.md §7',
-    note: 'the zoom out, a step a press: the scope to first person, first person to third. The game\'s own zoom-out '
+    note: 'the zoom out, a step a press: down the scope\'s levels, then to third person. The game\'s own zoom-out '
       + 'handler (the input byte beside d-pad Up\'s, FUN_00594cf0)',
   },
   {
@@ -203,7 +204,7 @@ export const PAD_LAYOUT: readonly PadRow[] = [
 
 /**
  * What each action is called on the panel, on foot and in the fly camera: one button, the same motion in both where
- * there is one. `null` is an action the mode does not have -- fire and aim are the walk's alone, the boost the fly
+ * there is one. `null` is an action the mode does not have -- fire is the walk's alone, the boost the fly
  * camera's alone (no sprint on foot), the action and the peek the walk's -- and the panel leaves that row out of that mode's table.
  */
 export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string | null }> = {
@@ -214,7 +215,6 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   stance: { walk: 'stance: tap crouch, hold prone', fly: 'down' },
   boost: { walk: null, fly: 'boost' },
   fire: { walk: 'fire (held)', fly: null },
-  aim: { walk: 'aim (held)', fly: null },
   zoom: { walk: 'zoom (scope)', fly: null },
   zoomOut: { walk: 'zoom out', fly: null },
   fireMode: { walk: 'fire mode', fly: null },

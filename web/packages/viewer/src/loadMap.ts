@@ -132,7 +132,7 @@ export interface LoadedMap {
   metersPerUnit: number;
   /**
    * ACCURACY (research 84 section 14): the world root's `NightMission` flag (the engine's `CWorld+0x5dc`, 0x318da0:
-   * zoom in from first person steps into the night vision) and its `LensFX_NVG` colour (`CWorld+0x5e0`, RGBA).
+   * first zoom step is the night vision) and its `LensFX_NVG` colour (`CWorld+0x5e0`, RGBA).
    */
   night?: { mission: boolean; lens: [number, number, number, number] | null };
   /**

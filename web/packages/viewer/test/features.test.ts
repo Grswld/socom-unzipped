@@ -219,7 +219,13 @@ describe('the Controls popover list (round 2)', () => {
   });
   it('names every key the page binds on foot', () => {
     const keys = controlGroups('walk', true).flatMap((g) => g.rows.map((r) => r.keys)).join(' ');
-    for (const k of ['W A S D', 'Space', 'V', 'click', 'right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '4', '5', 'G', 'F']) expect(keys, k).toContain(k);
+    for (const k of ['W A S D', 'Space', 'click', 'right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '4', '5', 'G', 'F']) expect(keys, k).toContain(k);
+  });
+  it('lists no first-person key, and C as a tap and a hold (owner, 2026-09-29)', () => {
+    const rows = controlGroups('walk', true).flatMap((g) => g.rows);
+    expect(rows.find((r) => r.keys === 'V')).toBeUndefined();
+    expect(rows.some((r) => /first/i.test(r.does))).toBe(false);
+    expect(rows.find((r) => r.keys === 'C')?.does).toBe('stance: tap crouch / stand, hold prone');
   });
   it('lists no walk in the flying list without the play, and every group has rows', () => {
     const fly = controlGroups('fly', false);
