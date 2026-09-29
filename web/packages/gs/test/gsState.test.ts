@@ -42,15 +42,20 @@ describe('TEST', () => {
 
 describe('TEX1', () => {
   it('0x60 is bilinear with no mipmaps', () => {
-    expect(decodeTex1(0x60n)).toEqual({ bilinear: true, mipmaps: false, levels: 0 });
+    expect(decodeTex1(0x60n)).toEqual({ bilinear: true, mipmaps: false, levels: 0, lodK: 0, lodL: 0 });
   });
   it('MMIN = LINEAR_MIPMAP_LINEAR with MXL = 1 is one mip level of trilinear', () => {
     // LCM 0, MXL bits 2-4, MMAG bit 5, MMIN bits 6-8, K bits 32-43.
     const word = BigInt((1 << 2) | (1 << 5) | (5 << 6)) | (3992n << 32n);
-    expect(decodeTex1(word)).toEqual({ bilinear: true, mipmaps: true, levels: 1 });
+    // K = 3992 is -104 in twelve bits, -6.5 in 7.4 fixed point: the level the depth's log2 is offset by.
+    expect(decodeTex1(word)).toEqual({ bilinear: true, mipmaps: true, levels: 1, lodK: -6.5, lodL: 0 });
   });
   it('MMAG = NEAREST reads as not bilinear', () => {
-    expect(decodeTex1(0n)).toEqual({ bilinear: false, mipmaps: false, levels: 0 });
+    expect(decodeTex1(0n)).toEqual({ bilinear: false, mipmaps: false, levels: 0, lodK: 0, lodL: 0 });
+  });
+  it('reads L and a positive K', () => {
+    const word = BigInt((5 << 6) | (2 << 19)) | (40n << 32n);
+    expect(decodeTex1(word)).toMatchObject({ lodK: 2.5, lodL: 2 });
   });
 });
 
@@ -79,7 +84,7 @@ describe('a texture record carries its bind packet state', () => {
     const rec = parseTextureRecord('lightrays.tif', txr.data(key));
     expect(rec.gs).toEqual({
       blend: 'source', alphaTest: null, depthTest: true, bilinear: true, mipmaps: false, levels: 0,
-      wrapS: 'repeat', wrapT: 'repeat',
+      lodK: 0, lodL: 0, wrapS: 'repeat', wrapT: 'repeat',
     });
   });
 

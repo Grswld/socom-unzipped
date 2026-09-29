@@ -269,11 +269,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
 
   // The props: one entry per model-node, its geometry decoded once and a matrix per placement.
   const props: LoadedMap['props'] = [];
-  for (const group of placement.props) {
+  for (const { group, decoded } of instanceShades(placement.props, chunksOf, orderOf)) {
     const first = group[0]!;
     // Lower-cased here for the same reason the world's names are: `map.textures` is keyed that way, and
     // one Frostfire prop cites `lightDark.tif` with a capital in it.
-    const decoded = chunksOf(first);
     // A prop is drawn in up to 26 places; its strips are placed once per placement, which is cheap --
     // 877 segments across the three maps in total.
     const order = orderOf(first, 0);
@@ -1011,6 +1010,48 @@ export interface LoadedLineGroup {
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
+type Decoded = ReturnType<ReturnType<typeof decoder>>;
+
+/**
+ * Splits each prop group by the light its placements' chunks bake: one group per distinct shading, in the
+ * order of the walk.
+ *
+ * A model instanced in several places carries a chunk per instance context (`N###_I###_V##`), and the
+ * chunks differ in nothing but their prelit vertex colours -- which is the picture: Frostfire's seventeen
+ * tank rails are seventeen shades, from 35 to 50 on the red lane, beside the prototype's own bare 128.
+ * `hookupVisuals` hooks each context to its own chunk (`vis_main.cpp:77-111`), so a placement draws its
+ * own; placements whose chunks decode to the same colours still share one instanced draw.
+ */
+function instanceShades(
+  groups: PlacedModel[][], chunksOf: (p: PlacedModel) => Decoded, orderOf: (p: PlacedModel, i: number) => number,
+): { group: PlacedModel[]; decoded: Decoded }[] {
+  const out: { group: PlacedModel[]; decoded: Decoded; order: number }[] = [];
+  for (const group of groups) {
+    const shades = new Map<string, { group: PlacedModel[]; decoded: Decoded; order: number }>();
+    for (const p of group) {
+      const decoded = chunksOf(p);
+      const key = shadeKey(decoded);
+      const known = shades.get(key);
+      if (known) known.group.push(p);
+      else shades.set(key, { group: [p], decoded, order: orderOf(p, 0) });
+    }
+    out.push(...shades.values());
+  }
+  return out.sort((a, b) => a.order - b.order);
+}
+
+/** A decoded chunk set's colours, hashed (FNV-1a over the float bits), with its shape: what makes two shades one. */
+function shadeKey(d: Decoded): string {
+  let h = 0x811c9dc5;
+  const parts: string[] = [];
+  for (const mesh of [...d.meshes, ...d.lines]) {
+    const bits = new Uint32Array(mesh.colors.buffer, mesh.colors.byteOffset, mesh.colors.length);
+    for (let i = 0; i < bits.length; i++) h = Math.imul(h ^ bits[i]!, 0x01000193) >>> 0;
+    parts.push(String(mesh.colors.length));
+  }
+  return `${h.toString(16)}:${parts.join(',')}`;
+}
+
 function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: (MeshData & { cull: boolean; lit: boolean })[]; lines: LineStrip[] } {
   return (p) => {
     const entry = library.get(p.modelName);

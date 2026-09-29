@@ -53,6 +53,16 @@ describe('parseZdb', () => {
     ]);
     expect(() => zdbMember(two, parseZdb(two), 'a.zed')).toThrow(/2 matches/);
   });
+  it('takes the member named exactly by a whole-file suffix over one whose name only ends with it', () => {
+    // The campaign's M51: `ZM51_TXR.ZED` ends with `M51_TXR.ZED`, and the mission's own `M51_TXR.ZED` is the lib
+    // `//sp/m51` names; the ambiguity threw, and every texture of the mission went undrawn.
+    const two = syntheticZdb([
+      { name: 'RUN\\SP\\M51\\ZM51_TXR.ZED', data: [1] },
+      { name: 'RUN\\SP\\M51\\M51_TXR.ZED', data: [2] },
+    ]);
+    expect(Array.from(zdbMember(two, parseZdb(two), 'M51_TXR.ZED'))).toEqual([2]);
+    expect(Array.from(zdbMember(two, parseZdb(two), 'ZM51_TXR.ZED'))).toEqual([1]);
+  });
   it('parses a table of contents read on its own, given the whole archive\'s length', () => {
     // What `listMaps` does over a ranged source (the ISO): the 0xA0 head, then just the entries.
     const whole = syntheticZdb();

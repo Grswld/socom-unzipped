@@ -6,10 +6,10 @@ import {
 } from 'three';
 import type { Blending, BlendingDstFactor, BlendingSrcFactor, Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
-import { float, materialReference, positionView, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
+import { float, log2, materialReference, positionView, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
 import { buildGrid, cellAt, lodIsLast, lodOpacity, lodVisible, type LodBand } from '@s2u/scene';
 import {
-  detailDrawState, detailRenderOrder, drawState, materialSpec,
+  detailDrawState, detailRenderOrder, drawState, gsMipLod, materialSpec, type GsMipLod,
   type DetailSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags,
 } from './materialSpec';
 import { engineOrder } from './engineOrder';
@@ -413,13 +413,19 @@ export function buildWorld(map: LoadedMap): WorldView {
     material.map = texture ?? null;
     material.vertexColors = false;                     // the shading graph reads the attribute itself
     const entry: Built = { material, flags, fog, textured: !!texture, cull, shadow: name !== null && SHADOW_TEXTURE.test(name), scrollNode: null };
-    if (scroll && texture) {
+    const mip = gsMipLod(flags?.gs);
+    if (texture && (scroll || mip)) {
       // A scrolling texture gets a graph of its own: the same modulate, with the uv pushed along by an
-      // offset that `frame` advances. One program per scrolling texture, a handful per map at most.
-      const offset = vec2Uniform(0, 0);
-      const moved = vec4(textureNode(texture, uv().add(offset)).mul(vertexColor())).clamp(0, 1);
+      // offset that `frame` advances. So does a mipmapped one, whose level is the GS's, off the depth
+      // (`gsTexel`). One program each, a handful per map at most.
+      let at: Node<'vec2'> = uv();
+      if (scroll) {
+        const offset = vec2Uniform(0, 0);
+        at = at.add(offset);
+        scrolling.push({ offset, du: scroll[0], dv: scroll[1] });
+      }
+      const moved = vec4(gsTexel(texture, at, mip).mul(vertexColor())).clamp(0, 1);
       entry.scrollNode = vec4(moved.rgb.mul(brighten), moved.a);
-      scrolling.push({ offset, du: scroll[0], dv: scroll[1] });
     }
     apply(entry);
     built.push(entry);
@@ -448,7 +454,8 @@ export function buildWorld(map: LoadedMap): WorldView {
   /** The pass's colour: `clamp(texel(uv * scale) * vertex)`, brightened; its alpha times the fade (`detailWeight`). */
   const detailColor = (texture: Texture, spec: DetailSpec): ColorNode => {
     const scale = uniform(spec.scale), fade = uniform(spec.fade);
-    const texel = vec4(textureNode(texture, uv().mul(scale)).mul(vertexColor())).clamp(0, 1);
+    // The GS picks the detail's level off the depth as it does the base's; the uv scale does not enter it.
+    const texel = vec4(gsTexel(texture, uv().mul(scale), gsMipLod(map.textureFlags[spec.texture]?.gs)).mul(vertexColor())).clamp(0, 1);
     const weight = float(1).sub(positionView.length().div(fade)).clamp(0, 1);
     return vec4(texel.rgb.mul(brighten), texel.a.mul(weight));
   };
@@ -876,6 +883,19 @@ function geometryOf(
   geometry.setIndex(new BufferAttribute(part.indices, 1));
   geometry.computeBoundingSphere();
   return geometry;
+}
+
+/**
+ * A texel as the GS samples it. A mipmapped texture's level is `gsMipLod`'s -- `log2` of the depth, scaled by
+ * `2^L`, plus `K`, clamped to `0..MXL` -- read per fragment from the view depth (the clip `w` the VU divides by),
+ * not the GPU's derivative LOD, which took Vigilance's walls two levels down at 150 units where the console
+ * draws them sharp. Anything else samples as it always did.
+ */
+function gsTexel(texture: Texture, at: Node<'vec2'>, lod: GsMipLod | null): Node<'vec4'> {
+  const sampled = textureNode(texture, at);
+  if (!lod) return sampled as unknown as Node<'vec4'>;
+  const level = log2(positionView.z.negate().max(1e-3)).mul(lod.scale).add(lod.k).clamp(0, lod.max);
+  return sampled.level(level) as unknown as Node<'vec4'>;
 }
 
 export function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {

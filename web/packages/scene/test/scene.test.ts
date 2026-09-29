@@ -254,6 +254,21 @@ describe('Frostfire placement', () => {
     }
   });
 
+  it.skipIf(!MP2)('gives each world placement its own instance context, numbered after the prototypes\' own', () => {
+    // `hookupVisuals` numbers a model's contexts by its `m_list`, the instances in the order the load created
+    // them: the models are read in file order and the world model is read last, so the contexts inside the
+    // prototypes (tankrail1..4's own copies, never placed, never prelit) take the low numbers and the world's
+    // placements the rest. Drawing I000 at the world's first rail drew the unprelit material colour there.
+    const { placed } = open('MP2');
+    const indices = (name: string): number[] =>
+      placed.filter((p) => p.modelName === name).map((p) => p.instanceIndex!).sort((a, b) => a - b);
+    const range = (from: number, to: number): number[] => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    expect(indices('tankrailbarshi')).toEqual(range(1, 17));
+    expect(indices('tankrailsupport')).toEqual(range(4, 27));
+    expect(indices('railstraithi1')).toEqual(range(5, 14));
+    expect(indices('grate_midlod')).toEqual(range(0, 25));        // instanced by the world alone: nothing before it
+  });
+
   it.skipIf(!MP2)('puts a collision polygon under both spawns, at their measured heights (36 section 6)', () => {
     const { models } = open('MP2');
     const polys = placeCollision(models);

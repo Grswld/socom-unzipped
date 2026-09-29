@@ -261,12 +261,14 @@ the only control taken away while a load runs.
 
 Settled on 2026-09-26 (the polish spec linked at the top):
 
-- **The world is drawn unlit, then the frame is brightened.** The EE emits the VU1 light command only
+- **The world is drawn unlit, and a multiplayer frame is not brightened.** The EE emits the VU1 light command only
   for a node flagged `m_dynamic_motion` or `m_dynamic_light`; on most maps that is nobody, and the
-  vertex colours the exporter baked go to the GS untouched (`viewer/src/lighting.ts`). The game's
-  post-process then multiplies every pixel, fog included, by `1 + FIX/128`, `FIX` being its
-  auto-exposure's reading (93 on the console dump). That is the "factor of eight" the earlier notes
-  could not place. The rig from `GlobalLighting` is exact and is applied to the flagged nodes only.
+  vertex colours the exporter baked go to the GS untouched (`viewer/src/lighting.ts`). The campaign's post-process
+  multiplies every pixel, fog included, by `1 + FIX/128` twice (FIX 89-93 on the Seeding Chaos spawn), but a
+  multiplayer round has it switched off -- the exposure block at `0x488e48` reads enable 0 and pass count 0 on a live
+  Frostfire round -- and PCSX2's Vigilance and the recompiled Frostfire agree with the bare frame band for band
+  (`docs/research/82-map-fidelity-audit.md`, D1). The viewer opens at FIX 0; the slider keeps the campaign's look.
+  The rig from `GlobalLighting` is exact and is applied to the flagged nodes only.
 - **The GS state is read off each texture's bind packet** (`gs/src/gsState.ts`, `viewer/src/materialSpec.ts`):
   the blend equation (source alpha, additive on 212 glows, none on the cutouts), the alpha test and its
   reference (`GREATER 64`, exactly half), the filtering and mipmap request, and the wrap mode per axis.
@@ -289,6 +291,14 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   `whats_left` and the debris `parts`), a lamp beside its `nolight` copy, and the crates' pulsing
   objective ribbon. The game switches them by play; drawn together they z-fight. The viewer draws the
   intact, lit ones and hides the rest (`LoadedMesh.alternate`, "alternate states" in `options` shows them).
+- **Each placement draws its own baked light.** A model instanced in several places carries a chunk per instance
+  context, differing only in its prelit vertex colours; `hookupVisuals` numbers the contexts in load order, the copies
+  inside the prototypes first and the world's placements after them (`contextsBefore` in `scene`), and each placement
+  draws its own (`instanceShades` in `loadMap.ts`). Frostfire's tank rails drew the prototype's bare material colour
+  before, neon beside the prelit bridges (`docs/research/82-map-fidelity-audit.md`, D2).
+- **The mip level is the GS's.** A mipmapped texture samples the level `TEX1` gives off the depth,
+  `(log2(w) << L) + K` clamped to `0..MXL`, not the GPU's derivative LOD; with the corpus's K of -12 to -6.5 most never
+  leave the base level (`gsMipLod`, `world.ts`'s `gsTexel`; research 82, D3).
 - **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
   (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
   world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the
@@ -463,8 +473,9 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
   flames are effect emitters, not map geometry.
 - **The one EE-animated `FIX` glow** (`lightglow.tif` on MP61, `(Cs - 0) * FIX + Cd`) is drawn additive:
   its factor is game logic, and at rest it draws nothing.
-- **The auto-exposure is a slider.** `FIX` is computed per frame from a column of frame pixels; the
-  viewer opens at the one value measured (93) and leaves the readback unmodelled.
+- **The auto-exposure is a slider.** A multiplayer round never runs it (the viewer opens at FIX 0, as the round
+  draws); the campaign meters `FIX` per frame from a grid of frame pixels and applies it twice, which the viewer
+  leaves to the slider.
 - **The ISO source has met no retail disc yet.** It reads ISO9660 (the primary volume at sector 16, `;1`
   names, files by LBN) and was checked against images written by an independent library in four flavours
   (plain, Joliet with Rock Ridge, a UDF bridge, El Torito), but no SOCOM II image was on the host that built

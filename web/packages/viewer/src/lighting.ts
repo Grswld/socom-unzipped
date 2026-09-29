@@ -20,16 +20,20 @@ export interface Lightable {
  * `RGBAQ` untouched, and what reaches the GS is the vertex colour the exporter baked -- the
  * `prelight` the nodes are flagged with -- times the texel.
  *
- * **Then the frame is brightened.** The game's post-process copies the frame at half size and draws it
- * back with `ALPHA = (Cd - 0) * FIX + Cd`, `out = Cd * (1 + FIX / 128)` on every pixel, the fog colour
- * included. `FIX` comes from the auto-exposure thread's readback of a column of frame pixels
- * (`FUN_003b24c0`); the console dump measured 93, a lift of 1.73x (`docs/research/31` sections 12-13).
- * The defaults cap it at 100.
+ * **And in multiplayer the frame is not brightened.** The game has a post-process that draws the frame
+ * back over itself with `ALPHA = (Cd - 0) * FIX + Cd`, `out = Cd * (1 + FIX / 128)` on every pixel, the
+ * fog colour included, `FIX` metered by the auto-exposure thread (`FUN_003b24c0` reads frame pixels,
+ * `FUN_0033cd50` turns the mean into `FIX` and a pass count). Its state block is at `0x488e48`: on the
+ * campaign's Seeding Chaos spawn (`spawn_pcsx2.rdram`) it is on (+0x31 = 1) with two passes of FIX 89-93,
+ * a lift of about 2.9x (`docs/research/31` sections 12-13 read one pass); on a live Frostfire round
+ * (`frostA_probe600.rdram`, `frostB_probe600.rdram`) it is off, +0x31 = 0 and the pass count at
+ * `0x488e90` = 0, and the frame goes out as drawn. The frames agree: PCSX2's Vigilance at spawn A and
+ * the recompiled Frostfire at spawn B are 0.55 of the viewer's old 1.73x picture band for band and 1.0
+ * of the bare one (`web/docs/research/82-map-fidelity-audit.md`, D1). So the default `FIX` is 0 and the
+ * slider stays, for the campaign's look.
  *
- * That is the "factor of eight" the earlier spec could not place: the viewer lit every vertex with the
- * rig (about 0.21 at a ground normal on Frostfire, so five times too dark) and then applied no
- * brighten (1.73x more). The rig itself is exact -- it reproduces the captured VU1 quadwords bit for
- * bit -- and is still applied where the engine applies it.
+ * The rig itself is exact -- it reproduces the captured VU1 quadwords bit for bit -- and is applied
+ * where the engine applies it.
  *
  * For a lit part the VU computes (`socom2_dispatch_0x1b50.cpp` command `0x18` -> `0x1440`):
  *
@@ -54,8 +58,8 @@ export interface Lighting {
 /** The frame multiplier the brighten pass applies: `1 + FIX / 128`. */
 export const brightenOf = (light: Lighting): number => 1 + light.brighten / 128;
 
-/** What the viewer opens with: the console-measured `FIX` of 93, and the rig only where the engine puts it. */
-export const DEFAULT_LIGHTING: Lighting = { rig: null, brighten: 93, rigEverywhere: false };
+/** What the viewer opens with: no brighten pass, as a multiplayer round draws, and the rig only where the engine puts it. */
+export const DEFAULT_LIGHTING: Lighting = { rig: null, brighten: 0, rigEverywhere: false };
 
 /**
  * The rig a lit part falls back to when a map has no `GlobalLighting` key: one white light from above

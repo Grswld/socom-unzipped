@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  detailDrawState, detailRenderOrder, detailWeight, drawState, materialSpec, type DrawState, type MaterialSpec, type TextureFlags,
+  detailDrawState, detailRenderOrder, detailWeight, drawState, gsMipLevel, gsMipLod, materialSpec, type DrawState, type MaterialSpec,
+  type TextureFlags,
 } from '../src/materialSpec';
 import type { GsState } from '@s2u/gs';
 
@@ -197,5 +198,31 @@ describe('the detail draw state', () => {
     expect(detailRenderOrder(512, true)).toBeLessThan(513);
     expect(detailRenderOrder(512, false)).toBeGreaterThan(0);
     expect(detailRenderOrder(512, false)).toBeLessThan(1);
+  });
+});
+
+describe('the GS mip level: from the depth, not the screen', () => {
+  // TEX1 with LCM = 0: LOD = (log2(1/|Q|) << L) + K, Q = 1/clip.w, clamped to 0..MXL (GS manual, TEX1).
+  it('a texture that asks for no mipmaps has no LOD to compute', () => {
+    expect(gsMipLod(gs())).toBeNull();
+    expect(gsMipLod(null)).toBeNull();
+  });
+  it('a hand-built state without K falls back to the renderer\'s own chain', () => {
+    expect(gsMipLod(gs({ mipmaps: true, levels: 2 }))).toBeNull();
+  });
+  it('Vigilance\'s rockwall (MXL 2, K -12) stays on its base level across the whole far clip', () => {
+    const lod = gsMipLod(gs({ mipmaps: true, levels: 2, lodK: -12, lodL: 0 }))!;
+    expect(lod).toEqual({ k: -12, scale: 1, max: 2 });
+    for (const depth of [4, 68, 171, 640, 2000]) expect(gsMipLevel(lod, depth)).toBe(0);
+    expect(gsMipLevel(lod, 8192)).toBe(1);
+    expect(gsMipLevel(lod, 1e6)).toBe(2);                      // clamped at MXL
+  });
+  it('a K near -6.5 reaches its first level at 90.5 units, and L doubles the slope', () => {
+    const lod = gsMipLod(gs({ mipmaps: true, levels: 1, lodK: -6.5, lodL: 0 }))!;
+    expect(gsMipLevel(lod, 2 ** 6.5)).toBeCloseTo(0, 6);
+    expect(gsMipLevel(lod, 2 ** 7)).toBeCloseTo(0.5, 6);
+    const steep = gsMipLod(gs({ mipmaps: true, levels: 3, lodK: -13, lodL: 1 }))!;
+    expect(steep.scale).toBe(2);
+    expect(gsMipLevel(steep, 2 ** 7)).toBeCloseTo(1, 6);
   });
 });

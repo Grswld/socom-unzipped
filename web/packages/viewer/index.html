@@ -112,9 +112,9 @@
         </div>
         <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
         <details id="sliders-box" class="s2u-disclosure">
-          <summary title="The PS2 draws a multiplayer map from the vertex colours the exporter baked; only the odd node flagged dynamic (a fern, a palm, a flare) takes the map's own GlobalLighting rig. The game then brightens the whole frame by 1 + FIX/128, FIX coming from its auto-exposure; the console measured 93.">lighting</summary>
-          <label class="s2u-range" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 93 is the value read off the console; 0 is the bare frame; the game's own defaults cap it at 100."><span>brighten</span>
-            <input type="range" id="brighten" min="0" max="255" step="1" value="93" /><output id="brighten-out"></output></label>
+          <summary title="The PS2 draws a multiplayer map from the vertex colours the exporter baked; only the odd node flagged dynamic (a fern, a palm, a flare) takes the map's own GlobalLighting rig. The campaign then brightens the whole frame by 1 + FIX/128, twice, FIX coming from its auto-exposure; a multiplayer round switches that pass off, so the frame goes out as drawn.">lighting</summary>
+          <label class="s2u-range" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 0, the bare frame, is what a multiplayer round draws; the campaign's spawn read 89-93."><span>brighten</span>
+            <input type="range" id="brighten" min="0" max="255" step="1" value="0" /><output id="brighten-out"></output></label>
           <div class="checks">
             <label class="s2u-check" title="Light every node with the map's rig, whether or not the engine would. The viewer's earlier reading, kept for comparison: about five times too dark on Frostfire."><input type="checkbox" id="rigeverywhere" /> <span>rig everywhere</span></label>
           </div>

@@ -39,10 +39,18 @@ export function parseZdb(bytes: Uint8Array, fileSize = bytes.byteLength): ZdbEnt
   return out;
 }
 
-/** The one entry whose disc path ends with `suffix` (case-insensitive); throws if absent or ambiguous. */
+/**
+ * The one entry whose disc path ends with `suffix` (case-insensitive); throws if absent or ambiguous. Where
+ * several end with it, the one whose file name *is* the suffix wins: a mission's `M51_TXR.ZED` beside its
+ * `ZM51_TXR.ZED`.
+ */
 export function zdbEntry(entries: ZdbEntry[], suffix: string): ZdbEntry {
   const s = suffix.toLowerCase();
-  const hits = entries.filter((e) => e.name.toLowerCase().endsWith(s));
+  let hits = entries.filter((e) => e.name.toLowerCase().endsWith(s));
+  if (hits.length > 1) {
+    const exact = hits.filter((e) => /[\\/]/.test(e.name.charAt(e.name.length - s.length - 1)));
+    if (exact.length > 0) hits = exact;
+  }
   if (hits.length !== 1) throw new Error(`ZDB member ${suffix}: ${hits.length} matches`);
   return hits[0]!;
 }

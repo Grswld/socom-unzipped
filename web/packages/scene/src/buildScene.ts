@@ -124,20 +124,55 @@ export function countInstances(models: SceneNode[]): Map<string, number> {
 }
 
 /**
+ * How many instance contexts of each model the load has created by the time it reaches `rootName`: the
+ * first `I` index the root's own realisations take.
+ *
+ * `hookupVisuals` numbers a model's contexts by its `m_list` (`vis_main.cpp:77-111`), the instance nodes in
+ * the order the load created them. The graph's models are read in file order, and reading a model creates
+ * one context per instance node in its tree, depth first, each copy re-making the instances inside the
+ * prototype it copies (`CNode::CreateInstance`, `CNode::_Copy`, `zNode/node_main.cpp:312-333`) -- the same
+ * recursion `countInstances` sums. The world model is read last, so every prototype's own contexts (the
+ * copies inside other prototypes, never placed and never prelit) come first and the world's placements
+ * take the numbers after them. Frostfire's tank rails are the evidence: `tankrailbarshi`'s `I000` is the
+ * bare material colour, (128, 109, 35) on every vertex, and `I001`..`I017` the seventeen prelit rails.
+ */
+export function contextsBefore(models: SceneNode[], rootName = 'worldmodel'): Map<string, number> {
+  const byName = new Map(models.map((m) => [m.name, m]));
+  const created = new Map<string, number>();
+  const create = (name: string, depth: number): void => {
+    created.set(name, (created.get(name) ?? 0) + 1);
+    const prototype = byName.get(name);
+    if (prototype && depth < MAX_DEPTH) instancesIn(prototype, depth + 1);
+  };
+  const instancesIn = (node: SceneNode, depth: number): void => {
+    for (const child of node.children) {
+      if (child.type === NODE_INSTANCE) { if (child.modelName !== null) create(child.modelName, depth); }
+      else instancesIn(child, depth);
+    }
+  };
+  for (const model of models) {
+    if (model.name === rootName) break;
+    instancesIn(model, 0);
+  }
+  return created;
+}
+
+/**
  * Realises the scene: every node of every model, in every context reachable from the root model, with
  * its world matrix. An instance node is emitted itself (it can carry collision of its own) and then the
  * model it names is realised beneath it.
  *
- * The `I` index runs in traversal order. Nothing about where a prop sits depends on it -- the chains of
- * one model differ only in their baked per-instance vertex lighting, their positions being identical --
- * so a context the traversal cannot reach costs a shade, not a placement.
+ * The `I` index is the context's place in the load's creation order (`contextsBefore`): the root's
+ * realisations take the numbers after the contexts the models read before it created, in traversal
+ * order. Nothing about where a prop sits depends on it -- the chains of one model differ only in their
+ * baked per-instance vertex lighting, their positions being identical -- but that lighting is the picture.
  */
 export function flattenScene(models: SceneNode[], rootName = 'worldmodel'): SceneInstance[] {
   const byName = new Map(models.map((m) => [m.name, m]));
   const root = byName.get(rootName);
   if (!root) throw new Error(`the scene graph has no model named ${rootName}`);
   const counts = countInstances(models);
-  const taken = new Map<string, number>();
+  const taken = contextsBefore(models, rootName);
   const out: SceneInstance[] = [];
 
   const takeIndex = (name: string): number | null => {

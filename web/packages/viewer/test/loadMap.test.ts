@@ -55,6 +55,25 @@ describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_A
     expect(map.props.filter((p) => !p.alternate).length).toBeGreaterThan(alternate.length);
   });
 
+  it.skipIf(absent)('every placement of a prop is drawn with its own context\'s prelit colours, not the first one\'s', async () => {
+    // Frostfire's tank rails: one model, seventeen placements, a chunk per placement whose baked light differs
+    // (`N000_I001`..`I017`). Drawing the first member's chunk at every matrix drew the prototype's own bare
+    // material colour -- (128, 109, 35), unity red -- on all seventeen, twice to three times the prelit rails
+    // around them. Each placement must carry the colours of its own chunk.
+    const map = await load('RUN/MP2.ZDB');
+    const rails = map.props.filter((p) => p.modelName === 'tankrailbarshi');
+    expect(rails.reduce((n, p) => n + p.matrices.length / 16, 0)).toBe(17);
+    const meanRed = (c: Float32Array): number => { let s = 0; for (let i = 0; i < c.length; i += 4) s += c[i]!; return (s / (c.length / 4)) * 128; };
+    for (const p of rails) for (const part of p.parts) expect(meanRed(part.colors)).toBeLessThan(64);
+    // And each its own: the seventeen chunks' baked light takes a dozen distinct values, one per placement.
+    const drawn = rails.flatMap((p) => Array.from({ length: p.matrices.length / 16 }, () => meanRed(p.parts[0]!.colors).toFixed(2)));
+    expect(new Set(drawn).size).toBeGreaterThanOrEqual(10);
+    // The supports (24 placements): no world placement is drawn with a bare prototype context's unity colour.
+    const supports = map.props.filter((p) => p.modelName === 'tankrailsupport');
+    expect(supports.reduce((n, p) => n + p.matrices.length / 16, 0)).toBe(24);
+    for (const p of supports) for (const part of p.parts) expect(meanRed(part.colors)).toBeLessThan(100);
+  });
+
   it.skipIf(absent)('the LOD pairs of the Frostfire railings carry their bands, and the facades and scrolls are marked', async () => {
     const map = await load('RUN/MP2.ZDB');
     // `railings_low` fades in at 100-120 units where `railings_high` fades out; the graph places both

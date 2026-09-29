@@ -33,6 +33,13 @@ export interface GsState {
   mipmaps: boolean;
   /** `TEX1.MXL`: how many levels beyond the base the hardware was given. */
   levels: number;
+  /**
+   * `TEX1.K` (bits 32-43, signed 7.4 fixed point) and `TEX1.L` (bits 19-20): the GS picks the mip level
+   * from the depth, not the screen, `LOD = (log2(1 / |Q|) << L) + K` with `LCM = 0` (GS manual, TEX1), and
+   * `Q` is `1 / clip.w` (VU1 command `0x08`, research 13). Absent on a state built by hand.
+   */
+  lodK?: number;
+  lodL?: number;
   wrapS: WrapMode;
   wrapT: WrapMode;
 }
@@ -62,11 +69,15 @@ export function decodeTest(q: bigint): { alphaTest: number | null; depthTest: bo
   return { alphaTest: ate ? aref / 128 : null, depthTest: field(q, 16, 1) === 1 };
 }
 
-/** `TEX1`: MXL bits 2-4, MMAG bit 5, MMIN bits 6-8. MMIN 0/1 are point/linear; 2-5 are the mipmap modes. */
-export function decodeTex1(q: bigint): { bilinear: boolean; mipmaps: boolean; levels: number } {
+/**
+ * `TEX1`: MXL bits 2-4, MMAG bit 5, MMIN bits 6-8, L bits 19-20, K bits 32-43 (signed, four fraction bits).
+ * MMIN 0/1 are point/linear; 2-5 are the mipmap modes.
+ */
+export function decodeTex1(q: bigint): { bilinear: boolean; mipmaps: boolean; levels: number; lodK: number; lodL: number } {
   const mxl = field(q, 2, 3), mmag = field(q, 5, 1), mmin = field(q, 6, 3);
   const mipmaps = mmin >= 2;
-  return { bilinear: mmag === 1, mipmaps, levels: mipmaps ? mxl : 0 };
+  const k = field(q, 32, 12);
+  return { bilinear: mmag === 1, mipmaps, levels: mipmaps ? mxl : 0, lodK: (k & 0x800 ? k - 0x1000 : k) / 16, lodL: field(q, 19, 2) };
 }
 
 /** `CLAMP`: WMS bits 0-1, WMT 2-3; 0 REPEAT, 1 CLAMP, 2 REGION_CLAMP, 3 REGION_REPEAT. */
