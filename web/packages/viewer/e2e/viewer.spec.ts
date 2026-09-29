@@ -87,7 +87,7 @@ test('all three extracted maps render from the served archives', async ({ page }
     }
   });
 
-  await page.goto('/');
+  await page.goto('/?devmode');
   const maps = page.locator('#maps');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
@@ -207,7 +207,7 @@ test('the page never shows through the canvas: Requiem at night, magenta page', 
       problems.push(`console: ${m.text()}`);
     }
   });
-  await page.goto('/');
+  await page.goto('/?devmode');
   // The site links are not part of the backtick's chrome, so they go through the style with the page colour.
   await page.addStyleTag({ content: 'html, body { background: #ff00ff !important } #site-links { display: none !important }' });
   const status = page.locator('#status');
@@ -262,7 +262,7 @@ test('the page never shows through the canvas: Requiem at night, magenta page', 
  * side: the two families the chrome uses are `loaded`, not `error`, and the woff2 answers as a font.
  */
 test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/woff2', async ({ page, request }) => {
-  await page.goto('/');
+  await page.goto('/?devmode');
   await page.evaluate(() => document.fonts.ready);
   const faces = await page.evaluate(() => [...document.fonts].map((f) => [f.family.replace(/^["']|["']$/g, ''), f.status]));
   for (const family of ['Oswald', 'JetBrains Mono']) {
@@ -280,7 +280,7 @@ test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/
  * the backtick hides the panel but not the bar, so the cog stays; the GitHub link wears its mark.
  */
 test('the cog in the site bar folds the panel away entirely; the backtick leaves the cog', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?devmode');
   const cog = page.locator('#site-links #panel-toggle');
   await expect(cog).toBeVisible();
   await expect(page.locator('#source svg')).toHaveCount(1);
@@ -302,7 +302,7 @@ test('the cog in the site bar folds the panel away entirely; the backtick leaves
 test('the panel fills a phone with the system gutters and the fullscreen target is 44px', async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, storageState: { cookies: [], origins: [] } });
   const page = await ctx.newPage();
-  await page.goto('/');
+  await page.goto('/?devmode');
   // Folded on a coarse pointer: no strip of it left, only the cog in the bar.
   await expect(page.locator('#panel')).toBeHidden();
   await expect(page.locator('#site-links #panel-toggle')).toBeVisible();
@@ -326,7 +326,7 @@ test.describe('fix round 1: the fullscreen fab clears the touch-lift buttons', (
   test('on a phone with touch controls, the fab does not overlap either lift button', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     const page = await ctx.newPage();
-    await page.goto('/');
+    await page.goto('/?devmode');
     await unfoldPanel(page);
     const status = page.locator('#status');
     await expect(status).toContainText('webgl2'); // a narrow status abbreviates "triangles" to "tris"

@@ -120,6 +120,12 @@ Run from `web/`:
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
+
+**For developers: `?devmode`.** Opened by its plain address the viewer reads only the visitor's own disc image: it shows
+the disc page and makes no request under `maps/`. Add `?devmode` (its presence is enough) and it reads the served,
+extracted tree from `public/maps/` as it always did, falling back to the disc page when `maps/index.json` does not
+answer (`packages/viewer/src/source.ts`). The e2e specs and the measuring tools under `tools/` add it to their URLs; do
+the same by hand, e.g. `http://localhost:5173/?map=MP2&redotcom&devmode`. It is not shown anywhere in the page.
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
 | `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §11) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
@@ -162,24 +168,39 @@ The camera flies like a creative-mode build camera: momentum, not teleporting. T
 mode you are in, in the **Controls** popover in the top bar (hover it, focus it, or click or tap it; **Esc** closes it),
 and, once a pad is connected, the pad's layout for that mode under them.
 
-**Playing as a SEAL is behind a URL parameter.** Add `?redotcom` (its presence is enough: `?redotcom`, or
-`?map=MP2&redotcom`) and the page also has walk mode, the SEAL's body, the rifle, the ammo box and the touch stance and
-fire buttons. Without it none of that is rendered, bound or answered: no `G`, no Start, no Fly / Walk switch, no walk in
-the Controls popover, and the debug hook's `setMode('walk')` returns false. (`viewer/src/features.ts`, `playEnabled`.)
-With it the page **opens on foot** (owner, 2026-09-29): the first map starts walking once its body and clips are ready;
+**Playing as a SEAL is reCOM mode**, the settings' **Mode** switch (**Map viewer** / **reCOM**, owner 2026-09-29). In
+reCOM mode the page also has walk mode, the SEAL's body, the rifle, the HUD, the Sound and Mouse look sections and the
+touch stance and fire buttons. In the map viewer none of that is rendered, bound or answered: no `G`, no Start, no Fly /
+Walk switch, no walk in the Controls popover, and the debug hook's `setMode('walk')` returns false. The switch works at
+run time, both ways, without a reload (the disc you opened stays open), and is remembered in this browser
+(`s2u.viewer.recom`). `?redotcom` in the address forces reCOM on for that visit (a deep link: `?redotcom`, or
+`?map=MP2&redotcom`); switching to the map viewer takes it out of the address. (`viewer/src/features.ts`, `playWanted`,
+`PlayUi`.) reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
 add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
 **Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
 the choice is remembered. A failed load unfolds the panel so the error is seen.
 
-With `?redotcom` the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
+In reCOM mode the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
 `setMuted`) and a **Mouse look** section (raw, the default, or the game's stick curve -- both kept by the owner's ruling of
 2026-09-29 -- a sensitivity slider, invert pitch, and equal
 pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
 `s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover lists
 the keyboard and mouse for the current mode in groups (Move, Combat, Stance & traversal, Weapons, General; the fly list is
 Move and General), and the pad's layout under them, grouped the same way, once a pad is connected.
+
+| setting | choices | remembered as |
+|---|---|---|
+| **Mode** | Map viewer (the default) · reCOM (play as a SEAL; `?redotcom` forces it) | `s2u.viewer.recom` |
+| **View** | Modern · PS2 | `s2u.viewer.look` |
+| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `s2u.viewer.online` |
+
+**Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
+(Space follows the next player, V the free camera) and never takes a player's place. The line under it says what the
+connection is doing -- connecting, online and the number of players, or "server unreachable" and when it retries (2, 4,
+8 ... 60 s to a server never reached; 1, 2, 4 ... 10 s after a drop) -- and a toast says when it comes up or goes
+away. `&mp` and `&server=` in the address still override it (`viewer/src/online.ts`).
 
 ### Flying (always)
 
@@ -197,7 +218,7 @@ Move and General), and the pad's layout under them, grouped the same way, once a
 | `F` | fullscreen, and back (also the button under the frame counter) |
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar stays |
 
-### Walking (`?redotcom`)
+### Walking (reCOM mode)
 
 | input | what it does |
 |---|---|
@@ -223,7 +244,7 @@ The Gamepad API's standard mapping, read as the PS2 pad by position. The left st
 walking alike. The layout is the owner's word of 2026-09-28 where it says so; a row marked *assumed* in the page is one
 neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LAYOUT`).
 
-| button | walking (`?redotcom`) | flying |
+| button | walking (reCOM mode) | flying |
 |---|---|---|
 | left stick / right stick | move / look | fly along the look / look |
 | Square | jump | up |
@@ -293,7 +314,7 @@ fires at its rate. The right half is left alone so looking still works while the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
 
-**Walking on a phone** (`?redotcom`) has its own layout, in the PS2 pad's positions, shown while walking on a touch screen
+**Walking on a phone** (reCOM mode) has its own layout, in the PS2 pad's positions, shown while walking on a touch screen
 and held sideways (upright, the page asks for a turn and lifts the buttons off the HUD's tall bottom strip). The left
 thumb has the stick; the right has a diamond of face buttons at the bottom right -- Triangle the stance (tap crouches, hold
 goes prone, as the pad's), Square the jump, Cross the action (climb, ladder slide) -- and a larger **FIRE** (R1) at the edge
@@ -618,7 +639,7 @@ code and documentation only, never the game or its data. CI for this directory i
 
 ## Multiplayer server (web sprint 3)
 
-`packages/server` is the match server behind the viewer's `?redotcom&mp` mode: one timed respawn match per map, HTTP
+`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): one timed respawn match per map, HTTP
 `/health` and `/metrics` and a WebSocket on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 `READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
 
@@ -626,7 +647,9 @@ code and documentation only, never the game or its data. CI for this directory i
 SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS
 ```
 
-Join from the viewer with `?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS).
+Join from the viewer with Settings > Online > **Local** (this server on its default port), or with
+`?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
+as a spectator outside the queue: never promoted, sharing the spectators' room with it.
 
 To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim Node 22 image, build context `web/`), a
 compose file with Caddy for HTTPS, a systemd unit for the no-Docker case, and `deploy.sh`. The owner's steps, the
@@ -635,8 +658,8 @@ time and is never part of an image.
 
 ### Playing a match
 
-Open the viewer with `?redotcom&mp` (the server at this page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the
-map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
+Choose Settings > Online (Shared or Local) in reCOM mode, or open the viewer with `?redotcom&mp` (the server at this
+page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
 §7); past 16 players it spectates, and is moved in, first come first served, when a place frees up.
 
 | key | in the match |
@@ -646,7 +669,7 @@ map you want: each map is its own match. The page joins as a SEAL or a Terrorist
 | Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
 | K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
 | Space / V | spectating: the next living player / the free camera |
-| Settings > Multiplayer > name | your name, 30 characters at most; blank is the game's `Player####` |
+| Settings > Online > name | your name, 30 characters at most; blank is the game's `Player####` |
 
 A match is the original's SUPPRESSION with RESPAWN on: one 6-minute round, "TIME EXPIRED" and 15 s more, the side with
 more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. `?lag=100&loss=2` runs the page's latency and

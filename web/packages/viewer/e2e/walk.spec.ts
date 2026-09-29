@@ -77,7 +77,7 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
     }
   });
 
-  await page.goto('/?redotcom&fly');
+  await page.goto('/?redotcom&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -204,7 +204,7 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
       problems.push(`console: ${m.text()}`);
     }
   });
-  await page.goto('/?redotcom&fly');
+  await page.goto('/?redotcom&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -267,10 +267,10 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
 });
 
 test('?redotcom opens on foot: the first map walks once it is ready, and &fly keeps the free camera', async ({ page }) => {
-  await page.goto('/?map=MP2&redotcom');
+  await page.goto('/?map=MP2&redotcom&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await expect.poll(() => page.evaluate(() => window.__viewer.mode()), { timeout: 60_000 }).toBe('walk');
-  await page.goto('/?map=MP2&redotcom&fly');
+  await page.goto('/?map=MP2&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await page.waitForTimeout(3000);
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');

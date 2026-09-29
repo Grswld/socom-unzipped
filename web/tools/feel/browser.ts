@@ -60,6 +60,7 @@ export async function browserRows(url: string): Promise<FeelRow[]> {
     const page = await browser.newPage();
     const at = new URL(url);
     at.searchParams.set('map', 'MP2');                       // Frostfire, by `main.ts`'s `?map=`
+    if (!at.searchParams.has('devmode')) at.searchParams.set('devmode', '');   // the served maps (`src/source.ts`)
     await page.goto(at.href);
     await page.waitForFunction(() => {
       const s = window.__viewer?.stats();

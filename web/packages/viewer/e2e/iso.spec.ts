@@ -46,7 +46,7 @@ function watch(page: Page, expected: (m: ConsoleMessage) => boolean = () => fals
 
 test('a disc image opened from the file input lists its maps and draws Frostfire as the served tree does', async ({ page }) => {
   const problems = watch(page);
-  await page.goto('/');
+  await page.goto('/?devmode');                         // the served tree: the developer's switch (`../src/source.ts`)
   const maps = page.locator('#maps');
   const status = page.locator('#status');
 
@@ -85,22 +85,80 @@ test('a disc image opened from the file input lists its maps and draws Frostfire
   expect(problems).toEqual([]);
 });
 
-test('with no maps served the page offers the disc instead of booting for ever', async ({ page }) => {
+
+test('with devmode and no maps served, the page offers the disc page instead of booting for ever', async ({ page }) => {
   // The one console line this test provokes: Chromium reports the 404 it is served for the index.
   const problems = watch(page, (m) => m.type() === 'error' && /maps\/index\.json$/.test(m.location().url));
   await page.route('**/maps/index.json', (route) => route.fulfill({ status: 404, body: '' }));
-  await page.goto('/');
+  await page.goto('/?devmode');
   const status = page.locator('#status');
 
   await expect(status).toContainText('open your own SOCOM II disc image');
-  await expect(page.locator('#disc')).toBeVisible();
-  expect(await page.evaluate(() => window.__viewer.panelCollapsed())).toBe(false);
+  await expect(page.locator('#disc-page')).toBeVisible();
+  await expect(page.locator('#disc')).toHaveCount(1);                 // the panel's own control is still there
 
-  await page.locator('#disc-file').setInputFiles(ISO);
+  await page.locator('#disc-page-file').setInputFiles(ISO);
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
+  await expect(page.locator('#disc-page')).toBeHidden();
   const stats = await page.evaluate(() => window.__viewer.stats());
   expect(stats.source).toBe('iso');
   expect(stats.triangles).toBe(FROSTFIRE_TRIANGLES);
   expect(problems).toEqual([]);
+});
+
+/**
+ * The owner's 2026-09-29 default: opened by the plain URL the page asks nothing of the served tree -- not even its index
+ * -- and shows the disc page; the ISO dropped anywhere on the window (a synthetic drag and drop carrying the file) is
+ * read in the browser, the page says so, and Frostfire is drawn from it.
+ */
+test('by default no request goes to maps/: the disc page takes a dropped ISO and draws Frostfire from it', async ({ page }) => {
+  const problems = watch(page);
+  const served: string[] = [];
+  page.on('request', (r) => { if (/\/maps\//.test(new URL(r.url()).pathname)) served.push(r.url()); });
+  await page.goto('/');
+
+  const discPage = page.locator('#disc-page');
+  await expect(discPage).toBeVisible();
+  await expect(discPage).toContainText('your own copy of the disc');
+  await expect(discPage).toContainText('Nothing is uploaded');
+  await expect(page.locator('#status')).toContainText('open your own SOCOM II disc image');
+  expect(await page.evaluate(() => window.__viewer.discPage?.())).toBe(true);
+  await expect(page.locator('#fps')).toBeHidden();                    // nothing drawn over the page
+
+  const dataTransfer = await page.evaluateHandle((b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'frostfire-only.iso', { type: 'application/octet-stream' }));
+    return dt;
+  }, readFileSync(ISO).toString('base64'));
+  // On the page's background, not a control: the whole window is the drop target, lit while the file is over it.
+  await page.dispatchEvent('#disc-page', 'dragover', { dataTransfer });
+  await expect(page.locator('body')).toHaveClass(/\bdisc-over\b/);
+  await page.dispatchEvent('#disc-page', 'drop', { dataTransfer });
+  await expect(page.locator('body')).not.toHaveClass(/\bdisc-over\b/);
+  await expect(page.locator('#disc-state')).toContainText('reading the disc image frostfire-only.iso');
+
+  await expect(page.locator('#status')).toContainText('FROSTFIRE (MP2)');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect(discPage).toBeHidden();
+  const stats = await page.evaluate(() => window.__viewer.stats());
+  expect(stats.source).toBe('iso');
+  expect(stats.triangles).toBe(FROSTFIRE_TRIANGLES);
+  expect(served).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+test('by default a file that is not a disc is refused on the disc page itself, in the reader words', async ({ page }) => {
+  const served: string[] = [];
+  page.on('request', (r) => { if (/\/maps\//.test(new URL(r.url()).pathname)) served.push(r.url()); });
+  await page.goto('/');
+  await page.locator('#disc-page-file').setInputFiles({
+    name: 'not-a-disc.iso', mimeType: 'application/octet-stream', buffer: Buffer.alloc(40 * 2048),
+  });
+  await expect(page.locator('#disc-state')).toContainText('not an ISO9660 image');
+  await expect(page.locator('#disc-state')).toHaveClass(/is-bad/);
+  await expect(page.locator('#disc-page')).toBeVisible();
+  await expect(page.locator('#status')).not.toHaveClass(/is-bad/);      // the panel's line is not the error's (no unfold)
+  expect(served).toEqual([]);
 });

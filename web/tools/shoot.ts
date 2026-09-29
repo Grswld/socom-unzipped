@@ -19,7 +19,7 @@ mkdirSync(dirname(out), { recursive: true });
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: Number(w), height: Number(h) } });
 page.on('pageerror', (e) => console.log('PAGEERROR:', e.message));
-await page.goto(process.env.VIEWER_URL ?? 'http://localhost:5173/');
+await page.goto(process.env.VIEWER_URL ?? 'http://localhost:5173/?devmode');
 await page.waitForFunction(() => document.querySelector('#status')?.textContent?.includes('triangles'));
 
 if (map !== 'FROSTFIRE') {

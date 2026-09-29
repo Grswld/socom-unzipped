@@ -12,7 +12,7 @@ import type {} from '../src/hook';
 test.use({ storageState: { cookies: [], origins: [] } });
 
 const loaded = async (page: Page, query = ''): Promise<void> => {
-  await page.goto(`/${query}`);
+  await page.goto(query ? `/${query}&devmode` : '/?devmode');   // the served maps: the developer's switch (`./src/source.ts`)
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 };
@@ -47,7 +47,7 @@ test('the bar tabs share one height, one padding and one gap, at a desktop width
   for (const [width, height, touch] of [[1280, 800, false], [375, 700, true]] as const) {
     const ctx = await browser.newContext({ viewport: { width, height }, isMobile: touch, hasTouch: touch });
     const page = await ctx.newPage();
-    await page.goto('/');
+    await page.goto('/?devmode');
     const [ctl, cog, git, home] = [await box(page, '#controls-toggle'), await box(page, '#panel-toggle'), await box(page, '#source'), await box(page, '#home')];
     for (const b of [cog, git]) {
       expect(Math.round(b.height), `${width}px height`).toBe(Math.round(ctl.height));

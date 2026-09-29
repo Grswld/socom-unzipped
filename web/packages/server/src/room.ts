@@ -175,7 +175,7 @@ export class Room {
   hello(id: number, conn: Conn, ev: Extract<ClientEvent, { type: 'hello' }>, address = ''): boolean {
     if (address && (this.banned.get(address) ?? -Infinity) > this.opts.now()) { this.refuse(conn, 'You have been banned from that game. Please choose another.'); return false; }
     if (ev.version !== PROTOCOL_VERSION) { this.refuse(conn, `protocol ${ev.version}, this server speaks ${PROTOCOL_VERSION}`); return false; }
-    const joined = this.lobby.join(id, ev.name, this.opts.random);
+    const joined = this.lobby.join(id, ev.name, this.opts.random, ev.watch === true);
     if (!joined) { this.refuse(conn, 'The game is full.'); return false; }
     this.conns.set(id, conn);
     if (address) this.addresses.set(id, address);

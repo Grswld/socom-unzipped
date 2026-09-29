@@ -77,7 +77,7 @@ if (!/^MP\d+$/.test(map)) {
 
 const page = await context.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(`${url}?map=${map}`);
+await page.goto(`${url}?map=${map}&devmode`);
 await page.waitForFunction((m) => document.querySelector('#status')?.textContent?.includes(`(${m})`), map, { timeout: 120_000 });
 
 const setBox = (id: string, on: boolean) => page.evaluate(([i, v]) => {

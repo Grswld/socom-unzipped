@@ -13,6 +13,37 @@
   <body class="panel-collapsed">
     <canvas id="view"></canvas>
     <!--
+      The disc page (owner, 2026-09-29; `./src/source.ts`): the page reads the game only from the visitor's own disc image,
+      so until one is open this stands over the canvas and says so. The whole window is the drop target (`./src/ui.ts`
+      `onDisc`: the document's drag events; `body.disc-over` lights this page while a file is over it), and the button is a
+      plain file input. The image goes to the worker as a `File`, read by range as ISO9660 (`@s2u/archive`
+      `IsoAssetSource`), and is never uploaded. Hidden once a disc's map list is in (`hideDiscPage`).
+    -->
+    <main id="disc-page" class="s2u-section" hidden aria-labelledby="disc-title">
+      <div class="s2u-head">
+        <h1 id="disc-title" class="s2u-title">Open your own disc</h1>
+        <p class="s2u-kicker"><span class="s2u-blink" aria-hidden="true"></span>SOCOM II multiplayer maps</p>
+        <p class="s2u-lede">This viewer draws SOCOM II&rsquo;s multiplayer maps from the game&rsquo;s own files, and it does not host
+          them: it needs your own copy of the disc, a SOCOM II: U.S. Navy SEALs (US, SCUS-97275) disc image as an <b>.iso</b> file.</p>
+      </div>
+      <div class="s2u-card">
+        <h3>Drop the .iso anywhere on this window</h3>
+        <div class="s2u-card__body">
+          <p>Or pick it:</p>
+          <label id="disc-pick" class="s2u-tab">Choose the disc image (.iso)
+            <input type="file" id="disc-page-file" accept=".iso" /></label>
+          <p id="disc-state" class="s2u-status" role="status" aria-live="polite">waiting for a disc image</p>
+        </div>
+      </div>
+      <div class="s2u-notice">
+        <p><b>Nothing is uploaded.</b> The image is read here, in this browser, a piece at a time &mdash; only the map archives
+          under <b>RUN/</b> and the few shared files the maps need, never the whole 4&nbsp;GB &mdash; and it never leaves this
+          machine. Nothing is kept either: the next visit asks for it again.</p>
+        <p>An .iso of 2048-byte sectors, as a DVD drive or a mounted disc gives it. A raw .bin / .img of 2352-byte sectors is
+          refused by name.</p>
+      </div>
+    </main>
+    <!--
       Site navigation, not a viewer control, so it sits outside #panel: the backtick hides the panel
       and this stays, and it is the first thing in the top-left corner whichever way the panel is set.
       Three tabs of one class share the end group and so one height, one padding, one gap and one icon-and-word
@@ -49,6 +80,19 @@
     <div id="panel" class="s2u-overlay is-folded" data-density="compact">
       <div id="panel-body" class="s2u-overlay__body">
       <p id="panel-kicker">Map viewer &middot; SOCOM II multiplayer</p>
+      <!--
+        The page's mode (owner, 2026-09-29; `./src/features.ts`): the map viewer, or reCOM -- playing as a SEAL, the walk,
+        the SEAL, the rifle, the HUD, the Sound and Mouse look sections and the touch buttons (every `data-play` element).
+        The Modern / PS2 switch's markup. Switched at run time, both ways, without a reload (`PlayUi`): the disc stays
+        open. Remembered in this browser (`s2u.viewer.recom`); the URL's `redotcom` forces it on.
+      -->
+      <div class="section" id="recom-section">
+        <p class="s2u-field__label" id="recom-label">Mode</p>
+        <div id="recom" class="s2u-tabs" role="radiogroup" aria-labelledby="recom-label">
+          <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly the free camera through the maps.">Map viewer<span class="s2u-tab__what">fly the maps</span></button>
+          <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play as a SEAL on the map: on foot, the rifle, the HUD, the game&rsquo;s sound.">reCOM<span class="s2u-tab__what">play as a SEAL</span></button>
+        </div>
+      </div>
       <!-- Map: the picker and the player's own disc first; the status under them is one dim line (its full text is the tooltip). -->
       <div class="row">
         <div class="s2u-field"><label class="s2u-field__label" for="maps">Map</label><select id="maps" aria-label="map"><option value="">loading maps...</option></select></div>
@@ -102,12 +146,23 @@
         </div>
       </div>
       <!--
+        Online (owner, 2026-09-29; `./src/online.ts`): Off, the single page; Shared, the public match server; Local, the
+        static server `npm start -w @s2u/server` runs here. In reCOM mode the page joins as a player, in the map viewer as
+        a spectator watching the match (Space the next player, V the free camera). The URL's `mp` / `server=` override it.
+        The line under it is the connection: connecting, online and the players, or unreachable and the retry. Remembered
+        in this browser (`s2u.viewer.online`).
         The match's name (web sprint 3, W3.R12; research 91 section 13): at most 30 printable ASCII characters, the game's
         in-game name buffer; blank takes the game's own "Player" guest default. Sent to the match on change, remembered in
-        this browser only (`s2u.mp.name`). Behind `?redotcom` with the play.
+        this browser only (`s2u.mp.name`).
       -->
-      <div class="section" id="mp-section" data-play>
-        <p class="s2u-field__label">Multiplayer</p>
+      <div class="section" id="mp-section">
+        <p class="s2u-field__label" id="online-label">Online</p>
+        <div id="online" class="s2u-tabs" role="radiogroup" aria-labelledby="online-label">
+          <button type="button" class="s2u-tab" data-online="off" aria-pressed="true" title="No server: this page alone.">Off<span class="s2u-tab__what">single</span></button>
+          <button type="button" class="s2u-tab" data-online="shared" aria-pressed="false" title="The public match server, mp.socomunzipped.com.">Shared<span class="s2u-tab__what">public server</span></button>
+          <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine: npm start -w @s2u/server, on port 8787.">Local<span class="s2u-tab__what">localhost:8787</span></button>
+        </div>
+        <p id="online-state" class="s2u-status"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
         <div class="row">
           <label class="s2u-range" title="Your name in the match: up to 30 characters, letters, digits and the keyboard's symbols. Blank: the game's guest name, Player and four digits."><span>name</span>
             <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" /></label>

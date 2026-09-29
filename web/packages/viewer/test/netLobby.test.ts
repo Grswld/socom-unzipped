@@ -64,6 +64,38 @@ describe('queue', () => {
   });
 });
 
+describe('watchers (the map viewer Online setting, 2026-09-29)', () => {
+  it('a watch join is a spectator outside the queue, even with player room, and is never promoted', () => {
+    const lobby = new Lobby();
+    const w = lobby.join(1, 'watcher', Math.random, true);
+    expect(w?.member).toMatchObject({ role: 'spectator', team: null });
+    expect(w?.changes).toEqual([{ kind: 'joined', id: 1, role: 'spectator', team: null }]);
+    expect(lobby.queuePosition(1)).toBe(0);
+    expect(lobby.watching(1)).toBe(true);
+    expect(lobby.join(2, 'p')?.member.role).toBe('player');
+    expect(lobby.teamCounts()).toEqual({ seal: 0, terrorist: 1 });
+    expect(lobby.leave(2)).toEqual([{ kind: 'left', id: 2 }]);    // nobody promoted: the watcher is not waiting
+    expect(lobby.member(1)?.role).toBe('spectator');
+    expect(lobby.spectators().map((m) => m.id)).toEqual([1]);
+    expect(lobby.leave(1)).toEqual([{ kind: 'left', id: 1 }]);
+    expect(lobby.watching(1)).toBe(false);
+    expect(lobby.spectators()).toEqual([]);
+  });
+
+  it('a queued spectator is still promoted past a watcher, and the queue and the watchers share the spectator room', () => {
+    const lobby = new Lobby({ maxPlayers: 1, maxSpectators: 2 });
+    expect(lobby.join(1, 'a')?.member.role).toBe('player');
+    expect(lobby.join(2, 'w', Math.random, true)?.member.role).toBe('spectator');
+    expect(lobby.join(3, 'q')?.member.role).toBe('spectator');
+    expect(lobby.queuePosition(3)).toBe(1);
+    expect(lobby.join(4, 'x', Math.random, true)).toBeNull();      // two spectators: full
+    expect(lobby.spectators().map((m) => m.id)).toEqual([3, 2]);    // the queue first, then the watchers
+    const changes = lobby.leave(1);
+    expect(changes.find((c) => c.kind === 'promoted')).toMatchObject({ id: 3 });
+    expect(lobby.member(2)?.role).toBe('spectator');
+  });
+});
+
 describe('property: random join/leave/rename', () => {
   it('keeps the roster invariants over 2000 operations', () => {
     const rnd = lcg(20260929);

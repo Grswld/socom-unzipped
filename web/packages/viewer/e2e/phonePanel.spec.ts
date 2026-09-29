@@ -27,7 +27,7 @@ function controls(page: Page): Promise<Array<{ id: string } & Rect>> {
 
 async function openPanel(page: Page, size: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(size);
-  await page.goto('/?redotcom&fly');
+  await page.goto('/?redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await expect(page.locator('#panel')).toBeHidden();
   await page.locator('#panel-toggle').click();

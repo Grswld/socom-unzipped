@@ -4,6 +4,7 @@ import { viewerRevision, viewerRevisionBadge } from './revision';
 import { ACTION_WORDS, GROUP_ORDER, padGroup, shortSource, type PadRow } from './gamepad';
 import { controlGroups } from './controlsList';
 import type { LookOptions } from './look';
+import type { OnlineChoice } from './online';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -29,8 +30,11 @@ export class Ui {
   private readonly loadingBar = find<HTMLElement>('loading-bar');
   private readonly panel = find<HTMLElement>('panel');
   private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
-  /** Whether the play (walk mode) is on the page: the Fly / Walk switch's hidden box is there only then (`./features`). */
-  private readonly play = document.getElementById('walk') !== null;
+  /**
+   * Whether the play (walk mode) is on the page: the Fly / Walk switch's hidden box is there only then (`./features`).
+   * The settings switch changes it at run time (`setPlay`).
+   */
+  private play = document.getElementById('walk') !== null;
   /** The loaded map's name, for the cog's tooltip; null before the first load. */
   private mapName: string | null = null;
   /**
@@ -106,13 +110,16 @@ export class Ui {
    * dropped file of any name is handed on, and the ISO9660 reader says what it is not.
    */
   onDisc(handler: (file: File) => void): void {
-    const input = find<HTMLInputElement>('disc-file');
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      // Cleared so choosing the same image again still fires `change`.
-      input.value = '';
-      if (file) handler(file);
-    });
+    // The panel's input, and the disc page's (`#disc-page`, owner 2026-09-29).
+    for (const id of ['disc-file', 'disc-page-file']) {
+      const input = document.getElementById(id) as HTMLInputElement | null;
+      input?.addEventListener('change', () => {
+        const file = input.files?.[0];
+        // Cleared so choosing the same image again still fires `change`.
+        input.value = '';
+        if (file) handler(file);
+      });
+    }
     const carriesFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
     const over = (on: boolean): void => { document.body.classList.toggle('disc-over', on); };
     document.addEventListener('dragover', (e) => {
@@ -132,10 +139,96 @@ export class Ui {
     });
   }
 
-  /** No maps are served: the panel opens on the disc control, even on a phone where it starts folded. */
+  /**
+   * No maps to read but the visitor's own disc (the default since 2026-09-29, `./source`): the disc page stands over the
+   * canvas (`#disc-page`) until a disc's map list is in. The panel stays as it was.
+   */
   offerDisc(): void {
-    this.setPanelCollapsed(false);
     document.body.classList.add('no-served');
+    const page = document.getElementById('disc-page');
+    if (page) page.hidden = false;
+  }
+
+  /** The disc page is taken down: a disc is open. */
+  hideDiscPage(): void {
+    document.body.classList.remove('no-served');
+    const page = document.getElementById('disc-page');
+    if (page) page.hidden = true;
+  }
+
+  /** Whether the disc page is up, for the hook and the status wiring. */
+  discPageShown(): boolean {
+    const page = document.getElementById('disc-page');
+    return !!page && !page.hidden;
+  }
+
+  /** The disc page's one status line: reading, or what went wrong (the reader's own words). */
+  setDiscState(text: string, kind: 'ok' | 'error' = 'ok'): void {
+    const line = document.getElementById('disc-state');
+    if (!line) return;
+    line.textContent = text;
+    line.classList.toggle('is-bad', kind === 'error');
+  }
+
+  /**
+   * The Mode switch (owner, 2026-09-29): Map viewer or reCOM, the picture switch's markup (`#recom`). `handler` hears the
+   * visitor's choice; `setRecom` puts the switch where the page is, whoever changed it.
+   */
+  onRecomSwitch(handler: (on: boolean) => void): void {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#recom button[data-recom]'))) {
+      b.addEventListener('click', () => {
+        const on = b.dataset['recom'] === 'on';
+        if (b.getAttribute('aria-pressed') === 'true') return;
+        this.setRecom(on);
+        handler(on);
+      });
+    }
+  }
+
+  setRecom(on: boolean): void {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#recom button[data-recom]'))) {
+      b.setAttribute('aria-pressed', (b.dataset['recom'] === 'on') === on ? 'true' : 'false');
+    }
+  }
+
+  /**
+   * The play's lists follow the mode: the Controls popover's keys and the pad's table name the walk and Start only while
+   * the play is on the page.
+   */
+  setPlay(on: boolean): void {
+    if (this.play === on) return;
+    this.play = on;
+    this.setCameraHint(...this.hintArgs);
+    this.renderPadLayout();
+  }
+
+  /** The Online setting (owner, 2026-09-29; `./online`): Off, Shared or Local, the picture switch's markup (`#online`). */
+  onOnline(handler: (choice: OnlineChoice) => void): void {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#online button[data-online]'))) {
+      b.addEventListener('click', () => {
+        const choice = b.dataset['online'];
+        if (choice !== 'off' && choice !== 'shared' && choice !== 'local') return;
+        if (b.getAttribute('aria-pressed') === 'true') return;
+        this.setOnline(choice);
+        handler(choice);
+      });
+    }
+  }
+
+  /** Puts the Online switch on a choice; 'url' (a server the URL named) presses none. */
+  setOnline(choice: OnlineChoice | 'url'): void {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#online button[data-online]'))) {
+      b.setAttribute('aria-pressed', b.dataset['online'] === choice ? 'true' : 'false');
+    }
+  }
+
+  /** The connection's line under the Online setting, and its lamp: up (online), down (unreachable, refused) or dark. */
+  setOnlineState(text: string, lamp: 'up' | 'down' | null): void {
+    const line = document.getElementById('online-text');
+    const dot = document.getElementById('online-lamp');
+    if (line && line.textContent !== text) line.textContent = text;
+    dot?.classList.toggle('is-up', lamp === 'up');
+    dot?.classList.toggle('is-down', lamp === 'down');
   }
 
   /** The fog colour picker. `FOGCOL` is a register value, so it is handed over as 0..255 per channel. */
