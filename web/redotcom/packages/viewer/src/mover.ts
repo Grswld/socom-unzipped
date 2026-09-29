@@ -1437,14 +1437,19 @@ export class Walker {
   }
 
   /**
-   * An airborne sub-step: the walls push, and a column with no floor within `step_height` over the feet is not
-   * entered -- the step's own allowance, so a flight up a slope goes on over ground rising under it (the tick's
-   * floor then lifts the feet onto it, `fall`), and the wind-up's sunk feet still move.
+   * An airborne sub-step: the walls push, then the column is the ground's own pick, as every tick's probe takes it
+   * (`FUN_005b0420` 467037-467110 through `FUN_005b5d40` 470163-470290: the highest floor at or under the origin + 1,
+   * else the lowest, refused only when more than 20 over the feet) -- `selectFloor` from the feet + `PROBE_LIFT`. A
+   * floor found up to 20 over the feet is entered, and the tick's floor then puts the feet on it (`fall`; `FUN_0059ad30`
+   * 456313-456322, `FUN_0059b440` 456502-456512). No floor -- the map's edge, a hole, a top more than 20 over the feet
+   * -- is the probe's miss, which with `DAT_003df1c8` set (1 in the ELF) puts the actor back at its last hit
+   * (`FUN_003157d0` on `+0x400..+0x408`): the sub-step is not taken (research 86 s6.3; OWNER-5 2026-09-29 retired the
+   * viewer's former `step_height` allowance here).
    */
   private airStep(dx: number, dz: number): void {
     const s = this.state;
     const [x, z] = this.slide(s.x + dx, s.z + dz, s.x, s.z);
-    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + SEAL_TUNING.stepHeight + 1e-9)) return;
+    if (!selectFloor(probeGround(this.grid, x, z), s.y + PROBE_LIFT, s.y)) return;
     s.x = x; s.z = z;
   }
 

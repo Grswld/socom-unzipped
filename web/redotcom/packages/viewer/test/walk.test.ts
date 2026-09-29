@@ -7,7 +7,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
 import {
-  groundGrid, groundPolygons, landingClass, packGround, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
+  groundGrid, groundPolygons, landingClass, packGround, PROBE_LIFT, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
   ACTION_SECONDS, BODY_RADIUS, CARRY_DECAY, EYE_HEIGHT, JUMP_DELAY, JUMP_LOCK, RUNNING_JUMP_SPEED, STANCES, TICK,
   type GroundData, type Stance, type WalkInput,
 } from '../src/walk';
@@ -1277,5 +1277,61 @@ describe.skipIf(!MP6)(`a running jump up MP6's hillside${MP6 ? '' : ` (${FIXTURE
       expect(r.worst).toBeGreaterThanOrEqual(-1e-6);
       expect(w.state.y).toBeCloseTo(topAt(grid, w.state.x, w.state.z), 6);
     }
+  });
+});
+
+describe('an airborne column is entered on the ground\'s own pick (OWNER-5; FUN_005b0420 467037-467110, FUN_005b5d40 470163-470290)', () => {
+  /** The feet before the tick in which the flight crosses z = `edge` going +z, and where the flight ends. */
+  const crossing = (w: Walker, edge: number, jumpAt: number | null): { crossY: number | null; y: number; z: number; airborne: boolean } => {
+    w.state.yaw = facing(w.state.x, w.state.z, w.state.x, 200);
+    for (let i = 0; i < 600 && w.state.z < (jumpAt ?? Infinity) && !w.airborne; i++) w.tick(FORWARD);
+    if (jumpAt !== null) expect(w.jump(), `jump refused at z ${w.state.z.toFixed(1)}`).toBe(true);
+    let crossY: number | null = null;
+    for (let i = 0; i < 400 && (w.airborne || i === 0); i++) {
+      const before = w.state.y;                                              // the feet as the tick found them
+      w.tick(FORWARD);
+      if (crossY === null && w.state.z > edge) crossY = before;
+    }
+    return { crossY, y: w.state.y, z: w.state.z, airborne: w.airborne };
+  };
+
+  it('a running jump at a wall-less ledge 12 high enters it with the feet low (the pick takes a floor up to 20 over them) and ends on it', () => {
+    const w = new Walker(world([floor(-200, -200, 200, -20, 0), floor(-200, -20, 200, 200, 12)]));
+    expect(w.place(0, PROBE_LIFT, -150)).toBe(true);
+    const r = crossing(w, -20, -32);
+    expect(r.crossY).not.toBeNull();
+    // Entered before the feet were within step_height of the top: the column is the pick's, not the ground step's.
+    expect(r.crossY!).toBeLessThan(12 - SEAL_TUNING.stepHeight);
+    expect(r.airborne).toBe(false);
+    expect(r.z).toBeGreaterThan(-20);
+    expect(r.y).toBe(12);
+  });
+
+  it('walking off into a narrow cut, a far side 12 over the edge is taken (lifted onto it); one 25 over is refused', () => {
+    // floor 0 to z -20, a cut 4 wide and 60 deep, then the far side at `top`
+    const cut = (top: number): Walker => {
+      const w = new Walker(world([floor(-200, -200, 200, -20, 0), floor(-200, -20, 200, -16, -60), floor(-200, -16, 200, 200, top)]));
+      expect(w.place(0, PROBE_LIFT, -60)).toBe(true);
+      return w;
+    };
+    const low = crossing(cut(12), -16, null);
+    expect(low.crossY!).toBeLessThan(12 - SEAL_TUNING.stepHeight);           // the old 6.5 allowance refused this
+    expect(low.y).toBe(12);
+    expect(low.z).toBeGreaterThan(-16);
+    const high = cut(25);
+    const r = crossing(high, -16, null);
+    expect(r.crossY).toBeNull();                                            // more than 20 over the feet: the miss
+    expect(r.y).toBe(-60);                                                  // down the cut
+    expect(r.z).toBeLessThanOrEqual(-16);
+  });
+
+  it('at the map\'s edge (no floor beyond) a running jump is pinned: it never leaves the floor\'s x/z and lands back on it', () => {
+    const w = new Walker(world([floor(-200, -200, 200, -20, 0)]));
+    expect(w.place(0, PROBE_LIFT, -150)).toBe(true);
+    const r = crossing(w, -20, -32);
+    expect(r.crossY).toBeNull();
+    expect(r.z).toBeLessThanOrEqual(-20);
+    expect(r.airborne).toBe(false);
+    expect(r.y).toBe(0);
   });
 });
