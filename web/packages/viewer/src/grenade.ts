@@ -17,6 +17,7 @@ import { GRENADE_BITMAPS } from './grenadeAssets';
 import { markMaterial } from './effectMaterials';
 import { markGeometry, paintMark } from './fire';
 import type { SurfaceShade } from './surfaceShade';
+import { markClipGeometry, squareInto, type MarkClipper, type MarkFrame } from './markClip';
 import type { PlaySnapshot, WalkView } from './walk';
 
 /**
@@ -331,6 +332,10 @@ export class GrenadeThrower {
   private scorchShade: [number, number, number, number] | null = null;
   /** Scorches laid where no drawn surface was yet under them (the props stream in after the map shows), asked again. */
   private readonly unshaded = new Map<Mesh, V3>();
+  /** EFFECTS: the clip to the drawn world (`./markClip`), or null: the flat square with one shade. */
+  private clipper: MarkClipper | null = null;
+  /** Clipped scorches with nothing drawn under them yet (the bare square meanwhile), clipped again a few a frame. */
+  private readonly unclipped = new Map<Mesh, MarkFrame>();
   /** The held throw's arc (`FUN_005970b0`): one strip, refilled each frame while it shows. */
   private readonly arcLine: LineSegments;
   private arc: ArcStats | null = null;
@@ -413,6 +418,7 @@ export class GrenadeThrower {
     for (const s of this.scorches) { this.object.remove(s); s.geometry.dispose(); }
     this.scorches.length = 0;
     this.unshaded.clear();
+    this.unclipped.clear();
     this.scorchShade = null;
     this.left = capacities(this.records);
     this.thrown = 0;
@@ -622,6 +628,11 @@ export class GrenadeThrower {
    */
   setShade(shade: SurfaceShade | null): void {
     this.shade = shade;
+  }
+
+  /** EFFECTS (research 89 §13): clip each scorch to the drawn ground under it, shaded per vertex (`./markClip`). */
+  setClip(clipper: MarkClipper | null): void {
+    this.clipper = clipper;
   }
 
   /** The scorches on the ground, oldest first (the tests read their colour). */
@@ -1059,6 +1070,7 @@ export class GrenadeThrower {
    */
   private scorch(pos: V3, material: string): void {
     const [min, max] = GRENADE_BLAST[material] ?? GRENADE_BLAST.STONE!;
+    if (this.clipper) { this.scorchClipped(pos, min, max); return; }
     // Its own four corners, for its own colour (the shared quad's, cloned), as `./fire`'s marks.
     const mark = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
     // A `FUN_003139e0` decal like a bullet mark (research 89 §13): modulated by the ground's own drawn colour under it.
@@ -1076,6 +1088,41 @@ export class GrenadeThrower {
       this.object.remove(old);
       old.geometry.dispose();
       this.unshaded.delete(old);
+    }
+  }
+
+  /**
+   * The scorch as the game builds a `FUN_003139e0` decal (research 89 §13): the square flat under the blast, projected
+   * straight down, clipped to the drawn ground's triangles, each vertex the ground's colour there (`./markClip`); the
+   * bare square at unity where nothing is drawn under it yet, clipped again a few a frame.
+   */
+  private scorchClipped(pos: V3, min: number, max: number): void {
+    const size = rand(min, max, this.random);
+    const turn = rand(0, Math.PI * 2, this.random);
+    const c = Math.cos(turn), s = Math.sin(turn);
+    // The flat square's turn as the unclipped one takes it (x turned about the up axis; no Euler: the axes directly).
+    const frame: MarkFrame = { origin: [...pos], right: [c, 0, -s], up: [-s, 0, -c], forward: [0, -1, 0], side: size };
+    const mark = new Mesh(markClipGeometry(), this.scorchMaterialOf());
+    const kept = this.clipper!.clip(frame, mark.geometry, 0.05);
+    if (kept > 0) {
+      const centre = this.clipper!.centre;
+      this.scorchShade = this.clipper!.centreFound ? [centre[0]!, centre[1]!, centre[2]!, centre[3]!] : null;
+    } else {
+      squareInto(frame, mark.geometry, 0.05, null);
+      this.unclipped.set(mark, frame);
+      this.scorchShade = null;
+    }
+    mark.matrixAutoUpdate = false;
+    mark.position.set(pos[0], pos[1], pos[2]);          // for the tests; the matrix stays the identity (world space)
+    mark.updateMatrixWorld(true);
+    this.object.add(mark);
+    this.scorches.push(mark);
+    if (this.scorches.length > 16) {
+      const old = this.scorches.shift()!;
+      this.object.remove(old);
+      old.geometry.dispose();
+      this.unshaded.delete(old);
+      this.unclipped.delete(old);
     }
   }
 
@@ -1098,8 +1145,24 @@ export class GrenadeThrower {
     return m;
   }
 
+  /** EFFECTS: a few of the clipped scorches still without a drawn surface under them, clipped again (`unclipped`). */
+  private clipLate(): void {
+    if (!this.clipper || this.unclipped.size === 0) return;
+    let asked = 0;
+    for (const [mesh, frame] of this.unclipped) {
+      if (asked++ >= SHADE_RETRIES_PER_FRAME) break;
+      this.unclipped.delete(mesh);
+      if (this.clipper.clip(frame, mesh.geometry, 0.05) === 0) { this.unclipped.set(mesh, frame); continue; }
+      if (mesh === this.scorches.at(-1) && this.clipper.centreFound) {
+        const c = this.clipper.centre;
+        this.scorchShade = [c[0]!, c[1]!, c[2]!, c[3]!];
+      }
+    }
+  }
+
   /** EFFECTS: a few of the scorches still without a drawn surface under them, asked again (`unshaded`). */
   private shadeLate(): void {
+    this.clipLate();
     if (!this.shade || this.unshaded.size === 0) return;
     let asked = 0;
     for (const [mesh, at] of this.unshaded) {

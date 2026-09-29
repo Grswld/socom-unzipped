@@ -8,6 +8,7 @@ import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntr
 import { roundPath } from './round';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 import type { SurfaceShade } from './surfaceShade';
+import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type MarkClipper, type MarkFrame } from './markClip';
 
 /**
  * Simple shooting (web sprint 2, W2.5; the spec's §4 W2.5): a hitscan round along the aim, at the rifle's own rate,
@@ -299,6 +300,13 @@ export class Fire {
    * shows, `main.ts`'s reveal), asked again each frame until the wall is drawn or the mark is recycled.
    */
   private unshaded = new Map<Mesh, { point: Vec3; normal: Vec3 }>();
+  /** EFFECTS: the clip to the drawn world (`./markClip`), or null: the projected square with one shade. */
+  private clipper: MarkClipper | null = null;
+  /** EFFECTS: clipped marks with nothing drawn under them yet (a bare square meanwhile), clipped again a few a frame. */
+  private readonly unclipped = new Map<Mesh, MarkFrame>();
+  /** EFFECTS: each clipped mark's world triangles and its place in the order, for the pool (`TEMP_DECAL_TRIANGLES`). */
+  private readonly markTriangles = new Map<Mesh, { triangles: number; order: number }>();
+  private markOrder = 0;
 
   constructor(
     private readonly source: FireSource,
@@ -363,6 +371,14 @@ export class Fire {
    */
   setShade(shade: SurfaceShade | null): void {
     this.shade = shade;
+  }
+
+  /**
+   * EFFECTS (research 89 §5 and §13): clip each mark to the drawn world under it and shade it per vertex, as
+   * `FUN_003b3ab0` builds it (`./markClip`); the pool then counts triangles, as the game's. Null: the projected square.
+   */
+  setClip(clipper: MarkClipper | null): void {
+    this.clipper = clipper;
   }
 
   setMarks(marks: MarkTable | null): void {
@@ -560,6 +576,7 @@ export class Fire {
     if (this.tracerFrames > 0) this.tracerFrames--;
     else this.tracer.visible = false;
     this.shadeLate();
+    this.clipLate();
     this.wait -= dt;
     let fired = 0;
     while (this.held && this.wait <= 1e-9 && this.pullRound()) fired++;
@@ -584,6 +601,39 @@ export class Fire {
       this.unshaded.delete(mesh);
       if (rgba) paintMark(mesh.geometry, rgba);
       else this.unshaded.set(mesh, at);                 // to the back of the queue: the others get their turn
+    }
+  }
+
+  /** EFFECTS: a few of the clipped marks still without a drawn wall under them, clipped again (`unclipped`). */
+  private clipLate(): void {
+    if (!this.clipper || this.unclipped.size === 0) return;
+    let asked = 0;
+    for (const [mesh, frame] of this.unclipped) {
+      if (asked++ >= SHADE_RETRIES_PER_FRAME) break;
+      this.unclipped.delete(mesh);
+      const kept = this.clipper.clip(frame, mesh.geometry, DECAL_OFFSET);
+      if (kept === 0) { this.unclipped.set(mesh, frame); continue; }   // to the back of the queue
+      const entry = this.markTriangles.get(mesh);
+      if (entry) entry.triangles = kept;
+      this.trimPool(mesh);
+    }
+  }
+
+  /**
+   * The temporary pool back to `TEMP_DECAL_TRIANGLES` triangles, the oldest marks first (`FUN_003bf110`), never `keep`.
+   */
+  private trimPool(keep: Mesh): void {
+    let live = 0;
+    for (const [mesh, e] of this.markTriangles) if (mesh.visible) live += e.triangles;
+    while (live > TEMP_DECAL_TRIANGLES) {
+      let oldest: Mesh | null = null, order = Infinity;
+      for (const [mesh, e] of this.markTriangles) {
+        if (mesh !== keep && mesh.visible && e.order < order) { oldest = mesh; order = e.order; }
+      }
+      if (!oldest) break;
+      oldest.visible = false;
+      this.unclipped.delete(oldest);
+      live -= this.markTriangles.get(oldest)!.triangles;
     }
   }
 
@@ -612,6 +662,8 @@ export class Fire {
     if (this.reloadLeft > 0) this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
     for (const d of this.decals) { this.object.remove(d); d.geometry.dispose(); }
     this.unshaded.clear();
+    this.unclipped.clear();
+    this.markTriangles.clear();
     this.decals.length = 0;
     this.nextDecal = 0;
     this.stowedMags.clear();
@@ -724,12 +776,15 @@ export class Fire {
     let mesh = this.decals.length < MAX_DECALS ? undefined : this.decals[this.nextDecal];
     if (!mesh) {
       // Each mark its own four corners, for its own colour (the geometry is the shared quad's, cloned).
-      mesh = new Mesh(markGeometry(this.geometry), this.material);
+      mesh = new Mesh(this.clipper ? markClipGeometry() : markGeometry(this.geometry), this.material);
       mesh.renderOrder = 1;
       this.decals.push(mesh);
       this.object.add(mesh);
     }
     this.nextDecal = (this.nextDecal + 1) % MAX_DECALS;
+    if (this.clipper) { this.placeClipped(mesh, hit, dir, row); return; }
+    if (mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markGeometry(this.geometry); }
+    this.markTriangles.delete(mesh);
     // EFFECTS (research 89 §5): the wall's own drawn colour under the hit modulates the mark, as the GS does it.
     this.lastShade = this.shade?.(hit.point, hit.normal) ?? null;
     paintMark(mesh.geometry, this.lastShade);
@@ -758,6 +813,36 @@ export class Fire {
     mesh.scale.set(side, side, 1);
     mesh.visible = true;
     mesh.updateMatrixWorld();
+  }
+
+  /**
+   * EFFECTS (research 89 §5 and §13): the game's mark -- the size drawn once, the square across the round's direction
+   * with no turn -- clipped to the drawn world under it, each vertex the world's colour there (`./markClip`). Where
+   * nothing is drawn under it yet, the bare square at unity, clipped again a few a frame (`clipLate`).
+   */
+  private placeClipped(mesh: Mesh, hit: ShotHit, dir: Vec3, row: DecalEntry): void {
+    if (!mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markClipGeometry(); }
+    const side = row.minSize + this.random() * (row.maxSize - row.minSize);
+    mesh.material = this.marks ? this.markMaterial(row.texture) : this.material;
+    const frame = markFrame(hit.point, hit.normal, dir, side);
+    const kept = this.clipper!.clip(frame, mesh.geometry, DECAL_OFFSET);
+    this.unshaded.delete(mesh);
+    if (kept > 0) {
+      this.unclipped.delete(mesh);
+      const c = this.clipper!.centre;
+      this.lastShade = this.clipper!.centreFound ? [c[0]!, c[1]!, c[2]!, c[3]!] : null;
+    } else {
+      squareInto(frame, mesh.geometry, DECAL_OFFSET, null);
+      this.unclipped.set(mesh, frame);
+      this.lastShade = null;
+    }
+    this.markTriangles.set(mesh, { triangles: kept > 0 ? kept : 2, order: this.markOrder++ });
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.identity();                                // the clip is in world space
+    mesh.position.set(hit.point[0], hit.point[1], hit.point[2]);   // for the hook; the matrix stays the identity
+    mesh.visible = true;
+    mesh.updateMatrixWorld(true);
+    this.trimPool(mesh);
   }
 
   private drawTracer(eye: Vec3, dir: Vec3, to: Vec3, fromMuzzle = false): void {

@@ -13,6 +13,7 @@ import { EffectLights } from './effectLights';
 import type { EffectData, EffectTexture } from './effectData';
 import { markGeometry, paintMark, type FireEvent, type MarkTable } from './fire';
 import type { SurfaceShade } from './surfaceShade';
+import { markClipGeometry, squareInto, type MarkClipper, type MarkFrame } from './markClip';
 import { fixSoundName } from '@s2u/sound';
 
 /**
@@ -310,6 +311,9 @@ export class Effects {
   private water = { splashes: 0, ripples: '' as string, footprints: 0 };
   /** The world's drawn colour under a footprint (`./surfaceShade`), or null: unity (research 89 §5, the mark's colour). */
   private shade: SurfaceShade | null = null;
+  /** EFFECTS: the clip to the drawn world (`./markClip`), or null: the flat square with one shade. */
+  private clipper: MarkClipper | null = null;
+  private readonly footFrame: MarkFrame = { origin: [0, 0, 0], right: [0, 0, 0], up: [0, 0, 0], forward: [0, 0, 0], side: 0 };
 
   /**
    * One frame of the SEAL's water (`FUN_005b52b0`, decomp 469808-469920): with the water line between the feet and the
@@ -351,6 +355,16 @@ export class Effects {
     this.shade = shade;
   }
 
+  /** EFFECTS (research 89 §13): clip each footprint to the drawn ground under it, shaded per vertex (`./markClip`). */
+  setClip(clipper: MarkClipper | null): void {
+    this.clipper = clipper;
+  }
+
+  /** The footprints placed so far, oldest first until the pool wraps (tests). */
+  footprintMeshes(): readonly Mesh[] {
+    return this.footprints;
+  }
+
   /**
    * A footfall (`FUN_005a3570`): the footprint of `decals.rdr`'s `FOOTSTEP_DECALS` for the ground's material -- SAND's
    * and SNOW's, none on the rest -- `FOOTPRINT_SIZE` across, flat on the ground, its length along the SEAL's forward
@@ -368,15 +382,13 @@ export class Effects {
     let material3 = this.materials.get(key);
     if (!material3) { material3 = markMaterial(t); this.materials.set(key, material3); }
     if (!mesh) {
-      mesh = new Mesh(markGeometry(this.footprintGeometry), material3);
+      mesh = new Mesh(this.clipper ? markClipGeometry() : markGeometry(this.footprintGeometry), material3);
       mesh.renderOrder = 1;
       this.footprints.push(mesh);
       this.object.add(mesh);
     }
     this.nextFootprint = (this.nextFootprint + 1) % MAX_FOOTPRINTS;
     mesh.material = material3;
-    // A footprint is a `FUN_003139e0` decal too: modulated by the ground's own drawn colour (research 89 §5).
-    paintMark(mesh.geometry, this.shade?.(at, normal) ?? null);
     const n = new Vector3(...normal).normalize();
     // Up the print: the SEAL's forward laid on the ground (`cross(cross(orient, n), n)`, the sign a reading).
     const f = new Vector3(...forward);
@@ -384,6 +396,27 @@ export class Effects {
     if (up.lengthSq() < 1e-9) up.set(1, 0, 0).addScaledVector(n, -n.x);
     up.normalize();
     const right = new Vector3().crossVectors(up, n).normalize();
+    if (this.clipper) {
+      // A `FUN_003139e0` decal (research 89 §13): clipped to the ground's drawn triangles, projected straight down on
+      // them, each vertex the ground's colour there; the bare square at unity where nothing is drawn under it.
+      if (!mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markClipGeometry(); }
+      const f = this.footFrame;
+      f.origin[0] = at[0]; f.origin[1] = at[1]; f.origin[2] = at[2];
+      f.right[0] = right.x; f.right[1] = right.y; f.right[2] = right.z;
+      f.up[0] = up.x; f.up[1] = up.y; f.up[2] = up.z;
+      f.forward[0] = -n.x; f.forward[1] = -n.y; f.forward[2] = -n.z;
+      f.side = FOOTPRINT_SIZE;
+      if (this.clipper.clip(f, mesh.geometry, 0.05) === 0) squareInto(f, mesh.geometry, 0.05, null);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.identity();
+      mesh.visible = true;
+      mesh.updateMatrixWorld(true);
+      this.water.footprints++;
+      return true;
+    }
+    if (mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markGeometry(this.footprintGeometry); }
+    // A footprint is a `FUN_003139e0` decal too: modulated by the ground's own drawn colour (research 89 §5).
+    paintMark(mesh.geometry, this.shade?.(at, normal) ?? null);
     mesh.matrixAutoUpdate = false;
     mesh.matrix.makeBasis(right.multiplyScalar(FOOTPRINT_SIZE), up.multiplyScalar(FOOTPRINT_SIZE), n)
       .setPosition(new Vector3(...at).addScaledVector(n, 0.05));
