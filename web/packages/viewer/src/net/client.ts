@@ -191,8 +191,9 @@ export class NetClient {
     this.alive = true;
     this.walk.setLocked(false);
     this.walk.respawn(at, yaw, replay);
-    // The replayed ticks' predictions are the new mover's now: they are not compared (the next snapshots are).
-    for (const h of this.history) if (h.cmd.seq > after) h.feet = null;
+    // The replayed ticks' predictions are the new mover's now: they are not compared (the next snapshots are). Nor is
+    // the one at `after` itself: a snapshot taken in the spawn's tick acks it with the new mover's feet.
+    for (const h of this.history) if (h.cmd.seq >= after) h.feet = null;
     this.correction = [0, 0, 0];
     this.correctionTicks = 0;
   }

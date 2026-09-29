@@ -176,3 +176,23 @@ describe('a death and a respawn in the stream (M6)', () => {
     ca.close(); cb.close();
   });
 });
+
+describe('a new match stands everyone at the start (M6, W3.R11)', () => {
+  it('takes no correction when the server re-spawns a living player at the next match', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const m = map();
+    const room = new Room(m, null, { now: () => Date.now(), roundSeconds: 2 });
+    const a = new PageWalk(m.grid);
+    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1), simulate: { latencyMs: 30 } }, a);
+    let spawns = 0;
+    ca.on((ev) => { if (ev.type === 'spawn') spawns++; });
+    for (let t = 0; t < (2 + 16 + 23 + 3) * 60; t++) {
+      a.play({ forward: 1, right: (t % 200) < 100 ? 0.4 : -0.4, yaw: t * 0.5, pitch: 0, turn: 0.1, buttons: 0, stance: 0, weapon: 0 });
+      room.step();
+      vi.advanceTimersByTime(1000 / 60);
+    }
+    expect(spawns).toBe(2);                                   // the first match's, and the next's
+    expect(ca.corrections).toEqual({ small: 0, snapped: 0, largest: 0 });
+    ca.close();
+  });
+});
