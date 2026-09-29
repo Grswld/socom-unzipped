@@ -336,6 +336,14 @@ export function buildWorld(map: LoadedMap): WorldView {
       want = twin;
     }
     if (object.material !== want) object.material = want;
+    // Its detail passes follow it (issue #113): while it fades, each is drawn with its own fading twin --
+    // in the transparent list, writing no depth, its alpha times the same opacity -- so it no longer
+    // lands whole, in the opaque list ahead of the faded copy, on whatever lies behind it.
+    for (const d of detailsOn.get(object) ?? []) {
+      lodOpacityOf.set(d.mesh, opacity);
+      const pass = fadePhase(opacity) === 'fading' ? detailFadeOf(d.entry) : d.entry.material;
+      if (d.mesh.material !== pass) d.mesh.material = pass;
+    }
   };
 
   /** Puts a spec on a material: the shading graph, the blend, the test, the depth write, the cull and the fog. */
@@ -431,9 +439,16 @@ export function buildWorld(map: LoadedMap): WorldView {
    * groups that cite a bound texture (MP11's `ground.tif`, MP61's `wall_white.tif`) are one pixel wide.
    */
   let detailOn = true;
-  const detailMaterials = new Map<string, { material: MeshBasicNodeMaterial; flags: TextureFlags | undefined; fog: boolean; cull: boolean; spec: DetailSpec }>();
+  /** A detail material, what it was built from, and its fading twin once a LOD copy under it has faded. */
+  type DetailEntry = {
+    material: MeshBasicNodeMaterial; flags: TextureFlags | undefined; fog: boolean; cull: boolean; spec: DetailSpec;
+    fade?: MeshBasicNodeMaterial;
+  };
+  const detailMaterials = new Map<string, DetailEntry>();
   /** Each detail pass beside the draw it lies on, whose place in the order it follows. */
   const details: { mesh: Mesh; base: Object3D }[] = [];
+  /** The detail passes under each LOD copy, which follow it through its fade (`fadeTo`). */
+  const detailsOn = new WeakMap<Object3D, { mesh: Mesh; entry: DetailEntry }[]>();
   /** The pass's colour: `clamp(texel(uv * scale) * vertex)`, brightened; its alpha times the fade (`detailWeight`). */
   const detailColor = (texture: Texture, spec: DetailSpec): ColorNode => {
     const scale = uniform(spec.scale), fade = uniform(spec.fade);
@@ -442,7 +457,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     return vec4(texel.rgb.mul(brighten), texel.a.mul(weight));
   };
   /** Puts a detail pass's state on its material: its list follows its base's, which the two switches move. */
-  const applyDetail = (entry: { material: MeshBasicNodeMaterial; flags: TextureFlags | undefined; fog: boolean; cull: boolean; spec: DetailSpec }): void => {
+  const applyDetail = (entry: DetailEntry): void => {
     const state = detailDrawState(entry.spec, drawState(materialSpec(entry.flags, entry.fog, blendGraded, entry.cull), engineOn));
     const { material } = entry;
     material.transparent = state.transparent;
@@ -453,10 +468,38 @@ export function buildWorld(map: LoadedMap): WorldView {
     material.fog = entry.spec.fog;
     material.needsUpdate = true;
   };
-  const detailMaterialFor = (base: string, fog: boolean, cull: boolean): MeshBasicNodeMaterial | null => {
+  /**
+   * A detail pass's state under a fading base (issue #113): the base's fading twin's list and depth write
+   * (`fadeMaterial`: transparent, none), the record's own blend and test. Both detail blends weigh the
+   * pass by its alpha, so the base's opacity enters as a factor on it, as it does on the twin's.
+   */
+  const applyDetailFade = (entry: DetailEntry, twin: MeshBasicNodeMaterial): void => {
+    const base = fadeMaterial(materialSpec(entry.flags, entry.fog, blendGraded, entry.cull), false).state;
+    const state = detailDrawState(entry.spec, base);
+    const colour = entry.material.colorNode as Node<'vec4'>;
+    twin.vertexColors = false;
+    twin.colorNode = vec4(colour.rgb, colour.a.mul(fadeOpacity));
+    twin.transparent = state.transparent;
+    twin.depthWrite = state.depthWrite;
+    twin.depthFunc = LessEqualDepth;
+    Object.assign(twin, blendFactorsFor(state.factors));
+    twin.side = entry.material.side;
+    twin.fog = entry.material.fog;
+    twin.needsUpdate = true;
+  };
+  /** The fading twin of a detail material, made the first time a LOD copy it lies on fades. */
+  const detailFadeOf = (entry: DetailEntry): MeshBasicNodeMaterial => {
+    if (!entry.fade) {
+      entry.fade = new MeshBasicNodeMaterial();
+      entry.fade.name = 'lod fade (detail)';
+      applyDetailFade(entry, entry.fade);
+    }
+    return entry.fade;
+  };
+  const detailMaterialFor = (base: string, fog: boolean, cull: boolean): DetailEntry | null => {
     const key = `${base}|${fog ? 1 : 0}|${cull ? 1 : 0}`;
     const cached = detailMaterials.get(key);
-    if (cached) return cached.material;
+    if (cached) return cached;
     const flags = map.textureFlags[base];
     const spec = materialSpec(flags, fog, blendGraded, cull, map.detail[base]).detail;
     const rgba = spec ? map.textures[spec.texture] : undefined;
@@ -474,14 +517,15 @@ export function buildWorld(map: LoadedMap): WorldView {
     const entry = { material, flags, fog, cull, spec };
     applyDetail(entry);
     detailMaterials.set(key, entry);
-    return material;
+    return entry;
   };
   const refreshDetail = (): void => { for (const d of details) d.mesh.visible = detailOn && !wireframeOn; };
   /** Hangs a detail pass under a queued base draw, when its texture binds one. */
   const addDetail = (base: Mesh, part: LoadedMesh): void => {
     if (part.textureName === null || SHADOW_TEXTURE.test(part.textureName) || !map.detail[part.textureName]) return;
-    const material = detailMaterialFor(part.textureName, part.fog, part.cull);
-    if (!material) return;
+    const entry = detailMaterialFor(part.textureName, part.fog, part.cull);
+    if (!entry) return;
+    const { material } = entry;
     let mesh: Mesh;
     if (base instanceof InstancedMesh) {
       const instanced = new InstancedMesh(base.geometry, material, base.count);
@@ -494,6 +538,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     mesh.visible = detailOn && !wireframeOn;
     base.add(mesh);
     details.push({ mesh, base });
+    if (lodRest.has(base)) detailsOn.set(base, [...(detailsOn.get(base) ?? []), { mesh, entry }]);
   };
 
   /**
@@ -757,6 +802,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       }
       for (const { material } of built) material.dispose();
       for (const twin of fades.values()) twin.dispose();
+      for (const { fade } of detailMaterials.values()) fade?.dispose();
       for (const { material } of detailMaterials.values()) material.dispose();
       for (const { mesh } of details) if (mesh instanceof InstancedMesh) mesh.dispose();
       for (const texture of textures.values()) texture.dispose();
