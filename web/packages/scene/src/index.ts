@@ -20,3 +20,7 @@ export * from './weapon';
 export * from './tuning';
 export * from './segment';
 export * from './weapons';
+export * from './effectModels';
+export * from './effects';
+export * from './effectMotion';
+export * from './effectParticles';

@@ -32,8 +32,9 @@ import { rdrReal } from './tuning';
  *   plays at the muzzle: the M4A1's `muzzle_m4` is `shell_eject`, `flash_fire_hider`, `shell_smoke_med`; the M4A1
  *   SD's `muzzle_m4SD` has no flash), `FireSoundClose`/`Med`/`Far` and `ReloadSound` (the sound bank's names).
  * - **The mark.** `READERC.ZAR/decals.rdr`'s `DECAL_SETS` entry `BULLET_MARK_SMALL` lists a bitmap and a size range
- *   per surface material; the viewer does not model the SOILS materials (the table is not in a map's archive, as
- *   `probe.ts` says of its own material test), so it takes the `STONE` row: `bullet_mark_stone.tif`, 1 to 1.8 units.
+ *   per surface material. The effects resolve the hit polygon's material to its row (`READERC.ZAR/materials.rdr`'s
+ *   SOILS, web/docs/research/89 §5); without those tables the viewer takes the `STONE` row: `bullet_mark_stone.tif`,
+ *   1 to 1.8 units.
  *   The bitmaps ride in every map archive's `RUN\COMMON\EFFE_TXR.ZED` (`viewer/src/hudBitmaps.ts`).
  */
 
@@ -188,7 +189,7 @@ export function readDefaultRifle(zweapon: Uint8Array, readerc: Uint8Array): Weap
   return weaponRecord(script(Zar.parse(zweapon), 'ZWEAPON.ZAR', 'zweapon.rdr'), name);
 }
 
-/** The material the viewer marks every surface as (the header: the SOILS table is not in hand). */
+/** The material the viewer marks every surface as when the effects' tables are not in hand (the header). */
 export const MARK_MATERIAL = 'STONE';
 
 /** `READERC.ZAR` -> `decals.rdr`'s `set` row for `MARK_MATERIAL`. */
