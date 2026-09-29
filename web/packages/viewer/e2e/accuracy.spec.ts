@@ -99,7 +99,7 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   expect(problems).toEqual([]);
 });
 
-test('a night map: the zoom steps first person -> night vision -> scope, the goggles and the lens colour on the frame', async ({ page }) => {
+test('a night map: the zoom steps first person -> night vision -> scope, the goggles and the lens colour on the lit colours', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -118,13 +118,16 @@ test('a night map: the zoom steps first person -> night vision -> scope, the gog
   expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(1);
   expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(3);
   await settle(page, 10);
-  const night = await page.evaluate(() => ({ z: window.__viewer.zoom(), filter: (document.getElementById('view') as HTMLCanvasElement).style.filter }));
+  const night = await page.evaluate(() => ({ z: window.__viewer.zoom(), row: window.__viewer.stats().nightVision }));
   expect(night.z.view).toBe('nightvision');
-  expect(night.filter).toContain('s2u-nvg');
+  // The lens's row on every lit colour (VU1 command 0x5c, `./nightVision`): 0.33 x (0.2, 0.898, 0.2), 3.03 x 0.24.
+  expect(night.row).not.toBeNull();
+  expect(night.row![1]).toBeCloseTo(0.898 * 0.33, 3);
+  expect(night.row![3]).toBeCloseTo(0.24 * 3.030303, 3);
   await page.screenshot({ path: join(SCREENS, '6-night-vision.png') });
   expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(5);
   await settle(page, 20);
-  expect((await page.evaluate(() => (document.getElementById('view') as HTMLCanvasElement).style.filter))).toBe('');
+  expect(await page.evaluate(() => window.__viewer.stats().nightVision)).toBeNull();
   expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(3);   // out of the scope, back to the night vision
   expect(problems).toEqual([]);
 });

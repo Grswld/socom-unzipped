@@ -155,7 +155,8 @@ z-fight in the 44 views. The night maps are as dark as the console draws them no
   / `+0x38`, research 17), as slot 8 is for the campaign. The owner runs PCSX2; the viewer side is
   `tools/console-compare.ts --map MP<n> --ref <frame> --eye .. --target ..`.
 - A multiplayer water frame from the console (Blood Lake, Fish Hook), for D5's pass on the MP maps.
-- The runtime layout of a `Material_Palette` record (`0x45c380+0x5a4`, stride 0x3c) for the untextured kind-2 entries.
+- ~~The runtime layout of a `Material_Palette` record~~ -- read in round 4 (`FUN_003bb2c0`, §6).
+- A console frame with the night vision on, and one of the SEAL's shadow on flat ground, for §6's two new passes.
 
 ## 4. Round 2 (after the merge of the integration branch)
 
@@ -203,3 +204,54 @@ commits; walk mode is not this workstream's.
 - **Vigilance's grass** -- no multiplayer savestate with a camera exists, so it stays a pose question; the play mode
   at the measured spawn A reproduces the SEAL and the house but not the console's framing within a few units.
 
+## 6. Round 4
+
+- **The player's shadow, as the engine draws it** (`e048bc6f`). Only the local player casts one: `FUN_00599f00` (the
+  character spawn) sets the node's `+0xa1` bit 5 when the shadows are on and the world has no render map yet, and
+  `CWorld::AddChild` (`FUN_0031f240`) gives that child a `CRenderMap` (`FUN_0031a9a0`) -- grenades, claymores and other
+  SEALs never get one. Each frame `FUN_0031a180` puts the map's camera at the actor's bounds centre looking down the
+  root's `ShadowVector`, far 1.5x the largest side, and fits an orthographic frustum to the eight corners with a
+  texel's margin; the actor goes into the 256x256 `ShadowX_%d` target as `0x40`'s black triangles. The projection is
+  VU1 `0x3c`/`0x3e` (disassembled at `0x2b80`): ST through the map's matrix, colour the map's (black), alpha
+  `W * clamp(-D.N) * clamp((P - v).N) * clamp((far - (P - v).N) / (far - near))` with `W = ShadowWeight * 255` in
+  0..128 terms -- 0.25 (the `CWorld` default at `+0x680`; no map names a `ShadowWeight`) -- blended source-alpha over
+  the receiver. The viewer renders the SEAL (body, gear, rifle) on a layer of its own into a same-size target and
+  darkens in the world's graph, `Cd * (1 - a * coverage)`; the rifle and grenades do not receive. On MP9, whose vector
+  is 0.82 down, the ground under the silhouette is at 0.78 of its colour; on Frostfire's low vector about 0.9.
+- **The first seconds after a load** (`030f022e`, research 90 #17 and round-4 item 2). The stutter was the renderer's:
+  a draw meeting a new program links it synchronously (`WebGLBackend._completeCompile`, about 20 ms a program on ANGLE's
+  D3D11), and the props' reveal handed the draw 181 of them on Guidance. Every draw is now compiled with `compileAsync`
+  before it is revealed -- the world before the first paint, the props after it, the SEAL, its rifle, its shadow's
+  silhouette, the HUD and the reticle as the map is shown -- one draw a call, three in flight (a synchronous link waits
+  behind every link queued in the driver: 150 at once held one for 1.5 s), the first of each kind first
+  (`compileQueue.ts`); the post-reveal warm-up compiles hidden objects in place rather than through stand-ins (which
+  linked different programs for the SEAL's gear). Walking from the first paint, 4 s, audio on: Guidance 26 frames over
+  50 ms (worst 750) -> 1 (117-167); Blood Lake 9 (483) -> 1 (167); Desert Glory 12 (400) -> 3 (167); Crossroads 1
+  (217); Frostfire 1 (183). Entering the walk at the instant the map starts to load (the playtest's `hold W at once`)
+  leaves 3-4 frames, the SEAL's first programs still linking. What is left at the first key is `audio.ts`'s unlock
+  (36-466 ms on these runs), the audio workstream's. The first paint moves 0-0.5 s later.
+- **The untextured palette entries** (`451ab170`). `FUN_003bb2c0` is the palette-to-record copy: `dat` over the 0x3c
+  record, `tex_name` to `+0x38`; an entry flagged textured (`dat[7]` bit 0) becomes kind 2 with its texture resolved
+  or `DAT_004b4d90`; an unflagged one keeps its saved kind and an empty `+0x38`, which the env pass
+  (`FUN_003b5f20`) replaces by the same `DAT_004b4d90` -- the loaded texture whose name holds `specular_map` (the scan at
+  decomp 49244), `specular_map.tif`, in every map. Every entry on the disc is kind 2, so the untextured ones draw the pass
+  too: Frostfire's two pipe textures, Desert Glory's trucks (a glint on the cab, +23 levels over 496 pixels), Vigilance
+  (MP51, five entries) and Sandstorm (MP73, two). An entry whose texture will not resolve (Vigilance's
+  `cloud_scroll.tif`) now takes the default as the engine does.
+- **The night vision's colour** (`2fb0491a`, research 84 §14's request). `FUN_003b78d0(0, LensFX_NVG)` sets rows
+  `(0.33 r, 0.33 g, 0.33 b, 3.03 a)` of the lens and the flag `0x4b4a68`; while it is up every world and character
+  packet (`FUN_003b41d0`, `FUN_003b5f20`) runs VU1 `0x5c` (`0x5e`/`0x60` for the other colour buffers) after the
+  lighting (`0x18`, or `0x54`'s flat colour) and before the output (`0x28`), the row in the header's qword 13
+  (`FUN_003b6870`, VU `328`). The routine at `0x4d8` is `ACC = row*c.x + row*c.y + row*c.z; c.xyz = ACC + row*row.w`:
+  `c' = row.rgb * (R + G + B + row.a)`, alpha kept, in the lane's 0..255 units -- a lens-green monochrome of the lit
+  colour at about its brightness, not a lift; the fog's colour becomes the lens's times its own (`cam+0xd0`).
+  `FUN_003b7170` drops the flag once the rows are back at the neutral `(0.33, 0.33, 0.33, 0)`. The world's and the
+  SEAL's graphs apply it (`nightVision.ts`); the canvas filter is gone. The EE also runs the rows over a light list's
+  colours (`FUN_003b54e0`, `c' = row * (R + G + B + row.z)`); which lights those are is not read, and the viewer leaves
+  its light passes (the effects workstream's) as they are.
+- **The sweep and the tests.** All 22 maps load with no untextured draw; the diagnostics are round 3's (Vigilance's
+  `cloud_scroll.tif`, the two odd mip records) and Guidance's unplaced `access_action3` (the actions workstream's).
+  Unit tests 1,369 pass; typecheck clean. The e2e with `?redotcom`: 38 of 39 on each of two full runs, a different
+  timing test each time -- `effects` (the M4A1 flash's three-frame life, 2/2 alone) and `hud`'s fade-in (the HUD steps
+  at most 0.1 s a frame, so slow SwiftShader frames under the host's load leave it short of 1 at 1.7 s); `hud` fails 3
+  of 3 with this round's compile queue reverted and 2 of 3 with the shadow's update off, so neither causes it.

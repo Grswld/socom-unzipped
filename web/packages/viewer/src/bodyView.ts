@@ -7,6 +7,7 @@ import { materialReference, uniform, vec4, vertexColor } from 'three/tsl';
 import type { BodyStats, FittingMesh, LoadedBody } from './body';
 import { brightenOf, type Lighting } from './lighting';
 import { rigShading } from './rigShading';
+import { nightLit } from './nightVision';
 import type { LoadedMap } from './loadMap';
 import { drawState, materialSpec } from './materialSpec';
 import { blendFactorsFor, makeTexture } from './world';
@@ -99,7 +100,8 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
   // every one of the 26 skinning dumps in logs/vu1dump3 -- and the fitting's own), lit here per vertex, every frame,
   // from the posed normal (`./rigShading`).
   const rig = rigShading(lighting.rig);
-  const litColour = vec4(vertexColor().rgb.mul(rig.lit), vertexColor().a);
+  // Then the night vision's command 0x5c while the goggles are on (`./nightVision`): the characters' packets carry it too.
+  const litColour = nightLit(vec4(vertexColor().rgb.mul(rig.lit), vertexColor().a));
   const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
   const modulated = vec4(texel.mul(litColour)).clamp(0, 1);
   const shaded = vec4(modulated.rgb.mul(brighten), modulated.a);

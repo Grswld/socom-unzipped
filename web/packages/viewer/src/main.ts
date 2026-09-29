@@ -28,6 +28,8 @@ import { ScoreboardKeys } from './scoreboardKeys';
 import { DEFAULT_PLAYER } from './scoreboard';
 import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
+import { CharacterShadow } from './charShadow';
+import { nightVisionRow, setNightVision } from './nightVision';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
@@ -379,6 +381,8 @@ let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
 /** W2.1: the player's body, rebuilt with every map; shown by the panel's `body` switch (`./bodyView`). */
 let body: BodyView | null = null;
+/** The characters' shadow (`./charShadow`): the SEAL's render map, projected on the world. */
+const charShadow = new CharacterShadow();
 let backend: Backend = 'webgl2';
 /** The maps the index listed, so a path can be turned back into its archive for the URL. */
 let mapList: MapInfo[] = [];
@@ -398,6 +402,12 @@ const fog: FogSettings = {
 let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
 /** The renderer's warm-up (`ViewerRenderer.warm`), once `boot` has one: every program compiled after a map's reveal. */
 let warmScene: ((extras: Object3D[]) => Promise<void>) | null = null;
+/** How many of the world's programs link at once before its first paint (`ViewerRenderer.prepare`'s `lanes`). */
+const WORLD_LANES = 8;
+/** A reveal's programs compiled before it (`ViewerRenderer.prepare`), once `boot` has a renderer. */
+let prepareObjects: ((objects: Object3D[], stale: () => boolean, lanes?: number) => Promise<void>) | null = null;
+/** What entering the walk first draws -- the SEAL and its rifle, their shadow's silhouette, the HUD and the reticle -- compiled with the map. */
+let warmWalk: (() => Promise<void>) | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -411,8 +421,10 @@ let fogIsMine = false;
  */
 function refreshFog(): void {
   const gain = brightenOf(lighting);
+  // With the goggles on the camera's colour is the lens's times the fog's (`FUN_005c1800`, `cam+0xd0`).
+  const lens = nightOn && nightLens ? nightLens : [1, 1, 1];
   const lift = (rgb: [number, number, number]): [number, number, number] =>
-    [Math.min(255, rgb[0] * gain), Math.min(255, rgb[1] * gain), Math.min(255, rgb[2] * gain)];
+    [Math.min(255, rgb[0] * lens[0]! * gain), Math.min(255, rgb[1] * lens[1]! * gain), Math.min(255, rgb[2] * lens[2]! * gain)];
   applyFog(scene, { ...fog, color: lift(fog.color) });
   setClearColor?.(lift(fog.enabled ? fog.color : ELF_DEFAULT_FOGCOL));
 }
@@ -567,37 +579,6 @@ function playLanes(before: Input, after: Input, dt: number): void {
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
 let nightLens: [number, number, number, number] | null = null;
 let nightOn = false;
-/**
- * The night vision's colour on the frame [approximation, research 84 section 14]. The game loads a colour matrix whose
- * four rows are all `(r x 0.33, g x 0.33, b x 0.33, a x 3.03)` of `LensFX_NVG` (0.2, 0.898, 0.2, 0.24) -- `0x3b78d0`
- * from `0x5c1800` -- i.e. every channel of a lit colour becomes `0.066 R + 0.296 G + 0.066 B + 0.727`: the night's
- * dark vertex lighting lifted to a flat, bright grey the textures then modulate, the green coming from the goggles
- * (`nvg_part.tif`, 17 % green inside) and the fog tinted by the lens. That is a per-vertex change the world renderer
- * would make; until it does, the viewer puts a frame filter on the canvas: the rows' weights normalised to a
- * luminance, a gain of `NIGHT_GAIN` for the lift, tinted by the lens's colour with green at 1.
- */
-const NIGHT_GAIN = 3;
-function setNightFilter(lens: [number, number, number, number] | null): void {
-  if (!canvas) return;
-  if (!lens) { canvas.style.filter = ''; return; }
-  const id = 's2u-nvg';
-  let svg: Element | null = document.getElementById(`${id}-svg`);
-  if (!svg) {
-    const made = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    made.id = `${id}-svg`;
-    made.setAttribute('width', '0'); made.setAttribute('height', '0');
-    made.style.position = 'absolute';
-    made.innerHTML = `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=""/></filter>`;
-    document.body.appendChild(made);
-    svg = made;
-  }
-  // The rows' weights (0.066, 0.296, 0.066 of the lens) as a luminance summing to 1, times the gain, times the tint.
-  const w = [lens[0], lens[1], lens[2]].map((c) => c / (lens[0] + lens[1] + lens[2]));
-  const tint = [lens[0] / lens[1], 1, lens[2] / lens[1]];
-  const row = (t: number): string => w.map((x) => (x * NIGHT_GAIN * t).toFixed(4)).join(' ') + ' 0 0';
-  svg.querySelector('feColorMatrix')!.setAttribute('values', `${row(tint[0]!)} ${row(tint[1]!)} ${row(tint[2]!)} 0 0 0 1 0`);
-  canvas.style.filter = `url(#${id})`;
-}
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
 let lastLook: { yaw: number; pitch: number } | null = null;
 let lastFov = -1;
@@ -641,7 +622,8 @@ function gunFrame(dt: number, walking: boolean): void {
   reticle.setNight(night);
   if (night !== nightOn) {
     nightOn = night;
-    setNightFilter(night ? nightLens : null);
+    setNightVision(night ? nightLens : null);   // the lit colours through VU1 command 0x5c (`./nightVision`)
+    refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
     if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', walk.drawnFeet());
   }
 }
@@ -889,6 +871,17 @@ async function boot(): Promise<void> {
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
   warmScene = (extras) => created.warm(scene, fly.camera, extras);
+  prepareObjects = (objects, stale, lanes) => created.prepare(objects, scene, fly.camera, { stale, lanes });
+  warmWalk = async () => {
+    const b = body, stale = (): boolean => body !== b;
+    const overlays = [hud.warmTarget(), reticle.warmTarget()];
+    const map = b ? charShadow.warmSetup(b.group) : null;
+    await Promise.all([
+      b ? created.prepare([b.group], scene, fly.camera, { stale }) : null,
+      b && map ? created.prepare([b.group], scene, map.camera, { stale, target: map.target, override: map.override }) : null,
+      ...overlays.map((o) => created.prepare([o.scene], o.scene, o.camera, { screen: true })),
+    ]);
+  };
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();
   backend = chosen;
@@ -965,6 +958,7 @@ async function boot(): Promise<void> {
     grenade.update(dt);
     whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
+    if (body?.group.visible) charShadow.update(created.renderer, scene, body.group); else charShadow.clear();
     render(scene, fly.camera);
     const aim = walk.aim();
     if (aim) {
@@ -1129,11 +1123,13 @@ function show(map: LoadedMap): void {
   // W2.1: the player's body, in its bind pose at slot A (`./body`, `./bodyView`); the switch below shows it.
   if (body) { scene.remove(body.group); body.dispose(); }
   body = map.body ? buildBody(map.body, map, lighting) : null;
+  charShadow.setVector(map.shadowVector ?? null);
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
   play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
   kit.reset();
+  void warmWalk?.().catch(() => {});                          // what entering the walk draws first, compiled now
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -1208,22 +1204,34 @@ function show(map: LoadedMap): void {
     previous.dispose();
     previous = null;
   };
-  revealing = spreadAcrossFrames(built.revealWorld, {
-    onProgress: (done, total) => {
+  // Each reveal waits for its objects' programs, linked off the draw (research 90 item 17: a draw that meets a new
+  // program links it there and then -- 3.6 s of stalls through Guidance's first seconds).
+  const stale = (): boolean => view !== built0;
+  const prepared = (objects: Object3D[], lanes?: number): Promise<void> => (prepareObjects?.(objects, stale, lanes) ?? Promise.resolve()).catch(() => {});
+  ui.setLoading(true, 'building the scene', 0);
+  // The world's with more links in flight: nothing is drawn yet that a backed-up driver could hold.
+  void prepared(built.worldObjects, WORLD_LANES).then(() => {
+    if (stale()) return;
+    revealing = spreadAcrossFrames(built0.revealWorld, {
+      onProgress: (done, total) => {
+        retire();
+        ui.setLoading(true, 'building the scene', total > 0 ? done / total : 1);
+      },
+    });
+    void revealing.done.then(() => {
+      if (stale()) return;                          // another map was picked while this one was revealing
       retire();
-      ui.setLoading(true, 'building the scene', total > 0 ? done / total : 1);
-    },
-  });
-  void revealing.done.then(() => {
-    if (view !== built0) return;                  // another map was picked while this one was revealing
-    retire();
-    ui.setLoading(false);
-    say(` · ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
-    // The props follow, over further frames. The map is already drawn and flyable while they arrive,
-    // and the flares among them are turned by the render loop on the frame after they land.
-    revealing = spreadAcrossFrames(built0.revealProps);
-    // Then every program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
-    void revealing.done.then(() => { if (view === built0) void warmScene?.(built0.warmExtras()); });
+      ui.setLoading(false);
+      say(` · ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
+      // The props follow, over further frames. The map is already drawn and flyable while they arrive,
+      // and the flares among them are turned by the render loop on the frame after they land. Then every
+      // program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
+      void prepared(built0.propObjects).then(() => {
+        if (stale()) return;
+        revealing = spreadAcrossFrames(built0.revealProps);
+        void revealing.done.then(() => { if (!stale()) void warmScene?.(built0.warmExtras()); });
+      });
+    });
   });
 }
 
@@ -1252,6 +1260,7 @@ window.__viewer = {
     body: body ? { ...body.stats, visible: body.group.visible } : null,
     anim: play.animStats(),
     view: play.viewStats(),
+    nightVision: nightVisionRow(),
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),

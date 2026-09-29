@@ -7,7 +7,7 @@ import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba, type Textur
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
   buildGrid, collisionLines, DEFAULT_GRID_PARAMS, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter,
-  parseGlobalLighting, parseGridParams, parseMaterialPalette, parseSceneGraph, parseWorldRoot, placeClutter, type EnvMaterial, type LodBand,
+  DEFAULT_ENV_TEXTURE, parseGlobalLighting, parseGridParams, parseMaterialPalette, parseSceneGraph, parseWorldRoot, placeClutter, type EnvMaterial, type LodBand,
   placeInstances, placementCells, resolveChunk, transformPoint, worldCollision,
   type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
   type PlacedModel, type SceneNode,
@@ -115,6 +115,8 @@ export interface LoadedMap {
    * `reflect` names one draws with. Only those whose texture decoded; empty on most maps.
    */
   envMaterials?: EnvMaterial[];
+  /** The world root's `ShadowVector` (every map has one): the direction the characters' shadow maps look down. */
+  shadowVector?: [number, number, number];
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
    * GS state the record's bind packet sets -- blend equation, alpha test, filtering, wrap. See
@@ -353,7 +355,9 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name), ...usedEnv.map((e) => e.texture)];
+    // The env pass's default (`DAT_004b4d90`) whenever any draw has the pass: an entry's texture may not resolve.
+    const envTextures = usedEnv.length > 0 ? [...usedEnv.map((e) => e.texture), DEFAULT_ENV_TEXTURE] : [];
+    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name), ...envTextures];
     let decoded = 0;
     for (const name of wanted) {
       step('textures', decoded++, wanted.length);
@@ -454,7 +458,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     props,
     textures,
     textureMips,
-    envMaterials: usedEnv.filter((e) => e.texture in textures),
+    envMaterials: usedEnv.map((e) => (e.texture in textures ? e : { ...e, texture: DEFAULT_ENV_TEXTURE })).filter((e) => e.texture in textures),
+    shadowVector: shadowVectorOf(bytes, toc, stem),
     textureFlags,
     detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
@@ -925,6 +930,15 @@ function lods(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, Lod
   } catch (e) {
     notes.add(`lod table: ${say(e)}`);
     return new Map();
+  }
+}
+
+/** The world root's `ShadowVector`, or undefined when the root will not read (the shadow takes the engine's default). */
+function shadowVectorOf(bytes: Uint8Array, toc: ZdbEntry[], stem: string): [number, number, number] | undefined {
+  try {
+    return parseWorldRoot(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`))).shadowVector;
+  } catch {
+    return undefined;
   }
 }
 
