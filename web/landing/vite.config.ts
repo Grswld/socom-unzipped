@@ -34,6 +34,6 @@ export default defineConfig({
     },
   },
   // dev: the stats endpoint is firewalled to the production box, so `npm run dev -w landing` reads the live site's
-  // proxy. Port 5180, beside the viewer's 5173 (and clear of 5181, the owner's viewer dev server).
-  server: { port: 5180, proxy: { '/api/stats': { target: 'https://socomunzipped.com', changeOrigin: true } } },
+  // proxy. Port 5182, beside the viewer's 5173, clear of 5181 (the owner's viewer dev server) and 5180 (scotho.com's).
+  server: { port: 5182, proxy: { '/api/stats': { target: 'https://socomunzipped.com', changeOrigin: true } } },
 });

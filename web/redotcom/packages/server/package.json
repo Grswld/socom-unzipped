@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The multiplayer server for the map viewer's walk mode (web sprint 3): one timed respawn match per map",
+  "description": "The multiplayer server for redotcom's reCOM mode (web sprint 3): one timed respawn match per map",
   "scripts": {
     "start": "tsx src/main.ts"
   },

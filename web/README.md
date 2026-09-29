@@ -16,7 +16,7 @@ the recompilation, and the recompilation needs nothing from here.
 | `npm install` | the whole workspace; redotcom builds with vite 7 / vitest 3, landing and shared with vite 8 / vitest 4 |
 | `npm run typecheck` / `npm test` / `npm run build` | all three parts, in turn |
 | `npm run dev` | redotcom at `http://localhost:5173` (add `?devmode` to read the extracted maps) |
-| `npm run dev:landing` | the landing site at `http://localhost:5180` |
+| `npm run dev:landing` | the landing site at `http://localhost:5182` |
 | `npm run extract-maps` | your disc's archives into `redotcom/public/maps/` (git-ignored) |
 | `npm run <script> -w @s2u/redotcom` / `-w landing` / `-w shared` | one part's own script (`-w redotcom` by path would select its packages too) |
 | `HOST=... KEY=... bash shared/deploy/site/deploy.sh` | the owner's step: build both sites, leak-check the release, ship socomunzipped.com |

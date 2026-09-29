@@ -29,12 +29,12 @@ const buildStamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
  * extracted disc tree served at `/maps/` is the app's default `AssetSource` without a copy.
  */
 /**
- * `VIEWER_BASE` is the path the built site is served under (for example `/map-viewer/`); the dev server
+ * `VIEWER_BASE` is the path the built site is served under (for example `/redotcom/`, the site's); the dev server
  * and the default build use `/`. The extracted maps are never copied into the build: on a server they are a
  * separate directory mounted beside the site, in dev Vite serves
  * `web/redotcom/public` itself.
  */
-/** `map-viewer`, `/map-viewer` and `/map-viewer/` all mean `/map-viewer/`; unset means `/`. Only the last path
+/** `redotcom`, `/redotcom` and `/redotcom/` all mean `/redotcom/`; unset means `/`. Only the last path
  *  segment counts, because on Windows Git Bash rewrites a leading-slash value into `C:/Program Files/Git/...`. */
 function basePath(value: string | undefined): string {
   const parts = (value ?? '').split(/[\/]+/).filter((p) => p.length > 0);

@@ -79,7 +79,7 @@ masked to fade into it.
 From `web/` (one npm workspace for the three parts):
 
     npm install
-    npm run dev -w landing        # http://localhost:5180 (the viewer's dev server is 5173)
+    npm run dev -w landing        # http://localhost:5182 (the viewer's dev server is 5173)
     npm test -w landing           # the pages, the gallery and the inbox (vitest, jsdom); npm test -w shared: the system
     npm run build -w landing      # prepare + typecheck + vite build -> web/landing/dist
     npm run e2e -w landing        # Playwright at 1280 and 390 (E2E_PORT overrides the port)
