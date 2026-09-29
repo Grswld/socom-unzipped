@@ -34,7 +34,7 @@ integration head into its own branch). State at the stop:
 | Workstream | State | Next |
 |---|---|---|
 | motion (`wt-web-motion`) | merged through round 4 (head look, aim weight, jump rule, swap clips `WalkMode.swapWeapon`) | research 80 §7 leftovers; the pistol set with weapon |
-| **weapon** (`wt-web-weapon`) | **17 uncommitted files** — round 3 in progress: the Mark 23 sidearm swap (L1 rifle / L2 Mark 23 / R2 inventory), hand-offs + `Animator.setWeapon`, per-weapon fire/reticle/HUD icon/sounds, pistol-fire and reload clips, the game's reload rules (refill at start, auto-reload on empty, no fire during reload, still→moving overlay). The research is summarised in the controller's last message to it (see the session transcript) and in its own research notes | inspect the diff, finish, test, commit, merge |
+| weapon (`wt-web-weapon`) | merged through round 2 (the Mark 23 on L2 with the game's swap clips and mounts, R2 inventory, per-weapon records/reticle/icon/sounds, the game's reload rules incl. auto-reload and the magazine ring, the accuracy pip; first person draws no viewmodel, as the game). vitest 1408; run the full e2e | the hand-off phases are unsettled readings; re-sync the swap clock when a standing swap becomes the moving overlay |
 | audio (`wt-web-audio`) | merged through round 3 (unlock < 1 ms, lent banks, reverb, ambience, command 45) | idle |
 | ui (`wt-web-ui`) | merged through round 3 (panel, toggles, popover, phone layout, `?redotcom` gate) | phone panel covers buttons in landscape (open) |
 | maps (`wt-web-maps`) | merged through round 4 (the SEAL's shadow pass, the background compile queue -- Guidance's load stutter 26 slow frames → 1 --, the reflection palette with `specular_map.tif`, the night-vision tint in the shading; research 82 §6). Merged with typecheck + vitest (1401) only: **run the full e2e** | the `hud` fade-in e2e is timing-flaky under load (the HUD steps ≤ 0.1 s a frame); the audio unlock was measured at 36-466 ms by maps vs < 1 ms by audio -- re-measure |
@@ -80,8 +80,8 @@ appears; typecheck + vitest + full e2e; commit with explicit paths (`git add -- 
 ## 7. First moves for the next agent
 
 1. `cd C:/Projects/wt-web-play/web && git status && git log --oneline -3` — confirm the head is `ff54c67b` or later.
-2. In `wt-web-weapon` and `wt-web-effects`: `git diff --stat`, read the diffs, finish or stash-as-WIP-commit, run
-   their tests, commit, then merge each into the integration branch with the recipe above.
+2. In `wt-web-effects`: `git diff --stat`, read the diff, finish or WIP-commit it, run its tests, commit, then merge
+   into the integration branch with the recipe above (weapon round 2 is merged).
 3. Run the full e2e (maps round 4 was merged without it).
 4. Full verification, push the integration branch, re-run `tools/playtest.ts` on five maps and update research 90.
 5. Continue the feel-first list: the open issues above, then the owner's decisions once answered.
