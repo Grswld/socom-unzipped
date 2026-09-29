@@ -2,22 +2,22 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-28, for the sitting after the one of 2026-09-27: 6 open O rows (0 answered or struck); 37 active rulings since 2026-09-27 (36 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 6 open O rows (0 answered or struck); 38 active rulings since 2026-09-27 (37 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-6 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-28.
+6 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-29.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
-| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 2 |
-| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 1 |
-| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | 0 |
-| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 1 |
-| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 1 |
-| O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 0 |
+| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 3 |
+| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 2 |
+| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | 1 |
+| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 2 |
+| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 2 |
+| O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 1 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
@@ -25,7 +25,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-37 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 36 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+38 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 37 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
 - **R299** (2026-09-27) the loop builds and gates the release archives and writes the exact `gh release upload` and verify-half commands into the Log and O2, and stops short of the up… -- overturn by number
@@ -64,6 +64,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R332** (2026-09-28) the owner's word after the listen, "go ahead now i'll interrupt if need be": a second window opens at 15:53Z with no end named; builds and game runs may run th… -- overturn by number
 - **R333** (2026-09-28) the cloud branch's web sprint 2 "the player" (`claude/web-sprint-cloud-8wa72q` at 3ecd4720, tagged `web-sprint-2-cloud-close`) is merged onto `main` and releas… -- overturn by number
 - **R334** (2026-09-28) the owner's word after the controller's estimate of five to six more loop days: "proceed with your suggestions and make these options known to future testers a… -- overturn by number
+- **R335** (2026-09-29) the owner's word, "You have the next 10ish hours, a web agent is working but should never collide with you", names a third window: builds and game runs may run… -- overturn by number
 
 ## 3. The issues carried twice
 

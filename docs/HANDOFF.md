@@ -10,9 +10,9 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-29 04:00Z, LATEST) -- Sprint 17 day two, `sprint-17` at 376e3927 (main merged back; #112 merged, its masters installed in both PCSX2 instances, boot unproved). The lock REOPENED 03:24Z. Batch 3 (F1 attempt 1, Q2's scheduler fix, the network bounds) merged, unproved: its chain stopped red in the suite (#110). Under the lock: the persona build, then ONE bench build (knobs too). R334 landed. One controller in the main tree (owner).**
-  Then: merge knobs (e82ec485) then bench, #113 and #110 on clean reviews, ONE chain (`PS2X_GS_STATS=1`, 4 GB floor), the logoff run, the bench recording, the profile, A1, the PCSX2 boots (#112).
-- **Next free ruling number: R335** (R322-R334 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
+- **Where the loop is now (2026-09-29 08:00Z, LATEST) -- Sprint 17 day two, `sprint-17` at b6745191: the whole batch merged (twelve merges since the last green da29683b); the chain `s17_b4b` on 666f3b7a RED at its gate: F1 attempt 3 froze the intro (#114, KNOWN §2; the A/B on one exe proved it), so `PS2X_GS_DOUBLE_SWIZZLE` defaults to 1 and the chain reruns as `s17_b4c`. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
+  Then: the logoff run, the stats walk for the F1 picks, the bench recording, the profile, A1, #110's quiet window, the PCSX2 boots (#112); #114 hunted in `wt-s17-f1a3-hang`.
+- **Next free ruling number: R336** (R322-R335 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
