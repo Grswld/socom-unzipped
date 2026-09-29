@@ -105,7 +105,7 @@ describe.skipIf(!MP2)(`the M4A1 SD's round on the game's data${MP2 ? '' : ` (${F
     while (fx.stats().shells > 0 && t < 2) { fx.update(1 / 60, camera); t += 1 / 60; }
     expect(t).toBeLessThanOrEqual(1.2 + 1e-6);                          // gone at rest or at its lifetime
     expect(fx.stats().bounces).toBeGreaterThan(0);
-    expect(sounds).toContain('.BUL_CASE_METAL');
+    expect(sounds).toContain('.BUL_CAS_METAL');          // the bank's name for the data's .BUL_CASE_METAL
     // The smoke source is switched off in the data: nothing was emitted.
     expect(fx.stats().emitted).toBe(0);
   });

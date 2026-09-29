@@ -102,6 +102,16 @@ export interface EffectStats {
   sounds: string[];
 }
 
+/**
+ * The effect data's sound names the banks do not hold, and the name they meant -- **a deliberate departure from the
+ * retail game** (the owner's playtest, 2026-09-29). `shell_eject`, `shell_eject_60` and `shell_eject_first_person`
+ * name the metal bounce `.BUL_CASE_METAL`; no bank of the 115 and no `sounds.rdr` entry carries it, while
+ * `.BUL_CAS_METAL` is in 16 banks (Frostfire's `MP2_am` among them) beside `.BUL_CAS_STONE`, `_DIRT`, `_SAND` and
+ * `_WOOD`, the table's other names. The game looks a sound up by its name's CRC (`FUN_00344f30`), so on the console a
+ * casing lands on metal in silence; the viewer plays the bank's `.BUL_CAS_METAL` (research 89 §11).
+ */
+export const SOUND_NAME_FIXES: Readonly<Record<string, string>> = { '.BUL_CASE_METAL': '.BUL_CAS_METAL' };
+
 /** The zAnim main gravity (`Anim_Main_Params`, -98 on every archive: 77 §9). */
 export const ZANIM_GRAVITY = -98;
 
@@ -450,7 +460,8 @@ export class Effects {
     }
   }
 
-  private playSound(name: string, at: Vec3, volume: number): void {
+  private playSound(raw: string, at: Vec3, volume: number): void {
+    const name = SOUND_NAME_FIXES[raw] ?? raw;
     this.sounds.push(name);
     if (this.sounds.length > 64) this.sounds.splice(0, this.sounds.length - 64);
     this.sound(name, at, volume);
