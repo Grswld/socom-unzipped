@@ -246,7 +246,7 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
  * map's own banks holds -- Rat's Nest's `DefaultMaterial` is `DIRT` and `MP8_am` has no `.STEP_DIRT` (85% of its
  * floors); Frostfire's metal has no `.GREN_METAL` -- is borrowed, by the same name, from another map's bank that holds
  * it: the same recording out of the game's own library. The console looks names up in the loaded banks only
- * (`FUN_00344f30`), so there such a sound is presumably silent -- not established by a capture (research/81 §4).
+ * (`FUN_00344f30`), so there such a sound is presumably silent -- not established by a capture (research/81 §7).
  * The bank is found through `sounds.rdr`'s sets (a set is a bank's block, `MP9_AM` is `MP9_am.bnk`), greedily, the bank
  * that covers the most still-missing names first; its other sounds are not registered (`SoundData.banks[].only`).
  */

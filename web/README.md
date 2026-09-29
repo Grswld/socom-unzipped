@@ -79,7 +79,7 @@ Run from `web/`:
 | command | what it does |
 |---|---|
 | `npm install` | workspace install (six packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR` and `SOUNDS/BNKSTORE.ZAR`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR`, `SOUNDS/BNKSTORE.ZAR` and `IRX/LIBSD.IRX`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
@@ -87,7 +87,7 @@ Run from `web/`:
 | `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
-| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §8) |
+| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §11) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
 
 ### Deploying
@@ -95,7 +95,7 @@ Run from `web/`:
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
 `maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
-`maps/RUN/SOUNDS/BNKSTORE.ZAR`). The archives are the game's and are never part of the build. The sound banks are read
+`maps/RUN/SOUNDS/BNKSTORE.ZAR`, and `maps/RUN/IRX/LIBSD.IRX` for the SPU2's reverb presets). The archives are the game's and are never part of the build. The sound banks are read
 **by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
 (nginx and Vite do); one that does not still works, fetching the whole store.
 
@@ -207,7 +207,10 @@ the context prompt (the climb icon); hidden in flight.
 footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
 metal on Frostfire's rig, sand in Desert Glory), the stealth step at a light stick and the crawl prone; the jump's
 whoosh and the landing (the surface's, or a bone's crack from a deadly height); the M4A1 SD's suppressed round and its
-reload. The browser starts sound on the first click or key press; `window.__viewer.audio()` reports what played.
+reload; the SPU2's own reverb at the mission's indoor and outdoor depths; the mission's ambience beds and its looping
+emitters (a fan, a river, insects at a lamp). Where a map's banks lack a sound its floors or grenades ask for, the same
+sound is lent from another map's bank (a placeholder, research 81 §7). The browser starts sound on the first click or
+key press; `window.__viewer.audio()` reports what played, what was dropped and why.
 
 **The rounds show** with the game's own effects (`docs/research/89-effects.md`). Each round plays the weapon's zAnim
 muzzle animation out of the map's `CZANIM.ZAR`. For the M4A1 SD that is the brass casing thrown to the rifle's right,

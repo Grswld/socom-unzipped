@@ -12,7 +12,7 @@ import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopL
  * rendered by `@s2u/sound`'s model of the IRX -- its grains, voices, pitches, envelopes, volumes and pans -- at the
  * moment the game would start it, and played through Web Audio.
  *
- * **Where a sound is heard from.** Where the game plays a sound at a place (`FUN_00342670`, research/81 §5), it takes
+ * **Where a sound is heard from.** Where the game plays a sound at a place (`FUN_00342670`, research/81 §3), it takes
  * the source into the listener's frame (the camera, `0x48dd40`), scales the play volume by the sound's `RANGE`
  * (`rangeGain`) and pans by the azimuth (`panDegrees`) -- and 989snd then applies the pan table and the square law
  * inside the voice. So the pan and the distance are rendered into the buffer (`renderSound`'s `vol` and `pan`), not
@@ -38,7 +38,7 @@ import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopL
 
 /**
  * PLACEHOLDER (not the game's): the whole mix's gain on the way out. The console's mix of a sound effect peaks far
- * below full scale -- a step at about -30 dBFS, the M4A1 SD's report at -20 (research/81 §7) -- because the
+ * below full scale -- a step at about -30 dBFS, the M4A1 SD's report at -20 (research/81 §11) -- because the
  * television's volume knob did the rest; a browser tab has none, so the viewer lifts everything by 12 dB.
  * `setVolume(1)` is this level.
  */
