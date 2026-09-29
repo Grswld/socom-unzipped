@@ -349,9 +349,9 @@ The flash they open with (`fire_flash`: `firepuff`, `explosion2.tif`) is additiv
 - **Readings and placeholders**:
   - `MARK_GRAZE_FLOOR` (0.2) bounds a slanting mark's stretch where the game clips to the polygon.
   - The casing's floor probe is the walk's segment test straight down, standing in for `FUN_002a2eb0`'s terrain query.
-  - `LIGHT` is decoded and not drawn: the world is unlit.
+  - `LIGHT` is drawn as the engine's second pass over the lit world (§10); the body is not re-drawn.
   - The zoom mode is read as the first-person view.
-  - The rotated (1) and xz (2) particle types draw as sprites.
+  - The rotated (1) and flat (2) particle types are drawn as the engine draws them (§11).
   - The tracer, where one is due, is still `Fire`'s one-frame line, not the travelling `tracer_ally` model.
 
 ## 7. Verification
@@ -375,9 +375,115 @@ The flash they open with (`fire_flash`: `firepuff`, `explosion2.tif`) is additiv
 
 ## 8. Open
 
-- `FUN_00326350`'s exact screen-space streak, and the rotated and xz particle types' draws.
 - The tracer's travelling model and its `redpuffs` particles.
-- The dynamic light the flashes carry.
-- Whether a mark's 100.0 lifetime is ever counted down.
+- Whether a mark's or a footprint's 100.0 lifetime is ever counted down.
+- The body (skinned) under a light's pass; the lit visuals' own gate (visual flags 0x4000 and 0x10).
+- A `WHILE` with conditions (only the endless form is on the effects' path).
 - The round's own path: the `PENETRATION` 1.0 materials passed through, and the penetration into a second surface.
   `Fire` still stops at the first polygon; that is the shot's owner's.
+
+## 9. The grenades' explosions and bounces (round two)
+
+- **The explosion** runs the material's variant, `frag_grenade_<material>`: its own 0.05 s puff, then a call to
+  `frag_grenade`. That fires the parts: `FRAG_sparks` (a bare root node thrown by a fixed launch with streaked sparks
+  hung on it), `dust_explode_long`, `light_flash_large` (§10), `bsmoke_explode_large`, `dust_ground_roll` and
+  `.GREN_MED`. The HE runs `HE_grenade`.
+- The grenade's page (`grenade.ts`) emits `explode` and `bounce`. `main.ts` plays their `anim` through `effects.play`
+  with a node at the point; the `EXPLOSION_READING` sprites stay only for a map without effect data.
+- **`OBJECT_MOTION`'s fixed launch** (flag 0x8, decomp 110654-110911) is block A's speed and pull along the stored
+  direction at +0x54. That direction is `FUN_0025cb00` of the block's angles: `FRAG_sparks`' (0, 0.556, -0.444) is
+  azimuth 0, zenith 50, pulled at -200 against it.
+- An animation rooted at no model still has an instance node (`NODE_ROOT`), which the viewer makes empty. A particle
+  source with flag A 0x10 follows its node every tick.
+
+## 10. The lights (`LIGHT`, 32; tick `FUN_00264cb0`, decomp 111906-112214)
+
+**The fields.**
+
+| Off | Flag | Meaning |
+|---|---|---|
+| +4 | – | flags (u16) |
+| +6 | – | the light's node |
+| +8 | 0x2 | the node it sits at (0xFA the caller) |
+| – | 0x8 | at the context's position |
+| +9 | 0x100 | the GS ALPHA selector (default 0x44) |
+| +0xc / +0x10 | 0x10 | a static min/max range |
+| +0x14 | 0x4 | an offset |
+| +0x20 | 0x40 | RGB, 0..255 |
+| +0x2c | 0x80 | the pass's opacity, over 128 (default 64); **not a radius** |
+| +0x34 / +0x36 | 0x20 | the count and offset of `(t, min, max)` keys, linear, the last held |
+| +0x3c | – | the command's length |
+| – | 0x400 | on the world's light list |
+
+**The lights on the disc.**
+
+| Light | Colour | Blend | Ranges |
+|---|---|---|---|
+| `light_flash_large` (frag) | 214, 242, 217 | 0x48, additive | 100/190 shrinking to nothing at 0.5 s |
+| `HE_light_flash_large` | 230, 217, 166 | additive | to nothing at 0.7 s |
+| `zoom_flash_fire` (a muzzle, at the caller) | 204, 173, 120 | 0x44 | 5/12 -> 15/60 -> 0 in 0.1 s |
+| `flash_fire_hider`'s `light_at_muzzle` | the same | 0x44 | 6/26 -> 50/100 |
+
+The M4A1 SD's own muzzle has none.
+
+**How the engine draws a light.** It does not light the vertex colours. It draws a **second pass of every lit
+visual in reach**, world, characters and weapons alike:
+- `FUN_00339660` gives a node the lights whose sphere meets its own, at most six. `FUN_003b5b90` emits VU1 command
+  0x3a once a light.
+- The handler at 0x23d8 re-draws the triangles with `light_map.tif` (`EFFE_TXR`: white, alpha 0.94 at the centre
+  to 0 at the rim) projected on the surface.
+- `L = light - P`, `h = max(L.N, 0)`, `f = 0.5 clamp((max - h)/(max - min))`, `gate = min(h, 1)`, and
+  `uv = 0.5 + (L.T, L.B)/max`: a spot `max/2` in radius under the light.
+- The colour is `min(1, 2 rgb/255 f)` and the alpha `At opacity f gate / 128`. The blend is the light's:
+  `dst += Cs As` for the explosions.
+- None of the grenade or muzzle animations uses `BLUR3D`, `IRIS_EFFECT` or `TRUE_COLOR_SCALE`. The flashbang's
+  blinding is code (`FUN_00597c00`).
+
+**The viewer** (`effectLights.ts`) draws the pass as overlays sharing the world's and the held weapon's geometry, per
+fragment, with the face's normal.
+
+## 11. Particle types, water, footprints, sounds, the pre-warm
+
+**Particle types.**
+- **Rotated** (type 1, `FUN_00325580`): a screen square turned by its angle, its half-diagonal the size.
+  - Its corner i is at `C + size (cos(t + i pi/2) right + sin(t + i pi/2) down)`.
+  - The angle is spun by the source's spin block (+0xce: spin and acceleration min/max). The spin is stopped where it
+    would change sign.
+  - The starting angle is the pool slot's stale one, random here.
+  - The fire, smoke and explosion dust, and the dirt, stone and wood impacts, are this type.
+- **Flat** (type 2, `FUN_00325cc0`): a square in the world XZ plane at the particle's height, `2 size` across, u along
+  +z. The ripples, the splash's rings and `bullet_hit_water`'s ring are this type.
+- **`WHILE`/`END_WHILE`** (39/40): the ripples loop forever until the engine stops them.
+
+**Water** (`FUN_005b52b0`, decomp 469808-469920). The SEAL's ground probe calls it over LIQUID water:
+- With the water line across the body, `big_ripple_anim[_walk|_run]` plays by speed class (`|v|^2` at 0.25 and 400).
+  With it up to 10 over the top, `small_ripple_anim*`.
+- The ripples play on a node moved each frame to the water under the SEAL.
+- The first frame in the water in the air plays `seal_fall_in_water` at the water point: the traversal's `waterLand`.
+- Walking into water splashes nothing.
+- A round on water is `bullet_hit_water` (its flat `theripple`), nothing special.
+- The viewer stops the ripples when the SEAL leaves the water. The game's loops ran on where they were: its call
+  comes only over water.
+
+**Footfalls.**
+- `FUN_005a49f0` looks up `seal_footfall_<MATERIAL>` for every material. **None exists on any map**, so a footfall
+  plays no effect.
+- `FUN_005a3280` (decomp 460186) prints `decals.rdr`'s `FOOTSTEP_DECALS` (SAND `stamp_footprint01.tif`, SNOW
+  `stamp_footprint_snow.tif`) at each footfall, not prone. It is 3.5 across, flat along the ground's normal, and runs
+  along the SEAL's forward, in the temporary pool.
+
+**Sounds.** The game resolves a sound by its name's CRC among the loaded banks' sounds: a binary search over one sorted
+table (`FUN_00344f30` -> `FUN_00344bf0`), with no fallback bank and no alias. So two effect sounds are silent on the
+console. The viewer departs from it deliberately (`SOUND_NAME_FIXES`, `SOUND_FALLBACKS`, `soundFor` in `effects.ts`):
+- The casings' metal bounce is named `.BUL_CASE_METAL` in `shell_eject`, `shell_eject_60` and
+  `shell_eject_first_person`. No bank and no `sounds.rdr` entry carries it, while `.BUL_CAS_METAL` sits in 16 banks,
+  Frostfire's among them. The viewer plays the latter.
+- Grass and dirt casings ask for `.BUL_CAS_DIRT`, which Blood Lake's banks lack beside their own `.BUL_CAS_GRASS`.
+  The viewer plays the first of `.BUL_CAS_GROUND`, `.BUL_CAS_GRASS`, `.BUL_CAS_SAND` the map holds.
+- Night Stalker's `.BUL_STONE` is in `MP7_am` and plays: 4 of 4 stone hits heard at spawn A.
+
+**The pre-warm** (research 90 item 16). When the map's effect data arrives, every effect's program is compiled and
+its bitmaps uploaded (`Effects.warmUp`, `renderer.compileAsync`): the models, a particle group per texture, the marks'
+and footprints' materials, and the light pass's two programs (its colour and opacity are uniforms). A software-rendered
+headless browser measured the first frag's first frame at 127 ms warmed against 400 ms cold on Desert Glory. The
+blast's overdraw, not its first use, is the rest there.
