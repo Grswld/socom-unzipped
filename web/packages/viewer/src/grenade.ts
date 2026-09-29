@@ -127,6 +127,29 @@ export const detonationOf = (r: ThrowableRecord): Detonation =>
   r.explosionRadius === 0 ? 'smoke' : r.explosionDamage === 0 ? 'flash' : 'blast';
 /** The peek value past which a throw is the lean's toss [reading: the game tests the lean clip, not the value]. */
 export const PEEK_THROW = 0.5;
+/**
+ * The column under a blast (`FUN_0031df50(10.0, ...)` then `FUN_002d4c20`): the ground counts up to `above` over the
+ * blast (the game's 10); `below` is the viewer's reach under a grenade at rest [reading: the game's column has no floor].
+ */
+export const SCORCH_PROBE = { above: 10, below: 10 } as const;
+
+/** The ground under a blast: the column's hit and its unit normal, up the column. */
+interface ScorchGround { point: V3; normal: V3 }
+
+/**
+ * Two unit axes across a unit normal, `t1 x t2 = n`: t1 the world x laid on the plane (the world z when the normal is
+ * near x). For the up normal, (1, 0, 0) and (0, 0, -1).
+ */
+function tangents(n: V3): [V3, V3] {
+  const a: V3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 0, 1];
+  const d = a[0] * n[0] + a[1] * n[1] + a[2] * n[2];
+  let t1: V3 = [a[0] - d * n[0], a[1] - d * n[1], a[2] - d * n[2]];
+  const l = Math.hypot(...t1);
+  t1 = [t1[0] / l, t1[1] / l, t1[2] / l];
+  const t2: V3 = [n[1] * t1[2] - n[2] * t1[1], n[2] * t1[0] - n[0] * t1[2], n[0] * t1[1] - n[1] * t1[0]];
+  return [t1, t2];
+}
+
 /** The game releases from the hand bone's (2, 0, 0) (`CZKit_TickExplosives`, `FUN_002869d0` with 0x66b6d0). */
 export const RELEASE_POINT: V3 = [2, 0, 0];
 
@@ -951,7 +974,7 @@ export class GrenadeThrower {
     if (detonation === 'smoke' && (!byEffects || SMOKE_ALWAYS_PLACEHOLDER)) {
       this.smokes.push({ pos: [...pos], until: record.removal - record.fuse, next: 0, age: 0 });
     }
-    if (detonation === 'blast' && material !== null) this.scorch(pos, material);
+    if (detonation === 'blast' && material !== null) this.scorch(pos, material, this.groundUnder(pos));
     // The smoke's canister lies where it went off; the others are gone.
     if (l.model) l.model.visible = detonation === 'smoke';
     this.emit('explode', info);
@@ -1068,11 +1091,13 @@ export class GrenadeThrower {
 
   /**
    * `GRENADE_BLAST`'s `grenade_mark.tif` flat under a grenade that lay on the ground (the material's size, STONE's when
-   * unlisted) [reading: the game's decal placement is not traced; one that went off in the air leaves none here].
+   * unlisted), on the ground under it (`groundUnder`; research 85 §7.3) [reading: the game marks under a blast in the
+   * air too, sized by the probed surface's material; the viewer marks at rest only, by the material it lay on]. The
+   * unclipped square (no clipper) stays flat.
    */
-  private scorch(pos: V3, material: string): void {
+  private scorch(pos: V3, material: string, ground: ScorchGround | null): void {
     const [min, max] = GRENADE_BLAST[material] ?? GRENADE_BLAST.STONE!;
-    if (this.clipper) { this.scorchClipped(pos, min, max); return; }
+    if (this.clipper) { this.scorchClipped(ground?.point ?? pos, ground?.normal ?? [0, 1, 0], min, max); return; }
     // Its own four corners, for its own colour (the shared quad's, cloned), as `./fire`'s marks.
     const mark = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
     // A `FUN_003139e0` decal like a bullet mark (research 89 §13): modulated by the ground's own drawn colour under it.
@@ -1094,16 +1119,44 @@ export class GrenadeThrower {
   }
 
   /**
-   * The scorch as the game builds a `FUN_003139e0` decal (research 89 §13): the square flat under the blast, projected
-   * straight down, clipped to the drawn ground's triangles, each vertex the ground's colour there (`./markClip`); the
-   * bare square at unity where nothing is drawn under it yet, clipped again a few a frame.
+   * The ground under a blast as the game finds it (`FUN_003c7af0`, decomp 318876): a vertical column at the blast's x
+   * and z (`FUN_0031df50(10.0, world, pos)`), the highest candidate no more than `SCORCH_PROBE.above` over the blast
+   * (`FUN_002d4c20`); its record -- point, normal -- is what `FUN_003d0ba0` frames the decal on. Null: no ground in
+   * reach (the flat scorch at the blast). [Reading: the column's classes are the throw's hull (`gridCast`), less the
+   * volumes and liquids `placeCharge` skips; the reach below is the viewer's -- the scorch is drawn at rest only.]
    */
-  private scorchClipped(pos: V3, min: number, max: number): void {
+  private groundUnder(pos: V3): ScorchGround | null {
+    const cast = this.hull();
+    if (!cast) return null;
+    const hits = cast([pos[0], pos[1] + SCORCH_PROBE.above, pos[2]], [pos[0], pos[1] - SCORCH_PROBE.below, pos[2]]);
+    const hit = hits.find((h) => !h.material.volumetric && h.material.penetration !== 1 && !h.material.liquid);
+    if (!hit) return null;
+    const l = Math.hypot(...hit.normal);
+    if (!(l > 0)) return null;
+    const k = hit.normal[1] < 0 ? -1 / l : 1 / l;         // the side the column came from: the ground's top
+    return { point: [...hit.point], normal: [hit.normal[0] * k, hit.normal[1] * k, hit.normal[2] * k] };
+  }
+
+  /**
+   * The scorch as the game builds a `FUN_003139e0` decal (research 89 §13-§15): the square flat on the ground under the
+   * blast, projected along that ground's normal negated (`FUN_003d0ba0` 323891 hands the column's record +0x10 scaled by
+   * -1 to `FUN_00307810`), clipped to the drawn ground's triangles, each vertex the ground's colour there
+   * (`./markClip`); the bare square at unity where nothing is drawn under it yet, clipped again a few a frame. Straight
+   * down instead, a big sloped triangle's far vertices pass the 4.8 depth test and the scorch is dropped whole.
+   */
+  private scorchClipped(pos: V3, normal: V3, min: number, max: number): void {
     const size = rand(min, max, this.random);
     const turn = rand(0, Math.PI * 2, this.random);
     const c = Math.cos(turn), s = Math.sin(turn);
-    // The flat square's turn as the unclipped one takes it (x turned about the up axis; no Euler: the axes directly).
-    const frame: MarkFrame = { origin: [...pos], right: [c, 0, -s], up: [-s, 0, -c], forward: [0, -1, 0], side: size };
+    // The square's turn about the normal as the unclipped one takes it about the up axis (on flat ground the axes are
+    // exactly its: right (c, 0, -s), up (-s, 0, -c)) [reading: `FUN_00307810` takes no turn; the viewer's random one kept].
+    const [t1, t2] = tangents(normal);
+    const frame: MarkFrame = {
+      origin: [...pos],
+      right: [c * t1[0] + s * t2[0], c * t1[1] + s * t2[1], c * t1[2] + s * t2[2]],
+      up: [-s * t1[0] + c * t2[0], -s * t1[1] + c * t2[1], -s * t1[2] + c * t2[2]],
+      forward: [-normal[0], -normal[1], -normal[2]], side: size,
+    };
     const mark = new Mesh(markClipGeometry(), this.scorchMaterialOf());
     const kept = this.clipper!.clip(frame, mark.geometry, 0.05);
     if (kept > 0) {
