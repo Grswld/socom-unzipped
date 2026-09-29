@@ -112,3 +112,25 @@ describe('the touch fire button (W2.5)', () => {
     document.body.innerHTML = '';
   });
 });
+
+describe('the touch C button (owner, 2026-09-29: the PC C rule)', () => {
+  it('reports its press, its release and a cancel, so the walk can tell a tap from a hold', () => {
+    document.body.innerHTML = `<div id="stick-zone"></div><div id="stick-base" hidden><div id="stick-knob"></div></div>
+      <button id="touch-up"></button><button id="touch-down"></button><button id="touch-stance"></button><button id="touch-fire"></button>`;
+    const c = document.getElementById('touch-stance')!;
+    c.setPointerCapture = () => undefined;
+    c.releasePointerCapture = () => undefined;
+    const seen: string[] = [];
+    const camera = { setStick: () => undefined, setLift: () => undefined, setStickBoost: () => undefined };
+    attachTouchControls(camera as unknown as FlyCamera, (event) => seen.push(event));
+    c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 5, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 6, bubbles: true }));   // a second finger is not a second press
+    c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, bubbles: true }));     // nothing held: nothing to let go
+    c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 7, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('lostpointercapture', { pointerId: 7, bubbles: true }));
+    expect(seen).toEqual(['down', 'up', 'down', 'cancel']);
+    document.body.innerHTML = '';
+  });
+});

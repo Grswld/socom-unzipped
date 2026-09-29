@@ -825,7 +825,7 @@ function padFrame(dt: number): void {
   for (const lane of touchReleased) touchInput[lane] = false;   // read this frame; let go for the next
   touchReleased.clear();
 }
-attachTouchControls(touchLane, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
+attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
 attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
 if (PLAY) {
   walk.bindKey();

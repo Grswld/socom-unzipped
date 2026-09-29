@@ -87,13 +87,16 @@ export function wantsTouchControls(): boolean {
   }
 }
 
+/** What the touch C button reports: pressed, let go, or cancelled (the finger taken by the system: no tap). */
+export type StanceTouch = 'down' | 'up' | 'cancel';
+
 /**
  * Wires the stick and the two lift buttons to a camera, or to a lane that stands in for one; the stance button beside
- * them to `onStance` (the walk's `C`, W2.2b), and the fire button to `onFire` -- pressed true, let go false (W2.5,
+ * them to `onStance` (the walk's `C`, W2.2b: its press, release and cancel), and the fire button to `onFire` -- pressed true, let go false (W2.5,
  * `./fire`). Returns nothing: there is nothing to take back.
  */
 export function attachTouchControls(
-  camera: TouchTarget, onStance: () => void = () => undefined, onFire: (down: boolean) => void = () => undefined,
+  camera: TouchTarget, onStance: (event: StanceTouch) => void = () => undefined, onFire: (down: boolean) => void = () => undefined,
 ): void {
   const zone = document.getElementById('stick-zone');
   const base = document.getElementById('stick-base');
@@ -162,11 +165,34 @@ export function attachTouchControls(
   zone.addEventListener('pointerup', release);
   zone.addEventListener('pointercancel', release);
 
-  // The stance: a tap cycles stand, crouch, prone, as C does on a keyboard.
-  document.getElementById('touch-stance')?.addEventListener('pointerdown', (e) => {
-    onStance();
-    e.preventDefault();
-  });
+  // The stance: C on a keyboard (owner, 2026-09-29) -- the walk tells the tap from the hold (`WalkMode.stanceTouch`), so the
+  // button reports its press and its release; one finger at a time, and a cancel (the system took the finger) is no tap.
+  const stance = document.getElementById('touch-stance');
+  if (stance) {
+    let down: number | null = null;
+    /** Whether the browser holds the pointer for the button: if not, sliding off it is the release. */
+    let held = true;
+    stance.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (down !== null) return;
+      down = e.pointerId;
+      held = capturePointer(stance, e.pointerId);
+      stance.classList.add('is-down');
+      onStance('down');
+    });
+    const lift = (event: StanceTouch) => (e: PointerEvent): void => {
+      if (down === null || e.pointerId !== down) return;
+      down = null;
+      releasePointer(stance, e.pointerId);
+      stance.classList.remove('is-down');
+      onStance(event);
+    };
+    stance.addEventListener('pointerup', lift('up'));
+    stance.addEventListener('pointercancel', lift('cancel'));
+    stance.addEventListener('lostpointercapture', lift('cancel'));
+    const slid = lift('up');
+    stance.addEventListener('pointerleave', (e) => { if (!held) slid(e); });
+  }
 
   // The trigger: held, the rifle fires at its rate (`./fire`); up, cancelled or slid off, it is let go.
   const fire = document.getElementById('touch-fire');
