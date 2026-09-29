@@ -582,6 +582,7 @@ export class Ui {
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#mode button[data-mode]'))) {
       b.setAttribute('aria-pressed', (b.dataset['mode'] === 'walk') === walking ? 'true' : 'false');
     }
+    document.body.classList.toggle('is-walking', walking);      // the touch layout and the fullscreen button's place follow it
     if (this.walking === walking) return;
     this.walking = walking;
     this.setCameraHint(...this.hintArgs);

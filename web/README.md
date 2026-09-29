@@ -247,6 +247,18 @@ fires at its rate. The right half is left alone so looking still works while the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
 
+**Walking on a phone** (`?redotcom`) has its own layout, in the PS2 pad's positions, shown while walking on a touch screen
+and held sideways (upright, the page asks for a turn and lifts the buttons off the HUD's tall bottom strip). The left
+thumb has the stick; the right has a diamond of face buttons at the bottom right -- Triangle the stance (tap crouches, hold
+goes prone, as the pad's), Square the jump, Cross the action (climb, ladder slide) -- and a larger **FIRE** (R1) at the edge
+beside it. Under the compass are zoom in and out (d-pad Up and Down), **MODE** (fire mode, L3) and **RELOAD**; along the
+bottom middle **RIFLE**, **M67** and **NEXT** (L1, L2, R2); at the left edge, over the stick's zone, the two peek buttons
+(the d-pad's sides, held) and fullscreen. Every button holds the lane the pad's button holds (`touchInput`, merged with the
+pad's in `padFrame`, `viewer/src/touch.ts` `attachWalkTouch`), so the behaviour is the pad's; each owns its pointer, so fire
+and jump can be held at once. The HUD keeps its corners: nothing sits on the ammo box, the compass or the range and timer
+strip. While walking, the fullscreen button leaves the bottom right for the left edge on every screen, since the HUD owns
+that corner. Flying keeps the lift buttons as they were.
+
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
 and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
 has a phone's width to work with; the stick held at its rim for 400 ms is the flight's boost, the one gesture a

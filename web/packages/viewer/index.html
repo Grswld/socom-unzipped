@@ -230,6 +230,39 @@
       </div>
       <button id="touch-stance" type="button" data-play aria-label="stance: stand, crouch, prone">C</button>
       <button id="touch-fire" type="button" data-play aria-label="fire">&#9673;</button>
+      <!--
+        Walk mode's touch layout (round 3), for a phone held in landscape, modelled on the PS2 pad's positions and routed
+        through the same lanes the pad's buttons are (`./src/main.ts` `padFrame`, `./src/touch.ts` `attachWalkTouch`): a
+        face-button cluster at the bottom right (Triangle the stance, Square the jump, Cross the action -- climb, ladder
+        slide -- and R1 the fire, larger), the zoom, fire mode and reload near the top right, the kit's slots (L1 the rifle,
+        L2 the M67, R2 the next item) along the bottom, and the peek (the d-pad's sides) and fullscreen at the left edge. It
+        is the play's, so behind `?redotcom` (`data-play`), and shown only while walking on a touch screen; flying keeps the
+        lift buttons above.
+      -->
+      <div id="touch-walk" data-play>
+        <div id="tw-actions">
+          <button id="tw-stance" type="button" data-lane="stance" aria-label="stance: tap crouches, hold goes prone"><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 12.5 11.5h-11z"/></svg></button>
+          <button id="tw-jump" type="button" data-lane="jump" aria-label="jump"><svg class="s2u-hint__glyph s2u-hint__glyph--square" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 2.5h9v9h-9z"/></svg></button>
+          <button id="tw-action" type="button" data-lane="action" aria-label="action: climb, ladder slide"><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3 11 11M11 3 3 11"/></svg></button>
+          <button id="tw-fire" type="button" data-lane="fire" aria-label="fire">FIRE</button>
+        </div>
+        <div id="tw-scope">
+          <button id="tw-zoom-in" type="button" data-lane="zoom" aria-label="zoom in">+</button>
+          <button id="tw-zoom-out" type="button" data-lane="zoomOut" aria-label="zoom out">&minus;</button>
+          <button id="tw-fire-mode" type="button" data-lane="fireMode" aria-label="fire mode">MODE</button>
+          <button id="tw-reload" type="button" data-do="reload" aria-label="reload">RELOAD</button>
+        </div>
+        <div id="tw-weapons">
+          <button id="tw-swap1" type="button" data-lane="swap1" aria-label="the rifle">RIFLE</button>
+          <button id="tw-swap2" type="button" data-lane="swap2" aria-label="the M67 grenade">M67</button>
+          <button id="tw-inventory" type="button" data-lane="inventory" aria-label="next item">NEXT</button>
+        </div>
+        <div id="tw-peek">
+          <button id="tw-peek-left" type="button" data-lane="leanLeft" aria-label="peek left, held">&#9664;</button>
+          <button id="tw-peek-right" type="button" data-lane="leanRight" aria-label="peek right, held">&#9654;</button>
+        </div>
+      </div>
+      <p id="rotate-hint" class="s2u-status s2u-status--pill" data-play aria-live="off">Turn your phone sideways to play</p>
     </div>
     <script type="module" src="./src/main.ts"></script>
   </body>

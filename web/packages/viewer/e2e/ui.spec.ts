@@ -191,4 +191,18 @@ test.describe('with ?redotcom', () => {
     await expect(page.locator('#volume')).toHaveValue('0.5');
     await expect(page.locator('#mouselaw button[data-law="stick"]')).toHaveAttribute('aria-pressed', 'true');
   });
+
+  test('while walking the fullscreen button leaves the bottom-right corner of the HUD (the range readout) for the left edge', async ({ page }) => {
+    await loaded(page, '?redotcom');
+    const flying = (await page.locator('#fullscreen').boundingBox())!;
+    const size = page.viewportSize()!;
+    expect(flying.x).toBeGreaterThan(size.width / 2);
+    expect(flying.y).toBeGreaterThan(size.height / 2);                            // flying: its old corner, bottom right
+    await page.evaluate(() => window.__viewer.setMode('walk'));
+    await expect.poll(async () => (await page.locator('#fullscreen').boundingBox())!.x).toBeLessThan(60);
+    const walking = (await page.locator('#fullscreen').boundingBox())!;
+    expect(walking.y + walking.height).toBeLessThan(size.height / 2);             // and clear of the bottom strip at any height
+    await page.evaluate(() => window.__viewer.setMode('fly'));
+    await expect.poll(async () => (await page.locator('#fullscreen').boundingBox())!.x).toBeGreaterThan(size.width / 2);
+  });
 });

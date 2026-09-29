@@ -241,6 +241,60 @@ body.touch #touch { display: block; }
   #fps-rest { display: none; }
 }
 
+/*
+ * Walk mode's touch layout (round 3; `index.html` `#touch-walk`, `./touch.ts` `attachWalkTouch`), for a phone held sideways,
+ * the PS2 pad's positions under the thumbs: the face buttons in a diamond at the bottom right (Triangle top, Square left,
+ * Cross bottom; the Circle's place is empty) with R1's fire, larger, at the edge beside them; the zoom, fire mode and reload
+ * in a row under the compass; the kit's slots along the bottom middle; the peek and the fullscreen button in a column at
+ * the left edge, above the stick's zone. It shows while walking on a touch screen only (`body.touch.is-walking`; the fly
+ * camera keeps the lift buttons). The HUD keeps its corners: the ammo box bottom left, the compass top right, and the
+ * range and timer strip along the bottom right, which the clusters clear by `--tw-floor`. Sizes are tokens' spacing, the
+ * safe-area insets are added to every edge.
+ */
+#touch-walk, #rotate-hint { display: none; }
+body.touch.is-walking #touch-walk { display: block; }
+body.touch.is-walking #touch-lift, body.touch.is-walking #touch-stance, body.touch.is-walking #touch-fire { display: none; }
+#touch-walk {
+  --tw-btn: 46px; --tw-fire: 84px; --tw-small: 36px; --tw-gap: var(--s2u-space-1);
+  /* What the HUD's bottom strip (the range and the timer) takes, so no button sits over it. */
+  --tw-floor: 44px;
+}
+#touch-walk button {
+  z-index: 5; margin: 0; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--s2u-panel-edge); background: var(--s2u-tab); backdrop-filter: blur(4px);
+  color: var(--s2u-gold); font: 600 12px/1 var(--s2u-font-label); letter-spacing: 0.08em;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: background-color var(--s2u-dur-fast), border-color var(--s2u-dur-fast);
+}
+#touch-walk button.is-down { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
+#touch-walk button svg { width: 22px; height: 22px; pointer-events: none; }
+/* The face cluster: cells of --tw-btn on a 3 x 3 diamond, its right edge one fire button and a gap from the screen's. */
+#tw-stance, #tw-jump, #tw-action, #tw-fire { position: fixed; }
+#tw-stance, #tw-jump, #tw-action { width: var(--tw-btn); height: var(--tw-btn); border-radius: 50%; }
+#tw-actions { display: contents; }
+#tw-stance { right: calc(var(--tw-fire) + 12px + var(--tw-btn) + var(--tw-gap) + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + 2 * (var(--tw-btn) + var(--tw-gap)) + env(safe-area-inset-bottom, 0px)); }
+#tw-jump { right: calc(var(--tw-fire) + 12px + 2 * (var(--tw-btn) + var(--tw-gap)) + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + var(--tw-btn) + var(--tw-gap) + env(safe-area-inset-bottom, 0px)); }
+#tw-action { right: calc(var(--tw-fire) + 12px + var(--tw-btn) + var(--tw-gap) + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + env(safe-area-inset-bottom, 0px)); }
+#tw-fire { width: var(--tw-fire); height: var(--tw-fire); border-radius: 50%; right: calc(8px + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + var(--tw-btn) / 2 + env(safe-area-inset-bottom, 0px)); font-size: 15px; border-color: var(--s2u-gold); }
+/* Under the compass, on the right: a row of pills, reload at the edge. */
+#tw-scope, #tw-weapons, #tw-peek { position: fixed; z-index: 5; display: flex; gap: var(--s2u-space-2); }
+#tw-scope button, #tw-weapons button, #tw-peek button { position: static; height: var(--tw-small); min-width: var(--tw-small); padding: 0 var(--s2u-space-3); border-radius: var(--s2u-radius-pill); font-size: 13px; }
+#tw-scope { top: 124px; right: calc(8px + env(safe-area-inset-right, 0px)); flex-direction: row-reverse; }
+/* Along the bottom middle, over the range strip's left and clear of the ammo box. */
+#tw-weapons { left: 50%; transform: translateX(-50%); bottom: calc(var(--tw-floor) + env(safe-area-inset-bottom, 0px)); }
+/* The left edge: fullscreen (`#fullscreen`, moved there while walking) over the two peeks. */
+#tw-peek { top: 150px; left: calc(8px + env(safe-area-inset-left, 0px)); }
+#tw-peek button { width: var(--tw-small); padding: 0; border-radius: 50%; font-size: 12px; }
+/* The fullscreen button, while walking: the HUD owns the bottom right (the range strip), so it stands at the left edge. */
+body.is-walking #fullscreen { right: auto; bottom: auto; left: calc(8px + env(safe-area-inset-left, 0px)); top: 96px; width: 44px; height: 44px; }
+/* Held upright the layout has no room beside the HUD's tall bottom strip: it is asked to turn, and lifts the clusters. */
+@media (orientation: portrait) {
+  body.touch.is-walking #rotate-hint { display: block; top: 60px; left: 50%; right: auto; transform: translateX(-50%); max-width: calc(100vw - 16px); white-space: nowrap; pointer-events: none; color: var(--s2u-gold); }
+  #touch-walk { --tw-floor: 150px; }
+  #tw-scope { top: 250px; }
+  #tw-weapons { bottom: calc(var(--tw-floor) - 48px + env(safe-area-inset-bottom, 0px)); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  #touch-lift button, #touch-stance, #touch-fire { transition: none; }
+  #touch-lift button, #touch-stance, #touch-fire, #touch-walk button { transition: none; }
 }

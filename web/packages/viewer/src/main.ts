@@ -13,11 +13,11 @@ import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
-import { attachTouchControls, wantsTouchControls } from './touch';
+import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { aimPoint } from './playerCamera';
 import { explosionShake } from './look';
-import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
+import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
@@ -537,6 +537,15 @@ const touchLane: TouchTarget = {
   setLift: (v) => { touchInput.jump = v > 0; touchInput.crouch = v < 0; },
   setStickBoost: (on) => { touchInput.boost = on; },
 };
+/**
+ * Walk mode's touch buttons (`attachWalkTouch`) hold the same lanes a pad's buttons do, in `touchInput`. A release is
+ * kept until the frame after the press was read (`touchReleased`, cleared at the end of `padFrame`), so a tap shorter
+ * than a frame is still an edge; a press again before that cancels the release.
+ */
+const touchReleased = new Set<PadFlag>();
+function holdTouch(lane: PadFlag, down: boolean): void {
+  if (down) { touchInput[lane] = true; touchReleased.delete(lane); } else touchReleased.add(lane);
+}
 /** The pads, from the events and the poll: a toast names each that comes, and says when one goes (W2.R5). */
 const pads = new PadWatch({
   connected: (id) => {
@@ -571,9 +580,12 @@ function padFrame(dt: number): void {
   if (PLAY && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
   // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
-  if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
-  // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up).
-  const pressed = pressedSince(padLast, pad);
+  // The merged lane, so the touch fire button (`touchInput.fire`) is the trigger the same way; a released R1 still never
+  // lets go of a button the other source holds.
+  if (PLAY && input.fire !== padMerged.fire) trigger(input.fire);
+  // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up). The edges are of
+  // the merged lanes: a touch button and a pad's are the same press.
+  const pressed = pressedSince(padMerged, input);
   if (pressed.includes('zoom')) stepZoom('in');
   if (pressed.includes('zoomOut')) stepZoom('out');
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
@@ -587,8 +599,11 @@ function padFrame(dt: number): void {
   traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
   padLast = pad;
   padMerged = input;
+  for (const lane of touchReleased) touchInput[lane] = false;   // read this frame; let go for the next
+  touchReleased.clear();
 }
 attachTouchControls(touchLane, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
+attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
 if (PLAY) {
   walk.bindKey();
   ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
