@@ -7,6 +7,7 @@
  * - `map=MP2` -- the archive's stem.
  * - `view=modern` or `view=ps2` -- the picture switch.
  * - `online=off`, `shared` or `local` -- the Online setting. `&server=` and `&mp` still override it (`./online`).
+ * - `rules=respawn` or `classic` -- the match's rules under Online (`./rules`; web sprint 3's classic mode).
  *
  * On load the address beats the remembered choice; with a parameter absent the remembered choice applies, and the page
  * writes it into the address (`history.replaceState`: no reload, no history entries). A value this page does not know
@@ -14,15 +15,17 @@
  * through as they were, a bare one kept bare, and are never added.
  */
 import type { OnlineChoice } from './online';
+import { parseRules, type Rules } from './net/protocol';
 
 export type ShareView = 'modern' | 'ps2';
 
-/** The four settings a link carries: a value to write, `null` to take it out, absent to leave the address's own. */
+/** The settings a link carries: a value to write, `null` to take it out, absent to leave the address's own. */
 export interface ShareState {
   play?: boolean | null;
   map?: string | null;
   view?: ShareView | null;
   online?: OnlineChoice | null;
+  rules?: Rules | null;
 }
 
 /** What an address says: each setting, or null where it says nothing this page understands. */
@@ -31,12 +34,14 @@ export interface ShareRead {
   map: string | null;
   view: ShareView | null;
   online: OnlineChoice | null;
+  /** The match's rules, when the address names them (absent otherwise). */
+  rules?: Rules;
   /** Whether it used `?redotcom`, which the page rewrites to `mode=play`. */
   alias: boolean;
 }
 
 /** The parameters this module owns, in the order it writes them; `redotcom` is read and dropped. */
-const KEYS = ['mode', 'map', 'view', 'online'] as const;
+const KEYS = ['mode', 'map', 'view', 'online', 'rules'] as const;
 const ALIAS = 'redotcom';
 /** A map's archive stem: letters, digits and underscores (`MP2`, `MP71`). */
 const MAP_STEM = /^[A-Za-z0-9_]{1,16}$/;
@@ -59,6 +64,8 @@ export function readShare(search: string): ShareRead {
   if (view === 'modern' || view === 'ps2') out.view = view;
   const online = get('online');
   if (online === 'off' || online === 'shared' || online === 'local') out.online = online;
+  const rules = parseRules(get('rules'));
+  if (rules) out.rules = rules;
   return out;
 }
 
@@ -69,7 +76,7 @@ function keyOf(part: string): string {
 }
 
 /**
- * The query string with `state` written in: the four settings first, in a fixed order, then every other parameter as
+ * The query string with `state` written in: its settings first, in a fixed order, then every other parameter as
  * it was. `''` when nothing is left. By hand rather than through `URLSearchParams`, which writes `&fly` back as `&fly=`.
  */
 export function writeShare(search: string, state: ShareState): string {
@@ -87,6 +94,7 @@ export function writeShare(search: string, state: ShareState): string {
     map: state.map === undefined ? undefined : state.map === null ? null : state.map,
     view: state.view,
     online: state.online,
+    rules: state.rules,
   };
   const ours: string[] = [];
   for (const key of KEYS) {

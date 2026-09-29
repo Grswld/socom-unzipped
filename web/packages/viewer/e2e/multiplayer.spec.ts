@@ -52,11 +52,11 @@ function stopServer(): void {
 
 test.afterAll(() => { stopServer(); });
 
-async function joinPage(browser: Browser, name: string): Promise<Page> {
+async function joinPage(browser: Browser, name: string, extra = ''): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 960, height: 600 } });
   await context.addInitScript((n) => { localStorage.setItem('s2u.viewer.panelOpen', '1'); localStorage.setItem('s2u.mp.name', n); }, name);
   const page = await context.newPage();
-  await page.goto(`/?redotcom&fly&mp&server=ws://127.0.0.1:${MP_PORT}/ws&map=MP2&devmode`);
+  await page.goto(`/?redotcom&fly&mp&server=ws://127.0.0.1:${MP_PORT}/ws&map=MP2&devmode${extra}`);
   await expect.poll(() => page.evaluate(() => window.__viewer?.net?.()?.feet ?? null), { timeout: 120_000 }).not.toBeNull();
   return page;
 }
@@ -116,4 +116,29 @@ test('a server restart mid-round: both pages join again and see each other (M9)'
   }
   await a.context().close();
   await b.context().close();
+});
+
+test('classic rules from the link (rules=classic): its own room, launched with both sides, the banner counting its rounds', async ({ browser }) => {
+  const a = await joinPage(browser, 'CHARLIE', '&rules=classic');
+  const b = await joinPage(browser, 'DELTA', '&rules=classic');
+  const banner = (p: Page): Promise<string[]> => p.evaluate(() => window.__viewer.hud().model.banner.map((m) => m.lines.map((l) => l.text).join('/')));
+  // Both sides seated: the match launches, round 1 of mp_max_rounds (FUN_001fb420), on both pages.
+  await expect.poll(() => banner(a), { timeout: 30_000 }).toContain('STARTING ROUND 1 OF 11');
+  await expect.poll(() => banner(b), { timeout: 30_000 }).toContain('STARTING ROUND 1 OF 11');
+  // The link keeps the rules, and the settings' Rules shows them.
+  expect(new URL(a.url()).searchParams.get('rules')).toBe('classic');
+  await expect(a.locator('#rules button[data-rules="classic"]')).toHaveAttribute('aria-pressed', 'true');
+  // Its own room: this pair is alone in it (the respawn room of the tests above is another).
+  expect(await a.evaluate(() => window.__viewer.net!()!.remotes)).toBe(1);
+  await a.context().close();
+  await b.context().close();
+});
+
+test('the Rules setting: Classic is remembered, written into the link, and joins the classic room', async ({ browser }) => {
+  const a = await joinPage(browser, 'ECHO');
+  await a.locator('#rules button[data-rules="classic"]').click();
+  await expect.poll(() => a.url()).toContain('rules=classic');
+  expect(await a.evaluate(() => localStorage.getItem('s2u.viewer.rules'))).toBe('classic');
+  await expect.poll(() => a.evaluate(() => window.__viewer.net?.()?.state ?? null), { timeout: 30_000 }).toBe('open');
+  await a.context().close();
 });

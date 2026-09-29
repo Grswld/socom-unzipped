@@ -1,8 +1,9 @@
 import type { PerspectiveCamera } from 'three';
 import type { WeaponRecord } from '@s2u/scene';
 import type { FireEvent, FireWeapon } from './fire';
-import { NetClient, type Simulate } from './net/client';
-import type { ScoreRow, ServerEvent, Team } from './net/protocol';
+import { NetClient, type Simulate, type WebSocketLike } from './net/client';
+import type { Rules, ScoreRow, ServerEvent, Team } from './net/protocol';
+import { eliminationLines, MAX_ROUNDS, nextFollow, objectiveOf } from './net/rules';
 import { deathPose, type RemotePlayers } from './remotePlayers';
 import { overall } from './net/damage';
 import { RESPAWN_PROMPT_S } from './net/deaths';
@@ -11,6 +12,7 @@ import type { ScoreRowInfo } from './scoreboard';
 import type { RoundScreen } from './roundScreens';
 import type { WalkMode } from './walk';
 import type { OnlineStatus } from './online';
+import type { RoundInfo } from './hud';
 
 /**
  * The page in a match (web sprint 3, M4-M8): the net client on the walk, the other players drawn (`./remotePlayers`),
@@ -27,6 +29,8 @@ export interface NetPageDeps {
     postMessage(text: string | { text: string; scale: number }[], scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void;
     setScoreRows(rows: ScoreRowInfo[] | null, spectators: string[], wins?: { seal: number; terrorist: number }): void;
     setRoundScreen(screen: RoundScreen | null): void;
+    /** A round begins: the round start's banner, "STARTING ROUND r OF n" (`FUN_001fb420`), then the objective. */
+    startRound(round: RoundInfo): void;
   };
   /** The clips (the death clips among them), once the worker has sent them. */
   clips(): PlayClips | null;
@@ -38,7 +42,35 @@ export interface NetPageDeps {
   roundEffects(e: Extract<FireEvent, { type: 'round' }>, muzzleOf: number): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
   weapons: readonly [WeaponRecord, WeaponRecord];
+  /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default. */
+  socket?: (url: string) => WebSocketLike;
 }
+
+/**
+ * The inventory button's glyph in the help lines (`%c` = 0xbd / 0xbe, the Inventory button: R2 in the Default
+ * configuration; research 91 section 12, HudCLOC 60488).
+ */
+const INVENTORY_GLYPH = 'R2';
+/**
+ * HELP_GLYPH_LEAD_PLACEHOLDER: the help lines 0x3e3350 and 0x3e3280 begin with a pad glyph the strings dump cuts at,
+ * so their leading words are unrecovered (their tails: " directional buttons", " directional"); "Use the" is the
+ * spectator's own line's wording (0x3e30f0 "You are a spectator.  Use the directional"), inferred, not read.
+ */
+const HELP_LEAD = 'Use the';
+/**
+ * The dead's help lines with respawn off (`FUN_001f97b0` L57000-57007: 0x3e32e0 "You have died.  %c Select new
+ * weapons.", 0x3e3350, 0x3e3380 "to cycle through living teammates"); the page posts them to the message window.
+ */
+export const DEAD_LINES: readonly string[] = [
+  `You have died.  ${INVENTORY_GLYPH} Select new weapons.`, `${HELP_LEAD} directional buttons`, 'to cycle through living teammates',
+];
+/**
+ * A ghost's with respawn off (L57047-57062: 0x3e31c0, 0x3e31f0 with the inventory glyph, 0x3e3280, 0x3e32b0).
+ */
+export const GHOST_LINES: readonly string[] = [
+  'You are a ghost.  You will play the next', `round as a real player.  ${INVENTORY_GLYPH} Select new`,
+  `weapons.  ${HELP_LEAD} directional`, 'buttons to cycle through living teammates.',
+];
 
 /** `?mp` turns the match on; `?server=wss://host/ws` names the server (the page's own host at `/ws` by default). */
 export function netSettings(search: string, location: { protocol: string; host: string }): { url: string; simulate?: Simulate } | null {
@@ -96,6 +128,16 @@ export class NetPage {
    */
   private spectating: { follow: boolean; target: number | null } = { follow: true, target: null };
   /**
+   * Classic (respawn off): the dead and the ghosts watch until the next round (`FUN_005979a0` L454484-454489), first
+   * their own body, then -- a press of the directional buttons, Space on the page (SPECTATOR_PAD_PLACEHOLDER) -- each
+   * living teammate in turn ("cycle through living teammates"). `watching` is the teammate followed, or null (self).
+   */
+  private benched = false;
+  private watching: number | null = null;
+  /** The room's rules and the game's round count (the welcome's; the page's choice until then). */
+  private rules: Rules;
+  private rounds = MAX_ROUNDS;
+  /**
    * The vote to remove (W3.R13; research 91 section 17): the game's radio menu TEAMMATES > a player > "VOTE
    * RETAIN:REMOVE", toggled. RADIO_MENU_PLACEHOLDER: the radio menu's own look is not drawn; K opens the page's list in
    * the message window, with the game's words, a digit toggles the vote on that teammate, K or Escape closes it.
@@ -128,6 +170,7 @@ export class NetPage {
         return;
       }
     }
+    if (this.client.role === 'player' && this.benched && !e.repeat && e.code === 'Space') { this.nextTeammate(); e.preventDefault(); return; }
     if (this.client.role !== 'spectator' || e.repeat) return;
     if (e.code === 'Space') { this.nextTarget(); e.preventDefault(); }
     else if (e.code === 'KeyV') { this.spectating.follow = !this.spectating.follow; if (!this.spectating.follow) this.deps.spectate(null); }
@@ -153,14 +196,22 @@ export class NetPage {
    * `watch` (the map viewer's Online setting): join as a spectator that never plays -- the walk is not driven, the
    * camera follows the living players (Space the next, V the free camera) as a queued spectator's does.
    */
-  constructor(private readonly deps: NetPageDeps, private readonly url: string, private readonly map: string, private name: string, private readonly simulate?: Simulate, private readonly watch = false) {
+  constructor(private readonly deps: NetPageDeps, private readonly url: string, private readonly map: string, private name: string, private readonly simulate?: Simulate, private readonly watch = false, rules: Rules = 'respawn') {
+    this.rules = rules;
+    this.asked = rules;
     this.client = this.open();
     this.unsubscribe = this.client.on((ev) => this.event(ev));
     globalThis.addEventListener?.('keydown', this.onKey);
   }
 
+  /** The rules this page asked for (the hello's). */
+  private readonly asked: Rules;
+
   private open(): NetClient {
-    return new NetClient({ url: this.url, map: this.map, name: this.name, ...(this.simulate ? { simulate: this.simulate } : {}), ...(this.watch ? { watch: true } : {}) }, this.deps.walk);
+    return new NetClient({
+      url: this.url, map: this.map, name: this.name, rules: this.asked, ...(this.simulate ? { simulate: this.simulate } : {}), ...(this.watch ? { watch: true } : {}),
+      ...(this.deps.socket ? { socket: this.deps.socket } : {}),
+    }, this.deps.walk);
   }
 
   /**
@@ -263,9 +314,10 @@ export class NetPage {
     this.deps.walk.setTrigger(trigger);
     this.deps.remote.frame(dt, this.client.bodies(), camera);
     if (this.client.role === 'spectator' && this.spectating.follow) this.follow();
+    if (this.benched && this.watching !== null) this.followTeammate();
     if (this.endsAt !== null) this.deps.hud.setTimer(Math.max(0, (this.endsAt - performance.now()) / 1000));
     // Research 91 section 4.1: "Press the %c button to respawn." from 5 s dead (the press counts once the body faded).
-    if (this.dead && !this.dead.prompted && performance.now() - this.dead.at >= RESPAWN_PROMPT_S * 1000) {
+    if (this.rules === 'respawn' && this.dead && !this.dead.prompted && performance.now() - this.dead.at >= RESPAWN_PROMPT_S * 1000) {
       this.dead.prompted = true;
       this.deps.hud.postMessage('Press the X button to respawn.');
     }
@@ -288,9 +340,42 @@ export class NetPage {
     let body = this.client.bodies().find((b) => b.id === this.spectating.target && (b.flags & 64) !== 0);
     if (!body) { this.nextTarget(); body = this.client.bodies().find((b) => b.id === this.spectating.target); }
     if (!body) return;
+    this.followBody(body);
+  }
+
+  private followBody(body: { feet: readonly number[]; yaw: number }): void {
     const y = (body.yaw * Math.PI) / 180;
     const back = 24.906, up = 25.709;
-    this.deps.spectate({ x: body.feet[0] + Math.sin(y) * back, y: body.feet[1] + up, z: body.feet[2] + Math.cos(y) * back, yaw: body.yaw, pitch: -9.167 });
+    this.deps.spectate({ x: body.feet[0]! + Math.sin(y) * back, y: body.feet[1]! + up, z: body.feet[2]! + Math.cos(y) * back, yaw: body.yaw, pitch: -9.167 });
+  }
+
+  /** Classic's dead: the next living teammate to follow (`./net/rules` `nextFollow`), the fly camera on it. */
+  private nextTeammate(): void {
+    const mine = this.client.team;
+    const living = this.client.bodies().filter((b) => (b.flags & 64) !== 0 && b.id !== this.client.id && this.teams.get(b.id) === mine).map((b) => b.id);
+    const next = nextFollow(this.watching, living);
+    if (next === null) return;
+    if (this.watching === null) this.deps.walk.setMode('fly');
+    this.watching = next;
+    this.followTeammate();
+  }
+
+  /** The followed teammate at the follow camera's distances; on to the next when it has died. */
+  private followTeammate(): void {
+    const body = this.client.bodies().find((b) => b.id === this.watching && (b.flags & 64) !== 0);
+    if (!body) { this.nextTeammate(); return; }
+    this.followBody(body);
+  }
+
+  /** The game's round start on the HUD, for this round of this room. */
+  private roundBanner(round: number): void {
+    this.deps.hud.startRound({ round, rounds: this.rounds, objective: objectiveOf(this.client.team) });
+  }
+
+  /** Back in play (a spawn, a new round): the bench and its camera left. */
+  private unbench(): void {
+    this.benched = false;
+    this.watching = null;
   }
 
   nameOf(id: number): string {
@@ -311,6 +396,14 @@ export class NetPage {
         this.names.set(ev.id, ev.name);
         if (ev.role === 'spectator') this.spectatorWelcome(ev.queue);
         for (const p of ev.players) { this.names.set(p.id, p.name); this.teams.set(p.id, p.team); remote.setTeam(p.id, p.team); }
+        if (ev.team) this.teams.set(ev.id, ev.team);
+        this.rules = ev.rules ?? this.rules;
+        this.rounds = ev.rounds ?? MAX_ROUNDS;
+        this.unbench();
+        if (ev.role === 'player' && ev.ghost) {
+          this.benched = true;
+          hud.postMessage(GHOST_LINES.map((text) => ({ text, scale: 0.8 })));
+        } else if (ev.role === 'player') this.roundBanner(ev.round ?? 1);
         break;
       case 'joined': this.names.set(ev.id, ev.name); this.teams.set(ev.id, ev.team); remote.setTeam(ev.id, ev.team); break;
       case 'renamed': this.names.set(ev.id, ev.name); break;
@@ -320,12 +413,16 @@ export class NetPage {
         if (ev.victim === this.client.id) {
           const at = performance.now(), clip = ev.clip;
           this.dead = { at, prompted: false };
+          if (this.rules === 'classic') {
+            this.benched = true;
+            hud.postMessage(DEAD_LINES.map((text) => ({ text, scale: 0.8 })));
+          }
           hud.setHealth(0);
           this.deps.walk.setDeathPose(clip ? () => deathPose(clip, (performance.now() - at) / 1000, this.deps.clips()) : null);
         } else remote.died(ev.victim, ev.clip);
         break;
       case 'spawn':
-        if (ev.id === this.client.id) { this.dead = null; hud.setHealth(1); this.deps.walk.setDeathPose(null); }
+        if (ev.id === this.client.id) { this.dead = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null); }
         break;
       case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
       case 'shot': {
@@ -338,7 +435,13 @@ export class NetPage {
       }
       case 'grenade': this.deps.remoteGrenade(ev.kind, ev.from, ev.velocity); break;
       case 'timeExpired': hud.postMessage('TIME EXPIRED', 0.9); this.endsAt = performance.now(); break;
-      case 'roundStart': this.endsAt = performance.now() + ev.seconds * 1000; this.screens = null; break;
+      case 'roundStart':
+        this.endsAt = performance.now() + ev.seconds * 1000; this.screens = null;
+        this.rounds = ev.rounds ?? this.rounds;
+        this.unbench();
+        if (this.client.role === 'player') this.roundBanner(ev.round);
+        break;
+      case 'eliminated': hud.postMessage(eliminationLines(ev.winner)); break;
       case 'roundOver':
         this.endsAt = null;
         this.screens = { start: performance.now(), list: ev.screens, winner: ev.winner, wins: ev.wins };

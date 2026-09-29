@@ -46,6 +46,8 @@ import { PlayUi, readPlayChoice, writePlayChoice } from './features';
 import { readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
+import { readRules, resolveRules, writeRules } from './rules';
+import type { Rules } from './net/protocol';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
 import { TRAVERSAL_EVENT, TraversalPage } from './traversalPage';
@@ -582,6 +584,8 @@ const play = new Play();
 const remote = new RemotePlayers(scene);
 const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
 let NET: OnlineTarget = resolveOnline(SEARCH, SHARE.online ?? readOnline(), PAGE_LOCATION);
+/** The match's rules under Online (`./rules`): the link's `rules=` over the remembered choice; Respawn by default. */
+let RULES: Rules = resolveRules(SEARCH, readRules()).rules;
 let net: NetPage | null = null;
 /** The clips the worker sent (the death clips among them, for the page's own death). */
 let playClips: PlayClips | null = null;
@@ -971,8 +975,21 @@ ui.onOnline((choice: OnlineChoice) => {
   writeOnline(choice);
   updateAddress({ online: choice });
   NET = resolveOnline('', choice, PAGE_LOCATION);
+  if (NET.url) updateAddress({ rules: RULES });
   if (loaded) connectNet(loaded);
   showOnline();
+});
+/**
+ * The Rules under Online (web sprint 3, classic mode; `./rules`): Respawn or Classic, remembered, written into the link
+ * while a match is joined, and the match joined again under the new rules (each map and rules its own room).
+ */
+ui.setRules(RULES);
+if (NET.url) updateAddress({ rules: RULES });
+ui.onRules((rules: Rules) => {
+  RULES = rules;
+  writeRules(rules);
+  updateAddress({ rules });
+  if (loaded && NET.url) connectNet(loaded);
 });
 /** The connection's line under the setting, and a toast when it comes up or goes unreachable (not at every retry). */
 let onlineShown = '';
@@ -1296,7 +1313,7 @@ function connectNet(map: LoadedMap): void {
       spectate: (pose) => { if (pose) fly.setPose(pose); },
       remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
       roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
-    }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate, !playOn);
+    }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate, !playOn, RULES);
   }
   showOnline();
 }
