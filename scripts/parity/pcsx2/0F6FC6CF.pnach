@@ -1,5 +1,23 @@
 gametitle=SOCOM II - U.S. Navy SEALs (USA) SCUS-97275 r0001
 author=community
-comment=DNAS bypass r0001 (jr ra / nop at 0x2cc670 in FTSCore), unconditional
+comment=DNAS bypass (jr ra / nop on dnasCheck), conditional: r0001 at 0x2cc670, r0004 at 0x2cf330 (issue #112)
+
+// Each write sits behind an E guard (E0nnvvvv taaaaaaa: if the halfword at aaaaaaa equals vvvv, run the next nn
+// lines, else skip them) on the word it replaces, 27BDFFC0 (addiu sp,sp,-0x40, dnasCheck's first instruction).
+// The same guard word Harry62's PSRewired cheat tests at 0x2cf330: tools/pcsx2/cheats/0F6FC6CF.pnach lines 4-11
+// (lui/ori 0x2cf330, lui/ori 0x27bdffc0, bne); its lines 13-19 write jr ra / nop there, else at 0x2cc670.
+// Unconditional, the r0001 write lands in r0004's FUN_002CC5F0 epilogue (0x2cc670 holds 7BB10010 there) and the
+// game reboot-loops every ~45 s; the cards boot r0004 (docs/HAZARDS.md harness). Once written, a guard no longer
+// holds, so nothing is rewritten each vsync. Test: tools_py/tests/test_pcsx2_masters.py.
+
+// r0001: dnasCheck at 0x2cc670
+patch=1,EE,E00327BD,extended,002CC672
+patch=1,EE,E002FFC0,extended,002CC670
 patch=1,EE,202CC670,extended,03E00008
 patch=1,EE,202CC674,extended,00000000
+
+// r0004: dnasCheck relinked to 0x2cf330 (r0001 holds 0000282D there)
+patch=1,EE,E00327BD,extended,002CF332
+patch=1,EE,E002FFC0,extended,002CF330
+patch=1,EE,202CF330,extended,03E00008
+patch=1,EE,202CF334,extended,00000000
