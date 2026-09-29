@@ -1,6 +1,9 @@
-import { HELD_RIFLE, HELD_SIDEARM, UNITS_PER_METRE, type SpawnSlot, type WeaponRecord } from '@s2u/scene';
 import {
-  applyFall, applyHit, bodyOf, bulletDamage, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
+  AN_M8, gridCast, HE, HELD_RIFLE, HELD_SIDEARM, launchGrenade, M67, MARK141, segmentHit, stepGrenade, UNITS_PER_METRE,
+  type Grenade, type HullCast, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
+} from '@s2u/scene';
+import {
+  applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
   MoverSim, overall, roundPath, Traversal, Walker,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
@@ -65,6 +68,24 @@ const EYE = 15.4;
 /** KIT_PLACEHOLDER: every player carries the viewer's held pair (the M4A1 SD and the Mark 23) until M5 wires the maps' kits (research 91 section 14). */
 const KIT: readonly [WeaponRecord, WeaponRecord] = [HELD_RIFLE, HELD_SIDEARM];
 
+/**
+ * The throwables a SEAL carries (research 85; KIT_PLACEHOLDER: the viewer's kit, each at its record's `capacity`) and
+ * their rounds' `Piercing` (research 91 section 5, zweapon.rdr: the M67 4, the HE 1; the smoke and the flash do no
+ * fragment damage). The claymore is placed, not thrown: CLAYMORE_PLACEHOLDER, not in the match yet.
+ */
+const THROWN: Readonly<Record<string, { record: ThrowableRecord; piercing: number; fragments: boolean }>> = {
+  M67: { record: M67, piercing: 4, fragments: true },
+  HE: { record: HE, piercing: 1, fragments: true },
+  'AN-M8': { record: AN_M8, piercing: 0, fragments: false },
+  Mark141: { record: MARK141, piercing: 0, fragments: false },
+};
+/** The fastest a throw leaves the hand (`throwVelocity`'s range at the most power, with slack), units a second. */
+const THROW_SPEED_MAX = 400;
+/** The head over the feet by posture, for the blast's line of sight to the head node (research 91 section 5). */
+const HEAD_OVER: Readonly<Record<'stand' | 'crouch' | 'prone', number>> = { stand: 18.3, crouch: 11.1, prone: 1.7 };
+
+interface Flying { owner: number; kind: string; g: Grenade }
+
 interface Past { tick: number; feet: V3; yaw: number; posture: 'stand' | 'crouch' | 'prone'; alive: boolean }
 
 class Player {
@@ -91,6 +112,8 @@ class Player {
   trigger = false; aiming = false; boost = false;
   lastYaw = 0; lastPitch = 0;
   lastLanding: unknown = null;
+  /** The throwables left, by kind (reset at a spawn). */
+  grenades: Record<string, number> = freshGrenades();
 
   constructor(readonly id: number, public team: Team, sim: MoverSim, now: number) {
     this.sim = sim;
@@ -224,6 +247,7 @@ export class Room {
       case 'fire': this.fire(id, ev); return;
       case 'reload': this.reload(id); return;
       case 'vote': this.vote(id, ev.target, ev.remove); return;
+      case 'throw': this.throwGrenade(id, ev); return;
       default: return;
     }
   }
@@ -236,6 +260,7 @@ export class Room {
     const now = this.opts.now();
     for (const p of this.players.values()) this.run(p, now);
     for (const p of this.players.values()) this.remember(p);
+    this.flyGrenades();
     this.clock();
     this.idle(now);
     if (this.scoreDirty) { this.scoreDirty = false; this.broadcast(this.scoreEvent()); }
@@ -326,6 +351,7 @@ export class Room {
     p.rounds[0] = KIT[0].magazine; p.rounds[1] = KIT[1].magazine;
     p.spare[0] = KIT[0].mags - 1; p.spare[1] = KIT[1].mags - 1;
     p.lastLanding = null;
+    p.grenades = freshGrenades();
     p.history.length = 0;
     const s = sim.walker.state;
     this.broadcast({ type: 'spawn', id: p.id, at: [s.x, s.y, s.z], yaw, after });
@@ -388,6 +414,61 @@ export class Room {
     this.send(victimId, { type: 'hurt', health: [...victim.health.hp], from: [...from], part });
     if (died) this.kill(victim, p, record.name, 'weapon', deathClip('bullet', part, victim.sim.walker.posture, this.opts.random));
     void overall;
+  }
+
+  // ---- grenades (research 85, 91 section 5) ----
+
+  private readonly flying: Flying[] = [];
+  private cast: HullCast | null = null;
+
+  private throwGrenade(id: number, ev: Extract<ClientEvent, { type: 'throw' }>): void {
+    const p = this.players.get(id), t = THROWN[ev.kind];
+    if (!p || !p.alive || !t || this.state.phase === 'over' || (p.grenades[ev.kind] ?? 0) <= 0) return;
+    const s = p.sim.walker.state;
+    if (Math.hypot(ev.from[0] - s.x, ev.from[1] - (s.y + EYE), ev.from[2] - s.z) > MUZZLE_SLACK) return;
+    if (!(Math.hypot(...ev.velocity) <= THROW_SPEED_MAX)) return;
+    p.grenades[ev.kind]!--;
+    this.flying.push({ owner: id, kind: ev.kind, g: launchGrenade([...ev.from], [...ev.velocity], t.record) });
+    this.broadcast({ type: 'grenade', id, kind: ev.kind, from: [...ev.from], velocity: [...ev.velocity] }, id);
+  }
+
+  /** Every grenade in the air one tick on (the page's own `FLIGHT_TICK` is the game's 60 Hz too); a blast's damage. */
+  private flyGrenades(): void {
+    if (!this.flying.length) return;
+    this.cast ??= gridCast(this.map.grid);
+    for (const f of this.flying) {
+      for (const e of stepGrenade(f.g, 1 / TICK_HZ, this.cast)) if (e.kind === 'explode') this.blast(f, e.point);
+    }
+    for (let i = this.flying.length - 1; i >= 0; i--) if (this.flying[i]!.g.state === 'removed') this.flying.splice(i, 1);
+  }
+
+  /**
+   * A blast (`FUN_005a18b0`, `FUN_005a0e70`; research 91 section 5): each living SEAL the blast sees the head of takes
+   * `fragmentCount` fragments by its distance and posture, each `fragmentDamage` on a random part at the round's
+   * piercing; friendly fire off spares the thrower's team but not the thrower.
+   */
+  private blast(f: Flying, at: readonly number[]): void {
+    const t = THROWN[f.kind];
+    if (!t?.fragments) return;
+    const thrower = this.players.get(f.owner) ?? null;
+    const point: V3 = [at[0]!, at[1]!, at[2]!];
+    for (const q of [...this.players.values()]) {
+      if (!q.alive) continue;
+      if (thrower && q !== thrower && q.team === thrower.team) continue;
+      const s = q.sim.walker.state, posture = q.sim.walker.posture;
+      const head: V3 = [s.x, s.y + HEAD_OVER[posture], s.z];
+      const d = Math.hypot(s.x - point[0], s.y - point[1], s.z - point[2]);
+      if (d >= t.record.explosionRadius) continue;
+      if (segmentHit(this.map.grid, point, head)) continue;       // no line to the head
+      const n = fragmentCount(d, posture, this.opts.random);
+      let died = false, part = 3;
+      for (let i = 0; i < n && !died; i++) {
+        part = fragmentPart(this.opts.random);
+        died = applyHit(q.health, part, fragmentDamage(t.record.explosionDamage, t.record.explosionRadius, d), t.piercing);
+      }
+      if (n > 0) this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: point, part });
+      if (died) this.kill(q, thrower, t.record.name, q === thrower ? 'suicide' : 'weapon', null);
+    }
   }
 
   private reload(id: number): void {
@@ -595,6 +676,10 @@ export class Room {
   player(id: number): { sim: MoverSim; alive: boolean; health: Health; team: Team; score: number; kills: number; deaths: number } | undefined {
     return this.players.get(id);
   }
+}
+
+function freshGrenades(): Record<string, number> {
+  return Object.fromEntries(Object.entries(THROWN).map(([k, t]) => [k, t.record.capacity]));
 }
 
 /** Whether a ray passes within `BODY_REACH` of the vertical line over `feet` (a cheap cull before the capsules). */

@@ -732,6 +732,20 @@ export class GrenadeThrower {
     return info;
   }
 
+  /**
+   * MULTIPLAYER (web sprint 3): another player's throw, flown here with the same physics for its looks, bounces and
+   * blast (the server deals the damage): no count spent, no hand, no throw clip.
+   */
+  launchRemote(item: GrenadeItem, from: V3, velocity: V3): void {
+    const record = this.records[item];
+    if (!record) return;
+    const g = launchGrenade(from, velocity, record);
+    const model = this.template ? this.template.clone() : null;
+    if (model) { model.position.set(...from); this.object.add(model); }
+    const spin: V3 = [rand(-1, 1, this.random), rand(-1, 1, this.random), rand(-1, 1, this.random)];
+    this.live.push({ g, model, spin, trail: [[...from]], line: null, dots: null, rest: null });
+  }
+
   // ---- the flight ---------------------------------------------------------------------------------------------
 
   private hull(): HullCast | null {

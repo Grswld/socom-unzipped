@@ -46,7 +46,7 @@ import { gameAudio } from './audio';
 import { Effects, soundFor } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
-import { GrenadeThrower } from './grenade';
+import { GrenadeThrower, type GrenadeItem } from './grenade';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
 import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
@@ -159,7 +159,7 @@ grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); }
 // The claymore refused once four are down: the game's message line (0x65f880) [placeholder: the viewer's toast].
 grenade.on('refuse', (info) => { ui.toast(info.text); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
-grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
+grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); net?.throwEvent(info.item, info.from, info.velocity); });
 /**
  * EFFECTS (web/docs/research/89): a grenade's bounce runs the game's own `grenade_hit_<material>` through
  * `effects.play` (its sound, and snow's and water's spurts), at the point as if the grenade's node were there (the
@@ -1081,6 +1081,7 @@ function show(map: LoadedMap): void {
     net = new NetPage({
       walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
       spectate: (pose) => { if (pose) fly.setPose(pose); },
+      remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
       roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
     }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate);
   }

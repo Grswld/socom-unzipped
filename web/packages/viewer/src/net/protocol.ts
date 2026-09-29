@@ -215,6 +215,8 @@ export type ServerEvent =
    * the new mover (the client rewinds and replays them).
    */
   | { type: 'spawn'; id: number; at: [number, number, number]; yaw: number; after: number }
+  /** A throw by another player (research 85): the page flies the same grenade for its looks, sounds and blast. */
+  | { type: 'grenade'; id: number; kind: string; from: [number, number, number]; velocity: [number, number, number] }
   /** A round fired by another player, for its muzzle, tracer and sound (the hit's decal where it struck the world). */
   | { type: 'shot'; id: number; weapon: number; from: [number, number, number]; to: [number, number, number]; normal: [number, number, number] | null; material: number | null }
   /** The recipient was hit: health left per part, and where from (research 91a section 7). */

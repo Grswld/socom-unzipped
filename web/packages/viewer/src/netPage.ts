@@ -27,6 +27,8 @@ export interface NetPageDeps {
   };
   /** The clips (the death clips among them), once the worker has sent them. */
   clips(): PlayClips | null;
+  /** Another player's throw, flown on this page for its looks (`GrenadeThrower.launchRemote`). */
+  remoteGrenade(kind: string, from: [number, number, number], velocity: [number, number, number]): void;
   /** The spectator's camera: the pose to stand the fly camera at (follow), or null to leave it free. */
   spectate(pose: { x: number; y: number; z: number; yaw: number; pitch: number } | null): void;
   /** A round's effects and sound at a point (`Effects.onRound`, `GameAudio.onFire`). */
@@ -113,6 +115,15 @@ export class NetPage {
     } else if (e.type === 'reloadStart') this.client.send({ type: 'reload', seq: this.client.lastSeq() });
   }
 
+  /** The page's own throw, to the server (`GrenadeThrower.on('throw')`). */
+  throwEvent(kind: string, from: readonly number[], velocity: readonly number[]): void {
+    if (this.client.state !== 'open') return;
+    this.client.send({
+      type: 'throw', seq: this.client.lastSeq(), kind,
+      from: [from[0]!, from[1]!, from[2]!], velocity: [velocity[0]!, velocity[1]!, velocity[2]!],
+    });
+  }
+
   frame(dt: number, camera: PerspectiveCamera, trigger: boolean): void {
     this.deps.walk.setTrigger(trigger);
     this.deps.remote.frame(dt, this.client.bodies(), camera);
@@ -188,6 +199,7 @@ export class NetPage {
         }, ev.id);
         break;
       }
+      case 'grenade': this.deps.remoteGrenade(ev.kind, ev.from, ev.velocity); break;
       case 'timeExpired': hud.postMessage('TIME EXPIRED', 0.9); this.endsAt = performance.now(); break;
       case 'roundStart': this.endsAt = performance.now() + ev.seconds * 1000; break;
       case 'roundOver': this.endsAt = null; break;

@@ -256,3 +256,35 @@ describe('the kicks (W3.R13, research 91 section 17)', () => {
     expect(again.of('refused')[0]!.reason).toMatch(/banned/);
   });
 });
+
+describe('grenades (research 85, 91 section 5)', () => {
+  it('an M67 at an enemy\'s feet kills it after the 3 s fuse; a teammate beside it is spared (friendly fire off)', () => {
+    const { room, join } = setup();
+    const a = join(1), b = join(2), c = join(3);            // T, S, S (the join rule)
+    room.step();
+    room.player(1)!.sim.walker.place(0, 20, 0);
+    room.player(2)!.sim.walker.place(200, 20, 0);
+    room.player(3)!.sim.walker.place(0, 20, 60);              // a SEAL (an enemy of the thrower), 60 from the blast
+    expect(room.player(3)!.team).toBe('seal');
+    room.text(1, { type: 'throw', seq: 5, kind: 'M67', from: [0, 15.4, 0], velocity: [0, 0, 0] });   // dropped at the feet
+    expect(b.of('grenade')).toHaveLength(1);
+    for (let i = 0; i < 3.2 * TICK_HZ; i++) room.step();
+    // It fell at the thrower's own feet: the thrower dies of it (a suicide), the SEAL at 60 is hurt or killed by it,
+    // the SEAL at 200 is past the 150 radius.
+    expect(room.player(1)!.alive).toBe(false);
+    expect(a.of('kill').some((k) => k.victim === 1 && k.how === 'suicide')).toBe(true);
+    expect(room.player(2)!.alive).toBe(true);
+    expect(c.of('hurt').length).toBe(1);
+  });
+
+  it('refuses a throw with none left, or from far from the thrower', () => {
+    const { room, join } = setup();
+    const b = (join(1), join(2));
+    room.step();
+    room.player(1)!.sim.walker.place(0, 20, 0);
+    room.text(1, { type: 'throw', seq: 5, kind: 'M67', from: [500, 15.4, 0], velocity: [0, 0, 0] });
+    expect(b.of('grenade')).toHaveLength(0);
+    for (let i = 0; i < 20; i++) room.text(1, { type: 'throw', seq: 5 + i, kind: 'HE', from: [0, 15.4, 0], velocity: [10, 5, 0] });
+    expect(b.of('grenade').length).toBeLessThan(20);
+  });
+});
