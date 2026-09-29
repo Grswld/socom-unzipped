@@ -1,7 +1,7 @@
 import { parseRdr, rdrGet, readZarMembers, readZdbMember, Zar, type AssetSource } from '@s2u/archive';
 import { decodeTexture, PaletteTable, parseTextureRecord, type GsState, type Rgba } from '@s2u/gs';
 import {
-  decalSetRows, decodeEffectProgram, EFFECT_MEMBERS, effectLibrary, parseAnimSets,
+  decalSetRows, decodeEffectProgram, EFFECT_MEMBERS, effectLibrary, flattenScene, parseAnimSets, parseSceneGraph,
   type DecalEntry, type EffectMesh, type EffectProgram,
 } from '@s2u/scene';
 import { parseSoils } from '@s2u/sound';
@@ -56,6 +56,14 @@ export interface EffectData {
   marks: DecalEntry[];
   /** `decals.rdr`'s `FOOTSTEP_DECALS`: the footprint's bitmap by material name (SAND, SNOW). */
   footprints: [string, string][];
+  /**
+   * The mission's ambient effects (research 89 §12): its `MZANIM`'s self-starting animations (activation 1) that
+   * draw -- a particle source or a light, directly or through a call -- Frostfire's tower flames, the torches, the
+   * waterfalls' spray, the snow and rain about the camera, the bugs.
+   */
+  ambient: string[];
+  /** The scene nodes those name, by name: their world matrices (16 floats, three's element order). */
+  sceneNodes: [string, number[]][];
   /** `zweapon.rdr`'s `HitAnimName` by weapon (`InternalName`). */
   hitAnims: [string, string][];
   missing: string[];
@@ -79,6 +87,7 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
 
   const programs: EffectProgram[] = [];
   const seen = new Set<string>();
+  const autoStart: string[] = [];
   for (const archiveName of EFFECT_ARCHIVES) {
     const bytes = await member(archiveName);
     if (!bytes) continue;
@@ -89,6 +98,7 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
           if (seen.has(key)) continue;
           seen.add(key);
           programs.push(decodeEffectProgram(a));
+          if (archiveName === 'MZANIM.ZAR' && (a.params.flags & 3) === 1) autoStart.push(a.name);
         }
       }
     } catch (e) { missing.push(`${archiveName}: ${why(e)}`); }
@@ -162,9 +172,16 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
 
   const textures: [string, EffectTexture][] = [];
   const left = new Set([...textureNames].map((t) => t.toLowerCase()));
-  for (const lib of EFFECT_TEXTURE_LIBS) {
+  const quiet = async (suffix: string): Promise<Uint8Array | null> => {
+    try { return await readZdbMember(source, mapPath, suffix); } catch { return null; }
+  };
+  // The effect libraries first, then the map's own (a mission's ambient effects draw its own bitmaps: Blizzard's
+  // `effect_snow*.tif`, Shadow Falls' butterflies), each against its own palettes.
+  for (const lib of [...EFFECT_TEXTURE_LIBS, archive, 'CLIB', 'FLIB']) {
     if (left.size === 0) break;
-    const txr = await member(`${lib}_TXR.ZED`), pal = await member(`${lib}_PAL.ZED`);
+    const own = EFFECT_TEXTURE_LIBS.includes(lib);
+    const txr = own ? await member(`${lib}_TXR.ZED`) : await quiet(`${lib}_TXR.ZED`);
+    const pal = own ? await member(`${lib}_PAL.ZED`) : await quiet(`${lib}_PAL.ZED`);
     if (!txr || !pal) continue;
     try {
       const zar = Zar.parse(txr);
@@ -187,7 +204,28 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
   // A texture neither library holds (`fire_very_large`'s `fire101.tif`, a mission's): its particles draw untextured.
   const absent = [...left];
 
-  return { archive, programs, models, textures, absent, materials, defaultMaterial, marks, footprints, hitAnims, missing };
+  // The ambient effects and the scene nodes they sit at (the map's graph: the emitters' way, `./soundData`).
+  const byName = new Map(programs.map((p) => [p.name.toLowerCase(), p]));
+  const draws = (name: string, depth = 0): boolean => {
+    const p = byName.get(name.toLowerCase());
+    if (!p || depth > 4) return false;
+    return p.sequences.some((s) => s.ops.some((o) => o.op === 'particles' || o.op === 'light' || (o.op === 'call' && draws(o.anim, depth + 1))));
+  };
+  const ambient = autoStart.filter((n) => draws(n));
+  const sceneNodes: [string, number[]][] = [];
+  const wantedNodes = new Set<string>();
+  for (const n of ambient) for (const node of byName.get(n.toLowerCase())?.nodes ?? []) if (node !== 'NA' && node !== 'camera') wantedNodes.add(node);
+  if (wantedNodes.size > 0) {
+    const geo = await member(`${archive}_GEO.ZED`);
+    if (geo) {
+      try {
+        for (const inst of flattenScene(parseSceneGraph(Zar.parse(geo)))) {
+          if (wantedNodes.has(inst.node.name) && !sceneNodes.some(([n]) => n === inst.node.name)) sceneNodes.push([inst.node.name, Array.from(inst.world)]);
+        }
+      } catch (e) { missing.push(`${archive}_GEO.ZED: ${why(e)}`); }
+    }
+  }
+  return { archive, programs, models, textures, absent, materials, defaultMaterial, marks, footprints, ambient, sceneNodes, hitAnims, missing };
 }
 
 /** The buffers the data can hand over rather than copy. */
