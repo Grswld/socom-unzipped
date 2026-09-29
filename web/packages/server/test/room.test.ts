@@ -208,6 +208,28 @@ describe('fire, damage and death (W3.R4, research 91 sections 1-4)', () => {
     const spawn = b.of('spawn').at(-1)!;
     expect(Math.abs(spawn.at[0])).toBe(600);                    // a respawn record, not a round-start slot
   });
+
+  it('counts the magazines as the page does: a ring, a part-spent one kept and come round to (research 84 section 17)', () => {
+    const { room, pa, b } = duel();
+    let seq = 100;
+    // Rounds away from B (the count is the point), each past the M4A1 SD's rate.
+    const round = (): void => { room.text(1, { type: 'fire', seq, from: [0, 15.4, 0], dir: [-1, 0.2, 0], weapon: 0, viewTick: room.tick }); seq += 10; };
+    const reload = (): void => { room.text(1, { type: 'reload', seq }); for (let i = 0; i < 2 * TICK_HZ + 1; i++) room.step(); };
+    const rifle = pa.mags[0];
+    expect(rifle.state().slots.slice(0, 3)).toEqual([30, 30, 30]);
+    round(); reload();                                          // 29 kept, the second in
+    round(); round();
+    expect(rifle.rounds()).toBe(28);
+    reload();                                                   // the third in
+    expect(rifle.rounds()).toBe(30);
+    for (let i = 0; i < 4; i++) round();
+    reload();                                                   // round the ring: the first, as it was left
+    expect(rifle.rounds()).toBe(29);
+    expect(rifle.shownMags()).toBe(2);
+    expect(rifle.total()).toBe(90 - 7);
+    expect(pa.mags[1].total()).toBe(36);                        // the Mark 23's ring untouched
+    expect(b.of('hurt').length).toBe(0);
+  });
 });
 
 describe('the clock (W3.R11)', () => {

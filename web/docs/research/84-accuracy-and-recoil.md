@@ -395,3 +395,68 @@ the round event's `through`); the eye's ray to the point under the reticle passe
   whole 20), no `FireRifleKick` (no kick even scoped), one fire mode (single), one zoom mode (1.5) -- so d-pad Up from
   first person goes to the 9x view (state 4, `ret_binocs`), not a scope. `accuracy.ts`, `zoom.ts` and the reticle take
   it as they take the SD.
+
+## 17. The magazines: the ring, the reload, the ammo box (2026-09-29)
+
+The owner's report (2026-09-29, the Mark 23): "10/12 -> reload -> 12/12 -> 8/12 -> reload -> 11/12". The rule, from
+the decompilation (`socom2_game.elf.decomp.c`) and reCOM (`src/gamez/zSeal/zseal.h:233-236`):
+
+- **The store.** `CZKit` keeps `s32 m_reloads[30][10]` -- ten magazine slots for each of the kit's thirty item slots,
+  each holding its own rounds -- and `s32 m_currentmag[30]`, the index of the magazine in the weapon (SOCOM II's kit:
+  `+0x1d4 + slot*0x28 + i*4` and `+0x684 + slot*4`; the item pointers `m_item[30]` at `+0xe4`). There is no pool of
+  loose rounds and no separate count "in the gun": the weapon's rounds **are** `m_reloads[slot][m_currentmag[slot]]`.
+- **What is carried.** `FUN_005ba3d0` (472706-472775, the fill) and `FUN_005ba5b0` (472779-472830, "can this slot take
+  rounds") both bound the magazines at `NumMags` (`CZWeapon+0x2c`) of `Ammo_Capacity` (`+0x28`) each, the slots past
+  it set to 0; **doubled when the kit holds item 0xC2** (the Double Ammo Load, `-0x3e` in the loop) for a firearm of
+  the categories `FUN_003d1a60` gives as 4, 0x1f, 0x33, 0x51, 0x5b, 0x65 (item ids 4-30 the sidearms -- the Mark 23 is
+  15 -- 51-80 the rifles -- the M4A1 54), and never more than 10. The M4A1 SD: 3 x 30; the Mark 23: 3 x 12. [Reading:
+  the viewer does not double. `mp_seal1`'s `default_weapons` list the Double Ammo Load (`weapons.ts`), which would
+  make these 6 x 30 and 6 x 12, but the console frame of a live spawn (research 87 §6, `console_spawn_slot8.png`)
+  shows `30/30  2 MAGS`. The item is 0xC2 in SOCOM II (`zweapon.rdr`'s `Double Ammo Load` is `ID 194`, read
+  2026-09-29, with the Mark 23 `ID 15` and the M4A1 SD `ID 62`, both `NumMags 3`), but the path that fills a kit at a
+  spawn was not traced -- `FUN_005ba3d0` and `FUN_005ba5b0` are the ammo pickup's -- and that frame's kit is not known
+  to be `mp_seal1`'s. `magazinesCarried(numMags, doubleAmmo)` holds the rule; `KIT_DOUBLE_AMMO` (false) is what the
+  page and the server pass until a spawn with a known kit settles it.]
+- **A round** (`FUN_005c1970` 477038-477042, and `FUN_005bc730` 474123-474126, `FUN_005be9a0` 475621-475623) takes one
+  from `m_reloads[slot][m_currentmag[slot]]` when it is above 0, and from nothing else.
+- **A reload** (`FUN_005c2a90`, 477379-477560): after the gates (not mid-swap `FUN_005a7ab0`, not in the states
+  `FUN_005a7d10` / `FUN_005a78d0` refuse), when any of the slot's ten holds rounds, it walks from `m_currentmag + 1`
+  round the ring (wrapping at 10) back to `m_currentmag`, skipping the slots `< 1`, and **takes the first slot with
+  rounds** (477462-477476) -- whole or part-spent, whichever is next in order, not the fullest. The swap is made **at
+  the reload's start**: `m_currentmag = next` (477483), then the reload animation (`FUN_005a82e0`) and the sound. The
+  magazine taken out keeps its rounds in its slot; nothing is topped up, nothing moved between magazines. So the total
+  -- the rounds in the weapon plus those in the other magazines -- only falls, by the rounds fired. With no other slot
+  holding rounds the walk finds nothing and no reload starts (the `DAT_0045a0c1` branch, 477486-477505, refills the
+  current magazine instead; the same flag hides MAGS in the ammo box, `FUN_00237760` 85181-85188, 85192 -- read as an
+  unlimited-ammo mode, not identified further and not modelled).
+- **The request.** `R` (the pad's reload, `FUN_002c64e0(6)` in `FUN_00594cf0`, 453459-453463) arms the kit's reload
+  timer (`FUN_005c32b0`: `kit+0x820` = the weapon's `ReloadDelay`, 0.01 by default); `FUN_005c0fd0`'s frame (476549-476561)
+  runs it down and calls `FUN_005c2a90`. **The automatic reload**: `FUN_005c5340` (479297-479320) arms the same timer
+  when the magazine in the weapon is empty (not for the grenades and the other non-firearms, the item-id list there).
+  The viewer refuses `R` on a full magazine (the page's; the game's own gate for it is not traced -- `FUN_005b4340`
+  may be it -- so a full-magazine `R` stays a no-op here).
+- **The ammo box** (`FUN_00237760`, 85128-85201): `"%d/%d"` (0x3e66b8) is `FUN_005c3890` -- the magazine in the
+  weapon, `m_reloads[slot][m_currentmag]` (477877-477910) -- over `FUN_005c3ce0`, `Ammo_Capacity`. `"%d MAG%c"`
+  (0x3e66c0) is `FUN_005c49b0() - 1`, where `FUN_005c49b0` (478716-478770) **counts the slots with rounds, the one in
+  the weapon among them**; hidden below 1, `'S'` unless 1. So with rounds in the weapon MAGS is the other magazines
+  holding rounds; with the weapon empty it is one fewer than they (three magazines, the first spent: `0/12  1 MAG`
+  until the reload swaps -- then `12/12  1 MAG`).
+
+**Where the 11 comes from.** The page already kept the ring (`fire.ts` since the sidearm round), and from a fresh
+Mark 23 the report's steps give `10/12 -> 12/12 -> 8/12 -> 12/12`: the second reload takes the third, whole, magazine.
+An 11 needs a magazine left at 11: one round fired from the first magazine and a reload before the report's `10/12`
+(that 10 is then the second magazine, and the second reload comes round the ring past the third to the first, as it
+was left). That is the game's rule -- a part-spent magazine is kept and comes back in order -- and `magazines.test.ts`
+replays both sequences. What was wrong beside it, and is fixed with this section (`magazines.ts`, shared by the page
+and the server):
+
+- the **server** (`room.ts`) counted differently from the page -- a reload dropped the part-spent magazine
+  (`spare - 1`, the weapon refilled to capacity), so after two reloads it held no spare while the page still had two
+  part-spent magazines, and every round the page fired from them was refused by the server; it now keeps the same
+  ring and takes the same next magazine;
+- the **MAGS** figure was "the other magazines with rounds" -- one more than the game's with the weapon empty;
+- `fire.ts`'s header still said a part-spent magazine is dropped.
+
+The counts are pinned by `viewer/test/magazines.test.ts` (the ring, the box, the owner's sequences for both weapons,
+the automatic reload, an empty pouch, a swap mid-reload, and the total falling only by the rounds fired over a random
+run of rounds, reloads and swaps) and `server/test/room.test.ts` (the server's ring against the same sequence).

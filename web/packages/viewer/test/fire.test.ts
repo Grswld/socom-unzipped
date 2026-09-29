@@ -150,7 +150,7 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
     expect(RELOAD_DELAY).toBe(0.01);
     for (let i = 0; i < 29; i++) { expect(fire.shoot()).not.toBeNull(); fire.update(0.2); }
     expect(fire.shoot()).not.toBeNull();                     // the 30th: the magazine runs dry
-    expect(fire.state().magazine).toEqual({ rounds: 0, capacity: 30, spare: 2, reloading: true });   // asked for
+    expect(fire.state().magazine).toEqual({ rounds: 0, capacity: 30, spare: 1, reloading: true });   // asked for; MAGS: two with rounds, less one (FUN_00237760)
     expect(fire.shoot()).toBeNull();
     fire.update(0.02);                                       // FUN_005c2a90: the next magazine goes in at once
     expect(fire.state().magazine).toEqual({ rounds: 30, capacity: 30, spare: 1, reloading: true });
