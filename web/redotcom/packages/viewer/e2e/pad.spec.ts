@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 // `src/hook.ts` is types only; its `declare global` is what makes `window.__viewer` exist inside `page.evaluate`.
 import type {} from '../src/hook';
+import { shortTurn } from '../src/yaw';
 
 /**
  * The controller on Frostfire (web sprint 2, W2.7; ruling W2.R5; the owner's layout of 2026-09-28): a fake
@@ -244,7 +245,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await page.waitForTimeout(600);
   const flown = await pose(page);
   expect(before.z - flown.z).toBeGreaterThan(5);
-  expect(flown.yaw).toBeCloseTo(before.yaw, 6);
+  expect(shortTurn(before.yaw, flown.yaw)).toBeCloseTo(0, 6);
 
   // Square is up in the air.
   await setPad(page, { press: [SQUARE] });
@@ -259,9 +260,9 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await page.waitForTimeout(500);
   await setPad(page, {});
   const turned = await pose(page);
-  expect(turned.yaw).toBeLessThan(facing.yaw - 5);
+  expect(shortTurn(facing.yaw, turned.yaw)).toBeLessThan(-5);            // the yaw is stored in [0, 360): the turn, signed
   await page.waitForTimeout(300);
-  expect((await pose(page)).yaw).toBeCloseTo(turned.yaw, 1);
+  expect(shortTurn(turned.yaw, (await pose(page)).yaw)).toBeCloseTo(0, 1);
 
   // Unplugged: the toast says so, once, and the status line lets it go.
   await plug(page, false);

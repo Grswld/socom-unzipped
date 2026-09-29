@@ -552,6 +552,19 @@ describe('the kicks (W3.R13, research 91 section 17)', () => {
     expect(clients.get(1)!.closed?.code).toBe(4001);
   });
 
+  it('a look that only jitters across north is idle, as the same jitter anywhere else is; a real turn is not (shortTurn)', () => {
+    const idleAfter = (yaws: readonly number[]): boolean => {
+      const { room, join, cmd, send, advance, clients } = setup();
+      join(1);
+      for (let i = 0; i < 25; i++) { send(1, [cmd(1, { yaw: yaws[i % yaws.length]! })]); room.step(); advance(10_000); }
+      room.step();
+      return clients.get(1)!.of('kicked').length > 0;
+    };
+    expect(idleAfter([100.1, 99.9])).toBe(true);                   // 0.2 degrees: under the 0.5 a look must move
+    expect(idleAfter([0.1, 359.9])).toBe(true);                    // the same 0.2 across north (it read as 359.8)
+    expect(idleAfter([350, 10])).toBe(false);                      // 20 degrees across north: a turn
+  });
+
   it('removes a teammate at the round\'s end on more votes than half its team, and refuses its rejoin', () => {
     const { room, join, clients } = setup({ roundSeconds: 1 });
     const endOfMatch = (1 + 16 + 23) * TICK_HZ;

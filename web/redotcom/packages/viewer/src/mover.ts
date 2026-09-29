@@ -8,6 +8,7 @@ import { airBands, oneShotSeconds, SEAL_ANIMS } from './locomotion';
 import { landingKind, sealTuning, type LandingKind } from './physics';
 import type { TraversalPose } from './animator';
 import { SCOPE_SLOW } from './zoom';
+import { wrapYaw } from './yaw';
 
 /**
  * Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): a mover that stands on the floor the engine's probe finds,
@@ -1638,7 +1639,7 @@ export function actionRoots(clips: readonly MotionClip[]): Map<string, Float32Ar
 export function moverSnapshot(w: Walker, moves: TraversalHooks | null, jumps: number, turnRate: number): PlaySnapshot {
   const s = w.state;
   return {
-    feet: w.drawnFeet(), yaw: s.yaw, pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
+    feet: w.drawnFeet(), yaw: wrapYaw(s.yaw), pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
     airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
     landing: w.landing?.kind ?? null, jumps,
     ground: { ...w.ground }, stickSnaps: w.stickSnaps, action: w.action && { ...w.action }, turnRate,

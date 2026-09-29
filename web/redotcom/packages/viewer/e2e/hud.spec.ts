@@ -135,7 +135,7 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
   expect(live.timing.fade).toBe(1);
   expect(live.frame).toEqual({ width: 640, height: 448 });
   expect(live.model).toMatchObject({ rounds: 30, capacity: 30, spare: 2, fireMode: 'burst', weaponIcon: 'm4carbine_icon.tif' });
-  expect(Math.abs((((live.model.yaw % 360) + 360) % 360) - 180)).toBeLessThan(1e-6);
+  expect(Math.abs(live.model.yaw - 180)).toBeLessThan(1e-6);          // stored canonical in [0, 360) (yaw.ts)
 
   // The console's still: its magazine and heading held.
   const shown = await page.evaluate(() => window.__viewer.setHud({ frozen: true, settled: true, yaw: 180, rounds: 30, capacity: 30, spare: 2, range: null }));

@@ -10,6 +10,7 @@ import {
 } from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
+import { shortTurn } from './yaw';
 import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './mover';
 
 /**
@@ -691,7 +692,7 @@ export class Traversal implements TraversalHooks {
     const dx = k.start[0] - s.x, dz = k.start[2] - s.z, step = ALIGN_SPEED * dt;
     s.x += Math.max(-step, Math.min(step, dx));
     s.z += Math.max(-step, Math.min(step, dz));
-    let turn = ((k.plan.yaw - s.yaw + 540) % 360) - 180;
+    let turn = shortTurn(s.yaw, k.plan.yaw);                      // the short way, as the game's vectors turn
     const most = ((ALIGN_TURN * 180) / Math.PI) * dt;
     turn = Math.max(-most, Math.min(most, turn));
     s.yaw += turn;
@@ -982,7 +983,7 @@ export class Traversal implements TraversalHooks {
     this.ladder = l;
     this.emit({ type: 'ladderMount', from: 'top' });
     const want = yawFacing(l.nx, l.nz);
-    const angle = ((want - s.yaw + 540) % 360) - 180;
+    const angle = shortTurn(s.yaw, want);
     if (Math.abs(angle) > 90) {                                  // FUN_00306fd0's cosine under 0: the "180" first
       const shape = this.shapes.get(TRAVERSAL_CLIP.turn180);
       this.turn = { from: s.yaw, angle, time: 0, seconds: shape.seconds, ladder: l };

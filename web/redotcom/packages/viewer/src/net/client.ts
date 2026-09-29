@@ -1,4 +1,5 @@
 import { decodeSnapshot, encodeCommands, frameKind } from './codec';
+import { shortTurn, wrapYaw } from '../yaw';
 import {
   COMMAND_REDUNDANCY, Frame, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   type BodyState, type ClientEvent, type Command, type DoorWire, type Role, type Rules, type ServerEvent, type Snapshot, type Team,
@@ -299,11 +300,11 @@ export class NetClient {
     return newer.bodies.map((x) => {
       const o = before.get(x.id);
       if (!o) return x;
-      const turn = ((((x.yaw - o.yaw) % 360) + 540) % 360) - 180;
+      const turn = shortTurn(o.yaw, x.yaw);
       return {
         ...x,
         feet: [o.feet[0] + (x.feet[0] - o.feet[0]) * f, o.feet[1] + (x.feet[1] - o.feet[1]) * f, o.feet[2] + (x.feet[2] - o.feet[2]) * f],
-        yaw: o.yaw + turn * f, pitch: o.pitch + (x.pitch - o.pitch) * f,
+        yaw: wrapYaw(o.yaw + turn * f), pitch: o.pitch + (x.pitch - o.pitch) * f,
       };
     });
   }

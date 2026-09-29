@@ -19,6 +19,7 @@
  */
 export * from './mover';
 export { Traversal } from './traversal';
+export { shortTurn, wrapYaw } from './yaw';
 export * from './round';
 export * from './magazines';
 export * as accuracy from './accuracy';

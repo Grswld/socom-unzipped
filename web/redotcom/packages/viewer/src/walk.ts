@@ -4,6 +4,7 @@ import type { TraversalPose } from './animator';
 import { Button, holdBits, STANCE_CODES, type Command } from './net/protocol';
 import { MoverSim } from './net/moverSim';
 import { quantiseCommand } from './net/codec';
+import { shortTurn, wrapYaw } from './yaw';
 import type { GroundWish, Pose } from './camera';
 import { pitchLimits, PlayerCamera, INIT_AIM_PITCH, scopeEyeHeight, scopePeekShift, type Vec3 } from './playerCamera';
 import { KEY_STANCE, StanceButton, STANCE_HOLD_S_PLACEHOLDER } from './stanceButton';
@@ -273,7 +274,7 @@ export class WalkMode {
     if (!this.player) this.player = new PlayerCamera(grid);
     this.attachMoves(w);
     if (!w.place(at[0], at[1] + PROBE_LIFT, at[2])) return false;
-    w.state.yaw = yaw;
+    w.state.yaw = wrapYaw(yaw);
     this.stance_ = 'stand';
     this.jumps = 0;
     this.weapon_ = 0;
@@ -444,7 +445,7 @@ export class WalkMode {
     const look = this.camera.lookState?.();
     if (look) this.turnRate = look.turnRate;
     else if (this.lastYaw !== null && dt > 0) {
-      const turn = ((((yaw - this.lastYaw) % 360) + 540) % 360) - 180;
+      const turn = shortTurn(this.lastYaw, yaw);
       this.turnRate = (turn * Math.PI) / 180 / dt;
     }
     this.lastYaw = yaw;
@@ -632,7 +633,7 @@ export class WalkMode {
     const held = this.moves?.yaw() ?? null;                      // TRAVERSAL SEAM: a ladder holds the facing
     if (held !== null) this.camera.setPose({ yaw: held });
     const look = this.camera.pose();
-    w.state.yaw = look.yaw;
+    w.state.yaw = wrapYaw(look.yaw);                             // canonical whatever camera hands it (yaw.ts)
     w.state.pitch = look.pitch;
   }
 

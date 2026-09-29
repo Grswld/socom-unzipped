@@ -1,6 +1,7 @@
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
 // `src/hook.ts` is types only; its `declare global` is what makes `window.__viewer` exist inside `page.evaluate`.
 import type {} from '../src/hook';
+import { shortTurn } from '../src/yaw';
 
 /**
  * Walk mode on a phone (owner, 2026-09-29: dual floating sticks, SHOOT and JUMP, the needed buttons tidied): with emulated
@@ -135,7 +136,7 @@ test.describe('the dual sticks and the buttons, landscape', () => {
     await expect.poll(async () => { const i = await input(page); return i.moveY > 0.9 && i.lookX > 0.9; }).toBe(true);
     await page.waitForTimeout(800);
     const yaw1 = (await page.evaluate(() => window.__viewer.pose())).yaw;
-    expect(Math.abs(yaw1 - yaw0), 'the look stick turned the view').toBeGreaterThan(5);
+    expect(Math.abs(shortTurn(yaw0, yaw1)), 'the look stick turned the view').toBeGreaterThan(5);
     const feet1 = await page.evaluate(() => { const p = window.__viewer.pose(); return [p.x, p.z]; });
     expect(Math.hypot(feet1[0]! - feet0[0]!, feet1[1]! - feet0[1]!), 'the move stick walked').toBeGreaterThan(2);
     await fingers.up();

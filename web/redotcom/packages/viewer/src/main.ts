@@ -22,6 +22,7 @@ import { reportDecodeFailure, wireWorkerFailure } from './decodeFailure';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, attachWalkTouch, wantsTouchControls, type TouchControls } from './touch';
 import { WalkMode } from './walk';
+import { shortTurn } from './yaw';
 import { RemotePlayers } from './remotePlayers';
 import type { PlayClips } from './play';
 import { NetPage } from './netPage';
@@ -721,7 +722,7 @@ function gunFrame(dt: number, walking: boolean): void {
     const pose = fly.pose();
     let yawRate = 0, pitchRate = 0;
     if (lastLook && dt > 0) {
-      const dy = ((pose.yaw - lastLook.yaw + 540) % 360) - 180, dp = pose.pitch - lastLook.pitch;
+      const dy = shortTurn(lastLook.yaw, pose.yaw), dp = pose.pitch - lastLook.pitch;
       // A jump of more than a quarter turn in one frame is a placement (the hook, a respawn), not a turn.
       if (Math.abs(dy) < LOOK_JUMP && Math.abs(dp) < LOOK_JUMP) {
         yawRate = (dy * Math.PI / 180) / dt;
