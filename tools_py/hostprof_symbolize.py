@@ -3,6 +3,10 @@
 using llvm-nm (symbol table, no debug info needed). Prints the top functions by sample count.
 
 Usage: python tools_py/hostprof_symbolize.py [logs/hostprof.txt] [--top 40] [--exe dist/socom2.exe]
+
+A PS2X_HOST_PROF_STACKS=1 histogram also holds "stack <n> leaf;caller;..." lines (raw absolute addresses,
+counts that repeat the flat samples); they are skipped here and counted in the header line -- fold them
+with tools_py/hostprof_stacks.py (issue #95).
 """
 import argparse
 import bisect
@@ -59,6 +63,7 @@ def main():
     per_fn = collections.Counter()
     total = 0
     ext = 0
+    stack_lines = 0
     with open(a.hist) as f:
         header = f.readline().strip()
         threads = []
@@ -68,6 +73,9 @@ def main():
                 continue
             if parts[0] == "thread":
                 threads.append((int(parts[2]), parts[1], " ".join(parts[3:])))
+                continue
+            if parts[0] == "stack":
+                stack_lines += 1
                 continue
             rva = int(parts[0], 16)
             n = int(parts[1])
@@ -82,7 +90,8 @@ def main():
             per_fn[name] += n
     names = [k for k, _ in per_fn.most_common(a.top)]
     dm = demangle(names)
-    print(header, f"(samples in file {total}, other modules {ext})")
+    skipped = f", stack lines skipped {stack_lines} (fold them with tools_py/hostprof_stacks.py)" if stack_lines else ""
+    print(header, f"(samples in file {total}, other modules {ext}{skipped})")
     for n, tid, desc in sorted(threads, reverse=True)[:12]:
         print(f"  thread {tid:>6} {n:7d} {100.0 * n / max(1, total):5.1f}%  {desc}")
     for name, n in per_fn.most_common(a.top):
