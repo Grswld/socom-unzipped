@@ -110,7 +110,7 @@ class Player {
   viewTick = 0;
   ping = 0;
   /**
-   * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §17) -- the page's `Fire` counts with the
+   * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §18) -- the page's `Fire` counts with the
    * same, so a reload here takes the magazine the page's did; the tick each last fired (by command number).
    */
   readonly mags: [MagazineRing, MagazineRing] = [ringFor(KIT[0]), ringFor(KIT[1])];

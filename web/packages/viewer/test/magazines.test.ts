@@ -4,7 +4,7 @@ import { Fire, RELOAD_DELAY, RELOAD_SECONDS, type FireEvent } from '../src/fire'
 import { DOUBLE_AMMO_ID, magazinesCarried, MagazineRing, RING_SLOTS } from '../src/magazines';
 
 /**
- * The magazines as SOCOM II keeps them (`./magazines`, research 84 §17): one ring of ten slots a weapon
+ * The magazines as SOCOM II keeps them (`./magazines`, research 84 §18): one ring of ten slots a weapon
  * (`m_reloads[slot][10]`), the loaded one's index (`m_currentmag`), a reload taking the next slot round the ring with
  * rounds in it (`FUN_005c2a90`), the ammo box's MAGS the slots with rounds less one (`FUN_00237760` / `FUN_005c49b0`).
  * The owner's report (2026-09-29, the Mark 23): "10/12 -> reload -> 12/12 -> 8/12 -> reload -> 11/12".

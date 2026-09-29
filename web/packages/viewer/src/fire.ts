@@ -39,7 +39,7 @@ import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type Mar
  *   between `MIN_SIZE` 1 and `MAX_SIZE` 1.8 units. The quad lies on the polygon's plane, `DECAL_OFFSET` off it toward
  *   the shooter, facing out. A plain dark disc stands in when the bitmap is absent. At most `MAX_DECALS` are kept,
  *   the oldest recycled (the game's `TEMP_DECAL_POOL` is 150 + 50 overflow: `decals.rdr`).
- * - **The magazines** (`./magazines`, research 84 §17): `NumMags` of `Ammo_Capacity` each -- the rifle 3 x 30, the
+ * - **The magazines** (`./magazines`, research 84 §18): `NumMags` of `Ammo_Capacity` each -- the rifle 3 x 30, the
  *   Mark 23 3 x 12 -- kept as the game's ring (`m_reloads[slot][10]`), each magazine with its own rounds. A round
  *   leaves the one in the weapon; a reload puts in the next magazine round the ring with rounds (whole or part-spent,
  *   in order) and the one taken out keeps its rounds; the ammo box's MAGS is the magazines with rounds less one. `R`
@@ -415,7 +415,7 @@ export class Fire {
     this.mags = ringFor(this.rifle);
   }
 
-  /** WEAPON: every round of the weapon in the hand -- in it and in its other magazines (research 84 §17). */
+  /** WEAPON: every round of the weapon in the hand -- in it and in its other magazines (research 84 §18). */
   magazineTotal(): number {
     return this.mags.total();
   }
