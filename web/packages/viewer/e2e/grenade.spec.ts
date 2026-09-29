@@ -147,7 +147,7 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   await page.waitForTimeout(450);
   await settle(page);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-toss-clip.png') });
-  expect(await page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_tossgrenade');
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip), { timeout: 5_000 }).toBe('seal_tossgrenade');   // the clip's start is a frame's timing under a loaded suite
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().lastThrow?.clip), { timeout: 5_000 }).toBe('seal_tossgrenade');
   const toss = (await page.evaluate(() => window.__viewer.grenade())).lastThrow!;
   expect(toss.toss).toBe(true);
