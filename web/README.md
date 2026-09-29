@@ -299,6 +299,11 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 - **The mip level is the GS's.** A mipmapped texture samples the level `TEX1` gives off the depth,
   `(log2(w) << L) + K` clamped to `0..MXL`, not the GPU's derivative LOD; with the corpus's K of -12 to -6.5 most never
   leave the base level (`gsMipLod`, `world.ts`'s `gsTexel`; research 82, D3).
+- **The mip levels are the disc's, and the reflective surfaces get their pass.** A mipmapped texture uploads the records
+  its `MIPTBP1` names (a detail texture's level 1 is transparent: the detail fades with distance). A draw whose visual
+  names a textured `Material_Palette` entry -- the water, glass, ice -- gets VU1 `0x34`'s environment-map pass: a sphere
+  map of the reflected eye ray in the entry's texture and colour, faded by its rim alpha (`world.ts`, `envVertex`).
+  The PS2 picture renders with no antialiasing, as the GS did (research 82, D3b, D5, D6).
 - **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
   (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
   world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the
