@@ -86,6 +86,37 @@
         <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="Walk on the game's own floors, seen from behind as the game's camera sees you, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched, 11 prone. The floor is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, and the step runs at the game's 60 Hz. There is no sprint on foot. G switches back to flying.">Walk<span class="s2u-tab__what">on the floors (G)</span></button>
       </div>
       <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
+      <!--
+        Sound (web/docs/research/81, `./src/audio`): the mix's volume and a mute, driving `gameAudio.setVolume` and `setMuted`.
+        The sound plays on the play's events, so with the play off (no `?redotcom`) the section is not rendered (`data-play`).
+        Remembered in this browser only (`./src/ui.ts`, `onSound`).
+      -->
+      <div class="section" id="sound-section" data-play>
+        <p class="s2u-field__label">Sound</p>
+        <div class="row">
+          <label class="s2u-check" title="Silences the game's sounds; the volume below is kept."><input type="checkbox" id="mute" /> <span>mute</span></label>
+          <label class="s2u-range" title="The mix's volume: 100% is the level the viewer lifts the console's mix to for a browser tab (a television's knob did the rest)."><span>volume</span>
+            <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out"></output></label>
+        </div>
+      </div>
+      <!--
+        The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so behind `?redotcom` like the
+        rest of the play. Raw is the default: one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
+        in this browser only (`./src/ui.ts`, `onLookControls`).
+      -->
+      <div class="section" id="look-section" data-play>
+        <p class="s2u-field__label">Mouse look</p>
+        <div id="mouselaw" class="s2u-tabs" role="radiogroup" aria-label="mouse look">
+          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
+          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more.">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
+        </div>
+        <label class="s2u-range" title="A multiplier on the mapping: 1 is the default, 2 turns twice as far for the same movement."><span>sensitivity</span>
+          <input type="range" id="sensitivity" min="0.25" max="4" step="0.05" value="1" /><output id="sensitivity-out"></output></label>
+        <div class="checks">
+          <label class="s2u-check" title="Moving the mouse away looks down. The game's own default is not inverted."><input type="checkbox" id="invertpitch" /> <span>invert pitch</span></label>
+          <label class="s2u-check" title="One angle a count on both axes, the PC shooter's. Off is the game's: the pitch moves at 0.425 of what the same movement turns."><input type="checkbox" id="uniformpitch" /> <span>equal pitch</span></label>
+        </div>
+      </div>
       <!-- Advanced: every diagnostic switch, folded; the long explanations are tooltips. -->
       <details id="advanced" class="s2u-disclosure">
         <summary>Advanced</summary>
@@ -165,7 +196,11 @@
     -->
     <div id="controls" class="s2u-overlay" data-density="compact" role="dialog" aria-label="controls" hidden>
       <div class="s2u-overlay__body">
-        <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; arrows look &middot; F fullscreen &middot; ` hides this</p>
+        <p class="s2u-fine" id="hint">click to look &middot; wheel speed 1.0&times;</p>
+        <!--
+          The keyboard and mouse, grouped, for the mode you are in (`./src/controlsList.ts`; `./src/ui.ts` `renderKeys`).
+        -->
+        <table id="keys-list"><tbody></tbody></table>
         <!--
           The controller's layout (W2.7, ruling W2.R5): SOCOM II's own, as the repository documents it, the viewer's
           bindings beside it marked "assumed". Hidden until a pad first connects, in the Controls popover; `./src/ui.ts` `showPadLayout` fills it.
@@ -176,7 +211,7 @@
             <thead><tr><th scope="col">pad</th><th scope="col" id="pad-mode">fly</th><th scope="col">source</th></tr></thead>
             <tbody></tbody>
           </table>
-          <p class="s2u-fine">Only the current mode's controls are listed; G or Start switches modes. A row marked assumed is a
+          <p class="s2u-fine">Only the current mode's controls are listed. A row marked assumed is a
             binding neither the owner nor the repository documents.</p>
         </details>
       </div>

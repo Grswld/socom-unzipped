@@ -134,6 +134,13 @@ The settings panel starts folded on every device, so a first visit is the map an
 **Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
 the choice is remembered. A failed load unfolds the panel so the error is seen.
 
+With `?redotcom` the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
+`setMuted`) and a **Mouse look** section (raw or the game's stick curve, a sensitivity slider, invert pitch, and equal
+pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
+`s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover lists
+the keyboard and mouse for the current mode in groups (Move, Combat, Stance & traversal, Weapons, General; the fly list is
+Move and General), and the pad's layout under them, grouped the same way, once a pad is connected.
+
 ### Flying (always)
 
 | input | what it does |

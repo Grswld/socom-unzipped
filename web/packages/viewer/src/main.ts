@@ -587,6 +587,9 @@ if (PLAY) {
 }
 ui.onPanelToggle();
 ui.onControlsPopover();
+// Round 2: the panel's Sound and Mouse look sections (each is on the page only with `?redotcom`), remembered in this browser.
+ui.onSound({ volume: (v) => audio.setVolume(v), muted: (m) => audio.setMuted(m) });
+ui.onLookControls((opts) => fly.setLookOptions(opts));
 const revision = ui.showRevision();
 
 /**
