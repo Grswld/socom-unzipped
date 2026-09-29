@@ -287,7 +287,7 @@ export function motionRows(fx: MotionFixtures | null): FeelRow[] {
   const apexKey = ys.indexOf(Math.max(...ys));
   const playback = table?.get('seal_jump')?.playback ?? jump.frameCount / jump.rate;
   out.push(row('jump.rise', 'standing jump: rise', 'u', { ...CONSOLE.jumpRise, value: Math.max(...ys) - ys[0]! },
-    top.feet[1], 'motion', { tolerancePct: 5, note: 'the viewer\'s is jumpImpulse\'s placeholder; the body adds the clip\'s own rise on top' }));
+    top.feet[1], 'motion', { tolerancePct: 5, note: 'the viewer\'s is jumpImpulse\'s placeholder hop' }));
   out.push(row('jump.apex', 'standing jump: time to the top', 's', { ...CONSOLE.jumpApexSeconds, value: (apexKey / jump.frameCount) * playback },
     top.t, 'motion', { tolerancePct: 5 }));
   // The camera's root input: FUN_0029a950 reads the live skeleton root, so a run lowers the look-at by the clip's root.
