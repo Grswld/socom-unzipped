@@ -43,6 +43,14 @@ export const MARK_CLIP_MAX_TRIANGLES = 32;
  * permanent pool (`0x4b5050`).
  */
 export const TEMP_DECAL_TRIANGLES = 150;
+/**
+ * `decals.rdr`'s `PERM_DECAL_POOL` `BASE 30, OVERFLOW 0` (read into `0x4b5050`, decomp 324141-324148): the permanent
+ * pool the grenade's blast set goes to (`FUN_003b3800` 306401-306402, a negative size), one entry per kept world
+ * triangle. `FUN_003bf1a0` (313254-313262) refuses once `count >= base + overflow`; nothing trims it (`FUN_003bf110`
+ * runs on `0x4b5030` only: 218207, 219048, 236776) until the level's teardown empties it (`FUN_003bf050`, 218219,
+ * 219060). So a map keeps its first 30 scorch triangles and refuses the rest.
+ */
+export const PERM_DECAL_TRIANGLES = 30;
 
 /** A convex polygon clipped from a triangle by four half-planes has at most seven corners. */
 const POLY_MAX = 7;
@@ -229,9 +237,10 @@ export class MarkClipper {
 
   /**
    * Builds the mark for `frame` into `target` (a `markClipGeometry`), lifted `lift` along each triangle's normal toward
-   * the round; returns the world triangles kept (0: nothing drawn under it, `target` untouched).
+   * the round; returns the world triangles kept (0: nothing drawn under it, `target` untouched). At most `limit` are
+   * kept, the first in the walk's order: a pool with that much room left (`FUN_003bf1a0` refuses an entry per triangle).
    */
-  clip(frame: MarkFrame, target: BufferGeometry, lift: number): number {
+  clip(frame: MarkFrame, target: BufferGeometry, lift: number, limit = MARK_CLIP_MAX_TRIANGLES): number {
     this.centreFound = false;
     this.lastNodePath = null;
     this.candidateCount = 0;
@@ -262,8 +271,8 @@ export class MarkClipper {
       if (obj.userData['effectLightPass'] === true) continue;
       this.gather(obj, frame);
     }
-    if (this.candidateCount === 0) return 0;
-    return this.build(frame, target, lift);
+    if (this.candidateCount === 0 || limit <= 0) return 0;
+    return this.build(frame, target, lift, Math.min(limit, MARK_CLIP_MAX_TRIANGLES));
   }
 
   /** The mesh's triangles near the query that pass the game's three tests, onto the candidate list. */
@@ -359,7 +368,7 @@ export class MarkClipper {
   }
 
   /** The node under the centre, then its candidates clipped to the square into `target`. */
-  private build(frame: MarkFrame, target: BufferGeometry, lift: number): number {
+  private build(frame: MarkFrame, target: BufferGeometry, lift: number, limit: number): number {
     const c = this.candidates;
     // The hit's node: the candidate under the square's centre nearest the hit along the round (a solid one before a
     // blended one); where none covers the centre (the hull off the drawn surface, a hole), the nearest by its middle.
@@ -403,7 +412,7 @@ export class MarkClipper {
     const vertexCap = P.length / 3, indexCap = I.length;
     let vertices = 0, indices = 0, kept = 0;
     let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < this.candidateCount && kept < MARK_CLIP_MAX_TRIANGLES; i++) {
+    for (let i = 0; i < this.candidateCount && kept < limit; i++) {
       const b = i * CAND_STRIDE;
       if (c[b + 33] !== node) continue;
       const count = this.clipToSquare(b);
