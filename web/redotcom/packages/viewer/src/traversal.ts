@@ -262,6 +262,20 @@ function yawFacing(nx: number, nz: number): number {
   return (Math.atan2(nx, nz) * 180) / Math.PI;
 }
 
+/**
+ * The signed short turn from yaw `from` to yaw `to`, degrees in [-180, 180), whatever either's winding (the page's
+ * camera yaw is never wrapped). The game turns by vectors -- `FUN_005b2d20` (decomp 468637-468680) takes the angle as
+ * `acos` of the facing's dot with the facing to reach and its side from their cross product's y -- so its turn is always
+ * the short one. The old `((to - from + 540) % 360) - 180` came out at -180 or under for `from` more than 540 over `to`
+ * (JavaScript's `%` keeps the sign), so a SEAL whose look had gone twice round to the left spun the long way to the ledge,
+ * `FUN_005b2d20`'s 46 ticks ran out mid-spin and the clip played with the body up to 153 degrees off it (research 86
+ * section 3.8).
+ */
+export function shortTurn(from: number, to: number): number {
+  const d = ((((to - from) % 360) + 360) % 360);
+  return d >= 180 ? d - 360 : d;
+}
+
 /** The mover's forward and right on the ground at a yaw (`walk.ts`'s convention). */
 function axes(yaw: number): { fx: number; fz: number; rx: number; rz: number } {
   const y = (yaw * Math.PI) / 180;
@@ -691,7 +705,7 @@ export class Traversal implements TraversalHooks {
     const dx = k.start[0] - s.x, dz = k.start[2] - s.z, step = ALIGN_SPEED * dt;
     s.x += Math.max(-step, Math.min(step, dx));
     s.z += Math.max(-step, Math.min(step, dz));
-    let turn = ((k.plan.yaw - s.yaw + 540) % 360) - 180;
+    let turn = shortTurn(s.yaw, k.plan.yaw);                      // the short way, as the game's vectors turn
     const most = ((ALIGN_TURN * 180) / Math.PI) * dt;
     turn = Math.max(-most, Math.min(most, turn));
     s.yaw += turn;
@@ -982,7 +996,7 @@ export class Traversal implements TraversalHooks {
     this.ladder = l;
     this.emit({ type: 'ladderMount', from: 'top' });
     const want = yawFacing(l.nx, l.nz);
-    const angle = ((want - s.yaw + 540) % 360) - 180;
+    const angle = shortTurn(s.yaw, want);
     if (Math.abs(angle) > 90) {                                  // FUN_00306fd0's cosine under 0: the "180" first
       const shape = this.shapes.get(TRAVERSAL_CLIP.turn180);
       this.turn = { from: s.yaw, angle, time: 0, seconds: shape.seconds, ladder: l };
