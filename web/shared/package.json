@@ -1,0 +1,23 @@
+{
+  "name": "@s2u/shared",
+  "version": "1.0.3",
+  "private": true,
+  "description": "The s2u design system (tokens, base, components, fonts) shared by web/landing and web/redotcom, and the site's deploy",
+  "license": "GPL-3.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "tokens": "node tools/gen-tokens.mjs",
+    "fonts": "node tools/fetch-fonts.mjs",
+    "fonts:metrics": "node tools/font-metrics.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "fontkit": "^2.0.4",
+    "jsdom": "^29.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.3",
+    "vitest": "^4.1.2"
+  }
+}

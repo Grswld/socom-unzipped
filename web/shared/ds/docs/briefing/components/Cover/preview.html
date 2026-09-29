@@ -1,0 +1,39 @@
+<!-- @dsCard height=288 -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:ital,wght@1,800&family=Oswald:wght@400&display=swap">
+<style>
+  body{margin:0;background:var(--ground);width:960px;height:288px;position:relative;overflow:hidden;font-family:var(--font-display)}
+  svg{position:absolute;inset:0}
+  .panel{fill:var(--panel)} .tab{fill:var(--tab)} .lit{fill:var(--tab-lit)} .hi{fill:var(--highlight)} .gold{fill:var(--gold)}
+  .sq{fill:var(--glyph-square)} .tri{fill:var(--glyph-triangle)} .x{fill:var(--glyph-cross)}
+  .rule{stroke:var(--panel-edge);stroke-width:2}
+  .name{position:absolute;left:32px;bottom:44px;margin:0;max-width:440px;color:var(--gold-display);text-shadow:var(--title-glow);
+    font:italic 800 88px/.92 var(--font-display);letter-spacing:.01em;text-transform:uppercase}
+  .tag{position:absolute;left:34px;bottom:20px;margin:0;max-width:440px;color:var(--text-dim);font:400 14px/18px var(--font-body)}
+</style>
+<!--
+  blocks: the briefing grid at cover scale — a tab column (tab 120×48, tab-lit 120×48, tab 120×48, tab 120×48; gap space-2) beside one panel slab (panel 304×200), a highlight bar (highlight 304×24) as the roller, gold 120×48 as the DEPLOY tab label field; three glyph squares 16×16 in glyph-square / glyph-triangle / glyph-cross as the hint bar.
+  arrangement: flush modular grid from x=496, the same proportions as the MISSION BRIEFING screen (tab column : panel = 1 : 2.5), bleeding off the top edge.
+  pattern: a literal motif — CRT scanlines — as FIVE horizontal hairline rules in panel-edge at a space-8 pitch across the panel slab; chosen because the site's one non-game visual is its scanline overlay, and the game's briefing text panel is the shape people remember.
+  scales: widths 120/304 = tab-w ratio; gaps space-2; rule pitch space-8; corners radius-0 everywhere (rx 0).
+-->
+<svg viewBox="0 0 960 288" width="960" height="288" aria-hidden="true">
+  <g transform="translate(496,-8)">
+    <rect class="tab" x="0" y="0" width="120" height="48"/>
+    <rect class="lit" x="0" y="56" width="120" height="48"/>
+    <rect class="tab" x="0" y="112" width="120" height="48"/>
+    <rect class="tab" x="0" y="168" width="120" height="48"/>
+    <rect class="gold" x="0" y="240" width="120" height="48"/>
+    <rect class="panel" x="136" y="0" width="304" height="200"/>
+    <rect class="hi" x="136" y="216" width="304" height="24"/>
+    <line class="rule" x1="136" y1="40" x2="440" y2="40"/>
+    <line class="rule" x1="136" y1="72" x2="440" y2="72"/>
+    <line class="rule" x1="136" y1="104" x2="440" y2="104"/>
+    <line class="rule" x1="136" y1="136" x2="440" y2="136"/>
+    <line class="rule" x1="136" y1="168" x2="440" y2="168"/>
+    <rect class="sq" x="376" y="264" width="16" height="16"/>
+    <rect class="tri" x="400" y="264" width="16" height="16"/>
+    <rect class="x" x="424" y="264" width="16" height="16"/>
+  </g>
+</svg>
+<h1 class="name">S2U<br>Briefing</h1>
+<p class="tag">The SOCOM II briefing screen, made legible for the web.</p>

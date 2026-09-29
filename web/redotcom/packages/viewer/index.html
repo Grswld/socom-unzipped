@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- No icon of its own: an empty one, so the browser does not ask for /favicon.ico (a 404 the e2e console checks would catch). -->
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>redotcom -- SOCOM Unzipped</title>
+    <meta name="theme-color" content="#000e11">
+    <!-- The s2u design system, read in place from web/shared/ds (vite.config.ts aliases /src/ds/ there, as the landing site does). -->
+    <link rel="stylesheet" href="/src/ds/index.css" />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body class="panel-collapsed">
+    <canvas id="view"></canvas>
+    <!--
+      The disc page (owner, 2026-09-29; `./src/source.ts`): the page reads the game only from the visitor's own disc image,
+      so until one is open this stands over the canvas and says so. The whole window is the drop target (`./src/ui.ts`
+      `onDisc`: the document's drag events; `body.disc-over` lights this page while a file is over it), and the button is a
+      plain file input. The image goes to the worker as a `File`, read by range as ISO9660 (`@s2u/archive`
+      `IsoAssetSource`), and is never uploaded. Hidden once a disc's map list is in (`hideDiscPage`).
+    -->
+    <main id="disc-page" class="s2u-section" hidden aria-labelledby="disc-title">
+      <div class="s2u-head">
+        <h1 id="disc-title" class="s2u-title">Open your own disc</h1>
+        <p class="s2u-kicker"><span class="s2u-blink" aria-hidden="true"></span>SOCOM II multiplayer maps</p>
+        <p class="s2u-lede">This viewer draws SOCOM II&rsquo;s multiplayer maps from the game&rsquo;s own files, and it does not host
+          them: it needs your own copy of the disc, a SOCOM II: U.S. Navy SEALs (US, SCUS-97275) disc image as an <b>.iso</b> file.</p>
+      </div>
+      <div class="s2u-card">
+        <h3>Drop the .iso anywhere on this window</h3>
+        <div class="s2u-card__body">
+          <p>Or pick it:</p>
+          <label id="disc-pick" class="s2u-tab">Choose the disc image (.iso)
+            <input type="file" id="disc-page-file" accept=".iso" /></label>
+          <p id="disc-state" class="s2u-status" role="status" aria-live="polite">waiting for a disc image</p>
+        </div>
+      </div>
+      <div class="s2u-notice">
+        <p><b>Nothing is uploaded.</b> The image is read here, in this browser, a piece at a time &mdash; only the map archives
+          under <b>RUN/</b> and the few shared files the maps need, never the whole 4&nbsp;GB &mdash; and it never leaves this
+          machine. Nothing is kept either: the next visit asks for it again.</p>
+        <p>An .iso of 2048-byte sectors, as a DVD drive or a mounted disc gives it. A raw .bin / .img of 2352-byte sectors is
+          refused by name.</p>
+      </div>
+    </main>
+    <!--
+      Site navigation, not a viewer control, so it sits outside #panel: the backtick hides the panel
+      and this stays, and it is the first thing in the top-left corner whichever way the panel is set.
+      Three tabs of one class share the end group and so one height, one padding, one gap and one icon-and-word
+      alignment: Controls (a hover / focus / click popover with the current mode's controls, `./src/ui.ts`
+      `onControlsPopover`), the cog (folds the settings panel away and back, `onPanelToggle`) and GitHub. The
+      panel starts folded (a first visit shows the map), so `aria-expanded` starts false. Real buttons, so a
+      tap, a click, Enter and Space all work; under 480px each is its icon alone (`aria-label` and `title` still
+      name it).
+    -->
+    <nav id="site-links" class="s2u-bar" aria-label="Site">
+      <a id="home" class="s2u-bar__brand" href="https://socomunzipped.com/"><span class="s2u-bar__ii">II</span><span class="s2u-bar__word">Unzipped</span></a>
+      <div class="s2u-bar__end">
+        <button id="controls-toggle" class="s2u-tab s2u-tab--nav" type="button" aria-label="controls" aria-haspopup="dialog" aria-expanded="false" aria-controls="controls" title="the controls for the mode you are in"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M7 7h10a5 5 0 0 1 5 5v2.5a2.5 2.5 0 0 1-4.3 1.7L15.5 14h-7l-2.2 2.2A2.5 2.5 0 0 1 2 14.5V12a5 5 0 0 1 5-5z"/><path d="M8 9.5v3M6.5 11h3"/><path d="M15.5 10.5h.01M17.5 12.5h.01"/></svg><span id="controls-word">Controls</span></button>
+        <button id="panel-toggle" class="s2u-tab s2u-tab--nav" type="button" aria-label="settings" aria-expanded="false" aria-controls="panel-body" title="show the settings"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M19.3 9.8L22 10.1L22 13.9L19.3 14.2L18.7 15.5L20.4 17.7L17.7 20.4L15.5 18.7L14.2 19.3L13.9 22L10.1 22L9.8 19.3L8.5 18.7L6.3 20.4L3.6 17.7L5.3 15.5L4.7 14.2L2 13.9L2 10.1L4.7 9.8L5.3 8.5L3.6 6.3L6.3 3.6L8.5 5.3L9.8 4.7L10.1 2L13.9 2L14.2 4.7L15.5 5.3L17.7 3.6L20.4 6.3L18.7 8.5Z"/><circle cx="12" cy="12" r="3"/></svg><span id="settings-word">Settings</span></button>
+        <a id="source" class="s2u-tab s2u-tab--nav" href="https://github.com/Scotho/socom-unzipped/tree/main/web" target="_blank" rel="noopener noreferrer" title="the viewer's source on GitHub" aria-label="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M 8 0 C 3.58 0 0 3.58 0 8 c 0 3.54 2.29 6.53 5.47 7.59 .4 .07 .55 -.17 .55 -.38 0 -.19 -.01 -.82 -.01 -1.49 -2.01 .37 -2.53 -.49 -2.69 -.94 -.09 -.23 -.48 -.94 -.82 -1.13 -.28 -.15 -.68 -.52 -.01 -.53 .63 -.01 1.08 .58 1.23 .82 .72 1.21 1.87 .87 2.33 .66 .07 -.52 .28 -.87 .51 -1.07 -1.78 -.2 -3.64 -.89 -3.64 -3.95 0 -.87 .31 -1.59 .82 -2.15 -.08 -.2 -.36 -1.02 .08 -2.12 0 0 .67 -.21 2.2 .82 .64 -.18 1.32 -.27 2 -.27 .68 0 1.36 .09 2 .27 1.53 -1.04 2.2 -.82 2.2 -.82 .44 1.1 .16 1.92 .08 2.12 .51 .56 .82 1.27 .82 2.15 0 3.07 -1.87 3.75 -3.65 3.95 .29 .25 .54 .73 .54 1.48 0 1.07 -.01 1.93 -.01 2.2 0 .21 .15 .46 .55 .38 A 8.013 8.013 0 0 0 16 8 c 0 -4.42 -3.58 -8 -8 -8 z"/></svg><span id="source-word">GitHub</span></a>
+      </div>
+    </nav>
+    <p id="fps" class="s2u-status s2u-status--pill" aria-live="off"><span id="fps-n">--</span><span id="fps-rest"> fps</span></p>
+    <!--
+      The controller's toast (W2.7, `./src/ui.ts` `toast`): the frame counter's pill, top centre, for a few seconds,
+      one at a time. Fixed, so showing it moves nothing; `role=status` so a screen reader hears it.
+    -->
+    <p id="toast" class="s2u-status s2u-status--pill" role="status" aria-live="polite" hidden></p>
+    <button id="fullscreen" class="s2u-fab" type="button" title="fullscreen (F)" aria-label="fullscreen"><svg viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"/></svg></button>
+    <!--
+      The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
+      rather than watching a bar it cannot see.
+    -->
+    <div id="loading" class="s2u-loading" hidden aria-live="polite">
+      <p id="loading-what" class="s2u-status">loading</p>
+      <div id="loading-bar" class="s2u-loading__bar"></div>
+    </div>
+    <!-- The settings. Folded (the first visit's state), none of it shows: the cog in #site-links is the only trace (W2.0). -->
+    <div id="panel" class="s2u-overlay is-folded" data-density="compact">
+      <div id="panel-body" class="s2u-overlay__body">
+      <p id="panel-kicker">redotcom &middot; SOCOM II multiplayer</p>
+      <!--
+        The page's mode (owner, 2026-09-29; `./src/features.ts`): the map viewer, or reCOM -- playing as a SEAL, the walk,
+        the SEAL, the rifle, the HUD, the Sound and Mouse look sections and the touch buttons (every `data-play` element).
+        The Modern / PS2 switch's markup. Switched at run time, both ways, without a reload (`PlayUi`): the disc stays
+        open. Remembered in this browser (`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that
+        (`./src/shareUrl.ts`; `redotcom` is read as `mode=play`).
+      -->
+      <div class="section" id="recom-section">
+        <p class="s2u-field__label" id="recom-label">Mode</p>
+        <div id="recom" class="s2u-tabs" role="radiogroup" aria-labelledby="recom-label">
+          <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly the free camera through the maps.">Explore<span class="s2u-tab__what">fly the maps</span></button>
+          <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play as a SEAL on the map: on foot, the rifle, the HUD, the game&rsquo;s sound.">Play<span class="s2u-tab__what">play as a SEAL</span></button>
+        </div>
+      </div>
+      <!-- Map: the picker and the player's own disc first; the status under them is one dim line (its full text is the tooltip). -->
+      <div class="row">
+        <div class="s2u-field"><label class="s2u-field__label" for="maps">Map</label><select id="maps" aria-label="map"><option value="">loading maps...</option></select></div>
+        <!--
+          The player's own disc (W1.7, milestone M5): a plain file input, and a drop anywhere on the page
+          (`./src/ui.ts`, `onDisc`). Not the File System Access API, which Safari does not offer. The image
+          is read in the browser, by range, and never leaves it.
+        -->
+        <label id="disc" class="s2u-label" title="Your own SOCOM II disc image (.iso, 2048-byte sectors). It is read here, in this browser, a piece at a time, and never uploaded.">
+          Open your own disc (.iso)
+          <input type="file" id="disc-file" accept=".iso" />
+        </label>
+      </div>
+      <p id="status" class="s2u-status">booting</p>
+      <!-- View: how the picture is drawn, and (with `?redotcom`) how the camera moves. Two segmented toggles, one markup. -->
+      <p class="s2u-field__label" id="view-label">View</p>
+      <!--
+        The one choice a visitor makes: the picture as a modern screen shows it, or as the console drew
+        it. It is the `ps2look` checkbox under Advanced, presented as a switch; the checkbox stays the
+        state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
+      -->
+      <div id="look" class="s2u-tabs" role="radiogroup" aria-label="picture">
+        <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true" title="The game&rsquo;s own 49&deg; vertical field (46&deg; on Rat&rsquo;s Nest), kept at any screen shape: the width widens with a wider screen, to 78&deg; across on 16:9 (owner, 2026-09-29).">Modern<span class="s2u-tab__what">your screen&rsquo;s shape</span></button>
+        <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false" title="The 640&times;448 frame the console drew, stretched smooth onto a 4:3 box as a television showed it (owner, 2026-09-29).">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
+      </div>
+      <!--
+        Walk mode -- behind the `redotcom` URL parameter (`./src/features.ts`): without it this switch, the body row, the ammo
+        box and the touch buttons are not rendered at all (each carries `data-play`, and `./src/main.ts` takes them out before
+        the page is wired). (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
+        the floor the engine's ground probe finds, stepping at the game's 60 Hz at motion.rdr's speeds, stopped by its
+        walls, falling off its edges. Fly or Walk, as the Modern / PS2 switch above is Modern or PS2: the same markup, and
+        the hidden `walk` checkbox stays the state everything reads (the hook, the tests). G and the pad's Start toggle
+        it and this follows (`./src/ui.ts`, `onWalkSwitch`, `setWalk`).
+      -->
+      <div id="mode" class="s2u-tabs" data-play role="radiogroup" aria-label="camera">
+        <button type="button" class="s2u-tab" data-mode="fly" aria-pressed="true" title="Fly the free camera through the map, through walls and over floors: WASD along the look, Space and Shift up and down, a double-tapped W boosts, the wheel trims the speed. G switches to walking.">Fly<span class="s2u-tab__what">free camera (G)</span></button>
+        <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="Walk on the game's own floors, seen from behind as the game's camera sees you, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched, 11 prone. The floor is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, and the step runs at the game's 60 Hz. There is no sprint on foot. G switches back to flying.">Walk<span class="s2u-tab__what">on the floors (G)</span></button>
+      </div>
+      <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
+      <!--
+        Sound (web/docs/research/81, `./src/audio`): the mix's volume and a mute, driving `gameAudio.setVolume` and `setMuted`.
+        The sound plays on the play's events, so with the play off (no `?redotcom`) the section is not rendered (`data-play`).
+        Remembered in this browser only (`./src/ui.ts`, `onSound`).
+      -->
+      <div class="section" id="sound-section" data-play>
+        <p class="s2u-field__label">Sound</p>
+        <div class="row">
+          <label class="s2u-check" title="Silences the game's sounds; the volume below is kept."><input type="checkbox" id="mute" /> <span>mute</span></label>
+          <label class="s2u-range" title="The mix's volume: 100% is the level the viewer lifts the console's mix to for a browser tab (a television's knob did the rest)."><span>volume</span>
+            <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out"></output></label>
+        </div>
+      </div>
+      <!--
+        Online (owner, 2026-09-29; `./src/online.ts`): Off, the single page; Shared, the public match server; Local, the
+        static server `npm start -w @s2u/server` runs here. In reCOM mode the page joins as a player, in the map viewer as
+        a spectator watching the match (Space the next player, V the free camera). The URL's `mp` / `server=` override it.
+        The line under it is the connection: connecting, online and the players, or unreachable and the retry. Remembered
+        in this browser (`s2u.viewer.online`).
+        The Rules (web sprint 3, classic mode): Respawn, the one timed round, or Classic, respawn off (the game's create-game
+        default: 11 rounds, first to 6). Each map and rules is its own match. The link's `rules=` overrides it; remembered
+        in this browser (`s2u.viewer.rules`).
+        The match's name (web sprint 3, W3.R12; research 91 section 13): at most 30 printable ASCII characters, the game's
+        in-game name buffer; blank takes the game's own "Player" guest default. Sent to the match on change, remembered in
+        this browser only (`s2u.mp.name`).
+      -->
+      <div class="section" id="mp-section">
+        <p class="s2u-field__label" id="online-label">Online</p>
+        <div id="online" class="s2u-tabs" role="radiogroup" aria-labelledby="online-label">
+          <button type="button" class="s2u-tab" data-online="off" aria-pressed="true" title="No server: this page alone.">Off<span class="s2u-tab__what">single</span></button>
+          <button type="button" class="s2u-tab" data-online="shared" aria-pressed="false" title="The public match server, mp.socomunzipped.com.">Shared<span class="s2u-tab__what">public server</span></button>
+          <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine: npm start -w @s2u/server, on port 8787.">Local<span class="s2u-tab__what">localhost:8787</span></button>
+        </div>
+        <p id="online-state" class="s2u-status"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
+        <p class="s2u-field__label" id="rules-label">Rules</p>
+        <div id="rules" class="s2u-tabs" role="radiogroup" aria-labelledby="rules-label">
+          <button type="button" class="s2u-tab" data-rules="respawn" aria-pressed="true" title="One timed round: respawn once the body has faded, and the side with more points wins at 00:00.">Respawn<span class="s2u-tab__what">one timed round</span></button>
+          <button type="button" class="s2u-tab" data-rules="classic" aria-pressed="false" title="Respawn off, the game's default: 11 rounds, first to 6; a round ends when a side is eliminated or the clock runs out (a draw). The dead watch their living teammates (Space) until the next round.">Classic<span class="s2u-tab__what">11 rounds, no respawn</span></button>
+        </div>
+        <div class="row">
+          <label class="s2u-range" title="Your name in the match: up to 30 characters, letters, digits and the keyboard's symbols. Blank: the game's guest name, Player and four digits."><span>name</span>
+            <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" /></label>
+        </div>
+      </div>
+      <!--
+        The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so behind `?redotcom` like the
+        rest of the play. Raw is the default (owner, 2026-09-29; the stick curve kept beside it): one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
+        in this browser only (`./src/ui.ts`, `onLookControls`).
+      -->
+      <div class="section" id="look-section" data-play>
+        <p class="s2u-field__label">Mouse look</p>
+        <div id="mouselaw" class="s2u-tabs" role="radiogroup" aria-label="mouse look">
+          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="The default (owner, 2026-09-29). Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
+          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more. Kept beside raw (owner, 2026-09-29).">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
+        </div>
+        <label class="s2u-range" title="A multiplier on the mapping: 1 is the default, 2 turns twice as far for the same movement."><span>sensitivity</span>
+          <input type="range" id="sensitivity" min="0.05" max="4" step="0.01" value="1" /><output id="sensitivity-out"></output></label>
+        <div class="checks">
+          <label class="s2u-check" title="Moving the mouse away looks down. The game's own default is not inverted."><input type="checkbox" id="invertpitch" /> <span>invert pitch</span></label>
+          <label class="s2u-check" title="One angle a count on both axes, the PC shooter's. Off is the game's: the pitch moves at 0.425 of what the same movement turns."><input type="checkbox" id="uniformpitch" /> <span>equal pitch</span></label>
+        </div>
+      </div>
+      <!-- Advanced: every diagnostic switch, folded; the long explanations are tooltips. -->
+      <details id="advanced" class="s2u-disclosure">
+        <summary>Advanced</summary>
+        <div class="checks">
+          <label class="s2u-check"><input type="checkbox" id="grid" /> <span>grid</span></label>
+          <label class="s2u-check"><input type="checkbox" id="collision" /> <span>collision</span></label>
+          <label class="s2u-check" title="The measured A and B (spheres: where the camera opens) and the disc's spawn slots from AIMAPS.MPS, 24 a side, each drawn as its cell with an arrow along its facing."><input type="checkbox" id="spawns" /> <span>spawns</span></label>
+          <label class="s2u-check"><input type="checkbox" id="wireframe" /> <span>wireframe</span></label>
+          <label class="s2u-check"><input type="checkbox" id="untextured" /> <span>untextured</span></label>
+          <label class="s2u-check" title="The GS LINE_STRIP geometry -- guy ropes, power lines, lamp brackets, light filaments -- drawn one pixel wide with the texture the packet names running along the strip, as the hardware drew them."><input type="checkbox" id="linestrips" checked /> <span>line strips</span></label>
+          <label class="s2u-check" title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> <span>graded alpha</span></label>
+          <label class="s2u-check" title="Draw in the engine's order: the map's grid traversed cell ring by cell ring outward from the camera's cell, the drop shadows in a pass after the last ring, and depth written under every blend as the console did. Recomputed when the camera crosses into another cell. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="engineorder" /> <span>engine order</span></label>
+          <label class="s2u-check" title="The drop shadows: the quads under props and the shadow patches baked onto the ground, every draw whose texture is a shadow*.tif, blended over what is under them after the world is drawn, as the engine's decal pass did."><input type="checkbox" id="shadows" checked /> <span>shadows</span></label>
+          <label class="s2u-check" title="The states a map holds but does not open in: a destructible's remains and debris (whats_left, parts), a lamp's unlit copy (nolight), the pulsing objective ribbon (terrorist_pulse), the far level-of-detail copies named by lod.rdr. The game switches them by play and by range; drawn on top of the intact, lit, near ones they z-fight, so they are hidden unless you ask."><input type="checkbox" id="alternate" /> <span>alternate states</span></label>
+          <label class="s2u-check" title="The detail texture the game lays over its ground and walls close up: each texture whose mp&lt;N&gt;_lib.rdr entry names a detail texture gets a second pass over the same surface, the detail repeated uv times as often, blended as the entry's bmode says and fading out over its range from the camera."><input type="checkbox" id="detail" checked /> <span>detail</span></label>
+          <label class="s2u-check" title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> <span>flares face camera</span></label>
+        <!--
+          W2.1: the player's body -- the map's SEAL (seal_A_scuba on Frostfire) decoded from its character library and
+          dressed as the game's character.rdr dresses it. W2.2b: in the play mode (walk) it is always shown, at the
+          mover's feet in the game's clips; this switch shows it in fly mode -- where the play left it, or in its bind
+          pose at spawn slot A until the play mode is first entered. Off by default.
+        -->
+          <span id="body-row" data-play><label class="s2u-check" title="The player's SEAL, decoded from the map's character library (CLIB_MDL, CLIB_GEO) with the gear READERC.ZAR's character.rdr hangs on it. Walking (G) it is always shown, running the game's own motion clips (RUN/MOTION_P.ZAR) as the mover walks, runs, crouches and jumps. This shows it in fly mode too: where the walk left it, or standing in its bind pose at spawn slot A, facing the slot's facing, until the walk is first entered."><input type="checkbox" id="player-body" /> <span>player body</span></label></span>
+        </div>
+        <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
+        <details id="sliders-box" class="s2u-disclosure">
+          <summary title="The PS2 draws a multiplayer map from the vertex colours the exporter baked; only the odd node flagged dynamic (a fern, a palm, a flare) takes the map's own GlobalLighting rig. The campaign then brightens the whole frame by 1 + FIX/128, twice, FIX coming from its auto-exposure; a multiplayer round switches that pass off, so the frame goes out as drawn.">lighting</summary>
+          <label class="s2u-range" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 0, the bare frame, is what a multiplayer round draws; the campaign's spawn read 89-93."><span>brighten</span>
+            <input type="range" id="brighten" min="0" max="255" step="1" value="0" /><output id="brighten-out"></output></label>
+          <div class="checks">
+            <label class="s2u-check" title="Light every node with the map's rig, whether or not the engine would. The viewer's earlier reading, kept for comparison: about five times too dark on Frostfire."><input type="checkbox" id="rigeverywhere" /> <span>rig everywhere</span></label>
+          </div>
+        </details>
+        <details id="fog-box" class="s2u-disclosure">
+          <summary title="GS FOGCOL and VU1 qwords 28/29">fog</summary>
+          <div class="row">
+            <label class="s2u-check"><input type="checkbox" id="fog" checked /> <span>fog</span></label>
+            <label class="s2u-colour">colour <input type="color" id="fogcolour" value="#646464" /></label>
+          </div>
+          <label class="s2u-range" title="F = 255 at this distance: nothing nearer is fogged."><span>near</span>
+            <input type="range" id="fognear" min="0" max="4000" step="10" value="600" /><output id="fognear-out"></output></label>
+          <label class="s2u-range" title="F = 0 at this distance: everything further is the fog colour outright."><span>far</span>
+            <input type="range" id="fogfar" min="10" max="6000" step="10" value="875" /><output id="fogfar-out"></output></label>
+        </details>
+        <details id="diagnostics-box" class="s2u-disclosure">
+          <summary><span id="diagnostics-count">0</span> diagnostics</summary>
+          <ul id="diagnostics" class="s2u-status"></ul>
+        </details>
+      </details>
+      <!-- The bottom: the notice in one short line, and About (the revision, the full notice) folded under it. -->
+      <p id="warning" class="s2u-notice s2u-notice--warn"><strong>EXPERIMENTAL</strong> &mdash; SOCOM II and its assets are the property of
+        <strong>Sony Interactive Entertainment</strong> (developed by Zipper Interactive); not affiliated or endorsed. Full notice under About.</p>
+      <details id="about" class="s2u-disclosure">
+        <summary>About <span class="s2u-label s2u-label--warn" id="revision">dev build</span></summary>
+        <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
+          textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
+          reading of the game and a reading can be wrong.</p>
+        <p><b>Known to differ:</b> blended surfaces are sorted by the browser where the engine traversed its
+          grid outward from the camera, the frame brighten is a fixed value where the game meters it, the
+          alternate states a map holds (destroyed, unlit, far LOD) are hidden rather than switched by
+          play, and there is no game &mdash; just the world.</p>
+        <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
+          <a href="https://socomunzipped.com/" target="_blank" rel="noopener noreferrer">socomunzipped.com &rarr;</a></p>
+        <p class="s2u-fine" id="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,
+        audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
+        Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
+        Entertainment.</p>
+        <p class="s2u-fine" id="revision-line">dev build</p>
+      </details>
+      </div>
+    </div>
+    <!--
+      The controls (owner, 2026-09-28; simplified 2026-09-29): a popover, not part of the panel, anchored under the Controls
+      tab in the bar. It opens on hover, on keyboard focus and on a click or tap (which pins it), and closes on Esc, on a
+      click outside it, or when the pointer or focus leaves; it never takes the focus or the pointer lock. Two tabs,
+      Controller and Mouse & Keyboard, each the current mode's actions and their buttons or keys alone
+      (`./src/controlsList.ts`; `./src/ui.ts` `renderControls`); the chosen tab is remembered, and a first visit opens on
+      Controller when a pad is connected.
+    -->
+    <div id="controls" class="s2u-overlay" data-density="compact" role="dialog" aria-label="controls" hidden>
+      <div class="s2u-overlay__body">
+        <div id="controls-tabs" class="s2u-tabs" role="tablist" aria-label="input">
+          <button id="controls-tab-pad" type="button" class="s2u-tab" role="tab" data-tab="pad" aria-selected="false" aria-controls="controls-pad">Controller</button>
+          <button id="controls-tab-keys" type="button" class="s2u-tab" role="tab" data-tab="keys" aria-selected="true" aria-controls="controls-keys">Mouse &amp; Keyboard</button>
+        </div>
+        <div id="controls-pad" role="tabpanel" aria-labelledby="controls-tab-pad" hidden>
+          <p class="s2u-fine" id="pad-status">No controller connected: press a button on it</p>
+          <table id="pad-list"><tbody></tbody></table>
+        </div>
+        <div id="controls-keys" role="tabpanel" aria-labelledby="controls-tab-keys">
+          <p class="s2u-fine" id="hint">click to look &middot; wheel speed 1.0&times;</p>
+          <table id="keys-list"><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+    <!--
+      The touch layer (`./src/touch.ts`). Hidden until `body.touch` is set, which `./src/touch.ts` does on a coarse pointer
+      or at the first touch event, and hidden again while a pad is connected (`body.pad-on`). Two floating sticks (owner,
+      2026-09-29): a finger landing on the left half moves, one landing on the right half looks (while walking; flying
+      keeps the canvas's drag), each stick born under its thumb and read through the pad's own pipeline. The buttons lie
+      above the zones, so a press on one never starts a stick.
+    -->
+    <div id="touch">
+      <div id="stick-zone"></div>
+      <div id="stick-base" hidden><div id="stick-knob"></div></div>
+      <div id="aim-zone" data-play></div>
+      <div id="aim-base" data-play hidden><div id="aim-knob"></div></div>
+      <div id="touch-lift">
+        <button id="touch-up" type="button" aria-label="up">&#9650;</button>
+        <button id="touch-down" type="button" aria-label="down">&#9660;</button>
+      </div>
+      <button id="touch-stance" type="button" data-play aria-label="stance: tap stands or crouches, hold goes prone" title="Tap: stand / crouch. Hold: prone.">C<span aria-hidden="true">hold: prone</span></button>
+      <button id="touch-fire" type="button" data-play aria-label="fire">&#9673;</button>
+      <!--
+        Walk mode's touch layout (owner, 2026-09-29: what a player needs, tidied), for a phone held in landscape, routed
+        through the same lanes the pad's buttons are (`./src/main.ts` `padFrame`, `./src/touch.ts` `attachWalkTouch`): the
+        large SHOOT (R1) and JUMP (Square) under the right thumb, the stance (Triangle) and the action (Cross: doors, climb,
+        ladders) above them, and a row under the compass with the zoom in and out, the next item (grenades, equipment) and
+        reload. It is the play's (`data-play`), shown only while walking on a touch screen; flying keeps the lift buttons.
+      -->
+      <div id="touch-walk" data-play>
+        <div id="tw-actions">
+          <button id="tw-fire" type="button" data-lane="fire" aria-label="shoot">SHOOT</button>
+          <button id="tw-jump" type="button" data-lane="jump" aria-label="jump"><svg class="s2u-hint__glyph s2u-hint__glyph--square" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 2.5h9v9h-9z"/></svg>JUMP</button>
+          <button id="tw-stance" type="button" data-lane="stance" aria-label="stance: tap crouches, hold goes prone"><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 12.5 11.5h-11z"/></svg></button>
+          <button id="tw-action" type="button" data-lane="action" aria-label="action: doors, climb, ladders"><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3 11 11M11 3 3 11"/></svg></button>
+        </div>
+        <div id="tw-scope">
+          <button id="tw-reload" type="button" data-do="reload" aria-label="reload">RELOAD</button>
+          <button id="tw-inventory" type="button" data-lane="inventory" aria-label="next item: grenades, equipment">NEXT</button>
+          <button id="tw-zoom-out" type="button" data-lane="zoomOut" aria-label="zoom out">&minus;</button>
+          <button id="tw-zoom-in" type="button" data-lane="zoom" aria-label="zoom in">+</button>
+        </div>
+      </div>
+      <p id="rotate-hint" class="s2u-status s2u-status--pill" data-play aria-live="off">Turn your phone sideways to play</p>
+    </div>
+    <!--
+      The phone's tip (owner, 2026-09-29; `./src/mobileTip.ts`, `./src/ui.ts` `showTip`): a controller and landscape
+      recommended, on a touch device, once a visit and again on a turn to portrait; the close button dismisses it for good.
+    -->
+    <div id="mobile-tip" class="s2u-notice" role="status" aria-live="polite" hidden>
+      <p id="mobile-tip-text"></p>
+      <button id="mobile-tip-close" type="button" class="s2u-iconbtn" aria-label="dismiss" title="dismiss"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

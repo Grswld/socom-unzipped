@@ -1,0 +1,18 @@
+{
+  "name": "@s2u/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The multiplayer server for redotcom's reCOM mode (web sprint 3): one timed respawn match per map",
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@s2u/archive": "*",
+    "@s2u/scene": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12"
+  }
+}

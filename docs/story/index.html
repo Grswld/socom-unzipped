@@ -134,7 +134,7 @@
     src: url('https://socomunzipped.com/fonts/saira-italic-800-latin.woff2') format('woff2');
     unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
   }
-  /* FALLBACKS: paste the output of `npm run fonts:metrics -w apps/s2u` below this line */
+  /* FALLBACKS: paste the output of `npm run fonts:metrics -w shared` below this line */
   @font-face {
     font-family: 'Oswald Fallback';
     font-weight: 400 600;
@@ -581,7 +581,7 @@
 </style>
 <style>
 /* The timeline's own styles. Everything shared with the site (the tokens, the faces, the bar, panels, labels, tabs,
-   the footer) is the s2u design system (../scotho/apps/s2u/src/ds), linked on the site and inlined in the
+   the footer) is the s2u design system (web/shared/ds), linked on the site and inlined in the
    repository's copy. These rules speak only in its --s2u-* tokens: test_story_site refuses a literal or an old
    name. The system's layers sit under this unlayered sheet, so a rule here wins every tie without !important. */
 html{scroll-padding-top:120px}
@@ -1353,7 +1353,7 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--s2u-font-label);letter-spacin
     <nav aria-label="Footer">
       <a href="https://socomunzipped.com/story.html">The story</a>
       <a href="https://socomunzipped.com/classic.html">Classic menu</a>
-      <a href="https://socomunzipped.com/map-viewer/">Map viewer (experimental)</a>
+      <a href="https://socomunzipped.com/redotcom/">redotcom (experimental)</a>
       <a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener">GitHub</a>
       <a href="https://socomunzipped.com/#report">Report a bug</a>
       <a href="https://socomunzipped.com/data.html">Your data</a>
