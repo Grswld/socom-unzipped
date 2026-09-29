@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-29 08:00Z, LATEST) -- Sprint 17, `sprint-17` at b6745191: the whole batch merged (twelve merges since the last green da29683b); the chain `s17_b4b` RED at its gate: F1 attempt 3 froze the intro (#114, KNOWN §2), so `PS2X_GS_DOUBLE_SWIZZLE` defaults to 1; `s17_b4c` RED on host load; the gate alone PASS 3/3 (FRAME 16.92/17.72, SYNCV 23.6); `s17_b4d` reruns for the record. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
-  Then: the logoff run, the stats walk for the F1 picks, the bench recording, the profile, A1, #110's quiet window, the PCSX2 boots (#112); #114 hunted in `wt-s17-f1a3-hang`.
+- **Where the loop is now (2026-09-29 11:20Z, LATEST) -- Sprint 17, `sprint-17` at 8429cab7: batch 4 PROVED by the chain `s17_b4d` (last green 881c5a18; FRAME 16.90/17.86, SYNCV 23.4; two quiet gates agree). #114 is the main thread's replay stall, not attempt 3 (KNOWN §2); `PS2X_GS_DOUBLE_SWIZZLE` stays 1 until the pick. The secrets CI red from a cloud web branch's dot-env file name: allow lines at 8429cab7. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
+  Then: the 3x3 title runs' verdict (#114), the logoff run, the stats walk for attempt 2, the bench recording, the profile, A1, #110's quiet window, the PCSX2 boots (#112).
 - **Next free ruling number: R336** (R322-R335 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
