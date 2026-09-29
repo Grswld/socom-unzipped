@@ -1,5 +1,5 @@
 import {
-  isLiquidSurface, polygonNormal, probeGround, ringCells, segmentHits, surfaceWord, SEAL_TUNING, SURFACE_SKIP, type Grid, type WorldPoly,
+  cellAt, isLiquidSurface, polygonNormal, probeGround, ringCells, segmentHits, surfaceWord, SEAL_TUNING, SURFACE_SKIP, type Grid, type WorldPoly,
 } from '@s2u/scene';
 
 /**
@@ -144,6 +144,37 @@ const MAX_SLOPE_COS = Math.cos((SEAL_TUNING.maxSlopeDeg * Math.PI) / 180);
 /** The wall a band of the body (feet + `low` .. feet + `high`) touches within `reach`, climbable ones only; the nearest. */
 export function touchClimbable(grid: Grid, x: number, y: number, z: number, reach: number, low = 1, high = 34): ClimbContact | null {
   let best: { c: ClimbContact; d: number } | null = null;
+  for (const poly of climbablesAround(grid, x, z)) {
+    const app = poly.appflags ?? 0;
+    // PERFORMANCE (web sprint 3): exact rejects before the contact -- the polygon's heights outside the band, or
+    // its footprint's box farther than `reach` (the contact lies on the footprint, so it could only be farther).
+    const b = boundsOf(poly);
+    if (b.top <= y + low || b.bottom >= y + high) continue;
+    const bx = x < b.minX ? b.minX - x : x > b.maxX ? x - b.maxX : 0, bz = z < b.minZ ? b.minZ - z : z > b.maxZ ? z - b.maxZ : 0;
+    if (bx * bx + bz * bz > reach * reach) continue;
+    const c = contactOf(poly, app, x, z);
+    if (!c) continue;
+    if (c.top <= y + low || c.bottom >= y + high) continue;
+    const d = Math.hypot(x - c.x, z - c.z);
+    if (d <= reach && (!best || d < best.d)) best = { c, d };
+  }
+  return best?.c ?? null;
+}
+
+/**
+ * The climbable polygons of the collision objects in the 3 x 3 cells round (x, z), each once, in the ring's order --
+ * what the search walks. PERFORMANCE (web sprint 3): kept per grid and per cell (the hull does not move), so a tick no
+ * longer walks every cell of the grid (`ringCells`) and every polygon of every object near it; the list and its order
+ * are the same, so the contact found is the same.
+ */
+const CLIMBABLES = new WeakMap<Grid, Map<number, WorldPoly[]>>();
+function climbablesAround(grid: Grid, x: number, z: number): WorldPoly[] {
+  let byCell = CLIMBABLES.get(grid);
+  if (!byCell) CLIMBABLES.set(grid, byCell = new Map());
+  const key = cellAt(grid, x, z).index;
+  let list = byCell.get(key);
+  if (list) return list;
+  list = [];
   const seen = new Set<WorldPoly>();
   for (const { cell } of ringCells(grid, x, z, 1, 'square')) {
     for (const atom of cell.atoms) {
@@ -153,15 +184,33 @@ export function touchClimbable(grid: Grid, x: number, y: number, z: number, reac
         seen.add(poly);
         const app = poly.appflags ?? 0;
         if (!CLIMBABLE.has(app) || (surfaceWord(poly) & SURFACE_SKIP) !== 0) continue;
-        const c = contactOf(poly, app, x, z);
-        if (!c) continue;
-        if (c.top <= y + low || c.bottom >= y + high) continue;
-        const d = Math.hypot(x - c.x, z - c.z);
-        if (d <= reach && (!best || d < best.d)) best = { c, d };
+        list.push(poly);
       }
     }
   }
-  return best?.c ?? null;
+  byCell.set(key, list);
+  return list;
+}
+
+/** A polygon's heights and footprint box, once per polygon (the hull does not move). */
+interface PolyBounds { top: number; bottom: number; minX: number; maxX: number; minZ: number; maxZ: number }
+const BOUNDS = new WeakMap<WorldPoly, PolyBounds>();
+function boundsOf(poly: WorldPoly): PolyBounds {
+  let b = BOUNDS.get(poly);
+  if (b) return b;
+  const p = poly.points;
+  b = { top: -Infinity, bottom: Infinity, minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  for (let i = 0; i < p.length; i += 3) {
+    const px = p[i]!, py = p[i + 1]!, pz = p[i + 2]!;
+    if (py > b.top) b.top = py;
+    if (py < b.bottom) b.bottom = py;
+    if (px < b.minX) b.minX = px;
+    if (px > b.maxX) b.maxX = px;
+    if (pz < b.minZ) b.minZ = pz;
+    if (pz > b.maxZ) b.maxZ = pz;
+  }
+  BOUNDS.set(poly, b);
+  return b;
 }
 
 /** A wall polygon as a contact seen from (x, z): the nearest point of its footprint, its normal to that side, its top edge. */

@@ -56,7 +56,29 @@ export interface ScoreboardInfo {
   player: string;
   /** The game's name (the viewer's: the map's) and its type (`BREACH`, `DEMOLITION`, ... `SUPPRESSION`). */
   game: string; type: string;
+  /**
+   * Every player of the round (`net`'s `ScoreRow`, plus `self`): absent is the single SEAL row above. Each team's rows are
+   * sorted by `score` descending, ties in the order given (join order), cut to 8 (research 91 §11). Ghosts and nameless
+   * players are the caller's to leave out.
+   */
+  rows?: ScoreRowInfo[];
+  /** The spectators' names, the SPECTATORS panel's lines (87 §12: up to 8). */
+  spectators?: string[];
+  /** Rounds won, the team lines' number (87 §12 [inferred], 91 §18); with `rows` only, default 0. */
+  wins?: { seal: number; terrorist: number };
 }
+
+/** One player's scoreboard row; KILLS / DEATH / SCORE are the match totals (91 §18). */
+export interface ScoreRowInfo {
+  id: number; name: string; team: 'seal' | 'terrorist'; kills: number; deaths: number; score: number; alive: boolean;
+  /** The local player: drawn in `localRgb`, as the single-row layout does. */
+  self: boolean;
+}
+
+/** The dead rows' colour factor (`0x3f19999a`, `FUN_0022a290` L79022-79024, research 91 §11). */
+export const DEAD_DIM = 0.6;
+/** The SPECTATORS names: pen (24, 270 + 16.8 i), scale 0.8, up to 8 (research 87 §12). */
+export const SPECTATOR_LINES = { x: 24, y0: 270, pitch: 16.8, max: 8 } as const;
 
 /** A detail line cut to `width` at `scale` with a trailing "-", as `FUN_0022ac30` does. */
 export function cutLine(text: string, scale: number, width: number): string {
@@ -147,9 +169,24 @@ export function scoreboardLayout(
 
   // The teams' strings: the header lines, the columns, the rows (the one SEAL).
   const rowRgba = c128(L.rowRgb, L.rowAlpha);
+  const wins = info.rows ? [info.wins?.seal ?? 0, info.wins?.terrorist ?? 0] : [0, 0];
   L.teams.forEach((t, i) => {
-    text(`${t.name} :   0`, L.title.x, t.y + L.title.dy, L.title.scale, [1, 1, 1, L.title.alpha]);
+    text(`${t.name} :   ${wins[i]}`, L.title.x, t.y + L.title.dy, L.title.scale, [1, 1, 1, L.title.alpha]);
     for (const col of L.columns) text(col.text, col.x, t.y + L.title.dy, L.title.scale, [1, 1, 1, L.title.alpha], 'centre');
+    if (info.rows) {
+      const team = i === 0 ? 'seal' : 'terrorist';
+      // Array.prototype.sort is stable: equal scores keep the given (join) order.
+      const mine = info.rows.filter((r) => r.team === team).sort((a, b) => b.score - a.score).slice(0, L.rows.max);
+      mine.forEach((r, k) => {
+        const base = t.y + L.rows.dy + L.rows.pitch * k;
+        const f = r.alive ? 1 : DEAD_DIM;
+        const [cr, cg, cb, ca] = r.self ? c128(L.localRgb, L.rowAlpha) : rowRgba;
+        const rgba: Rgba4 = [cr * f, cg * f, cb * f, ca * f];
+        text(r.name, L.rows.nameX, base, L.rows.scale, rgba);
+        [r.kills, r.deaths, r.score].forEach((n, c) => text(String(n), L.columns[c]!.x, base, L.rows.scale, rgba, 'centre'));
+      });
+      return;
+    }
     if (i !== 0) return;
     const base = t.y + L.rows.dy;
     text(info.player, L.rows.nameX, base, L.rows.scale, c128(L.localRgb, L.rowAlpha));
@@ -160,5 +197,7 @@ export function scoreboardLayout(
   const details = ['LAN game', info.game, info.type];
   details.forEach((d, i) => text(cutLine(d, C.lines.scale, C.lines.width), C.lines.x, C.lines.ys[i]!, C.lines.scale, rowRgba));
   text(C.spectators.title, C.spectators.titleAt[0], C.spectators.titleAt[1], 1, [1, 1, 1, L.title.alpha]);
+  (info.spectators ?? []).slice(0, SPECTATOR_LINES.max).forEach((n, i) =>
+    text(cutLine(n, C.lines.scale, C.lines.width), SPECTATOR_LINES.x, SPECTATOR_LINES.y0 + SPECTATOR_LINES.pitch * i, C.lines.scale, rowRgba));
   return { quads, tris };
 }

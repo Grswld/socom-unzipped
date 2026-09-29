@@ -114,6 +114,8 @@ export class Room {
   readonly wins = { seal: 0, terrorist: 0 };
   private state: RoundState;
   private readonly polys;
+  /** The rows changed (a join, a leave, a rename): one score event goes out at the next tick. */
+  private scoreDirty = false;
 
   constructor(readonly map: SimMap, readonly clips: SimClips | null, opts: Partial<RoomOptions> = {}) {
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
@@ -175,6 +177,7 @@ export class Room {
   }
 
   private broadcastChanges(changes: LobbyChange[], except?: number): void {
+    if (changes.length) this.scoreDirty = true;
     for (const c of changes) {
       if (c.kind === 'joined') {
         const m = this.lobby.member(c.id)!;
@@ -235,6 +238,7 @@ export class Room {
     for (const p of this.players.values()) this.remember(p);
     this.clock();
     this.idle(now);
+    if (this.scoreDirty) { this.scoreDirty = false; this.broadcast(this.scoreEvent()); }
     if (this.tick % Math.round(TICK_HZ / SNAPSHOT_HZ) === 0) this.snapshots();
   }
 
@@ -425,6 +429,7 @@ export class Room {
       killer.kills++; killer.score += 2; killer.roundScore += 2;
     }
     this.broadcast({ type: 'kill', killer: killer?.id ?? null, victim: victim.id, weapon, how: line, clip });
+    this.broadcast(this.scoreEvent());                         // the rows change: the scoreboard follows (research 91 §11)
   }
 
   // ---- the clock (W3.R11) ----
@@ -532,7 +537,9 @@ export class Room {
       id: p.id, name: this.lobby.member(p.id)?.name ?? '', team: p.team, kills: p.kills, deaths: p.deaths, score: p.score,
       alive: p.alive, ping: p.ping,
     }));
-    return { type: 'score', rows, timeLeft: this.timeLeft() };
+    return {
+      type: 'score', rows, timeLeft: this.timeLeft(), spectators: this.lobby.spectators().map((m) => m.name), wins: { ...this.wins },
+    };
   }
 
   // ---- the idle kick (W3.R13) ----

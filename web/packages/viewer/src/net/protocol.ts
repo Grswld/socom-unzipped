@@ -225,7 +225,7 @@ export type ServerEvent =
     /** The death clip the victim plays (`./deaths`), or null (a fall or a blast plays its own). */
     clip: string | null;
   }
-  | { type: 'score'; rows: ScoreRow[]; timeLeft: number | null }
+  | { type: 'score'; rows: ScoreRow[]; timeLeft: number | null; spectators: string[]; wins: { seal: number; terrorist: number } }
   | { type: 'chat'; text: string }
   /** W3.R13: the votes against the recipient (" Voting: You have %d votes against you.", 0x3f26c0). */
   | { type: 'votes'; count: number }

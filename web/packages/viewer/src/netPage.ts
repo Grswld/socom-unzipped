@@ -7,6 +7,7 @@ import { deathPose, type RemotePlayers } from './remotePlayers';
 import { overall } from './net/damage';
 import { RESPAWN_PROMPT_S } from './net/deaths';
 import type { PlayClips } from './play';
+import type { ScoreRowInfo } from './scoreboard';
 import type { WalkMode } from './walk';
 
 /**
@@ -20,9 +21,14 @@ export interface NetPageDeps {
   walk: WalkMode;
   remote: RemotePlayers;
   /** The HUD's message window and clock (`./hud`). */
-  hud: { postMessage(text: string, scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void };
+  hud: {
+    postMessage(text: string, scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void;
+    setScoreRows(rows: ScoreRowInfo[] | null, spectators: string[], wins?: { seal: number; terrorist: number }): void;
+  };
   /** The clips (the death clips among them), once the worker has sent them. */
   clips(): PlayClips | null;
+  /** The spectator's camera: the pose to stand the fly camera at (follow), or null to leave it free. */
+  spectate(pose: { x: number; y: number; z: number; yaw: number; pitch: number } | null): void;
   /** A round's effects and sound at a point (`Effects.onRound`, `GameAudio.onFire`). */
   roundEffects(e: Extract<FireEvent, { type: 'round' }>, muzzleOf: number): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
@@ -50,6 +56,14 @@ export function killLine(how: Extract<ServerEvent, { type: 'kill' }>['how'], kil
   return `${killer} fragged ${victim} with ${weapon ?? ''}`.trimEnd();
 }
 
+/**
+ * The queue's line in the message window. QUEUE_TEXT_PLACEHOLDER: the game has no queue (its 17th joiner is refused,
+ * research 91 section 7); the words are the viewer's, in the game's message style.
+ */
+export function queueLine(position: number): string {
+  return `SPECTATING: YOU ARE NUMBER ${position} IN LINE`;
+}
+
 export class NetPage {
   readonly client: NetClient;
   private readonly names = new Map<number, string>();
@@ -59,14 +73,28 @@ export class NetPage {
   rows: ScoreRow[] = [];
   /** The page's own death: when (ms), and whether the respawn prompt has been posted. */
   private dead: { at: number; prompted: boolean } | null = null;
+  /**
+   * The spectator's view (research 91 section 12: `FUN_00295260`'s modes 0 follow a player, 1 free, 2 the map's scenic
+   * views). SPECTATOR_PAD_PLACEHOLDER: the game's buttons for them are not traced; here Space follows the next living
+   * player and V switches between following and the free (fly) camera. The scenic views are not drawn.
+   */
+  private spectating: { follow: boolean; target: number | null } = { follow: true, target: null };
+  private readonly onKey = (e: KeyboardEvent): void => {
+    if (this.client.role !== 'spectator' || e.repeat) return;
+    if (e.code === 'Space') { this.nextTarget(); e.preventDefault(); }
+    else if (e.code === 'KeyV') { this.spectating.follow = !this.spectating.follow; if (!this.spectating.follow) this.deps.spectate(null); }
+  };
   private readonly unsubscribe: () => void;
 
   constructor(private readonly deps: NetPageDeps, url: string, map: string, name: string, simulate?: Simulate) {
     this.client = new NetClient({ url, map, name, ...(simulate ? { simulate } : {}) }, deps.walk);
     this.unsubscribe = this.client.on((ev) => this.event(ev));
+    globalThis.addEventListener?.('keydown', this.onKey);
   }
 
   close(): void {
+    this.deps.hud.setScoreRows(null, []);
+    globalThis.removeEventListener?.('keydown', this.onKey);
     this.unsubscribe();
     this.client.close();
     this.deps.remote.clear();
@@ -88,6 +116,7 @@ export class NetPage {
   frame(dt: number, camera: PerspectiveCamera, trigger: boolean): void {
     this.deps.walk.setTrigger(trigger);
     this.deps.remote.frame(dt, this.client.bodies(), camera);
+    if (this.client.role === 'spectator' && this.spectating.follow) this.follow();
     if (this.endsAt !== null) this.deps.hud.setTimer(Math.max(0, (this.endsAt - performance.now()) / 1000));
     // Research 91 section 4.1: "Press the %c button to respawn." from 5 s dead (the press counts once the body faded).
     if (this.dead && !this.dead.prompted && performance.now() - this.dead.at >= RESPAWN_PROMPT_S * 1000) {
@@ -96,8 +125,35 @@ export class NetPage {
     }
   }
 
+  /** The next living player to follow, in id order, wrapping. */
+  private nextTarget(): void {
+    const alive = this.client.bodies().filter((b) => (b.flags & 64) !== 0).map((b) => b.id).sort((a, b) => a - b);
+    if (!alive.length) { this.spectating.target = null; return; }
+    const at = this.spectating.target === null ? -1 : alive.indexOf(this.spectating.target);
+    this.spectating.target = alive[(at + 1) % alive.length]!;
+    this.spectating.follow = true;
+  }
+
+  /**
+   * The follow camera: behind the followed body and over it at the game's third-person distances at rest
+   * (`./playerCamera`: 24.906 behind, 25.709 up at the spawn pitch), looking where it looks.
+   */
+  private follow(): void {
+    let body = this.client.bodies().find((b) => b.id === this.spectating.target && (b.flags & 64) !== 0);
+    if (!body) { this.nextTarget(); body = this.client.bodies().find((b) => b.id === this.spectating.target); }
+    if (!body) return;
+    const y = (body.yaw * Math.PI) / 180;
+    const back = 24.906, up = 25.709;
+    this.deps.spectate({ x: body.feet[0] + Math.sin(y) * back, y: body.feet[1] + up, z: body.feet[2] + Math.cos(y) * back, yaw: body.yaw, pitch: -9.167 });
+  }
+
   nameOf(id: number): string {
     return this.names.get(id) ?? `Player${id}`;
+  }
+
+  private spectatorWelcome(position: number): void {
+    this.deps.walk.setMode('fly');
+    this.deps.hud.postMessage(queueLine(position));
   }
 
   private event(ev: ServerEvent): void {
@@ -105,6 +161,7 @@ export class NetPage {
     switch (ev.type) {
       case 'welcome':
         this.names.set(ev.id, ev.name);
+        if (ev.role === 'spectator') this.spectatorWelcome(ev.queue);
         for (const p of ev.players) { this.names.set(p.id, p.name); this.teams.set(p.id, p.team); remote.setTeam(p.id, p.team); }
         break;
       case 'joined': this.names.set(ev.id, ev.name); this.teams.set(ev.id, ev.team); remote.setTeam(ev.id, ev.team); break;
@@ -136,8 +193,11 @@ export class NetPage {
       case 'roundOver': this.endsAt = null; break;
       case 'score':
         this.rows = ev.rows;
+        hud.setScoreRows(ev.rows.map((r) => ({ ...r, self: r.id === this.client.id })), ev.spectators, ev.wins);
         if (ev.timeLeft !== null) this.endsAt = performance.now() + ev.timeLeft * 1000;
         break;
+      case 'queue': if (ev.position > 0) hud.postMessage(queueLine(ev.position)); break;
+      case 'promoted': this.deps.spectate(null); hud.postMessage('YOU ARE IN: A PLACE IS FREE'); break;
       case 'refused': hud.postMessage(ev.reason); break;
       case 'kicked': hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
       default: break;

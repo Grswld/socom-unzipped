@@ -9,7 +9,7 @@ import { segmentHit, type Grid } from '@s2u/scene';
 import type { HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
-import { DEFAULT_PLAYER, scoreboardLayout } from './scoreboard';
+import { DEFAULT_PLAYER, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
 
 /**
  * The in-game HUD (web/docs/research/87-hud.md): SOCOM II's own multiplayer HUD drawn over the world in walk mode --
@@ -299,6 +299,8 @@ export interface HudModel {
   scoreboard: boolean;
   /** The game the scoreboard's details name: the viewer's is the map, and the map's game type. */
   game: { name: string; type: string };
+  /** Every player's row, the spectators and the rounds won (`setScoreRows`); null rows are the single-SEAL layout. */
+  scoreRows: { rows: ScoreRowInfo[] | null; spectators: string[]; wins?: { seal: number; terrorist: number } };
   /** The spawn's fade from black, 0..1 (1 is black). */
   fader: number;
   zoom: number;
@@ -307,7 +309,8 @@ export interface HudModel {
 export const DEFAULT_MODEL: HudModel = {
   rounds: 30, capacity: 30, spare: 2, reloading: false, fireMode: 'burst', weaponIcon: 'm4carbine_icon.tif',
   yaw: 0, action: null, actionColour: 'blue', stance: 'stand', name: '', health: 1, timer: 6 * 60, range: null,
-  message: null, banner: [], fader: 0, navPoints: [], position: null, scoreboard: false, game: { name: '', type: '' }, zoom: 1,
+  message: null, banner: [], fader: 0, navPoints: [], position: null, scoreboard: false, game: { name: '', type: '' },
+  scoreRows: { rows: null, spectators: [] }, zoom: 1,
 };
 
 /** The HUD's time-varying alphas, 0..1: the spawn fade, the stance word, the action pulse. */
@@ -684,6 +687,10 @@ export class Hud {
   setScoreboard(held: boolean): void { this.model.scoreboard = held; }
   /** The game the scoreboard names: the viewer's map, and its game type (`./mapOrder`'s `mode`). */
   setGame(name: string, type: string): void { this.model.game = { name, type: type.toUpperCase() }; }
+  /** The round's players for the scoreboard (`net`'s rows with `self`), the spectators' names and the rounds won; null rows: the single SEAL. */
+  setScoreRows(rows: ScoreRowInfo[] | null, spectators: string[], wins?: { seal: number; terrorist: number }): void {
+    this.model.scoreRows = { rows, spectators, wins };
+  }
   setPlayerName(name: string): void { this.model.name = name; }
   setHealth(health: number): void { this.model.health = health; }
   setTimer(seconds: number): void { this.model.timer = seconds; }
@@ -831,7 +838,8 @@ export class Hud {
 
   /** The scoreboard's quads and shapes on the last frame's size. */
   private board(): ReturnType<typeof scoreboardLayout> {
-    return scoreboardLayout(this.frame, { player: this.model.name || DEFAULT_PLAYER, game: this.model.game.name, type: this.model.game.type }, this.sizes());
+    return scoreboardLayout(this.frame, { player: this.model.name || DEFAULT_PLAYER, game: this.model.game.name, type: this.model.game.type,
+      ...(this.model.scoreRows.rows ? { rows: this.model.scoreRows.rows, spectators: this.model.scoreRows.spectators, wins: this.model.scoreRows.wins } : {}) }, this.sizes());
   }
 
   /** Each bitmap's texel size, for the layouts. */

@@ -1080,6 +1080,7 @@ function show(map: LoadedMap): void {
     net?.close();
     net = new NetPage({
       walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+      spectate: (pose) => { if (pose) fly.setPose(pose); },
       roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
     }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate);
   }

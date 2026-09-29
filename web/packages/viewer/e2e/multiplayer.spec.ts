@@ -15,7 +15,8 @@ import type {} from '../src/hook';
 const WEB = fileURLToPath(new URL('../../..', import.meta.url));
 const FIXTURES = join(WEB, 'test-fixtures');
 const SCREENS = join(FIXTURES, 'screens', 'multiplayer');
-const MP_PORT = Number(process.env['MP_PORT'] ?? 8791);
+/** The match server's port: any free one (the server logs it), so an orphan from an earlier run cannot collide. */
+let MP_PORT = 0;
 const HAVE = existsSync(join(FIXTURES, 'RUN', 'MP2.ZDB'));
 
 let server: ChildProcess | null = null;
@@ -23,11 +24,18 @@ let server: ChildProcess | null = null;
 test.beforeAll(async () => {
   if (!HAVE) return;
   server = spawn('npx', ['tsx', 'packages/server/src/main.ts'], {
-    cwd: WEB, env: { ...process.env, SOCOM_DISC: FIXTURES, PORT: String(MP_PORT), HOST: '127.0.0.1', MAPS: 'MP2' }, stdio: 'pipe',
+    cwd: WEB, env: { ...process.env, SOCOM_DISC: FIXTURES, PORT: '0', HOST: '127.0.0.1', MAPS: 'MP2' }, stdio: 'pipe',
   });
   await new Promise<void>((ok, fail) => {
     const timer = setTimeout(() => fail(new Error('the match server did not start')), 60_000);
-    server!.stdout!.on('data', (d: Buffer) => { if (d.toString().includes('"listening"')) { clearTimeout(timer); ok(); } });
+    server!.stdout!.on('data', (d: Buffer) => {
+      for (const line of d.toString().split('\n')) {
+        if (!line.includes('"listening"')) continue;
+        MP_PORT = (JSON.parse(line) as { port: number }).port;
+        clearTimeout(timer);
+        ok();
+      }
+    });
     server!.on('exit', (code) => fail(new Error(`the match server exited ${code}`)));
   });
 });
