@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Zar, parseRdr, rdrGet, type RdrNode } from '@s2u/archive';
 import {
-  BULLET_MARK, DEFAULT_RIFLE, HELD_RIFLE, UNITS_PER_METRE, decalEntry, defaultPrimary, kitPrimaries, readBulletMark,
+  BULLET_MARK, DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM, UNITS_PER_METRE, kitWeapons, decalEntry, defaultPrimary, kitPrimaries, readBulletMark,
   readDefaultRifle, readWeapon, weaponRecord,
   type DecalEntry, type WeaponRecord,
 } from '../src/weapons';
@@ -158,6 +158,14 @@ describe.skipIf(!ZWEAPON || !READERC)('the default rifle off the game\'s ZWEAPON
     expect(readDefaultRifle(bytes(ZWEAPON!), bytes(READERC!))).toEqual(DEFAULT_RIFLE);
     expect(readWeapon(bytes(ZWEAPON!), 'M4A1 SD')).toEqual(HELD_RIFLE);
     expect(readBulletMark(bytes(READERC!), DEFAULT_RIFLE.decalSet)).toEqual(BULLET_MARK);
+  });
+
+  it('is the transcription: HELD_SIDEARM is the file Mark 23, the second weapon of the mp_seal1 kit', () => {
+    expect(readWeapon(bytes(ZWEAPON!), 'Mark 23')).toEqual(HELD_SIDEARM);
+    const zar = Zar.parse(bytes(READERC!));
+    const character = parseRdr(zar.data(zar.root.children.find((k) => k.name === 'character.rdr')!));
+    expect(kitWeapons(character)).toEqual(['M4A1', 'Mark 23', 'M67', 'HE', 'Double Ammo Load']);
+    expect(kitWeapons(character, 'mp2_seal1')[1]).toBe(HELD_SIDEARM.name);
   });
 
   it('is the transcription: HELD_RIFLE is the file M4A1 SD, the rifle the SEAL holds', () => {

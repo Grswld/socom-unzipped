@@ -27,11 +27,12 @@ function open(stem: string): WeaponLibrary {
 const MP2 = fixture('RUN/MP2.ZDB'), MP6 = fixture('RUN/MP6.ZDB'), MP72 = fixture('RUN/MP72.ZDB');
 
 describe('the weapon library: WEAP_GEO + WEAP_MDL', () => {
-  it.skipIf(!MP2)('holds 59 weapons on Frostfire, the M4A1 SD and the M9 among them (W2.R4)', () => {
+  it.skipIf(!MP2)('holds 59 weapons on Frostfire, the M4A1 SD and the kit\'s Mark 23 among them (W2.R4)', () => {
     const names = open('MP2').names();
     expect(names).toHaveLength(59);
     expect(DEFAULT_WEAPON).toBe('m4Acarbine_sd');
-    expect(DEFAULT_SIDEARM).toBe('baretta_m9');
+    expect(DEFAULT_SIDEARM).toBe('a_mark23');
+    expect(names).toContain('baretta_m9');
     expect(names).toContain(DEFAULT_WEAPON);
     expect(names).toContain(DEFAULT_SIDEARM);
   });
@@ -95,12 +96,22 @@ describe('the weapon library: WEAP_GEO + WEAP_MDL', () => {
   });
 
   it.skipIf(!MP2)('names the M9\'s: its muzzle 1.40 ahead of the grip, its sight point 5.60 behind it', () => {
-    const w = open('MP2').decode(DEFAULT_SIDEARM, 'high');
+    const w = open('MP2').decode('baretta_m9', 'high');
     expect(w.parts.map((p) => p.node)).toEqual(['sig226_high']);
     expect([w.vertices, w.triangles]).toEqual([133, 86]);
     const at = Object.fromEntries(w.points.map((p) => [p.name, p.at.map((v) => Number(v.toFixed(4)) + 0)]));
     expect(at.firepoint).toEqual([1.3959, 0.5831, 0]);
     expect(at.aimpoint).toEqual([-5.6041, 0.5831, 0]);
+  });
+
+  it.skipIf(!MP2)('names the Mark 23\'s (the kit\'s sidearm): its muzzle 1.47 ahead of the grip, its sight 5.53 behind', () => {
+    const w = open('MP2').decode(DEFAULT_SIDEARM, 'high');
+    expect(w.parts.map((p) => p.node)).toEqual(['mark23_high']);
+    expect([w.vertices, w.triangles]).toEqual([129, 78]);
+    expect(w.textures).toEqual(['mark03.tif', 'mark23.tif']);
+    const at = Object.fromEntries(w.points.map((p) => [p.name, p.at.map((v) => Number(v.toFixed(4)) + 0)]));
+    expect(at.firepoint).toEqual([1.4723, 0.5647, -0.0044]);
+    expect(at.aimpoint).toEqual([-5.5277, 0.5647, -0.0044]);
   });
 
   it.skipIf(!MP6 || !MP72)('is the same model on MP72 and a repacked one on MP6: same triangles, fewer vertices', () => {

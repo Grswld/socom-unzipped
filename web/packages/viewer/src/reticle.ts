@@ -58,6 +58,44 @@ export const CONSOLE_RETICLE = {
 
 /** The PS2 frame's height: the HUD's pixel is one 448th of the frame's height (`./renderer`'s `PS2_FRAME`). */
 const PS2_HEIGHT = 448;
+
+/**
+ * WEAPON: the accuracy pip (`ret_accuracy.tif`, `hud+0x1f0`), the mark of a **blocked muzzle** (research 84 §9).
+ * `FUN_005aa6e0` (decomp 464290-464350), while the rifle's raise envelope is not 0 and it is up or coming down
+ * (`FUN_005e0010`, state `0x12`), casts from the fire point to the aim point (`FUN_005b6240`); where that ray meets
+ * something (and, after a round, not within 0.008 of where the round went) it projects the hit to the screen
+ * (`FUN_00290370`) and keeps the offset from the reticle's centre at body `+0xe44`/`+0xe48`, setting kit `+0x5e0` bit 3;
+ * otherwise it clears the bit. `BitmapReticule_UpdateAccuracy` (`FUN_00215250`, 69706-69770) then, each frame:
+ *
+ * - **hides it** (fading its alpha 32 a frame to 0) when the bit is clear, or when both offsets are at most the drawn
+ *   size (`hud+0x44b4`, halved in third person) -- a signed test, so a hit up or to the left of the centre inside the
+ *   other axis's size does not show it [the game's own quirk, ported];
+ * - **else shows it** at the centre plus the offsets less half its bitmap, raising its alpha 32 a frame while under 128,
+ *   the offsets pulled in to 200.032 pixels only while scoped (`FUN_005b9990`: state > 4).
+ */
+export const PIP_FADE = 32;
+/** The pip's full alpha, PS2's 128 (opaque). */
+export const PIP_FULL = 128;
+/** The scoped clamp on the pip's offset, PS2 pixels (`FUN_00215250`: 40012.8 = 200.032²). */
+export const PIP_SCOPED_REACH = 200.032;
+
+export interface PipState { alpha: number; offset: [number, number] | null }
+
+/**
+ * One frame of the pip (`FUN_00215250`): `offset` the blocked muzzle's hit from the reticle's centre (PS2 pixels, y
+ * down) or null for none, `size` the drawn size (already halved in third person), `scoped` the view state over 4.
+ * Returns the new alpha (0..128) and where it is drawn (null: not drawn).
+ */
+export function stepPip(prev: PipState, offset: [number, number] | null, size: number, scoped: boolean): PipState {
+  if (!offset || (offset[0] <= size && offset[1] <= size)) {
+    const alpha = Math.max(0, prev.alpha - PIP_FADE);
+    return { alpha, offset: alpha > 0 ? prev.offset : null };
+  }
+  let [x, y] = offset;
+  const r2 = x * x + y * y;
+  if (scoped && r2 > PIP_SCOPED_REACH * PIP_SCOPED_REACH) { const k = PIP_SCOPED_REACH / Math.sqrt(r2); x *= k; y *= k; }
+  return { alpha: prev.alpha < PIP_FULL ? Math.min(PIP_FULL, prev.alpha + PIP_FADE) : prev.alpha, offset: [x, y] };
+}
 /** `ret_rifle_01` and `ret_rifle_02`'s own sizes, drawn one texel to one PS2 pixel. */
 const FIXED = 64, ARM = 32;
 /** Where the arm's core lies across its bitmap: texel column 30, whose centre is 30.5 texels in. */
@@ -248,6 +286,12 @@ export class Reticle {
   private on = false;
   private frame = { width: 0, height: 0 };
   private readonly size = new Vector2();
+  /** WEAPON: the accuracy pip (`stepPip`), its mesh and material, and the frames it has faded over. */
+  private pip: PipState = { alpha: 0, offset: null };
+  private pipMesh: Mesh | null = null;
+  private pipMaterial: MeshBasicMaterial | null = null;
+  private pipSize: [number, number] = [16, 16];
+  private pipClock = 0;
 
   /** The bitmaps of the map just loaded, or none (the reticle then draws nothing). */
   setBitmaps(bitmaps: ReticleBitmaps | null | undefined): void {
@@ -268,6 +312,13 @@ export class Reticle {
     this.armMaterial = floating;
     this.fixedMaterial = fixed;
     this.sets = bitmaps.sets ?? {};
+    if (bitmaps.accuracy) {
+      const pip = make(bitmaps.accuracy, null);
+      pip.opacity = 0;
+      this.pipMaterial = pip;
+      this.pipSize = [bitmaps.accuracy.width, bitmaps.accuracy.height];
+      this.pipMesh = this.addMesh(pip, 3);
+    }
     this.set = 1;
     this.sizes = { fixed: bitmaps.fixed.width, arm: bitmaps.floating.width };
     this.add('fixed', fixed);
@@ -336,6 +387,23 @@ export class Reticle {
   /** The night vision's goggles on or off (view state 3; `ChangeReticule`'s `+0x4100`). */
   setNight(on: boolean): void { this.night = on; }
 
+  /**
+   * WEAPON: one frame of the accuracy pip (`stepPip`): the blocked muzzle's hit as an offset from the reticle's centre
+   * (PS2 pixels, y down) or null, and whether the view is scoped. The fade runs at the game's 60 frames a second.
+   */
+  setPip(offset: [number, number] | null, scoped: boolean, dt = 1 / 60): void {
+    this.pipClock += dt;
+    while (this.pipClock >= 1 / 60 - 1e-9) {
+      this.pipClock -= 1 / 60;
+      this.pip = stepPip(this.pip, offset, this.drawSize, scoped);
+    }
+    // Between two of the game's frames a shown pip rides the latest offset.
+    if (this.pip.offset && offset) {
+      const now = stepPip({ alpha: PIP_FULL, offset: null }, offset, this.drawSize, scoped).offset;
+      if (now) this.pip = { alpha: this.pip.alpha, offset: now };
+    }
+  }
+
   /** The rifle's reticle, or the scope's overlay (view state 5 and up). */
   setMode(mode: 'reticle' | 'scope'): void { this.mode = mode; }
 
@@ -349,10 +417,14 @@ export class Reticle {
   state(): {
     visible: boolean; rect: Rect | null; frame: { width: number; height: number };
     mode: 'reticle' | 'scope'; size: number; offset: [number, number]; colour: ReticleColour;
+    type: number; pip: { alpha: number; offset: [number, number] | null };
   } {
     const visible = this.on && this.meshes.length > 0 && this.frame.height > 0;
     const rect = visible && this.mode === 'reticle' ? reticleLayout(this.frame, this.aim, this.drawSize, this.offset, this.sizes).rect : null;
-    return { visible, rect, frame: { ...this.frame }, mode: this.mode, size: this.drawSize, offset: [...this.offset], colour: this.colour };
+    return {
+      visible, rect, frame: { ...this.frame }, mode: this.mode, size: this.drawSize, offset: [...this.offset], colour: this.colour,
+      type: this.set, pip: { alpha: this.pip.alpha, offset: this.pip.offset ? [...this.pip.offset] : null },
+    };
   }
 
   /** Draws the HUD over whatever the renderer last drew: nothing is cleared. */
@@ -374,6 +446,18 @@ export class Reticle {
       mesh.position.set(q.x, q.y, 0);
       mesh.scale.set(q.width, q.height, 1);
       mesh.rotation.z = (q.turns * Math.PI) / 2;   // +z turns clockwise on a y-down screen
+    }
+    // The pip: at the reticle's centre plus its offset, its alpha the PS2's over 128 (`stepPip`).
+    if (this.pipMesh && this.pipMaterial) {
+      const p = this.pip.offset;
+      const layout = reticleLayout(this.frame, this.aim, this.drawSize, this.offset, this.sizes);
+      this.pipMesh.visible = !!p && this.pip.alpha > 0;
+      if (p) {
+        const s = layout.scale;
+        this.pipMesh.position.set(layout.centre[0] + p[0] * s, layout.centre[1] + p[1] * s, 0);
+        this.pipMesh.scale.set(this.pipSize[0] * s, this.pipSize[1] * s, 1);
+        this.pipMaterial.opacity = Math.min(1, this.pip.alpha / PIP_FULL);
+      }
     }
     const scope = scopeLayout(this.frame);
     this.scopeMeshes.forEach((mesh, i) => {
@@ -419,9 +503,12 @@ export class Reticle {
     for (const mesh of [...this.scopeMeshes, ...this.bars, ...this.nightMeshes]) this.scene.remove(mesh);
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
+    if (this.pipMesh) this.scene.remove(this.pipMesh);
     this.meshes = []; this.scopeMeshes = []; this.bars = []; this.nightMeshes = []; this.materials = []; this.textures = [];
     this.armMaterial = null;
     this.fixedMaterial = null;
     this.setTextures.clear();
+    this.pipMesh = null; this.pipMaterial = null;
+    this.pip = { alpha: 0, offset: null };
   }
 }
