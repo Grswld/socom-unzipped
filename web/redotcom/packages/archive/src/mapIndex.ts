@@ -64,20 +64,39 @@ export function parseServedIndex(json: unknown): ServedIndex {
  * costs its header, its table of contents and its `READERM.ZAR` -- tens of kilobytes -- so it is a page
  * load. Over any other source each archive is read whole, 224 MB over the 22: a node-side or build-time
  * call, which is how `tools/extract-maps.ts` writes `public/maps/index.json` for `HttpAssetSource.maps()`.
+ *
+ * One archive that will not name itself (a bad TOC, no READERM.ZAR, no `mission.rdr` or no description in it)
+ * costs its own name, not the listing: it is still offered under its archive id -- as `parseServedIndex` names
+ * a bare path -- so its load can say what is wrong part by part, and the reason goes to `onProblem` (PL-11;
+ * the contract a map's own load keeps: each failure a diagnostic, the rest still draws). A caller that must
+ * not ship a partial index (`tools/extract-maps.ts`) throws from `onProblem`.
  */
-export async function listMaps(source: AssetSource): Promise<MapInfo[]> {
+export async function listMaps(source: AssetSource, onProblem?: (path: string, message: string) => void): Promise<MapInfo[]> {
   const paths = (await source.list()).filter((p) => MAP_ARCHIVE.test(p));
   const out: MapInfo[] = [];
   for (const path of paths) {
-    // 36 §6: the scripts are the root children of READERM.ZAR, named with their .rdr suffix.
-    const readerm = isRanged(source) ? await readermByRange(source, path) : readermOf(await source.read(path));
-    const mission = readerm.root.children.find((k) => k.name.toLowerCase() === 'mission.rdr');
-    if (!mission) throw new Error(`${path}: READERM.ZAR has no mission.rdr`);
-    const name = rdrGet(parseRdr(readerm.data(mission)), 'description');
-    if (typeof name !== 'string') throw new Error(`${path}: mission.rdr has no description`);
-    out.push({ archive: mapArchiveId(path)!, path, name });
+    const archive = mapArchiveId(path)!;
+    let name: string;
+    try {
+      name = await mapName(source, path);
+    } catch (e) {
+      onProblem?.(path, e instanceof Error ? e.message : String(e));
+      name = archive;
+    }
+    out.push({ archive, path, name });
   }
   return out.sort((a, b) => Number(a.archive.slice(2)) - Number(b.archive.slice(2)));
+}
+
+/** The name one map archive gives itself: `mission.rdr`'s description. */
+async function mapName(source: AssetSource, path: string): Promise<string> {
+  // 36 §6: the scripts are the root children of READERM.ZAR, named with their .rdr suffix.
+  const readerm = isRanged(source) ? await readermByRange(source, path) : readermOf(await source.read(path));
+  const mission = readerm.root.children.find((k) => k.name.toLowerCase() === 'mission.rdr');
+  if (!mission) throw new Error(`${path}: READERM.ZAR has no mission.rdr`);
+  const name = rdrGet(parseRdr(readerm.data(mission)), 'description');
+  if (typeof name !== 'string') throw new Error(`${path}: mission.rdr has no description`);
+  return name;
 }
 
 /** `READERM.ZAR` out of a whole archive. */

@@ -90,9 +90,10 @@ const sectors = (bytes: number): number => Math.ceil(bytes / SECTOR);
 
 /**
  * An ISO9660 image holding `members`, each at its forward-slash path (`RUN/MP2.ZDB`). Directories are
- * made as the paths need them, to any depth.
+ * made as the paths need them, to any depth. `trailingSectors` zero sectors end the volume (they count in
+ * its space size).
  */
-export function buildIso(members: IsoMember[], volumeId = 'S2U_TEST'): Uint8Array<ArrayBuffer> {
+export function buildIso(members: IsoMember[], volumeId = 'S2U_TEST', trailingSectors = 0): Uint8Array<ArrayBuffer> {
   const root: Dir = { name: '', parent: null, dirs: new Map(), files: new Map(), number: 1, lbn: 0, size: 0 };
   for (const { path, bytes } of members) {
     const parts = path.toUpperCase().split('/').filter((p) => p.length > 0);
@@ -152,7 +153,8 @@ export function buildIso(members: IsoMember[], volumeId = 'S2U_TEST'): Uint8Arra
       next += sectors(bytes.length);
     }
   }
-  const total = next;
+  // Zero sectors inside the volume after the last file: `buildDualLayerIso` lays layer 1's system area there.
+  const total = next + trailingSectors;
 
   const out = new Uint8Array(total * SECTOR);
   const view = new DataView(out.buffer);
@@ -213,4 +215,23 @@ export function buildIso(members: IsoMember[], volumeId = 'S2U_TEST'): Uint8Arra
 function compareIds(a: Uint8Array, b: Uint8Array): number {
   for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
   return a.length - b.length;
+}
+
+/**
+ * A whole dump of a dual-layer PS2 DVD: layer 0's volume, then layer 1's, as PCSX2 and Open PS2 Loader read
+ * one. Layer 1's volume starts 16 sectors before the end of layer 0's space size, so its PVD (its own sector
+ * 16) sits exactly at the sector that space size names (PCSX2 `CDVDisoReader.cpp` `FindLayer1Start`; OPL
+ * `src/bdmsupport.c` `layer1_start -= 16`), and every LBN in layer 1 counts from its start
+ * (OPL `modules/iopcore/cdvdman/searchfile.c`: `layer1_start + fileLBA`). Layer 0 ends in 16 zero sectors,
+ * which are layer 1's empty system area: the two overlap there and nowhere else. Returns the image and
+ * layer 1's first sector.
+ */
+export function buildDualLayerIso(layer0: IsoMember[], layer1: IsoMember[]): { iso: Uint8Array<ArrayBuffer>; layer1Start: number } {
+  const first = buildIso(layer0, 'S2U_L0', 16);
+  const second = buildIso(layer1, 'S2U_L1');
+  const layer1Start = first.length / SECTOR - 16;
+  const out = new Uint8Array(layer1Start * SECTOR + second.length);
+  out.set(first.subarray(0, layer1Start * SECTOR));
+  out.set(second, layer1Start * SECTOR);
+  return { iso: out, layer1Start };
 }

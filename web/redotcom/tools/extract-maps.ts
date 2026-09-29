@@ -36,7 +36,8 @@ for (const f of ['MP2.ZDB', 'MP6.ZDB', 'MP72.ZDB']) copyFileSync(join(run, f), j
 // tuning, the weapon table and the motion packs the fixture-backed tests read beside the three maps.
 for (const path of COMMON_ARCHIVES) copyInto(join(disc, path), join(web, 'test-fixtures', path));
 
-const maps = await listMaps(new FsAssetSource(publicMaps));
+// A served index must name every map: an archive that will not name itself stops the extract (PL-11).
+const maps = await listMaps(new FsAssetSource(publicMaps), (path, message) => { throw new Error(`${path}: ${message}`); });
 writeFileSync(join(publicMaps, 'index.json'), JSON.stringify(servedIndex(maps), null, 2));
 console.log(`copied ${mp.length} archives and ${COMMON_ARCHIVES.join(', ')} to public/maps, 3 fixtures`);
 console.log(`indexed ${maps.length} maps: ${maps.map((m) => `${m.name} (${m.archive})`).join(', ')}`);

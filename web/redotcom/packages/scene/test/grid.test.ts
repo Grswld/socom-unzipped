@@ -4,7 +4,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   buildGrid, cellAt, cellByCoord, cellsCovering, chopF32, collisionOwners, collisionRuns, decodeGridParams, footprintDistance,
   parseClutter, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, placeInstances, placementCells, planeHeightAt, ringCells,
-  transformPoint, traverse, worldCollision, worldFootprint, DEFAULT_GRID_PARAMS, IDENTITY,
+  transformPoint, traverse, worldCollision, worldFootprint, DEFAULT_GRID_PARAMS, GRID_CELLS_MAX, IDENTITY,
   type Grid, type GridAtom, type GridParams, type PlacedModel, type SceneNode, type WorldPoly,
 } from '../src/index';
 
@@ -94,6 +94,19 @@ describe('grid_params (tag_GRID_PARAMS, zNode/znode.h:109-120)', () => {
     expect(parseGridParams(zarOf(new Uint8Array(12)))).toEqual(DEFAULT_GRID_PARAMS);
     expect([DEFAULT_GRID_PARAMS.cellDim, DEFAULT_GRID_PARAMS.cellsX, DEFAULT_GRID_PARAMS.cellsZ]).toEqual([640, 8, 8]);
     expect(parseGridParams(zarOf(block(8192, 16, 160, 8, 9))).cellsZ).toBe(9);
+  });
+
+  // PL-11: a crafted grid_params of 46,341 x 46,341 cells (2.1e9) would have buildGrid allocate a cell each in
+  // the worker and twice on the page. GRID_CELLS_MAX is a hardening ceiling, not a game value: reCOM's
+  // CGrid::Create takes any count (grid_main.cpp:82-142); every disc map is at most 36 x 25 = 900 cells.
+  it('refuses a grid above GRID_CELLS_MAX by name rather than building it or falling back to 8 x 8', () => {
+    expect(GRID_CELLS_MAX).toBe(65536);
+    expect(decodeGridParams(block(8192, 16, 100, 46341, 46341))).toBe(null);
+    expect(decodeGridParams(block(8192, 16, 100, 65537, 1))).toBe(null);
+    expect(decodeGridParams(block(8192, 16, 100, 256, 256))!.cellsX).toBe(256);   // exactly the ceiling
+    expect(decodeGridParams(block(8192, 16, 180, 36, 25))!.cellsX).toBe(36);      // the largest disc grid
+    expect(() => parseGridParams(zarOf(block(8192, 16, 100, 46341, 46341)))).toThrow(/grid_params: 46341 x 46341 cells/);
+    expect(() => parseGridParams(zarOf(block(8192, 16, 100, 65537, 1)))).toThrow(/grid_params/);
   });
 
   it.skipIf(!MP2)('reads Frostfire\'s world root as dimension 160, 8 x 9, origin 0 and the 8,192-atom pool (research 24 section 1.1, 23 section 2.1)', () => {
