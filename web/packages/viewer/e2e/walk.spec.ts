@@ -97,14 +97,14 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   await expect(page.locator('#walk')).toBeChecked();
   await expect(walkButton).toHaveAttribute('aria-pressed', 'true');
   await expect(fly).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('#hint')).toContainText('WASD move');
-  await expect(page.locator('#hint')).not.toContainText('double-tap W');
+  await expect(page.locator('#keys-list')).toContainText(/W A S D\s*move/);
+  await expect(page.locator('#keys-list')).not.toContainText('double-tap W');
   await page.keyboard.press('KeyG');
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
   await expect(page.locator('#walk')).not.toBeChecked();
   await expect(fly).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#hint')).toContainText('double-tap W to boost');
-  await expect(page.locator('#hint')).not.toContainText('space jump');
+  await expect(page.locator('#keys-list')).toContainText('double-tap W');
+  await expect(page.locator('#keys-list')).not.toContainText('jump');
   await walkButton.click();
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('walk');
   await expect(walkButton).toHaveAttribute('aria-pressed', 'true');
@@ -221,8 +221,8 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
     expect(seen.camera!.pitch).toBeCloseTo(INIT_PITCH, 6);
     expect(seen.camera!.eye[0]).toBeCloseTo(fx, 3);
     if (stance === 'crouch') {
-      expect(seen.camera!.eye[1] - fy, name).toBeGreaterThan(up - 1.5);
-      expect(seen.camera!.eye[1] - fy, name).toBeLessThan(up + 1.5);
+      expect(seen.camera!.eye[1] - fy, name).toBeGreaterThan(up - 2.5);                                         // the three crouch idles' roots, drawn at random
+      expect(seen.camera!.eye[1] - fy, name).toBeLessThan(up + 2.5);
       expect(fz - seen.camera!.eye[2], name).toBeCloseTo(BEHIND_REST, 0);
     } else {
       expect(seen.camera!.eye[1] - fy, name).toBeCloseTo(up, 1);          // the live idle root breathes by hundredths

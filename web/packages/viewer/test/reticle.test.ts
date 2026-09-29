@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ARM_TINT, CONSOLE_RETICLE, RETICLE_SETS, reticleLayout, reticleTint, reticleType, scopeLayout } from '../src/reticle';
+import { ARM_TINT, CONSOLE_RETICLE, RETICLE_SETS, reticleLayout, reticleTint, reticleType, scopeLayout, nightLayout } from '../src/reticle';
 
 /**
  * The reticle's place and size (web sprint 2, W2.4), against the console frame at spawn
@@ -52,6 +52,15 @@ describe('reticleLayout', () => {
     expect(quads.find((q) => q.part === 'fixed')).toMatchObject({ x: 320, y: 212 });
   });
 
+  it('lays another set by its own bitmaps: the sidearm ring of 32 pixels and arms of 16 (research 84 section 9)', () => {
+    const { quads, rect } = reticleLayout(PS2, [0.5, 0.5], 5, [0, 0], { fixed: 32, arm: 16 });
+    expect(quads[0]).toMatchObject({ part: 'fixed', width: 32, height: 32 });
+    const down = quads[1]!;
+    // The quad 16 across, its core (column 14.5) on the centre line: x 320 + 1.5 - 8; its outer end 16 + 5 out.
+    expect([down.x, down.y, down.width]).toEqual([320 - 6.5, 224 + 5 + 8, 16]);
+    expect(rect.height).toBe(2 * 21);
+  });
+
   it('the rest in third person: TargetMin 1 halved is the console frame within its pixel', () => {
     const { rect } = reticleLayout(PS2, [0.5, 0.5], 0.5);
     const m = CONSOLE_RETICLE.rect;
@@ -100,5 +109,11 @@ describe('the reticle set, colour and scope (research 84)', () => {
     const s = 1080 / 448;
     expect(wide.quads[0]!.size).toBeCloseTo(320 * s, 9);
     expect(wide.bars[0]!.width).toBeCloseTo(960 - 320 * s, 9);
+  });
+
+  it('lays the night goggles as four mirrored 320x224 quads over the whole frame (Init 70940-70975)', () => {
+    const { quads, bars } = nightLayout(PS2);
+    expect(quads.map((q) => [q.x, q.y, q.width, q.height])).toEqual([[160, 112, 320, 224], [480, 112, 320, 224], [160, 336, 320, 224], [480, 336, 320, 224]]);
+    expect(bars).toEqual([]);
   });
 });

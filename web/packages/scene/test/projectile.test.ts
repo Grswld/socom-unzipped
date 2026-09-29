@@ -4,7 +4,7 @@ import { fixture } from '../../archive/test/fixtures';
 import {
   actorToWorldPoint, BOUNCE_LIFT, decalEntry, GRENADE_BLAST, buildGrid, CROUCH_MOVING_SPEED_SQ, explosionDamage, FIRST_BOUNCE_DAMPING, gridCast,
   heldPower, impactRange, isToss, launchGrenade, M67, materialTable, maxThrowDistance, maxThrowSpeed, parseMotionZar,
-  releaseSeconds, throwClipSeconds, HE, REST_SPEED, SOILS, soilsTable, stepGrenade, stepThrowPower, surfaceMaterial, THROW_ANIMS, THROW_PARAMS,
+  releaseSeconds, throwClipSeconds, HE, AN_M8, MARK141, CLAYMORE, claymoreCone, weaponCategory, bouncesByType, flashLevel, blindStrength, BLIND_KEYS, REST_SPEED, SOILS, soilsTable, stepGrenade, stepThrowPower, surfaceMaterial, THROW_ANIMS, THROW_PARAMS,
   throwableRecord, throwAnim, throwElevation, throwVelocity,
   type CollisionOwner, type Grenade, type GrenadeEvent, type GridParams, type HullCast, type V3, type WorldPoly,
 } from '../src/index';
@@ -224,17 +224,73 @@ describe('the flight against a hull (PreTick 0x3ca5a0, HandleBounce 0x3c8f50, Ha
     expect(materialTable().length).toBe(46);
   });
 
-  it('HE goes off where it first lands (HandleImpact), and passes over water', () => {
+  it('a type outside the bounce list goes off where it first lands (HandleImpact), and passes over water', () => {
     const cast = hull([floorAt(0, byte('WATER')), floorAt(-50)]);
-    const g = launchGrenade([0, 10, 0], [40, -100, 0], HE);
+    const round = { ...M67, name: 'an impact round', id: 0xab, impact: !bouncesByType(0xab) };
+    expect(round.impact).toBe(true);
+    const g = launchGrenade([0, 10, 0], [40, -100, 0], round);
     const events = fly(g, cast, 1);
     expect(events.find((x) => x.e.kind === 'bounce')).toBeUndefined();
     const boom = events.find((x) => x.e.kind === 'explode')!;
     expect(boom.t).toBeLessThan(1);                      // slowed to a quarter by the water, then 50 down
     expect((boom.e as { point: V3 }).point[1]).toBeCloseTo(-50, 6);
     expect(events.some((x) => x.e.kind === 'pass')).toBe(true);
+  });
+
+  it('every hand grenade bounces: the M67, the HE, the AN-M8 and the Mark141 share the category 0x79 (FUN_003d1a60)', () => {
+    for (const r of [M67, HE, AN_M8, MARK141]) {
+      expect(weaponCategory(r.id), r.name).toBe(0x79);
+      expect(bouncesByType(r.id)).toBe(true);
+      expect(r.impact).toBe(false);
+    }
+    expect(weaponCategory(151)).toBe(0x97);              // the C4 and the claymore: the charges' category
+    expect(bouncesByType(153)).toBe(true);
+    expect(weaponCategory(54)).toBe(0x33);               // the M4A1
+    expect(bouncesByType(54)).toBe(false);
+    expect(weaponCategory(0xff)).toBe(0xfe);
+    const g = launchGrenade([0, 10, 0], [40, -100, 0], HE);
+    const events = fly(g, hull([floorAt(0)]), 4);
+    expect(events.some((x) => x.e.kind === 'bounce')).toBe(true);
+    expect(events.find((x) => x.e.kind === 'explode')!.t).toBeGreaterThanOrEqual(3 - 1e-9);
     expect(HE.explosionRadius).toBe(100);
     expect(explosionDamage(50, HE)).toBe(11);
+  });
+
+  it('the smoke detonates at 3 s with nothing to hurt and stays 40 s; the flashbang goes at 1.5 s', () => {
+    const smoke = launchGrenade([0, 10, 0], [20, 0, 0], AN_M8);
+    const ev = fly(smoke, hull([floorAt(0)]), 45);
+    expect(ev.find((x) => x.e.kind === 'explode')!.t).toBeCloseTo(3, 1);
+    expect(ev.find((x) => x.e.kind === 'remove')!.t).toBeCloseTo(40, 1);
+    expect(explosionDamage(0, AN_M8)).toBe(0);
+    const flash = launchGrenade([0, 10, 0], [20, 0, 0], MARK141);
+    expect(fly(flash, hull([floorAt(0)]), 3).find((x) => x.e.kind === 'explode')!.t).toBeCloseTo(1.5, 1);
+    expect(explosionDamage(0, MARK141)).toBe(0);
+  });
+
+  it('the claymore cone: ahead within 84.4 degrees and 250 units (FUN_003c7280)', () => {
+    expect(claymoreCone([0, 0, -100], [0, 0, -1])).toBe(true);
+    expect(claymoreCone([90, 0, -10], [0, 0, -1])).toBe(true);   // 83.7 degrees off the axis
+    expect(claymoreCone([100, 0, -5], [0, 0, -1])).toBe(false);  // 87 degrees
+    expect(claymoreCone([0, 0, 10], [0, 0, -1])).toBe(false);    // behind
+    expect(claymoreCone([0, 0, -260], [0, 0, -1])).toBe(false);  // past the radius
+    expect(CLAYMORE.fuse).toBe(9999999);
+    expect(bouncesByType(CLAYMORE.id)).toBe(true);
+  });
+
+  it('the flash: 150 units\' reach, full to 80, facing it hardest (0x597c00), and the blind keys\' strength', () => {
+    expect(flashLevel(151, 1)).toBeNull();
+    expect(flashLevel(10, 1)).toBe(3);                    // s = 0
+    expect(flashLevel(10, 0.5)).toBe(2);                  // s = 0.5
+    expect(flashLevel(10, 0.3)).toBe(1);                  // s = 0.7
+    expect(flashLevel(10, -0.5)).toBe(1);                 // facing away
+    expect(flashLevel(120, 1)).toBe(2);                   // 1 - (14400 - 6400) x 6.2e-5 = 0.504: s 0.496
+    expect(flashLevel(140, 1)).toBe(1);
+    expect(blindStrength(3, 0)).toBe(60);
+    expect(blindStrength(3, 8)).toBe(60);
+    expect(blindStrength(3, 9)).toBeCloseTo(30, 9);
+    expect(blindStrength(3, 10.1)).toBe(0);
+    expect(blindStrength(1, 1)).toBeCloseTo(12.5, 9);
+    expect(BLIND_KEYS[2].at(-1)!.t).toBe(4);
   });
 
   it('the explosion: Explosion_Damage to half the radius, to nothing at Explosion_Radius (150 units)', () => {
@@ -258,6 +314,9 @@ describe('the transcribed tables against the game\'s files', () => {
   it.skipIf(!zweapon)('M67 is zweapon.rdr\'s M67 and its M67 Ammo', () => {
     expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'M67')).toEqual(M67);
     expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'HE')).toEqual(HE);
+    expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'AN-M8')).toEqual(AN_M8);
+    expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'Mark141')).toEqual(MARK141);
+    expect(throwableRecord(script(zweapon!, 'zweapon.rdr'), 'Claymore')).toEqual(CLAYMORE);
   });
 
   it.skipIf(!readerc)('SOILS is materials.rdr\'s, and the clips\' playback is motion.rdr\'s', () => {

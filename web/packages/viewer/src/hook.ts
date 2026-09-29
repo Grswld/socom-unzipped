@@ -18,6 +18,7 @@ import type { ViewStats, WeaponStats } from './play';
 import type { AudioStats } from './audio';
 import type { GrenadeItem, GrenadeStats, ThrowInfo } from './grenade';
 import type { ThrowPoseStats } from './throwPose';
+import type { WhiteOutState } from './flash';
 import type { TraversalStats } from './traversalPage';
 
 /**
@@ -189,6 +190,10 @@ export interface ViewerHook {
   selectItem(item: 'rifle' | GrenadeItem): boolean;
   /** The throw's clip on the body (`./throwPose`): the clip, its phase, its weight over the locomotion. */
   throwClip(): ThrowPoseStats;
+  /** The flashbang's white-out on the screen (`./flash`): its level, time into it, opacity and length. */
+  whiteOut(): WhiteOutState;
+  /** Sets off the placed claymores (the `9` key; the claymore's own trigger is not ported); the count set off. */
+  detonateCharges(): number;
   /**
    * EFFECTS (`./effects`, web/docs/research/89): the map's effect data loaded or not, the animations played by name,
    * the runs live, the casings in the air and the last one's place, the bounces, the particles, the sounds.

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { PAD_LAYOUT } from '../src/gamepad';
+import { PAD_LAYOUT, padGroup } from '../src/gamepad';
+import { controlGroups } from '../src/controlsList';
+import type { LookOptions } from '../src/look';
 import { PLAY_ATTRIBUTE, PLAY_PARAM, playEnabled, removePlayUi } from '../src/features';
 import { POPOVER_GRACE_MS, Ui } from '../src/ui';
 
@@ -68,24 +70,175 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
 
     it('the hint line and the pad table list the fly camera alone, and no walk, no Start', () => {
       ui.setCameraHint(1, false);
-      const hint = document.getElementById('hint')!.textContent!;
-      expect(hint).toBe('click to look · WASD fly · space/shift up/down · double-tap W to boost · wheel speed 1.0× · arrows look · F fullscreen · ` hides this');
-      expect(hint).not.toMatch(/walk|jump|stance|fire|reload/i);
+      expect(document.getElementById('hint')!.textContent).toBe('click to look · wheel speed 1.0×');
+      const keys = [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
+      expect(keys).toMatch(/W A S Dfly along the look/);
+      expect(keys).toMatch(/Ffullscreen/);
+      expect(keys).not.toMatch(/walk|jump|stance|fire|reload|peek|grenade|zoom/i);
       ui.showPadLayout(PAD_LAYOUT);
-      const rows = [...document.querySelectorAll('#pad-layout tbody tr')].map((r) => r.querySelector('td')!.textContent);
+      const rows = [...document.querySelectorAll('#pad-layout tbody tr:not(.pad-group)')].map((r) => r.querySelector('td')!.textContent);
       expect(rows).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'R3']);
+      for (const id of ['sound-section', 'look-section', 'mute', 'volume', 'mouselaw', 'sensitivity']) expect(document.getElementById(id), id).toBeNull();
     });
   });
 });
 
 describe('the page with the play on', () => {
-  it('keeps the play markup, and the hint has G walk', () => {
+  it('keeps the play markup, and the keys list has G walk', () => {
     load();
     const ui = new Ui();
+    const keys = (): string => [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
     expect(document.getElementById('mode')).not.toBeNull();
-    expect(document.getElementById('hint')!.textContent).toMatch(/ · G walk · F fullscreen/);
+    expect(keys()).toMatch(/Gwalk/);
     ui.setWalk(true);
-    expect(document.getElementById('hint')!.textContent).toMatch(/G fly/);
+    expect(keys()).toMatch(/Gfly/);
+  });
+});
+
+describe('the Sound section (round 2): mute and volume, remembered', () => {
+  let ui: Ui;
+  const heard: string[] = [];
+  const handler = { volume: (v: number): void => { heard.push(`v${v}`); }, muted: (m: boolean): void => { heard.push(`m${m}`); } };
+  const mute = (): HTMLInputElement => document.getElementById('mute') as HTMLInputElement;
+  const volume = (): HTMLInputElement => document.getElementById('volume') as HTMLInputElement;
+  const input = (el: HTMLInputElement, value: string): void => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); };
+  beforeEach(() => { localStorage.clear(); heard.length = 0; load(); ui = new Ui(); });
+  afterEach(() => { localStorage.clear(); });
+
+  it('is a panel section with a switch and a slider, and it is the play\'s (data-play)', () => {
+    expect(document.getElementById('sound-section')!.hasAttribute(PLAY_ATTRIBUTE)).toBe(true);
+    expect(mute().closest('label')!.classList.contains('s2u-check')).toBe(true);
+    expect(volume().type).toBe('range');
+    expect(document.getElementById('sound-section')!.closest('#panel')).not.toBeNull();
+  });
+
+  it('starts at full volume, not muted, and tells the handlers', () => {
+    ui.onSound(handler);
+    expect(heard).toEqual(['v1', 'mfalse']);
+    expect(document.getElementById('volume-out')!.textContent).toBe('100%');
+  });
+
+  it('drives the handlers from the controls and remembers both', () => {
+    ui.onSound(handler);
+    heard.length = 0;
+    input(volume(), '0.4');
+    mute().checked = true;
+    mute().dispatchEvent(new Event('change', { bubbles: true }));
+    expect(heard).toEqual(['v0.4', 'mtrue']);
+    expect(document.getElementById('volume-out')!.textContent).toBe('40%');
+    expect(localStorage.getItem('s2u.viewer.volume')).toBe('0.4');
+    expect(localStorage.getItem('s2u.viewer.muted')).toBe('1');
+  });
+
+  it('comes back as it was left, and ignores a stored value that is not a number', () => {
+    localStorage.setItem('s2u.viewer.volume', '0.25');
+    localStorage.setItem('s2u.viewer.muted', '1');
+    ui.onSound(handler);
+    expect(heard).toEqual(['v0.25', 'mtrue']);
+    expect(mute().checked).toBe(true);
+    heard.length = 0; load(); localStorage.setItem('s2u.viewer.volume', 'loud');
+    new Ui().onSound(handler);
+    expect(heard[0]).toBe('v1');
+  });
+
+  it('is not wired, and does not throw, when the play is off', () => {
+    load(); removePlayUi();
+    expect(() => new Ui().onSound(handler)).not.toThrow();
+    expect(heard).toEqual([]);
+  });
+});
+
+describe('the Mouse look section (round 2): the law, the sensitivity, the pitch, remembered', () => {
+  let ui: Ui;
+  const seen: Partial<LookOptions>[] = [];
+  const handler = (o: Partial<LookOptions>): void => { seen.push(o); };
+  const sens = (): HTMLInputElement => document.getElementById('sensitivity') as HTMLInputElement;
+  const law = (l: string): HTMLButtonElement => document.querySelector(`#mouselaw button[data-law="${l}"]`) as HTMLButtonElement;
+  beforeEach(() => { localStorage.clear(); seen.length = 0; load(); ui = new Ui(); });
+  afterEach(() => { localStorage.clear(); });
+
+  it('is the play\'s, in the panel, as the same segmented markup as the picture switch', () => {
+    expect(document.getElementById('look-section')!.hasAttribute(PLAY_ATTRIBUTE)).toBe(true);
+    expect(document.getElementById('mouselaw')!.className).toBe(document.getElementById('look')!.className);
+    expect(document.getElementById('mouselaw')!.getAttribute('role')).toBe('radiogroup');
+  });
+
+  it('starts at the raw default the look law ships with, and tells the handler', () => {
+    ui.onLookControls(handler);
+    expect(seen).toEqual([{ mouse: 'raw', sensitivity: 1, pitchRatio: 'game', invertPitch: false }]);
+    expect(law('raw').getAttribute('aria-pressed')).toBe('true');
+    expect(document.getElementById('sensitivity-out')!.textContent).toBe('1.00×');
+  });
+
+  it('every control changes the options the handler hears, and they are remembered', () => {
+    ui.onLookControls(handler);
+    law('stick').click();
+    expect(seen.at(-1)!.mouse).toBe('stick');
+    expect(law('stick').getAttribute('aria-pressed')).toBe('true');
+    expect(law('raw').getAttribute('aria-pressed')).toBe('false');
+    sens().value = '2.5';
+    sens().dispatchEvent(new Event('input', { bubbles: true }));
+    expect(seen.at(-1)!.sensitivity).toBe(2.5);
+    expect(document.getElementById('sensitivity-out')!.textContent).toBe('2.50×');
+    const invert = document.getElementById('invertpitch') as HTMLInputElement;
+    invert.checked = true; invert.dispatchEvent(new Event('change', { bubbles: true }));
+    const uniform = document.getElementById('uniformpitch') as HTMLInputElement;
+    uniform.checked = true; uniform.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(seen.at(-1)).toEqual({ mouse: 'stick', sensitivity: 2.5, pitchRatio: 'uniform', invertPitch: true });
+    const n = seen.length;
+    law('stick').click();                                                        // already chosen: nothing
+    expect(seen).toHaveLength(n);
+    expect(JSON.parse(localStorage.getItem('s2u.viewer.mouseLook')!)).toEqual(seen.at(-1));
+  });
+
+  it('comes back as it was left, and falls back to the defaults on a stored value that is not ours', () => {
+    localStorage.setItem('s2u.viewer.mouseLook', JSON.stringify({ mouse: 'stick', sensitivity: 3, pitchRatio: 'uniform', invertPitch: true }));
+    ui.onLookControls(handler);
+    expect(seen).toEqual([{ mouse: 'stick', sensitivity: 3, pitchRatio: 'uniform', invertPitch: true }]);
+    seen.length = 0; load();
+    localStorage.setItem('s2u.viewer.mouseLook', '{not json');
+    new Ui().onLookControls(handler);
+    expect(seen).toEqual([{ mouse: 'raw', sensitivity: 1, pitchRatio: 'game', invertPitch: false }]);
+    seen.length = 0; load();
+    localStorage.setItem('s2u.viewer.mouseLook', JSON.stringify({ mouse: 'wobble', sensitivity: 99 }));
+    new Ui().onLookControls(handler);
+    expect(seen[0]).toEqual({ mouse: 'raw', sensitivity: 4, pitchRatio: 'game', invertPitch: false });    // clamped to the slider
+  });
+
+  it('is not wired, and does not throw, when the play is off', () => {
+    load(); removePlayUi();
+    expect(() => new Ui().onLookControls(handler)).not.toThrow();
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('the Controls popover list (round 2)', () => {
+  it('groups the walk keys as move, combat, stance and traversal, weapons, general; the fly keys as move and general', () => {
+    expect(controlGroups('walk', true).map((g) => g.name)).toEqual(['Move', 'Combat', 'Stance & traversal', 'Weapons', 'General']);
+    expect(controlGroups('fly', true).map((g) => g.name)).toEqual(['Move', 'General']);
+  });
+  it('names every key the page binds on foot', () => {
+    const keys = controlGroups('walk', true).flatMap((g) => g.rows.map((r) => r.keys)).join(' ');
+    for (const k of ['W A S D', 'Space', 'V', 'click', 'right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '4', '5', 'G', 'F']) expect(keys, k).toContain(k);
+  });
+  it('lists no walk in the flying list without the play, and every group has rows', () => {
+    const fly = controlGroups('fly', false);
+    expect(JSON.stringify(fly)).not.toMatch(/walk/i);
+    for (const g of [...controlGroups('walk', true), ...fly]) expect(g.rows.length, g.name).toBeGreaterThan(0);
+  });
+  it('groups every pad action, walking and flying, under one of those names', () => {
+    const names = new Set(controlGroups('walk', true).map((g) => g.name));
+    for (const r of PAD_LAYOUT) for (const mode of ['walk', 'fly'] as const) expect(names.has(padGroup(r.action, mode)), `${r.control} ${mode}`).toBe(true);
+    expect(padGroup('fire', 'walk')).toBe('Combat');
+    expect(padGroup('leanLeft', 'walk')).toBe('Stance & traversal');
+    expect(padGroup('swap2', 'walk')).toBe('Weapons');
+    expect(padGroup('jump', 'fly')).toBe('Move');
+  });
+  it('the popover holds the hint, the keys list and the pad table, in that order', () => {
+    load();
+    const pop = document.getElementById('controls')!;
+    const order = [...pop.querySelectorAll('#hint, #keys-list, #pad-box')].map((e) => e.id);
+    expect(order).toEqual(['hint', 'keys-list', 'pad-box']);
   });
 });
 

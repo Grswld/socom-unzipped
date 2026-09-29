@@ -290,3 +290,17 @@ pixels, bars on a 16:9 screen). The row stays reported (`cam.hfov169`) so the ch
   `FUN_0057a330` drives the jump by the stick, `DAT_0064fc80` is 1 there): with the pad reader's (1, 1) that is 65 x
   sqrt 2 = 92 across the ground while the clip plays (the harness reads 91.92). That is the reading as written; a console capture of a W+D
   standing jump would confirm it.
+
+## 7. Round 3: the table on `f0f59b1d` (2026-09-28/29)
+
+The integration head with everything in (motion r2 with NoInterrupt, the turn in place, the spine twist and the bank;
+traversal; accuracy; grenades; effects; HUD; audio) merged as a fast-forward. The table, headless and on Frostfire:
+**73 rows, 71 within tolerance, unchanged** -- the same two reported rows (`cam.hfov169`, a presentation proposal;
+`look.axis176`, a single-byte edge). Nothing the later workstreams merged moved a mover, camera, look or motion
+number.
+
+The playtest of the same head (web research 90) adds one caution to this table: **the walk-off site** (`page.fall`,
+and `walk.spec`'s) is not an open edge. The 142 deck's east side is railed; at its corner x 674-680, z 720-726 the
+ground probe returns the top of a box under the deck (the probe's first hit per model), and the SEAL falls *through*
+the deck there. The row's 0.600 s is still a 42-unit fall under 235, but it measures a hole; research 90 item 2 asks
+for the console's answer at that corner.

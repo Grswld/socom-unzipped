@@ -98,3 +98,33 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   expect(await page.evaluate(() => window.__viewer.switchFireMode())).toBe('SEMI');
   expect(problems).toEqual([]);
 });
+
+test('a night map: the zoom steps first person -> night vision -> scope, the goggles and the lens colour on the frame', async ({ page }) => {
+  mkdirSync(SCREENS, { recursive: true });
+  const problems: string[] = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  await page.goto('/?redotcom');
+  const status = page.locator('#status');
+  await expect(status).toContainText('triangles');
+  await page.locator('#maps').selectOption('RUN/MP1.ZDB');          // NightMission 1 (research 84 section 11)
+  await expect(status).toContainText('(MP1)');
+  await expect(status).toContainText('triangles');
+  await page.locator('#ps2look').evaluate((el) => {
+    const box = el as HTMLInputElement;
+    if (!box.checked) { box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); }
+  });
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await settle(page, 20);
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(1);
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(3);
+  await settle(page, 10);
+  const night = await page.evaluate(() => ({ z: window.__viewer.zoom(), filter: (document.getElementById('view') as HTMLCanvasElement).style.filter }));
+  expect(night.z.view).toBe('nightvision');
+  expect(night.filter).toContain('s2u-nvg');
+  await page.screenshot({ path: join(SCREENS, '6-night-vision.png') });
+  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(5);
+  await settle(page, 20);
+  expect((await page.evaluate(() => (document.getElementById('view') as HTMLCanvasElement).style.filter))).toBe('');
+  expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(3);   // out of the scope, back to the night vision
+  expect(problems).toEqual([]);
+});

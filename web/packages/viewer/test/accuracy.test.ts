@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_RIFLE, HELD_RIFLE } from '@s2u/scene';
 import {
   Accuracy, burstScalar, defaultFireMode, fireInterval, kickStarts, kickTicks, MAP_FOV, movementSize, nextFireMode,
-  perturb, RADIUS_FACTOR, roundsPerPull, tangentPerPixel, TICK, type AccuracyInput,
+  penetrate, perturb, RADIUS_FACTOR, roundsPerPull, tangentPerPixel, TICK, type AccuracyInput,
 } from '../src/accuracy';
 
 /**
@@ -195,5 +195,17 @@ describe('the fire modes (FUN_005c0940, FUN_005c09f0, FUN_005c4600)', () => {
     expect(nextFireMode(HELD_RIFLE, 3, true)).toBe(3);
     const m14 = { ...HELD_RIFLE, maxFireMode: 3, fireModes: [1, 3] };   // SingleMode + AutoMode, no burst
     expect(nextFireMode(m14, 1)).toBe(3);
+  });
+});
+
+describe('penetrate (FUN_003c8920)', () => {
+  it('passes over 1.0, strikes the rest, and cuts the range by (1 + Piercing x 0.1) x PENETRATION', () => {
+    // range 100, Piercing 3: glass 0.99 -> 128.7, not less, kept 100; metal 0.35 -> 45.5.
+    expect(penetrate([{ distance: 10, penetration: 1 }, { distance: 20, penetration: 0.99 }, { distance: 30, penetration: 0.35 },
+      { distance: 40, penetration: 0 }], 100, 3)).toMatchObject({ struck: [1, 2, 3], through: false });
+    expect(penetrate([{ distance: 30, penetration: 0.35 }, { distance: 50, penetration: 0 }], 100, 3)).toEqual({ struck: [0], through: true, range: 45.5 });   // 45.5: spent
+    expect(penetrate([{ distance: 120, penetration: 0 }], 100, 3)).toEqual({ struck: [], through: true, range: 100 });   // out of range
+    expect(penetrate([{ distance: 20, penetration: 0.99 }], 100, 3)).toEqual({ struck: [0], through: true, range: 100 });
+    expect(penetrate([{ distance: 50, penetration: 0.35 }], 100, 0)).toEqual({ struck: [0], through: false, range: 35 });   // 35 < 50
   });
 });

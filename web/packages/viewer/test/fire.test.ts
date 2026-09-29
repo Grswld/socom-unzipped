@@ -213,6 +213,40 @@ describe('the rate, the magazine and the reload (W2.5)', () => {
   });
 });
 
+describe('penetration (research 84 section 13: HandleIntersections 0x3c9b70, FUN_003c8920)', () => {
+  const wall = (z: number, material: number): WorldPoly => ({ ...wallAt(z), material });
+  // Materials by byte: 30 glass (0.99), 26 metal thin (0.35), 25 stone (0), 29 an action volume (1).
+  const PEN: Record<number, number> = { 30: 0.99, 26: 0.35, 25: 0, 29: 1 };
+  it('passes over a PENETRATION 1 volume, goes through glass into the wall behind, marks both', () => {
+    const { fire } = rig(world([wall(-10, 29), wall(-30, 30), wall(-60, 25)]));
+    fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    const shot = fire.shoot()!;
+    expect(shot.hit!.distance).toBeCloseTo(60, 6);                // stopped by the stone
+    expect(shot.through!.map((t) => t.distance)).toEqual([30]);  // through the glass; the volume not struck
+    expect(fire.state().decals).toBe(2);
+  });
+
+  it('a thin metal sheet leaves 0.35 x 1.3 of the range: a wall past it is out of reach', () => {
+    // M4A1: 1000 m = 10,000 units; after the sheet at 30: 10,000 x 1.3 x 0.35 = 4,550 units.
+    const { fire } = rig(world([wall(-30, 26), wall(-4000, 25)]));
+    fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    expect(fire.shoot()!.hit!.distance).toBeCloseTo(4000, 3);
+    const far = rig(world([wall(-30, 26), wall(-4600, 25)]));
+    far.fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    const shot = far.fire.shoot()!;
+    expect(shot.hit).toBeNull();                                  // the round's range ran out before the second wall
+    expect(shot.through!.map((t) => t.distance)).toEqual([30]);
+  });
+
+  it('stone stops it at once; without a table every surface stops it', () => {
+    const { fire } = rig(world([wall(-30, 25), wall(-60, 25)]));
+    fire.setPenetration((m) => PEN[m ?? 0] ?? 0);
+    expect(fire.shoot()!.hit!.distance).toBeCloseTo(30, 6);
+    const plain = rig(world([wall(-30, 30), wall(-60, 25)]));
+    expect(plain.fire.shoot()!.hit!.distance).toBeCloseTo(30, 6);
+  });
+});
+
 describe('the walk hands the shot its hull and its aim (W2.5)', () => {
   it('none in fly mode; walking, the eye and the aim point, and the round lands on the wall ahead along the look', () => {
     const floor = quad([-200, 0, -200, 200, 0, -200, 200, 0, 200, -200, 0, 200]);

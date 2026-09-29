@@ -15,6 +15,7 @@
  *   `stickVector`'s dead zone and rescale) without its rim (`padStick`), so the walk can undo it (`padRaw`).
  * - **The watch** (`PadWatch`) says when a pad comes and goes, from the events and from the poll alike.
  */
+import { GROUP_COMBAT, GROUP_GENERAL, GROUP_MOVE, GROUP_STANCE, GROUP_WEAPONS } from './controlsList';
 /** The standard mapping's buttons, named as the PS2 pad's (W3C Gamepad standard layout, by position). */
 export const PAD_BUTTON = {
   Cross: 0, Circle: 1, Square: 2, Triangle: 3, L1: 4, R1: 5, L2: 6, R2: 7,
@@ -216,6 +217,24 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   swap2: { walk: 'weapon swap 2: the M67 (4)', fly: null },
   inventory: { walk: 'inventory: next item (1 rifle, 4 M67, 5 HE)', fly: null },
 };
+
+/**
+ * The group each action is listed under in the Controls popover (the same names as the keys' list, `./controlsList`):
+ * on foot, movement, combat, stance and traversal, weapons; in the fly camera, the movement and the general ones alone.
+ */
+export function padGroup(action: PadAction, mode: 'walk' | 'fly'): string {
+  if (action === 'mode' || action === 'boost') return GROUP_GENERAL;
+  if (mode === 'fly') return GROUP_MOVE;
+  switch (action) {
+    case 'fire': case 'zoom': case 'zoomOut': case 'fireMode': return GROUP_COMBAT;
+    case 'stance': case 'crouch': case 'action': case 'leanLeft': case 'leanRight': return GROUP_STANCE;
+    case 'swap1': case 'swap2': case 'inventory': return GROUP_WEAPONS;
+    default: return GROUP_MOVE;
+  }
+}
+
+/** The order the groups are listed in. */
+export const GROUP_ORDER: readonly string[] = [GROUP_MOVE, GROUP_COMBAT, GROUP_STANCE, GROUP_WEAPONS, GROUP_GENERAL];
 
 /** A citation with each path cut to its file's name, for the panel: `docs/INSTALL.md §6` is `INSTALL.md §6`. */
 export function shortSource(documented: string): string {
