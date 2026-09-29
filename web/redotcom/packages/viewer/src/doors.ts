@@ -157,9 +157,12 @@ export function valveApply(value: number, operation: number, operand: number): n
   }
 }
 
-/** What the page lends the doors: a sound at a place, and the leaf drawn where it is now (a column-major delta). */
+/**
+ * What the page lends the doors: a sound at a place and its volume, and the leaf drawn where it is now (a column-major
+ * delta). The volume is the SOUND command's own (flag 0x10's f32 at +8, else 1.0: `FUN_002659c0` 112363-112416).
+ */
 export interface DoorHooks {
-  sound?(name: string, at: [number, number, number]): void;
+  sound?(name: string, at: [number, number, number], volume: number): void;
   /** The door's leaf moved: `delta` (16 floats, three's column-major order) after the disc's placement. */
   moved?(door: DoorSpec, delta: Float32Array): void;
 }
@@ -353,7 +356,7 @@ export class DoorSet {
             return;
           }
           case 'sound':
-            if (!d.quiet) this.hooks.sound?.(op.sound, where());
+            if (!d.quiet) this.hooks.sound?.(op.sound, where(), op.volume);
             return;
           case 'rotate': {
             if (!nodeIs(run, op.node)) return;

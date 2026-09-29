@@ -16,7 +16,8 @@ export interface DoorPageDeps {
   grid(): Grid | null;
   feet(): [number, number, number] | null;
   aim(): { eye: readonly number[]; far: readonly number[] } | null;
-  sound(name: string, at: [number, number, number]): void;
+  /** A door's SOUND command: the name, where, and the command's own volume (`DoorHooks.sound`). */
+  sound(name: string, at: [number, number, number], volume: number): void;
   /** The drawn leaf moved (`WorldView.moveNode`). */
   move(path: string, delta: Float32Array): void;
   /** The match, when in one and open: where the doors come from, and (a player's) where the action goes. */
@@ -33,7 +34,7 @@ export class DoorPage {
   /** A new map: its doors on its hull (the one the walk stands on: `LoadedMap.ground`), shut, drawn where the disc has them. */
   setMap(doors: readonly DoorSpec[] | undefined, ground: GroundData | undefined): void {
     this.set = doors?.length ? new DoorSet(doors, ground ?? null, {
-      sound: (name, at) => this.deps.sound(name, at),
+      sound: (name, at, volume) => this.deps.sound(name, at, volume),
       moved: (door, delta) => this.deps.move(door.path, delta),
     }) : null;
     this.last = null;

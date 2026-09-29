@@ -72,7 +72,7 @@ import { GrenadeThrower, type GrenadeItem } from './grenade';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
 import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
-import { indexVerdict } from './discIndex';
+import { indexVerdict, discOpened } from './discIndex';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
 // The maps directory sits beside the page: `/maps` in dev, `/map-viewer/maps` when served under a prefix.
@@ -161,7 +161,7 @@ const doors = new DoorPage({
   grid: () => walk.grid(),
   feet: () => walk.feet(),
   aim: () => walk.fireAim(),
-  sound: (name, at) => { audio.play(name, at); },
+  sound: (name, at, volume) => { audio.play(name, at, 'play', volume); },   // the command's flag-0x10 volume
   move: (path, delta) => { view?.moveNode(path, delta); },
   net: () => (net && net.client.state === 'open' ? net.client : null),
 });
@@ -816,7 +816,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     }
     source = wantedIndexFrom;
     indexDiagnostics = verdict.diagnostics;
-    if (message.maps.length > 0) ui.hideDiscPage();             // a disc (or the served tree) is open: the map comes
+    if (message.maps.length > 0) discOpened(ui, verdict.note);  // a disc (or the served tree) is open: the map comes
     else ui.setDiscState('the disc image holds no RUN/MP*.ZDB archives: is it SOCOM II?', 'error');
     showMaps(message.maps);
     askPlay(source);
