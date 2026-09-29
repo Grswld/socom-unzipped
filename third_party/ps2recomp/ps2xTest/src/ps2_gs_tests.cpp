@@ -6569,6 +6569,131 @@ void register_ps2_gs_tests()
             t.IsTrue(gl->shadowVramForTest() == vram, "with the same shadow");
         });
 
+        tc.Run("#114: the intro-movie upload shapes leave both VRAMs as the double swizzle does (attempt 3 vs knob 1)", [](TestCase &t)
+        {
+            // Issue #114 named attempt 3 as the cause of the title-stage freeze. The shapes the brief asks after, each
+            // fed through two backends -- A with PS2X_GS_DOUBLE_SWIZZLE=0 (attempt 3), B with =1 (the old path) --
+            // and replayed: the game VRAM, the shadow and the transfer state must agree between A and B after every
+            // step, and nothing may wait (every step here returns; no GL thread is involved).
+            struct Side
+            {
+                std::vector<uint8_t> vram = std::vector<uint8_t>(PS2_GS_VRAM_SIZE, 0u);
+                GSGlBackend *gl = nullptr;
+                GS gs;
+            };
+            Side a, b;
+            for (Side *s : {&a, &b})
+            {
+                auto owned = std::make_unique<GSGlBackend>();
+                s->gl = owned.get();
+                s->gs.setRasterBackend(std::move(owned));
+                s->gs.init(s->vram.data(), static_cast<uint32_t>(s->vram.size()), nullptr);
+            }
+            a.gl->setDoubleSwizzleForTest(false);
+            b.gl->setDoubleSwizzleForTest(true);
+            auto regs = [](std::vector<uint8_t> &packet, uint32_t dbp, uint32_t dbw, uint32_t psm, uint32_t x0, uint32_t y0,
+                           uint32_t w, uint32_t h, uint32_t dir)
+            {
+                const uint64_t bitblt = (static_cast<uint64_t>(dbp) << 32) | (static_cast<uint64_t>(dbw) << 48) |
+                                        (static_cast<uint64_t>(psm) << 56) |
+                                        static_cast<uint64_t>(dbp) | (static_cast<uint64_t>(dbw) << 16) | (static_cast<uint64_t>(psm) << 24);
+                const uint64_t trxpos = (static_cast<uint64_t>(x0) << 32) | (static_cast<uint64_t>(y0) << 48);
+                const uint64_t trxreg = static_cast<uint64_t>(w) | (static_cast<uint64_t>(h) << 32);
+                appendU64(packet, makeGifTag(4u, GIF_FMT_PACKED, 1u, false));
+                appendU64(packet, 0x0Eull);
+                appendGifAd(packet, bitblt, GS_REG_BITBLTBUF);
+                appendGifAd(packet, trxpos, GS_REG_TRXPOS);
+                appendGifAd(packet, trxreg, GS_REG_TRXREG);
+                appendGifAd(packet, dir, GS_REG_TRXDIR);
+            };
+            auto image = [](std::vector<uint8_t> &packet, const std::vector<uint8_t> &bytes, bool eop)
+            {
+                appendU64(packet, makeGifTag(static_cast<uint16_t>(bytes.size() / 16u), GIF_FMT_IMAGE, 0u, eop));
+                appendU64(packet, 0ull);
+                packet.insert(packet.end(), bytes.begin(), bytes.end());
+            };
+            auto pattern = [](size_t n, uint32_t seed)
+            {
+                std::vector<uint8_t> out(n);
+                for (size_t i = 0; i < n; ++i)
+                    out[i] = static_cast<uint8_t>((i * 13u + seed * 71u + (i >> 9) * 5u + 1u) & 0xFFu);
+                return out;
+            };
+            int swizzledOnA = 0;
+            auto feed = [&](const std::vector<uint8_t> &packet, const std::string &what)
+            {
+                a.gs.processGIFPacket(packet.data(), static_cast<uint32_t>(packet.size()));
+                b.gs.processGIFPacket(packet.data(), static_cast<uint32_t>(packet.size()));
+                for (const GSGlBackend::PendingUploadForTest &u : a.gl->pendingUploadsForTest())
+                    swizzledOnA += u.swizzledByRecorder ? 1 : 0;
+                a.gl->replayPendingForTest();
+                b.gl->replayPendingForTest();
+                t.IsTrue(a.vram == b.vram, what + ": the game VRAM is the same on both paths");
+                t.IsTrue(a.gl->shadowVramForTest() == b.gl->shadowVramForTest(), what + ": the shadow is the same on both paths");
+                t.IsTrue(a.gl->shadowVramForTest() == a.vram, what + ": attempt 3's shadow equals its game VRAM");
+                const GSTransferSnapshot ta = a.gl->GetTransferSnapshot(), tb = b.gl->GetTransferSnapshot();
+                t.IsTrue(ta.direction == tb.direction && ta.totalPixels == tb.totalPixels && ta.copiedPixels == tb.copiedPixels,
+                         what + ": the game's transfer state is the same on both paths");
+            };
+            uint32_t seed = 1u;
+
+            // 1. The movie frame as the title's player sends it: 16x16 CT32 macroblocks into dbp 0x3c0 (FBW 10, the
+            //    m_movieStartFrame shape), each its own transfer; a 640x224 frame is 40x14 of them. One GIF packet per
+            //    macroblock row here, each carrying 40 transfers back to back (the PATH3 chain), and the whole frame twice.
+            for (int frame = 0; frame < 2; ++frame)
+                for (uint32_t my = 0; my < 224u; my += 16u)
+                {
+                    std::vector<uint8_t> packet;
+                    for (uint32_t mx = 0; mx < 640u; mx += 16u)
+                    {
+                        regs(packet, 0x3c0u, 10u, GS_PSM_CT32, mx, my, 16u, 16u, 0u);
+                        image(packet, pattern(1024u, seed++), mx + 16u == 640u);
+                    }
+                    feed(packet, "movie row " + std::to_string(my / 16u) + " of frame " + std::to_string(frame));
+                }
+            t.Equals(swizzledOnA, 2 * 14 * 40, "attempt 3 took every macroblock (two frames of 40x14)");
+
+            // 2. A frame as one transfer and one IMAGE: 640x192 CT32 (1,920 blocks, 480 KB -- one GIF tag carries at most
+            //    32,767 quadwords, so a 640x224 frame cannot be one IMAGE), at dbp 0x3c0 and at 0x1540.
+            for (uint32_t dbp : {0x3c0u, 0x1540u})
+            {
+                std::vector<uint8_t> packet;
+                regs(packet, dbp, 10u, GS_PSM_CT32, 0u, 0u, 640u, 192u, 0u);
+                image(packet, pattern(640u * 192u * 4u, seed++), true);
+                feed(packet, "a 640x192 frame in one transfer at dbp " + std::to_string(dbp));
+            }
+            t.Equals(swizzledOnA, 2 * 14 * 40 + 2, "and both whole frames");
+
+            // 3. A transfer open with direction != 0, then a whole-block IMAGE with no new TRXDIR: local->host (1) and
+            //    local->local (2). Neither path may write it; the next host->local transfer takes whole blocks again.
+            for (uint32_t dir : {1u, 2u})
+            {
+                std::vector<uint8_t> packet;
+                regs(packet, 0x3c0u, 10u, GS_PSM_CT32, 32u, 16u, 16u, 16u, dir);
+                image(packet, pattern(1024u, seed++), false);
+                regs(packet, 0x3c0u, 10u, GS_PSM_CT32, 48u, 16u, 16u, 16u, 0u);
+                image(packet, pattern(1024u, seed++), true);
+                feed(packet, "an IMAGE while direction " + std::to_string(dir) + " is open, then a macroblock");
+            }
+
+            // 4. One IMAGE spanning two transfers' worth of bytes: the first transfer takes its 1,024, the rest is
+            //    dropped as the old path drops it; then a transfer split over two IMAGE tags, then a 16x16 macroblock.
+            {
+                std::vector<uint8_t> packet;
+                regs(packet, 0x3c0u, 10u, GS_PSM_CT32, 64u, 32u, 16u, 16u, 0u);
+                image(packet, pattern(2048u, seed++), false);
+                regs(packet, 0x3c0u, 10u, GS_PSM_CT32, 80u, 32u, 16u, 16u, 0u);
+                const std::vector<uint8_t> whole = pattern(1024u, seed++);
+                image(packet, std::vector<uint8_t>(whole.begin(), whole.begin() + 512), false);
+                image(packet, std::vector<uint8_t>(whole.begin() + 512, whole.end()), false);
+                regs(packet, 0x3c0u, 10u, GS_PSM_CT32, 96u, 32u, 16u, 16u, 0u);
+                image(packet, pattern(1024u, seed++), true);
+                feed(packet, "an IMAGE past its transfer, a split transfer, then a macroblock");
+            }
+            t.Equals(swizzledOnA, 2 * 14 * 40 + 2 + 2 + 1,
+                     "attempt 3 took the macroblock after each open direction and after the oversize and split IMAGEs, no more");
+        });
+
         tc.Run("R123: mix and seed are order-sensitive so row order is part of the identity", [](TestCase &t)
         {
             const uint64_t a = GsGlTextureIdentity::mix(GsGlTextureIdentity::mix(GsGlTextureIdentity::seed(), 1u), 2u);
