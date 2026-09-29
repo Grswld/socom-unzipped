@@ -100,6 +100,20 @@ describe('the effect sequencer', () => {
     expect(run.finished).toBe(true);
   });
 
+  it('an endless WHILE runs its body once a tick until the run is stopped (the ripples)', () => {
+    const h = host();
+    const run = new EffectRun(program({ ops: [{ op: 'while', forever: true }, mark(1), { op: 'endWhile' }, mark(2)] }), h);
+    run.update(0);
+    run.update(0.1);
+    run.update(0.1);
+    expect(h.log).toEqual(['m1', 'm1', 'm1']);
+    expect(run.finished).toBe(false);
+    run.stop();
+    run.update(0.1);
+    expect(h.log).toEqual(['m1', 'm1', 'm1']);
+    expect(run.finished).toBe(true);
+  });
+
   it('FAIL stops the whole animation', () => {
     const h = host();
     const run = new EffectRun(program({ ops: [{ op: 'fail' }, mark(1)] }, { ops: [{ op: 'wait', seconds: 1, range: 0, frames: null }, mark(2)] }), h);

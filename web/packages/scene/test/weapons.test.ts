@@ -40,7 +40,7 @@ describe('the weapon record reader over a hand-built zweapon.rdr', () => {
   it('reads the M4A1: FireWait as the interval and the rate, the magazine, the mags, the ammo by name to its ID', () => {
     expect(weaponRecord(zweapon, 'M4A1')).toMatchObject<Partial<WeaponRecord>>({
       name: 'M4A1', id: 54, fireWait: 0.12, roundsPerMinute: 500, magazine: 30, mags: 3,
-      ammo: '5.56 x 45mm', ammoId: 8, maximumRange: 1000, effectiveRange: 0, decalSet: 'BULLET_MARK_SMALL',
+      ammo: '5.56 x 45mm', ammoId: 8, piercing: 0, maximumRange: 1000, effectiveRange: 0, decalSet: 'BULLET_MARK_SMALL',
       knock: { knock: 12, knockReturn: 70, knockMax: 45 },
       // STANCE_CROUCH has no kick keys and STANCE_PRONE no node: the parser copies the stance before (0x3cda30).
       rifleKick: {
@@ -191,5 +191,14 @@ describe.skipIf(!ZWEAPON || !READERC)('the default rifle off the game\'s ZWEAPON
       const name = (r[r.indexOf('InternalName') + 1] as string[])[0]!;
       expect(rdrGet(r, 'ZoomMode0'), name).toBe('1.5');
     }
+  });
+
+  it('the kit sidearm, the Mark 23 (ID 15, the sidearm reticle): one fire mode, one zoom mode, no kick, prone inherits', () => {
+    const m23 = readWeapon(bytes(ZWEAPON!), 'Mark 23');
+    expect(m23).toMatchObject({ id: 15, fireWait: 0.2, magazine: 12, ammo: '45 ACP', piercing: 4, maximumRange: 125,
+      zoomModes: [1.5], maxFireMode: 1, fireModes: [1], rifleKick: { stand: null, crouch: null, prone: null } });
+    expect(m23.stances.stand).toMatchObject({ knock: 20, knockReturn: 60, knockMax: 40, dilateFire: 20, dilateMove: 0.75,
+      constrict: 75, targetMin: 10, targetMax: 30, knockCount: 1, knockEntry: 1 });
+    expect(m23.stances.prone).toMatchObject({ knock: 20, targetMin: 14, targetMax: 34, dilateMoveMult: 60 });
   });
 });

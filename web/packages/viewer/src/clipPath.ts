@@ -75,6 +75,31 @@ export function reverseShape(shape: ClipShape): ClipShape {
   return { name: shape.name, keys: shape.keys, seconds: shape.seconds, root };
 }
 
+/**
+ * Two one-shots as one play's two nodes (`FUN_00581110`, decomp 442306-442340; `FUN_0028c4f0`, `FUN_0028d670`): one
+ * phase at `w / (A's playback x (n-1)/n) + (1 - w) / (B's ...)` a second to B's end `(n_B - 1) / n_B` (the play was
+ * made for B), each node sampled at `phase x n` and held at its own last key, the roots weighted: `w` of A, `1 - w` of B.
+ * The shape is laid out on B's keys, over the blend's seconds.
+ */
+export function blendShapes(a: ClipShape, b: ClipShape, w: number): ClipShape {
+  const rateOf = (s: ClipShape): number => 1 / (s.seconds / ((s.keys - 1) / s.keys));   // seconds = playback x ((n-1)/n)^2
+  const rate = w * rateOf(a) + (1 - w) * rateOf(b);
+  const end = (b.keys - 1) / b.keys;
+  const root = new Float32Array(b.keys * 3);
+  for (let k = 0; k < b.keys; k++) {
+    const phase = k / b.keys;
+    const ra = rootAt(a, Math.min(a.keys - 1, phase * a.keys)), rb = rootAt(b, phase * b.keys);
+    for (let i = 0; i < 3; i++) root[k * 3 + i] = w * ra[i]! + (1 - w) * rb[i]!;
+  }
+  return { name: b.name, keys: b.keys, seconds: end / rate, root };
+}
+
+/** The clip's first `fraction` (of its keys and its seconds): a move that leaves the clip partway (the hang's push). */
+export function truncateShape(shape: ClipShape, fraction: number): ClipShape {
+  const keys = Math.max(2, Math.round(fraction * (shape.keys - 1)) + 1);
+  return { name: shape.name, keys, seconds: shape.seconds * ((keys - 1) / (shape.keys - 1)), root: shape.root.slice(0, keys * 3) };
+}
+
 /** The root at a fractional key, clamped to the clip's last real key. */
 export function rootAt(shape: ClipShape, key: number): [number, number, number] {
   const k = Math.max(0, Math.min(shape.keys - 1, key));

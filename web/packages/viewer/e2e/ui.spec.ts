@@ -77,7 +77,7 @@ test('the bar tabs share one height, one padding and one gap, at a desktop width
 
 test('without ?redotcom there is no walking anywhere on the page', async ({ page }) => {
   await loaded(page);
-  for (const id of ['mode', 'walk', 'body-row', 'player-body', 'ammo', 'touch-stance', 'touch-fire']) await expect(page.locator(`#${id}`)).toHaveCount(0);
+  for (const id of ['mode', 'walk', 'body-row', 'player-body', 'ammo', 'touch-stance', 'touch-fire', 'sound-section', 'look-section', 'mute', 'volume', 'mouselaw', 'sensitivity']) await expect(page.locator(`#${id}`)).toHaveCount(0);
   // G does nothing, and the hook cannot walk.
   await page.keyboard.press('KeyG');
   await page.waitForTimeout(200);
@@ -89,8 +89,9 @@ test('without ?redotcom there is no walking anywhere on the page', async ({ page
   await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = true; });
   await page.locator('#controls-toggle').click();
   await expect(page.locator('#controls')).toBeVisible();
-  await expect(page.locator('#hint')).toContainText('WASD fly');
-  await expect(page.locator('#hint')).not.toContainText(/walk|jump|stance|fire|reload/i);
+  await expect(page.locator('#keys-list')).toContainText('fly along the look');
+  await expect(page.locator('#keys-list')).not.toContainText(/walk|jump|stance|fire|reload|peek|zoom/i);
+  await expect(page.locator('#hint')).not.toContainText(/walk/i);
   const text = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll('[title],[aria-label]')]
     .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' '));
   expect(text).not.toMatch(/\b(walk\w*|stance|crouch\w*|prone|redotcom)\b/i);
@@ -119,19 +120,20 @@ test.describe('with ?redotcom', () => {
 
   test('the Controls popover opens on hover and on click, lists the mode you are in, and Esc closes it', async ({ page }) => {
     await loaded(page, '?redotcom');
-    const tab = page.locator('#controls-toggle'), pop = page.locator('#controls'), hint = page.locator('#hint');
+    const tab = page.locator('#controls-toggle'), pop = page.locator('#controls'), hint = page.locator('#keys-list');
     await expect(pop).toBeHidden();
     await expect(tab).toHaveAttribute('aria-haspopup', 'dialog');
     await tab.hover();
     await expect(pop).toBeVisible();
     await expect(tab).toHaveAttribute('aria-expanded', 'true');
-    await expect(hint).toContainText('double-tap W to boost');
-    await expect(hint).toContainText('G walk');
-    await expect(hint).not.toContainText('space jump');
+    await expect(hint).toContainText('double-tap W');
+    await expect(hint).toContainText('walk');
+    await expect(hint).not.toContainText('jump');
     // The mode changes under an open popover: the list follows.
     await page.evaluate(() => window.__viewer.setMode('walk'));
-    await expect(hint).toContainText('space jump');
-    await expect(hint).toContainText('d-pad up/down zoom');
+    await expect(hint).toContainText('jump');
+    await expect(hint).toContainText('right click');
+    for (const group of ['Move', 'Combat', 'Stance & traversal', 'Weapons']) await expect(hint.locator('.pad-group', { hasText: group })).toHaveCount(1);
     await expect(hint).not.toContainText('double-tap W');
     await page.keyboard.press('Escape');
     await expect(pop).toBeHidden();
@@ -156,5 +158,51 @@ test.describe('with ?redotcom', () => {
     expect(await page.evaluate(() => window.__viewer.mode())).toBe('walk');
     await page.keyboard.press('KeyG');
     expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');
+  });
+
+  test('the Sound and Mouse look sections drive the audio and the look, and are remembered', async ({ page }) => {
+    await loaded(page, '?redotcom');
+    await page.locator('#panel-toggle').click();
+    await expect(page.locator('#sound-section')).toBeVisible();
+    await expect(page.locator('#look-section')).toBeVisible();
+    expect(await page.evaluate(() => window.__viewer.audio().volume)).toBe(1);
+    expect(await page.evaluate(() => window.__viewer.audio().muted)).toBe(false);
+    // Sound: the slider is the mix's volume, the switch its mute.
+    await page.locator('#volume').fill('0.5');
+    await expect(page.locator('#volume-out')).toHaveText('50%');
+    expect(await page.evaluate(() => window.__viewer.audio().volume)).toBe(0.5);
+    await page.locator('#mute').setChecked(true);
+    expect(await page.evaluate(() => window.__viewer.audio().muted)).toBe(true);
+    // Mouse look: the law, the sensitivity, the pitch.
+    const look = (): Promise<Record<string, unknown>> => page.evaluate(() => ({ ...window.__viewer.setLook({}) }));
+    expect(await look()).toMatchObject({ mouse: 'raw', sensitivity: 1, pitchRatio: 'game', invertPitch: false });
+    await page.locator('#mouselaw button[data-law="stick"]').click();
+    await page.locator('#sensitivity').fill('2');
+    await page.locator('#invertpitch').setChecked(true);
+    await page.locator('#uniformpitch').setChecked(true);
+    expect(await look()).toMatchObject({ mouse: 'stick', sensitivity: 2, pitchRatio: 'uniform', invertPitch: true });
+    // Reloaded, the same page comes back as it was left, in the panel and in the game.
+    await page.reload();
+    await expect(page.locator('#status')).toContainText(/triangles|tris/);
+    expect(await page.evaluate(() => window.__viewer.audio())).toMatchObject({ volume: 0.5, muted: true });
+    expect(await look()).toMatchObject({ mouse: 'stick', sensitivity: 2, pitchRatio: 'uniform', invertPitch: true });
+    await page.locator('#panel-toggle').click();
+    await expect(page.locator('#mute')).toBeChecked();
+    await expect(page.locator('#volume')).toHaveValue('0.5');
+    await expect(page.locator('#mouselaw button[data-law="stick"]')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('while walking the fullscreen button leaves the bottom-right corner of the HUD (the range readout) for the left edge', async ({ page }) => {
+    await loaded(page, '?redotcom');
+    const flying = (await page.locator('#fullscreen').boundingBox())!;
+    const size = page.viewportSize()!;
+    expect(flying.x).toBeGreaterThan(size.width / 2);
+    expect(flying.y).toBeGreaterThan(size.height / 2);                            // flying: its old corner, bottom right
+    await page.evaluate(() => window.__viewer.setMode('walk'));
+    await expect.poll(async () => (await page.locator('#fullscreen').boundingBox())!.x).toBeLessThan(60);
+    const walking = (await page.locator('#fullscreen').boundingBox())!;
+    expect(walking.y + walking.height).toBeLessThan(size.height / 2);             // and clear of the bottom strip at any height
+    await page.evaluate(() => window.__viewer.setMode('fly'));
+    await expect.poll(async () => (await page.locator('#fullscreen').boundingBox())!.x).toBeGreaterThan(size.width / 2);
   });
 });

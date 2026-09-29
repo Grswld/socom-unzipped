@@ -2,7 +2,8 @@ import type { MotionClip } from '@s2u/scene';
 import type { ActionPrompt, ClimbPrompt as HudClimbPrompt } from './hud';
 import type { Input } from './gamepad';
 import type { MotionEntry } from './motionTable';
-import { Traversal, type ClimbPrompt, type TraversalEvent, type TraversalKind } from './traversal';
+import { rippleAnimation, Traversal, type ClimbPrompt, type Ripple, type TraversalEvent, type TraversalKind } from './traversal';
+import type { EffectPlace } from './effects';
 import { groundPolygons, type WalkMode } from './walk';
 
 /**
@@ -12,8 +13,9 @@ import { groundPolygons, type WalkMode } from './walk';
  *
  * **The bindings** (research 86 section 7.4): the game's action button is **Cross** (`controller.rdr` Default:
  * X -> Action, Square -> Jump), its peek **the d-pad's left and right, held** (`FUN_00594cf0`, decomp 453431-453457);
- * `./gamepad`'s `action`, `leanLeft` and `leanRight` lanes carry them. The keyboard, walking: **X** the action (on its
- * press), **Q** / **E** held the peek left / right (the fly camera's down / up, free on foot).
+ * `./gamepad`'s `action`, `leanLeft` and `leanRight` lanes carry them. The keyboard, walking: **X** the action (taken on
+ * its release, as the game takes the pad's; held, the slide from a ladder's head), **Q** / **E** held the peek left /
+ * right (the fly camera's down / up, free on foot).
  *
  * **The HUD** (`./hud`): the climb prompt goes to `Hud.feed`'s `climb` (`hudClimb`); on a ladder the action slot shows
  * the ladder slide's icon (`action_slide.tif`, entry 0x10 "LADDER SLIDE") through `Hud.setAction` (`hudFrame`).
@@ -54,6 +56,15 @@ export interface TraversalSounds {
 /** The part of `Hud` the ladder's icon needs. */
 export interface ActionSlot { setAction(action: ActionPrompt | null, allowed?: boolean): void }
 
+/** The part of `Effects` the water's ripples and splash need. */
+export interface TraversalEffects {
+  spawn(name: string, place: EffectPlace): { readonly finished: boolean; stop(): void } | null;
+  play(name: string, place: EffectPlace): boolean;
+}
+
+/** `seal_fall_in_water` (decomp 469892-469896): the splash of a fall into water, once, at the water's point. */
+export const FALL_IN_WATER = 'seal_fall_in_water';
+
 /** `~LADDER_SLIDE` (0x65f558): the slide's loop. */
 export const LADDER_SLIDE_SOUND = '~LADDER_SLIDE';
 
@@ -62,11 +73,17 @@ export class TraversalPage {
   private clips: { clips: MotionClip[]; table: ReadonlyMap<string, MotionEntry> | null } | null = null;
   private readonly held = new Set<string>();
   private padLean: -1 | 0 | 1 = 0;
+  /** The action button held, on the keyboard (X) and on the pad (Cross). */
+  private keyHeld = false;
+  private padHeld = false;
   /** The hook's lean (`__viewer.setLean`), for the tests. */
   hookLean: -1 | 0 | 1 = 0;
   private readonly recent: TraversalEvent[] = [];
   /** Whether the HUD's action slot holds the ladder slide's icon because of us. */
   private slideShown = false;
+  /** The effects the water plays through, and the ripple now running per size (`+0x1370` big, `+0x136c` small). */
+  private effects: TraversalEffects | null = null;
+  private readonly ripples: Record<Ripple['size'], { handle: { readonly finished: boolean; stop(): void }; name: string; place: EffectPlace } | null> = { big: null, small: null };
 
   constructor(private readonly walk: WalkMode, private readonly sounds: TraversalSounds | null = null) {
     walk.useTraversal((walker, ground) => {
@@ -94,9 +111,15 @@ export class TraversalPage {
     return this.walk.action();
   }
 
-  /** The pad's lanes each frame (`padFrame`): the action on its press, the peek while held. */
+  /**
+   * The pad's lanes each frame (`padFrame`): the action held (the slide from a ladder's head reads it held) and taken on
+   * its release -- `FUN_00594cf0` (decomp 453194-453225) fires the context action on the button's release edge (state 3),
+   * the jump on its press -- and the peek while held.
+   */
   padLanes(before: Input, after: Input): void {
-    if (after.action && !before.action && this.walk.mode() === 'walk') this.action();
+    this.padHeld = after.action;
+    this.traversal()?.holdAction(this.keyHeld || this.padHeld);
+    if (before.action && !after.action && this.walk.mode() === 'walk') this.action();
     this.padLean = after.leanLeft === after.leanRight ? 0 : after.leanLeft ? -1 : 1;
   }
 
@@ -107,11 +130,17 @@ export class TraversalPage {
       if (this.walk.mode() !== 'walk') return;
       const el = e.target;
       if (typeof HTMLElement !== 'undefined' && el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'SELECT')) return;
-      if (e.code === 'KeyX') { if (!e.repeat) this.action(); return; }
+      if (e.code === 'KeyX') { this.keyHeld = true; this.traversal()?.holdAction(true); return; }
       this.held.add(e.code);
     }) as EventListener);
-    target.addEventListener('keyup', ((e: KeyboardEvent) => { this.held.delete(e.code); }) as EventListener);
-    target.addEventListener('blur', () => this.held.clear());
+    target.addEventListener('keyup', ((e: KeyboardEvent) => {
+      this.held.delete(e.code);
+      if (e.code !== 'KeyX' || !this.keyHeld) return;
+      this.keyHeld = false;
+      this.traversal()?.holdAction(this.padHeld);
+      if (this.walk.mode() === 'walk') this.action();              // the context action on the release, as the pad's
+    }) as EventListener);
+    target.addEventListener('blur', () => { this.held.clear(); this.keyHeld = false; this.traversal()?.holdAction(this.padHeld); });
   }
 
   /** One frame, before the walk's: the peek from the keys, the pad and the hook. */
@@ -137,6 +166,34 @@ export class TraversalPage {
     this.slideShown = on;
   }
 
+  /** The map's effects (`./effects`), for the water's ripples and splash. */
+  setEffects(effects: TraversalEffects | null): void {
+    this.effects = effects;
+    this.ripples.big = null;
+    this.ripples.small = null;
+  }
+
+  /**
+   * One frame of the water's effects (`FUN_005b52b0`, decomp 469810-469920): the ripple the water line asks for,
+   * following the SEAL (its place moved each frame); a new one only when there is none or the last has ended, a change
+   * of pace waiting for it; the other size's stopped on a switch.
+   */
+  effectsFrame(): void {
+    const fx = this.effects, t = this.traversal();
+    const want = t && this.walk.mode() === 'walk' ? t.ripple() : null;
+    for (const size of ['big', 'small'] as const) {
+      const cur = this.ripples[size];
+      if (cur && cur.handle.finished) this.ripples[size] = null;
+      if (want && want.size !== size && cur && !cur.handle.finished) { cur.handle.stop(); this.ripples[size] = null; }
+    }
+    if (!fx || !want) return;
+    const cur = this.ripples[want.size];
+    if (cur) { cur.place.position = [...want.at]; return; }
+    const place: EffectPlace = { position: [...want.at], velocity: [0, 0, 0], normal: [0, 1, 0] };
+    const handle = fx.spawn(rippleAnimation(want), place);
+    if (handle) this.ripples[want.size] = { handle, name: rippleAnimation(want), place };
+  }
+
   stats(): TraversalStats | null {
     const t = this.traversal();
     if (!t || this.walk.mode() !== 'walk') return null;
@@ -154,6 +211,7 @@ export class TraversalPage {
       if (e.type === 'ladderSlide' && e.on) this.sounds.play(LADDER_SLIDE_SOUND, feet);
       else if (e.type === 'ladderSlideLand') this.sounds.land(e.speed, feet);
     }
+    if (e.type === 'waterLand') this.effects?.play(FALL_IN_WATER, { position: [...e.at], velocity: [0, 0, 0], normal: [0, 1, 0] });
     if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') window.dispatchEvent(new CustomEvent(TRAVERSAL_EVENT, { detail: e }));
   }
 }

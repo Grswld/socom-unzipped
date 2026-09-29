@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  detailDrawState, detailRenderOrder, detailWeight, drawState, gsMipLevel, gsMipLod, materialSpec, type DrawState, type MaterialSpec,
+  detailDrawState, detailRenderOrder, detailWeight, drawState, envVertex, gsMipLevel, gsMipLod, materialSpec, mipChain, type DrawState, type MaterialSpec,
   type TextureFlags,
 } from '../src/materialSpec';
 import type { GsState } from '@s2u/gs';
@@ -224,5 +224,42 @@ describe('the GS mip level: from the depth, not the screen', () => {
     const steep = gsMipLod(gs({ mipmaps: true, levels: 3, lodK: -13, lodL: 1 }))!;
     expect(steep.scale).toBe(2);
     expect(gsMipLevel(steep, 2 ** 7)).toBeCloseTo(1, 6);
+  });
+});
+
+describe('mipChain: the disc\'s levels, then a tail to 1x1', () => {
+  const flat = (w: number, h: number, v: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4).fill(v) });
+  it('keeps the disc levels as they are -- a transparent detail level stays transparent -- and completes the chain', () => {
+    const base = flat(8, 4, 200);
+    const disc = [{ ...flat(4, 2, 100), data: new Uint8ClampedArray(4 * 2 * 4).map((_, i) => (i % 4 === 3 ? 0 : 100)) }];
+    const chain = mipChain(base, disc);
+    expect(chain.map((l) => [l.width, l.height])).toEqual([[8, 4], [4, 2], [2, 1], [1, 1]]);
+    expect(chain[0]).toBe(base);
+    expect(chain[1]).toBe(disc[0]);
+    expect([...chain[3]!.data]).toEqual([100, 100, 100, 0]);    // the tail is filtered from the disc level, not the base
+  });
+  it('a texture with no disc levels is the base and a box-filtered tail', () => {
+    expect(mipChain(flat(2, 2, 50), []).map((l) => l.width)).toEqual([2, 1]);
+  });
+});
+
+describe('envVertex: the sphere-map ST and rim alpha of VU1 0x34 (research 15 section 6.2)', () => {
+  // Seeding Chaos's water block, the one live 0x34 there is: base (33, 33, 33, 65), (1.5, 100, -, 0.01).
+  const water = { rgba: [33, 33, 33, 65] as const, uvScale: 1.5, rimOffset: 100, rimSlope: 0.01 };
+  it('a flat surface seen from above reflects upward: rim 1, st from the reflection over |V|', () => {
+    const { st, alpha } = envVertex([10, -5, 0], [0, 1, 0], 100 / 128, water);
+    expect(st[0]).toBeCloseTo(0.5, 6);                          // R.z = 0
+    expect(st[1]).toBeCloseTo((10 / Math.hypot(10, 5)) * 1.5 + 0.5, 6);
+    // (1 + 65) * 100/128, over 128: the dump's pass-2 alpha tops out at 51 of 128 for a vertex alpha of 100.
+    expect(alpha * 128).toBeCloseTo(51.5625, 4);
+  });
+  it('a reflection that falls takes the rim ramp and is renormalised with its height clamped', () => {
+    // V (0, 30, 40) off an upward normal: V.N = 30, R = (0, -30, 40), falling -- rim (-30 + 100) * 0.01 = 0.7.
+    const { st, alpha } = envVertex([0, 30, 40], [0, 1, 0], 1, water);
+    expect(alpha * 128).toBeCloseTo(66 * 0.7, 4);
+    const down = envVertex([0, 5, 40], [0, -1, 0], 1, water);          // R = (0, 5, 40), N down: V.N = -5, R.y = 5 - 10 = -5
+    expect(down.alpha * 128).toBeCloseTo(66 * (95 * 0.01), 4);
+    expect(down.st[0]).toBeCloseTo(1 * 1.5 + 0.5, 6);                 // R' = (40, 0, 0) after the clamp, unit
+    expect(st[1]).toBeCloseTo(0.5, 6);
   });
 });

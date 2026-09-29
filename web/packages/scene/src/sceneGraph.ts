@@ -56,6 +56,11 @@ export interface CollisionPoly {
   appflags: number;
   inside: number;
   shadow: number;
+  /**
+   * Surface word bit 27 (the first of reCOM's `m_reserved` bits after `m_shadow`): which entry of the mission's
+   * `IndoorReverb`/`OutdoorReverb` list a camera over this polygon takes (`FUN_002dc150`, web/docs/research/81 §9).
+   */
+  reverbZone: number;
   /** xyz per point, model space: the stored `CPnt4D`'s `w` is unused and dropped (36 section 6). */
   points: Float32Array;
 }
@@ -86,6 +91,13 @@ export interface SceneNode {
    * rugs, glow quads -- and set on solid objects. `VISUAL_FLAG_CULL` names it.
    */
   visualParams: number[];
+  /**
+   * Byte 7 of each visual's `vparams`: its entry in the world root's `Material_Palette`, 1-based, 0 for none. The
+   * EE reads it to decide the environment-map pass (`FUN_003b6a00`'s `*(byte *)(visual + 7)`, the table at
+   * `0x45c380+0x5a4`, stride 0x3c) -- set on the water, the glass and the icy terrain, the surfaces whose entry
+   * names a reflection texture (`parseMaterialPalette`).
+   */
+  visualMaterials: number[];
   children: SceneNode[];
   collision: CollisionPoly[];
 }
@@ -172,6 +184,10 @@ function readNode(geo: Zar, key: ZarKey): SceneNode {
       const vp = geo.child(v, 'vparams');
       return vp && vp.size >= 4 ? new Reader(geo.data(vp)).u32(0) : 0;
     }),
+    visualMaterials: (visuals?.children ?? []).map((v) => {
+      const vp = geo.child(v, 'vparams');
+      return vp && vp.size >= 8 ? geo.data(vp)[7]! : 0;
+    }),
     children: children ? children.children.map((c) => readNode(geo, c)) : [],
     collision: di ? di.children.map((d) => readPoly(geo, d, key.name)) : [],
   };
@@ -211,6 +227,7 @@ function readPoly(geo: Zar, key: ZarKey, node: string): CollisionPoly {
     appflags: (packed >>> 20) & 7,
     inside: (packed >>> 23) & 1,
     shadow: (packed >>> 24) & 3,
+    reverbZone: (packed >>> 27) & 1,
     points: out,
   };
 }

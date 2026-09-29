@@ -16,6 +16,10 @@ tree; the numbers below are counts, offsets and names.
   (576,593,920 B, 10,942 `.vag`) is the voice-over and radio streams -- nothing the walk plays. `RUN/SOUNDRDR.ZAR`
   holds `sounds.rdr`, the sound script. Both stores write 0 in the ZAR head's data size (+84), which the engine never
   reads: a zero is "the rest of the file" (`@s2u/archive`'s `Zar.parse` now takes it so).
+- **Since the first cut** (§5, §6, §7, §9, §10): material byte 0 is the map's `DefaultMaterial`; the zAnim
+  callbacks follow their starts; the reload sound starts with the reload; `.BUL_PASSING` is others' rounds within 20;
+  no landing grunt, the hurt voice `.SEAL_DAMAGE`; the SPU2 reverb (libsd mode 3) at the mission's indoor/outdoor
+  depths; the beds and the emitters; the sounds a map's banks lack, borrowed.
 - **The bank format** (§2) is 989snd's `SBlk` version 3 behind a two-chunk `FileAttributes` head, with **names**:
   every sound of every bank carries a 16-byte name (`.STEP_STONE`, `.M4A1_SIL`, `~AK47_1`, `!SMK_CANISTER`) in the
   block's hashed name table. The samples are headerless SPU ADPCM; a tone's centre note encodes the sample's rate.
@@ -33,9 +37,9 @@ tree; the numbers below are counts, offsets and names.
 - **The jump** (§6) is the `seal_jump` clip's `zanim_callback (name (jump_whoosh) time (0.4))`; the map's `CZANIM.ZAR`
   zAnim `jump_whoosh` plays `.JUMP_WHOOSH`. **The landing** (`FUN_005ac1f0`) plays the material's `LANDSOUND`
   (`.STONE_JUMP` ...) below the heavy fall-damage speed and `.BONE_BRK_1` above it (both at the deadly one).
-- **In the viewer** (§7): `@s2u/sound` decodes and renders; the page reads two to three banks by range (1.1-1.4 MB
+- **In the viewer** (§8): `@s2u/sound` decodes and renders; the page reads two to three banks by range (1.1-1.4 MB
   of the 67), renders each sound at the game's volume and pan when it starts and plays it through Web Audio.
-  Verified by the hook on Frostfire and Desert Glory, and by rendering the sounds to WAV (§8).
+  Verified by the hook on Frostfire and Desert Glory, and by rendering the sounds to WAV (§11).
 
 ## 1. The containers
 
@@ -153,9 +157,19 @@ volume 1.0 (`vtable+0x14`), or without a place (`vtable+0xc`) for the local play
 `zweapon.rdr`'s `ZWEAPON` records (keys `ReloadSound` 0x3fcb50, `FireSoundClose/Med/Far` 0x3fcc50-70): **M4A1 SD**
 `FireSoundClose .M4A1_SIL`, `ReloadSound .M4A1_SIL_RLD`, no `Med`/`Far`, `FireWait 0.14`, `Sound_Radius 10`; **M4A1**
 `.M4A1` / `.M4A1_M` / `.M4A1_F`, `.M4A1_RLD`, `Sound_Radius 100`. Both banks' sounds are in every map's `_fx.bnk`
-(`MP2_FX` 97-102). When the reload sound starts inside the reload is not traced; the viewer plays it as the reload
-begins. The choice among close, medium and far for a remote shooter is not traced either (the viewer takes the next
-variant when the listener is past the previous one's `RANGE`: a reading).
+(`MP2_FX` 97-102). **The reload sound starts with the reload**: `FUN_005c2a90` (decomp 477484-477537) takes the next
+magazine, starts the reload (`FUN_005a82e0`) and in the same step plays the weapon's `+0x98` sound -- the `ReloadSound`
+handle `FUN_003c4700` resolved from the name at `+0x9c` -- at the actor (`+0x1c`), volume 1.0. The choice among close,
+medium and far for a remote shooter is not traced (the viewer takes the next variant when the listener is past the
+previous one's `RANGE`: a reading).
+
+**A round passing** (`FUN_00598000`, decomp 454613-454655): each tick a projectile's segment is taken against an actor's
+position (`FUN_00308b00`, the closest approach); within 70 units the actor flinches (`FUN_00572fa0`), within 20 a bullet
+plays `.BUL_PASSING` (0x3fc508, `FUN_003c4700` hands it to the projectiles) at the nearest point, volume 1.0; a rocket
+within 100 plays `.ROCKET_BY` once. A projectile flagged at `+4` bit 3 is skipped; the player's own rounds leave from
+the player, so the rule is for other shooters' rounds (`GameAudio.onRoundPast`), never one's own. Whatever excludes a
+round's first segment (the flag, or the shooter test at the head) is the projectile's, so its later segments -- a
+penetration's exit, a ricochet -- are excluded with it: the viewer's own rounds play no `.BUL_PASSING` however they go on.
 
 ## 6. The jump and the landing
 
@@ -171,11 +185,41 @@ variant when the listener is past the previous one's `RANGE`: a reading).
   callers at decomp 466656-466937): the material under the actor (`FUN_002dc1d0(+0x400)`), its `LANDSOUND`; the
   class against `DAT_0044c280/284/288` -- the seal table's `+0x30..+0x38`, reCOM's `m_landSpeed[i] = g sqrt(2
   fallDist[i] / g)` = `sqrt(2 g d)` over `FALLING_DAMAGE_LIGHT/HEAVY/DEATH` (62, 91, 120 units at g 235: 170.7,
-  206.8, 237.5 units a second). At or under the light speed: the `LANDSOUND`; to the heavy: the `LANDSOUND` and a
-  0.33 damage call (`FUN_00578150`, the grunt: not modelled); to the deadly: `.BONE_BRK_1` alone; at or over it:
-  both. So a soft landing on stone is `.STONE_JUMP`, a hard one `.BONE_BRK_1`.
+  206.8, 237.5 units a second). At or under the light speed: the `LANDSOUND`; to the heavy: the `LANDSOUND`; to the
+  deadly: `.BONE_BRK_1` alone; at or over it: both. So a soft landing on stone is `.STONE_JUMP`, a hard one
+  `.BONE_BRK_1`. **No landing grunt in the landing code**: `FUN_00578150(0.33 / 0.66)` adds to a float at `+0xeb0`
+  capped at 1 (a meter, not a sound). Above the light speed the landing deals damage -- `(speed - light) / (deadly -
+  light)` off each of the six body parts' health (`+0xffc`) -- and runs the damage reaction (`FUN_005a54d0`); the hurt
+  SEAL's voice is his character's `CHRSND_DAMAGE` (`character.rdr`, `mp_seal1 : mp_seal (sounds (CHRSND_DAMAGE
+  (.SEAL_DAMAGE) ...))`). The viewer plays `.SEAL_DAMAGE` with a landing that hurts [reading: the voice's call inside the
+  reaction was not traced].
 
-## 7. The viewer
+## 7. The surface a polygon is, and the map's `DefaultMaterial`
+
+`FUN_002dc1d0` (decomp 181xxx, the accessor every material read goes through) returns the polygon's material byte
+(surface word bits 10-17) -- or, for 0, `DAT_0044f310`: the map's `DefaultMaterial`, the SOILS name on its world root
+(`<map>.ZED`; `mp8.rdr` repeats it: `DefaultMaterial (DIRT)`). Byte 0 is common: Crossroads' streets (810 of its floor
+polygons), Frostfire's rig (197). Two maps name a default no SOILS entry is spelt as: MP11 `none` (read as none), MP64
+`stone` (read as `STONE`).
+
+**What each map's banks lack.** A map's `_am` bank holds the material sounds its designers expected; the floors ask for
+more. Across the 22 maps the gaps are Rat's Nest's `DIRT` (its `DefaultMaterial`, 85% of its floors; `MP8_am` has no
+`.STEP_DIRT`), Crossroads' `SAND`/`THATCH`/`DIRT`, the tin (`METAL_THIN`: `.STEP_TIN`) on seven maps, the metal and
+carpet steps on others, and many grenade bounces (`grenade_hit_metal_thick` plays `.GREN_METAL`, which `MP2_am` lacks;
+no `grenade_hit_asphalt` zAnim exists at all). The console resolves a name only among the loaded banks
+(`FUN_00344f30`), so there the sound is presumably silent -- not established by a capture. The viewer lends the
+missing names from another map's bank that holds them (the same recording: §8, `borrowMissing`, a PLACEHOLDER).
+
+**Names the disc holds nowhere**: the casings' `shell_eject` zAnims (CZANIM) name the metal casing `.BUL_CASE_METAL`
+where every bank spells it `.BUL_CAS_METAL` (and `.SG_SHELL_TIN`, `.SG_SHELL_SAND` exist in no bank): a spelling slip
+in the game's data, so a casing on metal is silent on the console too. `grenade_hit_asphalt` has no play-sound command:
+its CALL_ANIMATION (45, the name at +7, `FUN_0025d550`) names `.GREN_ASPHALT` -- no animation and no bank of the disc is
+called that, so it is silent too. The viewer mends both (`SOUND_NAME_FIXES`, one table the effects share):
+`.BUL_CASE_METAL` plays `.BUL_CAS_METAL`, `.GREN_ASPHALT` the stone's `.GREN_STONE` (asphalt steps like stone in
+SOILS) -- departures from the retail game, named. With the lending, every `grenade_hit_<surface>` of a surface a map has
+sounds: 200 of 200 over the 22 maps.
+
+## 8. The viewer
 
 - **`@s2u/sound`**: `decodeVag`, `parseBankFile` (the head, block, sounds, grains, tones, names, VAG), `renderSound`
   (the grain sequencer at 240 Hz -- TONE, RAND_PLAY, PLAY_CYCLE, RAND_PB/PB/ADD_PB, RAND_DELAY, the loops, markers,
@@ -199,11 +243,77 @@ variant when the listener is past the previous one's `RANGE`: a reading).
   material, the jump count, the landing speed, the fire count, the reload flag.
 - **Placeholders**: `LISTENING_GAIN_PLACEHOLDER` (x4, +12 dB on the whole mix: the console's effects peak at -30 to
   -20 dBFS, a television's knob did the rest); `DEFAULT_RANGE_PLACEHOLDER` (30-200, for a sound `sounds.rdr` does not
-  list); `MAX_RENDER_SECONDS_PLACEHOLDER` (4 s, a looping voice nothing keys off). The jump's whoosh is played at the
-  take-off, not at the clip's 0.4 (the motion workstream's callback will carry the time); the landing's grunt, the
-  footprint decals, the remote fire variants' chooser, and the reload sound's moment inside the reload are not traced.
+  list); `MAX_RENDER_SECONDS_PLACEHOLDER` (4 s, a looping voice nothing keys off); `LOOP_SECONDS_PLACEHOLDER` /
+  `LOOP_FADE_SECONDS_PLACEHOLDER` (12 s + 1 s, the ambience loops); `BED_FADE_SECONDS_PLACEHOLDER` (0.5 s);
+  **`borrowMissing`**: a step, stealth, crawl or landing sound of a material the map's floors use, a grenade bounce or
+  round impact on a surface the map has, an explosion or a casing, that the map's banks lack, lent by the same name from
+  the bank of another map that has it (found through `sounds.rdr`: a set is a bank's block) -- 1 or 2 borrowed banks a
+  map, every floor of the 22 now sounding. The remote fire variants' chooser and the footprint decals are not traced.
+- **The unlock costs nothing** (measured on the dev server, headless Chromium): the first key press used to spend 949 ms
+  (Desert Glory), 451 ms (Sandstorm), 133 ms (Frostfire) in the audio unlock -- about 300 ms of it the page's first
+  `AudioContext` (the browser's audio service), the rest the reverb's response and the loops' buffers. Now the context
+  is made suspended when the map's sound data arrives, the response is computed in the worker, and the convolver
+  (~11 ms, the browser's partitioning) and the loops' buffers (a channel a job, shared by a sound's emitters) are built
+  from a queue run 4 ms a frame (`PUMP_BUDGET_MS`) before any gesture; the key press only resumes the context: 0.4-0.7 ms
+  for the whole event, 0.1 ms in the handler (`stats().timing`).
+- **The stats** (`window.__viewer.audio()`): the banks (the borrowed marked), the map's `defaultMaterial`, the reverb
+  (loaded, inside, zone, depth), the ambience (the beds, which is up, the emitters and their gains), the dropped plays
+  by reason (locked, range, unknown, muted, silent -- a surface or zAnim that names no sound) and `unknownNames`;
+  `missing` names what could not be read -- a tree without the sound archives says `RUN/SOUNDS/BNKSTORE.ZAR: ...`, and
+  the page logs one warning.
+- **The events** added this round: `onRoundPast(from, to, actor, rocket?)` (another shooter's round), `setEnvironment
+  (inside, zone)` and `setAmbience(on)` (fed by `walkSounds.frame(camera)`), `setLoops` (the worker's loops).
 
-## 8. Verification
+## 9. The reverb
+
+- **The mode.** `snd_SetReverbType(2, 3)` (`FUN_0033f2a0`, 989snd call 0x0e; decomp 55186, 243346, 243386): core 1,
+  libsd mode 3, `SD_REV_MODE_STUDIO_B`. libsd's presets are in `LIBSD.IRX`'s data: nine 0x44-byte blocks of the 32 SPU
+  reverb registers (Room first, `dAPF1 0x7D, dAPF2 0x5B`; mode 3 `0xB1, 0x7F`, the PS1 "Studio Medium"), the work
+  areas' sizes before them (Studio B 0x908 x 8 bytes). `findReverbPresets` finds them by their shape.
+- **Which voices.** SOCOM's `989SND.IRX` sets a voice's effect sends (`SD_S_VMIXEL`/`VMIXER`, 0x1900/0x1b00) from its
+  tone's flags **bit 0** (decomp 14339-14345: `DAT_0001cf1c`) and clears its dry mix (`VMIXL`/`VMIXR`) for bit 4
+  (14189-14203) -- not the v3.01 reference's bit 1. 200 of `MP2_am`'s 281 tones send (the steps among them).
+- **The depth** (`FUN_00341a60`, decomp 241509-241560, each frame): the camera probes the floor under it (`FUN_00295b00`,
+  decomp 140035-140058) and keeps the hit polygon's `m_inside` (bit 23, `FUN_002dc180`) and a zone bit (27,
+  `FUN_002dc150`); on a change, `snd_AutoReverb(2, depth x 32767, seconds x 240, 3)` (989snd call 0x10) to the
+  `IndoorReverb` or `OutdoorReverb` entry of that zone (`FUN_003416b0`/`FUN_00341500` read them from `mission.rdr`:
+  `Depth`, `Seconds`), or to 0 over 0xf0 ticks (1 s) when the list has none. Frostfire: indoors 0.45 (the first of two
+  `IndoorReverb` keys; the later says 0.3) and 0.2, outdoors 0.07 and 0.2, each over 1 s; the outdoor depths run 0 (Sujo)
+  to 0.2 (Chain Reaction). The zone bit is 0 on every floor of the maps looked at, so entry 0 is the one heard.
+- **In the viewer**: the preset's reverb (psx-spx's formula, as PCSX2's SPU2 runs it: at 24 kHz, both sides a tick)
+  run once on an impulse into each input -- Studio B rings about a second, -20 dB each 0.2 s, 37 ms before the first
+  reflection -- a four-channel `ConvolverNode` on a bus the flagged voices' send pair feeds, its output gain (the SPU's
+  `EVOL`) ramped linearly to the depth.
+
+## 10. The ambience
+
+The mission script plays it (`MZANIM.ZAR`, `mission` set; the common set carries the same beds):
+- **The beds.** `check_camera_inside_state1` (activation 1: it starts with the mission) loops on the camera's inside
+  state: stop `outside_noise`, start `inside_noise` (command 46, the stop, names its animation at +4; 45, the start, at
+  +7), and the reverse. `outside_noise` plays `~OUTDOOR_AMB`, `inside_noise` `~INDOOR_AMB`, without a place (flags
+  0x280). `~OUTDOOR_AMB` (MP2) is two tones panned 270/90 and two child sounds under an LFO.
+- **The emitters.** Every self-starting animation (activation 1) whose play-sound command loops a `~` sound at a node
+  (flags 0x82/0x282, the node byte at +16, `0xf9` the animation's root node): Frostfire's `~FAN_ROTATE` at `fan1`,
+  Desert Glory's insects at its lights and fires in a barrel and the rubble, the waterfalls and rivers of Abandoned,
+  Foxhunt and Shadow Falls, dogs, chimes, lapping water, radios, humming equipment, the helicopters (their SoftImage
+  path not followed: heard at the node's rest), crickets (whose conductors wait on a global register the game sets, so
+  no voice starts in the first seconds). 0 to 18 a map; one node (`pipe` on Vigilance) is not in the realised scene.
+- **The crickets** set no game register: their conductor counts its burst of chirps in a local register (`SET_REGISTER
+  _RAND 0..40`, `INC_REGISTER`, `TEST_REGISTER < 90`) and waits `RAND_DELAY` up to 4000 ticks (16.7 s) between bursts --
+  longer than the 12 s loop, so it rendered silent. A loop with no voice in 12 s is rendered over 40 s at 24 kHz
+  (`renderLoopAtLeastOneVoice`, `LONG_LOOP_SECONDS_PLACEHOLDER`).
+- **Global register 2** is the one the game sets for the ambience: each frame `snd_SetSFXGlobalReg(2, x)` (989snd call
+  0x67; `FUN_00341a60`, decomp 241580-241600) with `x = f x 255 - 128`, `f` the camera's height through the mission's
+  `elevation (max min)` (`FUN_002aca30`: 0 below, 1 above, linear between). The outdoor beds of Foxhunt, Enowapi, Fish
+  Hook, The Mixer (indoor) and Requiem test it (`TEST_REGISTER -2`) to pick their layers; Requiem's ice sounds read
+  global 3, which nothing here sets. The viewer renders the beds once, with register 2 at spawn A's camera height
+  (`BED_CAMERA_ABOVE_FEET_PLACEHOLDER`, 25 over the floor), not per frame.
+- **In the viewer**: each sound rendered once in the worker as a 12 s loop with a 1 s crossfade folded in
+  (`LOOP_SECONDS_PLACEHOLDER`), played round; the beds cross over 0.5 s (`BED_FADE_SECONDS_PLACEHOLDER`) as the camera's
+  floor goes in and out; an emitter's two channel gains follow the camera each frame -- its `RANGE` fall-off, squared
+  by 989snd's law, and the pan pair of its azimuth.
+
+## 11. Verification
 
 `npm run dump-sounds -- MP2 <dir> .STEP_STONE ...` renders to WAV and prints each sound's length, peak and RMS. On
 Frostfire, with a seeded random: `.STEP_STONE` 0.641 s, 1 voice, peak 0.027; `.STEALTH_STONE` 0.652 s, 0.012;
@@ -215,11 +325,14 @@ of 90 nothing on the left. In the browser (Playwright, `e2e/audio.spec.ts`): on 
 `.STEP_METAL`, the jump `.JUMP_WHOOSH` then `.METAL_JUMP`, five rounds `.M4A1_SIL`, `R` `.M4A1_SIL_RLD`; on Desert
 Glory `.STEP_SAND` and `.SAND_JUMP`; nothing dropped.
 
-## 9. Open
+## 12. Open
 
 - The clip position at `+0x1c` of the track (what the steps read) against the viewer's `frame / frames`: a cycle
   clip whose last key repeats its first would put the right foot a key early; the foot bones' positions (the viewer
   uses the drawn feet).
-- `FUN_00578150`'s grunt, `FALLSOUND` for the body, `.GUN_EMPTY` on a dry trigger, the ambience beds (`~OUTDOOR_AMB`
-  and the `inside_noise`/`outside_noise` zAnims), the music (`SMUS`, VPK streams) -- all readable with what is here.
-- 989snd's reverb and the Gaussian interpolation (research/69 §4): the render is linear and dry.
+- `FALLSOUND` for the body, `.GUN_EMPTY` on a dry trigger, the music (`SMUS`, VPK streams), the LFO grain (the
+  outdoor bed's shimmer), the global registers (the crickets' conductors; `snd_SetSFXGlobalReg(2, x)` every frame,
+  `FUN_00341a60`, from the camera's height) -- all readable with what is here.
+- The Gaussian interpolation (research/69 §4) and the SPU2's reverb down/up-sampling filters: the render interpolates
+  linearly and the reverb response holds each 24 kHz tick for two output samples.
+- Whether the console is silent where the viewer borrows (a capture on Rat's Nest would say).

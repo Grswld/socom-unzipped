@@ -5,7 +5,7 @@ import {
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
 import { firstPersonHeight, firstPersonPeekShift, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
-import { airBands, oneShotSeconds } from './locomotion';
+import { airBands, oneShotSeconds, SEAL_ANIMS } from './locomotion';
 import { landingKind, sealTuning, type LandingKind } from './physics';
 import type { TraversalPose } from './animator';
 
@@ -326,7 +326,9 @@ export function packGround(grid: GridParams, polys: readonly WorldPoly[], owners
   polys.forEach((p, i) => {
     points.set(p.points, at);
     at += p.points.length;
-    fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0, p.appflags ?? 0], i * GROUND_FIELDS);
+    // AUDIO (web/docs/research/81 §9): the sixth word also carries m_inside (bit 3) and the reverb zone (bit 4).
+    const flags = (p.appflags ?? 0) | ((p.inside ?? 0) << 3) | ((p.reverbZone ?? 0) << 4);
+    fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0, flags], i * GROUND_FIELDS);
   });
   return { grid, owners, points, fields };
 }
@@ -343,7 +345,8 @@ export function groundPolygons(ground: GroundData): WorldPoly[] {
     out.push({
       modelName: owner[i]?.modelName ?? 'worldmodel', path: owner[i]?.path ?? '',
       ptcount, ditype: ground.fields[f + 1]!, material: ground.fields[f + 2]!, cameratype: ground.fields[f + 3]!,
-      region: ground.fields[f + 4]!, appflags: ground.fields[f + 5]!, points: ground.points.subarray(at, at + ptcount * 3),
+      region: ground.fields[f + 4]!, appflags: ground.fields[f + 5]! & 7,
+      inside: (ground.fields[f + 5]! >> 3) & 1, reverbZone: (ground.fields[f + 5]! >> 4) & 1, points: ground.points.subarray(at, at + ptcount * 3),
     });
     at += ptcount * 3;
   }
@@ -394,10 +397,17 @@ export interface PlaySnapshot {
   ground: GroundMotion;
   /** The action holding the mover, or null. */
   action: MoverAction | null;
+  /** The upper-body overlay over the locomotion (the moving swap), or null. */
+  overlay?: MoverOverlay | null;
   /** The look's turn over the last frame, radians a second, left positive: what turns the prone body in place. */
   turnRate: number;
   /** TRAVERSAL SEAM: the traversal move's clip, or null (`./animator` `MoverSnapshot.traversal`). */
   traversal?: TraversalPose | null;
+  /**
+   * TRAVERSAL SEAM: the peek held (state 3, `seal+0x375`: -1 left, 1 right; 0 none) -- `GetThrowAnim` takes the lean's
+   * toss from it (web research 86 section 4.4; `./grenade`).
+   */
+  peek?: -1 | 0 | 1;
 }
 
 /** The table's jump and landing fields (`./physics`): `jump_factor`, `gravity` and the landing rates. */
@@ -408,6 +418,11 @@ export interface TickDriver {
   tick(walker: Walker, input: WalkInput, dt: number): boolean;
   /** The stick's factor this tick (web research 86 section 5: the water's `FUN_005b56c0`), 1 when absent. */
   stickFactor?(walker: Walker): number;
+  /**
+   * The stick as `FUN_005b56c0` leaves it (web research 86 section 5.3): each axis by the ground's uphill factor, then
+   * the water's; unchanged when absent.
+   */
+  stickScale?(walker: Walker, forward: number, right: number): [number, number];
 }
 
 /**
@@ -421,11 +436,19 @@ export interface TraversalHooks extends TickDriver {
   yaw(): number | null;
   /** The camera's peek value `DAT_004161c0`, -1 left .. 1 right (`./playerCamera` `peekShift`). */
   peek(): number;
+  /** The peek held (state 3): -1 left, 1 right, 0 none -- the body's lean, not the camera's eased value. */
+  peeking(): -1 | 0 | 1;
   action(): void;
   lean(side: -1 | 0 | 1): void;
   reset(walker?: Walker): void;
   /** Whether a move holds the mover (a ladder, a climb, a hang): no jump and no stance change then. */
   busy(): boolean;
+  /** The jump while busy (hanging: let go); true when it did something. */
+  jump(walker: Walker): boolean;
+  /** The dive (`FUN_0057e540`) in place of a go-prone from a run; true when it dived. */
+  dive(walker: Walker): boolean;
+  /** A stance button while busy (hanging: stand climbs, crouch or prone let go); true when it did something. */
+  stanceButton(walker: Walker, stance: Stance): boolean;
 }
 
 /** `FUN_0057e1b0`: a take-off at this speed or more (`225 <= |v|^2`, the local velocity) is the running jump. */
@@ -460,6 +483,7 @@ export function runningJumpSpeed(t: { jump_factor: number; gravity: number } = J
  */
 export const ACTION_CLIPS = Object.freeze({
   jump: { playback: 1.1, frames: 20, noInterrupt: 0.7, travel: [0, 0] },
+  launch: { playback: 2.4, frames: 25, noInterrupt: 1, travel: [0, 0] },
   land: { playback: 0.7, frames: 20, noInterrupt: 0, travel: [0.19, -2.09] },
   landHard: { playback: 1, frames: 20, noInterrupt: 0.35, travel: [0.19, -2.09] },
   standToCrouch: { playback: 0.65, frames: 27, noInterrupt: 1, travel: [-1.2, 1.27] },
@@ -469,7 +493,27 @@ export const ACTION_CLIPS = Object.freeze({
   hitStomach: { playback: 2.9, frames: 32, noInterrupt: 0.8, travel: [0.63, 6.79] },
   landDeath: { playback: 0.4, frames: 11, noInterrupt: 1, travel: [0.05, -0.72] },
   getUp: { playback: 2, frames: 27, noInterrupt: 0.8, travel: [-1.79, -1.1] },
+  // The rifle <-> pistol swap's full-body clips (`FUN_005a64c0`): `NoInterrupt ()`, but the standing one gives way to the
+  // stick all the same (`FUN_00550ef0` 418183: action 0x35 is tested whatever `FUN_00587c20` says).
+  swapStand: { playback: 1.32, frames: 32, noInterrupt: 1, travel: [0, 0] },
+  swapCrouch: { playback: 1, frames: 23, noInterrupt: 1, travel: [0, 0] },
+  swapProne: { playback: 1.8, frames: 38, noInterrupt: 1, travel: [0, 0] },
 } as const);
+
+/** `Moving rifle -> Pistol` (`seal_mv_rifle2pistol`, 21 keys, `playback` 1.32, `BlendOverlay`): the swap on the move. */
+export const SWAP_OVERLAY = { playback: 1.32, frames: 21 } as const;
+
+/**
+ * The swap `WalkMode.swapWeapon` / `Walker.swapWeapon` picked (`FUN_005a64c0`): the full-body action it started, or
+ * the overlay over the locomotion (`overlay` true), and whether it plays backwards (the pistol back to the rifle).
+ */
+export interface SwapPick { action: 'swapStand' | 'swapCrouch' | 'swapProne' | null; overlay: boolean; reversed: boolean; seconds: number }
+
+/**
+ * An upper-body clip over the locomotion (the game's second play channel, `FUN_0028d860(anim+0x60, ...)`; a motion
+ * flagged `BlendOverlay`): the moving swap. `t` seconds into `seconds`, backwards when `reversed`.
+ */
+export interface MoverOverlay { clip: string; serial: number; t: number; seconds: number; reversed: boolean }
 
 /** `FUN_00550ef0` (decomp 418180-418190): an interruptible action is cut when a stick axis passes this. */
 export const INTERRUPT_STICK = 0.1;
@@ -502,13 +546,13 @@ export const ACTION_SECONDS: Readonly<Record<keyof typeof ACTION_CLIPS, number>>
  * getting up). `serial` changes with every start, so the animator sees a restart.
  */
 export type MoverActionName = 'jump' | 'launch' | 'fall' | 'land' | 'landHard' | 'standToCrouch' | 'crouchToProne' | 'standToProne'
-  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp';
+  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp' | 'swapStand' | 'swapCrouch' | 'swapProne';
 export interface MoverAction {
   name: MoverActionName;
   serial: number;
   /** Seconds since it started. */
   t: number;
-  /** How long it holds the mover, or null (the launch and the fall hold until the landing). */
+  /** How long it holds the mover, or null (the fall holds until the landing; the launch its clip's run, or the landing). */
   seconds: number | null;
   /** A transition played backwards: getting up. */
   reversed: boolean;
@@ -621,6 +665,8 @@ export class Walker {
   private floorNormalY = 1;
   /** The ground state as it last ran (`GroundMotion`). */
   private ground_: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
+  /** The ground state the feet left the floor in: the play the launch or the fall was pushed over (`land`). */
+  private groundBefore: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
 
   /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
   get stance(): Stance {
@@ -660,6 +706,36 @@ export class Walker {
     return this.action_;
   }
 
+  /** The upper-body overlay playing over the locomotion (the moving swap), or null. */
+  get overlay(): MoverOverlay | null {
+    return this.overlay_;
+  }
+  private overlay_: MoverOverlay | null = null;
+
+  /**
+   * The rifle <-> pistol swap's clip (`FUN_005a64c0`, decomp 461850-462030; the WEAPON workstream owns the item and
+   * calls `Animator.setWeapon` at its hand-off): prone `Prone rifle -> Pistol`; crouched or standing, at 20 a second
+   * or under (`|v|^2 <= 400`) `Crouch rifle -> Pistol` / `Rifle -> Pistol` as an action holding the mover, faster
+   * `Moving rifle -> Pistol` over the locomotion. To the rifle each plays backwards (`FUN_00588bc0`'s fourth
+   * argument 1, `FUN_0028c160`) [reading for the moving one, pushed forward both ways]. Refused in the air and while
+   * an action plays [reading: the caller's gate is not read]. Null when refused.
+   */
+  swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
+    if (this.inAir || this.action_) return null;
+    const reversed = to === 'rifle';
+    const s = this.state;
+    const still = s.vx * s.vx + s.vz * s.vz + s.vy * s.vy <= 400;
+    if (this.stance_ === 'prone' || still) {
+      const action = this.stance_ === 'prone' ? 'swapProne' : this.stance_ === 'crouch' ? 'swapCrouch' : 'swapStand';
+      this.start(action, ACTION_SECONDS[action], reversed);
+      s.vx = 0; s.vz = 0;
+      return { action, overlay: false, reversed, seconds: ACTION_SECONDS[action] };
+    }
+    const seconds = oneShotSeconds(SWAP_OVERLAY.playback, SWAP_OVERLAY.frames);
+    this.overlay_ = { clip: SEAL_ANIMS.swapMoving, serial: ++this.serial, t: 0, seconds, reversed };
+    return { action: null, overlay: true, reversed, seconds };
+  }
+
   /** The ground state as it last ran (`GroundMotion`). */
   get ground(): GroundMotion {
     return this.ground_;
@@ -682,8 +758,47 @@ export class Walker {
     if (!a || a.name === 'launch' || a.name === 'fall') return false;
     const c = ACTION_CLIPS[a.name];
     const phase = a.t / (c.playback * ((c.frames - 1) / c.frames));
-    if (!(phase > c.noInterrupt)) return false;
-    return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK;
+    // FUN_00550ef0 418183: action 0x35 (`Rifle -> Pistol`) takes the stick test whatever FUN_00587c20 answers.
+    if (!(phase > c.noInterrupt) && a.name !== 'swapStand') return false;
+    // FUN_00550ef0 418183-418186: the move axes (actor+0x240, +0x244) and the turn axis (actor+0x23c, the turn over
+    // turn_maxrate), any past 0.1.
+    return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK
+      || Math.abs(this.turn / SEAL_TUNING.turnMaxRate) > INTERRUPT_STICK;
+  }
+
+  /**
+   * The actor's turn, radians a second, left positive (`actor+0x48`; `WalkMode` sets it from the look each frame): the
+   * turn axis `actor+0x23c` is this over `turn_maxrate`, and past 0.1 it cuts an interruptible action as the move
+   * stick does (`FUN_00550ef0`).
+   */
+  turn = 0;
+
+  /**
+   * The action clips' root travel per key, x and z in the model's frame, by clip name (`WalkMode.setActionRoots`, from
+   * the pack the page loads): what `FUN_0028c250` reads the velocity off. Without them each clip's mean
+   * (`ACTION_CLIPS[..].travel`) stands in.
+   */
+  actionRoots: ReadonlyMap<string, Float32Array> | null = null;
+
+  /**
+   * `FUN_0028c250` through `FUN_00289bb0` (decomp 134145-134183, 132691-132756) for an action on the mover: the root's
+   * change from the key the phase is on to the next (the last key paired with the one before), times the keys over
+   * `playback` -- units a second in the model's frame, (x right, z behind) -- backwards for a transition played
+   * backwards. The phase is the one-shot's `t / (playback (n - 1) / n)`, from its end when backwards.
+   */
+  actionVelocity(name: keyof typeof ACTION_CLIPS, t: number, reversed: boolean): [number, number] {
+    const c = ACTION_CLIPS[name], n = c.frames, end = (n - 1) / n;
+    const keys = this.actionRoots?.get(SEAL_ANIMS[name]);
+    if (!keys || keys.length < 2 * n) {
+      const v = (reversed ? -1 : 1) / ACTION_SECONDS[name];
+      return [c.travel[0] * v, c.travel[1] * v];
+    }
+    const run = t / (c.playback * end);
+    const phase = Math.min(end, Math.max(0, reversed ? end - run : run));
+    let a = Math.min(n - 1, Math.floor(phase * n + 1e-9)), b = a + 1;
+    if (b >= n) { b = n - 1; a = Math.max(0, n - 2); }
+    const k = ((reversed ? -1 : 1) * n) / c.playback;
+    return [(keys[2 * b]! - keys[2 * a]!) * k, (keys[2 * b + 1]! - keys[2 * a + 1]!) * k];
   }
 
   /** The body in use (`STANCE[posture]` gives its root and column): `stand` while a crouch runs at full stick. */
@@ -705,6 +820,14 @@ export class Walker {
    * climb. Its `tick` runs first each tick and returns true when it moved the mover itself; false lets the walk run.
    */
   driver: TickDriver | null = null;
+
+  /**
+   * TRAVERSAL SEAM: moves the mover across the ground by (dx, dz) as a tick's step does -- the walls, the floors, a step
+   * down, an edge's fall -- for a move that carries it (the dive).
+   */
+  glide(dx: number, dz: number): void {
+    this.move(dx, dz);
+  }
 
   /**
    * TRAVERSAL SEAM: puts the mover on the floor where it is (`on` false: `vy` zeroed, no landing recorded) or in the
@@ -739,6 +862,7 @@ export class Walker {
     this.inAir = false;
     this.landing_ = null;
     this.action_ = null;
+    this.overlay_ = null;
     this.jumpLock = 0; this.jumpDelay = 0; this.jumping = false; this.carried = [0, 0];
     this.floorNormalY = floor.normal[1];
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
@@ -756,15 +880,21 @@ export class Walker {
   }
 
   /**
-   * The jump (`FUN_0057e1b0`, the header): refused in the air, prone, within `JUMP_LOCK` of a take-off or a landing,
-   * while an action other than the fall holds the mover [reading: the action stack takes the `Jump` only from a
-   * locomotion action], and off walkable ground. At `RUNNING_JUMP_SPEED` or more the running jump -- off the floor with
-   * the velocity carried, the impulse `JUMP_DELAY` later; under it the standing jump -- the `Jump` action on the floor.
-   * True when a jump started.
+   * The jump (`FUN_0057e1b0`, decomp 440776-440867, the header): refused in the air (`actor+0x105e` bit 5), within
+   * `JUMP_LOCK` of a take-off or a landing (`actor+0x135c`), off walkable ground (`actor+0x1348` under cos
+   * `max_slope`), prone (`FUN_005b4340(actor, 0xb)`: stance 2 -- its other refusals, the knock-downs `Fall forward` /
+   * `backwards`, the death landings, `180`, `dive_to_prone`, the hang and ladder states, are not the walk's), and
+   * **unless the action on top plays a looped motion** (`FUN_005551a0(entry+0x28, 0x40)`: the entry's bit 0x40 is its
+   * motion's looped bit, `FUN_0028dc90` from `+0x49` bit 6). `FUN_00550ef0` takes the press whatever plays
+   * (`ctrl+0x170` bit 2, set with it by `FUN_00592d50`), so a press during a one-shot -- the jump, the launch, the
+   * fall, a landing, a transition, a hit, the get-up -- is spent and refused; the idles, the locomotion and the turn
+   * steps are all looped. At `RUNNING_JUMP_SPEED` or more the running jump -- off the floor with the velocity carried,
+   * the impulse `JUMP_DELAY` later; under it the standing jump -- the `Jump` action on the floor. True when a jump
+   * started.
    */
   jump(): boolean {
     if (this.inAir || this.jumpLock > 1e-9 || this.stance_ === 'prone') return false;
-    if (this.action_ && this.action_.name !== 'fall') return false;
+    if (this.action_) return false;                              // every action the walk plays is a one-shot
     if (this.floorNormalY < MAX_SLOPE_COS) return false;
     const s = this.state;
     if (s.vx * s.vx + s.vz * s.vz + s.vy * s.vy >= RUNNING_JUMP_SPEED * RUNNING_JUMP_SPEED) {
@@ -772,7 +902,7 @@ export class Walker {
       this.jumping = true;
       this.jumpDelay = JUMP_DELAY;
       this.jumpLock = JUMP_LOCK;
-      this.start('launch', null);
+      this.start('launch', ACTION_SECONDS.launch);             // its clip's 2.21 s, or the landing: whichever first
     } else {
       this.start('jump', ACTION_SECONDS.jump);
     }
@@ -781,6 +911,7 @@ export class Walker {
 
   /** Leaves the floor: the velocity across it carried (`actor+0x1350 = +0x38`), the fall from 0. */
   private takeOff(): void {
+    this.groundBefore = this.ground_;
     this.inAir = true;
     this.landing_ = null;
     this.airTime = 0;
@@ -838,11 +969,17 @@ export class Walker {
     this.prev = { x: s.x, y: s.y, z: s.z };
     if (this.driver?.tick(this, input, dt)) return;               // TRAVERSAL SEAM: a ladder or a climb has the tick
     this.jumpLock = Math.max(0, this.jumpLock - dt);
+    const o = this.overlay_;
+    if (o) { o.t += dt; if (o.t >= o.seconds - 1e-9) this.overlay_ = null; }
     const a = this.action_;
     if (a) {
       a.t += dt;
       if (a.seconds !== null && a.t >= a.seconds - 1e-9) {
-        // PLACEHOLDER (the viewer has no death): the deadly fall's `Land forward` gets up (`Get up forward`).
+        // PLACEHOLDER (the viewer has no death): the deadly fall's `Land forward` gets up (`Get up forward`). In the game
+        // FUN_005af590 pushes `Land forward` in state 8 and the SEAL dies there (the vtable's +0x90, FUN_005a5da0): the
+        // controller's FUN_005979a0 (454470-454495) spectates, or in a respawn game fades the body out (alpha 0 at 0.1 a
+        // second, FUN_00552780) and FUN_00599b60 (455695) fades the new SEAL in at a spawn (1.0 at 4 a second). No
+        // get-up follows a death; `Get up forward` is the game's own action, not one it plays after `Land forward`.
         if (a.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
         else this.action_ = null;
       }
@@ -850,25 +987,32 @@ export class Walker {
     // The pad reader clamps each axis to +-1 and never puts the pair in the unit disc (`./moveStick`): a full
     // diagonal is (1, 1), which the standing blend takes as min(1, |stick|) and prone as one axis at 1.
     let forward = Math.max(-1, Math.min(1, input.forward)), right = Math.max(-1, Math.min(1, input.right));
-    const wade = this.driver?.stickFactor?.(this) ?? 1;          // TRAVERSAL SEAM: the water's slow-down
-    forward *= wade; right *= wade;
+    if (!this.inAir && this.driver?.stickScale) [forward, right] = this.driver.stickScale(this, forward, right);   // TRAVERSAL SEAM: slope, water
     if (this.inAir) { this.fall(dt, forward, right); return; }
     if (this.interrupted(forward, right)) {                     // FUN_00587c20: cut; the ground state takes over
-      if (this.action_?.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
-      else this.action_ = null;
+      const cut = this.action_!;
+      if (cut.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
+      else if (cut.name === 'swapStand') {
+        // FUN_00550ef0 418226-418245: the standing swap cut by the stick goes on as `Moving rifle -> Pistol` over the
+        // locomotion, at the phase it had reached.
+        const seconds = oneShotSeconds(SWAP_OVERLAY.playback, SWAP_OVERLAY.frames);
+        const phase = Math.min(1, cut.t / ACTION_SECONDS.swapStand);
+        this.overlay_ = { clip: SEAL_ANIMS.swapMoving, serial: ++this.serial, t: phase * seconds, seconds, reversed: cut.reversed };
+        this.action_ = null;
+      } else this.action_ = null;
     }
     const held = this.action_?.name;
     if (held === 'hit' || held === 'hitStomach' || held === 'landDeath' || held === 'getUp'
-      || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne') {
-      // The clip's own root motion carries the mover (FUN_0028c250): its mean over the clip, along the facing --
-      // backwards for a transition played backwards (getting up). The ground state does not run (FUN_005870e0).
+      || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne'
+      || held === 'swapStand' || held === 'swapCrouch' || held === 'swapProne') {
+      // The clip's own root motion carries the mover (FUN_0028c250), key by key, along the facing -- backwards for a
+      // transition played backwards (getting up). The ground state does not run (FUN_005870e0).
       s.stickForward = forward; s.stickRight = right;
       this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-      const [tx, tz] = ACTION_CLIPS[held].travel;
-      const v = (this.action_!.reversed ? -1 : 1) / ACTION_SECONDS[held];
+      const [tx, tz] = this.actionVelocity(held, this.action_!.t, this.action_!.reversed);
       const yaw = (s.yaw * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
-      s.vx = (tx * c + tz * sn) * v;
-      s.vz = (-tx * sn + tz * c) * v;
+      s.vx = tx * c + tz * sn;
+      s.vz = -tx * sn + tz * c;
       this.move(s.vx * dt, s.vz * dt);
       return;
     }
@@ -1004,19 +1148,29 @@ export class Walker {
     const s = this.state;
     s.stickForward = 0; s.stickRight = 0;
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-    if (!this.jumping && this.action_?.name !== 'fall') this.start('fall', null);        // FUN_0057e050: `Jump fall`
+    // FUN_005af930 (466729-467019), the airborne branch: with neither action 8 (`Jump launch`) nor 9 (`Jump fall`)
+    // current, FUN_0057e130 -> FUN_0057e050 pushes `Jump fall`. The launch is `NoInterrupt ()` and ends only with its
+    // play (FUN_00582540 on FUN_0028c6e0's end, 2.21 s) or the landing's pop, so a flat running jump (0.75 s) lands in
+    // the launch -- about its key 8 -- and `seal_runningjump_in_air` plays only on a walk-off or a flight outlasting
+    // the launch [reading: the game pushes the fall the tick after the launch's pop; here the same tick].
+    const held = this.action_?.name;
+    if (held !== 'fall' && held !== 'launch') this.start('fall', null);                  // FUN_0057e050: `Jump fall`
     [s.vx, s.vz] = this.carried;
     this.airTime += dt;
     this.move(s.vx * dt, s.vz * dt);
+    let windUp = false;
     if (this.jumpDelay > 0) {
+      // FUN_005af930 then FUN_0059b440: through the wind-up the fall runs from 0 with the landing off (FUN_0059ad30
+      // wants actor+0x1360 <= 0) -- the feet sink 0.98 in five ticks -- and on the tick the delay runs out the fall
+      // speed becomes the impulse before this tick's step: 79.9 - g dt up, back over the floor at once.
       this.jumpDelay -= dt;
-      if (this.jumpDelay > 1e-9) { s.vy = 0; return; }
-      this.jumpDelay = 0;
-      s.vy = runningJumpSpeed();
+      if (this.jumpDelay > 1e-9) windUp = true;
+      else { this.jumpDelay = 0; s.vy = runningJumpSpeed(); }
     }
     s.vy -= SEAL_TUNING.gravity * dt;
     const from = s.y;
     s.y += s.vy * dt;
+    if (windUp) return;
     let floor: Hit | null = null;
     for (const h of probeGround(this.grid, s.x, s.z)) if (h.y <= from + 1e-9 && (floor === null || h.y > floor.y)) floor = h;
     if (floor && s.vy <= 0 && s.y <= floor.y) {
@@ -1049,7 +1203,11 @@ export class Walker {
     this.jumpLock = JUMP_LOCK;
     if (clip) this.start(clip, ACTION_SECONDS[clip]);
     else {
+      // FUN_00589aa0 pops the launch or the fall, and FUN_0028da00 hands back the play it was pushed over -- the run
+      // the SEAL left the floor in -- so the landing tick poses the locomotion, never a frame of the stand; the next
+      // tick's ground state takes the stick on (FUN_005af930's no-clip branch, 0x248 = 0x244).
       this.action_ = null;
+      this.ground_ = this.groundBefore;
       s.stickForward = forward; s.stickRight = right;
     }
   }
@@ -1058,7 +1216,7 @@ export class Walker {
   private airStep(dx: number, dz: number): void {
     const s = this.state;
     const [x, z] = this.slide(s.x + dx, s.z + dz, s.x, s.z);
-    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + 1e-9)) return;
+    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + (this.jumpDelay > 0 ? SEAL_TUNING.stepHeight : 0) + 1e-9)) return;   // the wind-up's feet sit under the floor
     s.x = x; s.z = z;
   }
 
@@ -1270,7 +1428,11 @@ export class WalkMode {
    */
   setStance(stance: Stance): boolean {
     if (!STANCES.includes(stance)) return false;
-    if (this.walking && this.moves?.busy()) return false;         // TRAVERSAL SEAM: not on a ladder or mid-climb
+    if (this.walking && this.walker && this.moves?.busy()) return this.moves.stanceButton(this.walker, stance);   // TRAVERSAL SEAM
+    if (this.walking && this.walker && stance === 'prone' && this.stance_ !== 'prone' && this.moves?.dive(this.walker)) {   // TRAVERSAL SEAM: the dive
+      this.stance_ = 'prone';
+      return true;
+    }
     this.stance_ = stance;
     if (this.walker) {
       if (this.walking) this.walker.changeStance(stance);
@@ -1335,11 +1497,20 @@ export class WalkMode {
   /** Walk mode: the mover's jump (`Walker.jump`); false when flying, or in the air. */
   jump(): boolean {
     const w = this.walker;
-    if (this.moves?.busy()) return false;                        // TRAVERSAL SEAM: no jump off a ladder or mid-climb
+    if (this.moves?.busy()) return !!w && this.walking && this.moves.jump(w);   // TRAVERSAL SEAM: hanging, the jump lets go
     if (!this.walking || !w || !w.jump()) return false;
     this.stance_ = w.stance;
     this.jumps++;
     return true;
+  }
+
+  /**
+   * Walk mode: the rifle <-> pistol swap's clip for the WEAPON workstream (`Walker.swapWeapon`, `FUN_005a64c0`): the
+   * full-body action or the overlay over the locomotion, or null when refused (not walking, in the air, an action).
+   */
+  swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
+    if (!this.walking || !this.walker || this.moves?.busy()) return null;
+    return this.walker.swapWeapon(to);
   }
 
   /** Walk mode: crouches (true), stands (false) or toggles stand and crouch (no argument); crouched after (the stance). */
@@ -1366,9 +1537,17 @@ export class WalkMode {
       airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
       landing: w.landing?.kind ?? null, jumps: this.jumps,
       ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate: this.turnRate,
-      traversal: this.moves?.pose() ?? null,
+      traversal: this.moves?.pose() ?? null, peek: this.moves?.peeking() ?? 0,
+      overlay: w.overlay && { ...w.overlay },
     };
   }
+
+  /** The action clips' root keys, by clip name (`./play` hands them over from the pack): `Walker.actionRoots`. */
+  setActionRoots(roots: ReadonlyMap<string, Float32Array> | null): void {
+    this.actionRoots = roots;
+    if (this.walker) this.walker.actionRoots = roots;
+  }
+  private actionRoots: ReadonlyMap<string, Float32Array> | null = null;
 
   /**
    * The body's posed skeleton root over the feet (`./play`, after each animator step), or null to fall back on the
@@ -1402,6 +1581,7 @@ export class WalkMode {
       this.turnRate = (turn * Math.PI) / 180 / dt;
     }
     this.lastYaw = yaw;
+    w.turn = this.turnRate;
     w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
     this.stance_ = w.stance;                                     // TRAVERSAL SEAM: a move or the water may stand the SEAL up
     this.follow();
@@ -1520,6 +1700,7 @@ export class WalkMode {
   private stand(): boolean {
     if (!this.walker && this.ground) {
       this.walker = new Walker(groundGrid(this.ground));
+      this.walker.actionRoots = this.actionRoots;
       this.player = new PlayerCamera(this.walker.grid);
       this.attachMoves(this.walker);                              // TRAVERSAL SEAM
     }

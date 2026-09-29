@@ -136,6 +136,44 @@ export function parseGlobalLighting(zar: Zar): GlobalLighting | null {
 /** 36 section 2: the map's own `.ZED`, which every MP archive carries beside its `_GEO`. */
 const DEFAULT_METERS_PER_UNIT = 0.1;
 
+/**
+ * One `Material_Palette/palEntry_<n>` of the world root that names a reflection texture: the environment-map pass
+ * VU1 command `0x34`/`0x36` draws over a visual whose `vparams` byte 7 is `n + 1` (research 15 §6). The 60-byte
+ * `dat` is floats and words: `[0..3]` the pass's base colour and alpha (0..255, 128 unity), `[4]` the sphere map's
+ * uv scale, `[5]` a kind word (2 on the untextured entries), `[7]` 1 on the textured ones, `[12]`/`[13]` the rim
+ * offset and slope, `[14]` a stale pointer. Read against the one live block there is: Seeding Chaos's water at
+ * spawn (`logs/vu1dump3/vu1_prog_27.bin`, research 26 §3.2) kicks base (33, 33, 33, 65) and `(1.5, 100, -, 0.01)`
+ * -- M51's `palEntry_5`, `tex_name sky01.tif`, word for word. The untextured entries (truck bodies, chrome,
+ * lockers; kind 2) are not read here: what the engine draws with them is not established.
+ */
+export interface EnvMaterial {
+  /** The `palEntry` index, 0-based; a visual names it as `index + 1`. */
+  index: number;
+  rgba: [number, number, number, number];
+  uvScale: number;
+  rimOffset: number;
+  rimSlope: number;
+  texture: string;
+}
+
+export function parseMaterialPalette(zar: Zar): EnvMaterial[] {
+  const out: EnvMaterial[] = [];
+  for (const entry of zar.find('Material_Palette')?.children ?? []) {
+    const index = Number(/(\d+)$/.exec(entry.name)?.[1] ?? NaN);
+    const dat = zar.child(entry, 'dat');
+    const tex = zar.child(entry, 'tex_name');
+    if (!Number.isFinite(index) || !dat || dat.size < 56 || !tex) continue;
+    const r = new Reader(zar.data(dat));
+    const texture = new Reader(zar.data(tex)).cstr(0, tex.size).toLowerCase();
+    if (!texture) continue;
+    out.push({
+      index, rgba: [r.f32(0), r.f32(4), r.f32(8), r.f32(12)], uvScale: r.f32(16),
+      rimOffset: r.f32(48), rimSlope: r.f32(52), texture,
+    });
+  }
+  return out;
+}
+
 export function parseWorldRoot(zar: Zar): WorldRoot {
   const f32 = (name: string, at = 0): number | null => {
     const key = zar.find(name);

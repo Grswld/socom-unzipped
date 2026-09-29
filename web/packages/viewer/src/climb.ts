@@ -1,4 +1,6 @@
-import { polygonNormal, probeGround, ringCells, surfaceWord, SURFACE_SKIP, type Grid, type WorldPoly } from '@s2u/scene';
+import {
+  isLiquidSurface, polygonNormal, probeGround, ringCells, segmentHits, surfaceWord, SEAL_TUNING, SURFACE_SKIP, type Grid, type WorldPoly,
+} from '@s2u/scene';
 
 /**
  * The climb onto and over obstacles (web research 86 section 3), the geometry half: which wall is climbable, the
@@ -38,8 +40,8 @@ import { polygonNormal, probeGround, ringCells, surfaceWord, SURFACE_SKIP, type 
  * `dynamics.rdr`'s `low/med/high_climb_height` 13 / 21.5 / 26.5 have **no reader** (the loader `FUN_0059ba80` stores them
  * at `0x44c250 +0x178..+0x184`, 456970-456979, and nothing reads them): 13 and 21.5 are the heights the crate and medium
  * clips were authored for -- their `refPt.y` is exactly that less the root's 11.52 -- and 26.5 is the table's own.
- * The blend of the two clips is played here as the heavier one, its path stretched to the height (a named
- * simplification: the animator plays one clip at a time).
+ * Between 12 and 26.5 both clips play as the two nodes of one play sharing a phase (`FUN_00581110`, decomp
+ * 442306-442340): the crate at `1 - (h - 12) / 14.5`, the medium the rest (`ClimbPlan.blend`).
  *
  * **The facing** (469208, `FUN_005b2620`): the facing dotted with the wall's normal (into the wall) >= 0.3, and the
  * direction from the contact to the mover within 0.3 of the normal.
@@ -69,8 +71,10 @@ export type ClimbClass = 'step' | 'low' | 'med' | 'high' | 'over';
 /** A climb the action button would run. */
 export interface ClimbPlan {
   kind: ClimbClass;
-  /** The clip (`motion.rdr`'s name); for 'high' the first of three. */
+  /** The clip (`motion.rdr`'s name); for 'high' the first of three; for a blend the first node, the crate. */
   clip: string;
+  /** Between 12 and 26.5 the second node, the medium, and the crate's weight (`FUN_00581110`); null otherwise. */
+  blend: { clip: string; weight: number } | null;
   /** The height over the feet. */
   h: number;
   /** The point on the top edge the move aims at (`FUN_005b3a60`), and the yaw facing the wall (-normal). */
@@ -90,20 +94,52 @@ export const CLIMB_FACING = 0.3;
 /** `FUN_005b3a60`: the target is kept this far from the top edge's ends. */
 const EDGE_END = 3;
 
-/** `FUN_00580b70`'s table (the header): the class and the clip for a height, or null outside it. */
-export function climbClass(h: number, app: number): { kind: ClimbClass; clip: string } | null {
-  if (app === 5) return { kind: 'over', clip: 'seal_climb_over' };
+/** `FUN_00580b70`'s table (the header): the class and the clip (and the blend) for a height, or null outside it. */
+export function climbClass(h: number, app: number): { kind: ClimbClass; clip: string; blend: ClimbPlan['blend'] } | null {
+  if (app === 5) return { kind: 'over', clip: 'seal_climb_over', blend: null };
   if (app === 4 && !(h > 5 && h <= 32)) return null;
   if (h <= 5 || h > 32) return null;
-  if (h <= 10) return { kind: 'step', clip: 'seal_step_up' };
-  if (h <= 12) return { kind: 'low', clip: 'seal_climbcrate' };
+  if (h <= 10) return { kind: 'step', clip: 'seal_step_up', blend: null };
+  if (h <= 12) return { kind: 'low', clip: 'seal_climbcrate', blend: null };
   if (h <= 26.5) {
     const crate = 1 - (h - 12) / 14.5;                   // FUN_00581110's weight
-    return crate >= 0.5 ? { kind: 'low', clip: 'seal_climbcrate' } : { kind: 'med', clip: 'seal_climb_medium' };
+    return { kind: crate >= 0.5 ? 'low' : 'med', clip: 'seal_climbcrate', blend: { clip: 'seal_climb_medium', weight: crate } };
   }
-  if (h <= 28) return { kind: 'med', clip: 'seal_climb_medium' };
-  return { kind: 'high', clip: 'seal_stand2hang' };
+  if (h <= 28) return { kind: 'med', clip: 'seal_climb_medium', blend: null };
+  return { kind: 'high', clip: 'seal_stand2hang', blend: null };
 }
+
+/**
+ * The contact polygon's material's `FOOT_STEP_OFFSET` (`DAT_0044f358[mat] + 0x38`, the parser at decomp 181399-181401;
+ * 0 by default, `FUN_002deb30`): -0.8 on GRASS, BROKEN GLASS, LEAVES, ICE, SNOW and GRAVEL -- the hull's 4, 14, 15, 16,
+ * 17, 18 (the SOILS order + 2, research 86 section 5.1) -- added to the climb's height.
+ */
+export function footStepOffset(material: number): number {
+  return material >= 14 && material <= 18 || material === 4 ? -0.8 : 0;
+}
+
+/**
+ * `FUN_0054e430` (decomp 416696-416790), run by the climb offer each frame: a level segment at the contact's top + 0.5
+ * (when that is under the feet + 21.1), from over the feet to 1.1 of the way past the contact; its first hit steeper
+ * than `max_slope` (`|n_y| <= 0.6428`), of no LIQUID material, on another object replaces the contact -- a wall behind
+ * the ledge, or the next step of a stack, is what the press then climbs. Null when nothing replaces it.
+ */
+export function obstacleRay(grid: Grid, c: ClimbContact, x: number, y: number, z: number): ClimbContact | null {
+  const Y = c.top + 0.5;
+  if (!(Y < y + OBSTACLE_REACH)) return null;
+  const to: [number, number, number] = [x + (c.x - x) * 1.1, Y, z + (c.z - z) * 1.1];
+  for (const hit of segmentHits(grid, [x, Y, z], to)) {
+    if (hit.poly === c.poly || hit.poly.path === c.poly.path) continue;
+    if (Math.abs(hit.normal[1]) > MAX_SLOPE_COS || isLiquidSurface(hit.poly)) continue;
+    return contactOf(hit.poly, hit.poly.appflags ?? 0, x, z);
+  }
+  return null;
+}
+
+/** `FUN_0054e430`: 19.1 + 2.0 over the feet (the standing cylinder and its margin). */
+const OBSTACLE_REACH = 21.1;
+/** `DAT_0044c268`: `max_slope`'s cosine, 0.6428. */
+const MAX_SLOPE_COS = Math.cos((SEAL_TUNING.maxSlopeDeg * Math.PI) / 180);
 
 /** The wall a band of the body (feet + `low` .. feet + `high`) touches within `reach`, climbable ones only; the nearest. */
 export function touchClimbable(grid: Grid, x: number, y: number, z: number, reach: number, low = 1, high = 34): ClimbContact | null {
@@ -177,14 +213,15 @@ export function planClimb(grid: Grid, c: ClimbContact, x: number, y: number, z: 
   if (-(fx * c.nx + fz * c.nz) < CLIMB_FACING) return null;
   const dx = x - c.x, dz = z - c.z, dl = Math.hypot(dx, dz);
   if (dl > 1e-6 && (dx * c.nx + dz * c.nz) / dl < CLIMB_FACING) return null;
-  const h = c.top - y;
+  const h = c.top + footStepOffset(c.poly.material) - y;
   const cls = climbClass(h, c.app);
   if (!cls) return null;
-  // The target: the contact point on the top edge, 3 from the ends, or the edge's midpoint when it is short.
+  // The target (`FUN_005b3a60`, decomp 469016-469080): the contact point on the top edge pulled in to 3 from an end
+  // it is nearer, the midpoint when both are; appflags 1 always takes the midpoint.
   const [ax, az, bx, bz] = c.edge;
   const len = Math.hypot(bx - ax, bz - az);
   let t = 0.5;
-  if (len > 2 * EDGE_END) {
+  if (len > 2 * EDGE_END && c.app !== 1) {
     const u = ((c.x - ax) * (bx - ax) + (c.z - az) * (bz - az)) / (len * len);
     t = Math.max(EDGE_END / len, Math.min(1 - EDGE_END / len, u));
   }

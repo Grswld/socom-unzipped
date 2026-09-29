@@ -86,6 +86,37 @@
         <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="Walk on the game's own floors, seen from behind as the game's camera sees you, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched, 11 prone. The floor is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, and the step runs at the game's 60 Hz. There is no sprint on foot. G switches back to flying.">Walk<span class="s2u-tab__what">on the floors (G)</span></button>
       </div>
       <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
+      <!--
+        Sound (web/docs/research/81, `./src/audio`): the mix's volume and a mute, driving `gameAudio.setVolume` and `setMuted`.
+        The sound plays on the play's events, so with the play off (no `?redotcom`) the section is not rendered (`data-play`).
+        Remembered in this browser only (`./src/ui.ts`, `onSound`).
+      -->
+      <div class="section" id="sound-section" data-play>
+        <p class="s2u-field__label">Sound</p>
+        <div class="row">
+          <label class="s2u-check" title="Silences the game's sounds; the volume below is kept."><input type="checkbox" id="mute" /> <span>mute</span></label>
+          <label class="s2u-range" title="The mix's volume: 100% is the level the viewer lifts the console's mix to for a browser tab (a television's knob did the rest)."><span>volume</span>
+            <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out"></output></label>
+        </div>
+      </div>
+      <!--
+        The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so behind `?redotcom` like the
+        rest of the play. Raw is the default: one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
+        in this browser only (`./src/ui.ts`, `onLookControls`).
+      -->
+      <div class="section" id="look-section" data-play>
+        <p class="s2u-field__label">Mouse look</p>
+        <div id="mouselaw" class="s2u-tabs" role="radiogroup" aria-label="mouse look">
+          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
+          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more.">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
+        </div>
+        <label class="s2u-range" title="A multiplier on the mapping: 1 is the default, 2 turns twice as far for the same movement."><span>sensitivity</span>
+          <input type="range" id="sensitivity" min="0.25" max="4" step="0.05" value="1" /><output id="sensitivity-out"></output></label>
+        <div class="checks">
+          <label class="s2u-check" title="Moving the mouse away looks down. The game's own default is not inverted."><input type="checkbox" id="invertpitch" /> <span>invert pitch</span></label>
+          <label class="s2u-check" title="One angle a count on both axes, the PC shooter's. Off is the game's: the pitch moves at 0.425 of what the same movement turns."><input type="checkbox" id="uniformpitch" /> <span>equal pitch</span></label>
+        </div>
+      </div>
       <!-- Advanced: every diagnostic switch, folded; the long explanations are tooltips. -->
       <details id="advanced" class="s2u-disclosure">
         <summary>Advanced</summary>
@@ -165,7 +196,11 @@
     -->
     <div id="controls" class="s2u-overlay" data-density="compact" role="dialog" aria-label="controls" hidden>
       <div class="s2u-overlay__body">
-        <p class="s2u-fine" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; arrows look &middot; F fullscreen &middot; ` hides this</p>
+        <p class="s2u-fine" id="hint">click to look &middot; wheel speed 1.0&times;</p>
+        <!--
+          The keyboard and mouse, grouped, for the mode you are in (`./src/controlsList.ts`; `./src/ui.ts` `renderKeys`).
+        -->
+        <table id="keys-list"><tbody></tbody></table>
         <!--
           The controller's layout (W2.7, ruling W2.R5): SOCOM II's own, as the repository documents it, the viewer's
           bindings beside it marked "assumed". Hidden until a pad first connects, in the Controls popover; `./src/ui.ts` `showPadLayout` fills it.
@@ -176,7 +211,7 @@
             <thead><tr><th scope="col">pad</th><th scope="col" id="pad-mode">fly</th><th scope="col">source</th></tr></thead>
             <tbody></tbody>
           </table>
-          <p class="s2u-fine">Only the current mode's controls are listed; G or Start switches modes. A row marked assumed is a
+          <p class="s2u-fine">Only the current mode's controls are listed. A row marked assumed is a
             binding neither the owner nor the repository documents.</p>
         </details>
       </div>
@@ -195,6 +230,40 @@
       </div>
       <button id="touch-stance" type="button" data-play aria-label="stance: stand, crouch, prone">C</button>
       <button id="touch-fire" type="button" data-play aria-label="fire">&#9673;</button>
+      <!--
+        Walk mode's touch layout (round 3), for a phone held in landscape, modelled on the PS2 pad's positions and routed
+        through the same lanes the pad's buttons are (`./src/main.ts` `padFrame`, `./src/touch.ts` `attachWalkTouch`): a
+        face-button cluster at the bottom right (Triangle the stance, Square the jump, Cross the action -- climb, ladder
+        slide -- and R1 the fire, larger), the zoom, fire mode and reload near the top right, the kit's slots (L1 the rifle,
+        L2 the M67, R2 the next item) along the bottom, and the peek (the d-pad's sides) and fullscreen at the left edge. It
+        is the play's, so behind `?redotcom` (`data-play`), and shown only while walking on a touch screen; flying keeps the
+        lift buttons above.
+      -->
+      <div id="touch-walk" data-play>
+        <div id="tw-actions">
+          <button id="tw-stance" type="button" data-lane="stance" aria-label="stance: tap crouches, hold goes prone"><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 12.5 11.5h-11z"/></svg></button>
+          <button id="tw-jump" type="button" data-lane="jump" aria-label="jump"><svg class="s2u-hint__glyph s2u-hint__glyph--square" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 2.5h9v9h-9z"/></svg></button>
+          <button id="tw-action" type="button" data-lane="action" aria-label="action: climb, ladder slide"><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3 11 11M11 3 3 11"/></svg></button>
+          <button id="tw-fire" type="button" data-lane="fire" aria-label="fire">FIRE</button>
+        </div>
+        <div id="tw-scope">
+          <button id="tw-zoom-in" type="button" data-lane="zoom" aria-label="zoom in">+</button>
+          <button id="tw-zoom-out" type="button" data-lane="zoomOut" aria-label="zoom out">&minus;</button>
+          <button id="tw-fire-mode" type="button" data-lane="fireMode" aria-label="fire mode">MODE</button>
+          <button id="tw-reload" type="button" data-do="reload" aria-label="reload">RELOAD</button>
+        </div>
+        <div id="tw-weapons">
+          <button id="tw-swap1" type="button" data-lane="swap1" aria-label="the rifle">RIFLE</button>
+          <button id="tw-swap2" type="button" data-lane="swap2" aria-label="the M67 grenade">M67</button>
+          <button id="tw-inventory" type="button" data-lane="inventory" aria-label="next item">NEXT</button>
+          <button id="tw-scoreboard" type="button" data-lane="scoreboard" aria-label="scoreboard (held)">SCORE</button>
+        </div>
+        <div id="tw-peek">
+          <button id="tw-peek-left" type="button" data-lane="leanLeft" aria-label="peek left, held">&#9664;</button>
+          <button id="tw-peek-right" type="button" data-lane="leanRight" aria-label="peek right, held">&#9654;</button>
+        </div>
+      </div>
+      <p id="rotate-hint" class="s2u-status s2u-status--pill" data-play aria-live="off">Turn your phone sideways to play</p>
     </div>
     <script type="module" src="./src/main.ts"></script>
   </body>

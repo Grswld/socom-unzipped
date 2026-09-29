@@ -60,6 +60,11 @@ export interface ParticleSource {
   type: number;
   /** A streaked source's two numbers (the u16 offset at +0xd0: the tail's reach and its alpha), null for the defaults. */
   streak: [number, number] | null;
+  /**
+   * A rotated source's spin (type 1; the u16 offset at +0xce, decomp 112853-112867): the spin (rad/s) and its
+   * acceleration, each a min/max; none when the block is absent (no spin).
+   */
+  spin: { spin: Range; accel: Range } | null;
   offset: Vec3;
   /** In the node's frame (rotation only). */
   baseVelocity: Vec3;
@@ -135,6 +140,8 @@ export function decodeParticleSource(c: CmdBytes, names: readonly string[]): Par
     interval, perDistance: !has(a, PARTICLE_A.PER_SECOND) && has(a, PARTICLE_A.PER_DISTANCE),
     type: c.u8(0x13) & 0xf,
     streak: (c.u8(0x13) & 0xf) === 3 && c.u16(0xd0) > 0 ? [c.f32(c.u16(0xd0)), c.f32(c.u16(0xd0) + 4)] : null,
+    spin: (c.u8(0x13) & 0xf) === 1 && c.u16(0xce) > 0
+      ? { spin: [c.f32(c.u16(0xce)), c.f32(c.u16(0xce) + 4)], accel: [c.f32(c.u16(0xce) + 8), c.f32(c.u16(0xce) + 12)] } : null,
     offset: has(a, PARTICLE_A.OFFSET) ? c.vec3(0x14) : [0, 0, 0],
     baseVelocity: has(a, PARTICLE_A.BASE_VELOCITY) ? c.vec3(0x20) : [0, 0, 0],
     worldVelocity: has(a, PARTICLE_A.WORLD_VELOCITY) ? c.vec3(0x2c) : [0, 0, 0],

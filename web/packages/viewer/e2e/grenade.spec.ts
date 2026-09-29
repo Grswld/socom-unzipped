@@ -120,40 +120,125 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   expect(boom.explosions[1]!.pos).toEqual(lie);
   expect(boom.explosions[1]!.material).toBe('METAL_THICK');         // Frostfire's DefaultMaterial, byte 0
   expect(boom.explosions[1]!.anim).toBe('frag_grenade_metal_thick');
-  expect(boom.effects).toBeGreaterThan(20);
+  expect(boom.explosions[1]!.byEffects).toBe(true);                  // the game's own zAnim, through the effects
+  // EFFECTS: the game's own explosion -- frag_grenade_metal_thick, then the frag_grenade it calls and its parts.
+  const played = (await page.evaluate(() => window.__viewer.effects())).played;
+  expect(played['frag_grenade_metal_thick']).toBe(1);
+  expect(played['frag_grenade']).toBeGreaterThanOrEqual(1);
+  expect(played['FRAG_sparks']).toBeGreaterThanOrEqual(1);
+  expect((await page.evaluate(() => window.__viewer.effects())).particles).toBeGreaterThan(20);
   await page.waitForTimeout(500);
   await settle(page);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-explosion-smoke.png') });
 
-  // The HE (key 5): the same throw, but it goes off where it first lands (HandleImpact) -- here the container 15 east.
+  // The HE (key 5): a hand grenade like the M67 (category 0x79: it bounces), off on its 3 s fuse.
   await stand(90, REST_PITCH);
   expect(await page.evaluate(() => window.__viewer.selectItem('HE'))).toBe(true);
   await expect.poll(() => page.evaluate(() => window.__viewer.hud().model.weaponIcon)).toBe('grenade_he_icon.tif');
   const he = await page.evaluate(() => window.__viewer.throwGrenade(1));
   expect(he!.item).toBe('HE');
-  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().explosions.length), { timeout: 3_000 }).toBe(3);
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().explosions.length), { timeout: 6_000 }).toBe(3);
   const heBoom = (await page.evaluate(() => window.__viewer.grenade())).explosions[2]!;
   expect(heBoom.radius).toBe(100);
   expect(heBoom.baseAnim).toBe('HE_grenade');
-  expect((await page.evaluate(() => window.__viewer.grenade())).live.at(-1)!.age).toBeLessThan(1);   // well before its fuse
+  expect(heBoom.byEffects).toBe(true);                        // the game's zAnim, through the effects
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 3_000 }).toBe('ready');   // the clip's tail
+
+  // The AN-M8 (key 6): at 3 s the canister pours out its smoke, a screen for 40 s.
+  await stand(210, REST_PITCH);
+  expect(await page.evaluate(() => window.__viewer.selectItem('AN-M8'))).toBe(true);
+  const smoke = await page.evaluate(() => window.__viewer.throwGrenade(0.5));
+  expect(smoke!.item).toBe('AN-M8');
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().explosions.length), { timeout: 6_000 }).toBe(4);
+  const smokeBoom = (await page.evaluate(() => window.__viewer.grenade())).explosions[3]!;
+  expect(smokeBoom.detonation).toBe('smoke');
+  expect(smokeBoom.damageToPlayer).toBe(0);
+  const sf = (await page.evaluate(() => window.__viewer.feet()))!;
+  const sp = smokeBoom.pos, sdx = sp[0] - sf[0], sdz = sp[2] - sf[2], sl = Math.hypot(sdx, sdz);
+  await lookAt([sp[0] - (sdx / sl) * 110, sp[1] + 30, sp[2] - (sdz / sl) * 110], [sp[0], sp[1] + 15, sp[2]]);
+  await page.waitForTimeout(5000);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-smoke.png') });
+
+  // The Mark141 (key 7): 1.5 s, and the screen whites out by the game's rule of distance and facing.
+  await stand(210, REST_PITCH);
+  expect(await page.evaluate(() => window.__viewer.selectItem('Mark141'))).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.throwGrenade(0.3))).not.toBeNull();
+  await expect.poll(() => page.evaluate(() => window.__viewer.whiteOut().level), { timeout: 4_000 }).not.toBeNull();
+  const flashBoom = (await page.evaluate(() => window.__viewer.grenade())).explosions[4]!;
+  expect(flashBoom.detonation).toBe('flash');
+  expect(flashBoom.flash).toBe((await page.evaluate(() => window.__viewer.whiteOut())).level);
+  await page.waitForTimeout(300);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-flashbang-whiteout.png') });
+  // Levels 2 and 3 hold full white (blindplayer02/03); level 1 (facing away) is partial from the start (research 85 §9.4).
+  const flashNow = await page.evaluate(() => window.__viewer.whiteOut());
+  expect(flashNow.opacity).toBeGreaterThan(flashNow.level !== null && flashNow.level >= 2 ? 0.5 : 0);
+
+  // The claymore (key 8): R1 plays `Place claymore` (seal_place_claymore) on the body; 1.3 s in the charge is down under
+  // the hand, facing the SEAL's way, and the Detonator comes up; R1 with the Detonator sets it off (research 85 §9.7.1).
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 3_000 }).toBe('ready');
+  await expect.poll(() => page.evaluate(() => window.__viewer.whiteOut().opacity), { timeout: 20_000 }).toBeLessThan(0.05);   // the flash gone
+  expect(await page.evaluate(() => window.__viewer.selectItem('Claymore'))).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.selectItem('Detonator'))).toBe(false);   // none down yet
+  await page.evaluate(() => { window.__viewer.trigger(true); window.__viewer.trigger(false); });
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_place_claymore');
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().phase), { intervals: [50] }).toBeGreaterThan(0.3);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-claymore-place-clip.png') });
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().leftByItem.Claymore), { timeout: 5_000 }).toBe(3);
+  const set = await page.evaluate(() => window.__viewer.grenade());
+  expect(set.held).toBe('Detonator');
+  expect(set.placed).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__viewer.hud().model.weaponIcon)).toBe('detonator_icon.tif');
+  const placed = set.live.find((l) => l.state === 'rest' && l.fuse > 1e6)!;
+  expect(placed.pos[1]).toBeCloseTo(100.1, 1);                 // on Frostfire's floor
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 5_000 }).toBe('ready');
+  await page.waitForTimeout(3000);
+  expect((await page.evaluate(() => window.__viewer.grenade())).explosions.length).toBe(5);   // no fuse: it waits
+  const cf = (await page.evaluate(() => window.__viewer.feet()))!;
+  const cp = placed.pos, cdx = cp[0] - cf[0], cdz = cp[2] - cf[2], cl = Math.hypot(cdx, cdz) || 1;
+  await lookAt([cp[0] + (cdx / cl) * 40, cp[1] + 25, cp[2] + (cdz / cl) * 40], [cp[0], cp[1], cp[2]]);
+  await page.waitForTimeout(200);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-claymore-placed.png') });
+  await stand(210, REST_PITCH);
+  await page.evaluate(() => { window.__viewer.trigger(true); window.__viewer.trigger(false); });   // the Detonator
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().explosions.length), { timeout: 2_000 }).toBe(6);
+  const clay = (await page.evaluate(() => window.__viewer.grenade())).explosions[5]!;
+  expect(clay.item).toBe('Claymore');
+  expect(clay.radius).toBe(250);
+  expect((await page.evaluate(() => window.__viewer.grenade())).held).toBe('Claymore');   // back on the claymore
+  expect(await page.evaluate(() => window.__viewer.selectItem('M67'))).toBe(true);
+
+  // Peeking right (the traversal's lean, research 86): the throw is the lean's toss, from the lean's own clip.
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 3_000 }).toBe('ready');
+  expect(await page.evaluate(() => window.__viewer.selectItem('HE'))).toBe(true);
+  await page.evaluate(() => { window.__viewer.setLean(1); });
+  await expect.poll(() => page.evaluate(() => window.__viewer.traversal()?.peek ?? 0)).toBeGreaterThan(0.5);
+  expect(await page.evaluate(() => window.__viewer.throwGrenade(1, false))).toBeNull();
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_toss_rlean');
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().lastThrow?.clip), { timeout: 5_000 }).toBe('seal_toss_rlean');
+  await page.evaluate(() => { window.__viewer.setLean(0); });
+  await expect.poll(() => page.evaluate(() => window.__viewer.grenade().phase), { timeout: 5_000 }).toBe('ready');
   expect(await page.evaluate(() => window.__viewer.selectItem('M67'))).toBe(true);
 
   // A light press aimed low: the underhand toss.
-  // Its clip on the body, the camera pitched down over the SEAL to see it.
+  // Its clip on the body, the camera pitched down over the SEAL to see it. The explosions' ten-second smoke is cleared
+  // first: software-rendered in the headless browser it drops the frame rate below what the clip's timing assumes.
+  await page.evaluate(() => window.__viewer.clearEffects());
   await stand(210, -35);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__viewer.throwGrenade(0.1, false))).toBeNull();
-  await page.waitForTimeout(450);
-  await settle(page);
+  // The smoke still pours out behind (slow frames under SwiftShader): catch the clip mid-play by its phase.
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_tossgrenade');
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().phase), { intervals: [50] }).toBeGreaterThan(0.25);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-toss-clip.png') });
-  expect(await page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_tossgrenade');
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().lastThrow?.clip), { timeout: 5_000 }).toBe('seal_tossgrenade');
   const toss = (await page.evaluate(() => window.__viewer.grenade())).lastThrow!;
   expect(toss.toss).toBe(true);
   expect(toss.fromHand).toBe(true);
   // The last M67 gone: after the clip's tail the rifle is back in the hand.
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().equipped), { timeout: 5_000 }).toBe(false);
-  expect((await page.evaluate(() => window.__viewer.grenade())).leftByItem).toEqual({ M67: 0, HE: 2 });
+  expect((await page.evaluate(() => window.__viewer.grenade())).leftByItem).toEqual({ M67: 0, HE: 1, 'AN-M8': 2, Mark141: 5, Claymore: 3 });
   expect(problems).toEqual([]);
 });

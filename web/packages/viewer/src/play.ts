@@ -8,7 +8,8 @@ import type { FireEvent } from './fire';
 import { pressedSince, releasedSince, type Input } from './gamepad';
 import { HELD_ITEM, heldSkeleton, muzzleOf, muzzlePoint } from './heldItem';
 import type { MotionEntry, MotionTable } from './motionTable';
-import type { MoverActionName, Stance, WalkMode } from './walk';
+import { ACTION_CLIPS, type MoverActionName, type Stance, type WalkMode } from './walk';
+import { SEAL_ANIMS } from './locomotion';
 import { STILL_CLIPS, WeaponPose, type WeaponPoseStats } from './weaponPose';
 import { WeaponRaise, type RaiseStats } from './weaponRaise';
 
@@ -179,6 +180,8 @@ export class Play {
   private drawn: PerspectiveCamera | null = null;
   /** WEAPON: the rifle's raise (`./weaponRaise`), its layers over the clips (`./weaponPose`), the hand's node. */
   private readonly raise = new WeaponRaise();
+  /** The raise's weight this frame, for the animator (`MoverSnapshot.aimWeight`). */
+  private aimWeight = 0;
   private weaponPose: WeaponPose | null = null;
   private weaponInput: () => WeaponInput = () => ({ trigger: false, aiming: false });
   private hand: Group | null = null;
@@ -266,8 +269,13 @@ export class Play {
   /** The source's clips and table (`playFromDisc`), or none: without them the body stands in its bind pose. */
   setClips(clips: PlayClips | null): void {
     this.clips = clips && clips.clips.length ? clips : null;
+    this.roots = this.clips ? actionRoots(this.clips.clips) : null;
+    this.rootsSent = false;
     this.rebuild();
   }
+  /** The action clips' root keys (`actionRoots`), handed to the walk once each time they change. */
+  private roots: Map<string, Float32Array> | null = null;
+  private rootsSent = false;
 
   /** The panel's body switch: the body in fly mode (W2.1's switch, turned). */
   setFlyToggle(on: boolean): void {
@@ -279,7 +287,8 @@ export class Play {
    * its pose on the bones -- shown in third person, hidden in first; in fly mode, once played, the body left standing
    * where the mover was. `camera` is the one the frame is drawn with, for `viewStats`.
    */
-  frame(dt: number, walk: Pick<WalkMode, 'snapshot' | 'view'> & Partial<Pick<WalkMode, 'setPosedRoot' | 'mover'>>, camera: PerspectiveCamera): void {
+  frame(dt: number, walk: Pick<WalkMode, 'snapshot' | 'view'> & Partial<Pick<WalkMode, 'setPosedRoot' | 'mover' | 'setActionRoots'>>, camera: PerspectiveCamera): void {
+    if (!this.rootsSent && walk.setActionRoots) { walk.setActionRoots(this.roots); this.rootsSent = true; }
     const snap = walk.snapshot();
     this.kind = snap === null ? 'fly' : walk.view() === 'first' ? 'aim' : 'third';
     // WEAPON: the rifle's raise from the trigger and the aim while walking. In fly mode the body left standing keeps
@@ -289,8 +298,10 @@ export class Play {
       const w = this.raise.frame(dt, this.weaponInput());
       if (this.weaponPose) this.weaponPose.fireWeight = w;
       this.weaponPose?.step(dt);
+      // MOTION: the same weight scales the aim's twist and lets the head look run when 0 (FUN_0057a330 439152-439193).
+      this.aimWeight = w;
     } else this.weaponPose?.stopReload();
-    this.bodyFrame(dt, snap);
+    this.bodyFrame(dt, snap && { ...snap, aimWeight: this.aimWeight });
     // The rifle rides the clips' `rifle` node: in W2.1's bind pose, never played, the hand holds nothing.
     if (this.weapon) this.weapon.visible = this.last !== null && this.animator !== null && !this.stowed;
     if (snap) this.moverEvents(snap, walk.mover?.() ?? null);
@@ -422,6 +433,25 @@ export class Play {
     if (this.animator) for (const layer of this.extraLayers) this.animator.addPoseLayer(layer);
     if (this.animator) this.unhook = this.animator.onEvent((e) => this.relay(e));
   }
+}
+
+/**
+ * The root keys of the clips the mover plays as actions (`./walk` `ACTION_CLIPS`: the hits, the death landing, the
+ * get-up, the transitions), x and z a key in the model's frame: what the mover's per-key root motion reads
+ * (`Walker.actionVelocity`, `FUN_0028c250`).
+ */
+export function actionRoots(clips: readonly MotionClip[]): Map<string, Float32Array> {
+  const wanted = new Set<string>(Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]));
+  const out = new Map<string, Float32Array>();
+  for (const c of clips) {
+    if (!wanted.has(c.name)) continue;
+    const root = c.parts.find((p) => p.name === 'skel_root');
+    if (!root || root.translations.length < 3 * c.frameCount) continue;
+    const keys = new Float32Array(2 * c.frameCount);
+    for (let i = 0; i < c.frameCount; i++) { keys[2 * i] = root.translations[3 * i]!; keys[2 * i + 1] = root.translations[3 * i + 2]!; }
+    out.set(c.name, keys);
+  }
+  return out;
 }
 
 /**

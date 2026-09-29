@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseZdb } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
-  ACTION_ICONS, AT_REST, DEFAULT_MODEL, FIRE_MODE_ROUNDS, HUD_LAYOUT, Hud, ammoLines, hudLayout, timerText,
+  ACTION_ICONS, AT_REST, DEFAULT_MODEL, FIRE_MODE_ROUNDS, HUD_LAYOUT, Hud, ammoLines, hudLayout, roundStartAt, timerText, capLines, messageAlpha,
   type HudModel,
 } from '../src/hud';
 import { flipRows, HUD_LIBRARIES, readHud } from '../src/hudAssets';
@@ -119,6 +119,83 @@ describe('the info box, the stance word, the prompt and the banner', () => {
     expect(rects.banner).toEqual({ x: 147, y: 0, width: 345, height: 99 });
     const m = rects.message!;
     expect(Math.abs(m.x + m.width / 2 - HUD_LAYOUT.message.text.x)).toBeLessThan(1.5);
+  });
+});
+
+describe('the round start', () => {
+  it('fades up from black; STARTING ROUND at 0.36 s, the objective at 5.36 s, each 0.357 s in, out from 7 s on', () => {
+    const at = (t: number) => roundStartAt(t);
+    const alphas = (t: number) => at(t).banner.map((m) => Math.round(m.alpha * 100) / 100);
+    expect(at(0).fader).toBe(1);
+    expect(at(0.75).fader).toBeCloseTo(0.5, 9);
+    expect(at(1.5).fader).toBe(0);
+    expect(at(0.3).banner).toEqual([]);
+    expect(at(0.54).banner.map((m) => m.lines.map((l) => l.text))).toEqual([['STARTING ROUND 1 OF 11']]);
+    expect(alphas(0.54)).toEqual([0.5]);
+    expect(alphas(3)).toEqual([1]);
+    // The console's frame 26 (t = 5.58): the first line full, the objective coming in (0.62).
+    expect(alphas(5.58)).toEqual([1, 0.62]);
+    expect(at(5.58).banner[1]!.lines).toEqual([{ text: 'OBJECTIVE:', scale: 1 }, { text: 'ELIMINATE THE TERRORISTS', scale: 0.765 }]);
+    // Frame 28 (7.58): the first line fading (0.39 measured); frame 33 (12.58): the objective fading (0.39).
+    expect(alphas(7.58)).toEqual([0.38, 1]);
+    expect(alphas(12.58)).toEqual([0.38]);
+    expect(at(12.8).banner).toEqual([]);
+  });
+
+  it('stacks the lines up from the bottom: one line on 94; three on 61.5, 76.5 and 91.5 (the ink feet on the Vigilance frames)', () => {
+    const baselines = (t: number): number[] => {
+      const { banner } = roundStartAt(t);
+      const q = hudLayout(PS2, model({ banner }), SIZES).quads.filter((x) => x.element === 'message' && x.rgba[0] === 1);
+      // Each line's glyph quads share a top; the baseline is that top + 20 rows x scale x 448/480 - 0.3.
+      const tops = [...new Set(q.map((x) => Math.round((x.y - x.h / 2) * 100) / 100))];
+      return tops.map((top) => {
+        const h = q.find((x) => Math.round((x.y - x.h / 2) * 100) / 100 === top)!.h;
+        return Math.round((top + (h * 20) / 25 - 0.3) * 10) / 10;
+      });
+    };
+    expect(baselines(3)).toEqual([94]);
+    expect(baselines(6.5).sort((a, b) => a - b)).toEqual([61.5, 76.5, 91.5]);
+  });
+});
+
+describe('the zoom readout and the scope range (research 87 §13)', () => {
+  it('writes "ZOOM: %2.1fx" at (20, 420) and "RANGE(m): %.0f" at (415, 215), scale 0.9, only over 1.01', () => {
+    expect(hudLayout(PS2, model({ zoom: 1 }), SIZES).rects.zoom).toBeUndefined();
+    expect(hudLayout(PS2, model({ zoom: 1.01 }), SIZES).rects.zoom).toBeUndefined();
+    const { quads, rects } = hudLayout(PS2, model({ zoom: 3, range: 37.4 }), SIZES);
+    expect(rects.zoom!.x).toBeCloseTo(20 - 0.6, 6);                    // the pen at 20 (PEN_NUDGE)
+    expect(rects.scopeRange!.x).toBeCloseTo(415 - 0.6, 6);
+    // "ZOOM: 3.0x" is 10 glyphs less the space; "RANGE(m): 37" 12 less the space, each with its shadow.
+    expect(quads.filter((q) => q.element === 'zoom')).toHaveLength(2 * 9);
+    expect(quads.filter((q) => q.element === 'scopeRange')).toHaveLength(2 * 11);
+    const dashes = hudLayout(PS2, model({ zoom: 9, range: null }), SIZES).quads.filter((q) => q.element === 'scopeRange');
+    expect(dashes).toHaveLength(2 * 13);                                // "RANGE(m): ----"
+  });
+});
+
+describe('the message window', () => {
+  it('fades a posted line in over 0.357 s and out from 7 s, and keeps the newest 8 lines', () => {
+    expect(messageAlpha(-0.1)).toBeNull();
+    expect(messageAlpha(50 / 280)).toBeCloseTo(0.5, 9);
+    expect(messageAlpha(3)).toBe(1);
+    expect(messageAlpha(7 + 50 / 280)).toBeCloseTo(0.5, 9);
+    expect(messageAlpha(7.4)).toBeNull();
+    const m = (n: number) => ({ lines: Array.from({ length: n }, (_, i) => ({ text: String(i), scale: 1 })), alpha: 1 });
+    expect(capLines([m(3), m(3), m(3)]).map((x) => x.lines.length)).toEqual([3, 3]);
+    expect(capLines([m(1), m(7)]).map((x) => x.lines.length)).toEqual([1, 7]);
+  });
+
+  it('shows a posted message under those of the round start, and drops it 7.36 s later', () => {
+    const hud = new Hud();
+    hud.setVisible(true);
+    hud.step(6);
+    hud.postMessage('Satchel');
+    hud.step(1);
+    const texts = hud.state().model.banner.map((b) => b.lines.map((l) => l.text).join('/'));
+    expect(texts).toEqual(['STARTING ROUND 1 OF 11', 'OBJECTIVE:/ELIMINATE THE TERRORISTS', 'Satchel']);
+    expect(hud.state().model.banner[2]!.lines[0]!.scale).toBe(0.9);
+    hud.step(6.5);
+    expect(hud.state().model.banner.map((b) => b.lines[0]!.text)).toEqual([]);
   });
 });
 

@@ -31,7 +31,14 @@ Code: `@s2u/scene`'s `packages/scene/src/projectile.ts` (pure, tested in `test/p
 - **The model** is `WEAP_GEO`'s `grenade` (81 vertices, 82 triangles, `G11b.tif` + `m79.tif`), held on the right
   hand's item node through the throw clip, released from the posed hand (§8).
 - **The slots** (§9.1): SOCOM II selects a grenade with R2's inventory, or with L1/L2 (`SwapWeapon1/2`) swapping to the
-  slot assigned to them; the HE (§9.2) goes off on impact.
+  slot assigned to them. Every hand grenade -- the M67, the HE, the AN-M8 smoke, the Mark141 flashbang -- bounces
+  (§9.2); the smoke screens for 40 s (§9.6), the flashbang whites the screen out by distance and facing (§9.5), the
+  claymore is set down and waits (§9.7).
+- **The claymore is remote** (§9.7.1): no tripwire, no proximity (only the PMN mine has `ProximityDistance`), no fuse.
+  R1 plays `seal_place_claymore`; 1.3 s in it is down under the right hand and the kit's **Detonator** (ID 193) comes
+  up; R1 with the Detonator sets off the SEAL's claymores within 500 units. Four down at most.
+- **The bounce materials** (§9.9) resolve on all 22 maps with the archive's own names; the silent metal and asphalt
+  bounces are the game's data (MP2's banks have no `.GREN_METAL`; no bank has `.GREN_ASPHALT`).
 
 ## 1. The record: `RUN/ZWEAPON.ZAR/zweapon.rdr`
 
@@ -340,17 +347,30 @@ the config's byte at `+0x12 + result`.
 
 **The viewer**: L2 is `SwapWeapon2` to `L2_SLOT_PLACEHOLDER` = the M67 (the game's default slot 1 is the sidearm the
 viewer does not carry), a second press back to the rifle [reading]; R2 is the inventory as one press a step --
-rifle, M67, HE -- in place of the menu [placeholder]; keys `1` rifle, `4` M67, `5` HE. **L1 is the owner's aim (W2.R5)
-in the viewer, but the game's `SwapWeapon1`** -- a conflict reported, not overridden. The HUD's box shows the item's
+rifle, M67, HE, AN-M8, Mark141, claymore, Detonator (only while a claymore is down) -- in place of the menu
+[placeholder]; keys `1` rifle, `4` M67, `5` HE, `6` AN-M8, `7` Mark141, `8` claymore, `9` the Detonator (§9.7.1). **L1** is the game's `SwapWeapon1` back to the rifle (bound at the round-2 merge). The HUD's box shows the item's
 HUDW icon (`IconTextureName`: `grenade_frag_icon.tif`, `grenade_he_icon.tif`) and its count.
 
 ### 9.2 The HE
 
-`HE` (ID 126) is outside `HandleIntersections`' bounce list, so its projectile takes `HandleImpact` (0x3c8920), which
-sets an explosive round (the `Explosion_Radius` non-zero, the shooter local) to detonate at the first surface that is
-not LIQUID (state 3, grenade state 2): **the HE goes off where it lands**, its fuse notwithstanding. `Explosion_Radius`
-10 (100 units), `Explosion_Damage` 11, its zAnims `HE_start` (`.THROW_OBJECT`) and `HE_grenade` (sparks, long dust, a
-plume, black smoke, the flash, a small fire, `.GREN_MED`). The viewer draws it with the frag's burst [placeholder].
+**Corrected in round 3.** `HandleIntersections` does not test the ID itself but its **category**: `FUN_003d1e10`
+passes the weapon's `+0x7c` through `FUN_003d1a60`, which maps an ID to the first ID of its range (121-140 -> 0x79, the
+hand grenades; 151-170 -> 0x97, the charges; `weaponCategory`). So the HE (126), the AN-M8 (122) and the Mark141 (123)
+bounce exactly as the M67 does; `HandleImpact` (0x3c8920) -- which does set an explosive round to detonate at its first
+non-liquid hit -- is the launched rounds' (0xab-0xb8 but 0xac, 0xad, 0xb2) and the bullets'. Round 2's "the HE goes
+off where it lands" was wrong. The HE: `Explosion_Radius` 10 (100 units), `Explosion_Damage` 11, its zAnims `HE_start`
+(`.THROW_OBJECT`) and `HE_grenade`.
+
+**Which zAnim goes off** (`HandleDetonateExplosion`, 0x3c8330, decomp 319195-319290): for the AN-M8, 0x7d, 0x7f-0x80,
+0xac-0xad, 0xb2, 0xb6 and the claymore, the record's `DefaultSpecialAnimName` on the projectile's own node (the smoke
+stays with its canister); for the others a vertical probe under the point (`FUN_0031df50`): with ground less than 10
+under it, the material's variant (`FUN_003d2320`: `SpecialMaterialAnimName_<material>`, `frag_grenade_stone` ...), else
+the default -- the viewer takes the material the grenade came to rest on [reading]. Then the damage query
+(`FUN_003c7af0`, when `Explosion_Radius` > 0), the claymore's model hidden, state 5.
+
+**Since round 3 the explosions run through the EFFECTS workstream's zAnim runner** (`effects.play`: the game's own
+particles and models); `GrenadeThrower.setEffectPlayer` takes the door, and a run it starts replaces this file's
+placeholder sprites (`ExplosionInfo.byEffects`). The placeholders stay for a map or name the effects cannot play.
 
 ### 9.3 The sounds on Frostfire
 
@@ -366,23 +386,148 @@ plume, black smoke, the flash, a small fire, `.GREN_MED`). The viewer draws it w
 - `MP2_fx.bnk` also holds `.GREN_PIN_PULL1`, `.GREN_NEAR`, `.GREN_FAR`; no zAnim on the disc names them (the ELF may,
   by a computed name): not played.
 
-### 9.4 The page's API
+### 9.5 The flashbang: the white-out's rule
+
+The Mark141 (`FLASHBANG`, ID 123): `Timer1` 1.5 s, `Timer2` 1.6, six carried, no damage, `Explosion_Radius` 15 (150
+units), its zAnim `flashcrash_grenade` (`.MARK_141_FLASH`, a dust puff, `explosion_light`, `PhosExplode.tif`). No MP
+default kit (`character.rdr`) carries it.
+
+The player controller's flash reaction (vtable slot at 0x669500 -> `FUN_00597c00`, decomp 454528-454585):
+
+- only inside `d^2 < 22500` (150 units); a falloff of 1 to 80 units (`d^2 <= 6400`), `1 - (d^2 - 6400) x 6.2e-5` past;
+- `facing` = the actor node's z row against the unit body-to-flash difference -- the SEAL's forward against the
+  direction to the flash; `s = 1 - facing x falloff`;
+- facing away (`facing <= DAT_0065e640` = 0, or a flag in the body's `+0x104c` object) is level 1; else `s < 0.3`
+  level 3, `s < 0.6` level 2, level 1 past it (`flashLevel`);
+- it starts the map's `MZANIM.ZAR` animation `blindplayer0<level>` (`FUN_001988d0` with 0x65e668, `FUN_0026a250` on
+  the zAnim main at 0x414bb0).
+
+The three animations' `blinded` command (set 0, 0x24) reads [reading of its floats]: a start colour (1, 1, 1), then
+keys of (seconds, grey, strength): level 1 (0, 0.9, 25) -> (2, 1, 0); level 2 (0, 0.75, 60), (1.5, 0.75, 60) -> (4, 1,
+0); level 3 (0, 0.75, 60), (8, 0.75, 60) -> (10, 1, 0) (`BLIND_KEYS`); their `fadein` (0x21) rises over 0.2 s. The
+viewer (`./flash`, `WhiteOut`) draws a white layer over the frame: 60 as full white, 25 as 25/60 [reading], 0.2 s in,
+held, back by 2 / 4 / 10 s. The AI's cower (`Flashbang cower` clips, `CAiSStunResponse`) is not the viewer's.
+
+### 9.6 The smoke
+
+The AN-M8 (`SMOKE`, ID 122, `mp_seal2`/`mp_seal4`): `Timer1` 3, `Timer2` 40, no explosion. At 3 s `smoke_grenade`
+plays on the canister (sparks, a flash, `!SMK_CANISTER`, and a call to `smoke_stream`), whose two `large_smoke`
+particle sources (`cloudpuff01.tif`) throw puffs +-20 across and 0-17 up, 3-4.5 across, living 5-7 s, grey 0.6 and 0.4,
+for 20 s twice over -- the 40 s of `Timer2` [reading of the 0x1b commands]. The effects run it; its puffs do not yet
+read as a screen there, so the viewer also draws `SMOKE_PLACEHOLDER` (the same numbers, x10 in size, a puff every 0.2 s)
+until the EFFECTS workstream's does (`SMOKE_ALWAYS_PLACEHOLDER`). What the smoke hides from the AI (a sight query) is not
+the viewer's.
+
+### 9.7 The claymore (and the C4)
+
+The claymore (`mp_seal4`'s kit; ID 153, category 0x97): `Muzzle_Velocity` 0 -- placed, not thrown: `CZKit_TickExplosives`'
+branch for 0x98-0x9a and 0x9e calls `FUN_005c2430` (the right hand's point through the vertical probe: the highest
+ground at or under it, not VOLUMETRIC) and `FUN_005bc730` (`SetProjectile` there, still, the SEAL's facing); `c4_start`
+(`.PLACE_CHARGE`); four carried; no `Timer1`; `Explosion_Damage` 16 to `Explosion_Radius` 25 (250 units), and
+`GetDamage` divides it by 32 outside its cone (`FUN_003c7280` with `0x3fbc7edd`: ahead within `along x tan 1.47261`,
+84.4 degrees, to the radius; `claymoreCone`). Its zAnim `claymore` (`.M18_CLAYMORE`, sparks, dust, fire, flying bits).
+
+#### 9.7.1 Its trigger: the Detonator (round 4)
+
+The claymore has **no trigger of its own** -- no tripwire, no proximity, no fuse. It is **remote**: the kit's
+**Detonator** (`zweapon.rdr` ID 193 = 0xc1, `ModelName detonator`, `IconTextureName detonator_icon.tif`,
+`MaxFireMode` 1, no ammo), fired with the fire button (R1).
+
+- **No proximity.** `ProximityDistance` (0x3fcd70) is read by the weapon loader into the ammo's `+0x3c` as its square
+  (`FUN_003d4440`, getter `FUN_003d4430`); only `PMN Ammo` carries it (1, i.e. 10 units). The proximity list 0x4b5238
+  that the actor tick `FUN_00543930` walks (decomp 410280-410310: an actor within the distance sets `+0xc4` through
+  `FUN_003c5730`) gets only type 0x9e (the PMN, `FUN_005bc730` at decomp 474105).
+- **No fuse.** `FUN_005bc730` sets the placed charge's `+0xc5` (`FUN_003c51c0`) to `type == 0x99` and `+0xc6`
+  (`FUN_003c51a0`) to "has a proximity"; the placed-explosive tick (0x3c5310, decomp 316893-316900) counts `Timer1`
+  down and sets `+0xc4` (go off) only when both are clear. The claymore's `Timer1` is 9999999 anyway.
+- **The kit.** `FUN_005c74e0` (decomp 480165-480200) appends the Detonator (`FUN_005bdfb0(..., 0xc1)`) to a kit that
+  carries a claymore. `FUN_005bdc30` (decomp 474637) makes it selectable only while `FUN_003cc1f0(0x4b5220, owner)`
+  -- the SEAL's charges down -- is not 0.
+- **Placing** (the fire handler `FUN_005be9a0`, type -0x67 = 0x99, decomp 475306-475337): with 4 or more of the SEAL's
+  charges down (`FUN_003cc1f0(...) < 4`) it shows `Unable To Deploy: Max Equipment Items Placed (4)` (0x65f880) with a
+  2 s hold (`+0x8` = 2.0); while moving faster than `DAT_003dfe10 x 0.32` (3.2 units/s; `+0xf88`) it does nothing; else
+  `FUN_0057d540(actor, DAT_003deb48)` -- the action `Place claymore` (0x661628, resolved at decomp 495216; the pistol's
+  `Pistol place claymore` is 0x661640) -- and the timer `+0x87c` = 0x3fa66666 = **1.3 s**. When it runs out (decomp
+  476883-477015) `FUN_005c2430` takes the right hand's node (`+0x300`, the one the throw releases from) and the grid
+  column's surfaces under it (the highest at or below the hand), and if that ground is above the feet (`+0x404`) less
+  `DAT_003dfe10` (10), `FUN_005bc730` sets the charge there with the SEAL's orientation (`+0x50`), counts one off the
+  slot, and **selects the Detonator** (`FUN_005c8a20(param_1, 0xc1)`, decomp 474129).
+- **Firing the Detonator** (type -0x3f, decomp 475477): `CZKit_DetonateRemoteExplosives` (0x5c0130) walks the placed
+  list 0x4b5220 and, for each charge of this SEAL's (`+0xac` = the actor's id) with `+0xc5` up (a claymore) within
+  **500 units** of the SEAL (`FUN_003c71d0(0x43fa0000, charge, actor + 0x1c)`), sets `+0xc4` (`FUN_003c5730`): the
+  next tick detonates it (`FUN_003c8740`). Then `FUN_005c8a20(param_1, 0x99)` selects the claymore slot again.
+- **The clip**: `motion.rdr`'s `seal_place_claymore` -- 55 keys (`MOTION_P.ZAR`), `playback` 2.7, `NoInterrupt` 0.9,
+  `NoFire` -- so 2.60 s in all (`playback ((n - 1) / n)^2`), the charge down at 1.3 s (phase 0.49).
+
+`DAT_003dfe10` is not a constant: the world root's load (decomp 217163-217170) sets it to `1 / <key 0x3f6c70>`; its
+static 10 is what every MP map gives (the viewer's units are the game's).
+
+**The viewer** (`CLAYMORE_RULES`, `PLACE_CLAYMORE_ANIM` in `projectile.ts`; `grenade.ts`): key 8 / the inventory takes
+the claymore up; the trigger starts the placing -- `throwStart` with `PLACE_CLAYMORE_ANIM`, so the page's throw pose
+layer plays `seal_place_claymore` on the body -- and 1.3 s in the charge goes down under the posed right hand (the
+hull cast from the hand to the feet less 10; none there, nothing is placed) and the Detonator comes up (its model on
+the held node, its HUDW icon); the trigger with the Detonator sets off the SEAL's claymores within 500 units and puts
+the claymore back up (the rifle when none is left -- the game selects the empty slot [reading]). Four down at most:
+the fifth is refused with the game's message (the `refuse` event; the page toasts it [placeholder: the game's message
+line]); not while moving. `9` selects the Detonator. `detonateCharges()` (the hook) is the Detonator's fire.
+
+The C4 (ID 151, `Timer1` 6, `Explosion_Radius` 5, `IgnoreExplosionDI`) is in no MP SEAL kit: not in the viewer.
+
+### 9.8 The page's API
 
 - **Input**: the fire trigger (left button captured, the touch fire button, R1) holds and throws while a grenade is
   up. R1's analog value is not read (a browser pad's R1 is on or off): the pressure is 1 while held.
 - **Events** (`GrenadeThrower.on`): `equip(equipped, item)` -- the rifle stowed while true (`Play.setRifleStowed`);
   `throwStart({ anim, power, releaseIn })` -- the throw clip on the body (`./throwPose`, a pose layer the page adds
   with `Play.addPoseLayer`);
+  `place({ item, pos, yaw, fireAnim })` -- the claymore down (audio `c4_start`: `.PLACE_CHARGE`);
+  `refuse({ item, text, seconds })` -- the claymore's `Max Equipment Items Placed (4)` (the page toasts it);
+  `detonate({ count, from })` -- the Detonator fired;
   `throw(info)` -- audio `.THROW_OBJECT`; `bounce({ material, pos, speed, sound, anim })` -- audio
   `grenade_hit_<material>` when `sound`; `explode({ pos, radius, anim, material, damageToPlayer, distanceToPlayer })`
   -- audio `.GREN_MED`, and the look workstream's shake by distance (a marked `MERGE(look)` call in `main.ts`).
-- **Hook**: `grenade()` (the slot, phase, power, left, the grenades in the air, the last throw, bounces, explosions,
+- **Hook**: `grenade()` (the slot, `held` -- what is in the hand, `'Detonator'` included -- `placed`, `placing`,
+  `message`, phase, power, left, the grenades in the air, the last throw, bounces, explosions,
   the M67's numbers), `throwGrenade(holdSeconds = 1, immediate = true)` (`immediate` false: the clip plays and the
-  hand lets go at its release), `equipGrenade(on?)`, `selectItem(item)`, `throwClip()`, `grenadeTrail(on)` (a debug
+  hand lets go at its release), `equipGrenade(on?)`, `selectItem(item)` (`'rifle'`, a throwable, `'Detonator'`),
+  `detonateCharges()` (the Detonator's fire), `throwClip()`, `grenadeTrail(on)` (a debug
   line along each flight), `resetGrenades()`.
 - **Asks**: the peek state, for the lean tosses (the table and clips are in; the walk has no lean yet); the particle
   command 0x27's layout, to replace `EXPLOSION_READING`; `SetModelOrientation` (0x3cabe0) for the grenade's spin in
   flight (`SPIN_PLACEHOLDER` 14 rad/s); the decal placement; the inventory menu's own picture.
+
+### 9.9 The bounce materials on all 22 maps (round 4)
+
+`tools/grenade-materials.ts` runs every `RUN/MP*.ZDB`: each material byte of the hull (`worldCollision`) resolved as
+`gridCast` does, the zAnim names built from it, whether the map's `CZANIM.ZAR` holds them, the sounds those play and
+whether the map's banks hold them. The game builds the names exactly so: the weapon loader (decomp 316340-316355)
+formats `"%s_%s"` (0x3fc540) of `HitAnimName` and each material's name (`FUN_002de440`, which would follow a
+`WEAPONANIM` redirect -- `materials.rdr` has none) and looks it up in the zAnim registry (0x414bb0); the bounce plays
+the one for the hit's material (`FUN_003d22e0`), none when the lookup failed. The fixture maps (MP2, MP6, MP72) are
+tested: every hull byte in the table, byte 0 their `DefaultMaterial`, every `grenade_hit_*` of the archive a name the
+code builds (but `grenade_hit_grating`, which no material names).
+
+What it found:
+
+- **The strings match.** Every material the hulls use resolves (no byte past the table), and `grenade_hit_<material>`
+  / `frag_grenade_<material>` are the archive's names wherever the archive has them.
+- **The silent bounces are the game's own data**, not a name mismatch:
+  - **metal**: `grenade_hit_metal_thick` / `_metal_grate` play `.GREN_METAL`, which MP2 (Frostfire, `DefaultMaterial`
+    METAL_THICK: 2 293 of its polygons), MP5-MP12, MP62, MP73 and MP83 do not have in their banks (`MP2_am.bnk`
+    has `.GREN_TIN` and `.GREN_STONE` only). The maps whose banks have it (MP1, MP51-53, MP61, MP71-72, MP81-82)
+    sound it.
+  - **asphalt**: `grenade_hit_asphalt` names `.GREN_ASPHALT` with command 45 (0x2d), not the play-sound command 30 the
+    audio's `callbackSounds` reads -- and no bank of `BNKSTORE.ZAR`'s 115 holds `.GREN_ASPHALT`. Silent in the game.
+  - likewise `.GREN_DIRT`, `.GREN_SAND`, `.GREN_GRASS`, `.GREN_PLASTER`, `.BUL_FABRIC`, `.GREN_LEAVES`, `.GREN_SNOW`
+    are missing from some maps' banks (the tool lists each).
+- **No anim at all** for ACTION, INVISIBLE_DI (PENETRATION 1: never hit), UNDERWATER (LIQUID: passed through), GLASS,
+  GLASS_THICK, GLASS_MEDIUM, GLASS_OPAQUE, METAL_RAILING, METAL_GRATE_THIN, CHAINLINK_FENCE, MUD, SNOWY_TREE, GASTANK: the game
+  looks up `grenade_hit_glass` etc., finds none, and plays nothing; so does the viewer.
+- **MP11**'s world root says `DefaultMaterial none` and **MP64**'s `stone` (lower case). The table's keys are `materials.rdr`'s names as
+  written and the lookup is a byte compare (`FUN_002de9e0` -> `FUN_002ded30` -> `FUN_002dee30` -> `FUN_00195768`,
+  memcmp), so the game finds neither, leaves slot 0 UNKNOWN (`FUN_002ddc30(0)`), and byte-0 polygons there (69 and 80)
+  bounce as UNKNOWN (ELASTICITY_COEFF 0.3) with no anim. `surfaceMaterial` does the same [reading: `FUN_002396f0`, the string's constructor, was
+  not read for a case fold].
 
 ## 10. The placeholders and readings, by name
 
@@ -393,7 +538,11 @@ plume, black smoke, the flash, a small fire, `.GREN_MED`). The viewer draws it w
 | `L2_SLOT_PLACEHOLDER` | the M67 | the slot the player assigns to L2 (default the sidearm) |
 | R2 | one press a step | the inventory menu |
 | the throw clip's blend out | 0.4 s | the play after a throw |
-| the HE's burst | the frag's | `HE_grenade`'s parts |
+| `SMOKE_PLACEHOLDER` / `SMOKE_ALWAYS_PLACEHOLDER` | §9.6 | the effects' `large_smoke` as a screen |
+| the white-out's scale | 60 = full white | the `blinded` command's strength |
+| `PEEK_THROW` | 0.5 | the lean clip test in `GetThrowAnim` |
+| the Detonator after the last claymore | the rifle | the game selects the empty claymore slot |
+| the refusal's message | the page's toast | the game's message line |
 | `FLIGHT_TICK` | 1/60 | the projectile runs on the frame's dt |
 | `SPIN_PLACEHOLDER` | 14 rad/s | `SetModelOrientation` |
 | `EXPLOSION_READING` | §7.2 | the particle commands |

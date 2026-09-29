@@ -79,7 +79,7 @@ Run from `web/`:
 | command | what it does |
 |---|---|
 | `npm install` | workspace install (six packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR` and `SOUNDS/BNKSTORE.ZAR`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR`, `SOUNDS/BNKSTORE.ZAR` and `IRX/LIBSD.IRX`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
@@ -87,7 +87,7 @@ Run from `web/`:
 | `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
-| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §8) |
+| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §11) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
 
 ### Deploying
@@ -95,7 +95,7 @@ Run from `web/`:
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
 `maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
-`maps/RUN/SOUNDS/BNKSTORE.ZAR`). The archives are the game's and are never part of the build. The sound banks are read
+`maps/RUN/SOUNDS/BNKSTORE.ZAR`, and `maps/RUN/IRX/LIBSD.IRX` for the SPU2's reverb presets). The archives are the game's and are never part of the build. The sound banks are read
 **by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
 (nginx and Vite do); one that does not still works, fetching the whole store.
 
@@ -134,6 +134,13 @@ The settings panel starts folded on every device, so a first visit is the map an
 **Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
 the choice is remembered. A failed load unfolds the panel so the error is seen.
 
+With `?redotcom` the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
+`setMuted`) and a **Mouse look** section (raw or the game's stick curve, a sensitivity slider, invert pitch, and equal
+pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
+`s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover lists
+the keyboard and mouse for the current mode in groups (Move, Combat, Stance & traversal, Weapons, General; the fly list is
+Move and General), and the pad's layout under them, grouped the same way, once a pad is connected.
+
 ### Flying (always)
 
 | input | what it does |
@@ -166,6 +173,8 @@ the choice is remembered. A failed load unfolds the panel so the error is seen.
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
+| `Tab` (held) | the round's scoreboard, as SELECT held on the console ([`docs/research/87-hud.md`](docs/research/87-hud.md) §12); the pad's Select too |
+| `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
 
 ### The controller
 
@@ -201,13 +210,18 @@ clips are the game's pick and blend: the stick's speed picks each set's clip by 
 strafe sets share the stick's angle, every clip plays at the rate its root needs. While walking, the game's own HUD is drawn
 over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
 compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
-the context prompt (the climb icon); hidden in flight.
+the context prompt (the climb icon, a door's within its 30 units); the round start as the console plays it (a fade from
+black, "STARTING ROUND 1 OF 11", then the objective); the compass's nav marks (the map's own nav points, C..Z); hidden in
+flight.
 
 **The walk sounds** with the game's own sounds, decoded from the map's banks (`docs/research/81-sounds.md`): a
 footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
 metal on Frostfire's rig, sand in Desert Glory), the stealth step at a light stick and the crawl prone; the jump's
 whoosh and the landing (the surface's, or a bone's crack from a deadly height); the M4A1 SD's suppressed round and its
-reload. The browser starts sound on the first click or key press; `window.__viewer.audio()` reports what played.
+reload; the SPU2's own reverb at the mission's indoor and outdoor depths; the mission's ambience beds and its looping
+emitters (a fan, a river, insects at a lamp). Where a map's banks lack a sound its floors or grenades ask for, the same
+sound is lent from another map's bank (a placeholder, research 81 §7). The browser starts sound on the first click or
+key press; `window.__viewer.audio()` reports what played, what was dropped and why.
 
 **The rounds show** with the game's own effects (`docs/research/89-effects.md`). Each round plays the weapon's zAnim
 muzzle animation out of the map's `CZANIM.ZAR`. For the M4A1 SD that is the brass casing thrown to the rifle's right,
@@ -236,6 +250,18 @@ walk, a **C** button cycles the stance as `C` does, and a round **fire** button 
 fires at its rate. The right half is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
+
+**Walking on a phone** (`?redotcom`) has its own layout, in the PS2 pad's positions, shown while walking on a touch screen
+and held sideways (upright, the page asks for a turn and lifts the buttons off the HUD's tall bottom strip). The left
+thumb has the stick; the right has a diamond of face buttons at the bottom right -- Triangle the stance (tap crouches, hold
+goes prone, as the pad's), Square the jump, Cross the action (climb, ladder slide) -- and a larger **FIRE** (R1) at the edge
+beside it. Under the compass are zoom in and out (d-pad Up and Down), **MODE** (fire mode, L3) and **RELOAD**; along the
+bottom middle **RIFLE**, **M67** and **NEXT** (L1, L2, R2); at the left edge, over the stick's zone, the two peek buttons
+(the d-pad's sides, held) and fullscreen. Every button holds the lane the pad's button holds (`touchInput`, merged with the
+pad's in `padFrame`, `viewer/src/touch.ts` `attachWalkTouch`), so the behaviour is the pad's; each owns its pointer, so fire
+and jump can be held at once. The HUD keeps its corners: nothing sits on the ammo box, the compass or the range and timer
+strip. While walking, the fullscreen button leaves the bottom right for the left edge on every screen, since the HUD owns
+that corner. Flying keeps the lift buttons as they were.
 
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
 and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
@@ -312,6 +338,11 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 - **The mip level is the GS's.** A mipmapped texture samples the level `TEX1` gives off the depth,
   `(log2(w) << L) + K` clamped to `0..MXL`, not the GPU's derivative LOD; with the corpus's K of -12 to -6.5 most never
   leave the base level (`gsMipLod`, `world.ts`'s `gsTexel`; research 82, D3).
+- **The mip levels are the disc's, and the reflective surfaces get their pass.** A mipmapped texture uploads the records
+  its `MIPTBP1` names (a detail texture's level 1 is transparent: the detail fades with distance). A draw whose visual
+  names a textured `Material_Palette` entry -- the water, glass, ice -- gets VU1 `0x34`'s environment-map pass: a sphere
+  map of the reflected eye ray in the entry's texture and colour, faded by its rim alpha (`world.ts`, `envVertex`).
+  The PS2 picture renders with no antialiasing, as the GS did (research 82, D3b, D5, D6).
 - **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
   (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
   world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the

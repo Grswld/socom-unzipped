@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
-import { Matrix4, Scene, Timer, Vector3 } from 'three';
+import { Matrix4, Scene, Timer, Vector3, type Object3D } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { HELD_RIFLE, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
+import { HELD_RIFLE, materialTable, polygonNormal, probeFloor, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -13,15 +13,20 @@ import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
-import { attachTouchControls, wantsTouchControls } from './touch';
+import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { aimPoint } from './playerCamera';
 import { explosionShake } from './look';
-import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input } from './gamepad';
+import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
-import { Reticle } from './reticle';
+import { Reticle, reticleType } from './reticle';
 import { Hud, RangeFinder } from './hud';
+import { actionInReach } from './mapActions';
+import { TacMap } from './tacMap';
+import { ScoreboardKeys } from './scoreboardKeys';
+import { DEFAULT_PLAYER } from './scoreboard';
+import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
@@ -30,13 +35,16 @@ import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
-import { TraversalPage } from './traversalPage';
+import { TRAVERSAL_EVENT, TraversalPage } from './traversalPage';
+import type { TraversalEvent } from './traversal';
+import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import { gameAudio } from './audio';
-import { Effects } from './effects';
+import { Effects, soundFor } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
+import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -57,6 +65,9 @@ const RATIO_FLOOR = 0.75;
 const SLOW_MS = 24, FAST_MS = 12, ADAPT_EVERY_MS = 2000;
 /** The game's own projection, framebuffer-wide: `tan(hfov) / tan(vfov)` at the authored half-angles. */
 const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
+
+/** `materials.rdr`'s PENETRATION by material name (the built-ins and SOILS, `@s2u/scene`'s transcription): research 84. */
+const SOIL_PENETRATION = new Map(materialTable().map((m) => [m.name, m.penetration]));
 
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('the page has no #view canvas');
@@ -95,6 +106,15 @@ const reticle = new Reticle();
 /** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
 const hud = new Hud();
 const rangeFinder = new RangeFinder();
+/** SOCOM II's tactical map (`./tacMap`, research 87 §9): `M` while walking (SELECT on the console), in the HUD pass. */
+const tacMap = new TacMap(() => walk.mode() === 'walk');
+tacMap.bindKey(globalThis, () => fly.pose().yaw);
+tacMap.onToggle = (open) => hud.setTacMapOpen(open);
+/** The multiplayer round's scoreboard (research 87 §12): SELECT held on a pad, Tab held on the keyboard, walking only. */
+const scoreboardKeys = new ScoreboardKeys(() => walk.mode() === 'walk');
+scoreboardKeys.bindKey();
+const feetXZ = (): [number, number] | null => { const f = walk.feet(); return f ? [f[0], f[2]] : null; };
+hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes));
 /**
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
@@ -115,6 +135,7 @@ if (PLAY) fire.bindKey();
 const grenade = new GrenadeThrower({
   grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view(),
   handPoint: (part, p) => play.partPoint(part, p), heldNode: () => play.heldNode(),
+  peek: () => traversal.stats()?.peek ?? 0,           // research 86's lean: the lean tosses
 });
 scene.add(grenade.object);
 if (PLAY) grenade.bindKey();
@@ -130,12 +151,32 @@ grenade.on('equip', (on) => {
   if (on && zoom.state() >= 4) setZoom(1);
 });
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
+grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
+// The claymore refused once four are down: the game's message line (0x65f880) [placeholder: the viewer's toast].
+grenade.on('refuse', (info) => { ui.toast(info.text); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
 grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
-grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
+/**
+ * EFFECTS (web/docs/research/89): a grenade's bounce runs the game's own `grenade_hit_<material>` through
+ * `effects.play` (its sound, and snow's and water's spurts), at the point as if the grenade's node were there (the
+ * sparks' `OBJECT_TRANSLATE_STATE` takes the caller's place); the explosion goes through the grenade's own door
+ * (`setEffectPlayer`). The audio's zAnim map is the fallback before the effect data is in.
+ */
+const grenadePlace = (pos: readonly number[]) => ({
+  node: new Matrix4().makeTranslation(pos[0]!, pos[1]!, pos[2]!), position: [pos[0]!, pos[1]!, pos[2]!] as [number, number, number],
+  normal: [0, 1, 0] as [number, number, number], velocity: [0, 0, 0] as [number, number, number],
+});
+grenade.on('bounce', (info) => {                                                          // grenade_hit_<material>
+  if (!info.sound) return;
+  if (!effects.play(info.anim, grenadePlace(info.pos))) audio.onAnimCallback(info.anim, info.pos);
+});
+/** The flashbang's white-out (`./flash`): `blindplayer0<level>` by the game's rule of distance and facing (0x597c00). */
+const whiteOut = new WhiteOut(canvas?.parentElement ?? null);
 grenade.on('explode', (info) => {
-  // The material's variant, else the base (`frag_grenade`: .GREN_MED) -- the variants reach the sound through a call.
-  if (!audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
+  if (info.flash) whiteOut.start(info.flash);
+  // The zAnim's sound: the effects play it with the run (`effects.play`'s sound door); without the run, the material's
+  // variant, whose zAnim starts the base (`frag_grenade`: .GREN_MED) -- the audio follows the call (research 81 §6).
+  if (!info.byEffects) audio.onAnimCallback(info.anim, info.pos);
   // The game's screen shake by the distance (research 83, `./look`).
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
 });
@@ -232,10 +273,29 @@ const walkSounds = new WalkSounds(audio, {
  * off), the casings bouncing on the hull with their material's sound, the marks per surface (`Fire.setMarks`).
  * `effects.play(name, place)` is the grenades' door to their impacts and explosions.
  */
-const effects = new Effects(Math.random, (name, at) => { audio.play(name, at); });
+// The effects' sounds through the map's banks: the data's slips mended and a stand-in for a casing sound a map lacks
+// (`soundFor`, research 90 items 4 and 12).
+const effects = new Effects(Math.random, (name, at) => { audio.play(soundFor(name, (n) => audio.has(n)), at); });
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
 effects.setWorld(() => walk.grid());
+// The grenades' explosions through the effects' door: the game's own zAnim (`frag_grenade_stone`, `smoke_grenade`,
+// `flashcrash_grenade` ...) where the map has it; the grenade's placeholders only where it does not.
+grenade.setEffectPlayer((anim, at) => effects.play(anim, { ...grenadePlace(at.position), normal: at.normal ?? [0, 1, 0], velocity: at.velocity ?? [0, 0, 0] }));   // the node: the sparks launch from it
+// The water's ripples and a fall's splash are the effects' own (`effects.waterFrame`, `effects.splash` below): the
+// traversal's ripple keeper (research 86 section 5.4) is not wired, so they do not play twice.
+/**
+ * The effects' pre-warm (research 90 item 16): their programs compiled and their bitmaps uploaded when the map's effect
+ * data arrives, not in the frame of the first explosion. Set once the renderer is up.
+ */
+let compileEffects: ((g: ReturnType<typeof effects.warmUp>) => Promise<void>) | null = null;
+function warmEffects(): void {
+  if (!compileEffects || !effects.stats().loaded) return;
+  const g = effects.warmUp();
+  void compileEffects(g).catch(() => {}).finally(() => effects.warmDone(g));
+}
+// The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
+effects.setLightReceivers(() => [view?.group, view?.weapon].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -274,6 +334,8 @@ const fog: FogSettings = {
 };
 /** The renderer's clear colour, once `boot` has one: the background follows the fog. */
 let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
+/** The renderer's warm-up (`ViewerRenderer.warm`), once `boot` has one: every program compiled after a map's reveal. */
+let warmScene: ((extras: Object3D[]) => Promise<void>) | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -365,8 +427,33 @@ play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locom
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
+// The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
+// to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
+play.onEvent((e) => { if (e.kind === 'land' && e.cls === 3) hud.postMessage(`${hud.state().model.name || DEFAULT_PLAYER} falls to their death`); });
+play.onEvent((e) => {                             // EFFECTS: the footprint on sand and snow (`FUN_005a3280`)
+  if (e.kind !== 'footfall' || walk.mode() !== 'walk') return;
+  const snap = walk.snapshot(), grid = walk.grid();
+  const at = e.position ?? snap?.feet ?? null;
+  if (!snap || !grid || !at) return;
+  const floor = probeFloor(grid, at[0], at[1], at[2]);
+  if (!floor) return;
+  const n = polygonNormal(floor.poly.points) ?? [0, 1, 0];
+  const up: [number, number, number] = n[1] < 0 ? [-n[0], -n[1], -n[2]] : n;
+  const yaw = (snap.yaw * Math.PI) / 180;
+  effects.footfall([at[0], floor.y, at[2]], floor.poly.material, up, [-Math.sin(yaw), 0, -Math.cos(yaw)], snap.stance === 'prone');
+});
+// EFFECTS: a fall into water (`s2u:traversal`'s `waterLand`): `seal_fall_in_water` at the water line over the feet.
+globalThis.addEventListener?.(TRAVERSAL_EVENT, ((e: CustomEvent<TraversalEvent>) => {
+  const feet = walk.drawnFeet();
+  if (e.detail?.type === 'waterLand' && feet) effects.splash(feet, e.detail.depth);
+}) as EventListener);
 // EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in first person (the aim view).
-fire.subscribe((e) => { if (e.type === 'round') effects.onRound(e, weaponFrame(), walk.view() === 'first'); });
+fire.subscribe((e) => {
+  if (e.type !== 'round') return;
+  effects.onRound(e, weaponFrame(), walk.view() === 'first');
+  // ACCURACY: every surface the round went through is struck too (FUN_003c8920 per hit), its impact without a muzzle.
+  for (const t of e.through ?? []) effects.onRound({ ...e, to: t.point, normal: t.normal, material: t.material, hit: true, through: undefined }, null, false);
+});
 let wantedPlay = -1;
 /** EFFECTS: the map's effect data, asked of the source the map came from once it is shown (`./effectData`). */
 let wantedEffects = -1;
@@ -415,6 +502,40 @@ function playLanes(before: Input, after: Input, dt: number): void {
   walk.setAiming(walking && (aimForced || act.aim || zoom.firstPerson()));
 }
 
+/** The map's `LensFX_NVG` colour, and whether the night vision is on. */
+let nightLens: [number, number, number, number] | null = null;
+let nightOn = false;
+/**
+ * The night vision's colour on the frame [approximation, research 84 section 14]. The game loads a colour matrix whose
+ * four rows are all `(r x 0.33, g x 0.33, b x 0.33, a x 3.03)` of `LensFX_NVG` (0.2, 0.898, 0.2, 0.24) -- `0x3b78d0`
+ * from `0x5c1800` -- i.e. every channel of a lit colour becomes `0.066 R + 0.296 G + 0.066 B + 0.727`: the night's
+ * dark vertex lighting lifted to a flat, bright grey the textures then modulate, the green coming from the goggles
+ * (`nvg_part.tif`, 17 % green inside) and the fog tinted by the lens. That is a per-vertex change the world renderer
+ * would make; until it does, the viewer puts a frame filter on the canvas: the rows' weights normalised to a
+ * luminance, a gain of `NIGHT_GAIN` for the lift, tinted by the lens's colour with green at 1.
+ */
+const NIGHT_GAIN = 3;
+function setNightFilter(lens: [number, number, number, number] | null): void {
+  if (!canvas) return;
+  if (!lens) { canvas.style.filter = ''; return; }
+  const id = 's2u-nvg';
+  let svg: Element | null = document.getElementById(`${id}-svg`);
+  if (!svg) {
+    const made = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    made.id = `${id}-svg`;
+    made.setAttribute('width', '0'); made.setAttribute('height', '0');
+    made.style.position = 'absolute';
+    made.innerHTML = `<filter id="${id}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values=""/></filter>`;
+    document.body.appendChild(made);
+    svg = made;
+  }
+  // The rows' weights (0.066, 0.296, 0.066 of the lens) as a luminance summing to 1, times the gain, times the tint.
+  const w = [lens[0], lens[1], lens[2]].map((c) => c / (lens[0] + lens[1] + lens[2]));
+  const tint = [lens[0] / lens[1], 1, lens[2] / lens[1]];
+  const row = (t: number): string => w.map((x) => (x * NIGHT_GAIN * t).toFixed(4)).join(' ') + ' 0 0';
+  svg.querySelector('feColorMatrix')!.setAttribute('values', `${row(tint[0]!)} ${row(tint[1]!)} ${row(tint[2]!)} 0 0 0 1 0`);
+  canvas.style.filter = `url(#${id})`;
+}
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
 let lastLook: { yaw: number; pitch: number } | null = null;
 let lastFov = -1;
@@ -452,6 +573,15 @@ function gunFrame(dt: number, walking: boolean): void {
   // The look's divisor (FUN_005966a0, `FUN_005be660`): the LOOK workstream's law takes the magnification and mode 4.
   fly.setZoom(1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
   hud.setZoom(zoom.magnification());
+  // The night vision (view state 3): the goggles on the reticle's layer, the lens's green colour matrix on the frame,
+  // the goggles' sound in and out (DAT_0044ce30/38: .NV_GOGGLES_ON / _OFF).
+  const night = zoom.view() === 'nightvision';
+  reticle.setNight(night);
+  if (night !== nightOn) {
+    nightOn = night;
+    setNightFilter(night ? nightLens : null);
+    if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', walk.drawnFeet());
+  }
 }
 
 /**
@@ -489,10 +619,21 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id === wantedSound) audio.setData(message.data);
     return;
   }
+  if (message.kind === 'soundLoops') {
+    if (message.id === wantedSound) audio.setLoops(message.loops);
+    return;
+  }
   if (message.kind === 'effects') {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
+    warmEffects();                                   // research 90 item 16: compile the effects before the first shot
     fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
+    // ACCURACY (research 84 section 13): the round goes through what the game lets it -- the material byte's name
+    // (the effects' table: built-ins, then SOILS; 0 the map's DefaultMaterial) to its PENETRATION.
+    fire.setPenetration((byte) => {
+      const name = byte === undefined ? undefined : effects.materialName(byte);
+      return name ? (SOIL_PENETRATION.get(name) ?? 0) : 0;
+    });
     return;
   }
   if (message.kind === 'progress') {
@@ -529,6 +670,15 @@ const touchLane: TouchTarget = {
   setLift: (v) => { touchInput.jump = v > 0; touchInput.crouch = v < 0; },
   setStickBoost: (on) => { touchInput.boost = on; },
 };
+/**
+ * Walk mode's touch buttons (`attachWalkTouch`) hold the same lanes a pad's buttons do, in `touchInput`. A release is
+ * kept until the frame after the press was read (`touchReleased`, cleared at the end of `padFrame`), so a tap shorter
+ * than a frame is still an edge; a press again before that cancels the release.
+ */
+const touchReleased = new Set<PadFlag>();
+function holdTouch(lane: PadFlag, down: boolean): void {
+  if (down) { touchInput[lane] = true; touchReleased.delete(lane); } else touchReleased.add(lane);
+}
 /** The pads, from the events and the poll: a toast names each that comes, and says when one goes (W2.R5). */
 const pads = new PadWatch({
   connected: (id) => {
@@ -563,9 +713,12 @@ function padFrame(dt: number): void {
   if (PLAY && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
   // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
-  if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
-  // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up).
-  const pressed = pressedSince(padLast, pad);
+  // The merged lane, so the touch fire button (`touchInput.fire`) is the trigger the same way; a released R1 still never
+  // lets go of a button the other source holds.
+  if (PLAY && input.fire !== padMerged.fire) trigger(input.fire);
+  // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up). The edges are of
+  // the merged lanes: a touch button and a pad's are the same press.
+  const pressed = pressedSince(padMerged, input);
   if (pressed.includes('zoom')) stepZoom('in');
   if (pressed.includes('zoomOut')) stepZoom('out');
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
@@ -579,14 +732,20 @@ function padFrame(dt: number): void {
   traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
   padLast = pad;
   padMerged = input;
+  for (const lane of touchReleased) touchInput[lane] = false;   // read this frame; let go for the next
+  touchReleased.clear();
 }
 attachTouchControls(touchLane, () => { if (walk.mode() === 'walk') walk.cycleStance(); }, trigger);
+attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
 if (PLAY) {
   walk.bindKey();
   ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 }
 ui.onPanelToggle();
 ui.onControlsPopover();
+// Round 2: the panel's Sound and Mouse look sections (each is on the page only with `?redotcom`), remembered in this browser.
+ui.onSound({ volume: (v) => audio.setVolume(v), muted: (m) => audio.setMuted(m) });
+ui.onLookControls((opts) => fly.setLookOptions(opts));
 const revision = ui.showRevision();
 
 /**
@@ -663,8 +822,11 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
+  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.renderer.compileAsync(effects.object, fly.camera, scene); };
+  warmEffects();
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
+  warmScene = (extras) => created.warm(scene, fly.camera, extras);
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();
   backend = chosen;
@@ -725,10 +887,19 @@ async function boot(): Promise<void> {
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     effects.setBrighten(brightenOf(lighting));
+    // EFFECTS: the wading ripples (`FUN_005b52b0`) at the water under the SEAL, then the effect runs and the particles.
+    {
+      const snap = walking ? walk.snapshot() : null, feet = walking ? walk.drawnFeet() : null;
+      const depth = traversal.stats()?.depth ?? 0;
+      const height = snap?.stance === 'prone' ? PRONE_HEIGHT : snap?.stance === 'crouch' ? CROUCH_HEIGHT : STANDING_HEIGHT;
+      effects.waterFrame(snap && feet ? { feet, depth, height, velocity: [snap.vx, snap.vy, snap.vz], airborne: snap.airborne } : null);
+    }
     effects.update(dt, fly.camera); // EFFECTS: the zAnim effect runs, the casings, the particles
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
-    grenade.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
+    walkSounds.frame([fly.camera.position.x, fly.camera.position.y, fly.camera.position.z]);   // the reverb, the beds
+    grenade.update(dt);
+    whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -742,17 +913,26 @@ async function boot(): Promise<void> {
       const r = accuracy.reticle(zoom.state());
       reticle.setSize(r.size, r.offset);
       reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
+      // The weapon's reticle set (FUN_005be300: by its ID and the view): the rifle's for the M4A1 SD, the sidearm's for a pistol.
+      reticle.setSet(reticleType(HELD_RIFLE.id, zoom.state(), zoom.target()));
     }
-    reticle.setVisible(walking);
+    if (!walking) tacMap.setOpen(false);
+    tacMap.frame(dt);
+    const scoreboard = walking && (padMerged.scoreboard || scoreboardKeys.held());
+    hud.setScoreboard(scoreboard);     // research 87 §12: SELECT (Tab) held; it hides the reticle too (L56808-56828)
+    reticle.setVisible(walking && !tacMap.isOpen() && !scoreboard);
     reticle.render(created.renderer);
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
+    traversal.effectsFrame();       // research 86: the water's ripples (FUN_005b52b0)
     hud.setWeaponIcon(grenade.icon() ?? RIFLE_ICON);   // the throwable's HUDW icon while it is up
     hud.feed({
       // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
       yaw: fly.pose().yaw, stance: walk.posture(), climb: traversal.hudClimb(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
+      nearby: walking && actionInReach(loaded?.actions ?? [], walk.feet(), ['DOOR']) ? 'door' : null,
+      position: walking ? feetXZ() : null,
     });
     hud.render(created.renderer);
 
@@ -841,9 +1021,13 @@ function show(map: LoadedMap): void {
   }
   reticle.setBitmaps(map.reticle);
   hud.setBitmaps(map.hud);
+  hud.setNavPoints((map.tac?.points ?? []).filter((p) => p.kind === 1));
+  hud.setGame(map.name, rankOf(map.name)?.mode ?? '');
+  tacMap.setOpen(false);
   fire.reset();                                   // a new map: no marks, full magazines
   effects.setData(null);                          // EFFECTS: the old map's effects go; the new map's follow it
   fire.setMarks(null);
+  fire.setPenetration(null);
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
@@ -888,6 +1072,9 @@ function show(map: LoadedMap): void {
   }
   zoom.reset();
   accuracy.reset();
+  // Research 84 section 14: a night map's zoom steps into the night vision (NightMission, CWorld+0x5dc), its lens colour.
+  zoom.setNight(!!map.night?.mission);
+  nightLens = map.night?.lens ?? null;
   fly.setFov(baseFov);
   fit?.();                                        // the PS2 presentation's aspect is the map's own
 
@@ -960,6 +1147,8 @@ function show(map: LoadedMap): void {
     // The props follow, over further frames. The map is already drawn and flyable while they arrive,
     // and the flares among them are turned by the render loop on the frame after they land.
     revealing = spreadAcrossFrames(built0.revealProps);
+    // Then every program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
+    void revealing.done.then(() => { if (view === built0) void warmScene?.(built0.warmExtras()); });
   });
 }
 
@@ -1043,6 +1232,8 @@ window.__viewer = {
   resetGrenades: () => grenade.reset(),
   selectItem: (item) => grenade.select(item),
   throwClip: () => throwPose.stats(),
+  whiteOut: () => whiteOut.state(),
+  detonateCharges: () => grenade.detonateCharges(),
   effects: () => effects.stats(),
   playEffect: (name, at, kind = 'impact') => {
     // 30 units ahead of the camera unless told where; a muzzle effect with a node whose barrel runs across the view to
@@ -1061,5 +1252,8 @@ window.__viewer = {
     return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
   },
   pauseEffects: (on) => { effects.paused = on; },
+  tacMap: () => tacMap.state(),
+  setTacMap: (open) => { tacMap.setOpen(open, fly.pose().yaw); return tacMap.state(); },
+  clearEffects: () => effects.reset(),
   revision,
 } satisfies ViewerHook;

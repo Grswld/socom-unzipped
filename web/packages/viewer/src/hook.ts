@@ -16,8 +16,9 @@ import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
 import type { ViewStats, WeaponStats } from './play';
 import type { AudioStats } from './audio';
-import type { GrenadeItem, GrenadeStats, ThrowInfo } from './grenade';
+import type { GrenadeStats, KitItem, ThrowInfo } from './grenade';
 import type { ThrowPoseStats } from './throwPose';
+import type { WhiteOutState } from './flash';
 import type { TraversalStats } from './traversalPage';
 
 /**
@@ -186,9 +187,13 @@ export interface ViewerHook {
   /** Clears the grenades, the effects and the marks, and refills the pouch. */
   resetGrenades(): void;
   /** Takes up a kit item (`rifle`, `M67`, `HE`), as the keys 1, 4, 5 do; false when it cannot be. */
-  selectItem(item: 'rifle' | GrenadeItem): boolean;
+  selectItem(item: KitItem): boolean;
   /** The throw's clip on the body (`./throwPose`): the clip, its phase, its weight over the locomotion. */
   throwClip(): ThrowPoseStats;
+  /** The flashbang's white-out on the screen (`./flash`): its level, time into it, opacity and length. */
+  whiteOut(): WhiteOutState;
+  /** Sets off the placed claymores (the `9` key; the claymore's own trigger is not ported); the count set off. */
+  detonateCharges(): number;
   /**
    * EFFECTS (`./effects`, web/docs/research/89): the map's effect data loaded or not, the animations played by name,
    * the runs live, the casings in the air and the last one's place, the bounces, the particles, the sounds.
@@ -202,6 +207,12 @@ export interface ViewerHook {
   playEffect(name: string, at?: [number, number, number], kind?: 'impact' | 'muzzle'): boolean;
   /** EFFECTS: holds every effect where it is (true) or lets them run (false), for a picture of a three-frame flash. */
   pauseEffects(on: boolean): void;
+  /** The tactical map (`./tacMap`, research 87 §9): open or not, its zoom (world units across its box), pan, heading. */
+  tacMap(): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
+  /** Opens or closes it as `M` (SELECT) does, the heading the camera's now. */
+  setTacMap(open: boolean): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
+  /** EFFECTS: stops every effect and drops its particles (a test's clean slate: headless drawing is slow under smoke). */
+  clearEffects(): void;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

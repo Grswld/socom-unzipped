@@ -98,4 +98,21 @@ describe('buildWorld: LOD copies fade across their bands', () => {
     opacity.update({ object: low });
     expect(opacity.value).toBeCloseTo(21 / 44, 12);
   });
+
+  it('hands the warm-up one stand-in per fading twin, made before any copy fades, and the same twin the fade uses', () => {
+    // A LOD copy crossing its band used to build its twin -- and compile its program -- in the frame it began to fade.
+    const view = buildWorld(map());
+    for (const task of view.revealProps) task();
+    const extras = view.warmExtras() as Mesh[];
+    expect(extras.length).toBe(1);                                  // both copies share rail.tif's material: one twin
+    expect((extras[0]!.material as Material).name).toBe('lod fade');
+    expect((view.warmExtras() as Mesh[])[0]!.material).toBe(extras[0]!.material);   // made once
+    const meshes = view.group.children.filter((c): c is Mesh => c instanceof Mesh);
+    const high = meshes.find((m) => m.name === 'railhi (lod)')!;
+    const camera = new PerspectiveCamera();
+    camera.position.set(0, 0, 110);
+    camera.updateMatrixWorld();
+    view.frame(camera, 0);
+    expect(high.material).toBe(extras[0]!.material);                // the fade draws with the twin the warm-up compiled
+  });
 });

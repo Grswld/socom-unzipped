@@ -55,6 +55,23 @@ describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_A
     expect(map.props.filter((p) => !p.alternate).length).toBeGreaterThan(alternate.length);
   });
 
+  it.skipIf(absent)('a mipmapped texture carries the disc\'s own mip images, the records its MIPTBP1 names', async () => {
+    // The GS samples level n from TBPn; the exporter wrote those levels as records of their own (`*_mip*.tif`), and a
+    // detail texture's are authored transparent -- the pass fades out with distance -- which no generated chain does.
+    const map = await load('RUN/MP72.ZDB');
+    const mipped = Object.entries(map.textureFlags).filter(([name, f]) => f.gs?.mipmaps && map.textures[name]);
+    expect(mipped.length).toBeGreaterThan(0);
+    for (const [name, f] of mipped) {
+      const levels = map.textureMips?.[name];
+      expect(levels, name).toBeDefined();
+      expect(levels!.length).toBe(f.gs!.levels);
+      levels!.forEach((level, i) => {
+        expect(level.width).toBe(map.textures[name]!.width >> (i + 1));
+        expect(level.height).toBe(map.textures[name]!.height >> (i + 1));
+      });
+    }
+  });
+
   it.skipIf(absent)('every placement of a prop is drawn with its own context\'s prelit colours, not the first one\'s', async () => {
     // Frostfire's tank rails: one model, seventeen placements, a chunk per placement whose baked light differs
     // (`N000_I001`..`I017`). Drawing the first member's chunk at every matrix drew the prototype's own bare

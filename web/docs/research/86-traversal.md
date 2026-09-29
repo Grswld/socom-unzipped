@@ -197,6 +197,29 @@ The state is `seal+0x174` == 5 (reCOM `SEAL_STATE::stateClimbLadder`, `zSeal/zse
 **The viewer's stand-off** from the rungs is `refPt.z`'s 5.565 [viewer: the rungs 5.565 ahead of the root, as the
 climb-off and slide clips' `refPt` says; the hands land on the rungs in the browser, `ladder-mid.png`].
 
+### 2.4 The head, as the game plays it (round 3) [read]
+
+- **The "180".** A top mount by a SEAL facing more than 90 degrees from the climb-off's facing (`FUN_00306fd0`'s cosine
+  under 0, decomp 468210-468256) plays "180" -- `animset.rdr` maps it to `seal_180` (`motion.rdr`: one-shot, playback
+  0.95, BlendTime 0.2, NoInterrupt; 28 keys, the root turning 0 to 180 degrees and 5.7 back) -- with the actor's yaw
+  turned **by code**: `+0x44..0x4c = (0, -angle / (0.95 x (n - 1) / n), 0)`, the exact angle needed; the clip runs
+  0.95 x (27/28)^2 = 0.883 s. Its end (446650-446651), like the no-turn path, runs `FUN_005b1890` (467818): the steer
+  record on the reversed climb-off -- refPt (0.347, (edgeY - y) - 12.899 + 0.5, 3.2), facing -normal, target (edge x,
+  edgeY - 1.412, edge z) -- and `FUN_005b2d20` backs the SEAL onto it. **The viewer** turns the yaw over the clip and
+  holds the clip's own root turn at its key 0 (`TraversalPose.holdRootTurn`: whether the game shows it was not found;
+  shown with the code's turn it would be a 360).
+- **The slide from the head.** `FUN_00582540` (decomp 442907-442978), each tick of a one-shot not yet interrupted: with
+  "Climb off ladder" (0x2e) playing **reversed** and its phase `+0x1c` under **0.2** (the reversed run's last fifth,
+  the SEAL at the rungs), input slot 0 -- "Action" (`PTR_s_Action_003f2be0`, Cross) -- **held** (state 2) drops the
+  clip stack and plays **"Ladderslide" directly** (`FUN_00588bc0(a, 0x3def50, 5, 0, 0xd)`, no "Ladder -> slide"), the
+  slide's height `+0x2e4` the actor's y; network code 8. The pad's context action fires on the button's **release**
+  (state 3, `FUN_00594cf0` 453194-453225) and the jump on its press: the viewer takes the action on release and reads it
+  held.
+- **The climb-off's reversal** (`FUN_0057f5b0`, decomp 441417) is **character against character**: `FUN_0054f7e0`
+  (417353) tests every other character (stance radii 6 / 7 / 8, x1.75 moving; cylinders 19.1 / 15 / 6 tall) each tick
+  of a forward climb-off, and meeting one reverses the clip from where it is (rate -1, network code 0x14); a reversed
+  finish sets "Climb ladder" at time 1.0 (446544-446559). The viewer has no other characters: **not applicable**.
+
 ## 3. The climb
 
 ### 3.1 The contact and what is climbable [read]
@@ -239,6 +262,26 @@ From the hang (state 4, `FUN_00581c10` decomp 442605): 0x23 "Hang -> Climb" or 0
 plays the heavier of the crate/medium blend (the animator plays one clip), its path stretched to `h` [viewer]; pulls up
 on the stick ahead or the action button and lets go on the stick back, the jump-down clip not played [viewer].
 
+**Round 3: the blend and the height, as the game weighs them** [read]. `FUN_00581110` (decomp 442306-442340) starts a
+"Climb medium" play (`FUN_0028dc90`), then swaps in two nodes without a blend (`FUN_0028bef0` 133999; weights normalised
+by `FUN_0028bdf0`): the crate at `w = 1 - (h - 12) / 14.5`, the medium at `1 - w`, each at speed 1. The phase runs at
+`w / (1.25 x 29/30) + (1 - w) / (1.5 x 31/32)` a second (`FUN_0028c4f0` 134225) to the medium's end 31/32 (the play
+was made for it: `FUN_0028cc10` 134485-134493): 1.171 s at w = 1, 1.278 at 0.5, 1.408 at 0 [derived]; each node samples
+`phase x n`, the crate held at key 29 (`FUN_0028d670` 134881-134899). refPt: x and z the crate's, y `w x 1.48 + (1 - w)
+x 9.98` (`FUN_005b1a10` 467893-467898). The vertical motion is the weighted root velocity (`FUN_0028c250`
+134149-134183), UseVelY from the first node (`FUN_0057b510` 439215-439223). **The viewer plays both** (a two-node
+`trav:` play in the animator, `TraversalPose.blend`) and carries the feet on the blended root (`blendShapes`).
+The height adds the contact polygon's material's `FOOT_STEP_OFFSET` (`+0x38`, the parser 181399-181401; default 0,
+`FUN_002deb30`): -0.8 on GRASS, BROKEN GLASS, LEAVES, ICE, SNOW, GRAVEL (the hull's 4, 14-18), 0 elsewhere.
+`FUN_005b3a60` (469016-469080; the scale from the disassembly at 0x5b3bb0 / 0x5b3c10) pulls the target to 3 from an end
+it is within 3 of, takes the midpoint when both are, and always the midpoint for appflags 1.
+
+**The obstacle ray** (`FUN_0054e430`, decomp 416696-416790), called only by the climb offer `FUN_005b3ce0` (469246)
+each frame: at Y = the contact polygon's **top** + 0.5 (`FUN_002dd4d0`'s highest point; cast only when Y < the feet +
+19.1 + 2.0), a level segment from over the feet to 1.1 of the way past the contact, against all collision (the actor's
+own collider off); its hit replaces the contact (`FUN_005b0d30`) when steep (`n_y <= 0.6428`, `max_slope`'s cosine,
+`DAT_0044c268`), of no VOLUMETRIC or LIQUID material, and on another object. Implemented (`obstacleRay`).
+
 ### 3.4 The button, the icon, the jump-grab [read]
 
 - **Action = Cross.** `controller.rdr` Default: X -> Action, Square -> Jump; the logical Action is 0 and Jump 5 (the name
@@ -272,6 +315,19 @@ offsets: "Stand -> Hang" (0, 11.78, -2.42), "Climb over" (0, -0.29, -2.42), "Ste
 top 111.85 (h 11.9: "Climb crate", approached from z 790 at x 938, clear of the 19-tall `prop01` beside it); the
 container `container_blue01` at x 680-720, z 640-680, top 130 (h 30: the hang). MP6's `crate05/mp6_justbox1` (13 tall,
 `appflags` 5) is a climb-over; `wall_low3` / `wall_high2` (`appflags` 4, 29.5-30) are hangs.
+
+### 3.7 The hang, as the game plays it (round 3) [read]
+
+The state-4 handler is `FUN_00584390` (decomp 443780; `FUN_00581c10` 442607 only picks the exit clip): the stick at
+rest (0.03) holds the hang with no timer; ahead climbs ("Hang -> Climb", 443810); any other push -- back or aside --
+lets go ("Hang jump down", 443830). The jump latch lets go (`FUN_00581dc0(a, -1)`, 418136-418138), as does an action
+with nothing offered (451991-451994); a stance button climbs on stand and lets go on crouch or prone (`FUN_00581ed0`
+442695-442732, 418877-418906). "Hang jump down" (0x24, `seal_hang_jumpdown`, 1.5 s) is **not** gravity-suspended
+(466760-466790): `FUN_0059afd0` (456390-456395) takes the height from the clip's root only for its first 0.2 -- the push,
+the root 18.82 up to 21.30 by key 7 and back from the wall -- and from the fall after; the clip plays on through it.
+The viewer runs that (`hangDown`, `hangDropFall`). "Ledge -> Hang backwards", "Hop down forward / backwards": **nothing
+in this ELF plays them** (0x25 only on a branch no caller takes, 442360; 0x26 never; 0x2b only tested, 418310); no
+climb down is offered at a ledge.
 
 ## 4. The peek
 
@@ -307,6 +363,16 @@ Full-body clips, held on their last key (section 1). No hitbox shift in code (hi
 `damanim.rdr`, and follow the skeleton [inference]). `FUN_0057fa70` (441667-441672) holds per-stance points
 (peek right (7.55, 9.78, -2.54), left (-0.24, 8.87, 5.11)) the AI reads (424337); meaning unconfirmed.
 
+### 4.4 The throw from a peek (round 3) [read]
+
+`GetThrowAnim` (`FUN_0057fce0`, decomp 441707-441880), state 3: by the lean clip playing (`FUN_00577e40`), "Peek right
+toss" (`seal_toss_rlean`, release at 0.55, 0.668 s) for the standing or crouched right lean, "Peek left toss"
+(`seal_toss_llean`, release 0.87, 1.007 s) for the left -- whatever the power or the aim; the grenade leaves the left
+hand for the left toss (decomp 477060-477065). **A prone peek has no throw**: its lean types are not tested, the
+function returns 0 and the caller clears the throw (475499-475510). The throw leaves the peek as it is (the toss is
+pushed over the held lean). The viewer: `PlaySnapshot.peek` (the lean held), which `grenade.ts`'s stance maps to the
+peek stances, refusing the throw prone.
+
 ## 5. The water
 
 ### 5.1 How water is marked [read, data]
@@ -334,6 +400,23 @@ MP52 9 ...), 12 `UNDERWATER` (the beds under them), 9 `GLASS` (Frostfire's windo
   < 400, else), `small_ripple_*` for a water line 0-10 over the box top, `seal_fall_in_water` on landing from the air
   (469892-469896); the steps are the material's `STEPSOUND` / `CRAWLSOUND` (`.STEP_WATER`, `.STEALTH_WATER`, `.WATER_JUMP`).
 
+### 5.3 The slope on the stick (round 3) [read]
+
+`FUN_005b56c0` (decomp 469966-470138), grounded, in water or not: each stick axis pushed past 0.03 is multiplied by
+`1 - d^2` where `d` is the floor's normal `+0x410` against the axis's way (the negative axis for a negative push) and
+`d < 0` -- uphill; 1 downhill or across; 0 at `d <= -1`. Then, in water, the water's factor. The viewer applies both
+(`Traversal.stickScale`, the walk's `stickScale` seam), so a 30-degree ramp is climbed at 0.75 of the stick.
+
+### 5.4 The ripples and the splash (round 3) [read]
+
+`FUN_005b52b0` (469810-469920), on each liquid hit of the ground probe: F the feet, T the body box's top, W the water:
+F < W < T the **big** ripple, T < W < T + 10 the **small**, by the speed class (`FUN_0058a820` 446876: speed^2 under 0.25
+`_anim`, under 400 `_walk`, else `_run`): `big_ripple_anim` / `_walk` / `_run`, `small_ripple_anim...` (`FUN_0026a250`,
+460997-461003), at the water's point over the feet and following it (a tag-3 pointer). A new one only when there is
+none or the last has ended; a switch of size stops the other. `seal_fall_in_water` once on a fall into water
+(F < W < T, airborne, not in water the frame before; 469892-469896). The viewer runs them through the map's effects
+(`TraversalPage.effectsFrame`, `Effects.spawn`). The condition bit `actor+0xe1` bit 4 was not identified (taken as set).
+
 ## 6. Crawling and headroom [read]
 
 The headroom ray `FUN_0057efe0` (decomp 441190-441240) goes up from pos + (0, hips.y + 2, 0) to pos.y + 12 (to crouch)
@@ -342,6 +425,27 @@ refuses a stance change it blocks (prone to crouch needs the 12, anything to sta
 a table; going prone probes the body's axis (`FUN_0054d620`, 11.2 and 8.0 at step_height x 0.5 = 3.25) and water <= 2.
 The prone crawl has no ceiling test. The walk's crouch-run already runs the 19 ray (`walk.ts`); the stance change's
 refusal is not modelled here (it is the stance's, the MOTION workstream's).
+
+### 6.1 The dive (round 3) [read]
+
+`dive_to_prone` (`DAT_003def08`, 495336; `seal_dive2prone`, 1.6 s, BlendTime 0.2, NoInterrupt, `dive_prone` at 0.45).
+**Its button is the stance button's full press**: Triangle's pressure past 0.3 (`FUN_00594cf0` 453331-453390) from a
+stand or a crouch dives when `FUN_00584b00` (443977-444010) passes -- not already diving, in water no deeper than 2, no
+weapon swap, the body moving at **30 a second or more** (root speed^2 >= 900), the play interruptible -- else it goes
+prone (a light press toggles crouch on release). `FUN_0057e540` (440870-440920): the world velocity kept (`+0x1350`),
+a 0.2 s hold, airborne; the clip's own root travel zeroed (416510-416514); the position by the kept velocity, bled at
+**150 a second each second** on the ground (416527-416545); a virtual root falling at 235 to the prone's 2.2
+(`FUN_0059b870` 456585-456600); the play ends grounded at rest (418158-418167) -- about 0.9 s and 45 units from a full
+run [derived]. The viewer's stance buttons reach it through `WalkMode.setStance('prone')` (C from a crouch, the pad's
+Triangle held -- the viewer's stand-in for the full press).
+
+### 6.2 What else the game has [read]
+
+The steep-ground **slide** (`DAT_003dead8` "Slide", `FUN_0054edf0` 417032-417205, surface test `FUN_0054f330`): a
+3-bit field of the ground polygon's surface word bits 28-30 (inside reCOM's `m_reserved`, not decoded by the viewer's
+reader) and the slope -- steeper than 50 degrees slides; speed along the fall line gaining `(1 - n_y) x 235` a second;
+the clip past 58.75 a second. **Not implemented**: it needs the field decoded and the walk's refusal of steep floors
+replaced. No prone roll, no mantle beyond the climbs, no rappel, zipline or swim exist.
 
 ## 7. What the viewer does, the seams, the bindings, the events
 
@@ -356,11 +460,12 @@ depth, the factor, the stances). Tests: `test/traversal.test.ts` (18, synthetic 
 
 ### 7.2 Placeholders and simplifications (named in the code)
 
-The crate/medium blend plays the heavier clip; "180" (the turn at a ladder's head) is instant; "Hang jump down" is a
-let-go; the climb-off's reverse on collision, the slide from the head, `FUN_0054e430`'s ray, the material's foot
-offset in `h`, the uphill factor in the water and the water's effects are not modelled; the ladder's 7.59 is derived
-(W2.2c to measure); the fallback clip shapes (a smoothstep with each clip's seconds, rise and travel) stand in only
-before the pack arrives.
+Closed in round 3: the crate/medium blend (both nodes, the game's weights), the "180" (by code, 0.883 s), "Hang jump
+down" (the push, then the fall), the slide from the head, `FUN_0054e430`'s ray, the material's foot offset, the uphill
+factor, the ripples and the splash, the lean's toss, the dive. Left: the climb-off's reversal on meeting another
+character (the viewer has none); the steep-ground slide (section 6.2); the ripples' `actor+0xe1` bit 4 (taken as set);
+the Triangle's pressure (a hold stands in for the full press); the ladder's 7.59 is derived (W2.2c to measure); the
+fallback clip shapes (a smoothstep with each clip's seconds, rise and travel) stand in only before the pack arrives.
 
 ### 7.3 The seams (re-applied over the MOTION rewrite at the merge of `claude/web-viewer-playtest-fixes`, 3e673174)
 
@@ -379,6 +484,10 @@ before the pack arrives.
   `WalkMode.setPosedRoot` the camera, carry the move's root.
 - `playerCamera.ts`: `peekShift`, `localCamera(rootY, pitch, peek = 0)`, `PlayerCamera.peek`,
   `firstPersonPeekShift`, `isPeekCameraSurface` and `cameraPass`'s `accept`.
+- Round 3: `TickDriver.stickScale` (the slope and the water per axis) and `Walker.glide(dx, dz)` (the dive's carry);
+  `TraversalHooks.jump`, `stanceButton`, `dive`, `peeking`; `WalkMode.setStance('prone')` asks the dive first;
+  `PlaySnapshot.peek`; `TraversalPose.holdRootTurn` / `blend` in the animator; `Effects.spawn` (a run's handle);
+  `grenade.ts`'s stance takes the peek.
 - `gamepad.ts`: the `action` lane on Cross (standard button 0), `leanLeft` / `leanRight` on the d-pad's Left / Right
   (14 / 15), walk-only (`ACTION_WORDS`); `ui.ts`'s walk hint names X, Q / E, Cross and the d-pad.
 - `main.ts`: `TraversalPage` (with the audio's `play` / `onLand`), `TRAVERSAL_CLIPS` in the play request, `setClips`

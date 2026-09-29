@@ -56,11 +56,29 @@ export interface RenderOptions {
   /** RAND_PLAY's last pick and PLAY_CYCLE's index, kept per grain across plays as the IRX keeps them in the grain. */
   state?: Map<string, number>;
   maxSeconds?: number;
+  /**
+   * A looping bed or emitter: rendered exactly `maxSeconds` long with nothing keyed off at the end, for the page to
+   * loop (`./audio`'s ambience) -- a one-shot's voices are released at `maxSeconds` and their release rendered.
+   */
+  loop?: boolean;
+  /**
+   * `snd_SetSFXGlobalReg`'s 32 global registers (1-based in the game's call; `globals[0]` is global 1): a grain names
+   * global N as register -N, a tone's volume or pan sentinel -6 on as global 1 on. SOCOM sets global 2 every frame from
+   * the camera's height (`FUN_00341a60`, `globalRegister2`); the rest read 0.
+   */
+  globals?: readonly number[];
 }
 
 export interface RenderedSound {
+  /** The dry mix: every voice but a tone flagged reverb-only (flags bit 4). */
   left: Float32Array;
   right: Float32Array;
+  /**
+   * The reverb send: the voices whose tone carries flags bit 0 (web/docs/research/81 §9: SOCOM's IRX sets the voice's
+   * VMIXEL/VMIXER effect-input bits from it, `989SND.IRX` decomp 14339-14345), at their volumes; null with none.
+   */
+  sendLeft: Float32Array | null;
+  sendRight: Float32Array | null;
   sampleRate: number;
   /** Voices the grains started. */
   voices: number;
@@ -221,6 +239,9 @@ interface Voice {
   killAt: number;
   /** When its sample runs out at its pitch, for WAIT_FOR_ALL_VOICES: a looping sample's is its key-off. */
   endsAt: number;
+  /** Tone flags bit 0: into the reverb; bit 4: into the reverb only (the dry mix's VMIXL/VMIXR bits cleared). */
+  reverb: boolean;
+  dry: boolean;
 }
 
 interface Handler {
@@ -273,7 +294,9 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
   const appPan = options.pan === undefined || options.pan === PAN_RESET ? sound.pan : normPan(options.pan);
   handlers.push(makeHandler(index, sound, appVol, sound.vol, normPan(appPan), null));
 
-  const readReg = (h: Handler, reg: number): number => (reg < 0 ? 0 : reg < 4 ? h.regs[reg]! : 0);
+  const globals = options.globals ?? [];
+  const globalReg = (i: number): number => globals[i] ?? 0;   // 0-based: global 1 is [0]
+  const readReg = (h: Handler, reg: number): number => (reg < 0 ? globalReg(-reg - 1) : reg < 4 ? h.regs[reg]! : 0);
   const writeReg = (h: Handler, reg: number, value: number): void => {
     if (reg >= 0 && reg < 4) h.regs[reg] = Math.max(-128, Math.min(127, value));
   };
@@ -281,12 +304,12 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
     if (vol >= 0) return vol;
     if (vol >= -4) return Math.max(0, h.regs[-vol - 1]!);
     if (vol === -5) return rand() % 0x7f;
-    return 0;
+    return Math.max(0, globalReg(-vol - 6));
   };
   const resolvePan = (h: Handler, pan: number): number => {
     if (pan < 0) {
       if (pan === -5) return rand() % 360;
-      pan = pan >= -4 ? idiv(360 * h.regs[-pan - 1]!, 127) : 0;
+      pan = idiv(360 * (pan >= -4 ? h.regs[-pan - 1]! : globalReg(-pan - 6)), 127);
     }
     return normPan(pan);
   };
@@ -302,6 +325,7 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
     voices.push({
       handler: h, sample, step, pos: 0, left: voiceLevel(l), right: voiceLevel(r),
       env: new Envelope(tone.adsr1, tone.adsr2), start: frame, keyOffAt: Infinity, killAt: Infinity,
+      reverb: (tone.flags & 1) !== 0, dry: (tone.flags & 0x10) === 0,
       endsAt: sample.loops || step <= 0 ? Infinity : frame + Math.ceil(sample.pcm.length / step),
     });
     started.push(tone.sampleOffset);
@@ -443,18 +467,19 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
     }
     flush();
   }
-  // A looping sample nothing keyed off is released at the guard.
+  // A looping sample nothing keyed off is released at the guard -- or, for a loop, simply cut there.
   const cap = maxFrames;
-  for (const v of voices) if (v.keyOffAt === Infinity && v.sample.loops) v.keyOffAt = cap;
+  if (!options.loop) for (const v of voices) if (v.keyOffAt === Infinity && v.sample.loops) v.keyOffAt = cap;
 
   // The voices, sample by sample: the envelope, the linear interpolation, the pair.
-  let length = 0;
+  let length = options.loop ? cap : 0;
   const rendered: { v: Voice; l: Float32Array }[] = [];
-  const limit = cap + OUTPUT_RATE;   // a release after the cap still ends
+  const limit = options.loop ? cap : cap + OUTPUT_RATE;   // a one-shot's release after the cap still ends
   for (const v of voices) {
-    const out: number[] = [];
+    const out = new Float32Array(Math.max(0, limit - v.start));
     const pcm = v.sample.pcm;
-    for (let n = 0; v.start + n < limit; n++) {
+    let n = 0;
+    for (; v.start + n < limit; n++) {
       if (v.start + n >= v.killAt) break;
       if (v.start + n === v.keyOffAt) v.env.keyOff();
       if (!v.env.tick()) break;
@@ -464,21 +489,76 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
         else break;
       }
       const i1 = Math.min(i0 + 1, pcm.length - 1), frac = v.pos - i0;
-      out.push((pcm[i0]! * (1 - frac) + pcm[i1]! * frac) * (v.env.level / 32767));
+      out[n] = (pcm[i0]! * (1 - frac) + pcm[i1]! * frac) * (v.env.level / 32767);
       v.pos += v.step;
     }
-    rendered.push({ v, l: Float32Array.from(out) });
-    length = Math.max(length, v.start + out.length);
+    rendered.push({ v, l: out.subarray(0, n) });
+    if (!options.loop) length = Math.max(length, v.start + n);
   }
   const left = new Float32Array(length), right = new Float32Array(length);
+  const anySend = rendered.some(({ v }) => v.reverb);
+  const sendLeft = anySend ? new Float32Array(length) : null, sendRight = anySend ? new Float32Array(length) : null;
   let peak = 0;
   for (const { v, l } of rendered) {
     const gl = v.left / 0x7ffe / 32768, gr = v.right / 0x7ffe / 32768;
-    for (let n = 0; n < l.length; n++) {
-      left[v.start + n]! += l[n]! * gl;
-      right[v.start + n]! += l[n]! * gr;
+    const m = Math.min(l.length, length - v.start);
+    if (v.dry) {
+      for (let n = 0; n < m; n++) { left[v.start + n]! += l[n]! * gl; right[v.start + n]! += l[n]! * gr; }
+    }
+    if (v.reverb && sendLeft && sendRight) {
+      for (let n = 0; n < m; n++) { sendLeft[v.start + n]! += l[n]! * gl; sendRight[v.start + n]! += l[n]! * gr; }
     }
   }
   for (let n = 0; n < length; n++) peak = Math.max(peak, Math.abs(left[n]!), Math.abs(right[n]!));
-  return { left, right, sampleRate: OUTPUT_RATE, voices: voices.length, samples: started, peak };
+  return { left, right, sendLeft, sendRight, sampleRate: OUTPUT_RATE, voices: voices.length, samples: started, peak };
+}
+
+/**
+ * A looping sound (a bed, an emitter) rendered `seconds + fade` long and folded -- its last `fade` seconds crossed
+ * equal-power into its first -- so the buffer repeats with no seam. The console runs such a sound's grains for ever;
+ * a buffer of a few seconds' worth repeats past notice (the page's `LOOP_SECONDS_PLACEHOLDER`).
+ */
+export function renderLoop(bank: SoundBank, index: number, samples: SampleCache, seconds: number, fade: number, options: RenderOptions = {}): RenderedSound {
+  const r = renderSound(bank, index, samples, { ...options, vol: options.vol ?? 0x400, pan: options.pan ?? 0, loop: true, maxSeconds: seconds + fade });
+  const loopFrames = Math.round(seconds * OUTPUT_RATE), fadeFrames = Math.round(fade * OUTPUT_RATE);
+  const fold = (x: Float32Array | null): Float32Array | null => {
+    if (!x) return null;
+    const y = x.slice(0, loopFrames);
+    for (let i = 0; i < fadeFrames && loopFrames + i < x.length; i++) {
+      const t = i / fadeFrames;
+      y[i] = x[i]! * Math.sin((t * Math.PI) / 2) + x[loopFrames + i]! * Math.cos((t * Math.PI) / 2);
+    }
+    return y;
+  };
+  return { ...r, left: fold(r.left)!, right: fold(r.right)!, sendLeft: fold(r.sendLeft), sendRight: fold(r.sendRight) };
+}
+
+/**
+ * A loop whose first voice comes late -- the crickets' conductor waits `RAND_DELAY` up to 4000 ticks (16.7 s) before a
+ * burst of chirps (a local register counts the burst: not a game register) -- rendered over `longSeconds` and halved to
+ * 24 kHz so the buffer stays small; its reverb send is dropped. A loop that starts a voice in `seconds` is as `renderLoop`.
+ */
+export function renderLoopAtLeastOneVoice(bank: SoundBank, index: number, samples: SampleCache, seconds: number, fade: number,
+  longSeconds: number, options: RenderOptions = {}): RenderedSound {
+  const r = renderLoop(bank, index, samples, seconds, fade, options);
+  if (r.voices > 0 || longSeconds <= seconds) return r;
+  const long = renderLoop(bank, index, samples, longSeconds, fade, options);
+  const half = (x: Float32Array): Float32Array => {
+    const y = new Float32Array(Math.floor(x.length / 2));
+    for (let i = 0; i < y.length; i++) y[i] = (x[2 * i]! + x[2 * i + 1]!) / 2;
+    return y;
+  };
+  return { ...long, left: half(long.left), right: half(long.right), sendLeft: null, sendRight: null, sampleRate: OUTPUT_RATE / 2 };
+}
+
+/**
+ * `FUN_00341a60`'s global register 2 (decomp 241580-241600): the camera's height through the mission's `elevation`
+ * (`FUN_002aca30`: 0 under the lower, 1 over the higher, linear between; the two swapped into order), times 255,
+ * minus 128, clamped to a signed byte -- `snd_SetSFXGlobalReg(2, x)`, 989snd call 0x67, each frame. The outdoor beds of
+ * Foxhunt, Enowapi, Fish Hook, The Mixer and Requiem test it (their wind at height).
+ */
+export function globalRegister2(height: number, elevation: readonly [number, number]): number {
+  const hi = Math.max(elevation[0], elevation[1]), lo = Math.min(elevation[0], elevation[1]);
+  const f = height > hi ? 1 : height < lo ? 0 : hi - lo !== 0 ? (height - lo) / (hi - lo) : 0.5;
+  return Math.max(-128, Math.min(127, Math.trunc(f * 255 - 128)));
 }

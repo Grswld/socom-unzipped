@@ -1,7 +1,11 @@
 import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 import { playFromDisc, playTransferables, type PlayData } from './motionTable';
-import { soundFromDisc, soundTransferables, type SoundData } from './soundData';
+import {
+  loopTransferables, renderAmbienceLoops, renderReverb, reverbTransferables, soundFromDisc, soundTransferables, type SoundData,
+} from './soundData';
+import { LONG_LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
+import type { RenderedSound } from '@s2u/sound';
 import { effectsFromDisc, effectTransferables, type EffectData } from './effectData';
 
 /**
@@ -46,8 +50,10 @@ export type ViewerResponse =
   | { kind: 'progress'; id: number; stage: LoadStage; done: number; total: number }
   /** The clips and their table entries, or null when the source has no `MOTION_P.ZAR` (the body keeps its bind pose). */
   | { kind: 'play'; id: number; data: PlayData | null }
-  /** The map's sound data, or null when the source has no `SOUNDS/BNKSTORE.ZAR` (the walk is silent). */
-  | { kind: 'sound'; id: number; data: SoundData | null }
+  /** The map's sound data; with no `SOUNDS/BNKSTORE.ZAR` it holds no banks and names the archive in `missing`. */
+  | { kind: 'sound'; id: number; data: SoundData }
+  /** The same map's beds and emitters rendered as loops, after its sound data (`renderAmbienceLoops`). */
+  | { kind: 'soundLoops'; id: number; loops: { name: string; sound: RenderedSound }[] }
   /** The map's effect data: whatever would not read is left out and said in its `missing`. */
   | { kind: 'effects'; id: number; data: EffectData }
   | { kind: 'error'; id: number; doing: string; message: string };
@@ -94,7 +100,12 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
       } else if (request.kind === 'sound') {
         // Never an error either: without the banks the walk is silent.
         const data = await soundFromDisc(sourceFor(request.source), request.path, request.archive);
-        ctx.postMessage({ kind: 'sound', id: request.id, data }, data ? soundTransferables(data) : []);
+        data.loopsFollow = true;
+        // The loops are rendered from the bank bytes before those are handed over, and sent after the data.
+        const loops = renderAmbienceLoops(data, LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER, LONG_LOOP_SECONDS_PLACEHOLDER);
+        renderReverb(data);                           // the reverb's response here, not on the page's unlock
+        ctx.postMessage({ kind: 'sound', id: request.id, data }, [...soundTransferables(data), ...reverbTransferables(data)]);
+        ctx.postMessage({ kind: 'soundLoops', id: request.id, loops }, loopTransferables(loops));
       } else if (request.kind === 'effects') {
         // Never an error either: a part that will not read is left out and named in `missing`.
         const data = await effectsFromDisc(sourceFor(request.source), request.path, request.archive);

@@ -103,7 +103,7 @@ await page.evaluate((p) => {
   (window as unknown as { __viewer: { setCamera(v: Record<string, number>): void } }).__viewer.setCamera(p);
 }, pose);
 // The props arrive a few per frame (scheduler.ts); give them time to land.
-for (let i = 0; i < 90; i++) await page.evaluate(() => new Promise<void>((d) => requestAnimationFrame(() => d())));
+for (let i = 0; i < 240; i++) await page.evaluate(() => new Promise<void>((d) => requestAnimationFrame(() => d())));
 
 const stats = await page.evaluate(() => (window as unknown as { __viewer: { stats(): unknown } }).__viewer.stats());
 const shot = await page.locator('#view').screenshot();

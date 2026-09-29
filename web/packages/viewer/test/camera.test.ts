@@ -326,6 +326,47 @@ describe('FlyCamera', () => {
     expect(touch / mouse).toBeCloseTo(2, 3);
   });
 
+  it('a pointerdown whose pointer is already gone does not throw, and leaves no drag stuck', () => {
+    const c = fly['canvas'];
+    let asked = 0;
+    c.setPointerCapture = () => { asked++; throw new DOMException('No active pointer with the given id is found.', 'NotFoundError'); };
+    fly.setPose({ yaw: 0, pitch: 0 });
+    expect(() => c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, pointerType: 'touch', clientX: 100, clientY: 100, bubbles: true }))).not.toThrow();
+    expect(asked).toBe(1);
+    // No pointerup will come for a pointer that is gone: the next press must still start a drag.
+    c.setPointerCapture = () => undefined;
+    c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 4, pointerType: 'touch', clientX: 100, clientY: 100, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointermove', { pointerId: 4, pointerType: 'touch', clientX: 0, clientY: 100, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 4, pointerType: 'touch', clientX: 0, clientY: 100, bubbles: true }));
+    expect(fly.pose().yaw).toBeGreaterThan(0);
+  });
+
+  it('a mouse press whose pointer lock is refused does not throw or reject, and the drag look still works', async () => {
+    const c = fly['canvas'];
+    const unhandled: unknown[] = [];
+    const seen = (r: unknown): void => { unhandled.push(r); };
+    process.on('unhandledRejection', seen);
+    let asks = 0;
+    c.requestPointerLock = (() => { asks++; return Promise.reject(new DOMException('exited', 'SecurityError')); }) as unknown as HTMLCanvasElement['requestPointerLock'];
+    fly.setPose({ yaw: 0, pitch: 0 });
+    expect(() => c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 8, pointerType: 'mouse', clientX: 100, clientY: 100, bubbles: true }))).not.toThrow();
+    c.dispatchEvent(new PointerEvent('pointermove', { pointerId: 8, pointerType: 'mouse', clientX: 40, clientY: 100, bubbles: true }));
+    c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8, pointerType: 'mouse', clientX: 40, clientY: 100, bubbles: true }));
+    await new Promise((done) => setTimeout(done, 20));
+    process.off('unhandledRejection', seen);
+    expect(asks).toBe(2);                                    // the raw ask, then the plain one
+    expect(unhandled).toEqual([]);
+    expect(fly.pose().yaw).toBeGreaterThan(0);               // dragged
+  });
+
+  it('a release that throws is swallowed too', () => {
+    const c = fly['canvas'];
+    c.hasPointerCapture = () => true;
+    c.releasePointerCapture = () => { throw new DOMException('gone', 'NotFoundError'); };
+    c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 5, pointerType: 'mouse', clientX: 10, clientY: 10, bubbles: true }));
+    expect(() => c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, pointerType: 'mouse', clientX: 10, clientY: 10, bubbles: true }))).not.toThrow();
+  });
+
   it('the stick held at its rim boosts, the way a double-tapped W does', () => {
     const distance = (boost: boolean): number => {
       fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });

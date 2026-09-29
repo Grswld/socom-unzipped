@@ -1,7 +1,9 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
 import { viewerRevision, viewerRevisionBadge } from './revision';
-import { ACTION_WORDS, shortSource, type PadRow } from './gamepad';
+import { ACTION_WORDS, GROUP_ORDER, padGroup, shortSource, type PadRow } from './gamepad';
+import { controlGroups } from './controlsList';
+import type { LookOptions } from './look';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -468,6 +470,82 @@ export class Ui {
   }
 
   /**
+   * The sound controls (round 2): a mute switch and a volume slider (`#mute`, `#volume`), in the panel's Sound section.
+   * They start from what this browser last had -- `localStorage`, best-effort, a per-viewer convenience -- or from the
+   * page's own defaults (1, not muted), and the handlers hear the starting values at once, so the mix is what the
+   * controls show from the first frame. With the play off the section is not on the page and nothing is wired.
+   */
+  onSound(handler: { volume: (volume: number) => void; muted: (muted: boolean) => void }): void {
+    const mute = document.getElementById('mute') as HTMLInputElement | null;
+    const slider = document.getElementById('volume') as HTMLInputElement | null;
+    const out = document.getElementById('volume-out');
+    if (!mute || !slider || !out) return;
+    const storedVolume = Number(read(VOLUME_KEY));
+    if (read(VOLUME_KEY) !== null && Number.isFinite(storedVolume)) slider.value = String(Math.min(1, Math.max(0, storedVolume)));
+    mute.checked = read(MUTED_KEY) === '1';
+    const show = (): void => { out.textContent = `${Math.round(Number(slider.value) * 100)}%`; };
+    slider.addEventListener('input', () => {
+      show();
+      write(VOLUME_KEY, slider.value);
+      handler.volume(Number(slider.value));
+    });
+    mute.addEventListener('change', () => {
+      write(MUTED_KEY, mute.checked ? '1' : '0');
+      handler.muted(mute.checked);
+    });
+    show();
+    handler.volume(Number(slider.value));
+    handler.muted(mute.checked);
+  }
+
+  /**
+   * The mouse's look (round 2; `./look`): the law (raw or the game's stick curve), the sensitivity, invert pitch and the
+   * game's or a uniform pitch, in the panel's Mouse look section (walk mode's, so behind `?redotcom`). Remembered like the
+   * sound. `handler` gets the whole option set (the four the panel owns; `throttle` is the game's own and stays off) at
+   * the start and on every change.
+   */
+  onLookControls(handler: (opts: Pick<LookOptions, 'mouse' | 'sensitivity' | 'pitchRatio' | 'invertPitch'>) => void): void {
+    const group = document.getElementById('mouselaw');
+    const slider = document.getElementById('sensitivity') as HTMLInputElement | null;
+    const out = document.getElementById('sensitivity-out');
+    const invert = document.getElementById('invertpitch') as HTMLInputElement | null;
+    const uniform = document.getElementById('uniformpitch') as HTMLInputElement | null;
+    if (!group || !slider || !out || !invert || !uniform) return;
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button[data-law]'));
+    let mouse: LookOptions['mouse'] = 'raw';
+    try {
+      const stored = JSON.parse(read(MOUSE_LOOK_KEY) ?? 'null') as Partial<LookOptions> | null;
+      if (stored && (stored.mouse === 'raw' || stored.mouse === 'stick')) mouse = stored.mouse;
+      if (stored && typeof stored.sensitivity === 'number' && Number.isFinite(stored.sensitivity)) {
+        slider.value = String(Math.min(Number(slider.max), Math.max(Number(slider.min), stored.sensitivity)));
+      }
+      invert.checked = stored?.invertPitch === true;
+      uniform.checked = stored?.pitchRatio === 'uniform';
+    } catch { /* a value that is not ours: the defaults */ }
+    const options = (): Pick<LookOptions, 'mouse' | 'sensitivity' | 'pitchRatio' | 'invertPitch'> => ({
+      mouse, sensitivity: Number(slider.value), pitchRatio: uniform.checked ? 'uniform' : 'game', invertPitch: invert.checked,
+    });
+    const show = (): void => {
+      for (const b of buttons) b.setAttribute('aria-pressed', b.dataset['law'] === mouse ? 'true' : 'false');
+      out.textContent = `${Number(slider.value).toFixed(2)}×`;
+    };
+    const changed = (): void => { show(); write(MOUSE_LOOK_KEY, JSON.stringify(options())); handler(options()); };
+    for (const b of buttons) {
+      b.addEventListener('click', () => {
+        const law = b.dataset['law'] === 'stick' ? 'stick' : 'raw';
+        if (law === mouse) return;
+        mouse = law;
+        changed();
+      });
+    }
+    slider.addEventListener('input', changed);
+    invert.addEventListener('change', changed);
+    uniform.addEventListener('change', changed);
+    show();
+    handler(options());
+  }
+
+  /**
    * The camera switch (W1.4): Fly or Walk -- walk on the game's floors behind the SEAL, in the game's camera (W2.1),
    * or fly. Two buttons in the picture switch's own markup (`#look`, `onLook`), driving the hidden `walk` checkbox
    * that stays the state the hook and the tests read. It is not one of the overlay toggles -- it moves the camera,
@@ -504,6 +582,7 @@ export class Ui {
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#mode button[data-mode]'))) {
       b.setAttribute('aria-pressed', (b.dataset['mode'] === 'walk') === walking ? 'true' : 'false');
     }
+    document.body.classList.toggle('is-walking', walking);      // the touch layout and the fullscreen button's place follow it
     if (this.walking === walking) return;
     this.walking = walking;
     this.setCameraHint(...this.hintArgs);
@@ -511,19 +590,32 @@ export class Ui {
   }
 
   /**
-   * The camera's line: the controls of the mode you are in and no others (owner, 2026-09-28) -- fly's or walk's, F
-   * fullscreen and the backtick in both. Rebuilt on every mode change (`setWalk`), and reads differently once the mouse
-   * is captured, because the way back out -- Esc -- is the one control a player cannot guess from the others.
+   * The popover's first line: how the mouse stands (click to look, or Esc to release it), the fly speed while flying, and
+   * the pad. The controls themselves are the grouped list under it (`renderKeys`), the current mode's alone. Rebuilt on
+   * every mode change (`setWalk`).
    */
   setCameraHint(multiplier: number, locked: boolean): void {
     this.hintArgs = [multiplier, locked];     // W2.7: kept, so a pad's connecting or a mode change can rebuild the line
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
-    const mode = this.walking ? WALK_HINT : `${FLY_HINT} · ${speed} · arrows look${this.play ? ' · G walk' : ''}`;
-    // The backtick belongs to every version of this line: it used to be in the page's markup only,
-    // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `${mode} · F fullscreen · \` hides this`;
-    this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
-    if (this.padConnected) this.hint.textContent += ' · pad: connected';
+    this.hint.textContent = `${locked ? 'esc to release' : 'click to look'}${this.walking ? '' : ` · ${speed}`}`
+      + (this.padConnected ? ' · pad: connected' : '');
+    this.renderKeys();
+  }
+
+  /** The keyboard and mouse list (`./controlsList`): grouped, for the mode you are in and no other. */
+  private renderKeys(): void {
+    const body = document.querySelector('#keys-list tbody');
+    if (!body) return;
+    const rows: HTMLTableRowElement[] = [];
+    for (const group of controlGroups(this.walking ? 'walk' : 'fly', this.play)) {
+      rows.push(groupRow(group.name));
+      for (const row of group.rows) {
+        const tr = document.createElement('tr');
+        for (const text of [row.keys, row.does]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
+        rows.push(tr);
+      }
+    }
+    body.replaceChildren(...rows);
   }
 
   /**
@@ -608,14 +700,17 @@ export class Ui {
     const mode = this.walking ? 'walk' : 'fly';
     find<HTMLElement>('pad-mode').textContent = this.walking ? 'on foot' : 'flying';
     // With the play off there is no walk to switch to, so Start has no row either.
-    body.replaceChildren(...rows.filter((r) => ACTION_WORDS[r.action][mode] !== null && (this.play || r.action !== 'mode'))
-      .map((r) => padRow(r, mode)));
+    const listed = rows.filter((r) => ACTION_WORDS[r.action][mode] !== null && (this.play || r.action !== 'mode'));
+    const out: HTMLTableRowElement[] = [];
+    for (const name of GROUP_ORDER) {
+      const inGroup = listed.filter((r) => padGroup(r.action, mode) === name);
+      if (inGroup.length === 0) continue;
+      out.push(groupRow(name, 3));
+      out.push(...inGroup.map((r) => padRow(r, mode)));
+    }
+    body.replaceChildren(...out);
   }
 }
-
-/** The hint line's controls, by mode; the page's markup carries the same fly line for the first paint. */
-const FLY_HINT = 'WASD fly · space/shift up/down · double-tap W to boost';
-const WALK_HINT = 'WASD move · mouse look/turn · space jump · C stance · V first person · right click zoom · d-pad up/down zoom · click fire · B fire mode · R reload · X action (Cross) · Q/E peek (d-pad left/right) · G fly';
 
 /** How long the Controls popover stays once the pointer has left the tab and the popover, ms. */
 export const POPOVER_GRACE_MS = 200;
@@ -633,6 +728,18 @@ const FACE_GLYPHS: Partial<Record<PadRow['control'], { kind: string; d: string }
   Square: { kind: 'square', d: 'M2.5 2.5h9v9h-9z' },
   Triangle: { kind: 'triangle', d: 'M7 2 12.5 11.5h-11z' },
 };
+
+/** A group's heading row, spanning the table (`.pad-group`). */
+function groupRow(name: string, span = 2): HTMLTableRowElement {
+  const tr = document.createElement('tr');
+  tr.className = 'pad-group';
+  const th = document.createElement('th');
+  th.colSpan = span;
+  th.scope = 'colgroup';
+  th.textContent = name;
+  tr.append(th);
+  return tr;
+}
 
 function padRow(row: PadRow, mode: 'walk' | 'fly'): HTMLTableRowElement {
   const tr = document.createElement('tr');
@@ -678,6 +785,9 @@ function find<T extends HTMLElement>(id: string): T {
 /** `localStorage`, best-effort both ways: it throws in a private window and returns null when cleared. */
 const PANEL_KEY = 's2u.viewer.panelOpen';   // '1' open, '0' folded; the old `panelCollapsed` key held a choice made when open was the default
 const LOOK_KEY = 's2u.viewer.look';
+const VOLUME_KEY = 's2u.viewer.volume';
+const MUTED_KEY = 's2u.viewer.muted';
+const MOUSE_LOOK_KEY = 's2u.viewer.mouseLook';
 function read(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
 }

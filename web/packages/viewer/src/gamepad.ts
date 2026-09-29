@@ -15,6 +15,7 @@
  *   `stickVector`'s dead zone and rescale) without its rim (`padStick`), so the walk can undo it (`padRaw`).
  * - **The watch** (`PadWatch`) says when a pad comes and goes, from the events and from the poll alike.
  */
+import { GROUP_COMBAT, GROUP_GENERAL, GROUP_MOVE, GROUP_STANCE, GROUP_WEAPONS } from './controlsList';
 /** The standard mapping's buttons, named as the PS2 pad's (W3C Gamepad standard layout, by position). */
 export const PAD_BUTTON = {
   Cross: 0, Circle: 1, Square: 2, Triangle: 3, L1: 4, R1: 5, L2: 6, R2: 7,
@@ -42,8 +43,8 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory' | 'scoreboard';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory', 'scoreboard'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
@@ -66,6 +67,8 @@ export interface Input {
   action: boolean; leanLeft: boolean; leanRight: boolean; mode: boolean;
   /** The game's `SwapWeapon1` (L1), `SwapWeapon2` (L2) and `Inventory` (R2): the kit's slots, walking only (`./grenade`). */
   swap1: boolean; swap2: boolean; inventory: boolean;
+  /** The multiplayer round's SELECT, held: the scoreboard (web/docs/research/87-hud.md §12), walking only. */
+  scoreboard: boolean;
 }
 
 /** The input at rest: every axis 0, every action off. */
@@ -74,6 +77,7 @@ export function noInput(): Input {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
     jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, zoomOut: false,
     fireMode: false, action: false, leanLeft: false, leanRight: false, mode: false, swap1: false, swap2: false, inventory: false,
+    scoreboard: false,
   };
 }
 
@@ -104,7 +108,7 @@ export const OWNER = 'owner, 2026-09-28';
  * is the walk/fly switch, d-pad Up zooms, the left stick moves and the right looks), with what the repository documents beside it
  * where it does, and the viewer's own bindings marked `assumed`. Cross is the action and the d-pad's left and right the
  * peek (web research 86, from the game's own `controller.rdr` and pad read); research 84 adds the d-pad's Down (zoom
- * out) and L3 (the fire mode). Circle and Select are left free.
+ * out) and L3 (the fire mode); research 87 SELECT (held, the multiplayer scoreboard). Circle is left free.
  */
 export const PAD_LAYOUT: readonly PadRow[] = [
   {
@@ -185,6 +189,12 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'steps to the next item it carries -- rifle, M67, HE -- one press each, in place of the menu',
   },
   {
+    control: 'Select', action: 'scoreboard', documented: `${CONTROLLER_RDR}; web/docs/research/87-hud.md §12`,
+    note: 'held, the scoreboard, walking only: controller.rdr maps Select to TACMAP, but in a multiplayer round the game '
+      + 'makes no tactical map and SELECT holds the scoreboard instead (shown on the press, refreshed each second, hidden '
+      + 'on the release: FUN_0022be20). The viewer\'s tactical map stays on M',
+  },
+  {
     control: 'R3', action: 'boost', documented: 'assumed',
     note: 'the fly camera\'s boost, as a double-tapped W or the touch stick held at its rim, not a game control; what '
       + 'R3 does in SOCOM II the repository does not say. There is no sprint on foot (the owner, 2026-09-28)',
@@ -215,7 +225,26 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   swap1: { walk: 'weapon swap 1: the rifle (1)', fly: null },
   swap2: { walk: 'weapon swap 2: the M67 (4)', fly: null },
   inventory: { walk: 'inventory: next item (1 rifle, 4 M67, 5 HE)', fly: null },
+  scoreboard: { walk: 'scoreboard (held)', fly: null },
 };
+
+/**
+ * The group each action is listed under in the Controls popover (the same names as the keys' list, `./controlsList`):
+ * on foot, movement, combat, stance and traversal, weapons; in the fly camera, the movement and the general ones alone.
+ */
+export function padGroup(action: PadAction, mode: 'walk' | 'fly'): string {
+  if (action === 'mode' || action === 'boost' || action === 'scoreboard') return GROUP_GENERAL;
+  if (mode === 'fly') return GROUP_MOVE;
+  switch (action) {
+    case 'fire': case 'zoom': case 'zoomOut': case 'fireMode': return GROUP_COMBAT;
+    case 'stance': case 'crouch': case 'action': case 'leanLeft': case 'leanRight': return GROUP_STANCE;
+    case 'swap1': case 'swap2': case 'inventory': return GROUP_WEAPONS;
+    default: return GROUP_MOVE;
+  }
+}
+
+/** The order the groups are listed in. */
+export const GROUP_ORDER: readonly string[] = [GROUP_MOVE, GROUP_COMBAT, GROUP_STANCE, GROUP_WEAPONS, GROUP_GENERAL];
 
 /** A citation with each path cut to its file's name, for the panel: `docs/INSTALL.md §6` is `INSTALL.md §6`. */
 export function shortSource(documented: string): string {

@@ -40,12 +40,18 @@ export interface GsState {
    */
   lodK?: number;
   lodL?: number;
+  /**
+   * `MIPTBP1_1`'s `TBP1`..`TBP3`, the base pointers of mip levels 1-3 (bits 0, 20, 40, fourteen bits each), as
+   * many as `levels` asks for: the `gsaddr`s of the texture's own mip records (`rockwall_mip1.tif`, ...), which
+   * the exporter wrote beside it. Absent where the packet writes no `MIPTBP1`.
+   */
+  mipTbp?: number[];
   wrapS: WrapMode;
   wrapT: WrapMode;
 }
 
 /** GS register ids, as the A+D block names them. */
-export const GS_REG = { ALPHA_1: 0x42, TEX1_1: 0x14, TEST_1: 0x47, CLAMP_1: 0x08 } as const;
+export const GS_REG = { ALPHA_1: 0x42, TEX1_1: 0x14, TEST_1: 0x47, CLAMP_1: 0x08, MIPTBP1_1: 0x34 } as const;
 
 const field = (q: bigint, lo: number, width: number): number =>
   Number((q >> BigInt(lo)) & ((1n << BigInt(width)) - 1n));
@@ -80,6 +86,11 @@ export function decodeTex1(q: bigint): { bilinear: boolean; mipmaps: boolean; le
   return { bilinear: mmag === 1, mipmaps, levels: mipmaps ? mxl : 0, lodK: (k & 0x800 ? k - 0x1000 : k) / 16, lodL: field(q, 19, 2) };
 }
 
+/** `MIPTBP1`: TBP1 bits 0-13, TBP2 bits 20-33, TBP3 bits 40-53 (the widths between are TBW1-3). */
+export function decodeMiptbp1(q: bigint, levels: number): number[] {
+  return [0, 20, 40].slice(0, Math.max(0, Math.min(3, levels))).map((lo) => field(q, lo, 14));
+}
+
 /** `CLAMP`: WMS bits 0-1, WMT 2-3; 0 REPEAT, 1 CLAMP, 2 REGION_CLAMP, 3 REGION_REPEAT. */
 export function decodeClamp(q: bigint): { wrapS: WrapMode; wrapT: WrapMode } {
   const wrap = (v: number): WrapMode => (v === 1 || v === 2 ? 'clamp' : 'repeat');
@@ -92,17 +103,21 @@ export function decodeClamp(q: bigint): { wrapS: WrapMode; wrapT: WrapMode } {
  */
 export function decodeGsState(quadwords: { value: bigint; register: number }[]): GsState | null {
   let alpha: bigint | null = null, tex1: bigint | null = null, test: bigint | null = null, clamp: bigint | null = null;
+  let miptbp: bigint | null = null;
   for (const { value, register } of quadwords) {
-    if (register === GS_REG.ALPHA_1) alpha = value;
+    if (register === GS_REG.MIPTBP1_1) miptbp = value;
+    else if (register === GS_REG.ALPHA_1) alpha = value;
     else if (register === GS_REG.TEX1_1) tex1 = value;
     else if (register === GS_REG.TEST_1) test = value;
     else if (register === GS_REG.CLAMP_1) clamp = value;
   }
   if (alpha === null && tex1 === null && test === null && clamp === null) return null;
+  const t1 = tex1 === null ? { bilinear: true, mipmaps: false, levels: 0 } : decodeTex1(tex1);
   return {
     blend: alpha === null ? 'source' : decodeAlpha(alpha),
     ...(test === null ? { alphaTest: null, depthTest: true } : decodeTest(test)),
-    ...(tex1 === null ? { bilinear: true, mipmaps: false, levels: 0 } : decodeTex1(tex1)),
+    ...t1,
+    ...(miptbp !== null && t1.mipmaps ? { mipTbp: decodeMiptbp1(miptbp, t1.levels) } : {}),
     ...(clamp === null ? { wrapS: 'repeat' as const, wrapT: 'repeat' as const } : decodeClamp(clamp)),
   };
 }

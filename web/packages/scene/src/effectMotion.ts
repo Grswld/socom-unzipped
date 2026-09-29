@@ -38,6 +38,8 @@ export interface ObjectMotion {
   /** Block A: azimuth and zenith (degrees), speed (units/s), acceleration; block B: their random ranges. */
   launch: { azimuth: number; zenith: number; speed: number; accel: number };
   range: { azimuth: number; zenith: number; speed: number; accel: number };
+  /** +0x54: the stored launch direction a fixed launch (flag 0x8) takes. */
+  direction: Vec3;
   /** +0x10: times the main gravity (-98). */
   gravityScale: number;
   /** +0x14: the terminal-velocity table's k (flag 0x2). */
@@ -79,7 +81,7 @@ export function decodeObjectMotion(c: CmdBytes, names: readonly string[]): Objec
     });
   }
   return {
-    flags: c.u32(4), node: c.i8(8), frame: c.i8(9),
+    flags: c.u32(4), node: c.i8(8), frame: c.i8(9), direction: c.vec3(0x54),
     launch: a > 0 ? block(a) : zero, range: b > 0 ? block(b) : zero,
     gravityScale: c.f32(0x10), terminal: c.f32(0x14), callerVelocity: c.f32(0x18),
     bounce: c.f32(0x60), tolerance: c.f32(0x64), lifetime: c.f32(0x7c), refSpeed: c.f32(0x0c),
@@ -134,19 +136,29 @@ export function launchMotion(
   callerVelocity: Vec3 = [0, 0, 0],
 ): MotionState {
   let v: Vec3 = [0, 0, 0];
+  let a: Vec3 = [0, 0, 0];
+  const launch = (d: Vec3, speed: number, accel: number): void => {
+    const lv: Vec3 = [d[0] * speed, d[1] * speed, d[2] * speed], la: Vec3 = [d[0] * accel, d[1] * accel, d[2] * accel];
+    v = frame ? rotate(frame, lv) : lv;
+    a = frame ? rotate(frame, la) : la;
+  };
   if ((m.flags & MOTION.RANDOM_LAUNCH) !== 0) {
     const az = m.launch.azimuth + m.range.azimuth * random();
     const zen = m.launch.zenith + m.range.zenith * random();
     const speed = m.launch.speed + m.range.speed * random();
-    const d = launchDirection(az, zen);
-    const local: Vec3 = [d[0] * speed, d[1] * speed, d[2] * speed];
-    v = frame ? rotate(frame, local) : local;
+    const accel = m.launch.accel + m.range.accel * random();
+    launch(launchDirection(az, zen), speed, accel);
+  } else if ((m.flags & MOTION.FIXED_LAUNCH) !== 0) {
+    // Flag 0x8 (decomp 110654-110911): block A's speed and acceleration along the stored direction at +0x54 (the
+    // exporter's `FUN_0025cb00` of block A's angles: `FRAG_sparks`' (0, 0.556, -0.444) is azimuth 0, zenith 50).
+    const d = Math.hypot(...m.direction) > 0 ? m.direction : launchDirection(m.launch.azimuth, m.launch.zenith);
+    launch(d, m.launch.speed, m.launch.accel);
   }
   if ((m.flags & MOTION.CALLER_VELOCITY) !== 0) {
     v = [v[0] + callerVelocity[0] * m.callerVelocity, v[1] + callerVelocity[1] * m.callerVelocity, v[2] + callerVelocity[2] * m.callerVelocity];
   }
   return {
-    position: [...at], velocity: v, accel: [0, m.gravityScale * gravity, 0], euler: [0, 0, 0],
+    position: [...at], velocity: [v[0] + 0, v[1] + 0, v[2] + 0], accel: [a[0] + 0, a[1] + m.gravityScale * gravity, a[2] + 0], euler: [0, 0, 0],
     tumbleRate: m.tumble?.rate ?? 0, gravityY: m.gravityScale * gravity, elapsed: 0, done: false,
     halfHeight: 0.5 * Math.abs(height), tolerance: Math.abs(height) * m.tolerance,
   };

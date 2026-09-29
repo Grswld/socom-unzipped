@@ -21,10 +21,12 @@ export function mapArchiveId(path: string): string | null {
  * (web/docs/research/81): `SOUNDS/BNKSTORE.ZAR`, the 989snd banks -- every map's `MPn_am.bnk` (footsteps,
  * landings, the jump), `MPn_fx.bnk` (the weapons) and `MPn_vc.bnk` -- read by range, two banks a map; and
  * `SOUNDRDR.ZAR`, the sound script (`sounds.rdr`: each sound's distance range). `SOUNDS/VAGSTORE.ZAR`, the
- * 576 MB of voice-over streams, is not served: nothing the walk plays is in it.
+ * 576 MB of voice-over streams, is not served: nothing the walk plays is in it. `IRX/LIBSD.IRX` (28 KB), the sound
+ * library, carries the SPU2's reverb presets (research/81 §9).
  */
 export const COMMON_ARCHIVES: readonly string[] = [
   'RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR', 'RUN/SOUNDRDR.ZAR', 'RUN/SOUNDS/BNKSTORE.ZAR',
+  'RUN/IRX/LIBSD.IRX',
 ];
 
 /** `public/maps/index.json`: the maps for the picker, and the common archives served beside them. */
