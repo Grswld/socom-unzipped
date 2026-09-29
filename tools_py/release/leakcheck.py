@@ -71,6 +71,11 @@ SENSITIVE_IGNORED = (
     # web/: the disc data the viewer's extractor writes (293 MB of the game's archives), its test fixtures, and the
     # landing site's menu movie cut from the disc -- at the layout of 2026-09-29 and at the one before it
     "web/redotcom/public/maps/", "web/redotcom/test-fixtures/", "web/landing/public/media/", "web/public/maps/",
+    # and the landing's other game-derived inputs (web/landing/README.md "Build inputs"): the HUD sounds, the
+    # game-showing images, the owner's artwork and the home/story goldens -- file samples for the goldens, since
+    # e2e/goldens/gallery-* is tracked on purpose
+    "web/landing/public/sfx/", "web/landing/public/img/intel.jpg", "web/landing/public/img/share.jpg",
+    "web/landing/art/", "web/landing/e2e/goldens/home-x.png", "web/landing/e2e/goldens/story-x.png",
 )
 # Shapes of file that must never be tracked whatever their path (the .gitignore has the same list; this is
 # the proof that it held).

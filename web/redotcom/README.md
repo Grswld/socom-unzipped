@@ -137,12 +137,18 @@ the same by hand, e.g. `http://localhost:5173/?map=MP2&redotcom&devmode`. It is 
 
 ### Deploying
 
-`dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
+`dist/viewer/` is a static site. By default the page reads the visitor's own disc image in the browser and asks the
+server for no game data. `?devmode` reads a `maps/` directory beside it instead, holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
 `maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
 `maps/RUN/SOUNDS/BNKSTORE.ZAR`, and `maps/RUN/IRX/LIBSD.IRX` for the SPU2's reverb presets). The archives are the game's and are never part of the build. The sound banks are read
 **by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
 (nginx and Vite do); one that does not still works, fetching the whole store.
+
+**socomunzipped.com serves `maps/` today, by the owner's choice and for now.** The site's nginx
+(`web/shared/deploy/site/nginx.conf`, `location /redotcom/maps/`) serves the owner's extracted archives, mounted from
+the box (`docker-compose.yml`) and uploaded by `web/shared/deploy/site/deploy.sh maps`; the plan is to take it down
+and leave the site disc-only. The landing's credits say so (`web/landing/src/claims.test.ts` pins the wording).
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new

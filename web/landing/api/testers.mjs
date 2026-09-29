@@ -2,12 +2,13 @@
 // A signup is an email address and an optional note from the internet, kept on disk so the owner can mail
 // testers when a build is ready. Same rules as reports: typed, cut to length, control characters gone.
 import { randomBytes, createHash } from 'node:crypto';
+import { LIMITS } from './bugs.mjs';
 
 export const SIGNUP_LIMITS = Object.freeze({
   email: 254,
   note: 1000,
   short: 64,
-  body: 8192, // the whole POST
+  body: 8192, // the whole POST, enforced by server.mjs's readBody (bodyLimit); nginx allows 16k in front
 });
 
 // Practical, not RFC 5322: one @, something either side, a dot in the domain, no spaces or controls.
@@ -51,7 +52,27 @@ export function makeSignupId(now = new Date()) {
 }
 
 /** The file a signup lives in is named by the address's hash, so a second signup from the same mailbox finds the
- * first one there and is answered "already on the list" instead of being stored twice. */
+ * first one there and is not stored twice (fileSignup answers it like a new one). */
 export function signupFileName(email) {
   return `${createHash('sha256').update(normaliseEmail(email)).digest('hex').slice(0, 32)}.json`;
+}
+
+/** The whole-POST cap readBody enforces for a path: the signup's own for /api/testers, the report's otherwise. */
+export function bodyLimit(path) {
+  return path === '/api/testers' ? SIGNUP_LIMITS.body : LIMITS.body;
+}
+
+/** Store a signup and say what to answer. `write(file, text)` must create the file exclusively (flag `wx`): a second
+ * signup from one mailbox fails with EEXIST, so nothing is stored twice -- no read, no race. The answer is the same
+ * either way, 201 with a fresh id, so the reply never tells a caller whether an address is already on the list
+ * (the honeypot answers a dropped signup the same way). Any other write failure is thrown. */
+export function fileSignup(write, file, text, id) {
+  const reply = { status: 201, body: { ok: true, id } };
+  try {
+    write(file, text);
+  } catch (e) {
+    if (e && e.code === 'EEXIST') return { stored: false, reply };
+    throw e;
+  }
+  return { stored: true, reply };
 }

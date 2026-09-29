@@ -244,9 +244,9 @@ const testerEls = {
 const testerLine = $('tester-note-line');
 const TESTER_HINT = 'ONE EMAIL PER PERSON. USED ONLY TO SAY A BUILD IS READY. NOT PASSED ON.';
 let signing = false;
-function testerNote(text: string, cls: '' | 'ok' | 'already' | 'bad' = ''): void {
+function testerNote(text: string, cls: '' | 'ok' | 'bad' = ''): void {
   testerLine.textContent = text;
-  testerLine.className = `s2u-status${cls ? ' is-' + (cls === 'already' ? 'ok' : cls) : ''}`;
+  testerLine.className = `s2u-status${cls ? ' is-' + cls : ''}`;
 }
 function openTester(open: boolean): void {
   testerPanel.hidden = !open;
