@@ -14,7 +14,7 @@ The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 6 open O
 |---|---|---|---|---|
 | O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 3 |
 | O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 2 |
-| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow and the second persona are yours to judge on the bat… | 2026-09-28 | 1 |
+| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 1 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 2 |
 | O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 2 |
 | O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 1 |
@@ -81,8 +81,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 The build `docs/PLAYTEST.md` names, to play and to check against:
 
 ```
-build:    2026-09-28T13:22:26Z   commit da29683b3852 (sprint-17)
+build:    2026-09-29T10:54:43Z   commit 881c5a188935 (sprint-17)
 archive:  socom2-portable.zip   [player]   (dist-release/portable/socom2-portable.zip)
-sha256: 61f16fa48d4085535a38e714d9caa5fcc01fb898afb44f39eedd46e17ea5a407
-exe:      socom2.exe sha256: bf5cd59c7372361a7047d1e00ba045d4e53c31520b47da0e9604c5e3022480bb
+sha256: 6b0f1aed712ce8f488e4efc1ef3d1ab86b482c45c26ac7c699b8394f015c70c1
+exe:      socom2.exe sha256: cf8a8a6ca82d4c2005c9ccbb0fa584f805a15a8a51cc73c12b7a0856facb02e5
 ```
