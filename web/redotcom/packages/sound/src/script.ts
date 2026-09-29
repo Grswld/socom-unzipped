@@ -4,7 +4,8 @@ import { parseRdr, rdrGet, Zar, type RdrNode } from '@s2u/archive';
  * `RUN/SOUNDRDR.ZAR/sounds.rdr`, the sound script (web/docs/research/81 §3): under `SETS`, one list per bank block
  * (`MP2_AM`, `MP2_FX`, `HUDUI` ...) of the sounds that carry parameters, each named by the **CRC-32 of its bank
  * name** -- `.STEP_STONE` is 1440126871 -- and followed by keys: `ONESHOT`, `AMBIENT`, `DOPPLER`, `STREAMING_EFX`,
- * `RANGE (min max)`, `VOLUME`, `MED`/`FAR` (a weapon's distance variants) ... The reader is `FUN_003435c0`
+ * `RANGE (min max)`, `VOLUME`, `MED`/`FAR` (marks on a weapon's distance variants that the game never reads: its
+ * key table has no such key, and the variant is chosen by distance, `./rules`' `fireVariant`) ... The reader is `FUN_003435c0`
  * (decomp 242323-242560): `RANGE` lands as two `u16` at +0xc/+0xe, `VOLUME` as a float at +4; the hash is
  * `FUN_003a2370`, a table CRC-32 over the name's bytes (poly 0x04C11DB7 reflected, init and final ~0 -- zlib's), and
  * the name a material or a weapon names is turned into the same number to look its sound up (`FUN_00344f30`).
@@ -23,7 +24,7 @@ export interface SoundParams {
   range: [number, number] | null;
   /** `VOLUME`, when the entry has one. */
   volume: number | null;
-  /** A weapon's medium- and far-distance variant (`.M4A1_M` is `MED`, `.M4A1_F` is `FAR`). */
+  /** The script's `MED`/`FAR` marks (`.M4A1_M` is `MED`, `.M4A1_F` is `FAR`): data only, `FUN_003435c0` reads neither. */
   med: boolean;
   far: boolean;
 }
