@@ -7,19 +7,55 @@ import type { LoadedMap } from './loadMap';
 import { snapshotOf } from './net/body';
 import { BODY_FADE_S } from './net/deaths';
 import type { TraversalPose } from './animator';
+import type { PlaySnapshot, SwapProgress } from './mover';
+import { SEAL_ANIMS } from './locomotion';
 import type { BodyState, Team } from './net/protocol';
 import { Play, type PlayClips } from './play';
 import type { Mount } from './heldItem';
-import type { Firearm } from './kit';
+import { handedAt, handOffOf, type Firearm } from './kit';
 
 /**
  * The other player's weapons by the replicated weapon (`BodyState.weapon`: 0 the rifle, 1 the Mark 23), where the
  * local kit leaves them once its swap has ended (`./kit`: `FUN_005a60d0(seal, 2, 0)` carries the rifle while the pistol
- * is in the hand; `FUN_005a75d0` holsters the pistol). The swap's clip itself is the mover's and rides the snapshot;
- * the mounts change when the weapon does [placeholder: no hand-off phase on the other screens].
+ * is in the hand; `FUN_005a75d0` holsters the pistol).
  */
 export function remoteKit(weapon: 0 | 1): { item: Firearm; mounts: { rifle: Mount; pistol: Mount } } {
   return weapon === 1 ? { item: 'pistol', mounts: { rifle: 'carry', pistol: 'hand' } } : { item: 'rifle', mounts: { rifle: 'hand', pistol: 'holster' } };
+}
+
+/**
+ * The swap clip a replicated body is playing -- the standing, crouched or prone swap action, or the moving overlay, as
+ * `Walker.swapProgress` reads them -- its direction (the clip backwards is the pistol back to the rifle) and its
+ * progress 0..1 on the snapshot's own clock; null when none plays.
+ */
+export function remoteSwap(snap: PlaySnapshot): { to: Firearm; action: SwapProgress['action']; overlay: boolean; progress: number } | null {
+  const a = snap.action;
+  if (a && (a.name === 'swapStand' || a.name === 'swapCrouch' || a.name === 'swapProne') && a.seconds) {
+    return { to: a.reversed ? 'rifle' : 'pistol', action: a.name, overlay: false, progress: Math.min(1, a.t / a.seconds) };
+  }
+  const o = snap.overlay;
+  if (o && o.clip === SEAL_ANIMS.swapMoving && o.seconds > 0) {
+    return { to: o.reversed ? 'rifle' : 'pistol', action: null, overlay: true, progress: Math.min(1, o.t / o.seconds) };
+  }
+  return null;
+}
+
+/**
+ * The other player's weapons from its snapshot, hand-off included: while a swap clip plays they hang as the local
+ * `Kit` hangs them on the same clip and progress (the multiplayer merge review's hole 3) -- the rifle on the `swap`
+ * mount posed by the clip, `m_item` the pistol from the start going out (`FUN_005a7260`) and until the end coming back
+ * (`FUN_005a70f0`), the pistol into the hand (`FUN_005a7730`) or the holster (`FUN_005a75d0`) as the clip passes its
+ * `HAND_OFF` phase -- so the hand-off is drawn mid-clip, not when the replicated weapon changes at the swap's start.
+ * No new field on the wire: the clip, its clock and its direction already ride the body (`BodyState.action*`,
+ * `overlay*`, `ActionReversed` / `OverlayReversed`). Before the hand-off the pistol is where the settled kit keeps it
+ * (the holster; the local kit's spawn mount on the hips is not replicated).
+ */
+export function remoteKitOf(snap: PlaySnapshot & { weapon: 0 | 1 }): ReturnType<typeof remoteKit> {
+  const swap = remoteSwap(snap);
+  if (!swap || swap.progress >= 1) return remoteKit(swap ? (swap.to === 'pistol' ? 1 : 0) : snap.weapon);
+  const handed = handedAt(swap.to, swap.progress, handOffOf(swap));
+  const pistol: Mount = swap.to === 'pistol' ? (handed ? 'hand' : 'holster') : (handed ? 'holster' : 'hand');
+  return { item: 'pistol', mounts: { rifle: 'swap', pistol } };
 }
 
 /**
@@ -105,7 +141,7 @@ export class RemotePlayers {
       r.view.group.visible = shown;
       if (!shown) continue;
       if (!r.snap.alive && r.deathClip) r.snap.traversal = deathPose(r.deathClip, r.deadFor, this.clips);
-      const kit = remoteKit(r.snap.weapon);                     // WEAPON: the replicated rifle or Mark 23 in the hand
+      const kit = remoteKitOf(r.snap);                     // WEAPON: the replicated rifle or Mark 23 in the hand
       if (kit.item !== r.item) { r.item = kit.item; r.play.setItem(kit.item); }
       r.play.setMounts(kit.mounts);
       r.play.frame(dt, { snapshot: () => r.snap, view: () => 'third' }, camera);
