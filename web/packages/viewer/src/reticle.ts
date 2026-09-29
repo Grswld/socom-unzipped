@@ -133,15 +133,19 @@ export interface Quad { part: 'fixed' | 'floating'; x: number; y: number; width:
  */
 export function reticleLayout(
   frame: { width: number; height: number }, aim: [number, number], size: number, offset: [number, number] = [0, 0],
+  bitmaps: { fixed: number; arm: number } = { fixed: FIXED, arm: ARM },
 ): { scale: number; centre: [number, number]; quads: Quad[]; rect: Rect } {
   const s = frame.height / PS2_HEIGHT;
   const cx = aim[0] * frame.width + offset[0] * s, cy = aim[1] * frame.height + offset[1] * s;
-  const reach = REST_REACH + Math.max(0, size);
-  const quads: Quad[] = [{ part: 'fixed', x: cx, y: cy, width: FIXED * s, height: FIXED * s, turns: 0 }];
+  const arm = bitmaps.arm, fixed = bitmaps.fixed;
+  // FUN_00215250: an arm's quad is its bitmap's own size, `size` pixels out from the centre and its long side against
+  // the centre line shifted 1 over (the rifle's measured core, texel column 30.5 of 32: 1.5 - arm / 2 across).
+  const reach = arm + Math.max(0, size);
+  const quads: Quad[] = [{ part: 'fixed', x: cx, y: cy, width: fixed * s, height: fixed * s, turns: 0 }];
   // The arm as stored, pointing down: its core on the vertical through the aim point, its outer end `reach` out.
-  let dx = (ARM / 2 - ARM_CORE) * s, dy = (reach - ARM / 2) * s;
+  let dx = (arm === ARM ? ARM / 2 - ARM_CORE : 1.5 - arm / 2) * s, dy = (reach - arm / 2) * s;
   for (const turns of [0, 1, 2, 3] as const) {
-    quads.push({ part: 'floating', x: cx + dx, y: cy + dy, width: ARM * s, height: ARM * s, turns });
+    quads.push({ part: 'floating', x: cx + dx, y: cy + dy, width: arm * s, height: arm * s, turns });
     [dx, dy] = [-dy, dx];                          // a quarter turn clockwise on a y-down screen
   }
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -197,6 +201,27 @@ function texture(rgba: Rgba): DataTexture {
  * The HUD layer: an orthographic scene in frame pixels (y down), drawn after the world with `autoClear` off and
  * no depth test. `setAimPoint` and `setVisible` are the page's; `render` is called once a frame after the world.
  */
+/**
+ * The night vision's goggles (`BitmapReticule_Init` 70940-70975, shown by `ChangeReticule` while the view is 3):
+ * `nvg_part.tif` (256x256: a green inside at PS2 alpha 22, a dark opaque rim) as four mirrored quads of 320x224 over
+ * the whole 640x448 frame, meeting at its centre -- the decoded bitmap's top-right corner, as the scope's.
+ */
+export function nightLayout(frame: { width: number; height: number }): {
+  quads: { x: number; y: number; width: number; height: number; flipX: boolean; flipY: boolean }[]; bars: Rect[];
+} {
+  const s = frame.height / PS2_HEIGHT, w = 320 * s, h = 224 * s;
+  const cx = frame.width / 2, cy = frame.height / 2;
+  const quads = [
+    { x: cx - w / 2, y: cy - h / 2, width: w, height: h, flipX: false, flipY: true },
+    { x: cx + w / 2, y: cy - h / 2, width: w, height: h, flipX: true, flipY: true },
+    { x: cx - w / 2, y: cy + h / 2, width: w, height: h, flipX: false, flipY: false },
+    { x: cx + w / 2, y: cy + h / 2, width: w, height: h, flipX: true, flipY: false },
+  ];
+  const side = Math.max(0, cx - w);
+  const bars = side > 0 ? [{ x: 0, y: 0, width: side, height: frame.height }, { x: frame.width - side, y: 0, width: side, height: frame.height }] : [];
+  return { quads, bars };
+}
+
 export class Reticle {
   private readonly scene = new Scene();
   private readonly camera = new OrthographicCamera(0, 1, 0, 1, -1, 1);
@@ -207,10 +232,18 @@ export class Reticle {
   private textures: DataTexture[] = [];
   private materials: MeshBasicMaterial[] = [];
   private armMaterial: MeshBasicMaterial | null = null;
+  private fixedMaterial: MeshBasicMaterial | null = null;
+  /** The reticle set drawn (`RETICLE_SETS`), its bitmaps' sizes, and the set bitmaps the map brought. */
+  private set = 1;
+  private sizes = { fixed: FIXED, arm: ARM };
+  private setTextures = new Map<string, DataTexture>();
+  private sets: Record<string, Rgba> = {};
   private aim: [number, number] = [0.5, 0.5];
   private drawSize = 0;
   private offset: [number, number] = [0, 0];
   private mode: 'reticle' | 'scope' = 'reticle';
+  private night = false;
+  private nightMeshes: Mesh[] = [];
   private colour: ReticleColour = 'rest';
   private on = false;
   private frame = { width: 0, height: 0 };
@@ -233,6 +266,10 @@ export class Reticle {
     const fixed = make(bitmaps.fixed, null);
     const floating = make(bitmaps.floating, reticleTint(this.colour));
     this.armMaterial = floating;
+    this.fixedMaterial = fixed;
+    this.sets = bitmaps.sets ?? {};
+    this.set = 1;
+    this.sizes = { fixed: bitmaps.fixed.width, arm: bitmaps.floating.width };
     this.add('fixed', fixed);
     for (let i = 0; i < 4; i++) this.add('floating', floating);
     // The scope (type 5): the tube's mask, then its soft inner ring, four mirrored quads each; black bars beside.
@@ -242,7 +279,13 @@ export class Reticle {
       const material = make(rgba, null);
       for (let i = 0; i < 4; i++) this.scopeMeshes.push(this.addMesh(material, 2));
     }
-    if (this.scopeMeshes.length > 0) {
+    // The night vision's goggles (`nvg_part.tif`), under the reticle.
+    const nvg = bitmaps.sets?.['nvg_part.tif'];
+    if (nvg) {
+      const material = make(nvg, null);
+      for (let i = 0; i < 4; i++) this.nightMeshes.push(this.addMesh(material, -1));
+    }
+    if (this.scopeMeshes.length > 0 || this.nightMeshes.length > 0) {
       const black = new MeshBasicMaterial({ color: 0x000000, depthTest: false, depthWrite: false, fog: false, toneMapped: false });
       this.materials.push(black);
       for (let i = 0; i < 2; i++) this.bars.push(this.addMesh(black, 2));
@@ -263,6 +306,36 @@ export class Reticle {
     this.offset = [offset[0], offset[1]];
   }
 
+  /**
+   * The weapon's reticle set (`reticleType`, `RETICLE_SETS`): the ring and the arms swapped for the set's bitmaps when
+   * the map brought them (the sidearm's `ret_sidearm_01` 32x32 and `ret_sidearm_02` 16x16 ...); a set with no arms
+   * (the grenade's, the scope's) keeps the drawn ones -- those have their own draws. False when the set is not in hand.
+   */
+  setSet(type: number): boolean {
+    const names = RETICLE_SETS[type];
+    if (!names || !names.floating || type === this.set) return type === this.set;
+    const fixed = this.sets[names.fixed], arm = this.sets[names.floating];
+    if (!fixed || !arm || !this.fixedMaterial || !this.armMaterial) return false;
+    const tex = (name: string, rgba: Rgba): DataTexture => {
+      let t = this.setTextures.get(name);
+      if (!t) { t = texture(rgba); this.setTextures.set(name, t); this.textures.push(t); }
+      return t;
+    };
+    this.fixedMaterial.map = tex(names.fixed, fixed);
+    this.armMaterial.map = tex(names.floating, arm);
+    this.fixedMaterial.needsUpdate = true;
+    this.armMaterial.needsUpdate = true;
+    this.sizes = { fixed: fixed.width, arm: arm.width };
+    this.set = type;
+    return true;
+  }
+
+  /** The reticle set drawn now. */
+  currentSet(): number { return this.set; }
+
+  /** The night vision's goggles on or off (view state 3; `ChangeReticule`'s `+0x4100`). */
+  setNight(on: boolean): void { this.night = on; }
+
   /** The rifle's reticle, or the scope's overlay (view state 5 and up). */
   setMode(mode: 'reticle' | 'scope'): void { this.mode = mode; }
 
@@ -278,7 +351,7 @@ export class Reticle {
     mode: 'reticle' | 'scope'; size: number; offset: [number, number]; colour: ReticleColour;
   } {
     const visible = this.on && this.meshes.length > 0 && this.frame.height > 0;
-    const rect = visible && this.mode === 'reticle' ? reticleLayout(this.frame, this.aim, this.drawSize, this.offset).rect : null;
+    const rect = visible && this.mode === 'reticle' ? reticleLayout(this.frame, this.aim, this.drawSize, this.offset, this.sizes).rect : null;
     return { visible, rect, frame: { ...this.frame }, mode: this.mode, size: this.drawSize, offset: [...this.offset], colour: this.colour };
   }
 
@@ -291,7 +364,7 @@ export class Reticle {
     this.camera.left = 0; this.camera.right = width; this.camera.top = 0; this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
     const scoped = this.mode === 'scope' && this.scopeMeshes.length > 0;
-    const quads = reticleLayout(this.frame, this.aim, this.drawSize, this.offset).quads;
+    const quads = reticleLayout(this.frame, this.aim, this.drawSize, this.offset, this.sizes).quads;
     const fixed = quads.filter((q) => q.part === 'fixed'), floating = quads.filter((q) => q.part === 'floating');
     let f = 0, a = 0;
     for (const { part, mesh } of this.meshes) {
@@ -309,9 +382,18 @@ export class Reticle {
       mesh.position.set(q.x, q.y, 0);
       mesh.scale.set(q.flipX ? -q.size : q.size, q.flipY ? -q.size : q.size, 1);
     });
+    const night = this.night && !scoped && this.nightMeshes.length > 0;
+    const nv = nightLayout(this.frame);
+    this.nightMeshes.forEach((mesh, i) => {
+      const q = nv.quads[i]!;
+      mesh.visible = night;
+      mesh.position.set(q.x, q.y, 0);
+      mesh.scale.set(q.flipX ? -q.width : q.width, q.flipY ? -q.height : q.height, 1);
+    });
+    const bars = night ? nv.bars : scope.bars;
     this.bars.forEach((mesh, i) => {
-      const r = scope.bars[i];
-      mesh.visible = scoped && !!r;
+      const r = bars[i];
+      mesh.visible = (scoped || night) && !!r;
       if (r) { mesh.position.set(r.x + r.width / 2, r.y + r.height / 2, 0); mesh.scale.set(r.width, r.height, 1); }
     });
     const autoClear = renderer.autoClear;
@@ -334,10 +416,12 @@ export class Reticle {
 
   private clear(): void {
     for (const { mesh } of this.meshes) this.scene.remove(mesh);
-    for (const mesh of [...this.scopeMeshes, ...this.bars]) this.scene.remove(mesh);
+    for (const mesh of [...this.scopeMeshes, ...this.bars, ...this.nightMeshes]) this.scene.remove(mesh);
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
-    this.meshes = []; this.scopeMeshes = []; this.bars = []; this.materials = []; this.textures = [];
+    this.meshes = []; this.scopeMeshes = []; this.bars = []; this.nightMeshes = []; this.materials = []; this.textures = [];
     this.armMaterial = null;
+    this.fixedMaterial = null;
+    this.setTextures.clear();
   }
 }
