@@ -55,7 +55,9 @@ test('the rifle in the hands, raised to fire, from the muzzle, kicked, reloaded;
   await page.waitForTimeout(300);
   const up = await page.evaluate(() => window.__viewer.weapon());
   expect(up).toMatchObject({ raise: { state: 'up', weight: 1 }, pose: { fire: 'seal_fp_stand', fireWeight: 1 } });
-  expect(up.muzzle![1]).toBeGreaterThan(low.muzzle![1] + 1);   // at the shoulder, over the low ready
+  // At the shoulder, over the low ready -- by less than a unit since the raise weight also turns the aim's twist on
+  // (FUN_0057a330 439192, motion round 4): the spawn's -9.2 degree pitch dips the raised rifle's muzzle by about 0.3.
+  expect(up.muzzle![1]).toBeGreaterThan(low.muzzle![1] + 0.5);
   await page.screenshot({ path: join(SCREENS, 'frostfire-a-fire-pose.png') });
   await page.evaluate(() => window.__viewer.trigger(false));
   const fired = await page.evaluate(() => window.__viewer.fire());

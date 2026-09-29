@@ -171,7 +171,9 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   await page.waitForTimeout(300);
   await settle(page);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-flashbang-whiteout.png') });
-  expect((await page.evaluate(() => window.__viewer.whiteOut())).opacity).toBeGreaterThan(0.5);
+  // Levels 2 and 3 hold full white (blindplayer02/03); level 1 (facing away) is partial from the start (research 85 §9.4).
+  const flashNow = await page.evaluate(() => window.__viewer.whiteOut());
+  expect(flashNow.opacity).toBeGreaterThan(flashNow.level !== null && flashNow.level >= 2 ? 0.5 : 0);
 
   // The claymore (key 8): R1 plays `Place claymore` (seal_place_claymore) on the body; 1.3 s in the charge is down under
   // the hand, facing the SEAL's way, and the Detonator comes up; R1 with the Detonator sets it off (research 85 §9.7.1).

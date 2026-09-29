@@ -53,6 +53,11 @@ export const SEAL_ANIMS = {
   land: 'seal_land_soft', landHard: 'seal_land_hard',
   hit: 'guard_hit01', hitStomach: 'guard_hit_stomach01', landDeath: 'seal_landforward01', getUp: 'seal_getupforward01',
   step: 'seal_step', crouchStep: 'seal_crouch_step',
+  // The rifle <-> pistol swap (`FUN_005a64c0`, decomp 461850-462030): `Rifle -> Pistol` (0x35), `Crouch rifle -> Pistol`
+  // (0x36), `Prone rifle -> Pistol` (0x37) and `Moving rifle -> Pistol` (the overlay over the locomotion); played
+  // backwards for the pistol back to the rifle.
+  swapStand: 'seal_rifle2pistol', swapCrouch: 'seal_crouch_rifle2pistol', swapProne: 'seal_prone_rifle2pistol',
+  swapMoving: 'seal_mv_rifle2pistol',
 } as const;
 
 /**

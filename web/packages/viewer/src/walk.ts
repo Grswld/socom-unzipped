@@ -397,6 +397,8 @@ export interface PlaySnapshot {
   ground: GroundMotion;
   /** The action holding the mover, or null. */
   action: MoverAction | null;
+  /** The upper-body overlay over the locomotion (the moving swap), or null. */
+  overlay?: MoverOverlay | null;
   /** The look's turn over the last frame, radians a second, left positive: what turns the prone body in place. */
   turnRate: number;
   /** TRAVERSAL SEAM: the traversal move's clip, or null (`./animator` `MoverSnapshot.traversal`). */
@@ -491,7 +493,27 @@ export const ACTION_CLIPS = Object.freeze({
   hitStomach: { playback: 2.9, frames: 32, noInterrupt: 0.8, travel: [0.63, 6.79] },
   landDeath: { playback: 0.4, frames: 11, noInterrupt: 1, travel: [0.05, -0.72] },
   getUp: { playback: 2, frames: 27, noInterrupt: 0.8, travel: [-1.79, -1.1] },
+  // The rifle <-> pistol swap's full-body clips (`FUN_005a64c0`): `NoInterrupt ()`, but the standing one gives way to the
+  // stick all the same (`FUN_00550ef0` 418183: action 0x35 is tested whatever `FUN_00587c20` says).
+  swapStand: { playback: 1.32, frames: 32, noInterrupt: 1, travel: [0, 0] },
+  swapCrouch: { playback: 1, frames: 23, noInterrupt: 1, travel: [0, 0] },
+  swapProne: { playback: 1.8, frames: 38, noInterrupt: 1, travel: [0, 0] },
 } as const);
+
+/** `Moving rifle -> Pistol` (`seal_mv_rifle2pistol`, 21 keys, `playback` 1.32, `BlendOverlay`): the swap on the move. */
+export const SWAP_OVERLAY = { playback: 1.32, frames: 21 } as const;
+
+/**
+ * The swap `WalkMode.swapWeapon` / `Walker.swapWeapon` picked (`FUN_005a64c0`): the full-body action it started, or
+ * the overlay over the locomotion (`overlay` true), and whether it plays backwards (the pistol back to the rifle).
+ */
+export interface SwapPick { action: 'swapStand' | 'swapCrouch' | 'swapProne' | null; overlay: boolean; reversed: boolean; seconds: number }
+
+/**
+ * An upper-body clip over the locomotion (the game's second play channel, `FUN_0028d860(anim+0x60, ...)`; a motion
+ * flagged `BlendOverlay`): the moving swap. `t` seconds into `seconds`, backwards when `reversed`.
+ */
+export interface MoverOverlay { clip: string; serial: number; t: number; seconds: number; reversed: boolean }
 
 /** `FUN_00550ef0` (decomp 418180-418190): an interruptible action is cut when a stick axis passes this. */
 export const INTERRUPT_STICK = 0.1;
@@ -524,7 +546,7 @@ export const ACTION_SECONDS: Readonly<Record<keyof typeof ACTION_CLIPS, number>>
  * getting up). `serial` changes with every start, so the animator sees a restart.
  */
 export type MoverActionName = 'jump' | 'launch' | 'fall' | 'land' | 'landHard' | 'standToCrouch' | 'crouchToProne' | 'standToProne'
-  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp';
+  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp' | 'swapStand' | 'swapCrouch' | 'swapProne';
 export interface MoverAction {
   name: MoverActionName;
   serial: number;
@@ -684,6 +706,36 @@ export class Walker {
     return this.action_;
   }
 
+  /** The upper-body overlay playing over the locomotion (the moving swap), or null. */
+  get overlay(): MoverOverlay | null {
+    return this.overlay_;
+  }
+  private overlay_: MoverOverlay | null = null;
+
+  /**
+   * The rifle <-> pistol swap's clip (`FUN_005a64c0`, decomp 461850-462030; the WEAPON workstream owns the item and
+   * calls `Animator.setWeapon` at its hand-off): prone `Prone rifle -> Pistol`; crouched or standing, at 20 a second
+   * or under (`|v|^2 <= 400`) `Crouch rifle -> Pistol` / `Rifle -> Pistol` as an action holding the mover, faster
+   * `Moving rifle -> Pistol` over the locomotion. To the rifle each plays backwards (`FUN_00588bc0`'s fourth
+   * argument 1, `FUN_0028c160`) [reading for the moving one, pushed forward both ways]. Refused in the air and while
+   * an action plays [reading: the caller's gate is not read]. Null when refused.
+   */
+  swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
+    if (this.inAir || this.action_) return null;
+    const reversed = to === 'rifle';
+    const s = this.state;
+    const still = s.vx * s.vx + s.vz * s.vz + s.vy * s.vy <= 400;
+    if (this.stance_ === 'prone' || still) {
+      const action = this.stance_ === 'prone' ? 'swapProne' : this.stance_ === 'crouch' ? 'swapCrouch' : 'swapStand';
+      this.start(action, ACTION_SECONDS[action], reversed);
+      s.vx = 0; s.vz = 0;
+      return { action, overlay: false, reversed, seconds: ACTION_SECONDS[action] };
+    }
+    const seconds = oneShotSeconds(SWAP_OVERLAY.playback, SWAP_OVERLAY.frames);
+    this.overlay_ = { clip: SEAL_ANIMS.swapMoving, serial: ++this.serial, t: 0, seconds, reversed };
+    return { action: null, overlay: true, reversed, seconds };
+  }
+
   /** The ground state as it last ran (`GroundMotion`). */
   get ground(): GroundMotion {
     return this.ground_;
@@ -706,7 +758,8 @@ export class Walker {
     if (!a || a.name === 'launch' || a.name === 'fall') return false;
     const c = ACTION_CLIPS[a.name];
     const phase = a.t / (c.playback * ((c.frames - 1) / c.frames));
-    if (!(phase > c.noInterrupt)) return false;
+    // FUN_00550ef0 418183: action 0x35 (`Rifle -> Pistol`) takes the stick test whatever FUN_00587c20 answers.
+    if (!(phase > c.noInterrupt) && a.name !== 'swapStand') return false;
     // FUN_00550ef0 418183-418186: the move axes (actor+0x240, +0x244) and the turn axis (actor+0x23c, the turn over
     // turn_maxrate), any past 0.1.
     return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK
@@ -809,6 +862,7 @@ export class Walker {
     this.inAir = false;
     this.landing_ = null;
     this.action_ = null;
+    this.overlay_ = null;
     this.jumpLock = 0; this.jumpDelay = 0; this.jumping = false; this.carried = [0, 0];
     this.floorNormalY = floor.normal[1];
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
@@ -826,15 +880,21 @@ export class Walker {
   }
 
   /**
-   * The jump (`FUN_0057e1b0`, the header): refused in the air, prone, within `JUMP_LOCK` of a take-off or a landing,
-   * while an action other than the fall holds the mover [reading: the action stack takes the `Jump` only from a
-   * locomotion action], and off walkable ground. At `RUNNING_JUMP_SPEED` or more the running jump -- off the floor with
-   * the velocity carried, the impulse `JUMP_DELAY` later; under it the standing jump -- the `Jump` action on the floor.
-   * True when a jump started.
+   * The jump (`FUN_0057e1b0`, decomp 440776-440867, the header): refused in the air (`actor+0x105e` bit 5), within
+   * `JUMP_LOCK` of a take-off or a landing (`actor+0x135c`), off walkable ground (`actor+0x1348` under cos
+   * `max_slope`), prone (`FUN_005b4340(actor, 0xb)`: stance 2 -- its other refusals, the knock-downs `Fall forward` /
+   * `backwards`, the death landings, `180`, `dive_to_prone`, the hang and ladder states, are not the walk's), and
+   * **unless the action on top plays a looped motion** (`FUN_005551a0(entry+0x28, 0x40)`: the entry's bit 0x40 is its
+   * motion's looped bit, `FUN_0028dc90` from `+0x49` bit 6). `FUN_00550ef0` takes the press whatever plays
+   * (`ctrl+0x170` bit 2, set with it by `FUN_00592d50`), so a press during a one-shot -- the jump, the launch, the
+   * fall, a landing, a transition, a hit, the get-up -- is spent and refused; the idles, the locomotion and the turn
+   * steps are all looped. At `RUNNING_JUMP_SPEED` or more the running jump -- off the floor with the velocity carried,
+   * the impulse `JUMP_DELAY` later; under it the standing jump -- the `Jump` action on the floor. True when a jump
+   * started.
    */
   jump(): boolean {
     if (this.inAir || this.jumpLock > 1e-9 || this.stance_ === 'prone') return false;
-    if (this.action_ && this.action_.name !== 'fall') return false;
+    if (this.action_) return false;                              // every action the walk plays is a one-shot
     if (this.floorNormalY < MAX_SLOPE_COS) return false;
     const s = this.state;
     if (s.vx * s.vx + s.vz * s.vz + s.vy * s.vy >= RUNNING_JUMP_SPEED * RUNNING_JUMP_SPEED) {
@@ -909,11 +969,17 @@ export class Walker {
     this.prev = { x: s.x, y: s.y, z: s.z };
     if (this.driver?.tick(this, input, dt)) return;               // TRAVERSAL SEAM: a ladder or a climb has the tick
     this.jumpLock = Math.max(0, this.jumpLock - dt);
+    const o = this.overlay_;
+    if (o) { o.t += dt; if (o.t >= o.seconds - 1e-9) this.overlay_ = null; }
     const a = this.action_;
     if (a) {
       a.t += dt;
       if (a.seconds !== null && a.t >= a.seconds - 1e-9) {
-        // PLACEHOLDER (the viewer has no death): the deadly fall's `Land forward` gets up (`Get up forward`).
+        // PLACEHOLDER (the viewer has no death): the deadly fall's `Land forward` gets up (`Get up forward`). In the game
+        // FUN_005af590 pushes `Land forward` in state 8 and the SEAL dies there (the vtable's +0x90, FUN_005a5da0): the
+        // controller's FUN_005979a0 (454470-454495) spectates, or in a respawn game fades the body out (alpha 0 at 0.1 a
+        // second, FUN_00552780) and FUN_00599b60 (455695) fades the new SEAL in at a spawn (1.0 at 4 a second). No
+        // get-up follows a death; `Get up forward` is the game's own action, not one it plays after `Land forward`.
         if (a.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
         else this.action_ = null;
       }
@@ -924,12 +990,21 @@ export class Walker {
     if (!this.inAir && this.driver?.stickScale) [forward, right] = this.driver.stickScale(this, forward, right);   // TRAVERSAL SEAM: slope, water
     if (this.inAir) { this.fall(dt, forward, right); return; }
     if (this.interrupted(forward, right)) {                     // FUN_00587c20: cut; the ground state takes over
-      if (this.action_?.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
-      else this.action_ = null;
+      const cut = this.action_!;
+      if (cut.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
+      else if (cut.name === 'swapStand') {
+        // FUN_00550ef0 418226-418245: the standing swap cut by the stick goes on as `Moving rifle -> Pistol` over the
+        // locomotion, at the phase it had reached.
+        const seconds = oneShotSeconds(SWAP_OVERLAY.playback, SWAP_OVERLAY.frames);
+        const phase = Math.min(1, cut.t / ACTION_SECONDS.swapStand);
+        this.overlay_ = { clip: SEAL_ANIMS.swapMoving, serial: ++this.serial, t: phase * seconds, seconds, reversed: cut.reversed };
+        this.action_ = null;
+      } else this.action_ = null;
     }
     const held = this.action_?.name;
     if (held === 'hit' || held === 'hitStomach' || held === 'landDeath' || held === 'getUp'
-      || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne') {
+      || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne'
+      || held === 'swapStand' || held === 'swapCrouch' || held === 'swapProne') {
       // The clip's own root motion carries the mover (FUN_0028c250), key by key, along the facing -- backwards for a
       // transition played backwards (getting up). The ground state does not run (FUN_005870e0).
       s.stickForward = forward; s.stickRight = right;
@@ -1429,6 +1504,15 @@ export class WalkMode {
     return true;
   }
 
+  /**
+   * Walk mode: the rifle <-> pistol swap's clip for the WEAPON workstream (`Walker.swapWeapon`, `FUN_005a64c0`): the
+   * full-body action or the overlay over the locomotion, or null when refused (not walking, in the air, an action).
+   */
+  swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
+    if (!this.walking || !this.walker || this.moves?.busy()) return null;
+    return this.walker.swapWeapon(to);
+  }
+
   /** Walk mode: crouches (true), stands (false) or toggles stand and crouch (no argument); crouched after (the stance). */
   crouch(on?: boolean): boolean {
     if (!this.walking || !this.walker) return false;
@@ -1454,6 +1538,7 @@ export class WalkMode {
       landing: w.landing?.kind ?? null, jumps: this.jumps,
       ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate: this.turnRate,
       traversal: this.moves?.pose() ?? null, peek: this.moves?.peeking() ?? 0,
+      overlay: w.overlay && { ...w.overlay },
     };
   }
 
