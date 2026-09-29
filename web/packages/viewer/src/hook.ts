@@ -1,3 +1,4 @@
+import type { OnlineChoice, OnlineStatus } from './online';
 import type { EffectStats } from './effects';
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
@@ -98,6 +99,12 @@ export interface ViewerHook {
   mode(): 'walk' | 'fly';
   /** False when walk was asked for and there is no floor to stand on, under the camera or at spawn A. */
   setMode(mode: 'walk' | 'fly'): boolean;
+  /** reCOM mode (the settings' Mode switch, `./features`): switched when `on` is given (as the visitor would), then read. */
+  recom?(on?: boolean): boolean;
+  /** Whether the disc page (`#disc-page`, `./source`) stands over the canvas. */
+  discPage?(): boolean;
+  /** The Online setting and the connection (`./online`): the choice, the server, and `NetPage.status`'s line. */
+  online?(): OnlineStatus & { choice: OnlineChoice | 'url'; url: string | null };
   /**
    * Walk mode: `seconds` of 60 Hz ticks run at once with this stick (forward 1 by default), facing the camera's
    * yaw, then the camera at the eye; the pose after. Frame-rate proof, for the route test (`e2e/walk.spec.ts`).

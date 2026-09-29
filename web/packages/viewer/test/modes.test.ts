@@ -1,0 +1,268 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import {
+  PLAY_ATTRIBUTE, PLAY_KEY, PlayUi, playWanted, readPlayChoice, withoutPlayParam, writePlayChoice,
+} from '../src/features';
+import { Ui } from '../src/ui';
+
+/**
+ * The owner's 2026-09-29 settings: the Mode switch (Map viewer / reCOM, at run time, remembered, `?redotcom` forcing it
+ * on), the Online setting's markup, and the disc page the page opens on without `?devmode`.
+ */
+const here = dirname(fileURLToPath(import.meta.url));
+const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
+const load = (): void => { document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML; };
+const keys = (): string => [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
+
+describe('playWanted: the URL forces reCOM on, else the remembered choice, else the map viewer', () => {
+  it('is the map viewer on a first visit', () => {
+    expect(playWanted('', null)).toBe(false);
+    expect(playWanted('?map=MP2', null)).toBe(false);
+  });
+  it('is reCOM when the switch left it so, and not when it left it off', () => {
+    expect(playWanted('', '1')).toBe(true);
+    expect(playWanted('?map=MP6', '0')).toBe(false);
+    expect(playWanted('', 'yes')).toBe(false);
+  });
+  it('is reCOM with ?redotcom whatever was remembered (a deep link)', () => {
+    expect(playWanted('?redotcom', '0')).toBe(true);
+    expect(playWanted('?map=MP2&redotcom&fly', null)).toBe(true);
+  });
+});
+
+describe('the remembered mode', () => {
+  beforeEach(() => { localStorage.clear(); });
+  afterEach(() => { localStorage.clear(); });
+
+  it('is written as 1 or 0 under s2u.viewer.recom and read back', () => {
+    expect(readPlayChoice()).toBeNull();
+    writePlayChoice(true);
+    expect(localStorage.getItem(PLAY_KEY)).toBe('1');
+    expect(playWanted('', readPlayChoice())).toBe(true);
+    writePlayChoice(false);
+    expect(localStorage.getItem('s2u.viewer.recom')).toBe('0');
+    expect(playWanted('', readPlayChoice())).toBe(false);
+  });
+
+  it('survives a storage that throws', () => {
+    const get = Storage.prototype.getItem, set = Storage.prototype.setItem;
+    Storage.prototype.getItem = () => { throw new Error('private window'); };
+    Storage.prototype.setItem = () => { throw new Error('private window'); };
+    try {
+      expect(readPlayChoice()).toBeNull();
+      expect(() => writePlayChoice(true)).not.toThrow();
+    } finally {
+      Storage.prototype.getItem = get;
+      Storage.prototype.setItem = set;
+    }
+  });
+
+  it('turning reCOM off takes redotcom out of the address, and leaves an address without it alone', () => {
+    expect(withoutPlayParam('http://h/?map=MP2&redotcom&fly')).toBe('http://h/?map=MP2&fly');
+    expect(withoutPlayParam('http://h/map-viewer/?redotcom')).toBe('http://h/map-viewer/');
+    expect(withoutPlayParam('http://h/?map=MP2')).toBeNull();
+    expect(withoutPlayParam('not a url')).toBeNull();
+  });
+});
+
+describe('PlayUi: the play markup out and back in, at run time', () => {
+  beforeEach(load);
+
+  it('takes every data-play element out and puts the same nodes back where they were', () => {
+    const before = [...document.querySelectorAll(`[${PLAY_ATTRIBUTE}]`)];
+    const places = before.map((el) => [el.parentElement, el.nextSibling]);
+    const ui = new PlayUi();
+    expect(ui.shown()).toBe(true);
+    expect(ui.detach()).toBeGreaterThanOrEqual(5);
+    expect(ui.shown()).toBe(false);
+    expect(document.querySelectorAll(`[${PLAY_ATTRIBUTE}]`)).toHaveLength(0);
+    for (const id of ['mode', 'walk', 'body-row', 'sound-section', 'look-section', 'touch-stance', 'touch-fire', 'touch-walk']) {
+      expect(document.getElementById(id), id).toBeNull();
+    }
+    expect(ui.detach()).toBe(0);                                  // nothing twice
+    ui.attach();
+    expect(ui.shown()).toBe(true);
+    const after = [...document.querySelectorAll(`[${PLAY_ATTRIBUTE}]`)];
+    expect(after).toEqual(before);                                 // the same nodes, in the same order
+    after.forEach((el, i) => { expect(el.parentElement).toBe(places[i]![0]); expect(el.nextSibling).toBe(places[i]![1]); });
+    expect(document.body.innerHTML).not.toMatch(/<!--data-play-->/);
+  });
+
+  it('keeps what was wired while the markup was on the page: a listener still fires after a round trip', () => {
+    const ui = new PlayUi();
+    let heard = 0;
+    document.getElementById('mute')!.addEventListener('change', () => { heard++; });
+    ui.set(false);
+    ui.set(true);
+    document.getElementById('mute')!.dispatchEvent(new Event('change'));
+    expect(heard).toBe(1);
+  });
+
+  it('with the markup out, no word about walking is left in the page text or tooltips (the mode and online switches included)', () => {
+    new PlayUi().detach();
+    const words = (document.body.textContent ?? '') + [...document.querySelectorAll('[title],[aria-label]')]
+      .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' ');
+    expect(words.match(/.{0,40}\b(walk\w*|stance|crouch\w*|prone|redotcom|devmode)\b.{0,40}/gi)).toBeNull();
+  });
+});
+
+describe('the Mode switch in the panel', () => {
+  let ui: Ui;
+  beforeEach(() => { load(); ui = new Ui(); });
+
+  it('is the picture switch markup, in the panel, not the play (it is there in both modes)', () => {
+    const recom = document.getElementById('recom')!;
+    expect(recom.className).toBe(document.getElementById('look')!.className);
+    expect(recom.getAttribute('role')).toBe('radiogroup');
+    expect(recom.closest('#panel')).not.toBeNull();
+    expect(recom.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
+    const buttons = [...recom.querySelectorAll('button')];
+    expect(buttons.map((b) => b.dataset['recom'])).toEqual(['off', 'on']);
+    for (const b of buttons) { expect(b.classList.contains('s2u-tab')).toBe(true); expect(b.querySelector('.s2u-tab__what')).not.toBeNull(); }
+    expect(buttons.map((b) => b.firstChild!.textContent)).toEqual(['Map viewer', 'reCOM']);
+  });
+
+  it('hands the visitor choice on once, and shows it', () => {
+    const heard: boolean[] = [];
+    ui.onRecomSwitch((on) => heard.push(on));
+    const on = document.querySelector<HTMLButtonElement>('#recom [data-recom="on"]')!;
+    const off = document.querySelector<HTMLButtonElement>('#recom [data-recom="off"]')!;
+    off.click();                                                  // already chosen: nothing
+    on.click();
+    on.click();
+    expect(heard).toEqual([true]);
+    expect(on.getAttribute('aria-pressed')).toBe('true');
+    expect(off.getAttribute('aria-pressed')).toBe('false');
+    off.click();
+    expect(heard).toEqual([true, false]);
+    ui.setRecom(true);
+    expect(on.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('the Controls popover follows the mode: G walk listed only with the play on the page', () => {
+    const play = new PlayUi();
+    play.detach(); ui.setPlay(false);
+    expect(keys()).not.toMatch(/walk/i);
+    play.attach(); ui.setPlay(true);
+    expect(keys()).toMatch(/Gwalk/);
+    play.detach(); ui.setPlay(false);
+    expect(keys()).not.toMatch(/Gwalk/);
+  });
+});
+
+describe('the Online setting in the panel', () => {
+  let ui: Ui;
+  beforeEach(() => { load(); ui = new Ui(); });
+
+  it('is Off / Shared / Local in the picture switch markup, with a connection line, outside the play', () => {
+    const online = document.getElementById('online')!;
+    expect(online.className).toBe(document.getElementById('look')!.className);
+    expect(online.getAttribute('role')).toBe('radiogroup');
+    expect([...online.querySelectorAll('button')].map((b) => b.dataset['online'])).toEqual(['off', 'shared', 'local']);
+    expect(online.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
+    expect(document.getElementById('mp-name')!.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
+    expect(document.getElementById('online-lamp')!.classList.contains('s2u-lamp')).toBe(true);
+    expect(document.getElementById('online-state')!.classList.contains('s2u-status')).toBe(true);
+  });
+
+  it('hands a new choice on, shows it, and a URL server presses none', () => {
+    const heard: string[] = [];
+    ui.onOnline((c) => heard.push(c));
+    const button = (c: string): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`#online [data-online="${c}"]`)!;
+    button('off').click();
+    button('local').click();
+    button('shared').click();
+    expect(heard).toEqual(['local', 'shared']);
+    expect(button('shared').getAttribute('aria-pressed')).toBe('true');
+    expect(button('local').getAttribute('aria-pressed')).toBe('false');
+    ui.setOnline('url');
+    expect([...document.querySelectorAll('#online [aria-pressed="true"]')]).toHaveLength(0);
+  });
+
+  it('writes the connection line and lights the lamp up or down', () => {
+    const lamp = document.getElementById('online-lamp')!;
+    ui.setOnlineState('online · 3 players', 'up');
+    expect(document.getElementById('online-text')!.textContent).toBe('online · 3 players');
+    expect(lamp.classList.contains('is-up')).toBe(true);
+    ui.setOnlineState('server unreachable · retrying in 4 s', 'down');
+    expect(lamp.classList.contains('is-up')).toBe(false);
+    expect(lamp.classList.contains('is-down')).toBe(true);
+    ui.setOnlineState('single player: no server', null);
+    expect(lamp.className).toBe('s2u-lamp s2u-lamp--small');
+  });
+});
+
+describe('the disc page (no served assets by default)', () => {
+  let ui: Ui;
+  beforeEach(() => { load(); ui = new Ui(); document.body.classList.remove('no-served', 'disc-over'); });
+
+  it('is hidden in the markup, outside the panel, on the design system, and says what it needs and that nothing is uploaded', () => {
+    const page = document.getElementById('disc-page')!;
+    expect(page.hidden).toBe(true);
+    expect(page.closest('#panel')).toBeNull();
+    expect(page.classList.contains('s2u-section')).toBe(true);
+    expect(page.querySelector('.s2u-title')).not.toBeNull();
+    expect(page.querySelector('.s2u-card')).not.toBeNull();
+    expect(page.querySelector('.s2u-notice')).not.toBeNull();
+    const text = page.textContent!.replace(/\s+/g, ' ');
+    expect(text).toMatch(/your own copy of the disc/);
+    expect(text).toMatch(/SCUS-97275/);
+    expect(text).toMatch(/\.iso/);
+    expect(text).toMatch(/Drop the \.iso anywhere on this window/);
+    expect(text).toMatch(/Nothing is uploaded/);
+    expect(text).toMatch(/2352-byte sectors is refused/);
+    const input = page.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(input.id).toBe('disc-page-file');
+    expect(input.accept).toBe('.iso');
+    expect(input.closest('label')!.classList.contains('s2u-tab')).toBe(true);
+  });
+
+  it('offerDisc shows it without unfolding the panel; hideDiscPage takes it down', () => {
+    ui.onPanelToggle();
+    ui.offerDisc();
+    expect(ui.discPageShown()).toBe(true);
+    expect(document.body.classList.contains('no-served')).toBe(true);
+    expect(ui.panelCollapsed()).toBe(true);
+    ui.hideDiscPage();
+    expect(ui.discPageShown()).toBe(false);
+    expect(document.body.classList.contains('no-served')).toBe(false);
+  });
+
+  it('its line says reading, or the reader words in the error colour', () => {
+    ui.setDiscState('reading the disc image a.iso ...');
+    const line = document.getElementById('disc-state')!;
+    expect(line.textContent).toBe('reading the disc image a.iso ...');
+    expect(line.classList.contains('is-bad')).toBe(false);
+    ui.setDiscState('not an ISO9660 image', 'error');
+    expect(line.classList.contains('is-bad')).toBe(true);
+  });
+
+  it('the whole window is the drop target: a drag over lights it, a drop hands the file on, and its button does too', () => {
+    const files: string[] = [];
+    ui.onDisc((f) => files.push(f.name));
+    const file = new File([new Uint8Array(8)], 'SOCOM2.iso');
+    const transfer = { types: ['Files'], files: [file], dropEffect: 'none' };
+    const drag = (type: string): Event => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { dataTransfer: transfer, relatedTarget: null }); return e; };
+    const over = drag('dragover');
+    document.getElementById('view')!.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    expect(document.body.classList.contains('disc-over')).toBe(true);
+    const drop = drag('drop');
+    document.getElementById('disc-title')!.dispatchEvent(drop);
+    expect(drop.defaultPrevented).toBe(true);
+    expect(document.body.classList.contains('disc-over')).toBe(false);
+    const input = document.getElementById('disc-page-file') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new File([new Uint8Array(8)], 'picked.iso')], configurable: true });
+    input.dispatchEvent(new Event('change'));
+    expect(files).toEqual(['SOCOM2.iso', 'picked.iso']);
+  });
+
+  it('the stylesheet lights it while a file is over the window and clears the chrome over it, in tokens', () => {
+    const css = readFileSync(resolve(here, '../src/styles.css'), 'utf-8');
+    expect(css).toMatch(/body\.disc-over #disc-page\s*{[^}]*var\(--s2u-gold\)/);
+    expect(css).toMatch(/#disc-page\[hidden\]\s*{\s*display:\s*none/);
+    expect(css).toMatch(/body\.no-served #fps, body\.no-served #fullscreen, body\.no-served #touch\s*{\s*display:\s*none/);
+  });
+});

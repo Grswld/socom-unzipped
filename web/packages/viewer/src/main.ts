@@ -19,7 +19,7 @@ import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touc
 import { WalkMode } from './walk';
 import { RemotePlayers } from './remotePlayers';
 import type { PlayClips } from './play';
-import { NetPage, netSettings } from './netPage';
+import { NetPage } from './netPage';
 import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
 import { explosionShake } from './look';
@@ -41,7 +41,9 @@ import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, k
 import { Zoom } from './zoom';
 import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
-import { playEnabled, removePlayUi } from './features';
+import { PlayUi, playWanted, readPlayChoice, withoutPlayParam, writePlayChoice } from './features';
+import { startSource } from './source';
+import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
 import { TRAVERSAL_EVENT, TraversalPage } from './traversalPage';
@@ -84,18 +86,22 @@ const SOIL_PENETRATION = new Map(materialTable().map((m) => [m.name, m.penetrati
 const canvas = document.getElementById('view') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('the page has no #view canvas');
 
+/** The page's query string, read once. */
+const SEARCH = globalThis.location?.search ?? '';
 /**
- * Playing as a SEAL (walk mode, the body, the rifle) is behind `?redotcom` (`./features`, the owner 2026-09-28). Without
- * it the play's markup is taken out of the page before the page is wired, and nothing below binds `G`, the pad's
- * Start, `R` or the hook's walk: the page is the fly camera alone.
+ * Playing as a SEAL (walk mode, the body, the rifle, the HUD) is reCOM mode (`./features`; the owner 2026-09-28 and
+ * 2026-09-29): the settings' Mode switch, remembered, and `?redotcom` forces it on. Off, the play's markup is out of the
+ * page (`PlayUi`, put back when it is switched on) and nothing binds `G`, the pad's Start, `R` or the hook's walk: the
+ * page is the fly camera alone. Switched at run time, both ways (`setPlayMode`), without a reload -- a reload would lose
+ * the visitor's disc image.
  */
-const PLAY = playEnabled(globalThis.location?.search ?? '');
-/** `?redotcom` opens on foot (owner, 2026-09-29): the first map's walk starts once it is ready; `&fly` keeps the free
- *  camera (the tests that measure the fly view ask for it). Later maps keep whichever mode the player is in. */
-const START_WALK = PLAY && !new URLSearchParams(globalThis.location?.search ?? '').has('fly');
+let playOn = playWanted(SEARCH, readPlayChoice());
+/** `&fly` keeps the free camera when reCOM mode opens (the tests that measure the fly view ask for it). */
+const FLY_START = new URLSearchParams(SEARCH).has('fly');
+/** reCOM mode opens on foot (owner, 2026-09-29): the map's walk starts once it is ready. Later maps keep the mode. */
 let startedWalk = false;
 function startInWalk(mapName: string): void {
-  if (!START_WALK || startedWalk) return;
+  if (!playOn || FLY_START || startedWalk) return;
   let tries = 0;
   const attempt = (): void => {
     if (startedWalk || loaded?.name !== mapName) return;     // entered already, or another map was picked
@@ -104,7 +110,8 @@ function startInWalk(mapName: string): void {
   };
   attempt();
 }
-if (!PLAY) removePlayUi();
+/** The play's markup, taken out and put back with the mode (`setPlayMode`); everything is wired while it is on the page. */
+const playUi = new PlayUi();
 const ui = new Ui();
 const scene = new Scene();
 const fly = new FlyCamera(canvas, {
@@ -153,7 +160,6 @@ const fire: Fire = new Fire({
   ready: (): boolean => !kit.swapping(),                                     // WEAPON: no round mid-swap (`./kit`)
 }, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
-if (PLAY) fire.bindKey();
 /**
  * The throwables (`./grenade`, web/docs/research/85): `3` and `4` the kit's equipment slots 1 and 2 (the M67, the HE),
  * `1` the rifle back -- the pad's R2 (the game's Inventory) -- and the trigger throws: held for power, let go to throw. The throw's
@@ -326,16 +332,16 @@ function selectEquipment(slot: 1 | 2): boolean {
 }
 // The PC's number keys (the owner, 2026-09-29; `./kit`'s `hotkey`): 1 the rifle, 2 the Mark 23, 3 and 4 the kit's
 // equipment slots 1 and 2 -- walking, no modifier, not on auto-repeat, not typed into the panel's fields.
-if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
+globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
   const key = hotkey(e.code);
-  if (!key || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
+  if (!playOn || !key || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
   const target = e.target;
   if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
   if ('firearm' in key) selectFirearm(key.firearm);
   else selectEquipment(key.equipment);
 });
-if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
-  if (e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
+globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (!playOn || e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
   const target = e.target;
   if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
   switchFireMode();
@@ -519,15 +525,18 @@ const load = (path: string): void => {
  * and it changes only when that source's map list arrives, so a map picked from the old list in the
  * meantime is still read from the source that listed it.
  */
-const SERVED: SourceRequest = { kind: 'http', baseUrl: MAPS };
-let source: SourceRequest = SERVED;
+// Since 2026-09-29 (owner) the page reads only the visitor's disc unless `?devmode` lets it read the served tree
+// (`./source`): without it no request is made under `maps/` at all, and the disc page stands in its place.
+const SERVED: SourceRequest | null = startSource(SEARCH, MAPS);
+const NO_SOURCE: SourceRequest = SERVED ?? { kind: 'http', baseUrl: MAPS };   // a placeholder, never asked of without devmode
+let source: SourceRequest = NO_SOURCE;
 /** The source the wanted map list was asked of; it becomes `source` when that list arrives. */
-let wantedIndexFrom: SourceRequest = SERVED;
+let wantedIndexFrom: SourceRequest = NO_SOURCE;
 /** The source the wanted map is being read from, and the one the map on screen came from, for `stats()`. */
 let wantedMapFrom: SourceRequest['kind'] = 'http';
 let shownFrom: SourceRequest['kind'] = 'http';
 /** The source the wanted map is being read from, whole: the map's sound is asked of it too. */
-let mapSource: SourceRequest = SERVED;
+let mapSource: SourceRequest = NO_SOURCE;
 
 /** Asks `from` for its map list; the answer switches the picker, and the source, over to it. */
 function askIndex(from: SourceRequest): void {
@@ -543,9 +552,11 @@ function askIndex(from: SourceRequest): void {
  * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
  */
 const play = new Play();
-// MULTIPLAYER (web sprint 3): the other players and the match, behind `?redotcom&mp` (W3.R7; `./netPage`).
+// MULTIPLAYER (web sprint 3): the other players and the match -- the settings' Online (owner, 2026-09-29; `./online`), or
+// the URL's `&mp` / `&server=` over it. reCOM mode joins as a player, the map viewer as a watcher (`connectNet`).
 const remote = new RemotePlayers(scene);
-const NET = PLAY ? netSettings(globalThis.location?.search ?? '', globalThis.location ?? { protocol: 'http:', host: 'localhost' }) : null;
+const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
+let NET: OnlineTarget = resolveOnline(SEARCH, readOnline(), PAGE_LOCATION);
 let net: NetPage | null = null;
 /** The clips the worker sent (the death clips among them, for the page's own death). */
 let playClips: PlayClips | null = null;
@@ -614,7 +625,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS, ...(NET ? DEATH_CLIPS : [])] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS, ...DEATH_CLIPS] });   // the deaths: Online can come on at any time
 }
 
 // ---- W2.6: the scope and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -704,6 +715,7 @@ function gunFrame(dt: number, walking: boolean): void {
  */
 function openDisc(file: File): void {
   ui.setStatus(`reading the disc image ${file.name} ...`);
+  ui.setDiscState(`reading the disc image ${file.name} ...`);
   askIndex({ kind: 'iso', file });
 }
 ui.onDisc(openDisc);
@@ -714,12 +726,16 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id !== wantedIndex && message.id !== wantedMap) return;
     if (message.id === wantedIndex) wantedIndexFrom = source;   // a disc that will not open changes nothing
     ui.setLoading(false);
-    ui.setStatus(`failed while ${message.doing}: ${message.message}`, 'error');
+    const text = `failed while ${message.doing}: ${message.message}`;
+    // On the disc page the page's own line says it; the panel is not unfolded over it.
+    if (ui.discPageShown()) { ui.setDiscState(text, 'error'); ui.setStatus(text); } else ui.setStatus(text, 'error');
     return;
   }
   if (message.kind === 'index') {
     if (message.id !== wantedIndex) return;
     source = wantedIndexFrom;
+    if (message.maps.length > 0) ui.hideDiscPage();             // a disc (or the served tree) is open: the map comes
+    else ui.setDiscState('the disc image holds no RUN/MP*.ZDB archives: is it SOCOM II?', 'error');
     showMaps(message.maps);
     askPlay(source);
     return;
@@ -823,12 +839,12 @@ function padFrame(dt: number): void {
   fly.setLift((input.jump ? 1 : 0) - (input.crouch || input.stance ? 1 : 0));
   fly.setStickBoost(input.boost);
   fly.setLook(input.lookX, input.lookY);
-  if (PLAY && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  if (playOn && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
   // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
   // The merged lane, so the touch fire button (`touchInput.fire`) is the trigger the same way; a released R1 still never
   // lets go of a button the other source holds.
-  if (PLAY && input.fire !== padMerged.fire) trigger(input.fire);
+  if (playOn && input.fire !== padMerged.fire) trigger(input.fire);
   // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up). The edges are of
   // the merged lanes: a touch button and a pad's are the same press.
   const pressed = pressedSince(padMerged, input);
@@ -836,7 +852,7 @@ function padFrame(dt: number): void {
   if (pressed.includes('zoomOut')) stepZoom('out');
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
   // The kit's slots (the game's L1 SwapWeapon1, L2 SwapWeapon2 and R2 Inventory, research 85 §9), walking only.
-  if (PLAY && walk.mode() === 'walk') {
+  if (playOn && walk.mode() === 'walk') {
     if (pressed.includes('swap1')) selectFirearm('rifle');
     if (pressed.includes('swap2')) selectFirearm('pistol');
     if (pressed.includes('inventory')) kitInventory();
@@ -850,16 +866,73 @@ function padFrame(dt: number): void {
 }
 attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
 attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
-if (PLAY) {
-  walk.bindKey();
-  ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
-}
+ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
 ui.onControlsPopover();
-// Round 2: the panel's Sound and Mouse look sections (each is on the page only with `?redotcom`), remembered in this browser.
+// Round 2: the panel's Sound and Mouse look sections (each is on the page only in reCOM mode), remembered in this browser.
 ui.onSound({ volume: (v) => audio.setVolume(v), muted: (m) => audio.setMuted(m) });
 ui.onLookControls((opts) => fly.setLookOptions(opts));
 const revision = ui.showRevision();
+
+/**
+ * reCOM mode on or off (the settings' Mode switch, owner 2026-09-29), at run time and both ways: the play's markup in or
+ * out of the page (`PlayUi`), its keys bound or not, the lists in the Controls popover, the body switch let go, the walk
+ * left for the fly camera -- and entered when it comes on, as a reCOM visit opens on foot -- and the match joined again
+ * in the new role (a player, or a watcher). `remember` is the visitor's choice (not the page's start): it is stored, and
+ * turning the mode off takes `redotcom` out of the address so a reload keeps the choice.
+ */
+function setPlayMode(on: boolean, remember: boolean): void {
+  const was = playOn;
+  playOn = on;
+  playUi.set(on);
+  ui.setPlay(on);
+  ui.setRecom(on);
+  if (on) { walk.bindKey(); fire.bindKey(); } else { walk.unbindKey(); fire.unbindKey(); }
+  if (remember) {
+    writePlayChoice(on);
+    const href = on ? null : withoutPlayParam(globalThis.location?.href ?? '');
+    if (href) { try { history.replaceState(null, '', href); } catch { /* a page without a history */ } }
+  }
+  if (!on) {
+    fire.release();
+    if (walk.mode() === 'walk') walk.setMode('fly');
+    ui.setWalk(false);
+    const bodyBox = document.getElementById('player-body') as HTMLInputElement | null;
+    if (bodyBox?.checked) { bodyBox.checked = false; applyToggle('body', false); }
+    startedWalk = false;
+  } else if (!was && loaded) {
+    startedWalk = false;
+    startInWalk(loaded.name);
+  }
+  if (was !== on && loaded) connectNet(loaded);
+}
+setPlayMode(playOn, false);
+ui.onRecomSwitch((on) => setPlayMode(on, true));
+
+/**
+ * The Online setting (owner, 2026-09-29; `./online`): the choice remembered, the match joined again at the new server or
+ * left. A server the URL named is replaced by the choice.
+ */
+ui.setOnline(NET.choice);
+ui.onOnline((choice: OnlineChoice) => {
+  writeOnline(choice);
+  NET = resolveOnline('', choice, PAGE_LOCATION);
+  if (loaded) connectNet(loaded);
+  showOnline();
+});
+/** The connection's line under the setting, and a toast when it comes up or goes unreachable (not at every retry). */
+let onlineShown = '';
+function showOnline(): void {
+  const status = net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn };
+  const line = onlineLine(status);
+  ui.setOnlineState(line.text, line.lamp);
+  const headline = status.state === 'retrying' ? 'unreachable' : status.state;
+  if (headline === onlineShown) return;
+  if (headline === 'online') ui.toast(status.watching ? 'Online: watching the match' : 'Online: in the match');
+  else if (headline === 'unreachable') ui.toast('Online: the match server is unreachable; retrying');
+  onlineShown = headline;
+}
+showOnline();
 
 /**
  * The map a visitor asked for: `?map=MP7` in the URL first, then the one remembered from last time,
@@ -1112,28 +1185,30 @@ async function boot(): Promise<void> {
         lastShown = now;
         ui.setFps(1000 / smoothedMs, smoothedMs);
         adapt(now);
+        showOnline();                               // the Online line: connecting, online and the players, the retry
       }
     }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
 
-  const hasServed = await served();
+  // Without `?devmode` the served tree is never asked for (`./source`): the disc page is the way in.
+  const hasServed = SERVED ? await served(SERVED) : false;
   if (wantedIndexFrom.kind === 'iso') return;     // a disc was opened while the page came up: it wins
-  if (hasServed) {
+  if (SERVED && hasServed) {
     ui.setStatus(`${backend}: indexing the archives ...`);
     askIndex(SERVED);
   } else {
-    // A site with no maps of its own (W1.7): the disc is the way in, so the panel is opened on it.
     ui.offerDisc();
-    ui.setStatus('no maps are served here: open your own SOCOM II disc image (.iso) -- it is read in this browser, never uploaded');
+    ui.setStatus('open your own SOCOM II disc image (.iso): it is read in this browser, never uploaded');
   }
 }
 
-/** The served source answers only when the disc tree has been extracted; otherwise the disc is the source. */
-async function served(): Promise<boolean> {
+/** The served source answers only when the disc tree has been extracted (and only with `?devmode` is it asked). */
+async function served(from: SourceRequest): Promise<boolean> {
+  if (from.kind !== 'http') return false;
   try {
-    return (await fetch(`${MAPS}/index.json`)).ok;
+    return (await fetch(`${from.baseUrl}/index.json`)).ok;
   } catch {
     return false;
   }
@@ -1153,6 +1228,25 @@ function showMaps(maps: MapInfo[]): void {
   }
   ui.setStatus(`loading ${first.name} ...`);
   load(first.path);
+}
+
+/**
+ * The match for the map on screen (a new map is a new match: each map its own, W3.R11): the Online setting's server, or
+ * the URL's, joined as a player in reCOM mode and as a watcher in the map viewer; none when Online is off. Any earlier
+ * connection is closed first.
+ */
+function connectNet(map: LoadedMap): void {
+  net?.close();
+  net = null;
+  if (NET.url) {
+    net = new NetPage({
+      walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+      spectate: (pose) => { if (pose) fly.setPose(pose); },
+      remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
+      roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
+    }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate, !playOn);
+  }
+  showOnline();
 }
 
 /**
@@ -1250,15 +1344,7 @@ function show(map: LoadedMap): void {
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
     built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);
-  if (NET) {
-    net?.close();
-    net = new NetPage({
-      walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
-      spectate: (pose) => { if (pose) fly.setPose(pose); },
-      remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
-      roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
-    }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate);
-  }
+  connectNet(map);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -1412,7 +1498,10 @@ window.__viewer = {
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
   mode: () => walk.mode(),
-  setMode: (mode) => (mode === 'walk' && !PLAY ? false : walk.setMode(mode)),
+  setMode: (mode) => (mode === 'walk' && !playOn ? false : walk.setMode(mode)),
+  recom: (on) => { if (on !== undefined) setPlayMode(on, true); return playOn; },
+  discPage: () => ui.discPageShown(),
+  online: () => ({ ...(net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn }), choice: NET.choice, url: NET.url }),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
   pad: () => ({ id: pads.id(), input: { ...padMerged } }),
