@@ -948,7 +948,7 @@ async function boot(): Promise<void> {
     tacMap.frame(dt);
     const scoreboard = walking && (padMerged.scoreboard || scoreboardKeys.held());
     hud.setScoreboard(scoreboard);     // research 87 §12: SELECT (Tab) held; it hides the reticle too (L56808-56828)
-    reticle.setVisible(walking && !tacMap.isOpen() && !scoreboard);
+    reticle.setVisible(walking && !tacMap.isOpen() && !scoreboard && !(net?.screenUp() ?? false));
     reticle.render(created.renderer);
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder

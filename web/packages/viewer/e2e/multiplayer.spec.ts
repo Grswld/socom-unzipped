@@ -21,10 +21,11 @@ const HAVE = existsSync(join(FIXTURES, 'RUN', 'MP2.ZDB'));
 
 let server: ChildProcess | null = null;
 
-test.beforeAll(async () => {
-  if (!HAVE) return;
+/** Starts the match server (on any free port the first time, on the same one after a restart). */
+async function startServer(port: number): Promise<void> {
   server = spawn('npx', ['tsx', 'packages/server/src/main.ts'], {
-    cwd: WEB, env: { ...process.env, SOCOM_DISC: FIXTURES, PORT: '0', HOST: '127.0.0.1', MAPS: 'MP2' }, stdio: 'pipe',
+    cwd: WEB, env: { ...process.env, SOCOM_DISC: FIXTURES, PORT: String(port), HOST: '127.0.0.1', MAPS: 'MP2' }, stdio: 'pipe',
+    detached: true,                                  // its own process group: `npx` and the node under it stop together
   });
   await new Promise<void>((ok, fail) => {
     const timer = setTimeout(() => fail(new Error('the match server did not start')), 60_000);
@@ -38,9 +39,16 @@ test.beforeAll(async () => {
     });
     server!.on('exit', (code) => fail(new Error(`the match server exited ${code}`)));
   });
-});
+}
 
-test.afterAll(() => { server?.kill('SIGTERM'); });
+test.beforeAll(async () => { if (HAVE) await startServer(0); });
+
+/** Stops the server's whole process group (`npx`, `tsx` and the node under them). */
+function stopServer(): void {
+  if (server?.pid) { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } }
+}
+
+test.afterAll(() => { stopServer(); });
 
 async function joinPage(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 960, height: 600 } });
@@ -70,8 +78,9 @@ test('two pages on Frostfire: each joins its side, draws the other, and sees the
   expect(Math.hypot(before[0]! - own[0]!, before[2]! - own[2]!)).toBeLessThan(2);   // B draws A where A stands
   // A walks forward for a second and a half: B sees it move by the same distance A went.
   await a.bringToFront();
+  // Held until it has gone 20 units, not for a fixed time: under SwiftShader a frame can pass the page's 0.1 s cap.
   await a.keyboard.down('KeyW');
-  await a.waitForTimeout(1500);
+  await expect.poll(async () => { const f = (await a.evaluate(() => window.__viewer.net!()!.feet))!; return Math.hypot(f[0]! - own[0]!, f[2]! - own[2]!); }, { timeout: 30_000 }).toBeGreaterThan(20);
   await a.keyboard.up('KeyW');
   await a.waitForTimeout(800);
   const after = (await a.evaluate(() => window.__viewer.net!()!.feet))!;
@@ -83,4 +92,26 @@ test('two pages on Frostfire: each joins its side, draws the other, and sees the
   expect((await a.evaluate(() => window.__viewer.net!()!.corrections)).largest).toBeLessThan(0.01);
   await b.screenshot({ path: join(SCREENS, 'bravo-sees-alpha.png') });
   await a.screenshot({ path: join(SCREENS, 'alpha.png') });
+  await a.context().close();
+  await b.context().close();
+});
+
+test('a server restart mid-round: both pages join again and see each other (M9)', async ({ browser }) => {
+  const a = await joinPage(browser, 'ALPHA');
+  const b = await joinPage(browser, 'BRAVO');
+  await expect.poll(() => a.evaluate(() => window.__viewer.net!()!.remotes), { timeout: 30_000 }).toBe(1);
+  const port = MP_PORT;
+  const old = server!;
+  old.removeAllListeners('exit');
+  const gone = new Promise((ok) => old.once('exit', ok));
+  stopServer();
+  await gone;
+  await expect.poll(() => a.evaluate(() => window.__viewer.net!()!.state), { timeout: 10_000 }).toBe('closed');
+  await startServer(port);
+  for (const p of [a, b]) {
+    await expect.poll(() => p.evaluate(() => window.__viewer.net!()!.state), { timeout: 30_000 }).toBe('open');
+    await expect.poll(() => p.evaluate(() => window.__viewer.net!()!.remotes), { timeout: 30_000 }).toBe(1);
+  }
+  await a.context().close();
+  await b.context().close();
 });

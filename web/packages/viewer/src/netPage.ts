@@ -8,6 +8,7 @@ import { overall } from './net/damage';
 import { RESPAWN_PROMPT_S } from './net/deaths';
 import type { PlayClips } from './play';
 import type { ScoreRowInfo } from './scoreboard';
+import type { RoundScreen } from './roundScreens';
 import type { WalkMode } from './walk';
 
 /**
@@ -24,6 +25,7 @@ export interface NetPageDeps {
   hud: {
     postMessage(text: string | { text: string; scale: number }[], scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void;
     setScoreRows(rows: ScoreRowInfo[] | null, spectators: string[], wins?: { seal: number; terrorist: number }): void;
+    setRoundScreen(screen: RoundScreen | null): void;
   };
   /** The clips (the death clips among them), once the worker has sent them. */
   clips(): PlayClips | null;
@@ -66,8 +68,11 @@ export function queueLine(position: number): string {
   return `SPECTATING: YOU ARE NUMBER ${position} IN LINE`;
 }
 
+/** The engine reads the round's result this long after the script ends it (`FUN_002a9b30` L150612-150672). */
+const ENGINE_READ_S = 3;
+
 export class NetPage {
-  readonly client: NetClient;
+  client: NetClient;
   private readonly names = new Map<number, string>();
   private readonly teams = new Map<number, Team>();
   /** The round's end, in `performance.now()` ms, or null between rounds. */
@@ -118,15 +123,50 @@ export class NetPage {
     if (e.code === 'Space') { this.nextTarget(); e.preventDefault(); }
     else if (e.code === 'KeyV') { this.spectating.follow = !this.spectating.follow; if (!this.spectating.follow) this.deps.spectate(null); }
   };
-  private readonly unsubscribe: () => void;
+  private unsubscribe: () => void;
+  /**
+   * M9: a dropped socket (a server restart, the network) is joined again after 1, 2, 4 ... 10 s; a kick or a refusal
+   * is not. The match gives a rejoiner a new place, as the game's lobby would.
+   */
+  private reconnect = { attempts: 0, at: 0, stopped: false };
+  /**
+   * The round's end on the game's screens (research 91 section 18; `./roundScreens`): after the engine reads the result
+   * (3 s), each screen the server named for its seconds, counting down; cleared when the next round starts.
+   */
+  private screens: { start: number; list: { screen: RoundScreen['kind']; seconds: number }[]; winner: Team | null; wins: { seal: number; terrorist: number } } | null = null;
+  private readonly joinedAt = performance.now();
 
-  constructor(private readonly deps: NetPageDeps, url: string, map: string, name: string, simulate?: Simulate) {
-    this.client = new NetClient({ url, map, name, ...(simulate ? { simulate } : {}) }, deps.walk);
+  constructor(private readonly deps: NetPageDeps, private readonly url: string, private readonly map: string, private name: string, private readonly simulate?: Simulate) {
+    this.client = this.open();
     this.unsubscribe = this.client.on((ev) => this.event(ev));
     globalThis.addEventListener?.('keydown', this.onKey);
   }
 
+  private open(): NetClient {
+    return new NetClient({ url: this.url, map: this.map, name: this.name, ...(this.simulate ? { simulate: this.simulate } : {}) }, this.deps.walk);
+  }
+
+  /** Joins again after a drop, with the backoff. */
+  private retry(): void {
+    const now = performance.now();
+    if (this.reconnect.stopped || this.client.state !== 'closed') return;
+    if (this.reconnect.at === 0) {
+      this.reconnect.at = now + Math.min(10_000, 1000 * 2 ** this.reconnect.attempts);
+      this.deps.hud.postMessage('CONNECTION LOST. RECONNECTING. . .');
+      return;
+    }
+    if (now < this.reconnect.at) return;
+    this.reconnect.attempts++;
+    this.reconnect.at = 0;
+    this.unsubscribe();
+    this.deps.remote.clear();
+    this.client = this.open();
+    this.unsubscribe = this.client.on((ev) => this.event(ev));
+  }
+
   close(): void {
+    this.reconnect.stopped = true;
+    this.deps.hud.setRoundScreen(null);
     this.deps.hud.setScoreRows(null, []);
     globalThis.removeEventListener?.('keydown', this.onKey);
     this.unsubscribe();
@@ -156,7 +196,35 @@ export class NetPage {
     });
   }
 
+  /** Whether one of the game's round screens is up (the page hides its reticle under it). */
+  screenUp(): boolean {
+    return this.roundScreen() !== null;
+  }
+
+  private roundScreen(): RoundScreen | null {
+    const sc = this.screens;
+    if (!sc) return null;
+    let t = (performance.now() - sc.start) / 1000 - ENGINE_READ_S;
+    if (t < 0) return null;
+    for (const item of sc.list) {
+      if (t < item.seconds) {
+        const rows: ScoreRowInfo[] = this.rows.map((r) => ({ ...r, self: r.id === this.client.id }));
+        const best = [...this.rows].sort((a, b) => b.score - a.score)[0];
+        const you = this.rows.find((r) => r.id === this.client.id);
+        return {
+          kind: item.screen, secondsLeft: item.seconds - t, winner: sc.winner, wins: sc.wins, rows,
+          mvp: best?.name ?? null, you: you ? { kills: you.kills, deaths: you.deaths, score: you.score } : null,
+          timePlayed: (performance.now() - this.joinedAt) / 1000,
+        };
+      }
+      t -= item.seconds;
+    }
+    return null;
+  }
+
   frame(dt: number, camera: PerspectiveCamera, trigger: boolean): void {
+    this.retry();
+    this.deps.hud.setRoundScreen(this.roundScreen());
     this.deps.walk.setTrigger(trigger);
     this.deps.remote.frame(dt, this.client.bodies(), camera);
     if (this.client.role === 'spectator' && this.spectating.follow) this.follow();
@@ -203,6 +271,7 @@ export class NetPage {
     const { remote, hud } = this.deps;
     switch (ev.type) {
       case 'welcome':
+        this.reconnect.attempts = 0;
         this.names.set(ev.id, ev.name);
         if (ev.role === 'spectator') this.spectatorWelcome(ev.queue);
         for (const p of ev.players) { this.names.set(p.id, p.name); this.teams.set(p.id, p.team); remote.setTeam(p.id, p.team); }
@@ -233,8 +302,11 @@ export class NetPage {
       }
       case 'grenade': this.deps.remoteGrenade(ev.kind, ev.from, ev.velocity); break;
       case 'timeExpired': hud.postMessage('TIME EXPIRED', 0.9); this.endsAt = performance.now(); break;
-      case 'roundStart': this.endsAt = performance.now() + ev.seconds * 1000; break;
-      case 'roundOver': this.endsAt = null; break;
+      case 'roundStart': this.endsAt = performance.now() + ev.seconds * 1000; this.screens = null; break;
+      case 'roundOver':
+        this.endsAt = null;
+        this.screens = { start: performance.now(), list: ev.screens, winner: ev.winner, wins: ev.wins };
+        break;
       case 'score':
         this.rows = ev.rows;
         hud.setScoreRows(ev.rows.map((r) => ({ ...r, self: r.id === this.client.id })), ev.spectators, ev.wins);
@@ -242,9 +314,10 @@ export class NetPage {
         break;
       case 'queue': if (ev.position > 0) hud.postMessage(queueLine(ev.position)); break;
       case 'promoted': this.deps.spectate(null); hud.postMessage('YOU ARE IN: A PLACE IS FREE'); break;
-      case 'refused': hud.postMessage(ev.reason); break;
+      case 'refused': this.reconnect.stopped = true; hud.postMessage(ev.reason); break;
       case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
-      case 'kicked': hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
+      case 'kicked': this.reconnect.stopped = true;
+        hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
       default: break;
     }
   }

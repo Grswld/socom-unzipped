@@ -10,6 +10,7 @@ import type { HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
 import { DEFAULT_PLAYER, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
+import { roundScreenLayout, type RoundScreen } from './roundScreens';
 
 /**
  * The in-game HUD (web/docs/research/87-hud.md): SOCOM II's own multiplayer HUD drawn over the world in walk mode --
@@ -240,6 +241,13 @@ export function compassMarks(model: Pick<HudModel, 'navPoints' | 'position' | 'y
 /** What the scoreboard hides while it is up (L56808-56828): the ammo box, the compass, the prompts, the timer. */
 export const SCOREBOARD_HIDES: ReadonlySet<HudElement> = new Set<HudElement>(
   ['panel', 'rounds', 'mags', 'icon', 'firemode', 'compass', 'marks', 'action', 'timer']);
+/**
+ * What a round's end screen hides (research 91 §18 §2.4: it is its own screen, replacing the game): what the scoreboard
+ * hides and the rest of the in-round HUD -- all but the fader. It replaces the scoreboard and the tactical map's layer.
+ */
+export const ROUND_SCREEN_HIDES: ReadonlySet<HudElement> = new Set<HudElement>([
+  ...SCOREBOARD_HIDES, 'bar', 'name', 'box', 'range', 'stance', 'banner', 'message', 'marks', 'tacmap', 'zoom', 'scopeRange', 'scoreboard',
+]);
 
 /** The words `PoseBitmap` writes. */
 export const STANCE_WORDS: Record<HudStance, string> = { stand: 'STAND', crouch: 'CROUCH', prone: 'PRONE' };
@@ -248,7 +256,8 @@ export const WHITE = 'white';
 
 export type HudElement =
   | 'panel' | 'rounds' | 'mags' | 'icon' | 'firemode' | 'compass' | 'bar' | 'name' | 'box' | 'timer' | 'range'
-  | 'stance' | 'action' | 'banner' | 'message' | 'fader' | 'marks' | 'tacmap' | 'zoom' | 'scopeRange' | 'scoreboard';
+  | 'stance' | 'action' | 'banner' | 'message' | 'fader' | 'marks' | 'tacmap' | 'zoom' | 'scopeRange' | 'scoreboard'
+  | 'roundScreen';
 
 /** One textured quad in frame pixels (y down): its centre, size, turn (radians, clockwise), texels, colour. */
 export interface HudQuad {
@@ -304,6 +313,8 @@ export interface HudModel {
   /** The spawn's fade from black, 0..1 (1 is black). */
   fader: number;
   zoom: number;
+  /** A round's end screen (`setRoundScreen`, research 91 §18), drawn over everything while set; absent or null is none. */
+  roundScreen?: RoundScreen | null;
 }
 
 export const DEFAULT_MODEL: HudModel = {
@@ -481,6 +492,37 @@ export function hudLayout(
     }
   }
   return { scale: s, quads, rects };
+}
+
+/**
+ * The pass's quads and shapes on a frame, pure: the in-round HUD less what the tactical map, the scoreboard or a round
+ * screen hides, then the extra layer -- a round screen (over everything, replacing the scoreboard and the tactical
+ * map), else the tactical map's overlay and the scoreboard.
+ */
+export function hudPass(
+  frame: { width: number; height: number }, model: HudModel, sizes: Record<string, { width: number; height: number }>,
+  timing: HudTiming, tacOpen: boolean, overlay: HudOverlay | null,
+): { quads: HudQuad[]; tris: HudTri[] } {
+  const { quads } = hudLayout(frame, model, sizes, timing);
+  if (model.roundScreen) {
+    const screen = roundScreenLayout(model.roundScreen, frame, sizes);
+    return { quads: [...quads.filter((q) => !ROUND_SCREEN_HIDES.has(q.element)), ...screen.quads], tris: screen.tris };
+  }
+  // The tactical map hides the in-round HUD and the compass (`FUN_001f71c0`); its own layer draws instead. The
+  // scoreboard hides the ammo box, the compass, the prompts and the timer (L56808-56828) and draws on layer 1.
+  const base = tacOpen ? quads.filter((q) => q.element === 'fader')
+    : model.scoreboard ? quads.filter((q) => !SCOREBOARD_HIDES.has(q.element)) : quads;
+  const board = model.scoreboard && !tacOpen ? boardLayout(frame, model, sizes) : null;
+  const tac = overlay?.(frame, sizes) ?? null;
+  return { quads: [...base, ...(tac?.quads ?? []), ...(board?.quads ?? [])], tris: [...(tac?.tris ?? []), ...(board?.tris ?? [])] };
+}
+
+/** The scoreboard's quads and shapes for the model. */
+function boardLayout(
+  frame: { width: number; height: number }, model: HudModel, sizes: Record<string, { width: number; height: number }>,
+): ReturnType<typeof scoreboardLayout> {
+  return scoreboardLayout(frame, { player: model.name || DEFAULT_PLAYER, game: model.game.name, type: model.game.type,
+    ...(model.scoreRows.rows ? { rows: model.scoreRows.rows, spectators: model.scoreRows.spectators, wins: model.scoreRows.wins } : {}) }, sizes);
 }
 
 /** What `Hud.feed` reads each frame. */
@@ -691,6 +733,12 @@ export class Hud {
   setScoreRows(rows: ScoreRowInfo[] | null, spectators: string[], wins?: { seal: number; terrorist: number }): void {
     this.model.scoreRows = { rows, spectators, wins };
   }
+  /**
+   * A round's end screen (research 91 §18: ROUND COMPLETE, FINAL ROUND, GAME COMPLETE), or null to take it down. While
+   * set it is drawn over everything in this pass and the in-round HUD, the scoreboard and the tactical map give way
+   * (`ROUND_SCREEN_HIDES`); the reticle is the page's to hide.
+   */
+  setRoundScreen(screen: RoundScreen | null): void { this.model.roundScreen = screen; }
   setPlayerName(name: string): void { this.model.name = name; }
   setHealth(health: number): void { this.model.health = health; }
   setTimer(seconds: number): void { this.model.timer = seconds; }
@@ -771,7 +819,12 @@ export class Hud {
     const visible = this.on && this.batches.size > 0 && this.frame.height > 0;
     const timing = this.timing();
     const rects = visible ? hudLayout(this.frame, this.model, this.sizes(), timing).rects : {};
-    if (visible && this.model.scoreboard && !this.tacOpen) {
+    if (visible && this.model.roundScreen) {
+      const q = roundScreenLayout(this.model.roundScreen, this.frame, this.sizes()).quads;
+      for (const e of ROUND_SCREEN_HIDES) delete rects[e];
+      // The screen covers the frame (its backdrop).
+      if (q.length) rects.roundScreen = { x: 0, y: 0, width: this.frame.width, height: this.frame.height };
+    } else if (visible && this.model.scoreboard && !this.tacOpen) {
       const q = this.board().quads;
       const x0 = Math.min(...q.map((b) => b.x - b.w / 2)), y0 = Math.min(...q.map((b) => b.y - b.h / 2));
       const x1 = Math.max(...q.map((b) => b.x + b.w / 2)), y1 = Math.max(...q.map((b) => b.y + b.h / 2));
@@ -812,15 +865,7 @@ export class Hud {
     const { width, height } = this.frame;
     this.camera.left = 0; this.camera.right = width; this.camera.top = 0; this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
-    const { quads } = hudLayout(this.frame, this.model, this.sizes(), this.timing());
-    // The tactical map hides the in-round HUD and the compass (`FUN_001f71c0`); its own layer draws instead. The
-    // scoreboard hides the ammo box, the compass, the prompts and the timer (L56808-56828) and draws on layer 1.
-    const base = this.tacOpen ? quads.filter((q) => q.element === 'fader')
-      : this.model.scoreboard ? quads.filter((q) => !SCOREBOARD_HIDES.has(q.element)) : quads;
-    const board = this.model.scoreboard && !this.tacOpen ? this.board() : null;
-    const tac = this.overlay?.(this.frame, this.sizes()) ?? null;
-    const extra = tac || board ? { quads: [...(tac?.quads ?? []), ...(board?.quads ?? [])], tris: [...(tac?.tris ?? []), ...(board?.tris ?? [])] } : null;
-    const all = extra ? [...base, ...extra.quads] : base;
+    const { quads: all, tris } = hudPass(this.frame, this.model, this.sizes(), this.timing(), this.tacOpen, this.overlay);
     const byKey = new Map<string, HudQuad[]>();
     for (const q of all) {
       const key = `${q.layer ?? 0}:${q.texture}`;
@@ -829,7 +874,6 @@ export class Hud {
     }
     const half = GS_SAMPLE_OFFSET * (height / PS2_H);
     for (const [key, batch] of this.batches) this.fill(batch, byKey.get(key) ?? [], half);
-    const tris = extra?.tris ?? [];
     this.shapes.forEach((shapes, layer) => this.fillShapes(shapes, tris.filter((t) => t.layer === layer)));
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
@@ -837,10 +881,7 @@ export class Hud {
   }
 
   /** The scoreboard's quads and shapes on the last frame's size. */
-  private board(): ReturnType<typeof scoreboardLayout> {
-    return scoreboardLayout(this.frame, { player: this.model.name || DEFAULT_PLAYER, game: this.model.game.name, type: this.model.game.type,
-      ...(this.model.scoreRows.rows ? { rows: this.model.scoreRows.rows, spectators: this.model.scoreRows.spectators, wins: this.model.scoreRows.wins } : {}) }, this.sizes());
-  }
+  private board(): ReturnType<typeof scoreboardLayout> { return boardLayout(this.frame, this.model, this.sizes()); }
 
   /** Each bitmap's texel size, for the layouts. */
   sizes(): Record<string, { width: number; height: number }> {
