@@ -31,6 +31,15 @@ import type { TraversalStats } from './traversalPage';
  * The `declare global` is what makes the property exist on `Window` — the alternative was a cast to `any`.
  */
 export interface ViewerHook {
+  /**
+   * MULTIPLAYER (web sprint 3): the match as the page sees it, or null outside one: the connection, the page's id,
+   * role and team, the bodies drawn, the corrections taken, the round trip, the snapshot rate, the rows.
+   */
+  net?(): {
+    state: string; id: number; role: string; team: string | null; queue: number; remotes: number;
+    bodies: { id: number; feet: number[]; alive: boolean }[];
+    corrections: { small: number; snapped: number; largest: number }; rtt: number; snapshotRate: number; feet: number[] | null;
+  } | null;
   setCamera(pose: Partial<Pose>): void;
   pose(): Pose;
   stats(): {

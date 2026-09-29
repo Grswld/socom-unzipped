@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cutLine, DEFAULT_PLAYER, SCORE_LAYOUT, scoreboardLayout } from '../src/scoreboard';
-import { textWidth } from '../src/hudFont';
+import { layoutText, textWidth } from '../src/hudFont';
+import type { ScoreRowInfo } from '../src/scoreboard';
 import { DEFAULT_MODEL, Hud, hudLayout } from '../src/hud';
 
 /** The multiplayer round's scoreboard (web/docs/research/87-hud.md §12): SELECT held, `FUN_0022a8b0`'s layout. */
@@ -68,5 +69,80 @@ describe('the HUD with the scoreboard up', () => {
     expect(scoped.panel).toBeUndefined();
     expect(scoped.rounds).toBeUndefined();
     expect(scoped.zoom).toBeDefined();
+  });
+});
+
+describe('scoreboardLayout with every player (research 91 §11, §18)', () => {
+  const row = (id: number, team: 'seal' | 'terrorist', score: number, over: Partial<ScoreRowInfo> = {}): ScoreRowInfo =>
+    ({ id, name: `P${id}`, team, kills: id, deaths: 1, score, alive: true, self: false, ...over });
+  /** The text quads (not shadows) of `line` laid at the pen and baseline, as the layout draws them. */
+  const drawn = (quads: ReturnType<typeof scoreboardLayout>['quads'], line: string, x: number, y: number, scale = 0.8, centre = false) => {
+    const g = layoutText(line, centre ? x - textWidth(line, scale) / 2 : x, y, scale).glyphs;
+    const hit = g.map((h) => quads.find((q) => q.texture === 'font_text_01.tif' && q.rgba[0] !== 0
+      && Math.abs(q.x - (h.x + h.w / 2)) < 1e-6 && Math.abs(q.y - (h.y + h.h / 2)) < 1e-6 && q.u0 === h.u0));
+    return hit.every((q) => q) ? hit as typeof quads : [];   // the whole string, or none
+  };
+  const base = (team: 0 | 1, i: number): number => SCORE_LAYOUT.teams[team]!.y + 38 + 16.8 * i;
+  const rows = [
+    row(1, 'seal', 5), row(2, 'seal', 9, { self: true }), row(3, 'seal', 5), row(4, 'seal', 1, { alive: false }), row(5, 'seal', 7),
+    row(6, 'terrorist', 2), row(7, 'terrorist', 3), row(8, 'terrorist', 3), row(9, 'terrorist', 0),
+  ];
+
+  it('sorts each team by score, ties in the given order, in its own panel', () => {
+    const { quads } = scoreboardLayout(PS2, { ...info, rows, spectators: [] }, SIZES);
+    ['P2', 'P5', 'P1', 'P3', 'P4'].forEach((n, i) => expect(drawn(quads, n, 223, base(0, i)).length).toBeGreaterThan(0));
+    ['P7', 'P8', 'P6', 'P9'].forEach((n, i) => expect(drawn(quads, n, 223, base(1, i)).length).toBeGreaterThan(0));
+    expect(drawn(quads, 'P9', 223, base(0, 3))).toHaveLength(0);
+    // the row after the last SEAL is empty
+    expect(quads.filter((q) => q.texture === 'font_text_01.tif' && q.rgba[0] !== 0 && Math.abs(q.y - base(0, 5)) < 6)).toHaveLength(0);
+  });
+
+  it('writes kills, deaths and score on the columns, the local player in yellow', () => {
+    const { quads } = scoreboardLayout(PS2, { ...info, rows }, SIZES);
+    expect(drawn(quads, 'P2', 223, base(0, 0)).every((q) => q.rgba[2] === 12 / 128 && q.rgba[3] === 110 / 128)).toBe(true);
+    expect(drawn(quads, '9', 588, base(0, 0), 0.8, true).length).toBeGreaterThan(0);
+    expect(drawn(quads, 'P5', 223, base(0, 1)).every((q) => q.rgba[2] === 115 / 128)).toBe(true);
+  });
+
+  it('scales the dead row\'s colours by 0.6', () => {
+    const { quads } = scoreboardLayout(PS2, { ...info, rows }, SIZES);
+    const dead = drawn(quads, 'P4', 223, base(0, 4));
+    expect(dead.length).toBeGreaterThan(0);
+    for (const q of dead) {
+      expect(q.rgba[0]).toBeCloseTo((115 / 128) * 0.6, 6);
+      expect(q.rgba[3]).toBeCloseTo((110 / 128) * 0.6, 6);
+    }
+  });
+
+  it('cuts a team of 10 to its best 8', () => {
+    const many = Array.from({ length: 10 }, (_, i) => row(i + 1, 'terrorist', i));
+    const { quads } = scoreboardLayout(PS2, { ...info, rows: many }, SIZES);
+    expect(drawn(quads, 'P10', 223, base(1, 0)).length).toBeGreaterThan(0);
+    expect(drawn(quads, 'P3', 223, base(1, 7)).length).toBeGreaterThan(0);
+    expect(drawn(quads, 'P2', 223, base(1, 8))).toHaveLength(0);
+  });
+
+  it('lists the spectators at (24, 270 + 16.8 i), at most 8, and the rounds won on the team lines', () => {
+    const names = Array.from({ length: 10 }, (_, i) => `S${i}`);
+    const { quads } = scoreboardLayout(PS2, { ...info, rows, spectators: names, wins: { seal: 2, terrorist: 1 } }, SIZES);
+    for (let i = 0; i < 8; i++) expect(drawn(quads, names[i]!, 24, 270 + 16.8 * i).length).toBeGreaterThan(0);
+    expect(drawn(quads, 'S8', 24, 270 + 16.8 * 8)).toHaveLength(0);
+    expect(drawn(quads, 'SEALs :   2', 171, 124, 1).length).toBeGreaterThan(0);
+    expect(drawn(quads, 'TERRORISTS :   1', 171, 287, 1).length).toBeGreaterThan(0);
+  });
+
+  it('without rows is today\'s single SEAL row, whatever the spectators', () => {
+    const a = scoreboardLayout(PS2, info, SIZES), b = scoreboardLayout(PS2, { ...info, rows: undefined }, SIZES);
+    expect(b).toEqual(a);
+    const { quads } = scoreboardLayout(PS2, { ...info, wins: { seal: 3, terrorist: 3 } }, SIZES);
+    expect(drawn(quads, 'SEALs :   0', 171, 124, 1).length).toBeGreaterThan(0);
+  });
+
+  it('Hud.setScoreRows feeds the model; null returns to the single row', () => {
+    const hud = new Hud();
+    hud.setScoreRows(rows, ['S'], { seal: 1, terrorist: 0 });
+    expect(hud.state().model.scoreRows).toEqual({ rows, spectators: ['S'], wins: { seal: 1, terrorist: 0 } });
+    hud.setScoreRows(null, []);
+    expect(hud.state().model.scoreRows.rows).toBeNull();
   });
 });

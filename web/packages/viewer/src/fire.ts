@@ -4,8 +4,8 @@ import {
 } from 'three';
 import type { Material } from 'three';
 import type { Rgba } from '@s2u/gs';
-import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, segmentHits, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
-import { penetrate } from './accuracy';
+import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { roundPath } from './round';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 
 /**
@@ -629,14 +629,13 @@ export class Fire {
     let hit: ShotHit | null = null;
     const through: ShotHit[] = [];
     if (this.penetrationOf) {
-      // Research 84 section 13: the round's own path from where it leaves, its whole range, every surface in order.
-      const far: Vec3 = [from[0] + dir[0] * reach, from[1] + dir[1] * reach, from[2] + dir[2] * reach];
-      const hits = segmentHits(grid, from, far);
-      const path = penetrate(hits.map((h) => ({ distance: h.t * reach, penetration: this.penetrationOf!(h.poly.material) })), reach, this.rifle.piercing ?? 0);
-      const struck = path.struck.map((i) => face(hits[i]!, reach));
-      for (const s of struck) this.place(s, dir);
-      if (path.through) { through.push(...struck); end = [from[0] + dir[0] * path.range, from[1] + dir[1] * path.range, from[2] + dir[2] * path.range]; }
-      else { hit = struck.pop() ?? null; through.push(...struck); }
+      // Research 84 section 13: the round's own path from where it leaves, its whole range, every surface in order
+      // (`./round`, the walk the multiplayer server re-runs).
+      const path = roundPath(grid, from, dir, reach, this.penetrationOf, this.rifle.piercing ?? 0);
+      for (const s of path.struck) this.place(s, dir);
+      hit = path.hit;
+      through.push(...path.through);
+      if (!hit) end = path.end;
     } else {
       const h = segmentHit(grid, from, end);
       if (h) { hit = face(h, span); this.place(hit, dir); }

@@ -9,7 +9,8 @@ import { pressedSince, releasedSince, type Input } from './gamepad';
 import { HELD_ITEM, heldSkeleton, MountEase, mountMatrix, muzzlePoint, PISTOL_ITEM, type Carries, type Mount } from './heldItem';
 import type { Firearm } from './kit';
 import type { MotionEntry, MotionTable } from './motionTable';
-import { ACTION_CLIPS, type MoverActionName, type Stance, type WalkMode } from './walk';
+import { ACTION_CLIPS, actionRoots, type MoverActionName, type Stance, type WalkMode } from './walk';
+export { actionRoots };
 import { SEAL_ANIMS } from './locomotion';
 import { RELOAD_STILL_SPEED, WeaponPose, type WeaponPoseStats } from './weaponPose';
 import { WeaponRaise, type RaiseStats } from './weaponRaise';
@@ -464,25 +465,6 @@ export class Play {
     if (this.animator) for (const layer of this.extraLayers) this.animator.addPoseLayer(layer);
     if (this.animator) this.unhook = this.animator.onEvent((e) => this.relay(e));
   }
-}
-
-/**
- * The root keys of the clips the mover plays as actions (`./walk` `ACTION_CLIPS`: the hits, the death landing, the
- * get-up, the transitions), x and z a key in the model's frame: what the mover's per-key root motion reads
- * (`Walker.actionVelocity`, `FUN_0028c250`).
- */
-export function actionRoots(clips: readonly MotionClip[]): Map<string, Float32Array> {
-  const wanted = new Set<string>(Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]));
-  const out = new Map<string, Float32Array>();
-  for (const c of clips) {
-    if (!wanted.has(c.name)) continue;
-    const root = c.parts.find((p) => p.name === 'skel_root');
-    if (!root || root.translations.length < 3 * c.frameCount) continue;
-    const keys = new Float32Array(2 * c.frameCount);
-    for (let i = 0; i < c.frameCount; i++) { keys[2 * i] = root.translations[3 * i]!; keys[2 * i + 1] = root.translations[3 * i + 2]!; }
-    out.set(c.name, keys);
-  }
-  return out;
 }
 
 /**

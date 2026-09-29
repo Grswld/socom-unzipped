@@ -15,6 +15,10 @@ import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
+import { RemotePlayers } from './remotePlayers';
+import type { PlayClips } from './play';
+import { NetPage, netSettings } from './netPage';
+import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
 import { explosionShake } from './look';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
@@ -46,7 +50,7 @@ import { soundFor } from '@s2u/sound';
 import { Effects } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
-import { GrenadeThrower } from './grenade';
+import { GrenadeThrower, type GrenadeItem } from './grenade';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
 import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
@@ -160,7 +164,7 @@ grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); }
 // The claymore refused once four are down: the game's message line (0x65f880) [placeholder: the viewer's toast].
 grenade.on('refuse', (info) => { ui.toast(info.text); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
-grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
+grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); net?.throwEvent(info.item, info.from, info.velocity); });
 /**
  * EFFECTS (web/docs/research/89): a grenade's bounce runs the game's own `grenade_hit_<material>` through
  * `effects.play` (its sound, and snow's and water's spurts), at the point as if the grenade's node were there (the
@@ -515,11 +519,34 @@ function askIndex(from: SourceRequest): void {
  * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
  */
 const play = new Play();
+// MULTIPLAYER (web sprint 3): the other players and the match, behind `?redotcom&mp` (W3.R7; `./netPage`).
+const remote = new RemotePlayers(scene);
+const NET = PLAY ? netSettings(globalThis.location?.search ?? '', globalThis.location ?? { protocol: 'http:', host: 'localhost' }) : null;
+let net: NetPage | null = null;
+/** The clips the worker sent (the death clips among them, for the page's own death). */
+let playClips: PlayClips | null = null;
+/** The name the player set (`s2u.mp.name`), or '' for the server's guest name (W3.R12). */
+function playerName(): string {
+  try { return globalThis.localStorage?.getItem('s2u.mp.name') ?? ''; } catch { return ''; }
+}
+// W3.R12: the settings' name field -- printable ASCII, 30 at most (the server cleans it again), sent to the match.
+{
+  const field = document.getElementById('mp-name') as HTMLInputElement | null;
+  if (field) {
+    field.value = playerName();
+    field.addEventListener('change', () => {
+      const name = field.value.replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+      field.value = name;
+      try { globalThis.localStorage?.setItem('s2u.mp.name', name); } catch { /* no storage */ }
+      if (name) net?.client.send({ type: 'name', name });
+    });
+  }
+}
 play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locomotion (`./throwPose`)
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'scope' }));
-fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
+fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); net?.fireEvent(e); });   // the pose and the sound, per round and reload
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
 // to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
@@ -563,7 +590,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS, ...(NET ? DEATH_CLIPS : [])] });
 }
 
 // ---- W2.6: the scope and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -674,7 +701,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.kind === 'play') {
-    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); }
+    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); remote.setClips(message.data); playClips = message.data; }
     return;
   }
   if (message.kind === 'sound') {
@@ -961,6 +988,7 @@ async function boot(): Promise<void> {
     if (walking) kit.frame(dt); else kit.settle();   // WEAPON: the swap's hand-off and end (`./kit`)
     play.setMounts(kit.state().mounts);
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in the scope
+    net?.frame(dt, fly.camera, fire.triggerHeld());   // MULTIPLAYER: the others at the view tick, the clock
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     effects.setBrighten(brightenOf(lighting));
@@ -1007,7 +1035,7 @@ async function boot(): Promise<void> {
     tacMap.frame(dt);
     const scoreboard = walking && (padMerged.scoreboard || scoreboardKeys.held());
     hud.setScoreboard(scoreboard);     // research 87 §12: SELECT (Tab) held; it hides the reticle too (L56808-56828)
-    reticle.setVisible(walking && !tacMap.isOpen() && !scoreboard);
+    reticle.setVisible(walking && !tacMap.isOpen() && !scoreboard && !(net?.screenUp() ?? false));
     reticle.render(created.renderer);
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
@@ -1150,6 +1178,18 @@ function show(map: LoadedMap): void {
   play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
   kit.reset();
   void warmWalk?.().catch(() => {});                          // what entering the walk draws first, compiled now
+  // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
+  remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
+    built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);
+  if (NET) {
+    net?.close();
+    net = new NetPage({
+      walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+      spectate: (pose) => { if (pose) fly.setPose(pose); },
+      remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
+      roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
+    }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate);
+  }
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -1323,6 +1363,11 @@ window.__viewer = {
   fire: () => fire.state(),
   shoot: () => fire.shoot(),
   traversal: () => traversal.stats(),
+  net: () => net && {
+    state: net.client.state, id: net.client.id, role: net.client.role, team: net.client.team, queue: net.client.queue,
+    remotes: remote.count(), bodies: net.client.bodies().map((b) => ({ id: b.id, feet: [...b.feet], alive: (b.flags & 64) !== 0 })),
+    corrections: { ...net.client.corrections }, rtt: net.client.rtt, snapshotRate: net.client.snapshotRate(), feet: walk.feet(),
+  },
   action: () => traversal.action(),
   setLean: (side) => { traversal.hookLean = side; },
   audio: () => audio.stats(),

@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- No icon of its own: an empty one, so the browser does not ask for /favicon.ico (a 404 the e2e console checks would catch). -->
+    <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SOCOM Unzipped map viewer</title>
     <meta name="theme-color" content="#000e11">
@@ -97,6 +99,18 @@
           <label class="s2u-check" title="Silences the game's sounds; the volume below is kept."><input type="checkbox" id="mute" /> <span>mute</span></label>
           <label class="s2u-range" title="The mix's volume: 100% is the level the viewer lifts the console's mix to for a browser tab (a television's knob did the rest)."><span>volume</span>
             <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out"></output></label>
+        </div>
+      </div>
+      <!--
+        The match's name (web sprint 3, W3.R12; research 91 section 13): at most 30 printable ASCII characters, the game's
+        in-game name buffer; blank takes the game's own "Player" guest default. Sent to the match on change, remembered in
+        this browser only (`s2u.mp.name`). Behind `?redotcom` with the play.
+      -->
+      <div class="section" id="mp-section" data-play>
+        <p class="s2u-field__label">Multiplayer</p>
+        <div class="row">
+          <label class="s2u-range" title="Your name in the match: up to 30 characters, letters, digits and the keyboard's symbols. Blank: the game's guest name, Player and four digits."><span>name</span>
+            <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" /></label>
         </div>
       </div>
       <!--

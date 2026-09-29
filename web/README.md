@@ -570,3 +570,40 @@ Entertainment.
 
 GPL-3.0, the repository's ([`LICENSE`](../LICENSE)). CI for this directory is
 [`.github/workflows/web.yml`](../.github/workflows/web.yml), which runs only when `web/` changes.
+
+## Multiplayer server (web sprint 3)
+
+`packages/server` is the match server behind the viewer's `?redotcom&mp` mode: one timed respawn match per map, HTTP
+`/health` and `/metrics` and a WebSocket on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
+`READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
+
+```
+SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS
+```
+
+Join from the viewer with `?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS).
+
+To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim Node 22 image, build context `web/`), a
+compose file with Caddy for HTTPS, a systemd unit for the no-Docker case, and `deploy.sh`. The owner's steps, the
+Lightsail size and the firewall are in [`deploy/README.md`](deploy/README.md). The disc is mounted read-only at run
+time and is never part of an image.
+
+### Playing a match
+
+Open the viewer with `?redotcom&mp` (the server at this page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the
+map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
+§7); past 16 players it spectates, and is moved in, first come first served, when a place frees up.
+
+| key | in the match |
+|---|---|
+| the walk's keys | as in single play: the page predicts its own SEAL and the server agrees (W3.R8) |
+| X | respawn, once "Press the X button to respawn." shows (5 s dead; the press counts once the body has faded, 10 s) |
+| Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
+| K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
+| Space / V | spectating: the next living player / the free camera |
+| Settings > Multiplayer > name | your name, 30 characters at most; blank is the game's `Player####` |
+
+A match is the original's SUPPRESSION with RESPAWN on: one 6-minute round, "TIME EXPIRED" and 15 s more, the side with
+more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. `?lag=100&loss=2` runs the page's latency and
+loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a
+server under 16 bots and 8 spectators.

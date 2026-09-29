@@ -139,5 +139,53 @@ README sections (running a server, joining, the protocol), research 91 final, th
 
 *(newest first)*
 
+- **2026-09-29 — the close** (the cloud agent). The soaks found two bugs, both fixed with tests: a stalled loop
+  stranded commands (the credit now grows by the wall time), and a new match's re-spawn of living players was
+  corrected (the spawn voids the prediction at its own ack). Confirming soak, 16 players + 8 spectators across a match
+  end: zero corrections, 60 Hz, 26 KiB/s a client. Hit volumes now come from the SEAL's own skeleton. Final: vitest
+  1479 passed; build green; e2e the base's 31 plus the 2 multiplayer specs green (the 8 base timing failures here
+  unchanged; an empty icon link ended a /favicon.ico 404 that flaked walk and traversal). PR to `main` opened for the
+  owner; the Lightsail provisioning is HUMAN_TASKS O27.
+
+- **2026-09-29 — M3-M9 in** (the cloud agent; Sonnet/Opus implementers for the lobby, the terrorist body, the deploy,
+  the bots, the scoreboard, the round screens and the hit volumes, each reviewed and committed by the main agent).
+  **Server** `packages/server`: rooms per map, the 60 Hz command stream (W3.R8) with a 200 ms credit and a 100 ms gap
+  wait, 30 Hz quantised snapshots (W3.R10), the game's damage/deaths/respawns/score/kill lines (research 91), rounds on
+  the original's clock with its screens (W3.R11 as amended twice by the owner: one timed respawn match per map, one
+  6-minute round), grenades (the server's flight, the game's blast), the idle kick and the original's team vote to
+  remove (W3.R13, research 91 §17), `/health`, `/metrics`, rate limits, JSON logs. **Client** `net/client.ts` +
+  `netPage.ts`: prediction with **zero corrections at 0/50/100/150 ms each way with jitter and 2 % loss**
+  (`packages/server/test/netcode.test.ts`), interpolation 100 ms behind, reconnection with backoff; the others drawn
+  as the map's own first SEAL / first Terrorist type (Frostfire: `mp2_seal1`, `mp2_terror1` on `al_gman01`) in the
+  game's clips, their rounds and grenades, the game's death clips, the live scoreboard, spectators (follow/free), the
+  name setting, the round screens. **Load** (`tools/mp-bots.ts`, this container: 4 x Xeon 2.8 GHz): 16 players + 8
+  spectators on Frostfire hold 60 Hz, 30 Hz snapshots to all, 28 KiB/s a client, no corrections; the climb search's
+  cache took a server tick from 3.4 to 1.1 ms (the page gains the same). **E2E**: two pages against a real server
+  (join, draw each other, walk, no correction) and a server restart mid-round (both rejoin) green; the 31 baseline specs
+  green. **Deploy** `web/deploy` (Docker+Caddy, systemd, `deploy.sh`), HUMAN_TASKS O27. **Deferred, named**:
+  WebRTC (W3.R9: WebSocket holds the bar), delta snapshots (W3.R10), the maps' kits (KIT_PLACEHOLDER: everyone the held
+  M4A1 SD and Mark 23), the claymore, the radio menu's look, the spectator's scenic views. **Spend**: not metered in
+  this session; the work ran on the plan's model mix and stayed inside the phases' shape (no phase overran its scope).
+
+- **2026-09-29 — M1 done, M2 core done, M3 protocol and codec.** Research 91 (`docs/research/91-the-round.md`,
+  two Opus readers of the decomp and one Sonnet merge): health per part (head 8, body 50, limbs 30; armour 0/25/25),
+  damage `(ImpactDamage + Damage_Modifier) x 14` with falloff, hit location by skeleton node, the SUPPRESSION +
+  RESPAWN option as the only respawn the game has, the respawn point farthest from the nearest enemy, the join rule,
+  scoring, the three kill lines, names 30 printable ASCII, per-map character types. Rulings W3.R8-R12 (spec section
+  7): the command stream, WebSocket first, 30 Hz full quantised snapshots, the round's rules, names. M2: `mover.ts`
+  (the headless mover, re-exported by `walk.ts`), `round.ts` (the round's path, `Fire` now uses it), `sim.ts` (the
+  boundary; `simBoundary.test.ts` refuses three/DOM under it), `simMap.ts` (hull + spawns + clips without textures;
+  byte-identical to the page's hull; 10 s scripted walk bit-for-bit). M3: `net/protocol.ts`, `net/codec.ts` (13-byte
+  commands, 55-byte bodies), `net/body.ts` (the `PlaySnapshot` to the wire and back; `moverSnapshot` now shared by
+  `WalkMode.snapshot` and the server).
+- **2026-09-29 — M0 baseline** (the cloud agent). Handoff laid out at `~/socom-handoff/socom-web-sprint-3` (manifest
+  OK; the archive is a tar despite its `.zip` name); `extract-maps` 22 maps. `typecheck` clean; vitest 1389 passed / 2
+  skipped; `build` OK; feel-parity headless 61 rows, 59 within tolerance, 0 divergent in the mover/camera (2 reported
+  to presentation/look, as before). E2E on a pristine copy of the branch head in this container: **31/39**; the 8
+  failures are real-time timing checks under SwiftShader at this host's frame rate (a stance key held past a second
+  press, the grenade still in flight at its check, the HUD fade not at 1, the effects light still live), with the
+  cloud's Chromium 1194 under Playwright 1.63 (`PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`).
+  The e2e gate for this sprint is therefore "the same 31 green, nothing new red" here; the owner's host runs all 39.
+
 - **2026-09-29 — opened** by the local controller: spec and plan written; branch `web-sprint-3-multiplayer` cut from
   `claude/web-viewer-playtest-fixes`; the handoff zip built (see `HANDOFF.md`).

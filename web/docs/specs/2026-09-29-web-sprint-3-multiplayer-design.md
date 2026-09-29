@@ -148,6 +148,66 @@ gives.
 
 *(dated, newest last — the agent appends here as earlier sprints did)*
 
+- **2026-09-29 — the game has no respawn mode.** Respawn is SUPPRESSION's off-by-default create-game option
+  (research 91 §4), and with it on the original's match is one timed round (§18). W3.R11 follows the owner's call:
+  one timed match per map at that length.
+- **2026-09-29 — the shared sim is exact.** The server's Frostfire hull is byte-identical to the page's and a 10 s
+  scripted walk with root motion and traversal matches bit for bit (`simMap.test.ts`); with the command quantised the
+  same on both sides, the page's prediction needs no correction under 150 ms and 2 % loss (`netcode.test.ts`).
+- **2026-09-29 — the original's vote to remove** is a teammates-only strict majority applied at the round's end, with a
+  rejoin refusal (research 91 §17); it has no idle kick (the owner's 3-5 minutes is new).
+- **2026-09-29 — performance.** The traversal's climb search walked every grid cell (`ringCells`) and every polygon of
+  every nearby object each tick; cached per cell with exact bounding rejects it runs 3x faster on server and page.
+- **2026-09-29 — load.** 16 players + 8 spectators on one map: 60 Hz held, 1.1 ms a tick, 28 KiB/s a client.
+
 ## 7. Rulings
 
 W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owner can overturn any by number.
+
+- **W3.R8 (2026-09-29) — the command stream.** The client's mover ticks at 60 Hz and every tick becomes one numbered
+  command (stick, look, buttons); the server runs each player's commands in order through that player's own `Walker`
+  (the same code on the same hull: `test/simMap.test.ts` shows the server's Frostfire hull byte-identical and a 10 s
+  scripted walk bit-for-bit equal). The server stays authoritative -- it alone places, damages, kills and respawns --
+  but prediction agrees with it by construction, so the local player sees no correction unless a command is refused or
+  the sims disagree (then the error is smoothed; snapped past a named threshold). A respawn names the last command run
+  on the old mover; the client replays the rest on the new one. *Why:* the walk's feel (research 88) survives latency
+  only if the local mover never waits for the server; a lockstep-free command stream is the standard way (Source's
+  usercmds), and the shared sim makes it exact.
+- **W3.R9 (2026-09-29) — WebSocket first.** Binary frames for the hot path (commands up, snapshots down,
+  `viewer/src/net/codec.ts`), JSON text frames for the rare reliable events (`net/protocol.ts`). WebRTC data channels
+  stay the plan's second step, only if the measured WebSocket round shows head-of-line stalls under loss (M9).
+- **W3.R10 (2026-09-29) — 30 Hz snapshots, full and quantised.** A body is 55 bytes; 15 bodies and one's own state
+  are 860 bytes, 26 KB/s a client, 0.6 MB/s for 24 clients -- well inside a Lightsail box's allowance, so no delta
+  compression until M9 measures a need (the plan's delta step is deferred, not dropped).
+- **W3.R11 (2026-09-29, amended twice the same day by the owner) — one timed respawn match per map, the original's
+  length and UI.** Each map is its own match (the owner: "each map is IT'S OWN RESPAWN MATCH"), timed as the original
+  times it (the owner, after first asking for endless rounds: "let's go back to timed matches ... with the original ui.
+  matching original match length"). The original's SUPPRESSION with RESPAWN on is **one round of the create-game
+  default 6 minutes, and that round is the match** (research 91 section 18: the map scripts set `mp_game_over` at its
+  end): the clock counts down MM:SS from 06:00 (`"%02d:%02d"`, `FUN_001f6b60`), at 00:00 "TIME EXPIRED" is posted and
+  play goes on 15 s, the side with the higher team score wins (equal: a draw), the engine reads the result 3 s later,
+  and the game's screens follow -- ROUND COMPLETE with WINNER / LOSER / DRAW per side, FINAL ROUND, GAME COMPLETE /
+  FINAL TOTALS -- after which a dedicated server starts the next match on the same map (the original returns to its
+  lobby). The round time is the server's `ROUND_SECONDS` (the game's choices are 4-10 minutes). The multi-round match
+  (11 rounds, first to 6, the tiebreaker) is the game's rule with respawn off and stays in the room for that case.
+  Teams of 8 by the game's join rule (Terrorists if fewer, or SEALs full, or both empty; else SEALs); scoring and the
+  kill lines by the game's rules (+2 kill, -2 suicide/fall/team kill, +5 each on the winners, +1 alive at the end);
+  respawn pressable 5 s after death once the body has faded (10 s), at the respawn record farthest from its nearest
+  enemy (`FUN_002b7ee0`), with a fresh default kit; friendly fire off (the create-game default).
+- **W3.R12 (2026-09-29) — names.** At most 30 characters of printable ASCII (research 91 §13; the in-game buffer);
+  a guest is the game's own `"Player%d"` default, with a random four-digit number in place of the network index; a
+  duplicate takes the lowest free `(2)`, `(3)` suffix within the 30 (the game's server refused duplicates; a refusal
+  would strand a guest, so the spec's deterministic resolution wins).
+- **W3.R13 (2026-09-29, the owner) — the kicks.** An **idle kick** (the owner's addition: the original has none,
+  research 91c section 9): a player who sends no input for the room's kick time (a server setting held to 3-5
+  minutes, default 4; the owner's "3-5 minute kick timer") is moved out -- to the back of the spectators' queue when
+  anyone is waiting, else disconnected -- so an idle player never holds a slot from the queue. A **team vote to kick,
+  as the original's** (research 91c; the owner's "full team vote to kick option pairing the original"): any living
+  player toggles "VOTE RETAIN:REMOVE" on a teammate from the radio menu's TEAMMATES page (`FUN_0022f3c0` L81354); the
+  vote stands until switched back or the voter leaves; the target sees " Voting: You have %d votes against you."
+  (0x3f26c0, `FUN_002ba040` L159747); it passes on **more votes than half the target's team, the target counted**
+  (`FUN_002c3550` L164913: 5 of 8, 3 of 4, never in a team of 2) and takes effect at the round's end [inferred from
+  SOCOM 1's round-end script]; the kicked player sees UIMnLOC 539 "YOU HAVE BEEN KICKED FROM THIS GAME" and is refused a
+  rejoin to that match with UIMnLOC 443 "You have been banned from that game. Please choose another." (by address,
+  for 10 minutes: `VOTE_BAN_SCOPE_PLACEHOLDER`, a dedicated room never closes as the original's game did). A unanimous vote was the first reading of "full team"; the
+  original's majority is what "pairing the original" asks, and the owner can overturn this by number.

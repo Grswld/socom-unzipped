@@ -3,7 +3,7 @@ import {
   interpretScaledChain, meshNames, modelNodes, readMeshLibrary, skinSubMesh, topInfluences, walkModel, type MeshData,
 } from '@s2u/mesh';
 import {
-  gearMatrix, IDENTITY, multiply, NODE_INSTANCE, parseCharacterTable, parseSceneGraph, playerCharacter, readSkeleton,
+  gearMatrix, IDENTITY, multiply, NODE_INSTANCE, parseCharacterTable, parseSceneGraph, readSkeleton, teamCharacter,
   transformPoint, VISUAL_FLAG_CULL, type CharacterTable, type SceneNode, type SpawnSlot,
 } from '@s2u/scene';
 
@@ -163,12 +163,12 @@ export function characterTableFor(source: AssetSource, mapPath: string): Promise
   return pending;
 }
 
-/** The player's character off the map's `READERM.ZAR/chartype.rdr`, or null. */
-function mapPlayer(bytes: Uint8Array, toc: ZdbEntry[]): string | null {
+/** A team's first character off the map's `READERM.ZAR/chartype.rdr`, or null. */
+function mapPlayer(bytes: Uint8Array, toc: ZdbEntry[], team: 'navyseals' | 'terrorists'): string | null {
   try {
     const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
     const key = readerm.root.children.find((k) => k.name.toLowerCase() === 'chartype.rdr');
-    return key ? playerCharacter(parseRdr(readerm.data(key))) : null;
+    return key ? teamCharacter(parseRdr(readerm.data(key)), team, 0) : null;
   } catch {
     return null;
   }
@@ -209,12 +209,13 @@ function placed(mesh: MeshData, m: Float32Array): MeshData {
 }
 
 /**
- * Decodes the player's body out of a map archive, unplaced. The character is the map's first `navyseals` entry
+ * Decodes a body out of a map archive, unplaced (`team` `terrorists` is web sprint 3 M5's other players). The character is the map's first `team` entry
  * (`chartype.rdr`) and its mesh and gear are `character.rdr`'s; without that table the body is `chooseBodyModel`'s,
  * bare. Null, with a diagnostic, when the map has no such mesh or its mesh or skeleton will not read: the body is
  * an overlay, and the map draws without it.
  */
-export function loadBody(bytes: Uint8Array, toc: ZdbEntry[], characters: CharacterSource, note: (line: string) => void): LoadedBody | null {
+export function loadBody(bytes: Uint8Array, toc: ZdbEntry[], characters: CharacterSource, note: (line: string) => void,
+  team: 'navyseals' | 'terrorists' = 'navyseals'): LoadedBody | null {
   let mdl: Zar, geo: Zar;
   try {
     mdl = Zar.parse(zdbMember(bytes, toc, 'CLIB_MDL.ZED'));
@@ -224,7 +225,7 @@ export function loadBody(bytes: Uint8Array, toc: ZdbEntry[], characters: Charact
     return null;
   }
   const table = characters.table;
-  const character = table ? mapPlayer(bytes, toc) : null;
+  const character = table ? mapPlayer(bytes, toc, team) : null;
   const model = (character && table?.model(character)) || chooseBodyModel(meshNames(mdl));
   // One mesh of the library's 14 to 30: decoding them all would cost 70 to 115 ms a load.
   const entry = model ? readMeshLibrary(mdl, [model])[0] : undefined;

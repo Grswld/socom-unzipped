@@ -10,7 +10,7 @@ import {
 } from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
-import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './walk';
+import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './mover';
 
 /**
  * The traversal moves the walk lacks (web research 86): the ladder (mount at the foot or the head, climb, climb off
@@ -407,6 +407,15 @@ export class Traversal implements TraversalHooks {
   /** The lean buttons, held (research 86 section 4): -1 left, 1 right, 0 neither. */
   lean(side: -1 | 0 | 1): void {
     this.leanSide = side;
+  }
+
+  /** MULTIPLAYER: the lean buttons as last held (what the command carries), and the action button held. */
+  leanHeld(): -1 | 0 | 1 {
+    return this.leanSide;
+  }
+
+  actionHeldNow(): boolean {
+    return this.actionHeld;
   }
 
   /** The peek held (state 3): -1 left, 1 right, 0 none (`TraversalHooks.peeking`). */

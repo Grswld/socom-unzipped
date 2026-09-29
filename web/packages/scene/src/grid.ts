@@ -343,9 +343,18 @@ const ringOf = (dx: number, dz: number, metric: RingMetric): number =>
 export function ringCells(grid: Grid, x: number, z: number, maxRing = Infinity, metric: RingMetric = 'diamond'): { cell: GridCell; ring: number }[] {
   const view = cellAt(grid, x, z);
   const out: { cell: GridCell; ring: number }[] = [];
-  for (const cell of grid.cells) {
-    const ring = ringOf(cell.x - view.x, cell.z - view.z, metric);
-    if (ring <= maxRing) out.push({ cell, ring });
+  if (Number.isFinite(maxRing)) {
+    // PERFORMANCE (web sprint 3): a bounded ring visits only the cells in its square, not the whole grid; the list and
+    // its order are the same.
+    const { cellsX, cellsZ } = grid.params, r = Math.max(0, Math.floor(maxRing));
+    for (let cz = Math.max(0, view.z - r); cz <= Math.min(cellsZ - 1, view.z + r); cz++) {
+      for (let cx = Math.max(0, view.x - r); cx <= Math.min(cellsX - 1, view.x + r); cx++) {
+        const ring = ringOf(cx - view.x, cz - view.z, metric);
+        if (ring <= maxRing) out.push({ cell: grid.cells[cx + cz * cellsX]!, ring });
+      }
+    }
+  } else {
+    for (const cell of grid.cells) out.push({ cell, ring: ringOf(cell.x - view.x, cell.z - view.z, metric) });
   }
   return out.sort((a, b) => a.ring - b.ring || a.cell.index - b.cell.index);
 }

@@ -255,11 +255,14 @@ export function facingVector(facing: number): [number, number] {
 /** A spawn slot placed in the world: a record of the trailer's list with bit 4 clear (75 §5.5, §6). */
 export interface AiSpawnSlot { record: AiSpawnRecord; sub: AiSubMap; side: 0 | 1; facing: number; x: number; z: number }
 
-/** The spawn slots of one side, or of both, at their cells' centres. */
-export function spawnSlots(ai: AiMaps, side?: 0 | 1): AiSpawnSlot[] {
+/**
+ * The spawn slots of one side, or of both, at their cells' centres; with `twins`, the twin records instead -- the
+ * respawn records (research 91 section 4: list key `flags >> 4` 1 and 3, `FUN_0052fe60`).
+ */
+export function spawnSlots(ai: AiMaps, side?: 0 | 1, twins = false): AiSpawnSlot[] {
   const out: AiSpawnSlot[] = [];
   for (const record of ai.spawns) {
-    if (record.twin || (side !== undefined && record.side !== side)) continue;
+    if (record.twin !== twins || (side !== undefined && record.side !== side)) continue;
     const sub = ai.maps[record.loc.map];
     if (!sub) throw new Error(`AIMAPS.MPS: a spawn names sub-map ${record.loc.map} of ${ai.maps.length}`);
     const [x, z] = aiCellCentre(sub, record.loc.x, record.loc.z);
@@ -331,9 +334,9 @@ export interface SpawnSlot {
  * under the slot's centre (`slotFloor`) replaces the estimate wherever the probe finds one, and `onFloor` says
  * so: on the 22 maps, 1,058 of the 1,058 slots (2026-09-28, `tools/spawn-slots.ts`).
  */
-export function placeSpawnSlots(ai: AiMaps, measured?: Spawns, ground?: Grid): SpawnSlot[] {
+export function placeSpawnSlots(ai: AiMaps, measured?: Spawns, ground?: Grid, twins = false): SpawnSlot[] {
   const count = [0, 0];
-  return spawnSlots(ai).map((slot) => {
+  return spawnSlots(ai, undefined, twins).map((slot) => {
     const bottom = slot.sub.min[1], top = slot.sub.max[1];
     const table = measured ? (slot.side === 0 ? measured.a : measured.b)[1] : undefined;
     const estimate = table === undefined ? bottom : Math.min(top, Math.max(bottom, table));

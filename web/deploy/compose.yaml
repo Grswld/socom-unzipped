@@ -1,0 +1,40 @@
+# Run from web/deploy/ (deploy.sh does): docker compose up -d --build
+# Reads ./.env (copy env.example). Build context is web/ (one level up).
+services:
+  mp:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: socom-mp:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SOCOM_DISC: /disc
+      PORT: "8787"
+      HOST: 0.0.0.0
+    volumes:
+      # The owner's private disc files, read-only, never in the image.
+      - ${DISC_DIR:-/srv/socom-disc}:/disc:ro
+    ports:
+      # Loopback only: the public door is caddy. (/metrics is scraped here, from the host.)
+      - "127.0.0.1:8787:8787"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - mp
+    environment:
+      MP_DOMAIN: ${MP_DOMAIN:?set MP_DOMAIN in .env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

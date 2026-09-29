@@ -127,14 +127,24 @@ export function gearMatrix(gear: GearDef, angleUnits: 'DEG' | 'RAD' = 'DEG'): Fl
 }
 
 /**
+ * A team's character on a map: the `index`-th entry of `team` (`navyseals` or `terrorists`) in its
+ * `READERM.ZAR/chartype.rdr` that names a `character` -- `mp2_seal1`, or Frostfire's first Terrorist -- or null.
+ * Each map lists four of each (Seal1-4, Terrorist1-4; web/docs/research/91 §14); without the armory a player gets
+ * `DEFAULT_CHARTYPE_PLACEHOLDER`, which is the first entry, so index 0 is the default.
+ */
+export function teamCharacter(chartype: RdrNode, team: 'navyseals' | 'terrorists', index = 0): string | null {
+  let n = 0;
+  for (const entry of records(rdrGet(chartype, team))) {
+    const c = rdrGet(entry, 'character');
+    if (typeof c === 'string' && n++ === index) return c;
+  }
+  return null;
+}
+
+/**
  * The player's character on a map: the first of the `navyseals` its `READERM.ZAR/chartype.rdr` lists -- `mp2_seal1`
  * on Frostfire -- or null when the file names none.
  */
 export function playerCharacter(chartype: RdrNode): string | null {
-  const seals = records(rdrGet(chartype, 'navyseals'));
-  for (const entry of seals) {
-    const c = rdrGet(entry, 'character');
-    if (typeof c === 'string') return c;
-  }
-  return null;
+  return teamCharacter(chartype, 'navyseals', 0);
 }
