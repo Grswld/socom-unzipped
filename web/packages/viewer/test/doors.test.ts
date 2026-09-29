@@ -115,6 +115,15 @@ describe.skipIf(!MP2)(`Frostfire's doors${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, 
     // hud.spec.ts's stand before wdoor_2: 20 short of its node, looking along +z.
     const w2 = doors.specs.findIndex((d) => d.node === 'wdoor_2');
     expect(pickDoor(doors, grid, [897.5, 115.4, 975], [897.5, 115.4, 1975], [897.5, 100, 975])).toBe(w2);
+    // Open, the doorway is empty: looking through it picks nothing; looking at the swung leaf picks it (e2e's pose).
+    const opened = new DoorSet(doors.specs, map!.ground);
+    opened.use(i);
+    for (let k = 0; k < 10 / TICK && opened.state(i).busy; k++) opened.step(TICK);
+    expect(pickDoor(opened, grid, [582.5, 157.4, 1135], [582.5, 157.4, 135], [582.5, 142, 1135])).toBeNull();
+    const d: [number, number] = [589.9 - 584, 1110.6 - 1125], n = Math.hypot(...d);
+    expect(pickDoor(opened, grid, [584, 163.5, 1125], [584 + d[0] / n * 1000, 163.5, 1125 + d[1] / n * 1000], [584, 142, 1125])).toBe(i);
+    opened.use(i);
+    for (let k = 0; k < 10 / TICK && opened.state(i).busy; k++) opened.step(TICK);
     // Mid-swing it is not offered (FUN_002b46f0).
     doors.use(i, [582.5, 142, 1135]);
     doors.step(TICK);

@@ -54,14 +54,19 @@ test('X on bdoor_4 opens it, the SEAL walks through, X again shuts it (Frostfire
   const through = await page.evaluate(() => { window.__viewer.walkFor(3, { forward: 1 }); return window.__viewer.feet(); });
   expect(through![2]).toBeLessThan(1110);                            // past the leaf's line at z 1117
 
-  // Back, facing the doorway again: X shuts it; the leaf stops the SEAL once more.
-  await page.evaluate(([eye]) => window.__viewer.setCamera({ x: 582.5, y: 142 + eye, z: 1135, yaw: 0, pitch: 0 }), [EYE] as const);
+  // Back on B's side, the reticle on the OPEN leaf (FUN_005aa240 picks the node under the reticle, not the doorway: the
+  // leaf has swung 100 degrees north about its hinge at (588.8, 1117), its middle near (589.9, 1110.6)). X shuts it.
+  const [sx, sz, lx, lz] = [584, 1125, 589.9, 1110.6];
+  const yawAtLeaf = Math.atan2(-(lx - sx), -(lz - sz)) * 180 / Math.PI;
+  await page.evaluate(([eye, x, z, yaw]) => window.__viewer.setCamera({ x, y: 142 + eye, z, yaw, pitch: 0 }), [EYE, sx, sz, yawAtLeaf] as const);
   await page.evaluate(() => window.__viewer.walkFor(0.2, { forward: 0 }));
   await settle(page);
   expect((await page.evaluate(() => window.__viewer.doors())).target).toBe(0);
   await page.keyboard.press('KeyX');
   await frames(page, 1.2);
   expect((await page.evaluate(() => window.__viewer.doors())).doors[0]).toMatchObject({ open: false, busy: false });
+  // Facing the doorway again, the shut leaf stops the SEAL once more.
+  await page.evaluate(([eye]) => window.__viewer.setCamera({ x: 582.5, y: 142 + eye, z: 1135, yaw: 0, pitch: 0 }), [EYE] as const);
   const stopped = await page.evaluate(() => { window.__viewer.walkFor(3, { forward: 1 }); return window.__viewer.feet(); });
   expect(stopped![2]).toBeGreaterThan(1118);
   await page.screenshot({ path: join(SCREENS, 'frostfire-bdoor4-shut.png') });
