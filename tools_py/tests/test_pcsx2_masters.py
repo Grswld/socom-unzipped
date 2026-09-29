@@ -25,12 +25,13 @@ MASTER_B = os.path.join(MASTERS, "0F6FC6CF.clientB.pnach")
 JR_RA, NOP = 0x03E00008, 0x00000000
 DNAS_R0001, DNAS_R0004 = 0x2CC670, 0x2CF330
 PORT_SITE, PORT_3658, PORT_3660 = 0x620678, 0x24040E4A, 0x24040E4C   # li a0,0xE4A -> li a0,0xE4C (FUN_00620648)
+PORT_SITE_R0004 = 0x627F68   # the same li a0,0xE4A in r0004's relocated copy of the function (0x627F38)
 
 # The word at each address the masters touch, per layout (the two images named in the docstring).
 R0001 = {0x2CC670: 0x27BDFFC0, 0x2CC674: 0xFFBF0030, 0x2CF330: 0x0000282D, 0x2CF334: 0xAFA2003C,
-         0x620678: PORT_3658}
+         0x620678: PORT_3658, 0x627F68: 0x27BDFEE0}
 R0004 = {0x2CC670: 0x7BB10010, 0x2CC674: 0x7BB00000, 0x2CF330: 0x27BDFFC0, 0x2CF334: 0xFFBF0030,
-         0x620678: 0x9223F8E8}
+         0x620678: 0x9223F8E8, 0x627F68: PORT_3658}
 
 PATCH = re.compile(r"^patch=(\d+),EE,([0-9A-Fa-f]{8}),extended,([0-9A-Fa-f]{8})$")
 
@@ -57,6 +58,34 @@ def guarded(lines):
         if code >> 28 == 0xE:
             inside.update(range(i + 1, i + 1 + ((code >> 16) & 0xFF)))
     return inside
+
+
+def guard_span_problems(lines, name):
+    """What is wrong with each E guard's span: it runs off the end, its first write is not the word it guards, a write
+    spills past its two-word block, or it holds a guard on another word. A guard's nn counts lines, so one too many
+    silently swallows the next line; when that line is the next block's guard, no write spills, but the next block
+    now runs only when this guard holds (review of #112). A nested guard is only ever on its outer guard's word."""
+    problems = []
+    for i, (_, code, value) in enumerate(lines):
+        if code >> 28 != 0xE:
+            continue
+        span = lines[i + 1:i + 1 + ((code >> 16) & 0xFF)]
+        if len(span) != (code >> 16) & 0xFF:
+            problems.append("%s line %d runs off the end" % (name, i + 1))
+            continue
+        guarded_word = (value & 0x0FFFFFFF) & ~3
+        writes = [c & 0x0FFFFFFF for _, c, _ in span if c >> 28 == 0x2]
+        if not (writes and writes[0] == guarded_word):
+            problems.append("%s line %d guards 0x%X but writes %r"
+                            % (name, i + 1, guarded_word, [hex(w) for w in writes]))
+        if not all(guarded_word <= w < guarded_word + 8 for w in writes):
+            problems.append("%s line %d spills past its block" % (name, i + 1))
+        nested = [(v & 0x0FFFFFFF) & ~3 for _, c, v in span if c >> 28 == 0xE]
+        foreign = [w for w in nested if w != guarded_word]
+        if foreign:
+            problems.append("%s line %d guards 0x%X but covers a guard on %r"
+                            % (name, i + 1, guarded_word, [hex(w) for w in foreign]))
+    return problems
 
 
 def apply_once(lines, mem):
@@ -129,21 +158,21 @@ class MastersRefuseTheUnconditionalBypass(unittest.TestCase):
             self.assertEqual((mem[DNAS_R0004], mem[DNAS_R0004 + 4]), (R0001[0x2CF330], R0001[0x2CF334]))
 
     def test_every_guard_covers_exactly_its_block(self):
-        # A guard's nn counts lines; one too many silently swallows the next block's first line (or runs off the end).
+        for path in (MASTER_A, MASTER_B):
+            self.assertEqual(guard_span_problems(parse(path), os.path.basename(path)), [])
+
+    def test_a_count_one_too_large_is_caught_even_before_the_next_guard(self):
+        # Review of #112: E003 -> E004 on the r0001 outer guard swallows r0004's outer guard, so on r0004 its write
+        # sits behind the low half only. Every guard count in both masters, bumped by one, must be refused.
         for path in (MASTER_A, MASTER_B):
             lines = parse(path)
-            for i, (_, code, value) in enumerate(lines):
+            for i, (place, code, value) in enumerate(lines):
                 if code >> 28 != 0xE:
                     continue
-                span = lines[i + 1:i + 1 + ((code >> 16) & 0xFF)]
-                self.assertEqual(len(span), (code >> 16) & 0xFF, "%s line %d runs off the end"
-                                 % (os.path.basename(path), i + 1))
-                guarded_word = (value & 0x0FFFFFFF) & ~3
-                writes = [c & 0x0FFFFFFF for _, c, _ in span if c >> 28 == 0x2]
-                self.assertTrue(writes and writes[0] == guarded_word, "%s line %d guards 0x%X but writes %r"
-                                % (os.path.basename(path), i + 1, guarded_word, [hex(w) for w in writes]))
-                self.assertTrue(all(guarded_word <= w < guarded_word + 8 for w in writes),
-                                "%s line %d spills past its block" % (os.path.basename(path), i + 1))
+                bumped = list(lines)
+                bumped[i] = (place, code + 0x10000, value)
+                self.assertNotEqual(guard_span_problems(bumped, os.path.basename(path)), [],
+                                    "%s line %d with its count bumped" % (os.path.basename(path), i + 1))
 
     def test_each_word_is_written_once_not_every_vsync(self):
         for path in (MASTER_A, MASTER_B):
@@ -157,19 +186,38 @@ class ClientBKeepsItsPortShift(unittest.TestCase):
         mem, _ = run(MASTER_B, R0001)
         self.assertEqual(mem[PORT_SITE], PORT_3660)
 
+    def test_b_moves_its_base_port_to_3660_on_r0004(self):
+        # Both cards boot r0004, where the port li sits at 0x627F68: without this write A and B share 3658.
+        mem, _ = run(MASTER_B, R0004)
+        self.assertEqual(mem[PORT_SITE_R0004], PORT_3660)
+
+    def test_b_shifts_the_port_on_each_image_and_touches_nothing_else(self):
+        dnas = {DNAS_R0001, DNAS_R0001 + 4, DNAS_R0004, DNAS_R0004 + 4}
+        for layout, site, other in ((R0001, PORT_SITE, PORT_SITE_R0004), (R0004, PORT_SITE_R0004, PORT_SITE)):
+            mem, written = run(MASTER_B, layout)
+            self.assertEqual([w for w in written if w not in dnas], [site])
+            self.assertEqual(mem[other], layout[other])
+
     def test_b_carries_the_port_word(self):
-        values = [v for _, code, v in parse(MASTER_B) if code == 0x20000000 | PORT_SITE]
-        self.assertEqual(values, [PORT_3660])
+        for site in (PORT_SITE, PORT_SITE_R0004):
+            values = [v for _, code, v in parse(MASTER_B) if code == 0x20000000 | site]
+            self.assertEqual(values, [PORT_3660], hex(site))
 
     def test_b_does_not_overwrite_r0004_code_at_the_port_site(self):
         mem, written = run(MASTER_B, R0004)
         self.assertNotIn(PORT_SITE, written)
         self.assertEqual(mem[PORT_SITE], R0004[PORT_SITE])
 
+    def test_b_does_not_overwrite_r0001_code_at_the_r0004_port_site(self):
+        mem, written = run(MASTER_B, R0001)
+        self.assertNotIn(PORT_SITE_R0004, written)
+        self.assertEqual(mem[PORT_SITE_R0004], R0001[PORT_SITE_R0004])
+
     def test_a_leaves_the_port_alone(self):
         for layout in (R0001, R0004):
             _, written = run(MASTER_A, layout)
             self.assertNotIn(PORT_SITE, written)
+            self.assertNotIn(PORT_SITE_R0004, written)
 
 
 if __name__ == "__main__":

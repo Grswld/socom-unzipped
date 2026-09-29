@@ -23,7 +23,13 @@ patch=1,EE,202CF330,extended,03E00008
 patch=1,EE,202CF334,extended,00000000
 
 // second client on the same host: base UDP port 3658 -> 3660 (li a0,0xE4A at 0x620678 in FUN_00620648, r0001).
-// Guarded on li a0,0xE4A (24040E4A): r0004 holds other code there (9223F8E8), so on r0004 B keeps port 3658.
+// Guarded on li a0,0xE4A (24040E4A): r0004 holds other code there (9223F8E8).
 patch=1,EE,E0022404,extended,0062067A
 patch=1,EE,E0010E4A,extended,00620678
 patch=1,EE,20620678,extended,24040E4C
+
+// r0004: the same li a0,0xE4A at 0x627F68 (the function relinked to 0x627F38; r0001 holds 27BDFEE0 there), so A
+// and B do not both sit on 3658 when both boot r0004.
+patch=1,EE,E0022404,extended,00627F6A
+patch=1,EE,E0010E4A,extended,00627F68
+patch=1,EE,20627F68,extended,24040E4C

@@ -1194,13 +1194,14 @@ task needs it.
 
 **The PCSX2 patch masters are conditional (issue #112, since the commit that added
 `tools_py/tests/test_pcsx2_masters.py`).** `scripts/parity/pcsx2/0F6FC6CF.pnach` (instance A) and
-`0F6FC6CF.clientB.pnach` (instance B, which has no `cheats/`, so this is its only bypass) are copied by hand into
+`0F6FC6CF.clientB.pnach` (instance B, whose `cheats/` is empty, so this is its only bypass) are copied by hand into
 `tools/pcsx2/patches/` and `tools/pcsx2_b/patches/`. Each writes the DNAS bypass (`jr ra; nop`) only behind a pnach `E`
 guard on `dnasCheck`'s first word, `27BDFFC0`: at `0x2CC670` on the r0001 layout and at `0x2CF330` on r0004 -- the word
-Harry62's PSRewired cheat tests (`tools/pcsx2/cheats/0F6FC6CF.pnach` lines 4-19); B's port shift at `0x620678` (3658 ->
-3660) is guarded on the r0001 `li a0,0xE4A`, so on r0004 B keeps 3658. A card holding the r0004 package boots r0004
-after the r0001 disc's loading screen, and both instances' cards hold it (`docs/HAZARDS.md` harness); the masters are
-now safe on either image, but which image ran is the card's choice, not the pnach's. The test models PCSX2's `E` and
+Harry62's PSRewired cheat tests (`tools/pcsx2/cheats/0F6FC6CF.pnach` lines 4-19); B's port shift (3658 -> 3660) is
+guarded on `li a0,0xE4A` at each image's own site, `0x620678` on r0001 and `0x627F68` on r0004, so B leaves 3658 to A
+on either image. A card holding the r0004 package boots r0004 after the r0001 disc's loading screen, and both
+instances' cards hold it (`docs/HAZARDS.md` harness); the masters are now safe on either image, but which image ran is
+the card's choice, not the pnach's. The test models PCSX2's `E` and
 32-bit write codes over the words both images hold at those addresses and refuses an unguarded `0x2CC670` write.
 
 ## The loop lock
