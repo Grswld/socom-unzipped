@@ -165,3 +165,41 @@ maps with a reflection pass. Unit tests 1,073 pass. Of the e2e, 19 pass and 5 fa
 `weapon` and `walk`'s "camera at spawn A in the PS2 presentation" -- all at `setMode('walk')` returning false, and the four
 tried (`hud`, `walk:186`, `grenade`, `weapon`) fail identically on the integration merge `8e1af4c5` without this round's
 commits; walk mode is not this workstream's.
+
+## 5. Round 3
+
+- **The SEAL is lit as the VU lights it** (`4ed5d9e2`). Per vertex, every frame, on the GPU, from the posed (skinned)
+  normal (`rigShading.ts`); the colour lane is the material alone. Data quadword 338 -- the character's colour the EE
+  uploads -- is (128,128,128,128) in all 26 skinning dumps of `logs/vu1dump3`: research 78's unity placeholder, now
+  read. Against the recompiled game at Frostfire spawn A (crouched, the console camera), five body regions: the back
+  (19,18,20) -> (26,25,28) against the console's (27,26,29), the lower back (10,10,11) -> (19,18,20) against (19,17,20),
+  the head, both arms within 1-2 of the console. The fog and the brighten take the world's path (they did already).
+  Whether the SEAL takes the light command at all (`FUN_003b6d10` on the actor's node) is the one reading left; the
+  numbers say it does.
+- **The characters' shadow is a render-to-texture pass, not a blob.** The world init makes 256x256 targets named
+  `ShadowX_%d` (the string at 0x3f6e78, `FUN_003553a0`), reCOM's `CPipe::RenderWorld` renders `m_shadows` render maps
+  before the world, and the whole of `logs/vu1dump3`'s fourth family (`70 06 08 40 42`, `52 66 08 40 42`: the skinned
+  and scaled models drawn as `0x40`'s untextured black triangles, research 15 §3) is that pass. The viewer draws none;
+  the projection of the targets onto the ground (`ShadowVector`, `ShadowWeight` on the world root) is still to read.
+  **Open.**
+- **The 142 deck's east corner is the engine's own hole** (`501b73d1`, research 90 #2). The deck and a box top under
+  its corner are one node's `di`; SOCOM II's AddDI appends (`FUN_00313d60`), so the file's order is the surface order
+  and the probe's first hit is the box top at 112 -- where reCOM's SOCOM I transcription prepends and would find the
+  deck. The viewer matches the engine; a PCSX2 walk into the corner is the one check left.
+- **First-sight hitches** (`ab14e47a`, research 90 #3). Every program and upload is made after the reveal
+  (`ViewerRenderer.warm`); the turn and walk spikes are gone on Desert Glory, Crossroads, Blood Lake and Frostfire. Left:
+  117-267 ms at entering walk (the HUD and reticle scenes' first draw) and a 0.9-3.3 s frame at the first key on Desert
+  Glory (`audio.ts`'s unlock).
+- **The water pass's 20 % on the Seeding Chaos stream** -- **open**. Removing the pass leaves the stream's R at the
+  console's and G/B low; with it, all three are 10-20 % high, as if the pass were about twice as strong as the console's.
+  Its alpha is `(1 + a) * vertex alpha * rim`, 66 x 100/128 = 51 at the most, the dump's own range (research 15 §6.4's
+  upper-wins reading; lower-wins would give 65, 1.5 % less), so the excess is more likely the base water pass or the bed
+  under it than this one.
+- **The untextured palette entries** (kind word 2: truck bodies, chrome, lockers) -- **open**. The env gate is the
+  runtime record's `+0x14 == 2` (`FUN_003b6a00`), and a record with no texture falls back to `DAT_004b4d90`
+  (`FUN_003b5b90`); the disc's `dat[5]` is 2 on exactly these entries and 0 on the textured ones that the one live
+  block shows drawing -- so either both kinds get the pass (the untextured with the default texture) or `+0x14` is not
+  `dat[5]`. The palette-to-record copy is the function to read next.
+- **Vigilance's grass** -- no multiplayer savestate with a camera exists, so it stays a pose question; the play mode
+  at the measured spawn A reproduces the SEAL and the house but not the console's framing within a few units.
+
