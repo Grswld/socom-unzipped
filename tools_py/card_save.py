@@ -12,8 +12,11 @@ none, is the game's own AcctInfo.rdr, and ps2xTest/fixtures/cards/created.bin is
 
   python -m tools_py.card_save --dump <file>      the personas as JSON
   python -m tools_py.card_save --keys <file>      the archive's keys
+  python -m tools_py.card_save --check-host <file> <server>   exit 0 when the FIRST persona (the one the login form
+                                                  shows) is for <server> (a name is resolved, a :port dropped), 1 not
 """
 import json
+import socket
 import struct
 import sys
 
@@ -261,7 +264,33 @@ def _read(path):
         return f.read()
 
 
+def check_host(personas, server):
+    """(ok, sentence): whether the first record's HOST is the address `server` resolves to. The game keeps personas
+    per server by HOST (KNOWN section 1), so a card made for another server logs in with an empty form -- the
+    persona proof of 2026-09-29 (#111) did exactly that: HOST 67.222.156.250, the run aimed at 3.143.65.100."""
+    host = server.rsplit(':', 1)[0] if server.count(':') == 1 else server
+    if not personas:
+        return False, 'no persona on the card; the form will ask for a new one'
+    dotted = host.split('.')
+    try:
+        if len(dotted) == 4 and all(p.isdigit() and int(p) < 256 for p in dotted):
+            address = host                                  # a dotted address as is, as the launcher's lookupIPv4
+        else:
+            address = socket.gethostbyname(host)
+    except (OSError, KeyError) as e:
+        return False, 'the server %s does not resolve (%s)' % (host, e)
+    first = personas[0]
+    if first['host'] == address:
+        return True, 'the first persona %s is for %s (%s)' % (first['name'], address, server)
+    return False, ('the first persona %s is for %s, but %s is %s: the game keeps personas per server and will show '
+                   'an empty form' % (first['name'], first['host'], server, address))
+
+
 def main(argv):
+    if len(argv) == 4 and argv[1] == '--check-host':
+        ok, sentence = check_host(read_card_file(_read(argv[2])), argv[3])
+        print(sentence)
+        return 0 if ok else 1
     if len(argv) == 3 and argv[1] == '--dump':
         print(json.dumps(read_card_file(_read(argv[2])), indent=2))
         return 0
