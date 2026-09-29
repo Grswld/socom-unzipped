@@ -1,8 +1,8 @@
 import type { Camera, Material, Object3D } from 'three';
-import { Color, Group, InstancedMesh, LinearSRGBColorSpace, LineSegments, Mesh, NearestFilter, RenderTarget, Scene, SkinnedMesh } from 'three';
-import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { BufferGeometry, Color, Float32BufferAttribute, Group, InstancedMesh, LinearSRGBColorSpace, LineSegments, Mesh, NearestFilter, OrthographicCamera, RenderTarget, Scene, SkinnedMesh } from 'three';
+import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
 import { CompileQueue, firstOfEachKind } from './compileQueue';
-import { texture as textureNode, uv, vec4 } from 'three/tsl';
+import { positionGeometry, texture as textureNode, uv, vec4 } from 'three/tsl';
 
 /** Which GPU API the pictures actually came out of, for the status line and the screenshot record. */
 export type Backend = 'webgpu' | 'webgl2';
@@ -139,7 +139,23 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
   copy.colorNode = vec4(textureNode(frame.texture, uv()).rgb, 1);   // opaque: the page must never show through
   copy.depthTest = false;
   copy.depthWrite = false;
-  const blit = new QuadMesh(copy);
+  copy.fog = false;
+  copy.vertexNode = vec4(positionGeometry.xy, 0, 1);   // clip space as given: the camera is not asked
+  // The copy is an ordinary mesh, not three's `QuadMesh`. A `QuadMesh` is a fullscreen pass, which three's WebGPU
+  // backend draws with no multisampling straight into the canvas texture; the reticle and the HUD then draw over it with
+  // `autoClear` off in a multisampled pass that loads the canvas's multisample buffer -- which never held the copy --
+  // and resolves over it, so the world went black under the HUD in walk mode (owner, 2026-09-29; WebGL2's implicit
+  // multisampled framebuffer hid it). As a mesh the copy goes through the same multisampled pass as the overlays. The
+  // triangle and its coordinates are `QuadMesh`'s own (one triangle over the frame, the target's rows top-down), and a
+  // quad's only edges are the frame's, so the picture is the same texel for texel.
+  const copyGeometry = new BufferGeometry();
+  copyGeometry.setAttribute('position', new Float32BufferAttribute([-1, 3, 0, -1, -1, 0, 3, -1, 0], 3));
+  copyGeometry.setAttribute('uv', new Float32BufferAttribute([0, -1, 0, 1, 2, 1], 2));
+  const blitMesh = new Mesh(copyGeometry, copy);
+  blitMesh.frustumCulled = false;
+  const blitScene = new Scene();
+  blitScene.add(blitMesh);
+  const blitCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   // `prepare`'s queue (`./compileQueue`), and where it parks what is not yet in a scene.
   const scratch = new Group();
   const queue = new CompileQueue(PREPARE_LANES);
@@ -176,7 +192,7 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
       renderer.setRenderTarget(frame);
       renderer.render(scene, camera);
       renderer.setRenderTarget(previous);
-      blit.render(renderer);
+      renderer.render(blitScene, blitCamera);
     },
     resize: (width, height) => { cssWidth = width; cssHeight = height; apply(); },
     setPixelRatio: (r) => {
