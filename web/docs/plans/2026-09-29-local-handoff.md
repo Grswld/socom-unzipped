@@ -51,30 +51,42 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
   2a491b07, research 86 §6.3; now in `mover.ts`).
 - Mouse sensitivity goes down to 0.05.
 
-## 4. Workstreams in flight at this writing
+## 4. Rounds since the first rewrite (all merged here, 2026-09-29 afternoon)
 
-| Workstream | Tree | Doing |
-|---|---|---|
-| grenades | `wt-web-grenades` | the scorch takes the wall's colour (like the marks); research 85's stale keys; `kit.ts` comments |
-| multiplayer | `wt-web-mp` (`agent/web-mp`) | `web/deploy/env.example` (missing); replicate only an accepted swap; remote swap hand-off mid-clip; remote stance/scope/jump check |
-| feelqa | `wt-web-feelqa` | release-readiness play test on every map, both presentations, both backends; ranked table in research 90 |
+- **Multiplayer holes** (`wt-web-mp`): `web/deploy/env.example` (placeholders only; its allow line is on sprint-17
+  7a176e35), only an accepted swap is replicated, remote players hand the weapon off mid-clip.
+- **Effects:** marks, footprints and the scorch clipped to the world triangles under them, shaded per vertex
+  (`markClip.ts`, 6055a75e); the pool counts triangles as the game's does (`TEMP_DECAL_TRIANGLES` = 150, so ~30 marks
+  stay up -- kept for fidelity); marks framed along the hit surface's normal, not the round (75495a54 -- slanted big
+  walls were dropped whole; research 89 section 15).
+- **Traversal:** prone in water over 2 deep is the game's crouch (over 8.5: stand), applied before any clip starts
+  -- the release sweep's "prone refused + creep" on MP62/64/71 (research 86 section 6.4).
+- **Audio:** HUDUI loaded with every map (the goggle sounds), emitter offsets, Death Trap's default material, the
+  context made at page start (unlock ~0.1 ms).
+- **Maps:** the WebGL2 walk-entry stall (167-208 ms) fixed by a rehearsal draw before the walk (now 9-42 ms); the
+  blast's shadow-pass link and the late arc/scorch warm-ups fixed (blast worst 42-58 ms WebGL2, 8-17 ms WebGPU).
+- **Motion:** the touch C button takes the C rule (it is hidden while walking; Triangle keeps the pad's rule);
+  per-test timeouts for load-bound vitest; `shot.ts` deleted.
 
-Idle, merged: motion, weapon, audio, ui, maps, look, accuracy, hud, traversal, effects.
+Release checks in the 13:10-14:05Z window: e2e 50/53 (the audio spec's bank list fixed after; the muzzle flash
+flaked and passed; the mark-colour spec failed -> the 75495a54 fix, e2e owed); the release sweep clean on the 7
+remaining WebGL2 maps (MP71 "no mark" -> the same fix) and on MP2/MP62/MP9/MP10 x both looks on WebGPU (scope sides
+black, key 3, no pistol zoom, no first person, stance, audio, blasts).
+
+In flight: **grenades** -- the scorch framed along the ground's normal on slopes (it still projects straight down).
 
 Merge recipe: in `wt-web-play`, `git merge --no-ff --no-edit <branch>`; union where both add, one path per effect
 where both implement the same thing; `npm install` if a package appears; typecheck + vitest + e2e (host rule); commit
-with explicit paths, the co-author trailer.
+with explicit paths, the co-author trailer. The browser runs happen only in a window the main-tree controller names.
 
 ## 5. Open issues
 
-1. The leak check: 33649f95 (sprint 3) names the deploy settings file in 19 lines; the reviewed allow lines are 82c63b42 here,
-   and the main-tree controller adds the same on sprint-17 (CI reads its copy).
-2. Marks are not clipped to their polygon (they hang past stair edges); one shade per mark where the game shades
-   per vertex.
-3. The touch C button still cycles stand → crouch → prone; the pad's Triangle from prone stands (C crouches).
-4. Sprint 3 deferred: WebRTC, delta snapshots, per-map kits, the claymore online, the radio menu's look, spectator
+1. Owed browser checks: `effects.spec.ts` "the marks take the colour of the wall they are on", the MP71 sweep, and
+   the grenade scorch once it lands; then a full e2e before the owner's push.
+2. The pad's Triangle from prone stands (the game's pad rule); C and touch C crouch (the owner's PC rule).
+3. Sprint 3 deferred: WebRTC, delta snapshots, per-map kits, the claymore online, the radio menu's look, spectator
    views; ~20 `_PLACEHOLDER` constants in the net code.
-5. The feel-QA ranked table (research 90) sets the next round.
+4. Grenade stand-in sprites (maps with no game explosion effect) make materials per blast, so they cannot be warmed.
 
 ## 6. Decisions waiting on the owner
 
