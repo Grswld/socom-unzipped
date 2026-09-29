@@ -44,6 +44,7 @@ import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import { gameAudio } from './audio';
 import { soundFor } from '@s2u/sound';
 import { Effects } from './effects';
+import { surfaceShade } from './surfaceShade';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
@@ -1109,6 +1110,10 @@ function show(map: LoadedMap): void {
   grenade.setMap(built.grenades, map.grenade);
   throwPose.stop();     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
+  // EFFECTS (research 89 §5, the mark's colour): a mark and a footprint take the drawn world's colour under them.
+  const shade = surfaceShade(built.group);
+  fire.setShade(shade);
+  effects.setShade(shade);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
   fly.setClipPlanes(map.camera?.nearPlane ?? 4, Math.max(2000, view.box.min.distanceTo(view.box.max) * 1.6));

@@ -47,14 +47,17 @@ export function effectMaterial(texture: EffectTexture | null, options: { cull?: 
 }
 
 /**
- * A bullet mark's material (`./fire`'s marks, research 89 §5): the bitmap as it is -- the mark carries no vertex colour
- * -- brightened with the frame, blended by its bind packet (source alpha on all six `bullet_mark_*.tif`), no depth
- * write, pulled toward the camera so it does not fight the wall.
+ * A bullet mark's (and a footprint's) material (`./fire`'s marks, research 89 §5): the GS's `(texel x vertex) >> 7`,
+ * clamped, brightened with the frame -- the vertex colour being the world polygon's own under the mark
+ * (`./surfaceShade`: `FUN_003beca0` unpacks the wall vertices' colour words into the mark's packet), so a mark on a
+ * wall baked at a quarter of unity is a quarter as bright as its bitmap, as the wall is. Drawing the bitmap bare
+ * (texel x 1.0) made every mark two to eight times lighter than the game's. Blended by its bind packet (source alpha
+ * on all six `bullet_mark_*.tif`), no depth write, pulled toward the camera so it does not fight the wall. The mark's
+ * geometry carries the colour as a `color` attribute (unity where none is known).
  */
 export function markMaterial(texture: EffectTexture): MeshBasicNodeMaterial {
   const m = effectMaterial(texture, { fog: true });
-  const t = materialReference('map', 'texture') as unknown as Node<'vec4'>;
-  m.colorNode = vec4(t.rgb.mul(effectBrighten), t.a);
+  m.colorNode = SHADED;
   m.polygonOffset = true;
   m.polygonOffsetFactor = -1;
   m.polygonOffsetUnits = -1;

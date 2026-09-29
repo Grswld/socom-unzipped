@@ -34,6 +34,9 @@ the tree; `npx tsx tools/dump-effects.ts MP2 <animation> [--mission] [--decoded]
   when the material has no row (METAL_GRATE, GRAVEL, WATER, MUD, LEAVES …); square to the round, projected along it onto
   the surface, no turn; 150 kept, oldest recycled; no fade. A polygon whose material byte is 0 takes the map's
   `DefaultMaterial` (Frostfire `METAL_THICK`).
+- **A mark is as dark as the wall under it** (§13). The game draws a mark with the world vertices' own colours: the GS
+  modulates its texel by the wall's baked light. The viewer drew the bitmap bare (texel x 1.0) on walls lit at
+  0.1-0.5 of unity, so its marks were light grey smudges, two to eight times lighter than the game's.
 
 ## 1. The zAnim command set
 
@@ -287,6 +290,7 @@ up without regard to case in every animation set (`FUN_0026a250`). Every gun's `
   to the triangles facing the round.
 - It goes to the temporary pool: `TEMP_DECAL_POOL` base 150, overflow 50, trimmed back to 150 oldest-first each frame
   (`FUN_003bf110`). A set flagged `PERMENANT` (the grenade's blast) goes to the permanent one. No timed fade was found.
+- Its colour is the colour of the world vertices it is clipped to, per vertex (§13).
 
 **The material table** (SOILS index = the polygon's `material` byte, research 81 §4; 0 takes the map's
 `DefaultMaterial` from `READERM.ZAR/<map>.rdr`'s `world_params` -- `FUN_002dc1d0` reads `DAT_0044f310`,
@@ -561,3 +565,89 @@ has no bounds that follow the pose, so every light reaches it.
   holds.
 - A name whose stand-in the map holds is not reported missing. Frostfire, Desert Glory and every map in the audio
   sweep now miss none.
+
+## 13. Round four: the marks' colour (the owner's 2026-09-29 report)
+
+The owner, after playing: the bullet marks show up much lighter and fainter than in the game.
+
+**The cause: the viewer drew a mark's bitmap bare; the game modulates it by the wall's vertex colour.**
+- `FUN_003d0ba0` (decomp 323789) hands the hit node to `FUN_003139e0` (213891). It walks every visual of the node
+  flagged `0x10000` and clips the mark to each through `FUN_003b3950` → `FUN_003b3ab0` (306470).
+- For each world triangle facing the round, `FUN_003b3ab0` keeps its three vertices only if each projects within
+  **4.8 units** of the mark's plane (`fabs(z) <= 4.8`). With each vertex it stores a pointer to the world vertex's own
+  32-bit colour: the vertex walk's `+0x3c` (`FUN_003ba9a0`, 310593: the colour array plus the index times 4).
+- `FUN_003b3800` (306384) takes a pool entry and `FUN_003beca0` (313065) writes the mark's VIF packet. `STCYCL 1,3`,
+  then `UNPACK V4-8` (`0x6e038006 | 0x4000`) of the three colour words: RGBA bytes, 0x80 unity. Then the `GIFtag`
+  (`PRIM` triangle, `TME`, `FGE`, `ABE` from the texture's flag; `REGS` ST, RGBAQ, XYZF2), the positions and uvs, the
+  normal (`V3-16`, `0x6901800e`), and `MSCNT`: the visual's own VU program finishes the draw.
+- So `RGBAQ` for every mark vertex is the wall vertex's baked colour, lit as the wall is lit. The GS modulates:
+  `C = (Ct x Cv) >> 7`, alpha the same product, blended source alpha over (the `bullet_mark_*.tif` bind packets).
+- The same packet draws a footprint (`FUN_005a3280` calls `FUN_003139e0`, decomp 460209) and the grenade's scorch
+  (`FUN_003d0ba0`, the permanent pool).
+
+**What was right.**
+- The texture's alpha: `@s2u/gs` rescales 0..0x80 to 0..255 (`PS2_ALPHA_FULL`). `bullet_mark_stone.tif`'s alpha
+  peaks at 0x52 (163/255): 0.64, as the GS reads it.
+- The blend: source alpha on all six `bullet_mark_*.tif`, read off their bind packets.
+- The depth offset, the fog (`FGE` is set), the frame's brighten (1.0 in multiplayer). No fade: none in the game.
+
+**What was wrong, with numbers.**
+- `markMaterial` drew `texel.rgb x brighten`: no vertex colour. The bitmaps are light grey: stone mean RGB 160, metal
+  183, sand 119, wood 208/197/181.
+- World vertex colours are well under unity, mean luminance per vertex:
+  - Frostfire 0.29, Desert Glory 0.25 (no world vertex is above 128 on any map, `@s2u/mesh`);
+  - measured under the marks: Frostfire's container 0x41 (0.508), Desert Glory's stone wall at spawn A 0x10 (0.126),
+    Bitter Jungle's dirt 0.25 and its wooden stairs 0.29-0.32, Vigilance's cobbles and rock walls 0.13-0.53.
+- A stone mark on Desert Glory's wall drew at grey 160 where the game draws 160 x 0.126 = 20: eight times lighter. On
+  Frostfire's container, twice. Every surface was wrong the same way.
+
+**The fix (one rule, every surface).**
+- `effectMaterials.markMaterial` is the effects' GS graph, `clamp(texel x vertex colour) x brighten`, alpha the same
+  product.
+- Each mark and footprint carries its own four-corner `color` attribute (`fire.markGeometry`, `paintMark`).
+- `surfaceShade.ts` fills it from the drawn world, which holds the game's colour in each draw's `color` attribute
+  (`applyLighting`). A probe runs along the surface normal, `MARK_DEPTH` (4.8, the game's clip depth) either side of
+  the hit, over the visible draws. It takes:
+  - the drawn surface nearest the hit, skipping the blended draws where a solid one is met;
+  - of its coplanar layers, the most opaque. On Vigilance, `ground_grassy.tif` fades out by vertex alpha over
+    `cobble_road.tif`; the game puts a copy of the mark on each visual, so the one that shows is the opaque layer's.
+  - its triangle's colours, interpolated at the hit.
+- `Fire.setShade` and `Effects.setShade` take it (`main.ts`, per map).
+- A mark that lands before its wall is drawn (the props stream in after the map shows) is asked again each frame,
+  four a frame, until the wall is drawn.
+- `FireState.lastShade` reports the colour the last mark took.
+
+**Readings.**
+- One colour for the whole mark stands in for the game's per-vertex colours over the clipped triangles. A mark is
+  0.75-3.4 units across, and a world triangle's colour barely changes over that.
+- The collision hull and the drawn world are separate meshes. The probe's 4.8 units cover the gap between them.
+- The grenade's scorch (`grenade.ts`, the grenades' file) still draws bare. It should take `surfaceShade` the same
+  way.
+- A viewer mark is not clipped to its polygon, so on a stair's edge it hangs past the step. This is separate from the
+  colour, and still open.
+
+**Evidence.**
+- Pictures, in `test-fixtures/screens/effects/` (git-ignored, game data):
+  - `marks-before-*.png`: the tree before the fix;
+  - `marks-after-*.png`: after it;
+  - `marks-pair-*.png`: the two side by side, for Frostfire's metal container, Desert Glory's stone wall, Bitter
+    Jungle's dirt and Bitter Jungle's wooden stairs.
+- Before, every mark is a light grey smudge with a pale rim. After, the holes are dark and the rim is the wall's own
+  tone.
+- No console frame of a mark was found. `logs/parity/s4_pcsx2` is two clients idle in a round (30/30 throughout).
+  The evidence is the packet above.
+
+**Verification.**
+- `viewer/test/markShade.test.ts` pins:
+  - the colour under a point, interpolated;
+  - hidden draws ignored;
+  - the solid base under a blended overlay;
+  - the 4.8-unit reach;
+  - the most opaque coplanar layer;
+  - `markMaterial`'s graph reading the vertex colour, blended source alpha over, with no depth write;
+  - a round's mark painted with the colour under it;
+  - a late wall painted a frame later;
+  - unity without a shade.
+- `e2e/effects.spec.ts` ("the marks take the colour of the wall they are on"): Frostfire's container marks take
+  (0.508, 0.508, 0.523, 1) and Desert Glory's stone marks (0.126, 0.123, 0.110, 1), with their pictures.
+
