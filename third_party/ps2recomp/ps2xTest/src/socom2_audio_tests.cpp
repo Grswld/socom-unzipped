@@ -1960,6 +1960,102 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
+        // Issue #94 (2026-09-29, logs/parity/s17_a1_lobby_ours): the SOCOM Online lobby track played once and the
+        // lobby went silent for eleven minutes. The game starts it with snd_PlayVAGStreamByLoc flags 4 ([0x1303f8,
+        // 0, 0x04000000, 0xffff0000, 1, 0, 0, 4]), and the IRX's play worker (989SND.IRX FUN_0000f7e0) turns
+        // `flags & 4` into the stream's 0x400 "loop the file" bit. At the stream's end the per-tick update
+        // (FUN_0001107c) takes the 0x400 branch into FUN_0001446c, which re-arms the stream at the top of its data
+        // (bytes_remaining = bytes_total, the read offset back to the file's first data sector) and never
+        // deactivates the handler: snd_SoundIsStillPlaying keeps answering the handle and the music keeps going.
+        // Ours dropped the flag word, ended the stream after one pass and answered 0; the game, told its cue was
+        // over, freed the entry and had nothing queued.
+        tc.Run("Mixer: a stream played with the loop-the-file flag goes back to the top of its data at its end and never reports Done", [](TestCase &t)
+        {
+            const std::string path = tmpPath("socom2_audio_loopfile.vpk");
+            t.IsTrue(writeVpk(path, 2, 2), "a loud two-chunk-pair VPK whose last block carries the plain end flag: 10752 frames out");
+            std::vector<snd989::StreamEvent> events;   // outlives the mixer (see the output-frame-clock case)
+            {
+                snd989::Mixer mixer;
+                mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
+                const uint32_t h = 0x8400001Fu;
+                t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u, false, true), "the stream plays, looping the file");
+                std::vector<int16_t> buf(2 * 1200);
+                int32_t lastPassPeak = 0;
+                for (int i = 0; i < 40; ++i)   // 48000 frames: four and a half passes of the file
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 1200);
+                    if (i >= 36)
+                        for (int16_t v : buf)
+                            lastPassPeak = std::max<int32_t>(lastPassPeak, v < 0 ? -v : v);
+                }
+                t.IsTrue(mixer.isPlaying(h), "four passes on, the stream still plays (the IRX keeps the handler active)");
+                t.IsTrue(lastPassPeak > 200, "and is in the mix (peak " + std::to_string(lastPassPeak) + ")");
+                size_t dones = 0;
+                for (const snd989::StreamEvent &e : events)
+                    if (e.handle == h && e.kind == snd989::StreamEvent::Done)
+                        ++dones;
+                t.Equals(dones, static_cast<size_t>(0u), "no Done while it loops");
+                mixer.stop(h);
+            }
+            std::remove(path.c_str());
+        });
+
+        tc.Run("PS2AudioBackend: snd_PlayVAGStreamByLoc flags 4 (the lobby music's request) loops the file and keeps answering snd_SoundIsStillPlaying", [](TestCase &t)
+        {
+            // A one-channel VPK of one 0x800 chunk (3584 samples at 32 kHz = 5376 frames out) whose last block
+            // carries the plain end flag, at sector 2 of a small "disc image".
+            int8_t up[28];
+            for (int i = 0; i < 28; ++i)
+                up[i] = static_cast<int8_t>(i % 8);
+            std::vector<uint8_t> image(2048u * 2u, 0u);
+            std::vector<uint8_t> vpk(0xB0, 0u);
+            auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(vpk.data(), " KPV", 4);
+            put32(4, 0x800u);
+            put32(8, 0x800u);
+            put32(12, 0xB0u);
+            put32(16, 32000u);
+            put32(20, 1u);
+            for (int b = 0; b < 0x800 / 16; ++b)
+            {
+                const std::vector<uint8_t> blk = block(2, 0, b == 0x800 / 16 - 1 ? 0x01 : 0x00, up);
+                vpk.insert(vpk.end(), blk.begin(), blk.end());
+            }
+            image.insert(image.end(), vpk.begin(), vpk.end());
+            const std::string path = tmpPath("socom2_audio_loopfile_image.bin");
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(image.data(), 1, image.size(), fp);
+                std::fclose(fp);
+            }
+            {
+                PS2AudioBackend backend;
+                backend.setDiscImagePath(path);
+                // The IOP module's ten words: {handle, sector1, sector2, off1, vol, off2, pan, group, flags, queued}.
+                const int32_t play[10] = {static_cast<int32_t>(0x8400001Fu), 2, 0, 0, 0x400, 0, -1, 1, 4, 0};
+                backend.onNotify(0x2Cu, play, 10u);
+                std::vector<int16_t> buf(2 * 1200);
+                int32_t lastPeak = 0;
+                for (int i = 0; i < 24; ++i)   // 28800 frames: five passes of the file
+                {
+                    backend.mixerPumpStreams();
+                    backend.mixerRender(buf.data(), 1200);
+                    if (i >= 20)
+                        for (int16_t v : buf)
+                            lastPeak = std::max<int32_t>(lastPeak, v < 0 ? -v : v);
+                }
+                bool playing = false;
+                t.IsTrue(backend.isPlaying(0x8400001Fu, playing) && playing,
+                         "five passes on, snd_SoundIsStillPlaying still answers the handle (the IRX's 0x400 branch)");
+                t.IsTrue(lastPeak > 0, "and the file is still in the mix (peak " + std::to_string(lastPeak) + ")");
+                const int32_t stop[1] = {static_cast<int32_t>(0x8400001Fu)};
+                backend.onNotify(0x2Fu, stop, 1u);
+                t.IsTrue(backend.isPlaying(0x8400001Fu, playing) && !playing, "an explicit stop still ends a looping stream");
+            }
+            std::remove(path.c_str());
+        });
+
         tc.Run("Mixer: a VAGp file (the mission voice-overs: 48-byte big-endian header, mono 22050 Hz) streams too", [](TestCase &t)
         {
             int8_t up[28];

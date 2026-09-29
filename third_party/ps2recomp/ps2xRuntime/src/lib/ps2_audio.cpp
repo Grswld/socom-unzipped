@@ -662,9 +662,14 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
             // waits for the one in the air and starts on the frame after its last sample; without it a play on a
             // live handle replaces what is there, which is the cue being cut dead.
             const bool queued = count >= 10 && arg(9) != 0;
-            const bool ok = m_mixer.playStream(static_cast<uint32_t>(arg(0)), m_discImagePath, offset, arg(4), arg(6), static_cast<uint8_t>(arg(7)), queued);
+            // Issue #94: the ninth word is the play's flags, and flag 4 is the IRX's 0x400 "loop the file"
+            // (989SND.IRX FUN_0000f7e0: `if (param_10 & 4) *stream |= 0x400`). The SOCOM Online lobby track asks
+            // for it; dropped, the track played once and the lobby was silent from then on.
+            const bool loopFile = (static_cast<uint32_t>(arg(8)) & 4u) != 0u;
+            const bool ok = m_mixer.playStream(static_cast<uint32_t>(arg(0)), m_discImagePath, offset, arg(4), arg(6), static_cast<uint8_t>(arg(7)), queued,
+                                               loopFile);
             std::cout << "[audio] 989snd stream " << std::hex << static_cast<uint32_t>(arg(0)) << " sector " << static_cast<uint32_t>(arg(1))
-                      << std::dec << "+" << static_cast<uint32_t>(arg(3)) << (queued ? " queued" : "") << (ok ? " playing" : " not a VPK or VAGp") << std::endl;
+                      << std::dec << "+" << static_cast<uint32_t>(arg(3)) << (queued ? " queued" : "") << (loopFile ? " looping" : "") << (ok ? " playing" : " not a VPK or VAGp") << std::endl;
         }
         break;
     case 0x2Du: m_mixer.pause(static_cast<uint32_t>(arg(0))); break;
