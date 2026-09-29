@@ -110,53 +110,57 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
     setPresentation: (m) => { if (m !== mode) { mode = m; apply(); } },
     presentation: () => mode,
     warm: async (scene, camera, extras = []) => {
-      const previous = renderer.getRenderTarget();
-      if (mode === 'ps2') renderer.setRenderTarget(frame);
+      // The PS2 frame's target is set only for the call's synchronous part, where the renderer takes its list and its
+      // render context: held across the awaits, the frames drawn meanwhile rendered into the target they then read
+      // (a WebGL feedback loop, research 90 item 19's warm-ups made it show).
+      const compile = (target: Object3D): Promise<void> => {
+        const previous = renderer.getRenderTarget();
+        if (mode === 'ps2') renderer.setRenderTarget(frame);
+        try { return renderer.compileAsync(target, camera); } finally { renderer.setRenderTarget(previous); }
+      };
+      // What is shown: the scene itself, with the frustum test off for the call -- the picture is the same, every
+      // shown object is compiled whichever way the camera faces. The live objects, not stand-ins: a program is
+      // specific to more than the material and the geometry (stand-ins left the jungle's trees to compile later).
+      const culled: { object: Object3D; culled: boolean }[] = [];
+      scene.traverseVisible((o) => { culled.push({ object: o, culled: o.frustumCulled }); o.frustumCulled = false; });
+      let shownCompiled: Promise<void>;
       try {
-        // What is shown: the scene itself, with the frustum test off for the call -- the picture is the same, every
-        // shown object is compiled whichever way the camera faces. The live objects, not stand-ins: a program is
-        // specific to more than the material and the geometry (stand-ins left the jungle's trees to compile later).
-        const culled: { object: Object3D; culled: boolean }[] = [];
-        scene.traverseVisible((o) => { culled.push({ object: o, culled: o.frustumCulled }); o.frustumCulled = false; });
-        try {
-          await renderer.compileAsync(scene, camera);
-        } finally {
-          for (const { object, culled: c } of culled) object.frustumCulled = c;
-        }
-        // What is hidden -- a LOD copy out of range, the SEAL in fly mode, a pass switched off, the fading twins
-        // (`extras`) -- through stand-ins in a scene of their own, so nothing hidden is ever drawn while this runs.
-        const proxies = new Scene();
-        proxies.fog = scene.fog;
-        proxies.fogNode = scene.fogNode;
-        const shown = new Set<Object3D>();
-        scene.traverseVisible((o) => shown.add(o));
-        const add = (o: Object3D): void => {
-          if (shown.has(o)) return;
-          let proxy: Object3D | null = null;
-          if (o instanceof SkinnedMesh) {
-            const m = new SkinnedMesh(o.geometry, o.material);
-            m.bind(o.skeleton, o.bindMatrix);
-            proxy = m;
-          } else if (o instanceof InstancedMesh) {
-            const m = new InstancedMesh(o.geometry, o.material, o.count);
-            m.instanceMatrix = o.instanceMatrix;
-            proxy = m;
-          } else if (o instanceof Mesh) proxy = new Mesh(o.geometry, o.material);
-          else if (o instanceof LineSegments) proxy = new LineSegments(o.geometry, o.material);
-          if (!proxy) return;
-          o.updateWorldMatrix(true, false);
-          proxy.matrixAutoUpdate = false;
-          proxy.matrix.copy(o.matrixWorld);
-          proxy.matrixWorld.copy(o.matrixWorld);
-          proxy.frustumCulled = false;
-          proxies.add(proxy);
-        };
-        scene.traverse(add);
-        for (const e of extras) e.traverse(add);
-        await renderer.compileAsync(proxies, camera);
+        shownCompiled = compile(scene);
       } finally {
-        renderer.setRenderTarget(previous);
+        for (const { object, culled: c } of culled) object.frustumCulled = c;   // the list is taken
       }
+      await shownCompiled;
+      // What is hidden -- a LOD copy out of range, the SEAL in fly mode, a pass switched off, the fading twins
+      // (`extras`) -- through stand-ins in a scene of their own, so nothing hidden is ever drawn while this runs.
+      const proxies = new Scene();
+      proxies.fog = scene.fog;
+      proxies.fogNode = scene.fogNode;
+      const shown = new Set<Object3D>();
+      scene.traverseVisible((o) => shown.add(o));
+      const add = (o: Object3D): void => {
+        if (shown.has(o)) return;
+        let proxy: Object3D | null = null;
+        if (o instanceof SkinnedMesh) {
+          const m = new SkinnedMesh(o.geometry, o.material);
+          m.bind(o.skeleton, o.bindMatrix);
+          proxy = m;
+        } else if (o instanceof InstancedMesh) {
+          const m = new InstancedMesh(o.geometry, o.material, o.count);
+          m.instanceMatrix = o.instanceMatrix;
+          proxy = m;
+        } else if (o instanceof Mesh) proxy = new Mesh(o.geometry, o.material);
+        else if (o instanceof LineSegments) proxy = new LineSegments(o.geometry, o.material);
+        if (!proxy) return;
+        o.updateWorldMatrix(true, false);
+        proxy.matrixAutoUpdate = false;
+        proxy.matrix.copy(o.matrixWorld);
+        proxy.matrixWorld.copy(o.matrixWorld);
+        proxy.frustumCulled = false;
+        proxies.add(proxy);
+      };
+      scene.traverse(add);
+      for (const e of extras) e.traverse(add);
+      await compile(proxies);
     },
     setClearColor: ([r, g, b]) => {
       // setRGB on the working space, not setHex: FOGCOL is a raw register value and must not be decoded.
