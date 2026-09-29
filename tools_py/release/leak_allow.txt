@@ -115,3 +115,4 @@ key-file-name  web/deploy/deploy.sh               .env   # copies, chmods and gr
 key-file-name  web/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages
 key-file-name  web/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
 key-file-name  web/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
+key-file-name  web/deploy/env.example             .env   # the template's header: copy it to .env, never commit that (39e4d689; placeholders only)
