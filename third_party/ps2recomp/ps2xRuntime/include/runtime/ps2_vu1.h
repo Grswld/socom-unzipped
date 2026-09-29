@@ -334,10 +334,12 @@ private:
     void fastCommit();
     // fastCommit with the flag ring's drain fixed (ps2_vu1_core.cpp, its invariants block): Batch =
     // false lands entry by entry (the old path), true folds the ready run in locals and writes the
-    // state, head and count once. fastCommit picks one by PS2X_VU1_COMMIT_BATCH (read once).
+    // state, head and count once. fastCommit picks one by PS2X_VU1_COMMIT_BATCH (read once), which
+    // run() passes to setFastCommitBatch: one process-wide choice, for VU0's fast path as well.
     template <bool Batch>
     void fastCommitWith();
     static bool fastCommitBatchKnob();
+    static void setFastCommitBatch(bool on);
     void fastFlush();
     __attribute__((always_inline)) uint64_t fastReadyCycle(const DecodedInstructionPair &decoded) const;
     void fastPushOverflow();

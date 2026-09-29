@@ -276,6 +276,25 @@ struct Vu1FlagRingProbe
     static void commit(VU &vu) { vu.fastCommitWith<Batch>(); }
     static void commitKnob(VU &vu) { vu.fastCommit(); }
     static bool knob() { return VU::fastCommitBatchKnob(); }
+    static void setBatch(bool on) { VU::setFastCommitBatch(on); }   // what run() does with the knob
+
+    // Every field of every slot, valid or not: the two drains differ here by design (the old one
+    // zeroes a landed slot, the one-step one clears only its valid bit), which is what tells which
+    // drain fastCommit dispatched to.
+    static std::string rawDiff(const VU &a, const VU &b)
+    {
+        for (uint32_t slot = 0; slot < VU::kMaxFlagEntries; ++slot)
+        {
+            const Entry &x = a.m_flagPipeline[slot];
+            const Entry &y = b.m_flagPipeline[slot];
+            if (x.valid != y.valid || x.readyCycle != y.readyCycle || x.issueCycle != y.issueCycle ||
+                x.issuePc != y.issuePc || x.mac != y.mac || x.status != y.status || x.extraSticky != y.extraSticky ||
+                x.clip != y.clip || x.writesMac != y.writesMac || x.writesStatus != y.writesStatus ||
+                x.writesSticky != y.writesSticky || x.writesClip != y.writesClip)
+                return " slot " + std::to_string(slot) + " raw contents";
+        }
+        return {};
+    }
     static bool pending(const VU &vu) { return vu.pipelinesPending(); }
     static uint32_t status(const VU &vu) { return vu.m_state.status; }
     static uint32_t mac(const VU &vu) { return vu.m_state.mac; }
@@ -658,7 +677,7 @@ void register_vu1_ops_tests()
             t.IsTrue(r.failed == 0u, r.report());
         });
 
-        tc.Run("flag ring: PS2X_VU1_COMMIT_BATCH is a Dev Flag, default 0; unset, fastCommit drains per entry", [](TestCase &t)
+        tc.Run("flag ring: PS2X_VU1_COMMIT_BATCH is a Dev Flag, default 0; fastCommit runs the drain the bool run() sets selects", [](TestCase &t)
         {
             const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_COMMIT_BATCH");
             t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
@@ -666,20 +685,61 @@ void register_vu1_ops_tests()
                      "a Dev Flag, default 0 (R334: the A/B knob defaults to today's behaviour)");
             if (ps2x::knob("PS2X_VU1_COMMIT_BATCH") == nullptr)
                 t.IsFalse(P::knob(), "unset: the per-entry drain");
-            // fastCommit, whichever drain the knob picked, agrees with the per-entry one.
-            auto viaKnob = P::make();
-            auto perEntry = P::make();
-            for (uint32_t i = 0; i < 20u; ++i)
+            // The dispatch: with the bool set as run() sets it, the public fastCommit must run that
+            // drain -- the same visible state as the drain run directly after every step, AND the same
+            // raw slot contents, which differ between the two drains (so the wrong one is caught).
+            for (const bool batch : {false, true})
             {
-                P::pushMac(*viaKnob, i, i & 0xFu, 1u, i * 8u);
-                P::pushMac(*perEntry, i, i & 0xFu, 1u, i * 8u);
-                P::advance(*viaKnob, 1u);
-                P::advance(*perEntry, 1u);
-                P::commitKnob(*viaKnob);
-                P::commit<false>(*perEntry);
+                P::setBatch(batch);
+                auto viaFastCommit = P::make();
+                auto direct = P::make();
+                Lcg g{0xC2D15Au + batch};
+                uint32_t steps = 0, visible = 0, raw = 0, commits = 0;
+                std::string first;
+                for (uint32_t i = 0; i < 2000u; ++i)
+                {
+                    const uint32_t roll = g.below(10u);
+                    const uint32_t a = g.next();
+                    if (roll < 5u && P::count(*direct) < 64u)
+                    {
+                        P::pushMac(*viaFastCommit, a & 0xFFFFu, a & 0xFu, (a >> 8) & 0x3Fu, (a >> 16) & 0x3FF8u);
+                        P::pushMac(*direct, a & 0xFFFFu, a & 0xFu, (a >> 8) & 0x3Fu, (a >> 16) & 0x3FF8u);
+                    }
+                    else if (roll < 6u && P::count(*direct) < 64u)
+                    {
+                        P::fsset(*viaFastCommit, static_cast<uint16_t>(a & 0xFFFu));
+                        P::fsset(*direct, static_cast<uint16_t>(a & 0xFFFu));
+                    }
+                    else if (roll < 8u)
+                    {
+                        P::advance(*viaFastCommit, a & 0x3u);
+                        P::advance(*direct, a & 0x3u);
+                    }
+                    else
+                    {
+                        ++commits;
+                        P::commitKnob(*viaFastCommit);
+                        if (batch)
+                            P::commit<true>(*direct);
+                        else
+                            P::commit<false>(*direct);
+                    }
+                    ++steps;
+                    const std::string why = P::diff(*direct, *viaFastCommit);
+                    const std::string rawWhy = P::rawDiff(*direct, *viaFastCommit);
+                    visible += why.empty() ? 0u : 1u;
+                    raw += rawWhy.empty() ? 0u : 1u;
+                    if ((!why.empty() || !rawWhy.empty()) && first.empty())
+                        first = "step " + std::to_string(steps) + ":" + why + rawWhy;
+                }
+                const std::string name = batch ? "set 1: fastCommit against the one-step drain"
+                                               : "set 0: fastCommit against the per-entry drain";
+                t.IsTrue(commits > 100u, name + ", commits " + std::to_string(commits));
+                t.IsTrue(visible == 0u && raw == 0u, name + ": " + std::to_string(visible) + " visible and " +
+                                                         std::to_string(raw) + " raw differences of " +
+                                                         std::to_string(steps) + " steps; first " + first);
             }
-            const std::string why = P::diff(*perEntry, *viaKnob);
-            t.IsTrue(why.empty(), "fastCommit against the per-entry drain:" + why);
+            P::setBatch(P::knob());   // back to what run() would set
         });
     });
 }

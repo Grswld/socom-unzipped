@@ -1936,6 +1936,9 @@ void VU1Interpreter::continueProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t
 //   !valid) should m_fast change between programs. No reader looks at any other field of a !valid
 //   slot, and every push writes all of an entry's fields, so a drain need only clear `valid` --
 //   but it must clear it: a stale valid bit is a phantom entry to all three readers.
+// Scope: the ring and fastCommit are the unit's, VU1's and VU0's alike (VU0 micro programs take the
+// same fast path through run(), PS2X_VU0_FAST); PS2X_VU1_COMMIT_BATCH is one process-wide choice,
+// so it selects the drain of both units.
 template <bool Batch>
 void VU1Interpreter::fastCommitWith()
 {
@@ -2041,8 +2044,9 @@ void VU1Interpreter::fastCommitWith()
 template void VU1Interpreter::fastCommitWith<false>();
 template void VU1Interpreter::fastCommitWith<true>();
 
-// PS2X_VU1_COMMIT_BATCH (Dev Flag, default 0 = the per-entry drain, R334), read once; run() copies
-// it into s_vu1CommitBatch so fastCommit reads a plain bool.
+// PS2X_VU1_COMMIT_BATCH (Dev Flag, default 0 = the per-entry drain, R334), read once; run() passes
+// it to setFastCommitBatch so fastCommit reads a plain bool. The bool is process-wide: VU0 micro
+// programs run the same fast path through run(), so the knob selects their drain too.
 bool VU1Interpreter::fastCommitBatchKnob()
 {
     static const bool s_on = ps2x::knobOn("PS2X_VU1_COMMIT_BATCH");
@@ -2052,6 +2056,11 @@ bool VU1Interpreter::fastCommitBatchKnob()
 namespace
 {
     bool s_vu1CommitBatch = false;
+}
+
+void VU1Interpreter::setFastCommitBatch(bool on)
+{
+    s_vu1CommitBatch = on;
 }
 
 void VU1Interpreter::fastCommit()
@@ -2564,8 +2573,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // the cycle-exact scheduler (they were ~4.5% of the game thread on it, STATUS 2026-09-09).
     static const bool s_vu0FastEnv = ps2x::knob("PS2X_VU0_FAST") == nullptr || std::atoi(ps2x::knob("PS2X_VU0_FAST")) != 0;
     m_fast = s_fastEnv && (m_unit == Unit::VU1 || s_vu0FastEnv) && !traceThis;
-    // S17 F C2: which flag-ring drain fastCommit runs (the knob is read once, on the first run).
-    s_vu1CommitBatch = fastCommitBatchKnob();
+    // S17 F C2: which flag-ring drain fastCommit runs, VU1 and VU0 alike (the knob is read once).
+    setFastCommitBatch(fastCommitBatchKnob());
     static const bool s_genEnv = ps2x::knob("PS2X_VU1_GEN") == nullptr || std::atoi(ps2x::knob("PS2X_VU1_GEN")) != 0;
     // Hand-written native programs (src/lib/vu/native) replace a microprogram entry point on
     // both the fast and the cycle-exact path: what they produce does not depend on how the

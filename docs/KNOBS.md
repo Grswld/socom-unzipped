@@ -160,7 +160,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_VIF1_NO_IRQ_STALL` | Flag | `0` | Restore VIF1 without the i-bit stall (A/B). |
 | `PS2X_VU0_FAST` | Int | `1` | 0 keeps VU0 micro programs on the cycle-exact scheduler. |
 | `PS2X_VU1_BAILHIST` | Presence | unset | Histogram of where generated VU1 code bails to the interpreter. |
-| `PS2X_VU1_COMMIT_BATCH` | Flag | `0` | S17 F C2 A/B: 1 drains the ready VU1 flag ring in one step (fastCommit), bit-exact. |
+| `PS2X_VU1_COMMIT_BATCH` | Flag | `0` | S17 F C2 A/B: 1 drains the ready flag ring in one step (fastCommit), bit-exact; VU1 and VU0 alike. |
 | `PS2X_VU1_DUMP` | Path | unset | Dump VU1 program state at each run for vu1_replay (armed by TRIGGER or VU1_DUMP_AFTER). |
 | `PS2X_VU1_DUMP_AFTER` | Float | `0` | With VU1_DUMP: arm after this many seconds. |
 | `PS2X_VU1_FAST` | Int | `1` | 0 selects the cycle-exact VU1 scheduler. |
