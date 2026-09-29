@@ -2,6 +2,7 @@ import { sampleClip, type MotionClip, type PartPose } from '@s2u/scene';
 import { slerp, type LayerContext, type PoseLayer } from './animator';
 import { entryOf } from './locomotion';
 import type { MotionEntry, MotionTable } from './motionTable';
+import { PISTOL_RELOAD_CLIPS, RELOAD_CLIPS, reloadClip, reloadSeconds, type ReloadStance } from './reloadClip';
 
 /**
  * The rifle's poses over the clips (the WEAPON workstream): the **Fire** set the game blends in while the rifle is up
@@ -76,22 +77,8 @@ export const PISTOL_FIRE_VERSIONS: Readonly<Record<string, string>> = Object.fre
   seal_lstrafe_fast: 'seal_p_lstrafe_fast', seal_run_90r: 'seal_p_run_90r', seal_run_90l: 'seal_p_run_90l',
 });
 
-/** The reload clips by stance, and the moving one (animset.rdr's "Rifle reload" family). */
-export const RELOAD_CLIPS = {
-  stand: 'seal_reload', crouch: 'seal_crouch_reload', prone: 'seal_prone_reload', moving: 'seal_mv_reload',
-} as const;
-
-/** The pistol's (animset.rdr's "Pistol reload", "Pistol crouch reload", "Pistol prone reload", "Moving pistol reload"). */
-export const PISTOL_RELOAD_CLIPS = {
-  stand: 'seal_p_reload', crouch: 'seal_p_crouch_reload', prone: 'seal_p_prone_reload', moving: 'seal_p_mv_reload',
-} as const;
-
-/**
- * `FUN_005a82e0`'s still test for the reload: the mover's speed squared at most 400.0 (20 units a second) --
- * hard-coded; `dynamics.rdr`'s `min_running_reload_speed` is loaded but never read. Faster, standing or crouched, the
- * moving reload (an overlay on the upper body); prone always the prone one.
- */
-export const RELOAD_STILL_SPEED = 20;
+// The reload's clips, its still test and its length live in `./reloadClip` (one table with the match server, MJ-1).
+export { PISTOL_RELOAD_CLIPS, RELOAD_CLIPS, RELOAD_STILL_SPEED, reloadLength, type ReloadStance } from './reloadClip';
 
 /** Every clip the weapon's layer asks the worker for (the page adds them to `PLAY_CLIPS`). */
 export const WEAPON_CLIPS: readonly string[] = [...new Set([
@@ -110,18 +97,8 @@ export const PHASE_SHARED = true;
 /** What the layers are doing, for the hook. */
 export interface WeaponPoseStats { fire: string | null; fireWeight: number; reload: string | null; reloadWeight: number }
 
-/** A stance as the reload picks its clip. */
-export type ReloadStance = 'stand' | 'crouch' | 'prone';
-
 /** A locomotion clip: `max_velocity` over 0 in the table (77 §7), which plays by the mover's speed. */
 const isLocomotion = (entry: MotionEntry | undefined): boolean => entry !== undefined && entry.maxVelocity !== null && entry.maxVelocity > 0;
-
-/** The reload's length: the clip's `playback` seconds, else its keys at its own rate. */
-export function reloadLength(clip: MotionClip | undefined, table: MotionTable | null): number | null {
-  if (!clip) return null;
-  const playback = table?.get(clip.name)?.playback;
-  return playback !== null && playback !== undefined && playback > 0 ? playback : clip.frameCount / clip.rate;
-}
 
 /**
  * The two layers over the clips, in the order the animator takes them: the Fire version at the raise weight, then the
@@ -196,13 +173,12 @@ export class WeaponPose {
 
   /** The reload's length in a stance, moving or not: the clip's `playback` (null without the clip). */
   reloadSeconds(stance: ReloadStance, moving: boolean): number | null {
-    return reloadLength(this.clips.get(this.reloadClip(stance, moving)), this.table);
+    return reloadSeconds(this.clips, this.table, stance, moving, this.item);
   }
 
   /** `FUN_005a82e0`'s choice: prone the prone reload; else moving the overlay, still the stance's; the item's set. */
   reloadClip(stance: ReloadStance, moving: boolean): string {
-    const set = this.item === 'pistol' ? PISTOL_RELOAD_CLIPS : RELOAD_CLIPS;
-    return stance === 'prone' ? set.prone : moving ? set.moving : set[stance];
+    return reloadClip(stance, moving, this.item);
   }
 
   stats(): WeaponPoseStats {
