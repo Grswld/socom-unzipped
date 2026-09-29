@@ -38,6 +38,20 @@ export class WalkSounds {
     return (grid && probeFloor(grid, at[0], at[1], at[2])?.poly.material) ?? 0;
   }
 
+  /**
+   * Once a frame: the ambience on while walking, and the camera's place -- the floor the ground probe picks under the
+   * camera (as `FUN_00295b00` probes under it each frame, decomp 140035-140058), its `m_inside` and reverb-zone bits --
+   * for the reverb's depth and the beds (`GameAudio.setEnvironment`).
+   */
+  frame(camera: Vec3 | null): void {
+    const walking = this.walk.walking();
+    this.audio.setAmbience(walking);
+    const grid = this.walk.grid();
+    if (!walking || !grid || !camera) return;
+    const floor = probeFloor(grid, camera[0], camera[1], camera[2])?.poly;
+    if (floor) this.audio.setEnvironment((floor.inside ?? 0) !== 0, floor.reverbZone ?? 0);
+  }
+
   /** The body's events (`Play.onEvent`), while walking. */
   playEvent(e: PlayEvent): void {
     const feet = this.walk.feet();

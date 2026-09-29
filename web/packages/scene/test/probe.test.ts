@@ -43,7 +43,7 @@ function turnThenMove(degrees: number, tx: number, ty: number, tz: number): Floa
 /** One `di` polygon, model space: a flat square of side 2 at height `y`, ground (`m_ditype` 3). */
 function square(y: number, cameratype = 0): CollisionPoly {
   return {
-    region: 0, refcount: 0, ditype: 3, ptcount: 4, material: 25, cameratype, appflags: 0, inside: 0, shadow: 0,
+    region: 0, refcount: 0, ditype: 3, ptcount: 4, material: 25, cameratype, appflags: 0, inside: 0, shadow: 0, reverbZone: 0,
     points: Float32Array.from([-1, y, -1, 1, y, -1, 1, y, 1, -1, y, 1]),
   };
 }

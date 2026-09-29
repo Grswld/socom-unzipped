@@ -38,6 +38,13 @@ export interface WorldPoly {
    * `./ladder`); 4 and 5 on props, fences and terrain. Absent (0) where a caller built the polygon by hand.
    */
   appflags?: number;
+  /**
+   * `m_inside` (surface word bit 23) and the reverb zone (bit 27): the camera over the polygon is indoors, and which
+   * `IndoorReverb`/`OutdoorReverb` entry it takes (`FUN_002dc180`, `FUN_002dc150`; web/docs/research/81 §9). Absent (0)
+   * where a caller built the polygon by hand.
+   */
+  inside?: number;
+  reverbZone?: number;
   /** xyz per point, world space, `ptcount` of them. */
   points: Float32Array;
 }
@@ -133,6 +140,8 @@ export function worldCollision(models: SceneNode[], rootName = 'worldmodel'): Wo
     ptcount: p.poly.ptcount,
     cameratype: p.poly.cameratype,
     appflags: p.poly.appflags,
+    inside: p.poly.inside,
+    reverbZone: p.poly.reverbZone,
     points: p.points,
   }));
 }

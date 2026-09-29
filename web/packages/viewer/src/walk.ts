@@ -326,7 +326,9 @@ export function packGround(grid: GridParams, polys: readonly WorldPoly[], owners
   polys.forEach((p, i) => {
     points.set(p.points, at);
     at += p.points.length;
-    fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0, p.appflags ?? 0], i * GROUND_FIELDS);
+    // AUDIO (web/docs/research/81 §9): the sixth word also carries m_inside (bit 3) and the reverb zone (bit 4).
+    const flags = (p.appflags ?? 0) | ((p.inside ?? 0) << 3) | ((p.reverbZone ?? 0) << 4);
+    fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0, flags], i * GROUND_FIELDS);
   });
   return { grid, owners, points, fields };
 }
@@ -343,7 +345,8 @@ export function groundPolygons(ground: GroundData): WorldPoly[] {
     out.push({
       modelName: owner[i]?.modelName ?? 'worldmodel', path: owner[i]?.path ?? '',
       ptcount, ditype: ground.fields[f + 1]!, material: ground.fields[f + 2]!, cameratype: ground.fields[f + 3]!,
-      region: ground.fields[f + 4]!, appflags: ground.fields[f + 5]!, points: ground.points.subarray(at, at + ptcount * 3),
+      region: ground.fields[f + 4]!, appflags: ground.fields[f + 5]! & 7,
+      inside: (ground.fields[f + 5]! >> 3) & 1, reverbZone: (ground.fields[f + 5]! >> 4) & 1, points: ground.points.subarray(at, at + ptcount * 3),
     });
     at += ptcount * 3;
   }

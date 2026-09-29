@@ -56,6 +56,11 @@ export interface CollisionPoly {
   appflags: number;
   inside: number;
   shadow: number;
+  /**
+   * Surface word bit 27 (the first of reCOM's `m_reserved` bits after `m_shadow`): which entry of the mission's
+   * `IndoorReverb`/`OutdoorReverb` list a camera over this polygon takes (`FUN_002dc150`, web/docs/research/81 §9).
+   */
+  reverbZone: number;
   /** xyz per point, model space: the stored `CPnt4D`'s `w` is unused and dropped (36 section 6). */
   points: Float32Array;
 }
@@ -211,6 +216,7 @@ function readPoly(geo: Zar, key: ZarKey, node: string): CollisionPoly {
     appflags: (packed >>> 20) & 7,
     inside: (packed >>> 23) & 1,
     shadow: (packed >>> 24) & 3,
+    reverbZone: (packed >>> 27) & 1,
     points: out,
   };
 }
