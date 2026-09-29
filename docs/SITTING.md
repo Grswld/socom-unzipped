@@ -2,13 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 6 open O rows (0 answered or struck); 38 active rulings since 2026-09-27 (37 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 7 open O rows (0 answered or struck); 38 active rulings since 2026-09-27 (37 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-6 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-29.
+7 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-29.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
@@ -17,6 +17,7 @@ The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 6 open O
 | O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 1 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 2 |
 | O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 2 |
+| O27 | A quiet hour for the slow lock suite, or the second machine | the fix stays uncommitted on its branch; the waiter starvation (#110) stands in HAZARDS | 2026-09-29 | 0 |
 | O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 1 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
