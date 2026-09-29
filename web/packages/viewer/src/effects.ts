@@ -11,7 +11,8 @@ import { buildEffectModel, effectBrighten, markMaterial } from './effectMaterial
 import { ParticleSystem } from './particles';
 import { EffectLights } from './effectLights';
 import type { EffectData, EffectTexture } from './effectData';
-import type { FireEvent, MarkTable } from './fire';
+import { markGeometry, paintMark, type FireEvent, type MarkTable } from './fire';
+import type { SurfaceShade } from './surfaceShade';
 import { fixSoundName } from '@s2u/sound';
 
 /**
@@ -307,6 +308,8 @@ export class Effects {
   private nextFootprint = 0;
   private readonly footprintGeometry = new PlaneGeometry(1, 1);
   private water = { splashes: 0, ripples: '' as string, footprints: 0 };
+  /** The world's drawn colour under a footprint (`./surfaceShade`), or null: unity (research 89 §5, the mark's colour). */
+  private shade: SurfaceShade | null = null;
 
   /**
    * One frame of the SEAL's water (`FUN_005b52b0`, decomp 469808-469920): with the water line between the feet and the
@@ -343,6 +346,11 @@ export class Effects {
     return ok;
   }
 
+  /** The world's drawn colour under a point, for the footprints (`./surfaceShade`); null: unity. */
+  setShade(shade: SurfaceShade | null): void {
+    this.shade = shade;
+  }
+
   /**
    * A footfall (`FUN_005a3570`): the footprint of `decals.rdr`'s `FOOTSTEP_DECALS` for the ground's material -- SAND's
    * and SNOW's, none on the rest -- `FOOTPRINT_SIZE` across, flat on the ground, its length along the SEAL's forward
@@ -360,13 +368,15 @@ export class Effects {
     let material3 = this.materials.get(key);
     if (!material3) { material3 = markMaterial(t); this.materials.set(key, material3); }
     if (!mesh) {
-      mesh = new Mesh(this.footprintGeometry, material3);
+      mesh = new Mesh(markGeometry(this.footprintGeometry), material3);
       mesh.renderOrder = 1;
       this.footprints.push(mesh);
       this.object.add(mesh);
     }
     this.nextFootprint = (this.nextFootprint + 1) % MAX_FOOTPRINTS;
     mesh.material = material3;
+    // A footprint is a `FUN_003139e0` decal too: modulated by the ground's own drawn colour (research 89 §5).
+    paintMark(mesh.geometry, this.shade?.(at, normal) ?? null);
     const n = new Vector3(...normal).normalize();
     // Up the print: the SEAL's forward laid on the ground (`cross(cross(orient, n), n)`, the sign a reading).
     const f = new Vector3(...forward);
@@ -458,7 +468,7 @@ export class Effects {
     this.lights.clear();
     this.big = null;
     this.small = null;
-    for (const m of this.footprints) this.object.remove(m);
+    for (const m of this.footprints) { this.object.remove(m); m.geometry.dispose(); }
     this.footprints.length = 0;
     this.nextFootprint = 0;
     this.lastShell = null;

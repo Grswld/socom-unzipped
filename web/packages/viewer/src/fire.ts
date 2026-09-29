@@ -7,6 +7,7 @@ import type { Rgba } from '@s2u/gs';
 import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 import { roundPath } from './round';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
+import type { SurfaceShade } from './surfaceShade';
 
 /**
  * Simple shooting (web sprint 2, W2.5; the spec's §4 W2.5): a hitscan round along the aim, at the rifle's own rate,
@@ -173,7 +174,11 @@ export interface MarkTable {
  */
 export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null; through?: ShotHit[] }
 export interface MagazineState { rounds: number; capacity: number; spare: number; reloading: boolean }
-export interface FireState { shots: number; magazine: MagazineState; lastHit: ShotHit | null; decals: number; kick: KickStats }
+export interface FireState {
+  shots: number; magazine: MagazineState; lastHit: ShotHit | null; decals: number; kick: KickStats;
+  /** EFFECTS: the colour the last mark was modulated by (the world's under it, research 89 §5); null: unity. */
+  lastShade: [number, number, number, number] | null;
+}
 
 const sub = (a: readonly number[], b: readonly number[]): Vec3 => [a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!];
 const unit = (v: Vec3): Vec3 => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
@@ -186,6 +191,9 @@ export function ammoText(m: MagazineState): string {
   const mags = `${m.spare} MAG${m.spare === 1 ? '' : 'S'}`;
   return `${m.rounds}/${m.capacity} · ${mags}${m.reloading ? ' · RELOADING' : ''}`;
 }
+
+/** How many marks without a drawn wall under them are asked again a frame (`Fire.shadeLate`). */
+const SHADE_RETRIES_PER_FRAME = 4;
 
 /** The least elongation a slanting hit's mark is held to: `|dir . n|` at least this (research 89 §5, a reading). */
 export const MARK_GRAZE_FLOOR = 0.2;
@@ -213,6 +221,23 @@ export function projectedMark(point: Vec3, normal: Vec3, dir: Vec3, side: number
   const x = onPlane(right), y = onPlane(up);
   const at = new Vector3(...point).addScaledVector(n, lift);
   return new Matrix4().makeBasis(x, y, n).setPosition(at);
+}
+
+/** A quad of the mark's shape with a `color` attribute of its own (rgba, unity). */
+export function markGeometry(quad: BufferGeometry): BufferGeometry {
+  const g = quad.clone();
+  const count = g.getAttribute('position').count;
+  g.setAttribute('color', new Float32BufferAttribute(new Float32Array(count * 4).fill(1), 4));
+  return g;
+}
+
+/** Every corner of a mark's `color` to `rgba` (1.0 = the PS2's 0x80), or to unity for null. */
+export function paintMark(geometry: BufferGeometry, rgba: readonly number[] | null): void {
+  const colour = geometry.getAttribute('color') as Float32BufferAttribute | undefined;
+  if (!colour) return;
+  const [r, g, b, a] = rgba ?? [1, 1, 1, 1];
+  for (let i = 0; i < colour.count; i++) colour.setXYZW(i, r!, g!, b!, a!);
+  colour.needsUpdate = true;
 }
 
 /** A dark disc, 16x16, soft at its rim: the mark when `bullet_mark_stone.tif` is not to hand. */
@@ -266,6 +291,14 @@ export class Fire {
   private tracerRule: ((weaponId: number, round: number) => boolean) | null = null;
   /** EFFECTS: one material a mark bitmap, made on first use (the constructor's own is `material`). */
   private readonly markMaterials = new Map<string, Material>();
+  /** EFFECTS: the world's drawn colour under a hit (`./surfaceShade`), or null: every mark at unity. */
+  private shade: SurfaceShade | null = null;
+  private lastShade: [number, number, number, number] | null = null;
+  /**
+   * EFFECTS: marks placed where no drawn surface was yet under them (the props stream in over the frames after a map
+   * shows, `main.ts`'s reveal), asked again each frame until the wall is drawn or the mark is recycled.
+   */
+  private unshaded = new Map<Mesh, { point: Vec3; normal: Vec3 }>();
 
   constructor(
     private readonly source: FireSource,
@@ -276,7 +309,7 @@ export class Fire {
     this.fillMags();
     this.kick = new RifleKick(rifle, random);
     this.material = new MeshBasicMaterial({
-      transparent: true, depthWrite: false, side: DoubleSide, fog: true, toneMapped: false,
+      transparent: true, depthWrite: false, side: DoubleSide, fog: true, toneMapped: false, vertexColors: true,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
     });
     this.setBitmap(null);
@@ -322,6 +355,14 @@ export class Fire {
    */
   setPenetration(penetrationOf: ((material: number | undefined) => number) | null): void {
     this.penetrationOf = penetrationOf;
+  }
+
+  /**
+   * EFFECTS (research 89 §5, the mark's colour): the world's drawn vertex colour under a hit, which the game modulates
+   * the mark's texel by (`FUN_003beca0` puts the wall vertices' own colour words in the mark's packet); null: unity.
+   */
+  setShade(shade: SurfaceShade | null): void {
+    this.shade = shade;
   }
 
   setMarks(marks: MarkTable | null): void {
@@ -518,6 +559,7 @@ export class Fire {
     }
     if (this.tracerFrames > 0) this.tracerFrames--;
     else this.tracer.visible = false;
+    this.shadeLate();
     this.wait -= dt;
     let fired = 0;
     while (this.held && this.wait <= 1e-9 && this.pullRound()) fired++;
@@ -530,6 +572,19 @@ export class Fire {
       if (turn !== 0) this.source.kickPitch?.(turn);
     } else this.kick.reset();
     return fired;
+  }
+
+  /** EFFECTS: a few of the marks still without a drawn wall under them, asked again (`unshaded`). */
+  private shadeLate(): void {
+    if (!this.shade || this.unshaded.size === 0) return;
+    let asked = 0;
+    for (const [mesh, at] of this.unshaded) {
+      if (asked++ >= SHADE_RETRIES_PER_FRAME) break;
+      const rgba = this.shade(at.point, at.normal);
+      this.unshaded.delete(mesh);
+      if (rgba) paintMark(mesh.geometry, rgba);
+      else this.unshaded.set(mesh, at);                 // to the back of the queue: the others get their turn
+    }
   }
 
   tracerVisible(): boolean {
@@ -547,6 +602,7 @@ export class Fire {
       magazine: { rounds: this.rounds, capacity: this.rifle.magazine, spare: this.spare, reloading: this.reloadLeft > 0 || this.reloadPending >= 0 },
       lastHit: this.lastHit ? { ...this.lastHit, point: [...this.lastHit.point], normal: [...this.lastHit.normal] } : null,
       decals: this.decals.filter((d) => d.visible).length,
+      lastShade: this.lastShade ? [...this.lastShade] : null,
       kick: this.kick.stats(),
     };
   }
@@ -554,7 +610,8 @@ export class Fire {
   /** A new map: the marks go, the magazines are full again. */
   reset(): void {
     if (this.reloadLeft > 0) this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
-    for (const d of this.decals) this.object.remove(d);
+    for (const d of this.decals) { this.object.remove(d); d.geometry.dispose(); }
+    this.unshaded.clear();
     this.decals.length = 0;
     this.nextDecal = 0;
     this.stowedMags.clear();
@@ -564,6 +621,7 @@ export class Fire {
     this.wait = 0;
     this.held = false;
     this.lastHit = null;
+    this.lastShade = null;
     this.pulled = 0;
     this.kick.reset();
     this.tracerFrames = 0;
@@ -665,12 +723,18 @@ export class Fire {
     if (!row) return;                                   // EFFECTS: a surface without a row takes no mark
     let mesh = this.decals.length < MAX_DECALS ? undefined : this.decals[this.nextDecal];
     if (!mesh) {
-      mesh = new Mesh(this.geometry, this.material);
+      // Each mark its own four corners, for its own colour (the geometry is the shared quad's, cloned).
+      mesh = new Mesh(markGeometry(this.geometry), this.material);
       mesh.renderOrder = 1;
       this.decals.push(mesh);
       this.object.add(mesh);
     }
     this.nextDecal = (this.nextDecal + 1) % MAX_DECALS;
+    // EFFECTS (research 89 §5): the wall's own drawn colour under the hit modulates the mark, as the GS does it.
+    this.lastShade = this.shade?.(hit.point, hit.normal) ?? null;
+    paintMark(mesh.geometry, this.lastShade);
+    if (this.shade && !this.lastShade) this.unshaded.set(mesh, { point: [...hit.point], normal: [...hit.normal] });
+    else this.unshaded.delete(mesh);
     const n = new Vector3(...hit.normal);
     if (this.marks) {
       // EFFECTS: the game's mark (`FUN_003d0ba0`, decomp 323789; research 89 §5): the size drawn once, the square
