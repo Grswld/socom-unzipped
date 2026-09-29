@@ -476,6 +476,19 @@ The satchel is hung but hidden, as the game hides it until the SEAL picks up the
 `subscribe` is the audio's hook: a `round` event (the weapon's name, id, muzzle animation and sound names, the fire
 point in the world, the end, the hit, the rounds left), `reloadStart` (its seconds) and `reloadEnd`.
 
+**The sidearm is the kit's Mark 23, on L2** (the player spec's §6, "The sidearm, the swap and the reload"). Every
+`mp_seal1` kit is M4A1, Mark 23, M67, HE: the controller's L1 and L2 slots are 0 and 1 (`FUN_00598280`), so L1 (`1`)
+takes the rifle and L2 (`2`) the Mark 23 (`a_mark23`, `scene/src/weapons.ts` `HELD_SIDEARM`: 12 rounds, semi, `FireWait`
+0.2, reticle set 0, `mark23_icon.tif`, `.MARK_23`); R2 steps the inventory through them and the throwables, and the
+M67 is no longer on L2 (`viewer/src/kit.ts`). The swap plays the game's clip (the MOTION workstream's
+`WalkMode.swapWeapon`): the rifle rides `spinelo` on the clip's own track and is slung at `character.rdr`'s offset, the
+pistol comes out of the hips or the holster at the clip's hand-off (0.72 standing) and goes back into the `rthigh`
+holster; the pistol's clips (`seal_p_*`), Fire versions (`seal_pfp_*`) and reloads (`seal_p_reload` ...) follow
+`m_item`. A reload puts the next magazine in at its start and keeps a part-used one in the ring; an empty magazine
+reloads by itself 0.01 s later, a dry trigger clicks (`dry`); walking faster than 20 a second turns a still reload
+into the moving one. The accuracy pip (`ret_accuracy`) marks a raised muzzle blocked short of the point under the
+reticle (`FUN_005aa6e0`, `FUN_00215250`). In first person the game draws none of the SEAL -- nor does the page.
+
 **The HUD is the game's** ([`docs/research/87-hud.md`](docs/research/87-hud.md)): `CHUD`'s own rectangles read out
 of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, the weapon icon at (20, 389), "30/30" and
 "2 MAGS" at scale 0.9 on the baseline 382, the fire-mode rounds at x 10, 51, 87, the compass ring `compass_lo.tif` at
@@ -491,8 +504,8 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
   the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
 - **The shot's effects are not drawn.** The round leaves the rifle's `firepoint` (above), but the muzzle's CZANIM
   animation (`muzzle_m4`: the shell, the flash hider's flash, the smoke; the M4A1 SD's `muzzle_m4SD` has no flash)
-  is not played -- the zAnim command payloads are not decoded (research 77 §10). An empty magazine does not reload by
-  itself (`R` does), and no bullet surface class was found, so every polygon stops a round. The scoped sway moves the
+  is not played -- the zAnim command payloads are not decoded (research 77 §10). The swap's hand-off phases (0.72 / 0.82 /
+  0.62 / 0.79) are a reading of the clips' callbacks, not settled; no bullet surface class was found, so every polygon stops a round. The scoped sway moves the
   rounds but nothing on screen (no reader of it that draws was found: research 84 section 8).
 - **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
   the material half of the camera's surface test is left out.
