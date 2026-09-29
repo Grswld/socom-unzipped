@@ -73,3 +73,17 @@ test('&server= beats online= and is kept, never added', async ({ page }) => {
   expect(params(page).has('server')).toBe(false);
   expect(params(page).has('mp')).toBe(false);
 });
+
+test('an Online choice takes &server= and &mp out of the address, so a reload joins the choice (PL-12)', async ({ page }) => {
+  await open(page, '?mode=explore&online=shared&server=ws://127.0.0.1:9/ws&mp&devmode');
+  expect(params(page).get('server')).toBe('ws://127.0.0.1:9/ws');       // on load the named server is kept
+  await page.locator('#online button[data-online="off"]').click();
+  await expect.poll(() => params(page).get('online')).toBe('off');
+  expect(params(page).has('server')).toBe(false);
+  expect(params(page).has('mp')).toBe(false);
+  expect(params(page).has('devmode')).toBe(true);                      // the other developer parameters stay
+  await page.reload();
+  await expect(page.locator('#status')).toContainText(/triangles|tris/);
+  await expect(page.locator('#online button[data-online="off"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#online-text')).toContainText('single player: no server');
+});
