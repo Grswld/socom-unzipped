@@ -50,7 +50,7 @@ export interface NetPageDeps {
   weapons: readonly [WeaponRecord, WeaponRecord];
   /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default -- or the single-player room's. */
   socket?: (url: string) => WebSocketLike;
-  /** The single-player match (`./net/loopback`): the panel reads "single player", no reconnecting. */
+  /** The offline match (`./net/loopback`): the panel reads "offline match", no reconnecting. */
   solo?: boolean;
   /** A blast's ringing ears (`./net/blast`, `FUN_005a0e70` L459221-459227): every channel at `volume` for `seconds`. */
   ring?(seconds: number, volume: number): void;
@@ -251,7 +251,7 @@ export class NetPage {
   status(): OnlineStatus {
     const c = this.client;
     const base = { players: this.rows.length, retryIn: 0, watching: this.watch };
-    if (this.deps.solo) return { ...base, state: 'off' };
+    if (this.deps.solo) return { ...base, state: 'offline' };
     if (c.state === 'refused' || (this.reconnect.stopped && c.state === 'closed')) return { ...base, state: 'refused', reason: this.refusal ?? 'closed by the server' };
     if (c.state === 'open' && c.id !== 0) return { ...base, state: 'online' };
     if (c.state === 'closed') {

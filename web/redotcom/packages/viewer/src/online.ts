@@ -65,7 +65,8 @@ export function writeOnline(choice: OnlineChoice): void {
 
 /** The connection as the panel shows it (`NetPage.status`). */
 export interface OnlineStatus {
-  state: 'off' | 'connecting' | 'online' | 'retrying' | 'refused';
+  /** `offline`: Online is off and the page's own match runs (`./net/loopback`); `off`: Online off, no match at all. */
+  state: 'off' | 'offline' | 'connecting' | 'online' | 'retrying' | 'refused';
   /** Players in the match, when online. */
   players: number;
   /** Seconds to the next attempt, when retrying. */
@@ -80,6 +81,7 @@ export interface OnlineStatus {
 export function onlineLine(s: OnlineStatus): { text: string; lamp: 'up' | 'down' | null } {
   switch (s.state) {
     case 'off': return { text: 'single player: no server', lamp: null };
+    case 'offline': return { text: 'offline match · no server', lamp: null };
     case 'connecting': return { text: 'connecting ...', lamp: null };
     case 'online': return { text: `online · ${s.players} ${s.players === 1 ? 'player' : 'players'}${s.watching ? ' · watching' : ''}`, lamp: 'up' };
     case 'retrying': return { text: `server unreachable · retrying in ${Math.max(1, Math.ceil(s.retryIn))} s`, lamp: 'down' };

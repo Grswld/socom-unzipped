@@ -75,9 +75,11 @@ describe('the remembered choice', () => {
 });
 
 describe('the connection line, and the retry', () => {
-  it('says off, connecting, online with the players, unreachable with the wait, refused with the reason', () => {
+  it('says off, the offline match, connecting, online with the players, unreachable with the wait, refused with the reason', () => {
     const base = { players: 0, retryIn: 0, watching: false };
     expect(onlineLine({ ...base, state: 'off' })).toEqual({ text: 'single player: no server', lamp: null });
+    // the offline match running (`./net/loopback`) is a match, not "single player": the line says which
+    expect(onlineLine({ ...base, state: 'offline', players: 1 })).toEqual({ text: 'offline match · no server', lamp: null });
     expect(onlineLine({ ...base, state: 'connecting' })).toEqual({ text: 'connecting ...', lamp: null });
     expect(onlineLine({ ...base, state: 'online', players: 1 })).toEqual({ text: 'online · 1 player', lamp: 'up' });
     expect(onlineLine({ ...base, state: 'online', players: 5, watching: true })).toEqual({ text: 'online · 5 players · watching', lamp: 'up' });
