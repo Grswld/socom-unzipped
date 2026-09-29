@@ -22,7 +22,7 @@ export interface NetPageDeps {
   remote: RemotePlayers;
   /** The HUD's message window and clock (`./hud`). */
   hud: {
-    postMessage(text: string, scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void;
+    postMessage(text: string | { text: string; scale: number }[], scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void;
     setScoreRows(rows: ScoreRowInfo[] | null, spectators: string[], wins?: { seal: number; terrorist: number }): void;
   };
   /** The clips (the death clips among them), once the worker has sent them. */
@@ -81,7 +81,39 @@ export class NetPage {
    * player and V switches between following and the free (fly) camera. The scenic views are not drawn.
    */
   private spectating: { follow: boolean; target: number | null } = { follow: true, target: null };
+  /**
+   * The vote to remove (W3.R13; research 91 section 17): the game's radio menu TEAMMATES > a player > "VOTE
+   * RETAIN:REMOVE", toggled. RADIO_MENU_PLACEHOLDER: the radio menu's own look is not drawn; K opens the page's list in
+   * the message window, with the game's words, a digit toggles the vote on that teammate, K or Escape closes it.
+   */
+  private voteMenu = false;
+  private readonly myVotes = new Set<number>();
+  private teammates(): number[] {
+    const mine = this.client.team;
+    return [...this.teams].filter(([id, team]) => team === mine && id !== this.client.id).map(([id]) => id).sort((a, b) => a - b);
+  }
+  private showVoteMenu(): void {
+    const lines = this.teammates().map((id, i) => `${i + 1} ${this.nameOf(id)}  VOTE ${this.myVotes.has(id) ? 'REMOVE' : 'RETAIN'}`);
+    this.deps.hud.postMessage(['TEAMMATES', ...(lines.length ? lines : ['(none)'])].map((text) => ({ text, scale: 0.8 })));
+  }
   private readonly onKey = (e: KeyboardEvent): void => {
+    const target = e.target;
+    if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+    if (this.client.role === 'player' && !e.repeat) {
+      if (e.code === 'KeyK') { this.voteMenu = !this.voteMenu; if (this.voteMenu) this.showVoteMenu(); return; }
+      if (this.voteMenu && e.code === 'Escape') { this.voteMenu = false; return; }
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (this.voteMenu && digit) {
+        const id = this.teammates()[Number(digit[1]) - 1];
+        if (id === undefined) return;
+        const remove = !this.myVotes.has(id);
+        if (remove) this.myVotes.add(id); else this.myVotes.delete(id);
+        this.client.send({ type: 'vote', target: id, remove });
+        this.showVoteMenu();
+        e.preventDefault();
+        return;
+      }
+    }
     if (this.client.role !== 'spectator' || e.repeat) return;
     if (e.code === 'Space') { this.nextTarget(); e.preventDefault(); }
     else if (e.code === 'KeyV') { this.spectating.follow = !this.spectating.follow; if (!this.spectating.follow) this.deps.spectate(null); }
@@ -177,7 +209,7 @@ export class NetPage {
         break;
       case 'joined': this.names.set(ev.id, ev.name); this.teams.set(ev.id, ev.team); remote.setTeam(ev.id, ev.team); break;
       case 'renamed': this.names.set(ev.id, ev.name); break;
-      case 'left': remote.forget(ev.id); this.teams.delete(ev.id); break;
+      case 'left': remote.forget(ev.id); this.teams.delete(ev.id); this.myVotes.delete(ev.id); break;
       case 'kill':
         hud.postMessage(killLine(ev.how, ev.killer === null ? null : this.nameOf(ev.killer), this.nameOf(ev.victim), ev.weapon));
         if (ev.victim === this.client.id) {
@@ -211,6 +243,7 @@ export class NetPage {
       case 'queue': if (ev.position > 0) hud.postMessage(queueLine(ev.position)); break;
       case 'promoted': this.deps.spectate(null); hud.postMessage('YOU ARE IN: A PLACE IS FREE'); break;
       case 'refused': hud.postMessage(ev.reason); break;
+      case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
       case 'kicked': hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
       default: break;
     }

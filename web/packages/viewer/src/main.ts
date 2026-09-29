@@ -435,6 +435,19 @@ let playClips: PlayClips | null = null;
 function playerName(): string {
   try { return globalThis.localStorage?.getItem('s2u.mp.name') ?? ''; } catch { return ''; }
 }
+// W3.R12: the settings' name field -- printable ASCII, 30 at most (the server cleans it again), sent to the match.
+{
+  const field = document.getElementById('mp-name') as HTMLInputElement | null;
+  if (field) {
+    field.value = playerName();
+    field.addEventListener('change', () => {
+      const name = field.value.replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+      field.value = name;
+      try { globalThis.localStorage?.setItem('s2u.mp.name', name); } catch { /* no storage */ }
+      if (name) net?.client.send({ type: 'name', name });
+    });
+  }
+}
 play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locomotion (`./throwPose`)
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).

@@ -100,6 +100,18 @@
         </div>
       </div>
       <!--
+        The match's name (web sprint 3, W3.R12; research 91 section 13): at most 30 printable ASCII characters, the game's
+        in-game name buffer; blank takes the game's own "Player" guest default. Sent to the match on change, remembered in
+        this browser only (`s2u.mp.name`). Behind `?redotcom` with the play.
+      -->
+      <div class="section" id="mp-section" data-play>
+        <p class="s2u-field__label">Multiplayer</p>
+        <div class="row">
+          <label class="s2u-range" title="Your name in the match: up to 30 characters, letters, digits and the keyboard's symbols. Blank: the game's guest name, Player and four digits."><span>name</span>
+            <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" /></label>
+        </div>
+      </div>
+      <!--
         The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so behind `?redotcom` like the
         rest of the play. Raw is the default: one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
         in this browser only (`./src/ui.ts`, `onLookControls`).
