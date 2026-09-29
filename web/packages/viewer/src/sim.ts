@@ -9,11 +9,13 @@
  * - the motion table and clip timings the mover and the moves read (`./motionTable`, `./locomotion`, `./clipPath`);
  * - the tuning (`./physics`) and the stature (`./stature`);
  * - the round (`./round`) and its accuracy and penetration (`./accuracy`), the kick (`./rifleKick`);
+ * - the magazines (`./magazines`): the game's ring, one a weapon, the page's `Fire` and the room counting alike;
  * - grenades live headless in `@s2u/scene` already (`projectile.ts`: launch, step, the blast's damage).
  */
 export * from './mover';
 export { Traversal } from './traversal';
 export * from './round';
+export * from './magazines';
 export * as accuracy from './accuracy';
 export { penetrate } from './accuracy';
 export * from './physics';

@@ -4,7 +4,7 @@ import {
 } from '@s2u/scene';
 import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
-  MoverSim, overall, roundPath, Traversal, Walker,
+  MoverSim, overall, ringFor, roundPath, Traversal, Walker, type MagazineRing,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
@@ -109,9 +109,11 @@ class Player {
   readonly history: Past[] = [];
   viewTick = 0;
   ping = 0;
-  /** The magazines: rounds in the weapon, spares, per weapon; the tick each last fired (by command number). */
-  readonly rounds: [number, number] = [KIT[0].magazine, KIT[1].magazine];
-  readonly spare: [number, number] = [KIT[0].mags - 1, KIT[1].mags - 1];
+  /**
+   * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §17) -- the page's `Fire` counts with the
+   * same, so a reload here takes the magazine the page's did; the tick each last fired (by command number).
+   */
+  readonly mags: [MagazineRing, MagazineRing] = [ringFor(KIT[0]), ringFor(KIT[1])];
   readonly lastFire: [number, number] = [-1e9, -1e9];
   reloadUntil = 0;
   trigger = false; aiming = false; boost = false;
@@ -365,8 +367,7 @@ export class Room {
     p.sim = sim;
     p.alive = true;
     p.health = freshHealth();
-    p.rounds[0] = KIT[0].magazine; p.rounds[1] = KIT[1].magazine;
-    p.spare[0] = KIT[0].mags - 1; p.spare[1] = KIT[1].mags - 1;
+    p.mags[0].fill(); p.mags[1].fill();
     p.lastLanding = null;
     p.grenades = freshGrenades();
     p.history.length = 0;
@@ -387,7 +388,7 @@ export class Room {
     const record = KIT[w];
     // The rate: rounds by command number, at the record's `fireWait` (a tick's slack for the quantised clock).
     if (ev.seq - p.lastFire[w] < record.fireWait * TICK_HZ - 1) return;
-    if (p.rounds[w] <= 0 || this.tick < p.reloadUntil) return;
+    if (p.mags[w].rounds() <= 0 || this.tick < p.reloadUntil) return;
     const s = p.sim.walker.state;
     const from = ev.from, d = ev.dir;
     if (Math.hypot(from[0] - s.x, from[1] - (s.y + EYE), from[2] - s.z) > MUZZLE_SLACK) return;
@@ -395,7 +396,7 @@ export class Room {
     if (!(len > 0.5 && len < 1.5)) return;
     const dir: V3 = [d[0] / len, d[1] / len, d[2] / len];
     p.lastFire[w] = ev.seq;
-    p.rounds[w]--;
+    p.mags[w].fire();
     const reach = record.maximumRange * UNITS_PER_METRE;
     // The rewind: the others where the shooter saw them, at most MAX_REWIND_MS back.
     const earliest = this.tick - Math.round((MAX_REWIND_MS / 1000) * TICK_HZ);
@@ -491,10 +492,9 @@ export class Room {
   private reload(id: number): void {
     const p = this.players.get(id);
     if (!p || !p.alive) return;
-    const w = p.sim.weapon, record = KIT[w];
-    if (p.spare[w] <= 0 || p.rounds[w] >= record.magazine) return;
-    p.spare[w]--;
-    p.rounds[w] = record.magazine;
+    const w = p.sim.weapon;
+    // FUN_005c2a90: the next magazine round the ring with rounds; the one out keeps its rounds (the page's rule).
+    if (p.mags[w].full() || !p.mags[w].reload()) return;
     p.reloadUntil = this.tick + 2 * TICK_HZ;                   // `fire.ts` RELOAD_SECONDS
   }
 
@@ -690,7 +690,10 @@ export class Room {
   }
 
   /** For the tests: a player's mover and state. */
-  player(id: number): { sim: MoverSim; alive: boolean; health: Health; team: Team; score: number; kills: number; deaths: number } | undefined {
+  player(id: number): {
+    sim: MoverSim; alive: boolean; health: Health; team: Team; score: number; kills: number; deaths: number;
+    readonly mags: readonly [MagazineRing, MagazineRing];
+  } | undefined {
     return this.players.get(id);
   }
 }

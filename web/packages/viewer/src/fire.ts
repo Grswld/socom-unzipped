@@ -6,6 +6,7 @@ import type { Material } from 'three';
 import type { Rgba } from '@s2u/gs';
 import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 import { roundPath } from './round';
+import { ringFor, type MagazineRing } from './magazines';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 import type { SurfaceShade } from './surfaceShade';
 import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type MarkClipper, type MarkFrame } from './markClip';
@@ -38,12 +39,14 @@ import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type Mar
  *   between `MIN_SIZE` 1 and `MAX_SIZE` 1.8 units. The quad lies on the polygon's plane, `DECAL_OFFSET` off it toward
  *   the shooter, facing out. A plain dark disc stands in when the bitmap is absent. At most `MAX_DECALS` are kept,
  *   the oldest recycled (the game's `TEMP_DECAL_POOL` is 150 + 50 overflow: `decals.rdr`).
- * - **The magazine.** 30 in the rifle and `NumMags - 1` = 2 spare -- `NumMags` read as the magazines carried with
- *   the loaded one among them, which is what the console frame's ammo box shows at spawn ("2 MAGS"). `R` reloads
- *   over the reload clip's length when the source knows it (`FireSource.reloadSeconds`: `motion.rdr`'s `playback`
- *   of `seal_reload` 1.6, `seal_crouch_reload` 1.9, `seal_prone_reload` 1.7, `seal_mv_reload` 1.2 -- the M4A1's
- *   record has no `ReloadTime`, so the game's reload is its animation's), else over `RELOAD_SECONDS` [estimate]; a
- *   partly spent magazine is dropped, as a spare is a whole magazine.
+ * - **The magazines** (`./magazines`, research 84 §17): `NumMags` of `Ammo_Capacity` each -- the rifle 3 x 30, the
+ *   Mark 23 3 x 12 -- kept as the game's ring (`m_reloads[slot][10]`), each magazine with its own rounds. A round
+ *   leaves the one in the weapon; a reload puts in the next magazine round the ring with rounds (whole or part-spent,
+ *   in order) and the one taken out keeps its rounds; the ammo box's MAGS is the magazines with rounds less one. `R`
+ *   reloads over the reload clip's length when the source knows it (`FireSource.reloadSeconds`: `motion.rdr`'s
+ *   `playback` of `seal_reload` 1.6, `seal_crouch_reload` 1.9, `seal_prone_reload` 1.7, `seal_mv_reload` 1.2 -- the
+ *   M4A1's record has no `ReloadTime`, so the game's reload is its animation's), else over `RELOAD_SECONDS`
+ *   [estimate]. The multiplayer server counts with the same ring (`packages/server/src/room.ts`).
  * - **The range** is `Maximum_Range` x `UNITS_PER_METRE` (10): the file's ranges are metres (research 84 §2).
  * - **The gun** (`setGun`, `./accuracy` through `main.ts`; research 84): the eye's ray leaves off the view's centre
  *   line by the reticle's cone and knock (`FUN_005bd100` / `FUN_00592260`), so the point it finds -- the one the
@@ -266,11 +269,10 @@ export class Fire {
   private readonly tracer: Line;
   private tracerFrames = 0;
   /**
-   * WEAPON: the magazines (the kit's ten-slot ring: `NumMags` of them, each keeping its own rounds -- a reload takes the
-   * next one with rounds and the old keeps what it had) and the one in the weapon.
+   * WEAPON: the magazines (`./magazines`: the kit's ten-slot ring, `NumMags` of them, each keeping its own rounds -- a
+   * reload takes the next one with rounds and the old keeps what it had) and the one in the weapon.
    */
-  private mags: number[] = [];
-  private current = 0;
+  private mags!: MagazineRing;
   /** A reload asked for and not yet begun (`RELOAD_DELAY`), seconds left; -1 none. */
   private reloadPending = -1;
   private reloadLeft = 0;
@@ -286,7 +288,7 @@ export class Fire {
   private readonly listeners = new Set<FireListener>();
   private kick: RifleKick;
   /** WEAPON: each weapon's magazine while another is in the hand (`setWeapon`), by `InternalName`. */
-  private readonly stowedMags = new Map<string, { mags: number[]; current: number }>();
+  private readonly stowedMags = new Map<string, MagazineRing>();
   private marks: MarkTable | null = null;
   private penetrationOf: ((material: number | undefined) => number) | null = null;
   private tracerRule: ((weaponId: number, round: number) => boolean) | null = null;
@@ -404,23 +406,18 @@ export class Fire {
     return m;
   }
 
-  /** The round in the weapon's magazine (the ring's current slot). */
-  private get rounds(): number { return this.mags[this.current] ?? 0; }
-  private set rounds(n: number) { this.mags[this.current] = n; }
-  /** The other magazines with rounds in them: the ammo box's MAGS. */
-  private get spare(): number { return this.mags.filter((n, i) => i !== this.current && n > 0).length; }
-  /** The next magazine of the ring with rounds, after the one in the weapon; -1 none. */
-  private nextMag(): number {
-    for (let k = 1; k < this.mags.length; k++) {
-      const j = (this.current + k) % this.mags.length;
-      if (this.mags[j]! > 0) return j;
-    }
-    return -1;
-  }
+  /** The rounds in the weapon's magazine (the ring's current slot). */
+  private get rounds(): number { return this.mags.rounds(); }
+  /** The ammo box's MAGS (`FUN_00237760`): the magazines with rounds, the one in the weapon among them, less one. */
+  private get spare(): number { return this.mags.shownMags(); }
   /** `NumMags` full magazines, the first in the weapon. */
   private fillMags(): void {
-    this.mags = Array.from({ length: Math.max(1, this.rifle.mags) }, () => this.rifle.magazine);
-    this.current = 0;
+    this.mags = ringFor(this.rifle);
+  }
+
+  /** WEAPON: every round of the weapon in the hand -- in it and in its other magazines (research 84 §17). */
+  magazineTotal(): number {
+    return this.mags.total();
   }
 
   /** The trigger pressed: a round now if the rifle is ready; held, `update` keeps firing at the rate. */
@@ -431,7 +428,7 @@ export class Fire {
     // WEAPON: a dry trigger clicks, then reloads when there is a magazine to take (`FUN_005c5340`).
     if (edge && this.rounds <= 0 && this.reloadLeft <= 0 && this.reloadPending < 0 && this.source.aim()) {
       this.emit({ type: 'dry', weapon: this.weapon() });
-      if (this.nextMag() >= 0) this.reloadPending = RELOAD_DELAY;
+      if (this.mags.canReload()) this.reloadPending = RELOAD_DELAY;
       return null;
     }
     return this.pullRound();
@@ -484,11 +481,11 @@ export class Fire {
   setWeapon(record: WeaponRecord): void {
     if (record.name === this.rifle.name) return;
     this.cancelReload();
-    this.stowedMags.set(this.rifle.name, { mags: [...this.mags], current: this.current });
+    this.stowedMags.set(this.rifle.name, this.mags);
     this.rifle = record;
     this.reloadPending = -1;
     const kept = this.stowedMags.get(record.name);
-    if (kept) { this.mags = [...kept.mags]; this.current = kept.current; } else this.fillMags();
+    if (kept) this.mags = kept; else this.fillMags();
     this.wait = 0;
     this.pulled = 0;
     this.kick = new RifleKick(record, this.random);
@@ -537,7 +534,7 @@ export class Fire {
    * with rounds, or a reload is already asked for or running.
    */
   reload(): boolean {
-    if (this.reloadLeft > 0 || this.reloadPending >= 0 || this.nextMag() < 0 || this.rounds >= this.rifle.magazine) return false;
+    if (this.reloadLeft > 0 || this.reloadPending >= 0 || !this.mags.canReload() || this.mags.full()) return false;
     this.reloadPending = RELOAD_DELAY;
     return true;
   }
@@ -549,9 +546,7 @@ export class Fire {
    */
   private beginReload(): void {
     this.reloadPending = -1;
-    const next = this.nextMag();
-    if (next < 0 || this.rounds >= this.rifle.magazine) return;
-    this.current = next;
+    if (this.mags.full() || !this.mags.reload()) return;
     const clip = this.source.reloadSeconds?.() ?? null;
     this.reloadLeft = clip !== null && clip > 0 ? clip : RELOAD_SECONDS;
     this.emit({ type: 'reloadStart', weapon: this.weapon(), seconds: this.reloadLeft });
@@ -750,9 +745,9 @@ export class Fire {
       const h = segmentHit(grid, from, end);
       if (h) { hit = face(h, span); this.place(hit, dir); }
     }
-    this.rounds--;
+    this.mags.fire();
     // The automatic reload (`FUN_005c5340` 479297-479320): the magazine ran dry and another has rounds.
-    if (this.rounds <= 0 && this.nextMag() >= 0) this.reloadPending = RELOAD_DELAY;
+    if (this.rounds <= 0 && this.mags.canReload()) this.reloadPending = RELOAD_DELAY;
     this.shots++;
     this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
     // The surface it stopped on, or -- went through everything and was spent in the air -- the last it struck.
