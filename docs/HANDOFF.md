@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-29 04:00Z, LATEST) -- Sprint 17 day two, `sprint-17` at 376e3927 (main f6499f0e merged back; #112 merged, its masters installed in both PCSX2 instances, boot unproved). The lock REOPENED 03:24Z (owner). Batch 3 (F1 attempt 1, Q2's scheduler fix, the network bounds) merged, unproved: its chain was stopped red in its suite step (#110). Under the lock: the persona `ps2x_tests` build (its reviewer), then ONE bench build proving the knobs too. R334 landed. One controller in the main tree (owner, 02:35Z).**
-  Then: merge knobs (e82ec485) then bench, #113 and #110 on clean reviews, ONE chain (`PS2X_GS_STATS=1`, 4 GB floor), the logoff run, the bench recording, the profile, A1, the PCSX2 boots for #112.
+- **Where the loop is now (2026-09-29 04:00Z, LATEST) -- Sprint 17 day two, `sprint-17` at 376e3927 (main merged back; #112 merged, its masters installed in both PCSX2 instances, boot unproved). The lock REOPENED 03:24Z. Batch 3 (F1 attempt 1, Q2's scheduler fix, the network bounds) merged, unproved: its chain stopped red in the suite (#110). Under the lock: the persona build, then ONE bench build (knobs too). R334 landed. One controller in the main tree (owner).**
+  Then: merge knobs (e82ec485) then bench, #113 and #110 on clean reviews, ONE chain (`PS2X_GS_STATS=1`, 4 GB floor), the logoff run, the bench recording, the profile, A1, the PCSX2 boots (#112).
 - **Next free ruling number: R335** (R322-R334 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
