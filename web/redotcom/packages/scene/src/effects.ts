@@ -178,8 +178,12 @@ export type EffectOp =
   | { op: 'fromTo'; node: number; flags: number; seconds: number; from: Vec3; to: Vec3; rotation?: { from: Quat4; to: Quat4 } }
   | { op: 'motion'; motion: ObjectMotion }
   | { op: 'particles'; source: ParticleSource }
-  /** `SOUND` (30): the sound name (u16 +6, through the name table) at the node +16 (research 81 §6). */
-  | { op: 'sound'; sound: string; node: number }
+  /**
+   * `SOUND` (30): the sound name (u16 +6, through the name table) at the node +16 (research 81 §6), at the command's own
+   * volume: the f32 at +8 when flag 0x10 (u16 +4) is set, else 1.0 (`FUN_002659c0`, decomp 112363-112416, passed as the
+   * play's volume 112460-112461; research 81 §12) -- `@s2u/sound`'s `ZANIM_SOUND_VOLUME`, the same command.
+   */
+  | { op: 'sound'; sound: string; node: number; volume: number }
   /** `LIGHT` (32): a dynamic light (`ZAnimLight`). */
   | { op: 'light'; light: ZAnimLight }
   /** `CALL_ANIMATION` (45; begin `FUN_0025d5c0`): the animation named at +7, run at this one's place. */
@@ -227,6 +231,9 @@ export interface EffectProgram {
 }
 
 const NAME = (names: readonly string[], i: number): string => names[i] ?? `#${i}`;
+
+/** `SOUND`'s flag 0x10: the command carries its own volume at +8 (`FUN_002659c0` 112363-112416). */
+const SOUND_VOLUME = 0x10;
 
 /**
  * A `VALVE` command's fields (61; registered by `FUN_00354470`, decomp 252347; tick 0x353d00 evaluates
@@ -292,7 +299,7 @@ export function decodeEffectOp(cmd: Pick<ZAnimCommand, 'set' | 'cmd' | 'bytes'>,
       };
     case ZCMD.OBJECT_MOTION: return { op: 'motion', motion: decodeObjectMotion(c, names) };
     case ZCMD.PARTICLE_SOURCE: return { op: 'particles', source: decodeParticleSource(c, names) };
-    case ZCMD.SOUND: return { op: 'sound', sound: NAME(names, c.u16(6)), node: c.i8(16) };
+    case ZCMD.SOUND: return { op: 'sound', sound: NAME(names, c.u16(6)), node: c.i8(16), volume: (c.u16(4) & SOUND_VOLUME) !== 0 ? c.f32(8) : 1 };
     case ZCMD.LIGHT: return { op: 'light', light: decodeLight(c) };
     case ZCMD.CALL_ANIMATION: return { op: 'call', anim: NAME(names, c.u8(7)) };
     case ZCMD.STOP_SEQUENCE: return { op: 'stopSequence', sequence: NAME(names, c.u16(4)) };

@@ -17,7 +17,7 @@ import { GRENADE_BITMAPS } from './grenadeAssets';
 import { markMaterial } from './effectMaterials';
 import { markGeometry, paintMark } from './fire';
 import type { SurfaceShade } from './surfaceShade';
-import { markClipGeometry, squareInto, type MarkClipper, type MarkFrame } from './markClip';
+import { markClipGeometry, PERM_DECAL_TRIANGLES, squareInto, type MarkClipper, type MarkFrame } from './markClip';
 import type { PlaySnapshot, WalkView } from './walk';
 
 /**
@@ -292,6 +292,8 @@ export interface GrenadeStats {
   arc: ArcStats | null;
   /** EFFECTS (research 89 §13): the colour the last scorch was modulated by (the world's under it); null: unity. */
   scorchShade: [number, number, number, number] | null;
+  /** The permanent decal pool's entries taken this map (`PERM_DECAL_TRIANGLES` at most): the scorches' triangles. */
+  scorchTriangles: number;
 }
 
 /** How many scorches without a drawn surface under them are asked again a frame (`GrenadeThrower.shadeLate`). */
@@ -340,6 +342,13 @@ export class GrenadeThrower {
   private accumulator = 0;
   private readonly particles: Particle[] = [];
   private readonly scorches: Mesh[] = [];
+  /**
+   * The game's permanent decal pool (`PERM_DECAL_TRIANGLES`, research 89 §5): each scorch's entries (its kept world
+   * triangles; the bare square's two while nothing drawn is under it yet), and their sum this map. Full, a scorch is
+   * refused; nothing is recycled; the pool empties with the map (`reset`, `FUN_003bf050`).
+   */
+  private readonly scorchTriangles = new Map<Mesh, number>();
+  private permTriangles = 0;
   private lastThrow: GrenadeStats['lastThrow'] = null;
   private readonly bounceLog: BounceInfo[] = [];
   private readonly explosionLog: ExplosionInfo[] = [];
@@ -464,6 +473,8 @@ export class GrenadeThrower {
     this.smokes.length = 0;
     for (const s of this.scorches) { this.object.remove(s); s.geometry.dispose(); }
     this.scorches.length = 0;
+    this.scorchTriangles.clear();
+    this.permTriangles = 0;
     this.unshaded.clear();
     this.unclipped.clear();
     this.scorchShade = null;
@@ -666,6 +677,7 @@ export class GrenadeThrower {
         start: [...this.arc.start], end: [...this.arc.end],
       },
       scorchShade: this.scorchShade && [...this.scorchShade],
+      scorchTriangles: this.permTriangles,
     };
   }
 
@@ -1119,6 +1131,8 @@ export class GrenadeThrower {
    */
   private scorch(pos: V3, material: string, ground: ScorchGround | null): void {
     const [min, max] = GRENADE_BLAST[material] ?? GRENADE_BLAST.STONE!;
+    // The permanent pool full (`FUN_003bf1a0` 313254 refuses every entry): no scorch at all, the old ones kept.
+    if (this.permTriangles >= PERM_DECAL_TRIANGLES) return;
     if (this.clipper) { this.scorchClipped(ground?.point ?? pos, ground?.normal ?? [0, 1, 0], min, max); return; }
     // Its own four corners, for its own colour (the shared quad's, cloned), as `./fire`'s marks.
     const mark = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
@@ -1130,14 +1144,20 @@ export class GrenadeThrower {
     mark.scale.set(size, size, 1);
     mark.rotation.set(-Math.PI / 2, 0, rand(0, Math.PI * 2, this.random));
     mark.position.set(pos[0], pos[1] - 0.05, pos[2]);
+    this.keepScorch(mark, this.squareEntries());
+  }
+
+  /** The bare square's pool entries: its two triangles, or the one the pool still has room for. */
+  private squareEntries(): number {
+    return Math.min(2, PERM_DECAL_TRIANGLES - this.permTriangles);
+  }
+
+  /** A scorch into the scene and the permanent pool, `entries` of its room taken. */
+  private keepScorch(mark: Mesh, entries: number): void {
     this.object.add(mark);
     this.scorches.push(mark);
-    if (this.scorches.length > 16) {
-      const old = this.scorches.shift()!;
-      this.object.remove(old);
-      old.geometry.dispose();
-      this.unshaded.delete(old);
-    }
+    this.scorchTriangles.set(mark, entries);
+    this.permTriangles += entries;
   }
 
   /**
@@ -1180,7 +1200,9 @@ export class GrenadeThrower {
       forward: [-normal[0], -normal[1], -normal[2]], side: size,
     };
     const mark = new Mesh(markClipGeometry(), this.scorchMaterialOf());
-    const kept = this.clipper!.clip(frame, mark.geometry, 0.05);
+    // One pool entry per kept world triangle, the first ones while there is room (`FUN_003b3800` 306401-306417): a
+    // scorch that only partly fits is partly drawn [reading: in the viewer's candidate order, not the game's walk].
+    const kept = this.clipper!.clip(frame, mark.geometry, 0.05, PERM_DECAL_TRIANGLES - this.permTriangles);
     if (kept > 0) {
       const centre = this.clipper!.centre;
       this.scorchShade = this.clipper!.centreFound ? [centre[0]!, centre[1]!, centre[2]!, centre[3]!] : null;
@@ -1192,15 +1214,7 @@ export class GrenadeThrower {
     mark.matrixAutoUpdate = false;
     mark.position.set(pos[0], pos[1], pos[2]);          // for the tests; the matrix stays the identity (world space)
     mark.updateMatrixWorld(true);
-    this.object.add(mark);
-    this.scorches.push(mark);
-    if (this.scorches.length > 16) {
-      const old = this.scorches.shift()!;
-      this.object.remove(old);
-      old.geometry.dispose();
-      this.unshaded.delete(old);
-      this.unclipped.delete(old);
-    }
+    this.keepScorch(mark, kept > 0 ? kept : this.squareEntries());
   }
 
   /**
@@ -1254,7 +1268,12 @@ export class GrenadeThrower {
     for (const [mesh, frame] of this.unclipped) {
       if (asked++ >= SHADE_RETRIES_PER_FRAME) break;
       this.unclipped.delete(mesh);
-      if (this.clipper.clip(frame, mesh.geometry, 0.05) === 0) { this.unclipped.set(mesh, frame); continue; }
+      // The square's entries back to the pool, the clip's taken: at most what it held plus the room left.
+      const held = this.scorchTriangles.get(mesh) ?? 0;
+      const kept = this.clipper.clip(frame, mesh.geometry, 0.05, held + PERM_DECAL_TRIANGLES - this.permTriangles);
+      if (kept === 0) { this.unclipped.set(mesh, frame); continue; }
+      this.scorchTriangles.set(mesh, kept);
+      this.permTriangles += kept - held;
       if (mesh === this.scorches.at(-1) && this.clipper.centreFound) {
         const c = this.clipper.centre;
         this.scorchShade = [c[0]!, c[1]!, c[2]!, c[3]!];

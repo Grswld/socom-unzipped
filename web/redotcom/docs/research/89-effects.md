@@ -290,6 +290,12 @@ up without regard to case in every animation set (`FUN_0026a250`). Every gun's `
   to the triangles facing the round.
 - It goes to the temporary pool: `TEMP_DECAL_POOL` base 150, overflow 50, trimmed back to 150 oldest-first each frame
   (`FUN_003bf110`). A set flagged `PERMENANT` (the grenade's blast) goes to the permanent one. No timed fade was found.
+- The permanent pool is `PERM_DECAL_POOL` base 30, overflow 0 (`decals.rdr`; read into `0x4b5050`, decomp
+  324141-324148). `FUN_003b3800` takes one entry per kept world triangle (306401-306417); `FUN_003bf1a0` refuses once
+  the count reaches base + overflow (313254-313262); `FUN_003bf110` trims the temporary pool only (218207, 219048,
+  236776) and `FUN_003bf050` empties both at the level's teardown (218219, 219060). So a map keeps its first 30 scorch
+  triangles, the one that only partly fits partly drawn, and refuses the rest; nothing is recycled
+  (`PERM_DECAL_TRIANGLES`, `viewer/test/grenadeScorchPool.test.ts`).
 - Its colour is the colour of the world vertices it is clipped to, per vertex (§13).
 
 **The material table** (SOILS index = the polygon's `material` byte, research 81 §4; 0 takes the map's

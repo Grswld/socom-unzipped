@@ -316,3 +316,37 @@ describe('the footprint and the grenade\'s scorch are clipped the same way (FUN_
     expect(g.stats().scorchShade).not.toBeNull();
   });
 });
+
+describe('an effect light\'s overlay is a draw, not a visual (research 89 §10; FUN_003b3ab0 306491-306659)', () => {
+  // The game's clip walks the hit node's own visuals, each once; the LIGHT's second pass (`./effectLights`, the receiver
+  // re-drawn on its own geometry, `userData.effectLightPass`, a sibling in the same group) is not one of them. A mark made
+  // while a muzzle light (0x44, 0.1 s) or a blast light (0x48, 0.5-0.7 s) is live keeps each world triangle once.
+  const floor = { corners: [[-10, 0, 10], [10, 0, 10], [10, 0, -10], [-10, 0, -10]] as V3[], colours: flat4(0.3) };
+
+  function lit(): Group {
+    const root = new Group();
+    const world = drawn([floor]);
+    world.frustumCulled = false;                           // the world's draws (world.ts), keyed 'world' by entryOf
+    root.add(world);
+    for (let k = 0; k < 2; k++) {                          // the pair's add and mix passes, both live
+      const overlay = new Mesh(world.geometry, new MeshBasicMaterial({ transparent: true }));
+      overlay.userData.effectLightPass = true;
+      overlay.frustumCulled = false;
+      root.add(overlay);
+    }
+    return root;
+  }
+
+  it('a mark under a live light keeps the floor\'s triangles once', () => {
+    const bare = new Group();
+    const world = drawn([floor]);
+    world.frustumCulled = false;
+    bare.add(world);
+    const frame = markFrame([0, 0, 0], [0, 1, 0], [0, -1, 0], 2);
+    const once = clipOnce(bare, frame).count;
+    expect(once).toBeGreaterThan(0);
+    const { g, count } = clipOnce(lit(), frame);
+    expect(count).toBe(once);
+    expect(area(g)).toBeCloseTo(4, 4);                     // the 2 x 2 square, not twice over
+  });
+});

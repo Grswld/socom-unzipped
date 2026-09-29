@@ -118,6 +118,29 @@ describe('the SEAL in water', () => {
   });
 });
 
+describe('an effect\'s SOUND plays at the command\'s own volume (FUN_002659c0 112363-112461; research 81 §12)', () => {
+  // The zAnim path (`@s2u/sound` `commandVolume`) already honours flag 0x10; the effects' SOUND op is the same command.
+  const data = (volume: number): EffectData => ({
+    archive: 'T', models: [], textures: [], absent: [], materials: ['UNKNOWN'], defaultMaterial: 0, marks: [], footprints: [],
+    ambient: [], sceneNodes: [], hitAnims: [], missing: [],
+    programs: [{
+      name: 'bang', root: 0, flags: 0, nodes: ['NA'],
+      sequences: [{ name: 's0', activation: 1, ops: [{ op: 'sound', sound: '.GREN_MED', node: 0, volume }] }],
+    }],
+  });
+
+  for (const volume of [3, 0.5, 1]) {
+    it(`a command's ${volume} reaches the sound door`, () => {
+      const heard: [string, number][] = [];
+      const fx = new Effects(() => 0.5, (name, _at, v) => heard.push([name, v]));
+      fx.setData(data(volume));
+      expect(fx.play('bang', { node: new Matrix4(), position: [0, 0, 0] })).toBe(true);
+      fx.update(1 / 60, new PerspectiveCamera());
+      expect(heard).toEqual([['.GREN_MED', volume]]);
+    });
+  }
+});
+
 /** A flat deck at y 0 of material `material` over x, z in [-100, 100]. */
 function deck(material: number) {
   const poly: WorldPoly = {
