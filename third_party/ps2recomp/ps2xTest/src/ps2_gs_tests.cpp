@@ -19,6 +19,7 @@
 #include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_frame_histogram.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
+#include "runtime/gs/gs_gl_state_tags.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -6333,6 +6334,200 @@ void register_ps2_gs_tests()
             t.IsTrue(again.sourceHash == changed && again.sourceHash != walk.sourceHash,
                      "a changed source texel moves the decode-time hash exactly as it moves textureSourceHash()");
             t.Equals(again.sourceWalks, 1u, "and the second decode is one walk too");
+        });
+
+        tc.Run("S17 F1 attempt 2: the two [gs-gl stats] tags are formatted only when the stats line prints them", [](TestCase &t)
+        {
+            // setupDrawState formatted a state tag and a blend tag and searched two logs for them on every draw, but
+            // executeCommands prints (and clears) those logs only under PS2X_GS_STATS. Attempt 2 formats them only then;
+            // PS2X_GS_SETUP_FORMAT=1 restores the unconditional formatting for the A/B (docs/KNOBS.md). The GL half --
+            // setupDrawState calling these under the decision -- needs a context; the decision and the tags do not.
+            // The knob is three-way so the A/B can be read under PS2X_GS_STATS, where the [gs-submit] setup= column is:
+            // unset follows PS2X_GS_STATS, 0 never formats (the tags print empty), anything else always formats.
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, nullptr), "no stats and no A/B knob: nothing is formatted per draw");
+            t.IsTrue(GsGlStateTags::enabled("1", nullptr), "PS2X_GS_STATS=1, A/B knob unset: formatted, as the stats line prints them");
+            t.IsTrue(GsGlStateTags::enabled("0", nullptr), "PS2X_GS_STATS is a Presence knob: any value, 0 too, prints the line");
+            t.IsTrue(GsGlStateTags::enabled(nullptr, "1"), "PS2X_GS_SETUP_FORMAT=1 restores the per-draw formatting");
+            t.IsTrue(GsGlStateTags::enabled("1", "1"), "both on: formatted");
+            t.IsTrue(!GsGlStateTags::enabled("1", "0"), "PS2X_GS_SETUP_FORMAT=0 never formats, even under PS2X_GS_STATS (the A/B's new arm)");
+            t.IsTrue(!GsGlStateTags::enabled("1", "off"), "off is 0, the one flag rule");
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, "0"), "0 without stats: not formatted");
+
+            // The tags the stats line prints are the ones setupDrawState wrote before the move, byte for byte.
+            std::string states;
+            GsGlStateTags::noteState(states, 0x5000Dull | (1ull << 40), 0xFF000000u, 1u, true);
+            t.Equals(states, std::string(" T5000d/Mff000000/tfx1t"), "the state tag: TEST's low 19 bits, FBMSK, TFX, t when textured");
+            GsGlStateTags::noteState(states, 0x5000Dull, 0xFF000000u, 5u, true);
+            t.Equals(states, std::string(" T5000d/Mff000000/tfx1t"), "a state already in the log is not appended twice (TFX is 2 bits)");
+            GsGlStateTags::noteState(states, 0x30000ull, 0u, 0u, false);
+            t.Equals(states, std::string(" T5000d/Mff000000/tfx1t T30000/M00000000/tfx0"), "a new state is appended; untextured has no t");
+            std::string blends;
+            GsGlStateTags::noteBlend(blends, 0x5d00000069ull);   // A=1 B=2 C=2 D=1, FIX 0x5d (research/31 section 12)
+            t.Equals(blends, std::string(" A1B2C2D1/fix5d"), "the blend tag: the A, B, C, D selectors and FIX");
+            GsGlStateTags::noteBlend(blends, 0x5d00000069ull);
+            t.Equals(blends, std::string(" A1B2C2D1/fix5d"), "a blend already in the log is not appended twice");
+            std::string fullStates(600u, 'x');
+            GsGlStateTags::noteState(fullStates, 0x1ull, 0u, 0u, false);
+            t.Equals(static_cast<int>(fullStates.size()), 600, "the state log stops growing at 600 characters");
+            std::string fullBlends(400u, 'x');
+            GsGlStateTags::noteBlend(fullBlends, 0x44ull);
+            t.Equals(static_cast<int>(fullBlends.size()), 400, "the blend log stops growing at 400 characters");
+        });
+
+        tc.Run("S17 F1 attempt 3: a whole-block tile is swizzled once, by the recorder; the replay copies its blocks", [](TestCase &t)
+        {
+            // The double swizzle: GSGlBackend::UploadImage swizzled every tile into the game VRAM (m_cpu) on the EE
+            // thread, then executeUpload swizzled the same bytes again into the shadow (m_shadow) on the GL thread. For
+            // a transfer one call completes whose rectangle is whole 256-byte blocks of a format that owns its bytes,
+            // the recorder now carries the blocks it swizzled (their addresses and bytes, taken under m_cpu's lock) and
+            // the replay copies them into the shadow: swizzledByRecorder on the Upload command. The command carries the
+            // bytes, not a pointer into m_cpu: the game thread runs frames ahead of the replay and may rewrite the same
+            // blocks before the replay reaches this command. PS2X_GS_DOUBLE_SWIZZLE=1 restores the second swizzle (A/B).
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            auto owned = std::make_unique<GSGlBackend>();
+            GSGlBackend *gl = owned.get();
+            GS gs;
+            gs.setRasterBackend(std::move(owned));
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+            gl->setDoubleSwizzleForTest(false);
+            auto upload = [&](uint32_t dbp, uint32_t dbw, uint32_t psm, uint32_t x0, uint32_t y0, uint32_t w, uint32_t h,
+                              const std::vector<uint8_t> &bytes)
+            {
+                const uint64_t bitblt = (static_cast<uint64_t>(dbp) << 32) | (static_cast<uint64_t>(dbw) << 48) |
+                                        (static_cast<uint64_t>(psm) << 56);
+                const uint64_t trxpos = (static_cast<uint64_t>(x0) << 32) | (static_cast<uint64_t>(y0) << 48);
+                const uint64_t trxreg = static_cast<uint64_t>(w) | (static_cast<uint64_t>(h) << 32);
+                std::vector<uint8_t> packet;
+                appendU64(packet, makeGifTag(4u, GIF_FMT_PACKED, 1u, false));
+                appendU64(packet, 0x0Eull);
+                appendGifAd(packet, bitblt, GS_REG_BITBLTBUF);
+                appendGifAd(packet, trxpos, GS_REG_TRXPOS);
+                appendGifAd(packet, trxreg, GS_REG_TRXREG);
+                appendGifAd(packet, 0ull, GS_REG_TRXDIR);
+                appendU64(packet, makeGifTag(static_cast<uint16_t>(bytes.size() / 16u), GIF_FMT_IMAGE, 0u, true));
+                appendU64(packet, 0ull);
+                packet.insert(packet.end(), bytes.begin(), bytes.end());
+                gs.processGIFPacket(packet.data(), static_cast<uint32_t>(packet.size()));
+            };
+            auto pattern = [](size_t n, uint32_t seed)
+            {
+                std::vector<uint8_t> out(n);
+                for (size_t i = 0; i < n; ++i)
+                    out[i] = static_cast<uint8_t>((i * 37u + seed * 101u + (i >> 8) * 11u) & 0xFFu);
+                return out;
+            };
+
+            // 1. A 16x16 CT32 tile at (16, 8): four 8x8 blocks, swizzled by the recorder.
+            constexpr uint32_t kDbp = 0x40u;
+            std::vector<uint8_t> tile(16u * 16u * 4u);
+            for (uint32_t y = 0; y < 16u; ++y)
+                for (uint32_t x = 0; x < 16u; ++x)
+                {
+                    const uint32_t v = 0xA0000000u | (y << 8) | x;
+                    std::memcpy(tile.data() + (y * 16u + x) * 4u, &v, 4u);
+                }
+            upload(kDbp, 1u, GS_PSM_CT32, 16u, 8u, 16u, 16u, tile);
+            bool gameHolds = true;
+            for (uint32_t y = 0; y < 16u; ++y)
+                for (uint32_t x = 0; x < 16u; ++x)
+                    gameHolds = gameHolds && GSMem::ReadCT32(vram.data(), kDbp, 1u, 16u + x, 8u + y) == (0xA0000000u | (y << 8) | x);
+            t.IsTrue(gameHolds, "the game VRAM (GSCpuBackend) holds the tile, swizzled");
+            std::vector<GSGlBackend::PendingUploadForTest> ups = gl->pendingUploadsForTest();
+            t.Equals(static_cast<int>(ups.size()), 1, "one Upload command recorded");
+            t.IsTrue(!ups.empty() && ups[0].swizzledByRecorder, "the Upload command says the recorder already swizzled it");
+            t.Equals(static_cast<int>(ups.empty() ? 0u : ups[0].data.size()), 4 * (4 + 256),
+                     "it carries four block addresses and the four swizzled blocks, no raw tile");
+            if (!ups.empty() && ups[0].data.size() == 4u * 260u)
+            {
+                std::set<uint32_t> carried, expected;
+                bool blocksAreTheGameVram = true;
+                for (uint32_t i = 0; i < 4u; ++i)
+                {
+                    uint32_t addr = 0u;
+                    std::memcpy(&addr, ups[0].data.data() + i * 4u, 4u);
+                    carried.insert(addr);
+                    blocksAreTheGameVram = blocksAreTheGameVram && addr + 256u <= vram.size() &&
+                                           std::memcmp(ups[0].data.data() + 16u + i * 256u, vram.data() + addr, 256u) == 0;
+                }
+                for (uint32_t by = 0; by < 2u; ++by)
+                    for (uint32_t bx = 0; bx < 2u; ++bx)
+                    {
+                        uint32_t block = 0u;
+                        GsGlUploadReasons::blockOf(GS_PSM_CT32, kDbp, 1u, 16u + bx * 8u, 8u + by * 8u, block);
+                        expected.insert(block * 256u);
+                    }
+                t.IsTrue(carried == expected, "the addresses are the tile's four blocks (the upload gate's block map agrees)");
+                t.IsTrue(blocksAreTheGameVram, "each carried block is the game VRAM's swizzled block, byte for byte");
+            }
+            uint64_t swizzles = gl->replaySwizzlesForTest();
+            gl->replayPendingForTest();
+            t.Equals(gl->replaySwizzlesForTest() - swizzles, 0ull, "the replay does not swizzle the tile a second time");
+            t.IsTrue(gl->shadowVramForTest() == vram, "the shadow VRAM equals the game VRAM after the replay");
+
+            // 2. The other formats that own their bytes, one whole-block rectangle each: swizzled once, shadow equal.
+            struct Shape { uint32_t psm, dbp, dbw, x0, y0, w, h, bytes; const char *name; };
+            const Shape shapes[] = {
+                {GS_PSM_CT16, 0x100u, 1u, 16u, 8u, 16u, 8u, 256u, "CT16 16x8"},
+                {GS_PSM_CT16S, 0x140u, 1u, 0u, 16u, 32u, 8u, 512u, "CT16S 32x8"},
+                {GS_PSM_T8, 0x180u, 2u, 16u, 16u, 16u, 16u, 256u, "T8 16x16"},
+                {GS_PSM_T4, 0x200u, 2u, 32u, 16u, 32u, 16u, 256u, "T4 32x16"},
+            };
+            uint32_t seed = 1u;
+            for (const Shape &s : shapes)
+            {
+                upload(s.dbp, s.dbw, s.psm, s.x0, s.y0, s.w, s.h, pattern(s.bytes, seed++));
+                ups = gl->pendingUploadsForTest();
+                t.IsTrue(ups.size() == 1u && ups[0].swizzledByRecorder, std::string(s.name) + ": swizzled by the recorder");
+                swizzles = gl->replaySwizzlesForTest();
+                gl->replayPendingForTest();
+                t.Equals(gl->replaySwizzlesForTest() - swizzles, 0ull, std::string(s.name) + ": no second swizzle");
+                t.IsTrue(gl->shadowVramForTest() == vram, std::string(s.name) + ": the shadow equals the game VRAM");
+            }
+
+            // 3. Not whole blocks, or split over two calls, or CT24 (its alpha byte is not the transfer's): the old path.
+            upload(0x300u, 1u, GS_PSM_CT32, 0u, 0u, 16u, 4u, pattern(16u * 4u * 4u, seed++));      // 4 rows of an 8-row block
+            upload(0x340u, 1u, GS_PSM_CT24, 0u, 0u, 16u, 16u, pattern(16u * 16u * 3u, seed++));    // CT24
+            {
+                const std::vector<uint8_t> whole = pattern(16u * 16u * 4u, seed++);
+                const std::vector<uint8_t> firstHalf(whole.begin(), whole.begin() + 512), secondHalf(whole.begin() + 512, whole.end());
+                const uint64_t bitblt = (0x380ull << 32) | (1ull << 48) | (static_cast<uint64_t>(GS_PSM_CT32) << 56);
+                std::vector<uint8_t> packet;
+                appendU64(packet, makeGifTag(4u, GIF_FMT_PACKED, 1u, false));
+                appendU64(packet, 0x0Eull);
+                appendGifAd(packet, bitblt, GS_REG_BITBLTBUF);
+                appendGifAd(packet, 0ull, GS_REG_TRXPOS);
+                appendGifAd(packet, 16ull | (16ull << 32), GS_REG_TRXREG);
+                appendGifAd(packet, 0ull, GS_REG_TRXDIR);
+                appendU64(packet, makeGifTag(32u, GIF_FMT_IMAGE, 0u, false));
+                appendU64(packet, 0ull);
+                packet.insert(packet.end(), firstHalf.begin(), firstHalf.end());
+                appendU64(packet, makeGifTag(32u, GIF_FMT_IMAGE, 0u, true));
+                appendU64(packet, 0ull);
+                packet.insert(packet.end(), secondHalf.begin(), secondHalf.end());
+                gs.processGIFPacket(packet.data(), static_cast<uint32_t>(packet.size()));   // two IMAGE tags: two calls
+            }
+            ups = gl->pendingUploadsForTest();
+            int raw = 0;
+            for (const GSGlBackend::PendingUploadForTest &u : ups)
+                raw += u.swizzledByRecorder ? 0 : 1;
+            t.Equals(raw, static_cast<int>(ups.size()), "a partial block, CT24 and a split transfer are recorded raw");
+            t.IsTrue(ups.size() >= 4u, "and all four chunks were recorded");
+            swizzles = gl->replaySwizzlesForTest();
+            gl->replayPendingForTest();
+            t.Equals(gl->replaySwizzlesForTest() - swizzles, static_cast<unsigned long long>(ups.size()),
+                     "the replay swizzles each raw chunk itself");
+            t.IsTrue(gl->shadowVramForTest() == vram, "the shadow equals the game VRAM after the raw chunks");
+
+            // 4. The A/B: PS2X_GS_DOUBLE_SWIZZLE=1 records the raw tile and the replay swizzles it again, same result.
+            gl->setDoubleSwizzleForTest(true);
+            upload(kDbp, 1u, GS_PSM_CT32, 32u, 8u, 16u, 16u, pattern(16u * 16u * 4u, seed++));
+            ups = gl->pendingUploadsForTest();
+            t.IsTrue(ups.size() == 1u && !ups[0].swizzledByRecorder && ups[0].data.size() == 1024u,
+                     "PS2X_GS_DOUBLE_SWIZZLE=1: the raw tile is recorded, not swizzled blocks");
+            swizzles = gl->replaySwizzlesForTest();
+            gl->replayPendingForTest();
+            t.Equals(gl->replaySwizzlesForTest() - swizzles, 1ull, "and the replay swizzles it a second time, as before attempt 3");
+            t.IsTrue(gl->shadowVramForTest() == vram, "with the same shadow");
         });
 
         tc.Run("R123: mix and seed are order-sensitive so row order is part of the identity", [](TestCase &t)
