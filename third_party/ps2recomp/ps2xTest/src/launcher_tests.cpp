@@ -591,7 +591,7 @@ void register_launcher_tests()
             t.IsTrue(has("exit  65 no-usable-gl: Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."), "65");
             t.IsTrue(has("exit  72 card-dir-unwritable: The memory-card folder cannot be written. Move the game out of a protected folder and try again."), "72");
             t.IsTrue(has("exit  73 revision-mismatch: These game files are a different disc revision than this copy of the game was built for. Unpack the download again."), "73");
-            t.IsTrue(has("exit  74 reboot-requested: The game asked to restart itself after an error. This build cannot restart, so it stopped; the log says why."), "74");
+            t.IsTrue(has("exit  74 reboot-requested: The game tried to start a PS2 program this build cannot run (network setup, the console menu). Press SAVE DIAGNOSTICS."), "74");
         });
 
         tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)
