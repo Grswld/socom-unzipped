@@ -4,7 +4,7 @@ import {
 } from 'three';
 import type { Material, Object3D } from 'three';
 import type { Rgba } from '@s2u/gs';
-import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, segmentHits, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 import { roundPath } from './round';
 import { ringFor, type MagazineRing } from './magazines';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
@@ -387,6 +387,24 @@ export class Fire {
    */
   setPenetration(penetrationOf: ((material: number | undefined) => number) | null): void {
     this.penetrationOf = penetrationOf;
+  }
+
+  /**
+   * The world's surfaces down the line from `from` along `dir` (made unit), the weapon's whole range
+   * (`Maximum_Range` x `UNITS_PER_METRE`), nearest first, each with its `PENETRATION` by the table `setPenetration`
+   * gave (without one, 0: every surface stops a round, as `tryFire` without a table): what a round down that line meets
+   * before `penetrate` walks it -- a surface at exactly 1 is passed over (`HandleIntersections` 0x3c9b70, decomp
+   * 320028-320030). The release sweep (`tools/release-sweep.ts`, `tools/sweepHeading.ts`) picks its mark heading by it.
+   * Null with no hull.
+   */
+  surfacesAlong(from: readonly number[], dir: readonly number[]): { distance: number; penetration: number; material: number }[] | null {
+    const grid = this.source.grid();
+    if (!grid) return null;
+    const d = unit([dir[0]!, dir[1]!, dir[2]!]), reach = this.rifle.maximumRange * UNITS_PER_METRE;
+    const a: Vec3 = [from[0]!, from[1]!, from[2]!];
+    const pen = this.penetrationOf;
+    return segmentHits(grid, a, [a[0] + d[0] * reach, a[1] + d[1] * reach, a[2] + d[2] * reach])
+      .map((h) => ({ distance: h.t * reach, penetration: pen ? pen(h.poly.material) : 0, material: h.poly.material }));
   }
 
   /**

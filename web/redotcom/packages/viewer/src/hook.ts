@@ -114,6 +114,12 @@ export interface ViewerHook {
   /** Walk mode: the mover's feet, or null in fly mode. */
   feet(): [number, number, number] | null;
   /**
+   * The release sweep (`tools/release-sweep.ts`, `tools/sweepFall.ts`): the height of the floor the walk picks under
+   * (x, z) for feet at `y` -- `FUN_005b5d40`'s pick, `selectFloor(probeGround(x, z), from + PROBE_LIFT, y)`, `from` the
+   * feet as they were (the airborne mover's origin; `y` by default, the grounded one's) -- or null with no hull or no pick.
+   */
+  floorUnder(x: number, z: number, y: number, from?: number): number | null;
+  /**
    * The controller (W2.7, `./gamepad`): the connected pad's id, or null, and what the camera and the mover were fed
    * on the last frame -- the pad's input merged with the touch stick's (`e2e/pad.spec.ts`).
    */
@@ -167,6 +173,11 @@ export interface ViewerHook {
    * the marks on the walls.
    */
   fire(): FireState;
+  /**
+   * The release sweep's mark heading (`tools/sweepHeading.ts`): the world's surfaces down the line from `from` along
+   * `dir`, the weapon's whole range, nearest first, each with its `PENETRATION` (`Fire.surfacesAlong`); null with no hull.
+   */
+  surfacesAlong(from: [number, number, number], dir: [number, number, number]): { distance: number; penetration: number; material: number }[] | null;
   /** W2.5: one round now, as a click would fire it (the rate, the magazine, walking); null when none went. */
   shoot(): Shot | null;
   /**

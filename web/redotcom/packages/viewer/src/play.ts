@@ -12,7 +12,8 @@ import type { MotionEntry, MotionTable } from './motionTable';
 import { ACTION_CLIPS, actionRoots, type MoverActionName, type Stance, type WalkMode } from './walk';
 export { actionRoots };
 import { SEAL_ANIMS } from './locomotion';
-import { RELOAD_STILL_SPEED, WeaponPose, type WeaponPoseStats } from './weaponPose';
+import { reloadMoving } from './reloadClip';
+import { WeaponPose, type WeaponPoseStats } from './weaponPose';
 import { WeaponRaise, type RaiseStats } from './weaponRaise';
 
 /**
@@ -218,10 +219,10 @@ export class Play {
     this.mounts = { ...mounts };
   }
 
-  /** `FUN_005a82e0`: faster than 20 units a second (`|v|^2 > 400`) is the moving reload. */
+  /** `FUN_005a82e0`: faster than 20 units a second (`|v|^2 > 400`) is the moving reload -- the room's test (`./reloadClip`). */
   private movingForReload(): boolean {
     const v = this.last;
-    return v !== null && v.vx * v.vx + v.vz * v.vz + v.vy * v.vy > RELOAD_STILL_SPEED * RELOAD_STILL_SPEED;
+    return v !== null && reloadMoving(v.vx, v.vy, v.vz);
   }
 
   private hangHeld(object: Object3D | null): void {
@@ -324,7 +325,7 @@ export class Play {
       const w = this.raise.frame(dt, this.weaponInput());
       if (this.weaponPose) {
         this.weaponPose.fireWeight = w;
-        this.weaponPose.moving = snap.vx * snap.vx + snap.vz * snap.vz + snap.vy * snap.vy > RELOAD_STILL_SPEED * RELOAD_STILL_SPEED;
+        this.weaponPose.moving = reloadMoving(snap.vx, snap.vy, snap.vz);
       }
       this.weaponPose?.step(dt);
       // MOTION: the same weight scales the aim's twist and lets the head look run when 0 (FUN_0057a330 439152-439193).
