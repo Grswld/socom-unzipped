@@ -80,9 +80,14 @@ export interface KitHost {
   swapProgress?(): SwapProgress | null;
 }
 
-/** The hand-off of a pick. */
-function handOffOf(pick: SwapPick): number {
+/** The hand-off of a pick, or of the swap clip playing (`SwapProgress`): the overlay's, else its action's. */
+export function handOffOf(pick: { action: SwapPick['action']; overlay: boolean }): number {
   return pick.overlay ? HAND_OFF.moving : HAND_OFF[pick.action ?? 'swapStand'];
+}
+
+/** Whether a swap to `to` at `progress` (0..1 of its clip, whichever way it runs) has passed its hand-off `h`. */
+export function handedAt(to: Firearm, progress: number, h: number): boolean {
+  return to === 'pistol' ? progress >= h : 1 - progress <= h;
 }
 
 export class Kit {
@@ -133,7 +138,7 @@ export class Kit {
       const on = this.host.swapProgress();
       if (!on) { this.finish(); return; }                        // the clip is over (or cut): the swap with it
       progress = on.progress;
-      h = on.overlay ? HAND_OFF.moving : HAND_OFF[on.action ?? 'swapStand'];
+      h = handOffOf(on);
       if (on.overlay) s.swap.clip = 'seal_mv_rifle2pistol';
     } else {
       this.elapsed += dt;
@@ -141,7 +146,7 @@ export class Kit {
       h = handOffOf(pick);
     }
     s.swap.progress = progress;
-    if (!s.swap.handed && (s.swap.to === 'pistol' ? progress >= h : 1 - progress <= h)) {
+    if (!s.swap.handed && handedAt(s.swap.to, progress, h)) {
       s.swap.handed = true;
       if (s.swap.to === 'pistol') s.mounts.pistol = 'hand';      // FUN_005a7730
       else s.mounts.pistol = 'holster';                          // FUN_005a75d0

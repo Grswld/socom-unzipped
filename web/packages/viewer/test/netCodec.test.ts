@@ -130,6 +130,43 @@ describe('a body from the mover and back (M3/M5)', () => {
     }
   });
 
+  // The merge review's item 4: what the other screens draw by -- the posture (C tapped to crouch, held to prone, and back),
+  // a jump on a slope, the aim and the trigger (the scope is the aim since first person went) -- survives the wire.
+  it('carries the stances, a jump on a slope, the aim and the trigger', () => {
+    const slope: WorldPoly = { ...floor, points: Float32Array.from([-200, -40, -200, 200, -40, -200, 200, 40, 200, -200, 40, 200]) };
+    const w = new Walker(buildGrid(params, [], [], [slope], owners));
+    expect(w.place(0, 60, -100)).toBe(true);
+    let jumps = 0, sawAir = false, sawProne = false, sawCrouch = false;
+    const actions = new Set<string>();
+    for (let t = 0; t < 480; t++) {
+      if (t === 40 && w.jump()) jumps++;
+      if (t === 150) w.changeStance('crouch');
+      if (t === 240) w.changeStance('prone');
+      if (t === 360) w.changeStance('stand');
+      w.tick({ forward: t < 100 ? 1 : 0, right: 0, boost: false });
+      const s = moverSnapshot(w, null, jumps, 0.25);
+      const extras = { alive: true, weapon: 0 as const, aiming: t % 3 === 0, trigger: t % 5 === 0, boost: false };
+      const back = snapshotOf(decodeSnapshot(encodeSnapshot({ tick: t, own: null, bodies: [bodyOf(3, s, extras)] })).bodies[0]!);
+      expect(back.stance).toBe(s.stance);
+      expect(back.crouched).toBe(s.crouched);
+      expect(back.airborne).toBe(s.airborne);
+      expect(back.ground.state).toBe(s.ground.state);
+      expect(back.action?.name ?? null).toBe(s.action?.name ?? null);
+      expect(back.action?.reversed ?? null).toBe(s.action?.reversed ?? null);
+      if (s.action && s.action.seconds !== null) expect(back.action!.t).toBeCloseTo(s.action.t, 2);
+      expect(back.vy).toBeCloseTo(s.vy, 1);
+      expect(back.aiming).toBe(extras.aiming);
+      expect(back.trigger).toBe(extras.trigger);
+      for (let k = 0; k < 3; k++) expect(back.feet[k]).toBeCloseTo(s.feet[k]!, 3);
+      sawAir ||= s.airborne;
+      sawProne ||= s.stance === 'prone';
+      sawCrouch ||= s.stance === 'crouch';
+      if (s.action) actions.add(s.action.name);
+    }
+    expect(sawAir && sawProne && sawCrouch).toBe(true);
+    expect(actions.has('standToCrouch') && actions.has('crouchToProne')).toBe(true);
+  });
+
   it('knows every action the mover has', () => {
     expect([...ACTION_CODES].sort()).toEqual((Object.keys(ACTION_CLIPS) as MoverActionName[]).concat(['jump', 'launch', 'fall'] as MoverActionName[]).filter((v, i, a) => a.indexOf(v) === i).sort());
   });

@@ -308,10 +308,13 @@ export class WalkMode {
    */
   swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
     if (!this.walking || !this.walker || this.locked) return null;
-    this.pressed |= Button.Swap;                                  // MULTIPLAYER
-    this.weapon_ = to === 'pistol' ? 1 : 0;
     if (this.moves?.busy()) return null;
-    return this.walker.swapWeapon(to);
+    const pick = this.walker.swapWeapon(to);
+    if (pick) {                                                   // MULTIPLAYER: only a swap the mover took goes on the wire
+      this.pressed |= Button.Swap;
+      this.weapon_ = to === 'pistol' ? 1 : 0;
+    }
+    return pick;
   }
 
   /** Walk mode: the swap clip playing and its progress (`Walker.swapProgress`), or null. */
