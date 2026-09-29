@@ -395,3 +395,133 @@ describe('doors (web/docs/research/92-doors.md): the server runs them and every 
     expect(a.last().doors).toEqual([{ valve: 1, phase: 255 }]);
   });
 });
+
+describe('the room reports its rules and the game\'s round count (protocol 4)', () => {
+  it('a respawn room is unchanged: its welcome and round start name the rules and mp_max_rounds (11)', () => {
+    const { room, join } = setup({ roundSeconds: 2 });
+    const a = join(1);
+    expect(a.of('welcome')[0]).toMatchObject({ rules: 'respawn', round: 1, rounds: 11, ghost: false });
+    join(2);
+    for (let i = 0; i < (2 + 16 + 23) * TICK_HZ; i++) room.step();
+    // The one-round match is over and the next begins: the banner's count is still mp_max_rounds (FUN_001fb420).
+    expect(a.of('roundOver')[0]).toMatchObject({ round: 1, matchOver: true });
+    expect(a.of('roundStart')[0]).toMatchObject({ round: 1, rounds: 11 });
+  });
+});
+
+describe('classic: respawn off, the create-game default (research 91 sections 9, 12, 18)', () => {
+  /** Two players on a classic room, T (1) and S (2) by the join rule; the match launched once both sides have one. */
+  function classic(opts: ConstructorParameters<typeof Room>[2] = {}) {
+    const s = setup({ rules: 'classic', roundSeconds: 60, ...opts });
+    const t = s.join(1, 'Tango'), sl = s.join(2, 'Sierra');
+    s.room.step();
+    let seq = 1000;
+    /** Three M4A1 SD rounds to the body from 100 units: a kill (the duel above). */
+    const kill = (shooter: number, victim: number): void => {
+      const a = s.room.player(shooter)!, b = s.room.player(victim)!;
+      a.sim.walker.place(0, 20, 0); b.sim.walker.place(100, 20, 0);
+      s.room.step(); s.room.step();
+      for (let i = 0; i < 3 && b.alive; i++) {
+        s.room.text(shooter, { type: 'fire', seq, from: [0, 15.4, 0], dir: [1, -0.05, 0], weapon: 0, viewTick: s.room.tick });
+        seq += 10;
+      }
+      expect(b.alive).toBe(false);
+    };
+    const steps = (seconds: number): void => { for (let i = 0; i < Math.round(seconds * TICK_HZ); i++) s.room.step(); };
+    return { ...s, t, sl, kill, steps };
+  }
+
+  it('launches when both sides have a player (the launch rule): round 1 of 11, everyone at the start slots', () => {
+    const { t, sl, room } = classic();
+    expect(t.of('welcome')[0]).toMatchObject({ rules: 'classic', rounds: 11 });
+    expect(sl.of('roundStart').at(-1)).toMatchObject({ round: 1, rounds: 11, wins: { seal: 0, terrorist: 0 } });
+    expect(room.player(1)!.alive && room.player(2)!.alive).toBe(true);
+  });
+
+  it('elimination ends the round, tested from 15 s in (WAIT 5, WAIT 10); the side left alive wins; +2 +1 +5', () => {
+    const { t, room, kill, steps } = classic();
+    kill(1, 2);
+    steps(14);
+    expect(t.of('eliminated')).toHaveLength(0);
+    steps(1.2);
+    expect(t.of('eliminated')).toEqual([{ type: 'eliminated', winner: 'terrorist' }]);
+    expect(t.of('roundOver')).toHaveLength(0);                   // WAIT 2, then `failure`/`success`: WAIT 20, WAIT 1
+    steps(23);
+    expect(t.of('roundOver')[0]).toMatchObject({
+      round: 1, winner: 'terrorist', wins: { seal: 0, terrorist: 1 }, matchOver: false, screens: [{ screen: 'roundComplete', seconds: 5 }],
+    });
+    expect(room.player(1)!.score).toBe(2 + 1 + 5);             // the kill, alive at the end, the winning side
+    expect(room.player(2)!.score).toBe(0);
+    expect(t.of('timeExpired')).toHaveLength(0);
+    steps(8.2);                                                 // the engine's 3 s and ROUND COMPLETE's 5 s
+    expect(t.of('roundStart').at(-1)).toMatchObject({ round: 2, rounds: 11, wins: { seal: 0, terrorist: 1 } });
+    expect(room.player(2)!.alive).toBe(true);
+    expect(room.player(1)!.mags[0].total()).toBe(90);          // a full kit at the round's start (FUN_00598b90(p,0))
+  });
+
+  it('the clock ends a round as a draw: no message, no hold, nobody scores the win', () => {
+    const { t, room, steps } = classic({ roundSeconds: 20 });
+    steps(20.1);
+    expect(t.of('roundOver')[0]).toMatchObject({ round: 1, winner: null, wins: { seal: 0, terrorist: 0 }, matchOver: false });
+    expect(t.of('timeExpired')).toHaveLength(0);
+    expect(t.of('eliminated')).toHaveLength(0);
+    expect(room.player(1)!.score).toBe(1);                      // alive at the end only
+    expect(room.player(2)!.score).toBe(1);
+  });
+
+  it('no respawn: the Action press does nothing; the dead wait for the next round', () => {
+    const { room, kill, steps, send, cmd, reset } = classic();
+    kill(1, 2);
+    steps(11);
+    reset(2);
+    send(2, [cmd(2, { buttons: Button.Action })]);
+    room.step();
+    expect(room.player(2)!.alive).toBe(false);
+  });
+
+  it('first to mp_half_rounds (6 of 11) ends the match: FINAL ROUND and GAME COMPLETE, then a new match', () => {
+    const { t, kill, steps } = classic();
+    for (let r = 1; r <= 6; r++) {
+      kill(1, 2);
+      steps(15.2 + 23);
+      expect(t.of('roundOver').at(-1)).toMatchObject({ round: r, winner: 'terrorist', matchOver: r === 6 });
+      if (r < 6) steps(8.2);
+    }
+    expect(t.of('roundOver').at(-1)!.screens).toEqual([{ screen: 'finalRound', seconds: 10 }, { screen: 'gameComplete', seconds: 10 }]);
+    expect(t.of('roundOver').at(-1)!.wins).toEqual({ seal: 0, terrorist: 6 });
+    steps(23.2);
+    expect(t.of('roundStart').at(-1)).toMatchObject({ round: 1, wins: { seal: 0, terrorist: 0 } });
+  });
+
+  it('level after the last round: a tiebreaker round, and another while it is drawn (the game_over script)', () => {
+    const { t, kill, steps } = classic({ roundSeconds: 20 });
+    for (let r = 1; r <= 10; r++) {
+      if (r % 2) kill(1, 2); else kill(2, 1);
+      steps(15.2 + 23 + 8.2);
+    }
+    expect(t.of('roundOver').at(-1)).toMatchObject({ round: 10, wins: { seal: 5, terrorist: 5 }, matchOver: false });
+    steps(20.1);                                                // round 11 to the clock: a draw, still 5-5
+    expect(t.of('roundOver').at(-1)).toMatchObject({ round: 11, winner: null, matchOver: false });
+    steps(8.2);
+    expect(t.of('roundStart').at(-1)).toMatchObject({ round: 12, rounds: 11 });   // PLAYING TIEBREAKER ROUND
+    steps(20.1 + 8.2);                                          // a drawn tiebreaker: another
+    expect(t.of('roundStart').at(-1)).toMatchObject({ round: 13 });
+    kill(2, 1);
+    steps(15.2 + 23);
+    expect(t.of('roundOver').at(-1)).toMatchObject({ round: 13, winner: 'seal', wins: { seal: 6, terrorist: 5 }, matchOver: true });
+  });
+
+  it('a late joiner is a ghost until the next round, and a ghost is not a living player', () => {
+    const { room, join, kill, steps, clients } = classic();
+    steps(1);
+    const late = join(3, 'Late');                              // T 1, S 1: ties to SEALs
+    expect(late.of('welcome')[0]).toMatchObject({ role: 'player', team: 'seal', ghost: true });
+    expect(room.player(3)!.alive).toBe(false);
+    expect(clients.get(1)!.of('spawn').some((e) => e.id === 3)).toBe(false);
+    kill(1, 2);                                                 // the only living SEAL
+    steps(15.2);
+    expect(late.of('eliminated')).toEqual([{ type: 'eliminated', winner: 'terrorist' }]);
+    steps(23 + 8.2);
+    expect(room.player(3)!.alive).toBe(true);
+  });
+});

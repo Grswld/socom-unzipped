@@ -1,12 +1,13 @@
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AssetSource } from '@s2u/archive';
-import { loadSimClips, loadSimMap, loadSimSkeleton, TICK_HZ, type ClientEvent, type SimClips } from '../../viewer/src/sim';
+import { loadSimClips, loadSimMap, loadSimSkeleton, parseRules, TICK_HZ, type ClientEvent, type Rules, type SimClips } from '../../viewer/src/sim';
 import { Room, type RoomOptions } from './room';
 
 /**
- * The server (web sprint 3, M3; W3.R6, W3.R9): one HTTP port for `/health`, `/metrics` and the WebSocket (`/ws`); one
- * `Room` per map, made when its first client says hello and loaded from the private disc directory (never served);
+ * The server (web sprint 3, M3; W3.R6, W3.R9): one HTTP port for `/health`, `/metrics`, `/rooms` and the WebSocket
+ * (`/ws`); one `Room` per map and rules (protocol 4: a hello names `respawn` or `classic`, the server's default when it
+ * does not), made when its first client says hello and loaded from the private disc directory (never served);
  * the rooms stepped at the game's 60 Hz by a drift-corrected clock; per-connection rate limits; JSON-line logs.
  */
 
@@ -17,6 +18,8 @@ export interface ServerOptions {
   /** The maps a client may ask for (stems, `MP2`); empty: every `RUN/MP*.ZDB` the source holds. */
   maps: readonly string[];
   room: Partial<RoomOptions>;
+  /** The rules of a hello that names none (`RULES`; respawn by default, W3.R11). */
+  rules?: Rules;
   log: (entry: Record<string, unknown>) => void;
 }
 
@@ -99,20 +102,22 @@ export class MatchServer {
 
   // ---- rooms ----
 
-  private room(stem: string): Promise<Room> {
-    const key = stem.toUpperCase();
+  /** The room for a map under its rules, keyed `MP2` (respawn, as before protocol 4) or `MP2/classic`. */
+  private room(stem: string, rules: Rules): Promise<Room> {
+    const upper = stem.toUpperCase();
+    const key = rules === 'respawn' ? upper : `${upper}/${rules}`;
     const have = this.rooms.get(key);
     if (have) return Promise.resolve(have);
     const pending = this.loading.get(key);
     if (pending) return pending;
-    const path = `RUN/${key}.ZDB`;
+    const path = `RUN/${upper}.ZDB`;
     // The SEAL skeleton for the hit volumes: without it the room keeps the placeholder capsules.
     const body = loadSimSkeleton(this.opts.source, path).catch(() => null);
     const load = Promise.all([loadSimMap(this.opts.source, path), body]).then(([map, skeleton]) => {
-      const room = new Room(map, this.clips, this.opts.room, skeleton);
+      const room = new Room(map, this.clips, { ...this.opts.room, rules }, skeleton);
       this.rooms.set(key, room);
       this.loading.delete(key);
-      this.opts.log({ level: 'info', msg: 'room loaded', map: key, name: map.name, hitVolumes: skeleton ? skeleton.model : 'placeholder', slots: map.slots.length, respawns: map.respawns.length, notes: map.notes });
+      this.opts.log({ level: 'info', msg: 'room loaded', map: upper, rules, name: map.name, hitVolumes: skeleton ? skeleton.model : 'placeholder', slots: map.slots.length, respawns: map.respawns.length, notes: map.notes });
       return room;
     });
     load.catch(() => this.loading.delete(key));
@@ -153,7 +158,9 @@ export class MatchServer {
       if (ev.type === 'hello') {
         if (session.room) return;
         if (typeof ev.map !== 'string' || !this.allowed(ev.map)) { conn.send(JSON.stringify({ type: 'refused', reason: 'no such map' })); socket.close(4004, 'no such map'); return; }
-        void this.room(ev.map).then((room) => {
+        const rules = ev.rules === undefined ? (this.opts.rules ?? 'respawn') : parseRules(ev.rules);
+        if (!rules) { conn.send(JSON.stringify({ type: 'refused', reason: 'no such rules' })); socket.close(4004, 'no such rules'); return; }
+        void this.room(ev.map, rules).then((room) => {
           if (socket.readyState !== socket.OPEN) return;
           const id = freeId(room);
           if (id === null) { conn.send(JSON.stringify({ type: 'refused', reason: 'The game is full.' })); socket.close(4000, 'full'); return; }
@@ -161,7 +168,7 @@ export class MatchServer {
           if (room.hello(id, conn, { ...ev, name: String(ev.name ?? '') }, address)) {
             session.room = room;
             clearTimeout(hello);
-            this.opts.log({ level: 'info', msg: 'joined', map: room.map.stem, id, address });
+            this.opts.log({ level: 'info', msg: 'joined', map: room.map.stem, rules, id, address });
           }
         }, (e) => {
           this.opts.log({ level: 'error', msg: 'room load failed', map: ev.map, error: String(e) });
@@ -176,7 +183,7 @@ export class MatchServer {
       this.sessions.delete(session);
       if (session.room) {
         session.room.leave(session.id);
-        this.opts.log({ level: 'info', msg: 'left', map: session.room.map.stem, id: session.id });
+        this.opts.log({ level: 'info', msg: 'left', map: session.room.map.stem, rules: session.room.rules, id: session.id });
       }
     });
     socket.on('error', () => undefined);
@@ -195,6 +202,12 @@ export class MatchServer {
       res.end(JSON.stringify({ ok: true, uptime: Math.round((Date.now() - this.started) / 1000), rooms: this.rooms.size }));
       return;
     }
+    if (req.url === '/rooms') {
+      // The room list: each loaded room's map, rules, players, spectators and round.
+      res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+      res.end(JSON.stringify([...this.rooms.values()].map((room) => ({ map: room.map.stem.toUpperCase(), ...room.stats() }))));
+      return;
+    }
     if (req.url === '/metrics') {
       res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4' });
       res.end(this.metrics());
@@ -210,9 +223,10 @@ export class MatchServer {
     const mean = this.stepMs.length ? this.stepMs.reduce((a, b) => a + b, 0) / this.stepMs.length : 0;
     lines.push(`s2u_step_ms_mean ${mean.toFixed(3)}`, `s2u_step_ms_max ${Math.max(0, ...this.stepMs).toFixed(3)}`);
     lines.push(`s2u_ticks_total ${this.ticks}`, `s2u_bytes_out_total ${this.bytesOut}`, `s2u_connections ${this.sessions.size}`);
-    for (const [stem, room] of this.rooms) {
+    for (const room of this.rooms.values()) {
       const s = room.stats();
-      lines.push(`s2u_room_players{map="${stem}"} ${s.players}`, `s2u_room_spectators{map="${stem}"} ${s.spectators}`, `s2u_room_round{map="${stem}"} ${s.round}`);
+      const at = `map="${room.map.stem.toUpperCase()}",rules="${s.rules}"`;
+      lines.push(`s2u_room_players{${at}} ${s.players}`, `s2u_room_spectators{${at}} ${s.spectators}`, `s2u_room_round{${at}} ${s.round}`);
     }
     return `${lines.join('\n')}\n`;
   }

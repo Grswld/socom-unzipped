@@ -14,7 +14,7 @@ const MP2 = fixture('RUN/MP2.ZDB');
 
 interface Peer { ws: WebSocket; events: ServerEvent[]; snaps: Uint8Array[] }
 
-function connect(port: number, name: string, map = 'MP2'): Promise<Peer> {
+function connect(port: number, name: string, map = 'MP2', rules?: string, version = PROTOCOL_VERSION): Promise<Peer> {
   return new Promise((ok, fail) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     const peer: Peer = { ws, events: [], snaps: [] };
@@ -23,7 +23,7 @@ function connect(port: number, name: string, map = 'MP2'): Promise<Peer> {
       if (binary) peer.snaps.push(new Uint8Array(data as Buffer));
       else peer.events.push(JSON.parse(data.toString()) as ServerEvent);
     });
-    ws.on('open', () => { ws.send(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name, map })); ok(peer); });
+    ws.on('open', () => { ws.send(JSON.stringify({ type: 'hello', version, name, map, ...(rules ? { rules } : {}) })); ok(peer); });
     ws.on('error', fail);
   });
 }
@@ -60,7 +60,7 @@ describe.skipIf(!MP2)(`the match server on Frostfire${MP2 ? '' : ` (${FIXTURES_A
     const own = decodeSnapshot(a.snaps.at(-1)!).own!;
     expect(Math.hypot(own.x - spawn.at[0], own.z - spawn.at[2])).toBeGreaterThan(5);
     a.ws.close(); b.ws.close();
-    await until(() => server.metrics().includes('s2u_room_players{map="MP2"} 0'));
+    await until(() => server.metrics().includes('s2u_room_players{map="MP2",rules="respawn"} 0'));
   });
 
   it('answers /health and /metrics, and refuses a map it does not have', async () => {
@@ -70,5 +70,21 @@ describe.skipIf(!MP2)(`the match server on Frostfire${MP2 ? '' : ` (${FIXTURES_A
     const bad = await connect(port, 'X', '../etc');
     await until(() => bad.events.length > 0);
     expect(bad.events[0]).toMatchObject({ type: 'refused' });
+  });
+
+  it('keys the rooms by map and rules: the hello names them (the server default without); each room is listed with its rules', async () => {
+    const a = await connect(port, 'Classic', 'MP2', 'classic'), b = await connect(port, 'Plain', 'MP2');
+    await until(() => a.events.some((e) => e.type === 'welcome') && b.events.some((e) => e.type === 'welcome'));
+    expect(a.events.find((e) => e.type === 'welcome')).toMatchObject({ rules: 'classic', rounds: 11 });
+    expect(b.events.find((e) => e.type === 'welcome')).toMatchObject({ rules: 'respawn', rounds: 11 });
+    const rooms = await (await fetch(`http://127.0.0.1:${port}/rooms`)).json() as { map: string; rules: string; players: number }[];
+    expect(rooms.filter((r) => r.map === 'MP2').map((r) => [r.rules, r.players]).sort()).toEqual([['classic', 1], ['respawn', 1]]);
+    const odd = await connect(port, 'Odd', 'MP2', 'deathmatch');
+    await until(() => odd.events.length > 0);
+    expect(odd.events[0]).toMatchObject({ type: 'refused', reason: 'no such rules' });
+    const old = await connect(port, 'Old', 'MP2', undefined, 2);
+    await until(() => old.events.length > 0);
+    expect(old.events[0]).toMatchObject({ type: 'refused' });   // an older protocol is refused
+    a.ws.close(); b.ws.close();
   });
 });

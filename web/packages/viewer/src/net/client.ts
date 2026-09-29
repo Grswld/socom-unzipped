@@ -1,7 +1,7 @@
 import { decodeSnapshot, encodeCommands, frameKind } from './codec';
 import {
   COMMAND_REDUNDANCY, Frame, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
-  type BodyState, type ClientEvent, type Command, type DoorWire, type Role, type ServerEvent, type Snapshot, type Team,
+  type BodyState, type ClientEvent, type Command, type DoorWire, type Role, type Rules, type ServerEvent, type Snapshot, type Team,
 } from './protocol';
 
 /**
@@ -34,6 +34,8 @@ export interface NetOptions {
   simulate?: Simulate;
   /** Join as a watcher (the map viewer's Online setting): a spectator that never plays, so the walk is not driven. */
   watch?: boolean;
+  /** Protocol 4: the rules of the room to join (the server's default when absent). */
+  rules?: Rules;
   random?: () => number;
   /** A socket for the tests (a `WebSocket`-alike); the page's own by default. */
   socket?: (url: string) => WebSocketLike;
@@ -95,7 +97,7 @@ export class NetClient {
     this.socket.binaryType = 'arraybuffer';
     this.socket.onopen = () => {
       this.state = 'open';
-      this.out(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name: opts.name, map: opts.map, ...(opts.watch ? { watch: true } : {}) } satisfies ClientEvent), true);
+      this.out(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name: opts.name, map: opts.map, ...(opts.watch ? { watch: true } : {}), ...(opts.rules ? { rules: opts.rules } : {}) } satisfies ClientEvent), true);
     };
     this.socket.onclose = () => {
       if (this.state !== 'refused') this.state = 'closed';
