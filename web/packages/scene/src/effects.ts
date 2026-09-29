@@ -38,7 +38,7 @@ export const ZCMD = {
   QUAD_ALIGN: 1, IF: 2, ELSEIF: 3, ELSE: 4, ENDIF: 5, RANGE_TEST: 9, RANDOM_WEIGHT: 10, FAIL: 11, LOOP: 14, WAIT: 15,
   OBJECT_ACTIVE_STATE: 17, OBJECT_TRANSLATE_STATE: 18, OBJECT_ROTATE_STATE: 19, OBJECT_MOTION: 21,
   OBJECT_MOTION_FROM_TO: 22, PARTICLE_SOURCE: 27, SOUND: 30, LIGHT: 32, EXPRESSION: 43, CALL_ANIMATION: 45,
-  STOP_SEQUENCE: 51, VALVE: 61,
+  STOP_SEQUENCE: 51, VALVE: 61, WHILE: 39, END_WHILE: 40,
 } as const;
 
 export type Vec3 = [number, number, number];
@@ -176,6 +176,12 @@ export type EffectOp =
   | { op: 'stopSequence'; sequence: string }
   /** `FAIL` (11): the animation stops. */
   | { op: 'fail' }
+  /**
+   * `WHILE` (39; tick `FUN_0025e630`, decomp 108131): with flag 1 (the byte at +4) it always goes on -- the ripples'
+   * endless loop; `END_WHILE` (40; `FUN_0025e600`) jumps back to its `WHILE` and yields the tick.
+   */
+  | { op: 'while'; forever: boolean }
+  | { op: 'endWhile' }
   /** `VALVE` (61; `FUN_00353fd0`, decomp 252128): the valve (a name index when flag 2) and an operation on it: 0x0b set, 0x0c add, 0x0d subtract; 1-6 the tests. */
   | { op: 'valve'; valve: string; operation: number; operand: number }
   | { op: 'other'; cmd: number; name: string };
@@ -263,6 +269,8 @@ export function decodeEffectOp(cmd: Pick<ZAnimCommand, 'set' | 'cmd' | 'bytes'>,
     case ZCMD.LIGHT: return { op: 'light', light: decodeLight(c) };
     case ZCMD.CALL_ANIMATION: return { op: 'call', anim: NAME(names, c.u8(7)) };
     case ZCMD.STOP_SEQUENCE: return { op: 'stopSequence', sequence: NAME(names, c.u16(4)) };
+    case ZCMD.WHILE: return { op: 'while', forever: (c.u8(4) & 1) !== 0 };
+    case ZCMD.END_WHILE: return { op: 'endWhile' };
     case ZCMD.FAIL: return { op: 'fail' };
     case ZCMD.VALVE: return { op: 'valve', ...valveOf(c, names) };
     default: return { op: 'other', cmd: cmd.cmd, name: cmd.set === 0 ? ZANIM_COMMAND_NAMES[cmd.cmd] ?? `cmd ${cmd.cmd}` : `set ${cmd.set} cmd ${cmd.cmd}` };

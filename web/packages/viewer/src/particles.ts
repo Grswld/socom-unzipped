@@ -32,6 +32,10 @@ interface Particle {
   position: Vec3;
   /** Where it was a tick ago: a streaked particle is drawn from here to `position` (`FUN_00326350`). */
   prev: Vec3;
+  /** A rotated particle's angle (radians), spin and the spin's acceleration (`FUN_003282b0`). */
+  angle: number;
+  spin: number;
+  spinAccel: number;
   velocity: Vec3;
   size: number;
   age: number;
@@ -175,6 +179,13 @@ export class ParticleSystem {
       p.prev[0] = p.position[0]; p.prev[1] = p.position[1]; p.prev[2] = p.position[2];
       p.position[0] += p.velocity[0] * dt; p.position[1] += p.velocity[1] * dt; p.position[2] += p.velocity[2] * dt;
       p.velocity[0] += c.accel[0] * dt; p.velocity[1] += c.accel[1] * dt; p.velocity[2] += c.accel[2] * dt;
+      if (p.spin !== 0 || p.spinAccel !== 0) {
+        // The angle by the spin, the spin by its acceleration -- stopped where it would change sign.
+        p.angle += p.spin * dt;
+        const next = p.spin + p.spinAccel * dt;
+        p.spin = next * p.spin < 0 ? 0 : next;
+        if (p.spin === 0) p.spinAccel = 0;
+      }
       if (c.friction !== 0) {
         const d = frictionFactor(c.friction, dt);
         p.velocity[0] *= d; p.velocity[1] *= d; p.velocity[2] *= d;
@@ -211,7 +222,12 @@ export class ParticleSystem {
     ];
     const texture = c.textureMode === 'random' && c.textures.length > 1
       ? c.textures[Math.min(c.textures.length - 1, Math.floor(r() * c.textures.length))]!.name : c.texture ?? '';
-    this.particles.push({ source: c, texture: texture.toLowerCase(), position, prev: [...position], velocity, size: lerp(c.size, r()), age, life });
+    // A rotated particle's spin (`FUN_00327cd0`); its angle is whatever the pool's slot last held: random here.
+    const spin = c.spin;
+    this.particles.push({
+      source: c, texture: texture.toLowerCase(), position, prev: [...position], velocity, size: lerp(c.size, r()), age, life,
+      angle: r() * Math.PI * 2, spin: spin ? lerp(spin.spin, r()) : 0, spinAccel: spin ? lerp(spin.accel, r()) : 0,
+    });
     this.emitted++;
   }
 
@@ -241,6 +257,13 @@ export class ParticleSystem {
       col[o * 4] = rgba[0]; col[o * 4 + 1] = rgba[1]; col[o * 4 + 2] = rgba[2]; col[o * 4 + 3] = rgba[3] * k;
     });
     return true;
+  }
+
+  /** A drawing group for each of `textures`, made now (the pre-warm compiles their programs at the map's load). */
+  warm(textures: Iterable<string>): Mesh[] {
+    const out: Mesh[] = [];
+    for (const t of textures) out.push(this.groupFor(t.toLowerCase(), 1).mesh);
+    return out;
   }
 
   private groupFor(texture: string, need: number): Group3 {
@@ -299,6 +322,17 @@ export class ParticleSystem {
         const [r, gg, b, a] = particleColour(c, t);
         const h = p.size * particleScale(c, t);
         if (c.type === 3 && this.streak(p, h, eye, [r, gg, b, a * fade], pos, uv, col, q)) { q++; continue; }
+        if (c.type === 1 || c.type === 2) {
+          const corners = c.type === 1 ? rotatedCorners(p.position, h, p.angle, right, up) : flatCorners(p.position, h);
+          for (let k = 0; k < 4; k++) {
+            const v = q * 4 + k, [x, y, z, u, w] = corners[k]!;
+            pos[v * 3] = x; pos[v * 3 + 1] = y; pos[v * 3 + 2] = z;
+            uv[v * 2] = u; uv[v * 2 + 1] = w;
+            col[v * 4] = r; col[v * 4 + 1] = gg; col[v * 4 + 2] = b; col[v * 4 + 3] = a * fade;
+          }
+          q++;
+          continue;
+        }
         for (let k = 0; k < 4; k++) {
           const [sx, sy] = CORNERS[k]!;
           const v = q * 4 + k;
@@ -317,6 +351,27 @@ export class ParticleSystem {
       g.mesh.visible = true;
     }
   }
+}
+
+/**
+ * A rotated particle (type 1, `FUN_00325580`, decomp 224057): a screen-aligned square turned by its angle, its
+ * half-diagonal the size -- corner i at `C + size (cos(θ + iπ/2) right + sin(θ + iπ/2) down)`, uv (0,0) (0,1) (1,1) (1,0).
+ */
+export function rotatedCorners(c: readonly number[], size: number, angle: number, right: Vector3, up: Vector3): [number, number, number, number, number][] {
+  const uvs: [number, number][] = [[0, 0], [0, 1], [1, 1], [1, 0]];
+  return uvs.map(([u, v], i) => {
+    const t = angle + (i * Math.PI) / 2, cx = Math.cos(t) * size, sy = -Math.sin(t) * size;   // screen y runs down
+    return [c[0]! + right.x * cx + up.x * sy, c[1]! + right.y * cx + up.y * sy, c[2]! + right.z * cx + up.z * sy, u, v];
+  });
+}
+
+/**
+ * A flat particle (type 2, `FUN_00325cc0`, decomp 224342): a square in the world's XZ plane at the particle's height,
+ * `2 size` across and square to the world's axes -- the ripples' rings; u runs along +z, v along +x.
+ */
+export function flatCorners(c: readonly number[], s: number): [number, number, number, number, number][] {
+  const [x, y, z] = [c[0]!, c[1]!, c[2]!];
+  return [[x - s, y, z - s, 0, 0], [x + s, y, z - s, 0, 1], [x + s, y, z + s, 1, 1], [x - s, y, z + s, 1, 0]];
 }
 
 export interface Group3 {
