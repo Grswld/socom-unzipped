@@ -23,9 +23,10 @@ let server: ChildProcess | null = null;
 
 /** Starts the match server (on any free port the first time, on the same one after a restart). */
 async function startServer(port: number): Promise<void> {
-  server = spawn('npx', ['tsx', 'packages/server/src/main.ts'], {
+  // Node itself with tsx's loader, one process: `npx` is `npx.cmd` on Windows, which `spawn` cannot start unshelled.
+  server = spawn(process.execPath, ['--import', 'tsx', 'packages/server/src/main.ts'], {
     cwd: WEB, env: { ...process.env, SOCOM_DISC: FIXTURES, PORT: String(port), HOST: '127.0.0.1', MAPS: 'MP2' }, stdio: 'pipe',
-    detached: true,                                  // its own process group: `npx` and the node under it stop together
+    detached: process.platform !== 'win32',          // its own process group on POSIX, so anything under it stops too
   });
   await new Promise<void>((ok, fail) => {
     const timer = setTimeout(() => fail(new Error('the match server did not start')), 60_000);
@@ -43,9 +44,10 @@ async function startServer(port: number): Promise<void> {
 
 test.beforeAll(async () => { if (HAVE) await startServer(0); });
 
-/** Stops the server's whole process group (`npx`, `tsx` and the node under them). */
+/** Stops the server: its process group on POSIX; on Windows (no groups to signal) the one node process. */
 function stopServer(): void {
-  if (server?.pid) { try { process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ } }
+  if (!server?.pid) return;
+  try { if (process.platform === 'win32') server.kill(); else process.kill(-server.pid, 'SIGTERM'); } catch { /* gone */ }
 }
 
 test.afterAll(() => { stopServer(); });
