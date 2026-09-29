@@ -760,3 +760,20 @@ describe("the running jump through the animator: launch, then the run, never a f
     expect(plays.some((p) => p.includes('seal_runningjump_in_air'))).toBe(false);
   });
 });
+
+describe('the overlay play over the locomotion (the moving swap, FUN_0028d860(anim+0x60))', () => {
+  it('lays its parts over the play, eased in over its BlendTime, and leaves the rest', () => {
+    const sk = skeleton();
+    const over = clip('seal_mv_rifle2pistol', 21, [{ name: 'lbicep', t: [[2, 6, 0]], q: [qx(50)] }]);
+    const anim = new Animator(sk, [walker('seal_run', 19, 57.7, 0), over], new Map([['seal_run', cycle(6.5, 4.01, 6.5)], ['seal_mv_rifle2pistol', once(1.32)]]));
+    const seconds = oneShotSeconds(1.32, 21);
+    anim.step(1 / 60, { ...running(1), overlay: { clip: 'seal_mv_rifle2pistol', t: seconds / 2, seconds, reversed: false } });
+    expect(anim.stats().overlay).toBe('seal_mv_rifle2pistol');
+    expect(anim.stats().clip).toBe('seal_run');
+    expect(angleOf(quatOfMatrix(sk.local[2]!)) * 180 / Math.PI).toBeCloseTo(50, 3);
+    anim.step(1 / 60, { ...running(1), overlay: { clip: 'seal_mv_rifle2pistol', t: 0, seconds, reversed: false } });
+    expect(angleOf(quatOfMatrix(sk.local[2]!))).toBeCloseTo(0, 6);          // its first frame: not yet in
+    anim.step(1 / 60, running(1));
+    expect(anim.stats().overlay).toBeNull();
+  });
+});

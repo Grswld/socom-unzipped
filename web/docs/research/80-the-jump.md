@@ -308,14 +308,57 @@ slid. The game plays `seal_run_90r/l` at full stick (1.18x), `seal_rstrafe_fast`
   showed one (the landing tick's ground state was at rest) and now poses the run it left in. The game pushes the fall
   the tick after the launch's pop; the viewer on the same tick [reading].
 
+## 6c. The fourth round: the head look, the raise weight, the jump's rule, death, the swap (2026-09-29, later)
+
+- **The head look** (`./headLook`; `FUN_005ad400`, named in round 3, turns out to be the **eyelids**: the rotation from
+  the forward to `actor+0x1280` into the `right_lid` / `left_lid` nodes, with `FUN_005ad4d0` the eyeballs and blinks
+  every 0-6 s -- the SEAL's skeleton has no eye or lid nodes, so none of that runs). The head is `FUN_005ad5b0`: the
+  head node `actor+0x308` and its parents neck, spinehi and spinelo, each post-multiplied by `FUN_005ae730`'s turn for
+  the look's yaw fraction (over 90 degrees) and pitch fraction (over 80; `FUN_00287210`). The turn per node comes from
+  `FUN_005ae980`: nine Euler poses a node in the ELF (0x650820, 0x6507b0, 0x650740, 0x6506d0; `Z Y X`,
+  `FUN_00287550`), the axis `forward x rotate(conj(P_rest) P_edge, forward)` for right, left, up and down -- a full
+  right yaw turns the SEAL's head 64 degrees, left 48; the pitch poses barely move it. The look is a rotator at
+  `actor+0x1190` (`FUN_005ad9d0` / `FUN_005ad920`: eased, at a set angular speed) fed by the player's controller
+  (`CSealCtrl`, vtable 0x6694b0): `FUN_00596f10` asks for `(sin p, 0, -cos p)`, `p = -1.5 x 0.349 x` the turn axis,
+  while the axis is past 0.05 -- **the head leads the turn by 30 degrees at the full rate**, at 2.9 rad/s -- and
+  otherwise the look is ahead, with a **glance aside every 4-7 s** of 16-22 degrees, left and right in turn
+  (`FUN_00601400`, `FUN_00600550`), at 0.8-1.4 rad/s. `FUN_0057a330` (439152-439191) runs it with the rifle's raise
+  weight 0 or the rotator still turning, not prone, not in states 8-10 (`FUN_00587b40`; `Land forward` is pushed in
+  state 8), no SEAL clip carrying `NoHeadlooks`.
+- **The raise weight** (`FUN_00286b80(actor+0x1160)`, the WEAPON workstream's `./weaponRaise`) now reaches the
+  animator (`MoverSnapshot.aimWeight`): the twist runs only over 0 (439192) and is scaled by it; with the rifle down --
+  5 s after the trigger -- the upper body no longer takes the pitch, and the head look runs. The launcher anim set
+  (`DAT_0044d408`) forces 1 (not the SEAL's).
+- **The jump's rule** (`FUN_0057e1b0`): the top action's entry must play a **looped** motion
+  (`FUN_005551a0(entry+0x28, 0x40)`; bit 0x40 is the motion's looped bit, set by `FUN_0028dc90` from `+0x49` bit 6).
+  `FUN_00550ef0` takes the press during a one-shot too (`ctrl+0x170` bit 2, set with the press by `FUN_00592d50`), so it
+  is spent and refused. `FUN_005b4340(actor, 0xb)` adds: not prone, not in the knock-downs `Fall forward` /
+  `backwards`, the death landings `Land forward` / `backwards`, `180`, `dive_to_prone`, states 5 and 8, the launcher
+  sets. Every action the walk plays is a one-shot and the idles, locomotion and turn steps are looped, so the viewer's
+  rule was already the game's; the fall's exception is gone.
+- **Death** (`FUN_005af590`): at 237.5 or more (`m_landSpeed[2]`) `Land forward` pushed in state 8 and the death (the
+  vtable's +0x90, `FUN_005a5da0`); the class also goes to 3 for an actor without `actor+0xe1` bit 4. The controller's
+  `FUN_005979a0` (454470-454495) then spectates, or in a respawn game fades the body out (alpha 0 at 0.1 a second) and
+  `FUN_00599b60` (455695) fades the new SEAL in at a spawn (1.0 at 4 a second) -- research 90 §5. No get-up: the
+  viewer's `Get up forward` after the death landing stays a named placeholder; the head look is off in it.
+- **The rifle <-> pistol swap** (`FUN_005a64c0`, 461850-462030): to the pistol, prone `Prone rifle -> Pistol` (0x37),
+  crouched or standing at 20 a second or under `Crouch rifle -> Pistol` (0x36) / `Rifle -> Pistol` (0x35), faster
+  `Moving rifle -> Pistol` -- a `BlendOverlay` motion on the second play channel (`FUN_0028d860(anim+0x60)`), over the
+  locomotion; to the rifle the same clips backwards (`FUN_00588bc0`'s fourth argument, `FUN_0028c160`). The standing
+  swap is `NoInterrupt ()` yet `FUN_00550ef0` tests the stick on action 0x35 all the same, and continues it as the
+  moving overlay at the phase reached (418226-418245). Ported as `Walker.swapWeapon` / `WalkMode.swapWeapon` (the
+  full-body ones as actions holding the mover, the moving one as `MoverOverlay`, laid by the animator over the parts
+  it carries): the WEAPON workstream calls it and `Animator.setWeapon` at the hand-off.
+
 ## 7. Readings and placeholders (named in the code)
 
-- **The jump's gate while an action plays**: refused in any action but the fall.
-- **Death**: the viewer gets up after `Land forward`; no damage is kept.
-- **The aim weight**: 1 (the weapon's raise envelope not run).
-- **The weapon switch's blend**: the playing motion's `BlendTime` (the swap clips, `seal_rifle2pistol`..., are the
-  weapon's to play).
-- **Not applied**: the head's look (`FUN_005ad400`, cosmetic); the bots' modes (§6b).
+- **Death**: the viewer gets up after `Land forward` (the game dies there: §6c); no damage is kept.
+- **The weapon switch's blend**: the playing motion's `BlendTime`; the overlay swap eased in and out over its own.
+- **The swap's gates**: refused in the air and during an action (the caller's gate not read); the moving swap
+  backwards to the rifle.
+- **The head look**: the controller's `FUN_005e0010` test (forward at priority 3) is not read; the rotator's clamp
+  (`FUN_005ae040`) is left out -- no request reaches behind the shoulder.
+- **Not applied**: the eyes and lids (no nodes); the bots' modes (§6b).
 
 ## 8. The numbers the tests pin
 
@@ -330,7 +373,10 @@ hit by the draw, 130 the death landing and the get-up; the hit's root travel; th
 0.6 / 0.3 / 0.35 and backwards to the left; the twist 0.2 sin p + 0.8 sin p; the bank 3.1 degrees. The third round:
 the turn axis's cut at 0.1; a transition carried key by key, backwards when getting up, the mean without keys; the
 six translated parts and the zeroed root; the locomotion roots flat to 1.5 %; the 0.98 sink and the 11.95 top; the
-pistol table and its per-node overlay.
+pistol table and its per-node overlay. The fourth round: the look axes (64 / 48 degrees at a full yaw), the fractions, the turn lead
+(30 degrees at 2.9 rad/s), the glances (4 s, 0.8 of 0.349 rad, alternating), the gate on the raise weight, the twist
+scaled by it; the jump refused through every one-shot; the swap's pick by stance and speed, the standing one cut into
+the overlay.
 
 ## 9. What a console run would settle
 

@@ -172,3 +172,14 @@ describe.skipIf(SEAL === null)(`seal_A_scuba's head turned by the look${SEAL ===
     expect(yawOf(-1)).toBeCloseTo(-47.9, 0);
   });
 });
+
+describe('the death landing (FUN_005af590: `Land forward` in state 8)', () => {
+  it('turns the head look off (FUN_00587b40 refuses state 8)', () => {
+    const sk = chain();
+    const anim = new Animator(sk, [still('seal_stand'), still('seal_landforward01')], null, { random: () => 0 });
+    const dying = { ...REST, turnRate: SEAL_TUNING.turnMaxRate, aimWeight: 0, action: { name: 'landDeath' as const, serial: 1, t: 0, seconds: 0.36, reversed: false } };
+    for (let i = 0; i < 10; i++) anim.step(TICK, dying);
+    expect(anim.stats().look.on).toBe(false);
+    expect(headAngle(sk)).toBeCloseTo(0, 9);
+  });
+});

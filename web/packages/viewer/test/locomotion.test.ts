@@ -10,7 +10,7 @@ import {
   type SetName,
 } from '../src/locomotion';
 import { clipsFromPack, motionTableFromArchive, type MotionEntry } from '../src/motionTable';
-import { ACTION_CLIPS } from '../src/walk';
+import { ACTION_CLIPS, SWAP_OVERLAY } from '../src/walk';
 
 /**
  * `./locomotion`: the loaded motion's constants (`FUN_00287620`, `FUN_0028ab10`, `FUN_0028aa20`), the pick and blend
@@ -221,6 +221,8 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
       jump: one('Jump'), launch: one('Jump launch'), inAir: one('Jump fall'), land: one('Jump land'), landHard: one('Jump land hard'),
       hit: one('Hit01'), hitStomach: one('Hit stomach01'), landDeath: one('Land forward'), getUp: one('Get up forward'),
       step: one('Step'), crouchStep: one('Crouch step'),
+      swapStand: one('Rifle -> Pistol'), swapCrouch: one('Crouch rifle -> Pistol'), swapProne: one('Prone rifle -> Pistol'),
+      swapMoving: one('Moving rifle -> Pistol'),
     }).toEqual({ ...SEAL_ANIMS });
     expect(seal.get('Crouch')).toEqual(CROUCH_IDLES.map((c) => c.clip));
     // the sets' order is motion.rdr's: the transitions as the builder files them, ascending in every set
@@ -259,6 +261,7 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
       jump: SEAL_ANIMS.jump, launch: SEAL_ANIMS.launch, land: SEAL_ANIMS.land, landHard: SEAL_ANIMS.landHard,
       standToCrouch: SEAL_ANIMS.standToCrouch, crouchToProne: SEAL_ANIMS.crouchToProne, standToProne: SEAL_ANIMS.standToProne,
       hit: SEAL_ANIMS.hit, hitStomach: SEAL_ANIMS.hitStomach, landDeath: SEAL_ANIMS.landDeath, getUp: SEAL_ANIMS.getUp,
+      swapStand: SEAL_ANIMS.swapStand, swapCrouch: SEAL_ANIMS.swapCrouch, swapProne: SEAL_ANIMS.swapProne,
     };
     const clips = new Map(clipsFromPack(new Uint8Array(readFileSync(PACK)), Object.values(names)).map((c) => [c.name, c]));
     const transitions = new Set(['standToCrouch', 'crouchToProne', 'standToProne']);
@@ -277,6 +280,16 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
         expect(root[last + 2]! - root[2]!, n).toBeCloseTo(c.travel[1], 1);
       }
     }
+  });
+
+  it("SWAP_OVERLAY is motion.rdr's playback and MOTION_P.ZAR's key count for Moving rifle -> Pistol (BlendOverlay)", () => {
+    const table = motionTableFromArchive(new Uint8Array(readFileSync(READERC)))!;
+    const e = table.get(SEAL_ANIMS.swapMoving)!;
+    expect(e.playback).toBeCloseTo(SWAP_OVERLAY.playback, 6);
+    expect(e.looped).toBe(false);
+    const [clip] = clipsFromPack(new Uint8Array(readFileSync(PACK)), [SEAL_ANIMS.swapMoving]);
+    expect(clip!.frameCount).toBe(SWAP_OVERLAY.frames);
+    expect(clip!.parts.some((p) => p.name === 'hips')).toBe(false);   // the upper body and the props only
   });
 
   it("the within-stride shape: every locomotion clip's root moves the same each key -- the game's per-key velocity is the mover's", () => {

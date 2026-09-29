@@ -91,6 +91,11 @@ export interface MoverSnapshot {
    * Absent: `AIM_WEIGHT_PLACEHOLDER`.
    */
   aimWeight?: number;
+  /**
+   * An upper-body clip over the locomotion (`./walk` `MoverOverlay`: the moving rifle <-> pistol swap, a `BlendOverlay`
+   * motion on the game's second play channel `anim+0x60`): laid over the parts it carries, `t` of `seconds` in.
+   */
+  overlay?: { clip: string; t: number; seconds: number; reversed: boolean } | null;
   /** TRAVERSAL SEAM (`./traversal`): a ladder, a climb or a lean playing its own clip; absent or null otherwise. */
   traversal?: TraversalPose | null;
 }
@@ -144,6 +149,8 @@ export interface AnimStats {
    * 90 and 80 degrees), whether the pose took it this frame, and the request's priority (1 the turn's lead, 0 ahead).
    */
   look: { yaw: number; pitch: number; on: boolean; priority: number };
+  /** The overlay play's clip over the locomotion (the moving swap), or null. */
+  overlay: string | null;
 }
 
 /** The play's main clip, as a pose layer sees it: the clip, its fractional key and its phase (0 to 1). */
@@ -431,6 +438,8 @@ export class Animator {
   private lastTwist = 0;
   /** The head look (`./headLook`): the controller's request, the rotator at `actor+0x1190`, the pose. */
   readonly look: HeadLook;
+  /** The overlay play's clip this frame, or null (`stats().overlay`). */
+  private overlayName: string | null = null;
   private lookDt = 0;
   private lookOn = false;
   /** TRAVERSAL SEAM: the root's height over the feet a traversal move sets, or null for the clip's own. */
@@ -742,6 +751,25 @@ export class Animator {
       if (i === this.root && this.rootTurn) return { q: [...this.rootTurn], t };           // TRAVERSAL SEAM: the move turns it
       return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
     });
+    // The overlay play (the moving swap, `FUN_0028d860(anim+0x60, ...)`): over the parts it carries, eased in and out
+    // over its `BlendTime` [reading: the second channel's blend is not read].
+    this.overlayName = null;
+    const ov = mover.overlay ? this.motions.get(mover.overlay.clip) : undefined;
+    if (ov && mover.overlay) {
+      const o = mover.overlay, run = Math.min(1, Math.max(0, o.t / o.seconds)) * ov.end;
+      const phase = o.reversed ? ov.end - run : run;
+      const bt = ov.blendTime > 0 ? ov.blendTime : BLEND_TIME_DEFAULT;
+      const w = Math.min(blendWeight(Math.min(1, o.t / bt)), blendWeight(Math.min(1, Math.max(0, o.seconds - o.t) / bt)));
+      const parts = sampleClip(ov.clip, (phase * ov.clip.frameCount) / ov.clip.rate).parts;
+      this.overlayName = ov.name;
+      for (const p of parts) {
+        const i = partIndex(this.skeleton, parts, p.name);
+        if (i < 0 || i === this.root || !(w > 0)) continue;
+        const from = target[i]!;
+        const t: [number, number, number] = this.clipTranslation[i] ? [...p.translation] : [...this.bind[i]!.t];
+        target[i] = { q: slerp(from.q, p.rotation, w), t: [from.t[0] + (t[0] - from.t[0]) * w, from.t[1] + (t[1] - from.t[1]) * w, from.t[2] + (t[2] - from.t[2]) * w] };
+      }
+    }
     // The pose layers (`addPoseLayer`: the weapon's fire set and reload, `./weaponPose`), each over what is below it.
     if (this.poseLayers.length) {
       const main = this.main(play);
@@ -795,9 +823,10 @@ export class Animator {
     const weight = mover.aimWeight ?? AIM_WEIGHT_PLACEHOLDER;
     // The head look (FUN_0057a330 439152-439191, `./headLook`): with the rifle down or the rotator still turning, not
     // prone (the prone head turn is action 0x1a's clip) and not on a ladder or a hang (FUN_00587b40), the rotator runs
-    // (FUN_005ad920) and the head, the neck and the spine take its turn after the clips (FUN_005ad5b0).
+    // (FUN_005ad920) and the head, the neck and the spine take its turn after the clips (FUN_005ad5b0). Not in the
+    // death landing either: FUN_005af590 pushes `Land forward` in state 8, which FUN_00587b40 refuses.
     const lookLocal = new Map<number, Quat>();
-    if (stance !== 'prone' && !mover.traversal && (weight === 0 || !this.look.done)) {
+    if (stance !== 'prone' && !mover.traversal && mover.action?.name !== 'landDeath' && (weight === 0 || !this.look.done)) {
       this.look.advance(this.lookDt);
       for (const name of HEAD_LOOK_NODES) {
         const i = this.skeleton.indexOf(name);
@@ -851,7 +880,7 @@ export class Animator {
     const play = this.play;
     const blend = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     if (!play || !play.nodes.length) {
-      return { clip: '', frame: 0, frames: 0, blend, from: this.from?.name ?? null, rate: 0, layer: null, nodes: [], play: play?.key ?? '', bank: 0, twist: 0, look: this.lookStats() };
+      return { clip: '', frame: 0, frames: 0, blend, from: this.from?.name ?? null, rate: 0, layer: null, nodes: [], play: play?.key ?? '', bank: 0, twist: 0, look: this.lookStats(), overlay: this.overlayName };
     }
     const main = this.main(play);
     const phase = play.looped ? (((play.phase + main.offset) % 1) + 1) % 1 : Math.min(play.phase, main.motion.end);
@@ -859,7 +888,7 @@ export class Animator {
       clip: main.motion.name, frame: phase * main.motion.frames, frames: main.motion.frames, blend, from: this.from?.name ?? null, rate: this.lastRate,
       layer: this.layer?.name ?? null, play: play.key,
       nodes: play.nodes.map((n) => ({ clip: n.motion.name, weight: n.weight, speed: n.speed })),
-      bank: this.lastBank, twist: this.lastTwist, look: this.lookStats(),
+      bank: this.lastBank, twist: this.lastTwist, look: this.lookStats(), overlay: this.overlayName,
     };
   }
 

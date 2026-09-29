@@ -1017,3 +1017,92 @@ describe("the running jump's clips: the launch over the flight, the fall only pa
     expect(runs).toEqual(['ground:stand', 'fall', 'ground:stand']);
   });
 });
+
+describe("round 4: the jump only from a looped play (FUN_0057e1b0's FUN_005551a0(entry+0x28, 0x40))", () => {
+  const plain = world([floor(-400, -400, 400, 400, 0)]);
+  const at = (): Walker => {
+    const w = new Walker(plain);
+    w.place(0, 0, 0);
+    w.state.yaw = 0;
+    return w;
+  };
+
+  it('refused through a soft landing past the lock, taken the tick the stick cuts it', () => {
+    const w = at();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    w.jump();
+    while (w.airborne) w.tick(STILL);
+    expect(w.action?.name).toBe('land');
+    for (let i = 0; i < Math.ceil(JUMP_LOCK / TICK) + 1; i++) w.tick(STILL);
+    expect(w.action?.name).toBe('land');                            // 0.632 s: still playing past the 0.4 s lock
+    expect(w.jump()).toBe(false);                                   // seal_land_soft is not looped
+    w.tick(FORWARD);                                                // NoInterrupt 0: the stick cuts it
+    expect(w.action).toBeNull();
+    expect(w.jump()).toBe(true);
+  });
+
+  it('refused through a stance transition and the standing jump; taken on the idle after', () => {
+    const w = at();
+    w.changeStance('crouch');
+    expect(w.action?.name).toBe('standToCrouch');
+    expect(w.jump()).toBe(false);
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.standToCrouch / TICK) + 1; i++) w.tick(STILL);
+    expect(w.action).toBeNull();
+    expect(w.jump()).toBe(true);                                    // crouched: the standing jump
+    expect(w.action?.name).toBe('jump');
+    expect(w.jump()).toBe(false);
+  });
+});
+
+describe('round 4: the rifle <-> pistol swap in the picker (FUN_005a64c0)', () => {
+  const plain = world([floor(-400, -400, 400, 400, 0)]);
+  const at = (): Walker => {
+    const w = new Walker(plain);
+    w.place(0, 0, 0);
+    w.state.yaw = 0;
+    return w;
+  };
+
+  it('still: the stance\'s full-body swap holds the mover, backwards to the rifle; the jump waits for it', () => {
+    const w = at();
+    expect(w.swapWeapon('pistol')).toEqual({ action: 'swapStand', overlay: false, reversed: false, seconds: ACTION_SECONDS.swapStand });
+    expect(w.action?.name).toBe('swapStand');
+    expect(w.jump()).toBe(false);
+    expect(w.swapWeapon('rifle')).toBeNull();                        // one at a time
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.swapStand / TICK) + 1; i++) w.tick(STILL);
+    expect(w.action).toBeNull();
+    expect(w.state.x).toBeCloseTo(0, 6);
+    w.stance = 'crouch';
+    expect(w.swapWeapon('rifle')).toMatchObject({ action: 'swapCrouch', reversed: true });
+    expect(w.action?.reversed).toBe(true);
+    const p = at();
+    p.stance = 'prone';
+    expect(p.swapWeapon('pistol')?.action).toBe('swapProne');
+    expect(ACTION_SECONDS.swapStand).toBeCloseTo(1.32 * (31 / 32) ** 2, 9);
+  });
+
+  it('on the move (over 20 a second): the overlay over the locomotion, the run going on', () => {
+    const w = at();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    const pick = w.swapWeapon('pistol')!;
+    expect(pick).toMatchObject({ action: null, overlay: true, reversed: false });
+    expect(w.overlay?.clip).toBe('seal_mv_rifle2pistol');
+    const z = w.state.z;
+    for (let i = 0; i < 30; i++) w.tick(FORWARD);
+    expect(w.action).toBeNull();
+    expect(z - w.state.z).toBeGreaterThan(30);                       // still running
+    for (let i = 0; i < Math.ceil(pick.seconds / TICK); i++) w.tick(FORWARD);
+    expect(w.overlay).toBeNull();
+  });
+
+  it('the standing swap cut by the stick goes on as the overlay at its phase (FUN_00550ef0 418226-418245)', () => {
+    const w = at();
+    w.swapWeapon('pistol');
+    for (let i = 0; i < 20; i++) w.tick(STILL);
+    const t = w.action!.t;
+    w.tick(FORWARD);
+    expect(w.action).toBeNull();
+    expect(w.overlay?.clip).toBe('seal_mv_rifle2pistol');
+    expect(w.overlay!.t / w.overlay!.seconds).toBeCloseTo((t + TICK) / ACTION_SECONDS.swapStand, 1);
+  });
+});
