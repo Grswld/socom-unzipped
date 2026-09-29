@@ -152,8 +152,10 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect.poll(item).toBe('M67');
   await tap(7, 'inventory');
   await expect.poll(item).toBe('HE');
-  await tap(7, 'inventory');
-  await expect.poll(item).toBe('rifle');
+  for (const next of ['AN-M8', 'Mark141', 'Claymore', 'rifle']) {      // the smoke, the flashbang, the claymore, round
+    await tap(7, 'inventory');
+    await expect.poll(item).toBe(next);
+  }
 
   // Square is the jump on foot (the mover's jump is W2.3a's): what reaches the page is the jump; Cross is the action
   // (web research 86), not a jump.
