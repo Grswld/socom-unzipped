@@ -1909,32 +1909,105 @@ void VU1Interpreter::continueProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t
 // ============================================================================
 // Fast path: same instruction semantics, no per-cycle scheduler.
 // ============================================================================
-void VU1Interpreter::fastCommit()
+
+// The fast path's flag ring (m_flagPipeline, m_fastFlagHead, m_fastFlagCount): its invariants, which
+// both drains below keep (S17 F C2, research/81; ps2xTest vu1_ops_tests.cpp "flag ring" cases).
+//
+// Producers (fast mode only; the exact path allocates the first !valid slot instead):
+//   * fastPushMacFlags -- every FMAC with a dest (execUpper via pushFmacFlags, Vu1Gen::fmac):
+//     writesMac + writesStatus, mac, the lane status, the product's extraSticky, issuePc.
+//   * queueFsset (FSSET), queueClip (CLIP), queueFcset (FCSET) -- through fastPushFlags:
+//     writesSticky (status & 0xFC0), writesClip (the 24-bit working clip).
+//   Not producers: queueStore and the VF/VI/ACC writes land at once in fast mode; Q (m_fdiv) and P
+//   (m_efu) have their own slots, drained after the ring, in ready order.
+// Order: the live entries are slots head .. head + count - 1 (mod 64), in issue order. Entries land
+//   in that order and a later one wins: MAC and m_lastMacPc (overwrite), STATUS bits 0-3 (overwrite),
+//   STATUS bits 6-11 (FMAC ORs (current | extraSticky) << 6 into them; FSSET replaces them),
+//   bits 4-5 (FDIV's D/I) untouched by the ring, CLIP (overwrite). Two FMACs in one cycle: the
+//   second's MAC and current bits win, both OR their sticky bits. An FSSET or FCSET clears
+//   writesStatus / writesClip of every valid entry issued in the same cycle (so an FMAC beside
+//   an FSSET lands its MAC but not its STATUS); an entry may therefore write nothing.
+// Delay: every entry is ready at issueCycle + kFmacLatency (4); m_cycle does not go back while the
+//   ring is live, so ready cycles do not decrease along it -- but a drain stops at the first entry
+//   not yet ready and never lands one behind it. m_nextReadyCycle is at most the head's ready cycle.
+// valid: set by every push, and true exactly for the live slots. Its readers: queueFsset and
+//   queueFcset (all 64 slots, `valid && issueCycle == m_cycle`), pipelinesPending (any valid slot is
+//   pending work), and the exact path (first !valid slot to fill; commitReadyPipelines skips
+//   !valid) should m_fast change between programs. No reader looks at any other field of a !valid
+//   slot, and every push writes all of an entry's fields, so a drain need only clear `valid` --
+//   but it must clear it: a stale valid bit is a phantom entry to all three readers.
+template <bool Batch>
+void VU1Interpreter::fastCommitWith()
 {
     if (m_cycle < m_nextReadyCycle)
         return;
-    while (m_fastFlagCount != 0u)
+    if (!Batch)
     {
-        FlagPipelineEntry &entry = m_flagPipeline[m_fastFlagHead];
-        if (entry.readyCycle > m_cycle)
-            break;
-        if (entry.writesMac)
+        // The old path: every landed entry writes the state, clears its 48 bytes and moves the head.
+        while (m_fastFlagCount != 0u)
         {
-            m_state.mac = entry.mac;
-            m_lastMacPc = entry.issuePc;
+            FlagPipelineEntry &entry = m_flagPipeline[m_fastFlagHead];
+            if (entry.readyCycle > m_cycle)
+                break;
+            if (entry.writesMac)
+            {
+                m_state.mac = entry.mac;
+                m_lastMacPc = entry.issuePc;
+            }
+            if (entry.writesStatus)
+            {
+                const uint32_t current = entry.status & 0xFu;
+                m_state.status = (m_state.status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
+            }
+            if (entry.writesSticky)
+                m_state.status = (m_state.status & 0x03Fu) | (entry.status & 0xFC0u);
+            if (entry.writesClip)
+                m_state.clip = entry.clip;
+            entry = {};
+            m_fastFlagHead = (m_fastFlagHead + 1u) % kMaxFlagEntries;
+            --m_fastFlagCount;
         }
-        if (entry.writesStatus)
+    }
+    else if (m_fastFlagCount != 0u)
+    {
+        // PS2X_VU1_COMMIT_BATCH=1: the ready run folds into locals with the same per-entry formulas
+        // (the native file's commitFmacFlags copy stays in sync), the state, head and count are
+        // written once, and a landed slot only loses its valid bit.
+        uint32_t count = m_fastFlagCount;
+        uint32_t head = m_fastFlagHead;
+        uint32_t mac = m_state.mac;
+        uint32_t status = m_state.status;
+        uint32_t clip = m_state.clip;
+        uint32_t lastMacPc = m_lastMacPc;
+        const uint64_t now = m_cycle;
+        do
         {
-            const uint32_t current = entry.status & 0xFu;
-            m_state.status = (m_state.status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
-        }
-        if (entry.writesSticky)
-            m_state.status = (m_state.status & 0x03Fu) | (entry.status & 0xFC0u);
-        if (entry.writesClip)
-            m_state.clip = entry.clip;
-        entry = {};
-        m_fastFlagHead = (m_fastFlagHead + 1u) % kMaxFlagEntries;
-        --m_fastFlagCount;
+            FlagPipelineEntry &entry = m_flagPipeline[head];
+            if (entry.readyCycle > now)
+                break;
+            if (entry.writesMac)
+            {
+                mac = entry.mac;
+                lastMacPc = entry.issuePc;
+            }
+            if (entry.writesStatus)
+            {
+                const uint32_t current = entry.status & 0xFu;
+                status = (status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
+            }
+            if (entry.writesSticky)
+                status = (status & 0x03Fu) | (entry.status & 0xFC0u);
+            if (entry.writesClip)
+                clip = entry.clip;
+            entry.valid = false;
+            head = (head + 1u) % kMaxFlagEntries;
+        } while (--count != 0u);
+        m_state.mac = mac;
+        m_state.status = status;
+        m_state.clip = clip;
+        m_lastMacPc = lastMacPc;
+        m_fastFlagHead = head;
+        m_fastFlagCount = count;
     }
     if (m_fdiv.valid && m_fdiv.readyCycle <= m_cycle)
     {
@@ -1964,6 +2037,29 @@ void VU1Interpreter::fastCommit()
         if (entry.valid && entry.readyCycle < next)
             next = entry.readyCycle;
     m_nextReadyCycle = next;
+}
+template void VU1Interpreter::fastCommitWith<false>();
+template void VU1Interpreter::fastCommitWith<true>();
+
+// PS2X_VU1_COMMIT_BATCH (Dev Flag, default 0 = the per-entry drain, R334), read once; run() copies
+// it into s_vu1CommitBatch so fastCommit reads a plain bool.
+bool VU1Interpreter::fastCommitBatchKnob()
+{
+    static const bool s_on = ps2x::knobOn("PS2X_VU1_COMMIT_BATCH");
+    return s_on;
+}
+
+namespace
+{
+    bool s_vu1CommitBatch = false;
+}
+
+void VU1Interpreter::fastCommit()
+{
+    if (s_vu1CommitBatch)
+        fastCommitWith<true>();
+    else
+        fastCommitWith<false>();
 }
 
 // Program end: every queued result lands; the cycle counter advances to the last landing like the
@@ -2468,6 +2564,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // the cycle-exact scheduler (they were ~4.5% of the game thread on it, STATUS 2026-09-09).
     static const bool s_vu0FastEnv = ps2x::knob("PS2X_VU0_FAST") == nullptr || std::atoi(ps2x::knob("PS2X_VU0_FAST")) != 0;
     m_fast = s_fastEnv && (m_unit == Unit::VU1 || s_vu0FastEnv) && !traceThis;
+    // S17 F C2: which flag-ring drain fastCommit runs (the knob is read once, on the first run).
+    s_vu1CommitBatch = fastCommitBatchKnob();
     static const bool s_genEnv = ps2x::knob("PS2X_VU1_GEN") == nullptr || std::atoi(ps2x::knob("PS2X_VU1_GEN")) != 0;
     // Hand-written native programs (src/lib/vu/native) replace a microprogram entry point on
     // both the fast and the cycle-exact path: what they produce does not depend on how the

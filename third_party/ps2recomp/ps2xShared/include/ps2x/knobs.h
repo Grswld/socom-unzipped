@@ -188,6 +188,7 @@
     X("PS2X_VIF1_NO_IRQ_STALL", Dev, Flag, "0", "Restore VIF1 without the i-bit stall (A/B).") \
     X("PS2X_VU0_FAST", Dev, Int, "1", "0 keeps VU0 micro programs on the cycle-exact scheduler.") \
     X("PS2X_VU1_BAILHIST", Dev, Presence, "", "Histogram of where generated VU1 code bails to the interpreter.") \
+    X("PS2X_VU1_COMMIT_BATCH", Dev, Flag, "0", "S17 F C2 A/B: 1 drains the ready VU1 flag ring in one step (fastCommit), bit-exact.") \
     X("PS2X_VU1_DUMP", Dev, Path, "", "Dump VU1 program state at each run for vu1_replay (armed by TRIGGER or VU1_DUMP_AFTER).") \
     X("PS2X_VU1_DUMP_AFTER", Dev, Float, "0", "With VU1_DUMP: arm after this many seconds.") \
     X("PS2X_VU1_FAST", Dev, Int, "1", "0 selects the cycle-exact VU1 scheduler.") \
