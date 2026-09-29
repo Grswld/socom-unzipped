@@ -354,12 +354,13 @@ namespace vu1ops
         Fast
     };
 
-    // PS2X_VU1_FMAC_ZERO_FAST (Dev, default 0 = the old path): 1 lets the exact-zero lanes take the
-    // fast path. Read once, on the first product-sum that fails the fast test, so after the process
-    // set developer mode.
+    // PS2X_VU1_FMAC_ZERO_FAST (Dev, default 1 since R337 adopted C1): 1 lets the exact-zero lanes take
+    // the fast path; 0 (developer mode only) is the old slow path. The default is the registry row's,
+    // so a stranger (the knob hidden) runs the adopted path. Read once, on the first product-sum that
+    // fails the fast test, so after the process set developer mode.
     inline bool fmacZeroFastKnob()
     {
-        static const bool s_on = ps2x::knobOn("PS2X_VU1_FMAC_ZERO_FAST");
+        static const bool s_on = ps2x::knobs::flagValue(ps2x::knobOrDefault("PS2X_VU1_FMAC_ZERO_FAST"), false);
         return s_on;
     }
 

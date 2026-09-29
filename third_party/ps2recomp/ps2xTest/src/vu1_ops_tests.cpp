@@ -266,14 +266,14 @@ void register_vu1_ops_tests()
             t.Equals(out.mac, 0x0001u, "MADDA.xyzw with a zero w: only w's Z");
         });
 
-        tc.Run("PS2X_VU1_FMAC_ZERO_FAST is a Dev Flag defaulting to the old path", [](TestCase &t)
+        tc.Run("PS2X_VU1_FMAC_ZERO_FAST is a Dev Flag defaulting to the adopted fast path", [](TestCase &t)
         {
             const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_FMAC_ZERO_FAST");
             t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
-                         std::string(e->dflt) == "0",
-                     "a Dev Flag, default 0 (R334: the A/B knob defaults to today's behaviour)");
+                         std::string(e->dflt) == "1",
+                     "a Dev Flag, default 1 (R337: C1 picked, the zero-lane fast path adopted; 0 = the old path)");
             if (ps2x::knob("PS2X_VU1_FMAC_ZERO_FAST") == nullptr)
-                t.IsFalse(vu1ops::fmacZeroFastKnob(), "unset: the zero lanes still take the slow classifier");
+                t.IsTrue(vu1ops::fmacZeroFastKnob(), "unset: the zero lanes take the fast path");
         });
 
         tc.Run("product-sum: the near shapes (acc == -p, an underflowing product, a denormal result) stay slow", [](TestCase &t)

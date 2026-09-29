@@ -1358,10 +1358,11 @@ int main(int argc, char **argv)
                      (unsigned long long)g_vu1NativeEnded.load(),
                      (unsigned long long)g_vu1NativeHandBacks.load());
     }
-    if (ps2x::knobOn("PS2X_VU1_FMAC_ZERO_FAST"))
+    if (vu1ops::fmacZeroFastKnob())
     {
         // S17 F C1 (research/81): product-sums that failed the fast test, and the share of them whose
-        // failing lanes were all exact zeros (now fast). Only counted with the knob on.
+        // failing lanes were all exact zeros (now fast). Only counted with the knob on: the runtime's own
+        // read, so the line prints under the default (1, R337) and is silent at =0.
         const vu1ops::ProductSumZeroCounts &z = vu1ops::productSumZeroCounts();
         std::fprintf(stderr, "[vu1_replay] fmac zero-fast: refused=%llu rescued=%llu (%.1f %%)\n",
                      (unsigned long long)z.refused, (unsigned long long)z.rescued,
