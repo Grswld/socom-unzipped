@@ -7,6 +7,7 @@ import {
   DoorSet, doorInReach, MoverSim, overall, ringFor, roundPath, Traversal, Walker, type MagazineRing,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   ELIMINATED_HOLD_S, eliminationWinner, isMatchOver, MAX_ROUNDS, ROUND_WATCH_S, type Rules,
+  EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, ShotCone, targetHeight,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
 } from '../../viewer/src/sim';
@@ -74,8 +75,22 @@ const ACTIVE_STICK = 0.05;
 const MUZZLE_SLACK = 40;
 /** Ticks of history kept for the rewind: MAX_REWIND_MS and a margin. */
 const HISTORY = Math.ceil((MAX_REWIND_MS / 1000) * TICK_HZ) + 12;
-/** The eye over the feet, standing (`./walk` `EYE_HEIGHT`), for the fire origin check. */
-const EYE = 15.4;
+/**
+ * The most commands a batch may carry (PL-9/PL-16 of the launch review): the client repeats its last
+ * `COMMAND_REDUNDANCY` (3) in each; the rest is room for a batch after a lost frame. A longer batch is dropped whole, so a
+ * frame costs at most this many inserts.
+ */
+export const MAX_BATCH = 16;
+/** The commands a player's queue holds at most (10 s): a flood past it is dropped, not queued. */
+const QUEUE_MAX = 600;
+/**
+ * The timed events (a round, a reload) waiting for their command to be run, at most; and how long one waits for it (the
+ * queue's 10 s). A round is decided at its own command -- the mover, the cone and the clocks as they were then -- once
+ * the command after it has run too (the page's look runs up to a tick ahead of the command it names).
+ */
+const PENDING_MAX = 32, PENDING_TICKS = QUEUE_MAX;
+/** A name's longest before the lobby's own cut (the lobby trims to the game's; this refuses a flood first). */
+const NAME_MAX = 256;
 
 /** KIT_PLACEHOLDER: every player carries the viewer's held pair (the M4A1 SD and the Mark 23) until M5 wires the maps' kits (research 91 section 14). */
 const KIT: readonly [WeaponRecord, WeaponRecord] = [HELD_RIFLE, HELD_SIDEARM];
@@ -100,12 +115,23 @@ interface Flying { owner: number; kind: string; g: Grenade }
 
 interface Past { tick: number; feet: V3; yaw: number; posture: 'stand' | 'crouch' | 'prone'; alive: boolean }
 
+/** A round or a reload waiting for its command (`PENDING_MAX`): the event and the tick it came. */
+type Timed = { ev: Extract<ClientEvent, { type: 'fire' | 'reload' }>; at: number };
+
 class Player {
   sim: MoverSim;
   readonly queue: Command[] = [];
+  /** The command numbers in `queue` (PL-9: a batch's duplicates found at once, not by a walk of the queue). */
+  readonly queued = new Set<number>();
   /** The tick a gap in the command numbers was first seen, or -1. */
   gapSince = -1;
   credit = CREDIT_MAX;
+  /**
+   * Commands run: the player's own clock, one a 60 Hz tick of its mover (the credit holds it to real time). The fire
+   * rate and the reload lock count on it -- the game's wait is a clock timer (`kit+0x8b8 -= dt`, `FUN_005c0fd0`
+   * 476545-476547), not a number the client sends.
+   */
+  ran = 0;
   lastActive: number;
   alive = false;
   health: Health = freshHealth();
@@ -118,11 +144,18 @@ class Player {
   ping = 0;
   /**
    * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §18) -- the page's `Fire` counts with the
-   * same, so a reload here takes the magazine the page's did; the tick each last fired (by command number).
+   * same, so a reload here takes the magazine the page's did; the command count each last fired at (`ran`).
    */
   readonly mags: [MagazineRing, MagazineRing] = [ringFor(KIT[0]), ringFor(KIT[1])];
-  readonly lastFire: [number, number] = [-1e9, -1e9];
-  reloadUntil = 0;
+  lastFire: [number, number] = [-1e9, -1e9];
+  /** Per weapon, the command count its reload's clip ends at (`reloadLockSeconds`; MJ-1); cleared by a swap. */
+  reloadUntil: [number, number] = [-1, -1];
+  /** The weapon in hand as last seen (a change is a swap: the lock goes, the cone takes the record). */
+  weapon: 0 | 1 = 0;
+  /** The accuracy cone, run from the commands (OWNER-3, `ShotCone`). */
+  cone = new ShotCone(KIT[0]);
+  /** Rounds and reloads waiting for their command. */
+  readonly pending: Timed[] = [];
   trigger = false; aiming = false; boost = false;
   lastYaw = 0; lastPitch = 0;
   lastLanding: unknown = null;
@@ -260,8 +293,11 @@ export class Room {
       else if (c.kind === 'queue') this.send(c.id, { type: 'queue', position: c.position });
       else if (c.kind === 'promoted') {
         this.players.delete(c.id);
+        // PL-8: a classic round in play seats it as a ghost (`addPlayer`), and it is told so, as the welcome tells a
+        // late joiner (research 91 section 12, `FUN_001f97b0` L57047-57097).
+        const ghost = this.seatsGhosts();
         this.addPlayer(c.id, c.team);
-        this.send(c.id, { type: 'promoted', team: c.team });
+        this.send(c.id, { type: 'promoted', team: c.team, ghost });
         this.broadcast({ type: 'joined', id: c.id, name: this.lobby.member(c.id)!.name, team: c.team }, c.id);
       }
     }
@@ -277,30 +313,82 @@ export class Room {
     if (!p) return;
     let batch;
     try { batch = decodeCommands(bytes); } catch { return; }
+    if (batch.commands.length > MAX_BATCH) return;               // PL-9: a batch past the cap is dropped whole
     p.viewTick = Math.max(p.viewTick, batch.viewTick);
     // Frames can arrive out of order (the jitter): every command not yet run and not yet queued goes in, in order.
     for (const c of batch.commands) {
-      if (c.seq <= p.sim.seq || p.queue.some((q) => q.seq === c.seq)) continue;
+      if (c.seq <= p.sim.seq || p.queued.has(c.seq)) continue;
       let at = p.queue.length;
       while (at > 0 && p.queue[at - 1]!.seq > c.seq) at--;
       p.queue.splice(at, 0, c);
+      p.queued.add(c.seq);
     }
-    if (p.queue.length > 600) p.queue.splice(0, p.queue.length - 600);   // a flood (10 s) is dropped, not queued
+    if (p.queue.length > QUEUE_MAX) {                            // a flood (10 s) is dropped, not queued
+      for (const c of p.queue.splice(0, p.queue.length - QUEUE_MAX)) p.queued.delete(c.seq);
+    }
   }
 
-  /** A text frame: a JSON event. */
-  text(id: number, ev: ClientEvent): void {
+  /**
+   * A text frame: a JSON event. Its fields are the client's, so each is shape-checked before anything reads it (BL-2 of
+   * the launch review: one `{"type":"fire"}` read `from[0]` of nothing and threw out of the socket's handler, taking the
+   * process down): a malformed event is dropped, never thrown.
+   */
+  text(id: number, raw: ClientEvent): void {
+    const ev = raw as unknown as Record<string, unknown> | null;
+    if (!ev || typeof ev !== 'object') return;
     switch (ev.type) {
-      case 'ping': this.send(id, { type: 'pong', t: ev.t, tick: this.tick }); return;
-      case 'name': this.broadcastChanges(this.lobby.rename(id, ev.name, this.opts.random)); return;
+      case 'ping':
+        if (isNum(ev.t)) this.send(id, { type: 'pong', t: ev.t, tick: this.tick });
+        return;
+      case 'name':
+        if (typeof ev.name === 'string' && ev.name.length <= NAME_MAX) this.broadcastChanges(this.lobby.rename(id, ev.name, this.opts.random));
+        return;
       case 'score': this.send(id, this.scoreEvent()); return;
-      case 'fire': this.fire(id, ev); return;
-      case 'reload': this.reload(id); return;
-      case 'vote': this.vote(id, ev.target, ev.remove); return;
-      case 'throw': this.throwGrenade(id, ev); return;
-      case 'door': this.useDoor(id, ev.door); return;
+      case 'fire':
+        if (isInt(ev.seq) && isInt(ev.viewTick) && isV3(ev.from) && isV3(ev.dir) && isV3(ev.eye) && isV3(ev.aim)) this.timed(id, raw as Timed['ev']);
+        return;
+      case 'reload':
+        if (isInt(ev.seq)) this.timed(id, raw as Timed['ev']);
+        return;
+      case 'vote':
+        if (isInt(ev.target) && typeof ev.remove === 'boolean') this.vote(id, ev.target, ev.remove);
+        return;
+      case 'throw':
+        if (typeof ev.kind === 'string' && Object.hasOwn(THROWN, ev.kind) && isInt(ev.seq) && isV3(ev.from) && isV3(ev.velocity)) {
+          this.throwGrenade(id, raw as Extract<ClientEvent, { type: 'throw' }>);
+        }
+        return;
+      case 'door':
+        if (isInt(ev.door)) this.useDoor(id, ev.door);
+        return;
       default: return;
     }
+  }
+
+  /**
+   * A round or a reload: decided at its command (`seq`), once the command after it has run -- at once when it has, else
+   * when it does (`run`). Kept in order; at most `PENDING_MAX` wait, each at most `PENDING_TICKS`.
+   */
+  private timed(id: number, ev: Timed['ev']): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    if (!p.pending.length && p.sim.seq > ev.seq) { this.decide(p, ev); return; }
+    if (p.pending.length >= PENDING_MAX) return;
+    p.pending.push({ ev, at: this.tick });
+  }
+
+  /** The waiting rounds and reloads whose command and the next have run, in order; the long-waiting ones dropped. */
+  private settle(p: Player): void {
+    while (p.pending.length) {
+      const head = p.pending[0]!;
+      if (p.sim.seq > head.ev.seq) { p.pending.shift(); this.decide(p, head.ev); continue; }
+      if (this.tick - head.at > PENDING_TICKS) { p.pending.shift(); continue; }
+      break;
+    }
+  }
+
+  private decide(p: Player, ev: Timed['ev']): void {
+    if (ev.type === 'fire') this.fire(p, ev); else this.reload(p, ev.seq);
   }
 
   // ---- the tick ----
@@ -330,7 +418,9 @@ export class Room {
       if (p.queue[0]!.seq > p.sim.seq + 1 && p.gapSince + GAP_WAIT > this.tick) { if (p.gapSince < 0) p.gapSince = this.tick; break; }
       p.gapSince = -1;
       const cmd = p.queue.shift()!;
+      p.queued.delete(cmd.seq);
       p.credit--;
+      p.ran++;
       const active = Math.abs(cmd.forward) > ACTIVE_STICK || Math.abs(cmd.right) > ACTIVE_STICK || (cmd.buttons & ~Button.Boost) !== 0
         || Math.abs(cmd.yaw - p.lastYaw) > 0.5 || Math.abs(cmd.pitch - p.lastPitch) > 0.5;
       if (active) p.lastActive = now;
@@ -338,18 +428,39 @@ export class Room {
       if (!p.alive) {
         p.sim.seq = cmd.seq;
         if ((cmd.buttons & Button.Action) && this.respawnReady(p)) this.spawn(p, 'respawn');
+        this.settle(p);
         continue;
       }
       p.trigger = (cmd.buttons & Button.Trigger) !== 0;
       p.aiming = (cmd.buttons & Button.Aim) !== 0;
       p.boost = (cmd.buttons & Button.Boost) !== 0;
       p.sim.apply(cmd);
+      this.aim(p, cmd);
       const landing = p.sim.walker.landing;
       if (landing && landing !== p.lastLanding) {
         p.lastLanding = landing;
         if (applyFall(p.health, landing.speed)) this.kill(p, null, null, 'fall');
       }
+      this.settle(p);
     }
+  }
+
+  /**
+   * After a command: a swap on the server's mover (`MoverSim.weapon`) takes the other record into the cone and clears
+   * the reload locks (the page's `setWeapon` cancels its reload, `fire.ts`); then one tick of the cone (OWNER-3).
+   */
+  private aim(p: Player, cmd: Command): void {
+    const w = p.sim.weapon;
+    if (w !== p.weapon) {
+      p.weapon = w;
+      p.cone.setWeapon(KIT[w]);
+      p.reloadUntil = [-1, -1];
+    }
+    const walker = p.sim.walker, s = walker.state, moves = p.sim.moves;
+    p.cone.tick(cmd, {
+      feet: [s.x, s.y, s.z], velocity: [s.vx, s.vy, s.vz], airborne: walker.airborne, posture: walker.posture,
+      moveRoot: moves?.rootY() ?? null, peek: moves?.peek() ?? 0, weapon: w,
+    }, p.ran);
   }
 
   private remember(p: Player): void {
@@ -406,7 +517,11 @@ export class Room {
     const at: V3 = slot ? [slot.position[0], slot.position[1] + SPAWN_LIFT, slot.position[2]] : [0, 0, 0];
     // The facing: step k points along (sin 45k, -cos 45k); `Pose.yaw` faces (-sin yaw, -cos yaw).
     const yaw = slot ? ((-slot.step * 45) % 360 + 360) % 360 : 0;
-    sim.walker.place(at[0], at[1] + EYE, at[2]);
+    // PL-2: the floor is picked as the walking tick picks it -- the probe from the feet + `PROBE_LIFT` (`FUN_005b0420` ->
+    // `FUN_005b5d40` L470230-470240: the highest hit at or under origin + 1; research 86 s6.3) -- on the record lifted a
+    // unit (`FUN_002b8100` L158793). From the eye (feet + 16.4) it stood four Frostfire records on an object 12 up.
+    // The page's respawn (`walk.ts` `respawn`) places from the same origin.
+    sim.walker.place(at[0], at[1] + PROBE_LIFT, at[2]);
     sim.walker.state.yaw = yaw;
     p.sim = sim;
     p.alive = true;
@@ -415,6 +530,11 @@ export class Room {
     // L75931) rebuilds the actor through `FUN_00599b60` (L455158), whose `FUN_00599f00` (L455674) gives the type's
     // `default_weapons` at `Ammo_Capacity` x `NumMags` (research 91 section 4.3). KIT_PLACEHOLDER: the kit itself.
     p.mags[0].fill(); p.mags[1].fill();
+    // The new body's kit is at rest: no reload playing, the rifle in hand, the cone at its floor (`Accuracy.reset`).
+    p.reloadUntil = [-1, -1];
+    p.lastFire = [-1e9, -1e9];
+    p.weapon = 0;
+    p.cone = new ShotCone(KIT[0]);
     p.lastLanding = null;
     p.grenades = freshGrenades();
     p.history.length = 0;
@@ -431,22 +551,40 @@ export class Room {
 
   // ---- fire (W3.R4) ----
 
-  private fire(id: number, ev: Extract<ClientEvent, { type: 'fire' }>): void {
-    const p = this.players.get(id);
-    if (!p || !p.alive || this.state.phase === 'over') return;
-    const w: 0 | 1 = ev.weapon ? 1 : 0;
+  /**
+   * A round (W3.R4), decided at its command (`timed`): the weapon is the server's mover's (the kit's selected slot
+   * `+0x824`, set only by the swap: `FUN_005c0fd0` 476592-476625, `FUN_005bd030` 474178), never the event's; its rate
+   * and its reload's lock count on the player's own command clock (`Player.ran`); the round must leave from the body,
+   * not through a wall; its eye and aim must be the page's camera's and inside the cone the server's own run of the
+   * accuracy allows (`ShotCone`, OWNER-3).
+   */
+  private fire(p: Player, ev: Extract<ClientEvent, { type: 'fire' }>): void {
+    const id = p.id;
+    if (!p.alive || this.state.phase === 'over') return;
+    const frame = p.cone.frame(ev.seq);
+    if (!frame) return;                                        // not a command this body ran
+    const w = frame.weapon;
     const record = KIT[w];
-    // The rate: rounds by command number, at the record's `fireWait` (a tick's slack for the quantised clock).
-    if (ev.seq - p.lastFire[w] < record.fireWait * TICK_HZ - 1) return;
-    if (p.mags[w].rounds() <= 0 || this.tick < p.reloadUntil) return;
-    const s = p.sim.walker.state;
-    const from = ev.from, d = ev.dir;
-    if (Math.hypot(from[0] - s.x, from[1] - (s.y + EYE), from[2] - s.z) > MUZZLE_SLACK) return;
+    // BL-1: the rate is the weapon's fastest enabled mode -- `FUN_005c09f0` (476313-476335): `FireWait` in mode 1,
+    // `FireWait` x 0.8 in burst and automatic (research 84 s6) -- less a tick for the page's frame-quantised clock. The
+    // server does not know the page's mode; a slower mode only fires slower.
+    const fastest = Math.min(...record.fireModes.filter((m) => m > 0).map((m) => fireInterval(record.fireWait, m)), record.fireWait);
+    if (frame.count - p.lastFire[w] < fastest * TICK_HZ - 1) return;
+    if (frame.count < p.reloadUntil[w] || p.mags[w].rounds() <= 0) return;
+    const from = ev.from;
+    const [fx, fy, fz] = frame.feet;
+    if (Math.hypot(from[0] - fx, from[1] - (fy + EYE_HEIGHT), from[2] - fz) > MUZZLE_SLACK) return;
+    // BL-3: the muzzle is on the near side of every wall from the body (the look-at target's point, `targetHeight`).
+    if (segmentHit(this.map.grid, [fx, fy + targetHeight(frame.posture, frame.moveRoot), fz], from)) return;
+    const d = ev.dir;
     const len = Math.hypot(d[0], d[1], d[2]);
     if (!(len > 0.5 && len < 1.5)) return;
     const dir: V3 = [d[0] / len, d[1] / len, d[2] / len];
-    p.lastFire[w] = ev.seq;
+    // OWNER-3: the eye, the aim inside the cone, and the round down the eye's ray.
+    if (p.cone.check(ev.seq, { eye: ev.eye, aim: ev.aim, from, dir }) !== null) return;
+    p.lastFire[w] = frame.count;
     p.mags[w].fire();
+    p.cone.round(ev.seq);
     const reach = record.maximumRange * UNITS_PER_METRE;
     // The rewind: the others where the shooter saw them, at most MAX_REWIND_MS back.
     const earliest = this.tick - Math.round((MAX_REWIND_MS / 1000) * TICK_HZ);
@@ -505,10 +643,13 @@ export class Room {
   private cast: HullCast | null = null;
 
   private throwGrenade(id: number, ev: Extract<ClientEvent, { type: 'throw' }>): void {
-    const p = this.players.get(id), t = THROWN[ev.kind];
-    if (!p || !p.alive || !t || this.state.phase === 'over' || (p.grenades[ev.kind] ?? 0) <= 0) return;
+    const p = this.players.get(id), t = Object.hasOwn(THROWN, ev.kind) ? THROWN[ev.kind] : undefined;
+    if (!p || !p.alive || !t || this.state.phase === 'over' || !Object.hasOwn(p.grenades, ev.kind) || p.grenades[ev.kind]! <= 0) return;
     const s = p.sim.walker.state;
-    if (Math.hypot(ev.from[0] - s.x, ev.from[1] - (s.y + EYE), ev.from[2] - s.z) > MUZZLE_SLACK) return;
+    if (Math.hypot(ev.from[0] - s.x, ev.from[1] - (s.y + EYE_HEIGHT), ev.from[2] - s.z) > MUZZLE_SLACK) return;
+    // BL-3: the hand is on the body's side of the walls, as the muzzle is.
+    const look = targetHeight(p.sim.walker.posture, p.sim.moves?.rootY() ?? null);
+    if (segmentHit(this.map.grid, [s.x, s.y + look, s.z], ev.from)) return;
     if (!(Math.hypot(...ev.velocity) <= THROW_SPEED_MAX)) return;
     p.grenades[ev.kind]!--;
     this.flying.push({ owner: id, kind: ev.kind, g: launchGrenade([...ev.from], [...ev.velocity], t.record) });
@@ -554,13 +695,24 @@ export class Room {
     }
   }
 
-  private reload(id: number): void {
-    const p = this.players.get(id);
-    if (!p || !p.alive) return;
-    const w = p.sim.weapon;
-    // FUN_005c2a90: the next magazine round the ring with rounds; the one out keeps its rounds (the page's rule).
-    if (p.mags[w].full() || !p.mags[w].reload()) return;
-    p.reloadUntil = this.tick + 2 * TICK_HZ;                   // `fire.ts` RELOAD_SECONDS
+  /**
+   * A reload, at its command. Refused while this weapon's reload still plays (`FUN_005c2a90` 477398: `FUN_005a7ab0`, true
+   * while the reload's clip plays, 462527-462540). MJ-2: no fullness gate -- the game walks from `m_currentmag + 1` for
+   * the first slot with rounds (477462-477483), so a full magazine reloads whenever another slot holds rounds. The lock
+   * is the clip's length (MJ-1, `reloadLockSeconds`: `FUN_005a82e0`'s clip for the posture, moving or still, and the
+   * item; `RELOAD_SECONDS_PLACEHOLDER` without the clips), per weapon, on the command clock, less a tick as the rate's.
+   */
+  private reload(p: Player, seq: number): void {
+    if (!p.alive) return;
+    const frame = p.cone.frame(seq);
+    const w = frame?.weapon ?? p.sim.weapon;
+    const count = frame?.count ?? p.ran;
+    if (count < p.reloadUntil[w]) return;
+    if (!p.mags[w].reload()) return;
+    const posture = frame?.posture ?? p.sim.walker.posture;
+    const v = frame?.velocity ?? [p.sim.walker.state.vx, p.sim.walker.state.vy, p.sim.walker.state.vz];
+    const seconds = reloadLockSeconds(this.clips?.clips ?? null, this.clips?.table ?? null, posture, reloadMoving(v[0], v[1], v[2]), w ? 'pistol' : 'rifle');
+    p.reloadUntil[w] = count + Math.round(seconds * TICK_HZ) - 1;
   }
 
   private past(q: Player, tick: number): Past | null {
@@ -771,7 +923,15 @@ export class Room {
       if (!p.alive && this.seatsGhosts()) { p.lastActive = now; continue; }
       if (now - p.lastActive < this.opts.idleKickMs) continue;
       const changes = this.lobby.demote(p.id);
-      if (changes) { this.players.delete(p.id); this.broadcastChanges(changes); continue; }
+      if (changes) {
+        // PL-8: moved out to the back of the queue (W3.R13) -- a spectator now, told so (`demoted`, which its page turns
+        // into the spectator's view and its client into a spectator's role); the others drop its body.
+        this.players.delete(p.id);
+        this.broadcastChanges(changes.filter((c) => !(c.kind === 'queue' && c.id === p.id)));
+        this.send(p.id, { type: 'demoted', position: this.lobby.queuePosition(p.id) });
+        this.broadcast({ type: 'left', id: p.id }, p.id);
+        continue;
+      }
       this.send(p.id, { type: 'kicked', reason: 'idle' });
       const conn = this.conns.get(p.id);
       this.leave(p.id);
@@ -818,10 +978,27 @@ export class Room {
   /** For the tests: a player's mover and state. */
   player(id: number): {
     sim: MoverSim; alive: boolean; health: Health; team: Team; score: number; kills: number; deaths: number;
-    readonly mags: readonly [MagazineRing, MagazineRing];
+    readonly mags: readonly [MagazineRing, MagazineRing]; readonly cone: ShotCone; readonly reloadUntil: readonly [number, number];
+    readonly queue: readonly Command[]; readonly queued: ReadonlySet<number>; readonly grenades: Readonly<Record<string, number>>;
+    readonly ran: number; readonly pending: readonly unknown[];
   } | undefined {
     return this.players.get(id);
   }
+}
+
+/** A finite number. */
+function isNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/** A whole number (a command number, a tick, an id). */
+function isInt(v: unknown): v is number {
+  return Number.isInteger(v);
+}
+
+/** Three finite numbers: a point or a direction off the wire. */
+function isV3(v: unknown): v is V3 {
+  return Array.isArray(v) && v.length === 3 && v.every(isNum);
 }
 
 function freshGrenades(): Record<string, number> {

@@ -10,14 +10,20 @@
  * - the tuning (`./physics`) and the stature (`./stature`);
  * - the round (`./round`) and its accuracy and penetration (`./accuracy`), the kick (`./rifleKick`);
  * - the magazines (`./magazines`): the game's ring, one a weapon, the page's `Fire` and the room counting alike;
- * - grenades live headless in `@s2u/scene` already (`projectile.ts`: launch, step, the blast's damage).
+ * - grenades live headless in `@s2u/scene` already (`projectile.ts`: launch, step, the blast's damage);
+ * - the reload's clip and length (`./reloadClip`): the page's reload and the room's lock, one table (MJ-1);
+ * - the camera's geometry (`./cameraRig`) and the server's accuracy cone over it (`./net/shotCone`, OWNER-3): the room
+ *   refuses a round whose eye or aim the page's camera and cone could not have made;
+ * - the fire modes' wait (`fireInterval`, `FUN_005c09f0`) the room rates rounds by, and the probe's lift (`PROBE_LIFT`,
+ *   the tick's floor pick from the feet + 5) a spawn is placed from.
  */
 export * from './mover';
 export { Traversal } from './traversal';
 export * from './round';
 export * from './magazines';
 export * as accuracy from './accuracy';
-export { penetrate } from './accuracy';
+export { penetrate, fireInterval } from './accuracy';
+export { PROBE_LIFT } from '@s2u/scene';
 export * from './physics';
 export * from './stature';
 export * from './motionTable';
@@ -34,3 +40,6 @@ export * from './net/damage';
 export * from './net/lobby';
 export * from './net/deaths';
 export * from './net/rules';
+export * from './reloadClip';
+export { CAM_FAR, localCamera, lookHeight, scopeEyeHeight, toWorld } from './cameraRig';
+export * from './net/shotCone';

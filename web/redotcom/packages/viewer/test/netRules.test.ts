@@ -50,7 +50,7 @@ function page(rules: Rules) {
 describe('the round-start banner online (FUN_001fb420 L57633-57648)', () => {
   it('the hello names the rules', () => {
     const { sent } = page('classic');
-    expect(JSON.parse(sent[0]!)).toMatchObject({ type: 'hello', version: 4, map: 'MP2', rules: 'classic' });
+    expect(JSON.parse(sent[0]!)).toMatchObject({ type: 'hello', version: 5, map: 'MP2', rules: 'classic' });
   });
 
   it('respawn keeps the original\'s quirk: STARTING ROUND 1 OF 11 for its one round, at the join and at each match', () => {
