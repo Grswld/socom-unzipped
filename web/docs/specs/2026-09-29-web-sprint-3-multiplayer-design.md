@@ -170,16 +170,18 @@ W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owne
 - **W3.R11 (2026-09-29, amended twice the same day by the owner) — one timed respawn match per map, the original's
   length and UI.** Each map is its own match (the owner: "each map is IT'S OWN RESPAWN MATCH"), timed as the original
   times it (the owner, after first asking for endless rounds: "let's go back to timed matches ... with the original ui.
-  matching original match length"): SUPPRESSION with the game's RESPAWN option on (research 91 §4, §9: the game has
-  no respawn mode of its own), **rounds of the create-game default 6 minutes, a match of the default 11 rounds, won by
-  the first side to 6 round wins, a tiebreaker round past the last** (`FUN_002a6c50` L149073-149082), then the next
-  match on the same map. The round start, the clock, the round's end and the match's end are drawn with the game's
-  own UI (research 87's HUD and round-start frames; the round-end screens researched where the frames do not show
-  them). Teams of 8 by the game's join rule (Terrorists if fewer, or SEALs full, or both empty; else SEALs); scoring
-  and the kill lines by the game's rules (+2 kill, -2 suicide/fall/team kill, +5 each on a round's winners, +1 alive at
-  its end); respawn pressable 5 s after death once the body has faded (10 s), at the respawn record farthest from its
-  nearest enemy (`FUN_002b7ee0`), with a fresh default kit; friendly fire off (the create-game default). A round is won
-  on time by the side with the higher round score, a tie by neither (`SUPPRESSION_ROUND_END_PLACEHOLDER`).
+  matching original match length"). The original's SUPPRESSION with RESPAWN on is **one round of the create-game
+  default 6 minutes, and that round is the match** (research 91 section 18: the map scripts set `mp_game_over` at its
+  end): the clock counts down MM:SS from 06:00 (`"%02d:%02d"`, `FUN_001f6b60`), at 00:00 "TIME EXPIRED" is posted and
+  play goes on 15 s, the side with the higher team score wins (equal: a draw), the engine reads the result 3 s later,
+  and the game's screens follow -- ROUND COMPLETE with WINNER / LOSER / DRAW per side, FINAL ROUND, GAME COMPLETE /
+  FINAL TOTALS -- after which a dedicated server starts the next match on the same map (the original returns to its
+  lobby). The round time is the server's `ROUND_SECONDS` (the game's choices are 4-10 minutes). The multi-round match
+  (11 rounds, first to 6, the tiebreaker) is the game's rule with respawn off and stays in the room for that case.
+  Teams of 8 by the game's join rule (Terrorists if fewer, or SEALs full, or both empty; else SEALs); scoring and the
+  kill lines by the game's rules (+2 kill, -2 suicide/fall/team kill, +5 each on the winners, +1 alive at the end);
+  respawn pressable 5 s after death once the body has faded (10 s), at the respawn record farthest from its nearest
+  enemy (`FUN_002b7ee0`), with a fresh default kit; friendly fire off (the create-game default).
 - **W3.R12 (2026-09-29) — names.** At most 30 characters of printable ASCII (research 91 §13; the in-game buffer);
   a guest is the game's own `"Player%d"` default, with a random four-digit number in place of the network index; a
   duplicate takes the lowest free `(2)`, `(3)` suffix within the 30 (the game's server refused duplicates; a refusal
@@ -195,5 +197,5 @@ W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owne
   (`FUN_002c3550` L164913: 5 of 8, 3 of 4, never in a team of 2) and takes effect at the round's end [inferred from
   SOCOM 1's round-end script]; the kicked player sees UIMnLOC 539 "YOU HAVE BEEN KICKED FROM THIS GAME" and is refused a
   rejoin to that match with UIMnLOC 443 "You have been banned from that game. Please choose another." (by address,
-  until the match ends: `VOTE_BAN_SCOPE_PLACEHOLDER`). A unanimous vote was the first reading of "full team"; the
+  for 10 minutes: `VOTE_BAN_SCOPE_PLACEHOLDER`, a dedicated room never closes as the original's game did). A unanimous vote was the first reading of "full team"; the
   original's majority is what "pairing the original" asks, and the owner can overturn this by number.

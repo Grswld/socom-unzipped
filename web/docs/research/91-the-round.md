@@ -625,3 +625,189 @@ SOCOM II has a **per-player, team-only, strict-majority vote to remove** ("VOTE 
 ### 5. For the recreation (owner's "full team vote")
 
 The original is a strict team majority, target included, with no poll and no timer. "Full team" would be a deviation: unanimous = every other teammate (`votes == sameTeamCount - 1`). Pairing the original means: teammates-only, standing toggle per voter, tally shown to the target, pass at `votes > teamSize/2`, applied at round end, kicked player sees UIMnLOC 539/541/540 and is refused on rejoin with UIMnLOC 443. The spectator eject (> 60% of players, MaxSpectators -> 0) is a separate feature.
+
+## 18. The round's flow and its screens (research 91d, 2026-09-29)
+
+
+Read-only research, 2026-09-29. It builds on research 87 (§1 HUD, §8 round start, §12 scoreboard, §14 message window)
+and 91 (§9 round and match) and does not repeat them.
+
+**Sources**
+- The decompilation `analysis/socom2_game.elf.decomp.c`, cited as `FUN_x Lnnn`.
+- Strings, cited by address from `socom2_game.elf.strings.txt`.
+- The disc's zAnim command archives:
+  - `RUN/MPZANIM.ZAR`, the round-end and final screens' scripts. This file was not opened before (README l.490).
+  - Each map's `MZANIM.ZAR` inside `MPxx.ZDB`, whose animation `objectives` is the round's game logic.
+- The locale tables in `READERC.ZAR`: `UIMPXLOC.rdr`, `mp51LOC.rdr`.
+- reCOM's SOCOM 1 dialog `.rdr` files, used only for layout, which the SOCOM II disc subset lacks.
+- The console frames in `parity/s4_pcsx2/`.
+
+**How the zAnim streams were read**
+- The reader is `@s2u/scene` `parseAnimSets`, run with tsx from the scratchpad. The repo is unchanged.
+- The command numbers follow `ZANIM_COMMAND_NAMES` (research 89): 2 IF, 3 ELSEIF, 4 ELSE, 5 ENDIF, 15 WAIT, 30 SOUND,
+  39 WHILE, 40 END_WHILE, 43 EXPRESSION, 44 BREAK, 45 CALL_ANIMATION, 46 STOP_ANIMATION, 50 CALL_SEQUENCE,
+  51 STOP_SEQUENCE, 55 MESSAGE, 61 VALVE.
+- Set 1, command 1 is `ui::UI_COMMAND`. Its code `0xe9` sets a caption: node ref, name index, locale id.
+- VALVE's operations: 1 `!=`, 2 `==`, 3 `>`, 4 `<`, 5 `>=`, 0xb set, 0xc add. The flag 0x200 marks a valve given by
+  name, and 0x1a00 an operand that is itself a valve.
+- A sequence word of 0x102 means it runs at start; 0x104 means it runs only when called.
+- In the citations below, "MP51 `objectives`/`seq`" is the animation `objectives` in `MP51.ZDB:MZANIM.ZAR`. The same
+  eleven sequences are in the `objectives` of MP2, MP5, MP8, MP64 and MP81, checked for `success2` and
+  `mission_timer2`. Only their name indices and raw texts differ: MP2 says "TIME HAS EXPIRED" where MP51 uses locale
+  5108.
+
+---
+
+### 1. The round clock
+
+| item | value | citation |
+|---|---|---|
+| where | Info box, the timer line: pen (500, 433), scale 0.9, over the mirrored `newweapnbkrnd.tif` strip x 488-622, y 418-438 | research 87 §1.10-1.11; frame `A_ready259` / `B_ready259` ("02:07") |
+| format | `"%02d:%02d"` (`0x3e3088`) = minutes, seconds: **MM:SS** with a leading zero ("05:59", "02:07") | `FUN_001f6b60` L56002; frames |
+| font / colour | the HUD font `font_text_01` / `arialblack` (`0x3e3490`, `0x3e34b8`); the HUD text colour (128, 128, 128) at alpha 80 | research 87 §1, §3 |
+| source | online: `FUN_002a6ad0(0x4364e0)` = net block `+0xec` (remaining ms) x 0.001, floored to whole seconds (L148973-148993); offline: the float `+0xe8` | L148980-148990 |
+| when it counts | every tick, `FUN_002aa490` L151090-151109: elapsed = now - start (`+0xe4`), **remaining `+0xec` = round length `+0xe0` - elapsed**, floored at 0. The round length is `mp_max_round_time` x 60 x 1000 ms (research 91 §9). It counts from the round's start: on `A_ready021` the first in-round frame already reads 05:59 | L151100-151109; frames `A_ready021` (05:59), `A_ready259` (02:07) |
+| redraw | only when the seconds change (`% 60` against `DAT_00408f88`) | L56000-56003 |
+| visibility | shown or hidden through the box's vtable +0x18 / +0x1c by the local player's alive bit (`+0xe1` bit 4) and the online flag `DAT_0045a0c1` (L56004-56015); hidden while the scoreboard is up (research 87 §12). A negative clock offline draws string `0x3e3070` (under the dump's length cut) | L56004-56020 |
+| at zero | the master zeroes the valve `mp_timer` (net `+0xf8`, created at 1: `FUN_002a6c50` L149063-149064). This is the event the map's script waits for (§2). **The clock stops at 00:00**, and the round goes on for the script's hold | L151110-151121 |
+| warning (last 30/45 s) | **none.** `FUN_001f6b60` changes no colour and plays no sound; no string or sound id names a round-time warning. `mp_45_sec_clock` / `mp_x_sec_clock` are **lobby** clocks, not round clocks: the 45-second "force launch" wait and the 10-second launch countdown (SOCOM 1 `dlgGameLobby.rdr` `Watch45SecClock`, `CountDown`; SOCOM II `MPZANIM.ZAR` `return_to_gamelobby` sets `mp_x_sec_clock = 11`); created at `FUN_002a7560` L149578-149586 | this section |
+| lobby countdown seen | the READY button turns to "NOT READY 5", then 4, then the screen fades to black | `A_ready006`, `A_ready007`, `A_ready008` |
+
+### 2. The round's end in SUPPRESSION
+
+### 2.1 What ends it: the map's `objectives` script (MP51 `MZANIM.ZAR`)
+
+| case | trigger | what happens, in order | citation |
+|---|---|---|---|
+| RESPAWN on (`Respawn` == 1) | at start, the sequence `respawn` stops `start` and `mission_timer` and calls `start2` and `mission_timer2` | **Elimination does not end the round**: `start2` has no elimination loop | MP51 `objectives` seq `respawn` (offset 0) |
+| respawn: time | `mission_timer2`: WAIT 5, then WHILE `mp_timer != 0` | 1. MESSAGE locale **5108 "TIME EXPIRED"** at scale 0.9 in the main message window, with the sound `MUS_MP_SEAL_WIN_ALB` (name 0x1e).<br>2. **WAIT 15 s** (the world keeps running).<br>3. CALL `success2` | seq `mission_timer2` (offset 2432) |
+| respawn: result | `success2` | 1. `round_count` += 1.<br>2. **IF `seals_team_score` > `terrs_team_score`**: `mp_winner` = 0 and `mp_score00` += 1.<br>3. **ELSEIF <**: `mp_winner` = 8 and `mp_score08` += 1.<br>4. **ELSEIF ==**: `mp_winner` = 0x63 (99, draw).<br>5. Then **`mp_game_over` = 1 unconditionally**, WAIT 1 s, `mission_complete` = 1 | seq `success2` (offset 2756) |
+| respawn off: elimination | `start`, after WAIT 5 and WAIT 10: WHILE `mission_complete` == 0 AND `mission_failure` == 0, test `aiteam_08` == 0 (no living Terrorists) or `aiteam_00` == 0 (no living SEALs) | The side that eliminated the other: `mp_score00` or `mp_score08` += 1, `mp_winner` = 0 or 8.<br>Two messages: locale **5103 "ALL TERRORISTS ELIMINATED"** at 0.7 and **5104 "SEALS VICTORIOUS!"** at 0.9; or **5105 "ALL SEALS ELIMINATED"** at 0.7 and **5106 "TERRORISTS WIN!"** at 0.9.<br>Sound `^PH_0014` / `^PH_0002`, WAIT 2, music `MUS_MP_SEAL_WIN_ALB` / `MUS_MP_TERR_WIN_ALB`.<br>CALL `success` or `failure` by the local team: WAIT **20 s**, `round_count` += 1, CALL `game_over`, WAIT 1, `mission_complete` / `mission_failure` = 1 | seq `start` (offset 428), `success` (2664), `failure` (3004) |
+| respawn off: time | `mission_timer`: WAIT 15, WHILE `mp_timer != 0`; then CALL `abort` | `round_count` += 1, `mp_winner` = 99, CALL `game_over`, `mission_timeout` = 1. **A draw: nobody scores.** No message is posted, and there is no hold | seq `mission_timer` (2344), `abort` (2580) |
+| engine side | `mission_complete` / `failure` / `abort` / `timeout` valves (`0x3f18b0` / `0x3f18d0` / `0x3f18e0` / `0x3f18f0`, game `+0x1a4` .. `+0x1b0`) give states 2 / 3 / 4 / 5 | `FUN_002aa490` L151133-151158 (valves bound at L151844-151851). Online master (`FUN_002a9b30` L150612-150672): the state change arms a **3.0 s** timer (`+0xe4` = now + 3); then it copies `mp_score00` / `mp_score08` / `mp_winner` to net `+0x120` / `+0x124` / `+0x128`, increments `mp_round_count` (`+0x11c`), and sets net state `+0x113` = **6 if `mp_game_over`, else 4** | L150612-150672 |
+
+Team score (`seals_team_score` / `terrs_team_score`) = the sum of that team's players' **round** score `+0x5c8` plus a
+carried term (`FUN_00544d60` L411238-411306; research 91 §8). A player's score is +2 per enemy kill, -2 per suicide or
+team kill (91 §8). **In SUPPRESSION with RESPAWN the team with more points at 00:00 wins; equal points is a DRAW.**
+
+### 2.2 The placeholders resolved
+
+- **SUPPRESSION_ROUND_END_PLACEHOLDER: resolved.**
+  - Respawn on: only the clock ends the round.
+    - At 00:00 the post "TIME EXPIRED" appears and the round plays on for 15 s.
+    - The winner is the side with the higher team score, compared strictly; equal scores are a draw (`mp_winner` 99).
+    - The winner's round count goes up by 1.
+  - Respawn off: elimination ends the round, and the side left alive wins it. A timeout is a draw.
+  - Sources: MP51 `objectives` seqs `start2`, `mission_timer2`, `success2`, `start`, `abort`. The match-level
+    consequences (a single round, at most one round won) are in §3.
+- **MATCH_WIN_COMPARE_PLACEHOLDER: resolved.** MP51 `objectives` seq `game_over` (offset 100) and `game_over2`:
+  1. `end_of_round_round_count` = `mp_round_count` + 1.
+  2. **IF that count >= `mp_max_rounds`:**
+     - IF `mp_score00 == mp_score08`: STOP this sequence. There is no game over, so a tiebreaker round is played.
+     - ELSE `mp_game_over` = 1.
+  3. **ELSEIF `mp_score00 >= mp_half_rounds` OR `mp_score08 >= mp_half_rounds`:** `mp_game_over` = 1.
+
+  `game_over2` sets `mp_game_over` when `mp_round_count >= mp_max_rounds`. `mp_half_rounds` = (11 + 1) >> 1 = 6
+  (`FUN_002a6c50` L149073). The final screen names the winner as **`mp_score00 > mp_score08`** → SEALs, the reverse
+  → Terrorists, else nobody (MPZANIM `dlgMultiplayerFinalReally` `CallRoundATie`).
+- **Consequence for the owner's mode (the finding that matters most):** with RESPAWN on, `success2` sets `mp_game_over`
+  = 1 after the first round.
+  - A SUPPRESSION + RESPAWN match on the original is **one timed round**: 6 minutes by default (4-10 selectable).
+  - "11 rounds, first to 6" applies only with respawn off.
+  - The round-start banner still says "STARTING ROUND 1 OF 11": `FUN_001fb420` formats `mp_max_rounds`
+    (research 87 §8). This is inferred from the code; no respawn round start was captured.
+
+### 2.3 The texts (exact) and their tables
+
+| text | table / index | used by |
+|---|---|---|
+| "TIME EXPIRED" (MP2: "TIME HAS EXPIRED", raw) | `mp51LOC` 5108 | respawn time-out, main message window, scale 0.9 |
+| "ALL TERRORISTS ELIMINATED" / "SEALS VICTORIOUS!" | `mp51LOC` 5103 / 5104 | respawn off, scales 0.7 / 0.9 |
+| "ALL SEALS ELIMINATED" / "TERRORISTS WIN!" | `mp51LOC` 5105 / 5106 | respawn off, scales 0.7 / 0.9 |
+| "FRAG AS MANY PEOPLE AS POSSIBLE" | `mp51LOC` 5107 | **unused** by MP51's script: `start2` posts "OBJECTIVE:" / "ELIMINATE THE TERRORISTS" or "ELIMINATE THE SEALS" as raw names 38-40 |
+| "ROUND COMPLETE" | `UIMPXLOC` 2133 | round-end screen title |
+| "NEXT ROUND" | `UIMPXLOC` 2132 | round-end screen, beside the countdown |
+| "WINNER" / "LOSER" / "DRAW" | `UIMPXLOC` 2110 / 2109 / 2104 | the per-team result on the round screen (`DrawRoundS`, `DrawRoundT`) |
+| "GO" | `UIMPXLOC` 2111 | end of the round screen's countdown |
+| "SEALS" / "TERRORISTS" | `UIMPXLOC` 2101 / 2100 | team headers |
+| "SCORE" / "KILLS" / "DEATHS" | `UIMPXLOC` 2106 / 2107 / 2108 | column headers [inferred: the round lists have 3 numeric columns, `FUN_00224210` L76333-76339; their stat offsets are `DAT_003dc7f0..` in `.data`] |
+| "FINAL ROUND" / "FINAL TOTALS" / "GAME COMPLETE" | `UIMPXLOC` 2103 / 2102 / 2105 | final screens |
+| "SEAL TOTALS" / "TERRORIST TOTALS" / "MVP" / "YOUR STATS" / "HIT %" / "HEAD SHOTS" / "FRIENDLY KILLS" / "SUICIDES" / "SEAL ROUNDS" / "TERRORIST ROUNDS" / "TIME PLAYED" / "PRIMARY OBJECTIVES" / "BONUS OBJECTIVES" | `UIMPXLOC` 2112-2124, 2118-2119 | `dlgMultiplayerFinalReally` |
+| "RETURNING TO GAME LOBBY" (+ ". " steps) | `UIMPXLOC` 2125-2131 (SOCOM II shows 2128 "RETURNING TO GAME LOBBY. . .") | `ReturnFlash` (`RTGL` node) |
+
+### 2.4 The round-end screen (`dlgMultiplayerRound.rdr`, scripts in `RUN/MPZANIM.ZAR`)
+
+| item | value | citation |
+|---|---|---|
+| entered | the MP exit state `CMPExitState` (`FUN_00223970` L75961-76172). It adds each round stat (`+0x58c`..`+0x5ce`) into the match block (`+0x544`..`+0x586`) and scores round bonuses: **+5 to each player of `mp_winner`'s side, +1 to each living player** (L76146-76165). It clears the three message windows (L76084-76086), loads `readerx.zar` `run/ui` (`0x3e5270`/`0x3e5280`) and `run/mpzanim.zar` (`0x3e5340`), and sets menu `+0x920` = game over | L76060-76117 |
+| automatic | **yes.** It is its own screen that replaces the game; it is not the SELECT scoreboard. Research 87 §12 names a console frame `A_rend050` "ROUND COMPLETE" that is not in this handoff | -- |
+| content | per team, the round's players: a `LISTBOX` of rows "name" or "[clan] name" (`0x3e53b8`/`0x3e53c0`) and 3 numbers ("%d"). Players are sorted by `FUN_00226060` (`0x225f30`/`0x225e70`). The local player's row is coloured (91, 72, 36) (`0x42b60000`, `0x42900000`, `0x42100000`). Uivars `RoundStatLbContentsSeals` / `Terrs` (`0x3e5290`/`0x3e52b0`), `GameStatLbContents*`, `MvpName`/`MvpLbContents`, `PointsEarned`, `RoundsWonSeals`/`Terrs`/`RoundsWon`, `TimeInRound`/`TimeInGame` as `hh:mm:ss` from the net clock | `FUN_00223680` L75944-75950; `FUN_00224210` L76218-76357; `FUN_00224670` L76359-76466 |
+| result caption | `CallRoundATie`. IF `mp_allow_respawn` == 1: `mp_winner` 0 → SEALs "WINNER", Terrorists "LOSER"; 8 → the reverse; 99 → both "DRAW". Then IF `mission_timeout` == 1 → both "DRAW"; ELSEIF winner 0 or 8 as above. (Ref 1 = `DrawRoundT`, ref 2 = `DrawRoundS`.) It also stops all sounds and turns VAG streaming OFF | MPZANIM set `dlgMultiplayerRound.rdr` anim `CallRoundATie` |
+| hold | `CountDown`: "10", "9" .. "1" every 0.5 s, then "GO" = **5.0 s**. `ExitOnStart`: WAIT **5.0 s**, then `ReplayMission` (the next round). `TimeoutMonitor`: 90 s → `dlgNetError` | anims `CountDown`, `ExitOnStart`, `TimeoutMonitor` |
+| intermission total (respawn off) | elimination → 20 s in the world (the messages and music play) → +1 s → +3 s (engine) → round screen 5 s → reload of the round (`FUN_00223680` state 3/5: every non-ghost player is put back at a round-start slot by `FUN_00598b90(p,0)`, and the team scores are reset by `FUN_002a7d40`). **About 29 s plus the load.** Time-out (draw): the script has no hold, so ~3 s + 5 s | scripts above; L75913-75929 |
+| resets between rounds | positions (start slots; respawn games take a random slot in the block, 91 §4), a full default kit (91 §4.3), team scores, the clock (net `+0xe0..+0xf5` reset only at game over, L76135-76144; each round restarts the timer). **Scoreboard SCORE / KILLS / DEATHS are match totals**: match `+0x580` + round `+0x5c8` (87 §12). The team line shows rounds won (`+0x120`/`+0x124`) | L76060-76070, L75913-75929 |
+
+### 3. The match's end
+
+| step | what | citation |
+|---|---|---|
+| trigger | net state `+0x113` = 6 (`mp_game_over` set) → `CMPExitState` with `+0x920` = 1. When respawn is off and the game is not a ladder game, the stats are uploaded (`FUN_00225a00` / `FUN_00225070`) | `FUN_002a9b30` L150660-150664; L76078-76082 |
+| screen 1: `dlgMultiplayerFinal.rdr` ("FINAL ROUND", the last round's per-team lists) | `CallRoundATie`: `mission_timeout` → both DRAW; else `mp_winner` 0 or 8 → WINNER / LOSER. `CountDown` "20" .. "1" every 0.5 s, "GO" = **10 s**, then `SWITCHMENU dlgMultiplayerFinalReally.rdr` | MPZANIM set `dlgMultiplayerFinal.rdr` |
+| screen 2: `dlgMultiplayerFinalReally.rdr` ("GAME COMPLETE", "FINAL TOTALS": SEAL / TERRORIST TOTALS, MVP, YOUR STATS, SEAL / TERRORIST ROUNDS, TIME PLAYED) | `CallRoundATie`: `mp_score00 > mp_score08` → SEALs "WINNER", Terrorists " "; the reverse → the reverse; equal → both " ". `ReturnFlash` shows "RETURNING TO GAME LOBBY. . .". `ExitOnStart` runs `UpdateMpFinalStatsUiVars`, sets `IDFromBriefing` = 0 and **`ClanSwapSidesIndex` += 1**. Non-host players → `CloseAndSwitch dlgGameLobby.rdr` and watch the host; host → `call_gamelobby`: WAIT **10 s** → `return_to_gamelobby` (`player_ready_count` = 0, `mp_x_sec_clock` = 11, `CloseAndSwitch dlgGameLobby.rdr`). X (`MpFinalOnOk`) skips once `DoneCounting` is set (5 s), or finishes the counters. Timeout 90 s | MPZANIM set `dlgMultiplayerFinalReally.rdr` |
+| after | back to the **game lobby** (the same room, everyone not ready, the 10-s launch clock idle at 11). The engine resets the net clock and the round block (L76134-76144). A dedicated server would relaunch the next map from here | L76134-76144 |
+
+### 4. The round start as seen in frames (Vigilance, `parity/s4_pcsx2`, 1 frame/s)
+
+| frame | shows |
+|---|---|
+| `A_ready000` | game lobby, READY (both players red) |
+| `A_ready006` | both ready (green); the button reads **"NOT READY 5"**: the 5-second launch countdown |
+| `A_ready007` | "NOT READY 4", dimming |
+| `A_ready008` | black (a 973-byte PNG) |
+| `A_ready009` .. `A_ready020` | the **loading screen**, faded in over frame 9: the map name "VIGILANCE", the map picture with markers, "SUPPRESSION", the SEALs' and TERRORISTS' objective paragraphs, a spinning disc, and "(triangle) TO RETURN TO THE LOBBY." (`UILdLOC` 2000). About 12 s |
+| `A_ready021` .. `A_ready034` | in the round, fading from black. The clock reads 05:59 on frame 21. "STARTING ROUND 1 OF 11" is posted, then "OBJECTIVE:" / "ELIMINATE THE TERRORISTS" 5 s later (research 87 §8). No countdown and no freeze: play starts at once |
+| `s11_r0004_round1/A_19_ready` | the same banner on another map, clock 05:59 |
+| `A_ready259`, `B_ready259` | clock 02:07 on both clients; **the capture ends before the round's end**. No round-end or final screen exists in the handoff |
+
+The script side (MP51 seq `start` / `start2`): WAIT 5, then the objective pair by `player_team` (0 SEAL, 8 Terrorist,
+0x10 spectator), with `MUS_MP_SEAL_INTRO_4` / `MUS_MP_TERR_INTRO_4`. The first message is the engine's (`FUN_001fb420`).
+
+### 5. The tiebreaker round
+
+- **When:** respawn off, all `mp_max_rounds` played, and `mp_score00 == mp_score08`. `game_over` then stops without
+  setting `mp_game_over` (§2.2), so another round is played.
+- **Presentation:**
+  - The only difference is the start banner, "PLAYING TIEBREAKER ROUND" (`0x3e3540`), in place of
+    "STARTING ROUND %d OF %d". It shows when `mp_round_count` + 1 > `mp_max_rounds` (`FUN_001fb420` L57633-57648;
+    research 87 §8).
+  - The round-end and final screens are the same.
+- **After the tiebreaker:** `game_over2` / `game_over` end the match. The tiebreaker's winner leads by 1.
+- **A drawn tiebreaker:** a timed-out tiebreaker leaves the scores tied, so the `IF ==` branch plays yet another one
+  [inferred from the script].
+- **Respawn on:** the match is a single round, so no tiebreaker exists. A draw ends the match with no "WINNER".
+
+---
+
+### UI assets
+
+| screen | on the handoff disc | not on the handoff disc |
+|---|---|---|
+| HUD clock | the format string `0x3e3088` in the ELF; `newweapnbkrnd.tif` in `HUD2_TXR.ZED` (in every `MPxx.ZDB`); the font `font_text_01.tif` / `font_special_01.tif` in `FONT_TXR.ZED` (every ZDB) | -- |
+| round messages ("TIME EXPIRED", "SEALS VICTORIOUS!" ...) | `READERC.ZAR` `mp51LOC.rdr` (and each map's `mpNNLOC`), also `RUN\LOCALE\STATES\MP51LOC.ZAR` in the ZDB; the scripts in `MPxx.ZDB:MZANIM.ZAR`; the window's layout in `READERC.ZAR/messages.rdr` | the sound banks behind `^PH_0014`, `^PH_0002`, `MUS_MP_*_WIN_*`, `MUS_MP_*_INTRO_4`: the music is streamed (VAG). `SOUNDS/BNKSTORE.ZAR` holds banks; the VAG store is not in the subset [check `@s2u/sound`'s catalog] |
+| round-end screen | its scripts: `RUN/MPZANIM.ZAR` (set `dlgMultiplayerRound.rdr`); its texts: `READERC.ZAR/UIMPXLOC.rdr` 2100-2133 | **its layout `.rdr`** (`readerx.zar` `run/ui`, `0x3e5270`/`0x3e5280`: `READERX.ZAR`) and **its background / bitmaps**. SOCOM 1's used `MP_RoundComplete.tif` from `common/assetlib/spmp`; SOCOM II loads `common/assetlib/splash` (`0x3e5360`), whose `splash.rdr` (READERC) lists `winner.TIF` / `loser.TIF`. That texture library is not in any `MPxx.ZDB` (their UI members are only `WSMP`, `WSLC`, `EMnn`, `LPnn`, `OMnn`) |
+| final screens | scripts: `MPZANIM.ZAR` sets `dlgMultiplayerFinal.rdr`, `dlgMultiplayerFinalReally.rdr`; texts: `UIMPXLOC` | layout `.rdr` (READERX) and background (SOCOM 1: `MP_Game_Complete.tif`) |
+| loading screen | `LDZANIM.ZAR`, `UILDLOC.ZAR`, `LOAD_TXR.ZED`, `LPnn_TXR.ZED` (each ZDB) | -- |
+| game lobby (countdown) | texts in `UIMnLOC` | its `.rdr` (READERX / run/ui) |
+| SOCOM 1 stand-ins for layout | `recom/data/s1/common/dialog/dlgMultiplayerRound.rdr`: panel "SEALS" at (27, 87) and "TERRORISTS" at (27, 270); "NEXT ROUND" at (380, 45) scale 0.8; the countdown +110 x at 1.2; the result words at (200, 90) / (200, 273), colour (255, 104, 51), scale 0.9; lists at x 129, y 112 / 295, row spacing 18, scale 0.75, colour 158 grey, rows appearing every 0.1 s after 0.15 s (`SEQUENCE_DELAY` / `INTERVAL`). A usable approximation, **not the SOCOM II layout** | -- |
+
+### Placeholders
+
+| name | what is missing | searched | next |
+|---|---|---|---|
+| `ROUND_SCREEN_LAYOUT_PLACEHOLDER` | SOCOM II positions, scales and background of `dlgMultiplayerRound` / `Final` / `FinalReally` | READERC, MPZANIM (scripts only), ZDB members, reCOM (SOCOM 1 only) | `READERX.ZAR` and the splash texture library from the full disc; or a console capture of the round's end |
+| `ROUND_LIST_COLUMNS_PLACEHOLDER` | which 3 stats the round lists show (`DAT_003dc7f0`, `0x3dc800`, `0x3dc810`, `0x3dc820`; exit-time `0x3dc7b0..e0`) | `FUN_00224210` | read `.data` from the ELF; SCORE / KILLS / DEATHS are inferred from `UIMPXLOC` 2106-2108 |
+| `CLOCK_NEG_STRING_PLACEHOLDER` | string `0x3e3070` drawn for a negative clock | strings dump (length cut) | the ELF |
+| `CLOCK_VISIBILITY_PLACEHOLDER` | which of vtable +0x18 / +0x1c shows and which hides the timer box in `FUN_001f6b60` | L56004-56020 | the C2D vtable |
+| `CLIENT_FINAL_EXIT_PLACEHOLDER` | whether non-host clients really leave `FinalReally` at once (`CloseAndSwitch` under `!IsSessionMaster`) or wait for the host | MPZANIM `ExitOnStart` | a two-client capture of a match end |
+| `RESPAWN_BANNER_PLACEHOLDER` | that a respawn match's banner reads "STARTING ROUND 1 OF 11" although it lasts one round | `FUN_001fb420` | a capture of a respawn round |
+| `MSG_COLOUR_WORD_PLACEHOLDER` | the MESSAGE command's second word `0x01c8c8c8` (read here as flag 1 + RGB 200, 200, 200) and its window (assumed the main one) | MZANIM streams | the MESSAGE tick in the decomp (command 55) |

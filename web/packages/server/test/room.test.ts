@@ -198,15 +198,18 @@ describe('fire, damage and death (W3.R4, research 91 sections 1-4)', () => {
 });
 
 describe('the clock (W3.R11)', () => {
-  it('ends a round on time (a draw at equal points), and starts the next after the intermission', () => {
+  it('runs the original\'s match: the clock, TIME EXPIRED and 15 s more, the result, FINAL ROUND and GAME COMPLETE, then the next match', () => {
     const { room, join } = setup({ roundSeconds: 2 });
     const a = join(1), b = join(2);
-    for (let i = 0; i < 2 * TICK_HZ + 1; i++) room.step();
+    for (let i = 0; i < 2 * TICK_HZ; i++) room.step();
+    expect(a.of('timeExpired')).toHaveLength(1);
+    expect(a.of('roundOver')).toHaveLength(0);
+    for (let i = 0; i < 16 * TICK_HZ; i++) room.step();
     const over = a.of('roundOver')[0]!;
-    expect(over.round).toBe(1);
-    expect(over.winner).toBeNull();                             // 1 alive each: a draw
-    for (let i = 0; i < 10 * TICK_HZ + 1; i++) room.step();
-    expect(b.of('roundStart')[0]).toMatchObject({ round: 2, seconds: 2 });
+    expect(over).toMatchObject({ round: 1, winner: null, matchOver: true });   // 1 alive each: a draw
+    expect(over.screens).toEqual([{ screen: 'finalRound', seconds: 10 }, { screen: 'gameComplete', seconds: 10 }]);
+    for (let i = 0; i < 23 * TICK_HZ; i++) room.step();
+    expect(b.of('roundStart')[0]).toMatchObject({ round: 1, seconds: 2 });     // a new match, from round 1
   });
 });
 
@@ -235,6 +238,7 @@ describe('the kicks (W3.R13, research 91 section 17)', () => {
 
   it('removes a teammate at the round\'s end on more votes than half its team, and refuses its rejoin', () => {
     const { room, join, clients } = setup({ roundSeconds: 1 });
+    const endOfMatch = (1 + 16 + 23) * TICK_HZ;
     for (let id = 1; id <= 6; id++) join(id);                   // the join rule, ties to SEALs: T 1,4,6  S 2,3,5
     const t = [1, 2, 3, 4, 5, 6].filter((id) => room.player(id)!.team === room.player(1)!.team);
     expect(t).toEqual([1, 4, 6]);
@@ -242,10 +246,10 @@ describe('the kicks (W3.R13, research 91 section 17)', () => {
     expect(clients.get(1)!.of('votes')).toHaveLength(0);
     room.text(4, { type: 'vote', target: 1, remove: true });
     expect(clients.get(1)!.of('votes').at(-1)!.count).toBe(1);
-    for (let i = 0; i < TICK_HZ + 1; i++) room.step();
+    for (let i = 0; i < endOfMatch; i++) room.step();
     expect(clients.get(1)!.closed).toBeNull();                  // 1 of 3: not more than half
     room.text(6, { type: 'vote', target: 1, remove: true });
-    for (let i = 0; i < 12 * TICK_HZ; i++) room.step();
+    for (let i = 0; i < 17 * TICK_HZ + 1; i++) room.step();
     expect(clients.get(1)!.of('kicked')[0]).toEqual({ type: 'kicked', reason: 'vote' });
     expect(clients.get(1)!.closed?.code).toBe(4002);
     const again = join(1);

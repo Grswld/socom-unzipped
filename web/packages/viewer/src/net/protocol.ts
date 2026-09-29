@@ -227,8 +227,16 @@ export type ServerEvent =
   | { type: 'votes'; count: number }
   /** W3.R13: removed by its team's vote (UIMnLOC 539) or idle; the socket closes after. */
   | { type: 'kicked'; reason: 'vote' | 'idle' }
-  /** W3.R11: a round's end, and the match's when `matchOver` (research 91d for the screens). */
-  | { type: 'roundOver'; round: number; winner: Team | null; wins: { seal: number; terrorist: number }; matchOver: boolean }
+  /** W3.R11: the clock at 00:00 -- "TIME EXPIRED" (`mp51LOC` 5108) -- and play goes on 15 s (research 91 section 18). */
+  | { type: 'timeExpired' }
+  /**
+   * W3.R11: a round's end, and the match's when `matchOver`; `screens` are the game's screens to show and how long
+   * each holds, in order (ROUND COMPLETE between rounds; FINAL ROUND then GAME COMPLETE after a match).
+   */
+  | {
+    type: 'roundOver'; round: number; winner: Team | null; wins: { seal: number; terrorist: number }; matchOver: boolean;
+    screens: { screen: 'roundComplete' | 'finalRound' | 'gameComplete'; seconds: number }[];
+  }
   /** W3.R11: a round begins (its number, its length in seconds, the match's wins so far). */
   | { type: 'roundStart'; round: number; seconds: number; wins: { seal: number; terrorist: number } };
 

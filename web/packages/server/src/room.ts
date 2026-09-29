@@ -29,7 +29,8 @@ export interface RoomOptions {
 }
 
 export const DEFAULT_OPTIONS: RoomOptions = {
-  now: () => Date.now(), random: Math.random, idleKickMs: 4 * 60_000, roundSeconds: 6 * 60, maxRounds: 11,
+  // W3.R11: with RESPAWN on the original's match is one round (research 91 section 18); 11 is the game's with it off.
+  now: () => Date.now(), random: Math.random, idleKickMs: 4 * 60_000, roundSeconds: 6 * 60, maxRounds: 1,
 };
 
 /** W3.R13: the idle kick's bounds (the owner's "3-5 minute kick timer"). */
@@ -40,10 +41,13 @@ export const RESPAWN_PRESS_S = 5, RESPAWN_FADE_S = 10;
 /** Research 91 section 4.2: the respawn record is lifted a unit above its cell (`FUN_002b8100` L158793). */
 const SPAWN_LIFT = 1;
 /**
- * The pause between two rounds and after a match, seconds. INTERMISSION_PLACEHOLDER: research 91d reads the game's
- * round-end screens; until then, 10 s (the death screen's help line holds 10 s, research 91 section 12).
+ * The end of a round (research 91 section 18, the maps' `mission_timer2` / `success2` and the MPZANIM screens): at
+ * 00:00 "TIME EXPIRED" and 15 s more play; the result 1 s after; the engine reads it 3 s later; then ROUND COMPLETE's
+ * countdown (5 s) before the next round, or FINAL ROUND (10 s) and GAME COMPLETE (10 s, the host's wait) after a match.
  */
-export const INTERMISSION_PLACEHOLDER = 10;
+/** VOTE_BAN_SCOPE_PLACEHOLDER (see `Room.banned`). */
+export const VOTE_BAN_MS = 10 * 60_000;
+export const EXPIRED_PLAY_S = 15, RESULT_S = 1, ENGINE_READ_S = 3, ROUND_COMPLETE_S = 5, FINAL_ROUND_S = 10, GAME_COMPLETE_S = 10;
 /** A client may run this many commands ahead of the ticks it has been given (a burst after a stall): 200 ms. */
 const CREDIT_MAX = 12;
 /** A command's stick past this, a button, or a turn counts as input for the idle kick. */
@@ -89,7 +93,11 @@ class Player {
   }
 }
 
-type RoundState = { phase: 'play'; endsAt: number } | { phase: 'over'; nextAt: number; matchOver: boolean };
+type RoundState =
+  | { phase: 'play'; endsAt: number }
+  /** "TIME EXPIRED": the world plays on until `resultAt`. */
+  | { phase: 'expired'; resultAt: number }
+  | { phase: 'over'; nextAt: number; matchOver: boolean };
 
 export class Room {
   tick = 0;
@@ -113,7 +121,7 @@ export class Room {
 
   /** A client's hello: welcomed as a player or a spectator, or refused. Returns the id it was given, or null. */
   hello(id: number, conn: Conn, ev: Extract<ClientEvent, { type: 'hello' }>, address = ''): boolean {
-    if (address && this.banned.has(address)) { this.refuse(conn, 'You have been banned from that game. Please choose another.'); return false; }
+    if (address && (this.banned.get(address) ?? -Infinity) > this.opts.now()) { this.refuse(conn, 'You have been banned from that game. Please choose another.'); return false; }
     if (ev.version !== PROTOCOL_VERSION) { this.refuse(conn, `protocol ${ev.version}, this server speaks ${PROTOCOL_VERSION}`); return false; }
     const joined = this.lobby.join(id, ev.name, this.opts.random);
     if (!joined) { this.refuse(conn, 'The game is full.'); return false; }
@@ -306,14 +314,14 @@ export class Room {
   }
 
   private respawnReady(p: Player): boolean {
-    return this.state.phase === 'play' && p.diedAt >= 0 && (this.tick - p.diedAt) / TICK_HZ >= Math.max(RESPAWN_PRESS_S, RESPAWN_FADE_S);
+    return this.state.phase !== 'over' && p.diedAt >= 0 && (this.tick - p.diedAt) / TICK_HZ >= Math.max(RESPAWN_PRESS_S, RESPAWN_FADE_S);
   }
 
   // ---- fire (W3.R4) ----
 
   private fire(id: number, ev: Extract<ClientEvent, { type: 'fire' }>): void {
     const p = this.players.get(id);
-    if (!p || !p.alive || this.state.phase !== 'play') return;
+    if (!p || !p.alive || this.state.phase === 'over') return;
     const w: 0 | 1 = ev.weapon ? 1 : 0;
     const record = KIT[w];
     // The rate: rounds by command number, at the record's `fireWait` (a tick's slack for the quantised clock).
@@ -411,7 +419,10 @@ export class Room {
     const st = this.state;
     if (st.phase === 'play') {
       if (this.tick < st.endsAt) return;
-      this.endRound();
+      this.state = { phase: 'expired', resultAt: this.tick + (EXPIRED_PLAY_S + RESULT_S) * TICK_HZ };
+      this.broadcast({ type: 'timeExpired' });
+    } else if (st.phase === 'expired') {
+      if (this.tick >= st.resultAt) this.endRound();
     } else if (this.tick >= st.nextAt) {
       if (st.matchOver) { this.round = 0; this.wins.seal = 0; this.wins.terrorist = 0; for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.score = 0; } }
       this.round++;
@@ -434,10 +445,15 @@ export class Room {
       for (const p of this.players.values()) if (p.team === winner) p.score += 5;   // +5 each on the winning side
     }
     const half = (this.opts.maxRounds + 1) >> 1;
-    const matchOver = this.wins.seal >= half || this.wins.terrorist >= half
+    // With RESPAWN on (one round) the map script sets `mp_game_over` unconditionally, a draw included (`success2`).
+    const matchOver = this.opts.maxRounds <= 1 || this.wins.seal >= half || this.wins.terrorist >= half
       || (this.round >= this.opts.maxRounds && this.wins.seal !== this.wins.terrorist);
-    this.state = { phase: 'over', nextAt: this.tick + INTERMISSION_PLACEHOLDER * TICK_HZ, matchOver };
-    this.broadcast({ type: 'roundOver', round: this.round, winner, wins: { ...this.wins }, matchOver });
+    const screens = matchOver
+      ? [{ screen: 'finalRound' as const, seconds: FINAL_ROUND_S }, { screen: 'gameComplete' as const, seconds: GAME_COMPLETE_S }]
+      : [{ screen: 'roundComplete' as const, seconds: ROUND_COMPLETE_S }];
+    const hold = ENGINE_READ_S + screens.reduce((a, b) => a + b.seconds, 0);
+    this.state = { phase: 'over', nextAt: this.tick + hold * TICK_HZ, matchOver };
+    this.broadcast({ type: 'roundOver', round: this.round, winner, wins: { ...this.wins }, matchOver, screens });
     this.broadcast(this.scoreEvent());
     this.applyVotes(matchOver);
   }
@@ -446,8 +462,11 @@ export class Room {
 
   /** Voter -> the teammates it votes to remove. */
   private readonly votes = new Map<number, Set<number>>();
-  /** Addresses refused a rejoin until the match ends (`VOTE_BAN_SCOPE_PLACEHOLDER`). */
-  private readonly banned = new Set<string>();
+  /**
+   * Addresses refused a rejoin, until when (ms). The original refuses a rejoin to "that game" (research 91 section 17);
+   * a dedicated room is never over, so VOTE_BAN_SCOPE_PLACEHOLDER: 10 minutes, two of the original's matches.
+   */
+  private readonly banned = new Map<string, number>();
   private readonly addresses = new Map<number, string>();
 
   private vote(id: number, target: number, remove: boolean): void {
@@ -480,13 +499,13 @@ export class Room {
     const out = [...this.players.keys()].filter((id) => this.votePasses(id));
     for (const id of out) {
       const address = this.addresses.get(id);
-      if (address) this.banned.add(address);
+      if (address) this.banned.set(address, this.opts.now() + VOTE_BAN_MS);
       this.send(id, { type: 'kicked', reason: 'vote' });
       const conn = this.conns.get(id);
       this.leave(id);
       conn?.close(4002, 'YOU HAVE BEEN KICKED FROM THIS GAME');
     }
-    if (matchOver) this.banned.clear();
+    void matchOver;
   }
 
   /** Seconds left in the round, or null between rounds. */
