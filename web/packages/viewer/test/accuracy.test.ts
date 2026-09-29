@@ -113,11 +113,11 @@ describe('the cone (FUN_005bd100, FUN_00592260)', () => {
     expect(t.y).toBeCloseTo(0.0023818, 6);
     const a = new Accuracy(HELD_RIFLE);
     a.round(0, 'stand');                                             // size 8, knock -4.8
-    const c = a.cone(0);
+    const c = a.cone(0, 1);
     expect(c.radius).toBeCloseTo(8 * t.y * RADIUS_FACTOR, 12);
     expect(c.offsetY).toBeCloseTo(4.8 * t.y, 12);                    // up is positive: the rounds climb with it
     expect(c.offsetX).toBe(0);
-    expect(a.cone(5).radius).toBe(0);                                // scoped: a point
+    expect(a.cone(5, 3).radius).toBe(0);                             // scoped: a point
   });
 
   it('spreads a round over a square, densest at its centre, never past its corners', () => {
@@ -144,7 +144,7 @@ describe('the cone (FUN_005bd100, FUN_00592260)', () => {
   it('a thousand rounds land inside the square, three quarters of them in its inner half', () => {
     const a = new Accuracy(HELD_RIFLE);
     for (let i = 0; i < 3; i++) a.round(0, 'stand');
-    const c = a.cone(0);
+    const c = a.cone(0, 1);
     let inner = 0;
     let seed = 7;
     const rand = (): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
@@ -174,7 +174,80 @@ describe('the scoped sway (FUN_005b9280)', () => {
     b.update(TICK, { ...still, zoomState: 5 });
     expect(b.state().sway[0]).toBeCloseTo(6.25 * TICK, 12);
     // The cone follows it, not the size.
-    expect(b.cone(5).offsetX).toBeCloseTo(-6.25 * TICK * tangentPerPixel().x, 12);
+    expect(b.cone(5, 1).offsetX).toBeCloseTo(-6.25 * TICK * tangentPerPixel().x, 12);
+  });
+});
+
+describe('the zoom on the cone (FUN_005bd100: the offsets over cam+0x474, the magnification)', () => {
+  // FUN_005bd100 decomp 474236-474266: fVar9 = d_aim / (cam+0x474 x (d_aim - d_fire)) multiplies +0x5d4 and +0x5d8 (the
+  // offsets: the knock unscoped, the sway scoped), not +0x5dc (the radius). cam+0x474 is the magnification on screen
+  // (FUN_0029b2f0 with DAT_003dc338, x the NTSC 1.0), so a scope's rounds wander ZoomMode[state - 4] times less.
+  const sd3x = HELD_RIFLE.zoomModes[1]!;                               // the SD's one scope level, 3x
+  const scopedFor = (stance: AccuracyInput['stance'], seconds: number): Accuracy => {
+    const a = new Accuracy(HELD_RIFLE);
+    a.update(seconds, { ...still, stance, zoomState: 5 });
+    return a;
+  };
+
+  it('scoped, the sway turns into tangents divided by the magnification: 3x on the SD is a third', () => {
+    expect(sd3x).toBe(3);
+    const a = scopedFor('stand', 2);
+    const [sx, sy] = a.state().sway;
+    const t = tangentPerPixel();
+    const c = a.cone(5, sd3x);
+    expect(c.radius).toBe(0);
+    expect(c.offsetX).toBeCloseTo((-sx * t.x) / 3, 12);
+    expect(c.offsetY).toBeCloseTo((-sy * t.y) / 3, 12);
+    // The same sway at 1x (the zoom's run not yet started) is three times as far off the cross.
+    expect(a.cone(5, 1).offsetX).toBeCloseTo(c.offsetX * 3, 12);
+  });
+
+  it('unscoped the magnification is 1: the knock and the bloom are as they were', () => {
+    const a = new Accuracy(HELD_RIFLE);
+    a.round(0, 'stand');
+    const t = tangentPerPixel();
+    const c = a.cone(0, 1);
+    expect(c.offsetX).toBe(0);
+    expect(c.offsetY).toBeCloseTo(4.8 * t.y, 12);
+    expect(c.radius).toBeCloseTo(8 * t.y * RADIUS_FACTOR, 12);
+  });
+
+  it('a scoped round is never further off the cross than SniperDistLimit / ZoomMode, in every stance', () => {
+    const t = tangentPerPixel();
+    for (const stance of ['stand', 'crouch', 'prone'] as const) {
+      const a = new Accuracy(HELD_RIFLE);
+      let worstX = 0, worstY = 0;
+      for (let i = 0; i < 1200; i++) {
+        a.update(TICK, { ...still, stance, zoomState: 5 });
+        const c = a.cone(5, sd3x);
+        worstX = Math.max(worstX, Math.abs(c.offsetX));
+        worstY = Math.max(worstY, Math.abs(c.offsetY));
+      }
+      expect(worstX).toBeCloseTo((sd[stance].swayLimitX * t.x) / 3, 9);
+      expect(worstY).toBeLessThanOrEqual((sd[stance].swayLimitY * t.y) / 3 + 1e-12);
+    }
+  });
+
+  it('measured: 600 rounds a second apart a tick -- the scope is a third of its 1x self and tighter than moving', () => {
+    // The mean angle (radians) off the aim of one round a tick for 10 s, each through FUN_00592260's square.
+    const spread = (input: AccuracyInput, magnification: number): number => {
+      const a = new Accuracy(HELD_RIFLE);
+      let seed = 11;
+      const rand = (): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+      let sum = 0;
+      for (let i = 0; i < 600; i++) {
+        a.update(TICK, input);
+        const [x, y] = perturb([0, 0, -1], a.cone(input.zoomState, magnification), rand);
+        sum += Math.hypot(x, y);
+      }
+      return sum / 600;
+    };
+    const walking = { ...still, velocity: [30, 0, 0] as [number, number, number] };
+    for (const stance of ['stand', 'crouch', 'prone'] as const) {
+      const scoped = spread({ ...still, stance, zoomState: 5 }, sd3x);
+      expect(scoped).toBeCloseTo(spread({ ...still, stance, zoomState: 5 }, 1) / 3, 12);
+      expect(scoped).toBeLessThan(spread({ ...walking, stance }, 1));
+    }
   });
 });
 

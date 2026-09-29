@@ -293,11 +293,20 @@ export class Accuracy {
     this.offY = 0;
   }
 
-  /** `FUN_005bd100`: the round's error in tangents. Scoped (state >= 4) the radius is 0 and the offset is the sway's. */
-  cone(zoomState: number): Cone {
+  /**
+   * `FUN_005bd100`: the round's error in tangents. Scoped (state >= 4) the radius is 0 and the offset is the sway's.
+   * `magnification` is the zoom on screen (`Zoom.magnification()`): the game divides both offsets -- the knock
+   * unscoped, the sway scoped -- by the camera's `+0x474` (`fVar9 = d_aim / (cam+0x474 x (d_aim - d_fire))`, decomp
+   * 474236-474266; `FUN_0029b2f0` sets `+0x474` to the running magnification `DAT_003dc338` x the NTSC 1.0), the
+   * aim-to-muzzle depth ratio taken as 1. The radius is not divided (`+0x5dc` has no `fVar9`). So the SD's 3x scope
+   * puts its rounds a third as far off the cross as the same sway would at 1x. Required, not defaulted: a caller that
+   * forgets it is the defect this argument fixes (the scope's rounds wandered 3x the game's, owner 2026-09-29).
+   */
+  cone(zoomState: number, magnification: number): Cone {
     const t = tangentPerPixel(this.fov);
-    if (zoomState >= 4) return { offsetX: -this.swayX * t.x, offsetY: -this.swayY * t.y, radius: 0 };
-    return { offsetX: this.offX * t.x, offsetY: -this.offY * t.y, radius: this.size * t.y * RADIUS_FACTOR };
+    const k = magnification > 0 ? 1 / magnification : 1;
+    if (zoomState >= 4) return { offsetX: -this.swayX * t.x * k, offsetY: -this.swayY * t.y * k, radius: 0 };
+    return { offsetX: this.offX * t.x * k, offsetY: -this.offY * t.y * k, radius: this.size * t.y * RADIUS_FACTOR };
   }
 
   /**
