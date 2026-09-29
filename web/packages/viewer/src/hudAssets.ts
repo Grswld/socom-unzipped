@@ -27,7 +27,7 @@ export const HUD_LIBRARIES = {
   HUD2: [
     'newweapnbkrnd.tif', 'compass_lo.tif', 'compass_bkrnd.tif', 'team_background.tif', 'teammate_health.tif',
   ],
-  HUDW: ['m4carbine_icon.tif', 'firemode.tif', 'grenade_frag_icon.tif', 'grenade_he_icon.tif'],
+  HUDW: ['m4carbine_icon.tif', 'firemode.tif', 'grenade_frag_icon.tif', 'grenade_he_icon.tif', 'grenade_smoke_icon.tif', 'grenade_flashbang_icon.tif', 'claymore_icon.tif'],
   FONT: ['font_text_01.tif'],
 } as const;
 

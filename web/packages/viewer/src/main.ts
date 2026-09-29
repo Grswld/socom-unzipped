@@ -37,6 +37,7 @@ import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
+import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -115,6 +116,7 @@ if (PLAY) fire.bindKey();
 const grenade = new GrenadeThrower({
   grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view(),
   handPoint: (part, p) => play.partPoint(part, p), heldNode: () => play.heldNode(),
+  peek: () => traversal.stats()?.peek ?? 0,           // research 86's lean: the lean tosses
 });
 scene.add(grenade.object);
 if (PLAY) grenade.bindKey();
@@ -130,12 +132,17 @@ grenade.on('equip', (on) => {
   if (on && zoom.state() >= 4) setZoom(1);
 });
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
+grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
 grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
 grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
+/** The flashbang's white-out (`./flash`): `blindplayer0<level>` by the game's rule of distance and facing (0x597c00). */
+const whiteOut = new WhiteOut(canvas?.parentElement ?? null);
 grenade.on('explode', (info) => {
-  // The material's variant, else the base (`frag_grenade`: .GREN_MED) -- the variants reach the sound through a call.
-  if (!audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
+  if (info.flash) whiteOut.start(info.flash);
+  // The zAnim's sound: the effects play it with the run (`effects.play`'s sound door); without the run, the material's
+  // variant, else the base (`frag_grenade`: .GREN_MED) -- the variants reach the sound through a call.
+  if (!info.byEffects && !audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
   // The game's screen shake by the distance (research 83, `./look`).
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
 });
@@ -236,6 +243,9 @@ const effects = new Effects(Math.random, (name, at) => { audio.play(name, at); }
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
 effects.setWorld(() => walk.grid());
+// The grenades' explosions through the effects' door: the game's own zAnim (`frag_grenade_stone`, `smoke_grenade`,
+// `flashcrash_grenade` ...) where the map has it; the grenade's placeholders only where it does not.
+grenade.setEffectPlayer((anim, at) => effects.play(anim, { position: at.position, normal: at.normal ?? null, velocity: at.velocity ?? null }));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -728,7 +738,8 @@ async function boot(): Promise<void> {
     effects.update(dt, fly.camera); // EFFECTS: the zAnim effect runs, the casings, the particles
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
-    grenade.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
+    grenade.update(dt);
+    whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
     const aim = walk.aim();
@@ -1043,6 +1054,8 @@ window.__viewer = {
   resetGrenades: () => grenade.reset(),
   selectItem: (item) => grenade.select(item),
   throwClip: () => throwPose.stats(),
+  whiteOut: () => whiteOut.state(),
+  detonateCharges: () => grenade.detonateCharges(),
   effects: () => effects.stats(),
   playEffect: (name, at, kind = 'impact') => {
     // 30 units ahead of the camera unless told where; a muzzle effect with a node whose barrel runs across the view to
