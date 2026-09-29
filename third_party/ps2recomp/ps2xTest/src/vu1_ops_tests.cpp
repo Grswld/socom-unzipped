@@ -7,6 +7,10 @@
 #include "MiniTest.h"
 #include "ps2x/knobs.h"
 #include "vu/ps2_vu1_ops.h"
+#include "runtime/gs/gs_frontend.h"
+#include "runtime/ps2_memory.h"
+#include "runtime/ps2_vu1.h"
+#include "runtime/vu1_native_refusals.h"   // Sprint 17 F: the native dispatcher's refusal count
 
 #include <cfloat>
 #include <cstdint>
@@ -305,6 +309,164 @@ void register_vu1_ops_tests()
             t.IsTrue(fastMode.failed == 0u, fastMode.report("PS2X_VU1_FMAC_ZERO_FAST=1 shape differing"));
             t.IsTrue(slowMode.failed == 0u, slowMode.report("the old path differing"));
             t.IsTrue(knobMode.failed == 0u, knobMode.report("the knob-selected path differing"));
+        });
+
+        // ---- Sprint 17 F (research/81 §3.4): the native dispatcher's refusals, counted -------------------------
+        // PS2X_VU1_NATIVE_REFUSALS (runtime/vu1_native_refusals.h). A real refusal is driven through
+        // VU1Interpreter::execute with the SOCOM II dispatcher registered at pc 0 of a three-pair image: the
+        // dispatcher refuses the planted list before touching anything, the microcode (the E bit at pair 8) runs
+        // as the fallback, and its cycles are charged to the refusal. The table is process-wide, so every case
+        // reads a before/after delta.
+        struct RefusalRig
+        {
+            PS2Memory mem;
+            GS gs;
+            uint8_t *code = nullptr;
+            uint8_t *data = nullptr;
+
+            bool init()
+            {
+                if (!mem.initialize())
+                    return false;
+                gs.init(mem.getGSVRAM(), static_cast<uint32_t>(PS2_GS_VRAM_SIZE), &mem.gs());
+                code = mem.getVU1Code();
+                data = mem.getVU1Data();
+                if (code == nullptr || data == nullptr)
+                    return false;
+                std::memset(code, 0, PS2_VU1_CODE_SIZE);
+                std::memset(data, 0, PS2_VU1_DATA_SIZE);
+                // NOP / NOP+E / NOP: entered at 0 the microcode ends after the pair at 16.
+                const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
+                const uint32_t pairs[3][2] = {{lowerNop, upperNop}, {lowerNop, upperNop | eBit}, {lowerNop, upperNop}};
+                std::memcpy(code, pairs, sizeof(pairs));
+                mem.markVU1CodeModified();
+                return true;
+            }
+            uint64_t hash() const
+            {
+                uint64_t h = 1469598103934665603ull;
+                for (uint32_t i = 0; i < PS2_VU1_CODE_SIZE; ++i)
+                {
+                    h ^= code[i];
+                    h *= 1099511628211ull;
+                }
+                return h;
+            }
+            // Command list word i (qword 340 + i, x lane) and a header word at TOP (= 0) + qword, lane.
+            void command(uint32_t index, uint32_t word) { std::memcpy(data + (340u + index) * 16u, &word, 4u); }
+            void header(uint32_t qword, uint32_t lane, int32_t value) { std::memcpy(data + qword * 16u + lane * 4u, &value, 4u); }
+            // Runs the image at pc 0 with the native table {hash, nativePc, the dispatcher}.
+            void run(uint32_t nativePc)
+            {
+                bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t budgetEnd);
+                const Vu1NativeProgram table[] = {{hash(), nativePc, &vu1native_socom2_dispatch}};
+                VU1Interpreter vu;
+                vu.setNativeProgramsOverride(table, 1u);
+                vu.execute(code, PS2_VU1_CODE_SIZE, data, PS2_VU1_DATA_SIZE, gs, &mem, 0u, 0u, 0u, 4096u);
+                vu.setNativeProgramsOverride(nullptr, 0u);
+            }
+            // The running total of one (entry, reason, command) key.
+            static Vu1Refusals::Row row(uint32_t entry, Vu1Refusals::Reason reason, uint32_t command)
+            {
+                for (const Vu1Refusals::Row &r : Vu1Refusals::live().totals())
+                    if (r.entryPc == entry && r.reason == reason && (!Vu1Refusals::hasCommand(reason) || r.command == command))
+                        return r;
+                return Vu1Refusals::Row{};
+            }
+        };
+
+        tc.Run("PS2X_VU1_NATIVE_REFUSALS is a Dev Flag defaulting to 0 (off: nothing counted)", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_NATIVE_REFUSALS");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
+                         std::string(e->dflt) == "0",
+                     "a Dev Flag, default 0 (the refusal count is an instrument, off unless asked for)");
+            if (ps2x::knob("PS2X_VU1_NATIVE_REFUSALS") == nullptr)
+            {
+                Vu1Refusals::enabledState().store(-1);   // forget any earlier decision: read the knob now
+                t.IsTrue(!Vu1Refusals::enabled(), "unset: the instrument is off");
+            }
+        });
+
+        tc.Run("native refusals: knob off, a refused 0x52 list leaves every counter at zero", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x52u);
+            rig.command(1u, 0x42u);
+            Vu1Refusals::setEnabledForTest(false);
+            const uint64_t before = Vu1Refusals::live().totalCount();
+            rig.run(0u);
+            t.Equals(Vu1Refusals::live().totalCount(), before, "off: the refusal is not counted");
+            t.Equals(Vu1Refusals::takeNoted(), -1, "off: no slot is left for run() to charge");
+        });
+
+        tc.Run("native refusals: knob on, a 0x52 list counts unknown_command cmd=0x52 and the fallback's cycles", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x52u);   // `52 42`: 0x52 has no native handler (the skinning accumulator)
+            rig.command(1u, 0x42u);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            const uint64_t otherBefore = Vu1Refusals::live().totalCount() - before.n;
+            rig.run(0u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "one refusal under (entry 0x0, unknown_command, cmd 0x52)");
+            t.Equals(Vu1Refusals::live().totalCount() - after.n, otherBefore, "and under no other key");
+            t.IsTrue(after.cycles > before.cycles, "the microcode that ran instead is charged to it");
+        });
+
+        tc.Run("native refusals: knob on, a 300-vertex header counts header_vertices, not unknown_command", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x68u);   // `68 42`: every command native, the header over kMaxVertices
+            rig.command(1u, 0x42u);
+            rig.header(2u, 2u, 300);  // TOP+2.z
+            Vu1Refusals::setEnabledForTest(true);
+            const uint64_t before = Vu1Refusals::live().countFor(Vu1Refusals::Reason::HeaderVertices);
+            const uint64_t unknownBefore = Vu1Refusals::live().countFor(Vu1Refusals::Reason::UnknownCommand);
+            rig.run(0u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(Vu1Refusals::live().countFor(Vu1Refusals::Reason::HeaderVertices) - before, 1ull, "header_vertices +1");
+            t.Equals(Vu1Refusals::live().countFor(Vu1Refusals::Reason::UnknownCommand), unknownBefore, "unknown_command unmoved");
+        });
+
+        tc.Run("native refusals: knob on, an entry pc the image has no native program at counts no_native_entry", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            rig.run(8u);              // native registered at pc 8 only; the program is entered at 0
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "no_native_entry at entry 0x0 +1");
+            t.IsTrue(after.cycles > before.cycles, "the whole program's cycles are charged to it");
+        });
+
+        tc.Run("native refusals: the line's fields and the per-interval take", [](TestCase &t)
+        {
+            Vu1Refusals::Table table;
+            const int slot = table.note(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            table.note(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            table.note(0x33c8u, Vu1Refusals::Reason::NoNativeEntry, 0x1234u);   // no command: cmd is not keyed
+            table.addCost(slot, 900u, 12000u);
+            std::vector<Vu1Refusals::Row> rows = table.take();
+            t.Equals(rows.size(), size_t{2}, "two keys moved");
+            t.Equals(Vu1Refusals::formatRow("[vu1-refuse]", rows[0], 1002.4),
+                     std::string("[vu1-refuse] elapsed=1002ms entry=0x1b50 reason=unknown_command cmd=0x52 n=2 cycles=900 host_us=12"),
+                     "sorted by n; the per-second line");
+            t.Equals(Vu1Refusals::formatRow("[vu1-refuse-total]", rows[1], -1.0),
+                     std::string("[vu1-refuse-total] entry=0x33c8 reason=no_native_entry cmd=- n=1 cycles=0 host_us=0"),
+                     "vu1_replay's total line");
+            t.Equals(table.take().size(), size_t{0}, "an interval with nothing new prints nothing");
+            table.note(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            rows = table.take();
+            t.IsTrue(rows.size() == 1u && rows[0].n == 1u && rows[0].cycles == 0u, "the next interval is a delta");
+            t.Equals(table.totals()[0].n, 3ull, "totals keep running");
         });
     });
 }

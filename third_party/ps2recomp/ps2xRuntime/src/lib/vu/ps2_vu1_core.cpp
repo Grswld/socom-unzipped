@@ -9,6 +9,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_guest_clock.h"
 #include "runtime/vu1_native_warning.h"
+#include "runtime/vu1_native_refusals.h"
 #include "ps2_vu1_detail.h"
 #include "ps2x/knobs.h"
 
@@ -2496,6 +2497,18 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             m_knownHash = hash;
         }
     }
+    // PS2X_VU1_NATIVE_REFUSALS (runtime/vu1_native_refusals.h): the refusal this run's fallback is charged to.
+    // A fresh program starts with none; a slice of a program a budget stop left pending keeps its own.
+    const bool refusalsOn = m_unit == Unit::VU1 && Vu1Refusals::enabled();
+    int refusalSlot = -1;
+    uint64_t refusalCycle = runStartCycle;
+    auto refusalStart = runStart;
+    if (refusalsOn)
+    {
+        if (!m_programPending)
+            Vu1Refusals::programSlot() = -1;
+        refusalSlot = Vu1Refusals::programSlot();
+    }
     // The entry pc is part of the native key, so this resolves on every run.
     m_nativeFn = nullptr;
     if (s_nativeEnv && hashableImage)
@@ -2505,6 +2518,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         for (uint32_t i = 0; i < count; ++i)
             if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn)
                 m_nativeFn = table[i].fn;
+        // A fresh program in an image with a native program, entered where it has none (0x0000, 0x33c8).
+        if (refusalsOn && !m_nativeFn && !m_programPending &&
+            Vu1NativeWarning::hashHasNativeEntry(table, count, m_knownHash))
+            refusalSlot = Vu1Refusals::note(m_state.pc, Vu1Refusals::Reason::NoNativeEntry);
         // Audit 2026-09-17 section 2.2 F7: the table is keyed to one disc's microcode hash, so
         // another revision ran the interpreter with nothing to say why. One line, once, and only
         // after a second of uninterrupted misses -- a boot whose gameplay microcode has not been
@@ -2529,12 +2546,26 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         !m_state.haltAfterDelaySlot && !m_state.branchPending)
     {
         g_vu1NativeEntered.fetch_add(1, std::memory_order_relaxed);
+        const uint32_t nativeEntryPc = m_state.pc;
         programEnded = m_nativeFn(*this, budgetEnd);
         if (programEnded)
             g_vu1NativeEnded.fetch_add(1, std::memory_order_relaxed);
         else
+        {
             g_vu1NativeHandBacks.fetch_add(1, std::memory_order_relaxed);
+            if (refusalsOn)
+            {
+                // The native program noted its reason; everything from here on is the fallback's.
+                refusalSlot = Vu1Refusals::takeNoted();
+                if (refusalSlot < 0)
+                    refusalSlot = Vu1Refusals::note(nativeEntryPc, Vu1Refusals::Reason::UnnamedHandBack);
+                refusalCycle = m_cycle;
+                refusalStart = std::chrono::steady_clock::now();
+            }
+        }
     }
+    else if (refusalsOn && m_nativeFn && !m_programPending)
+        refusalSlot = Vu1Refusals::note(m_state.pc, Vu1Refusals::Reason::StateGuard);
     if (m_fast)
     {
         // Known program (recompiled image): run the generated code until it ends the program or
@@ -2812,6 +2843,16 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         const auto runEnd = std::chrono::steady_clock::now();
         ps2GuestClockExcludedNs().fetch_add(
             std::chrono::duration_cast<std::chrono::nanoseconds>(runEnd - runStart).count(), std::memory_order_relaxed);
+        if (refusalsOn)
+        {
+            if (refusalSlot >= 0)
+            {
+                const auto hostNs = std::chrono::duration_cast<std::chrono::nanoseconds>(runEnd - refusalStart).count();
+                Vu1Refusals::addCost(refusalSlot, m_cycle - refusalCycle, hostNs > 0 ? static_cast<uint64_t>(hostNs) : 0u,
+                                     m_programPending);
+            }
+            Vu1Refusals::maybePrint(runEnd);
+        }
     }
     // PS2X_VU_STATS=1: once a second, VU1 programs / cycles executed and host time spent in run().
     {
