@@ -363,4 +363,39 @@ describe.skipIf(!RETAIL || !existsSync(RETAIL))('IsoAssetSource over the retail 
       (blob as unknown as { close(): void }).close();
     }
   }, 120_000);
+
+  it('holds 736 .rdr scripts under RUN/ but RUN/SOUNDS/, and every one parses inside the visit budget', async () => {
+    // Research 93 section 1's count, the one rdr.ts's RDR_VISIT_FACTOR comment cites. A script is a ZAR/ZED
+    // key named *.rdr that holds bytes, in a loose RUN/ archive or a member archive of a RUN/*.ZDB; the 672
+    // zero-size keys named *.rdr, all in the ZANIM archives (UIZANIM.ZAR's Anim_Sets and its Name_Table
+    // keys, EXTZANIM, MPZANIM, each ZDB's LDZANIM/CZANIM), hold no bytes and are not scripts.
+    const blob = fsBlob(RETAIL!);
+    try {
+      const source = new IsoAssetSource(blob);
+      const scripts: string[] = [];
+      const failed: string[] = [];
+      const scan = (where: string, bytes: Uint8Array) => {
+        const zar = Zar.parse(bytes);
+        zar.walk((key) => {
+          if (!/\.rdr$/i.test(key.name) || key.size === 0) return;
+          scripts.push(`${where}/${key.name}`);
+          try { parseRdr(zar.data(key)); } catch (e) { failed.push(`${where}/${key.name}: ${String(e)}`); }
+        });
+      };
+      for (const path of await source.list()) {
+        if (!path.startsWith('RUN/') || path.startsWith('RUN/SOUNDS/')) continue;
+        if (/\.(zar|zed)$/i.test(path)) scan(path, await source.read(path));
+        else if (/\.zdb$/i.test(path)) {
+          const bytes = await source.read(path);
+          for (const e of parseZdb(bytes)) {
+            if (/\.(zar|zed)$/i.test(e.name)) scan(`${path}:${e.name}`, bytes.subarray(e.offset, e.offset + e.size));
+          }
+        }
+      }
+      expect(failed).toEqual([]);
+      expect(scripts.length).toBe(736);
+    } finally {
+      (blob as unknown as { close(): void }).close();
+    }
+  }, 600_000);
 });

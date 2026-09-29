@@ -14,7 +14,7 @@ const MAX_DEPTH = 64;    // a list may point back at itself; the depth cap ends 
  * child array with another (the isclone bit, research 72 "Spawns"), so a walk can visit a node more than once; a crafted
  * file whose wide lists all share the next level visits width^levels nodes from a few kilobytes, in range
  * and shallow, and only a count ends it (PL-11). Not a game value: a hardening bound over the retail files,
- * measured 2026-09-29 by walking all 734 `.rdr` scripts on the US disc (every ZAR/ZED/ZDB under RUN/ but
+ * measured 2026-09-29 by walking all 736 `.rdr` scripts on the US disc (every ZAR/ZED/ZDB under RUN/ but
  * RUN/SOUNDS/): the most shared is RUN/UI/READERC.ZAR's UiParams.rdr, 22,554 visits of 2,791 nodes (8.08x),
  * then mp_rooms.rdr (5.57x); every map script is at most 2.19x (MP5's clutter.rdr). Twice the worst, so a
  * crafted file costs at most 16 visits a node -- linear in its size -- and no retail file comes near it
