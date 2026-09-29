@@ -24,6 +24,9 @@ import { Reticle } from './reticle';
 import { Hud, RangeFinder } from './hud';
 import { actionInReach } from './mapActions';
 import { TacMap } from './tacMap';
+import { ScoreboardKeys } from './scoreboardKeys';
+import { DEFAULT_PLAYER } from './scoreboard';
+import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
@@ -101,6 +104,9 @@ const rangeFinder = new RangeFinder();
 const tacMap = new TacMap(() => walk.mode() === 'walk');
 tacMap.bindKey(globalThis, () => fly.pose().yaw);
 tacMap.onToggle = (open) => hud.setTacMapOpen(open);
+/** The multiplayer round's scoreboard (research 87 §12): SELECT held on a pad, Tab held on the keyboard, walking only. */
+const scoreboardKeys = new ScoreboardKeys(() => walk.mode() === 'walk');
+scoreboardKeys.bindKey();
 const feetXZ = (): [number, number] | null => { const f = walk.feet(); return f ? [f[0], f[2]] : null; };
 hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes));
 /**
@@ -373,6 +379,9 @@ play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locom
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
+// The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
+// to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
+play.onEvent((e) => { if (e.kind === 'land' && e.cls === 3) hud.postMessage(`${hud.state().model.name || DEFAULT_PLAYER} falls to their death`); });
 // EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in first person (the aim view).
 fire.subscribe((e) => { if (e.type === 'round') effects.onRound(e, weaponFrame(), walk.view() === 'first'); });
 let wantedPlay = -1;
@@ -753,7 +762,9 @@ async function boot(): Promise<void> {
     }
     if (!walking) tacMap.setOpen(false);
     tacMap.frame(dt);
-    reticle.setVisible(walking && !tacMap.isOpen());
+    const scoreboard = walking && (padMerged.scoreboard || scoreboardKeys.held());
+    hud.setScoreboard(scoreboard);     // research 87 §12: SELECT (Tab) held; it hides the reticle too (L56808-56828)
+    reticle.setVisible(walking && !tacMap.isOpen() && !scoreboard);
     reticle.render(created.renderer);
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
@@ -854,6 +865,7 @@ function show(map: LoadedMap): void {
   reticle.setBitmaps(map.reticle);
   hud.setBitmaps(map.hud);
   hud.setNavPoints((map.tac?.points ?? []).filter((p) => p.kind === 1));
+  hud.setGame(map.name, rankOf(map.name)?.mode ?? '');
   tacMap.setOpen(false);
   fire.reset();                                   // a new map: no marks, full magazines
   effects.setData(null);                          // EFFECTS: the old map's effects go; the new map's follow it

@@ -9,6 +9,7 @@ import { segmentHit, type Grid } from '@s2u/scene';
 import type { HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
+import { DEFAULT_PLAYER, scoreboardLayout } from './scoreboard';
 
 /**
  * The in-game HUD (web/docs/research/87-hud.md): SOCOM II's own multiplayer HUD drawn over the world in walk mode --
@@ -92,6 +93,13 @@ export const HUD_LAYOUT = {
   },
   /** `PoseBitmap`'s word, multiplayer place: right-aligned to x 480, baseline 431, scale 0.765 (`FUN_00222010`). */
   stance: { x: 480, y: 431, scale: 0.765, align: 'right' } as TextSpot,
+  /** `"ZOOM: %2.1fx"` (0x3e3098) at (20, 420), scale 0.9, while the magnification is over 1.01 (`FUN_001f6ce0`). */
+  zoom: { x: 20, y: 420, scale: 0.9 } as TextSpot,
+  /**
+   * The reticle's `"RANGE(m): %.0f"` (0x3e4850; `"RANGE(m): ----"` 0x3e4860 with nothing under it), the HUD's own string
+   * (`CHUD_Init` L57319: scale 0.9), placed at (415, 215) in the scope (`DAT_003dc528/530`, `ChangeReticule` L69508).
+   */
+  scopeRange: { x: 415, y: 215, scale: 0.9 } as TextSpot,
   /** `CZActionBitmap`: 50x50 centred on x 306, y 365..415 (`DAT_003dc628/630/640`). */
   action: { cx: 306, y: 365, size: 50 },
   /**
@@ -107,8 +115,26 @@ export const HUD_LAYOUT = {
   banner: { x: 320, base: 83.4, perScale: 10.6, pitch: 15 },
 } as const;
 
-/** One line of the event banner: its text and its scale. */
-export interface BannerLine { text: string; scale: number }
+/** One line of the event banner: its text, its scale, and its colour when not the window's colour 0 (0..1, the GS's 128 as 1). */
+export interface BannerLine { text: string; scale: number; rgb?: [number, number, number] }
+/**
+ * The window's scale for a posted line: `FUN_002b6530` takes the window's own 0.9 for a scale of 0, else the scale x
+ * 1.1429 (the round start's 0.9 posts, measured 1.0 on the frames).
+ */
+export const MESSAGE_SCALE = 0.9;
+
+/** Keeps the window's newest `MESSAGE_LINES` lines: the oldest messages go first, a message whole or not at all. */
+export function capLines(messages: BannerMessage[]): BannerMessage[] {
+  let lines = 0;
+  const kept: BannerMessage[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    lines += messages[i]!.lines.length;
+    if (lines > MESSAGE_LINES) break;
+    kept.unshift(messages[i]!);
+  }
+  return kept;
+}
+
 /** One banner message: its lines, and its alpha now (0..1: the fades are the `Hud`'s). */
 export interface BannerMessage { lines: BannerLine[]; alpha: number }
 
@@ -167,16 +193,23 @@ export const DEFAULT_ROUND: RoundInfo = { round: 1, rounds: 11, objective: 'ELIM
 
 /** The banner's messages and the fader `t` seconds into the round start. */
 export function roundStartAt(t: number, round: RoundInfo = DEFAULT_ROUND): { banner: BannerMessage[]; fader: number } {
-  const R = ROUND_START, life = R.fadetime + R.fadeOut;
   const banner: BannerMessage[] = [];
-  for (const m of R.messages) {
-    const age = t - m.at;
-    if (age < 0 || age >= life) continue;
-    const alpha = Math.min(1, age / R.fadeIn, (life - age) / R.fadeOut);
-    banner.push({ lines: m.lines(round), alpha });
+  for (const m of ROUND_START.messages) {
+    const alpha = messageAlpha(t - m.at);
+    if (alpha !== null) banner.push({ lines: m.lines(round), alpha });
   }
-  return { banner, fader: Math.max(0, 1 - t / R.fader) };
+  return { banner, fader: Math.max(0, 1 - t / ROUND_START.fader) };
 }
+
+/** A message window line's alpha `age` seconds after its posting (`FUN_002b77a0`), or null once it is gone. */
+export function messageAlpha(age: number): number | null {
+  const R = ROUND_START, life = R.fadetime + R.fadeOut;
+  if (age < 0 || age >= life) return null;
+  return Math.min(1, age / R.fadeIn, (life - age) / R.fadeOut);
+}
+
+/** The message window holds up to 8 lines (`messages.rdr`); a post past that pushes the oldest out. */
+export const MESSAGE_LINES = 8;
 
 /**
  * The nav marks' colours: the mark (32, 62, 32) of `FUN_002126f0`'s table (types 14-37), and the pinned mark's
@@ -204,6 +237,10 @@ export function compassMarks(model: Pick<HudModel, 'navPoints' | 'position' | 'y
   return all.filter((m, i) => m.distance < 200 || i === nearest);
 }
 
+/** What the scoreboard hides while it is up (L56808-56828): the ammo box, the compass, the prompts, the timer. */
+export const SCOREBOARD_HIDES: ReadonlySet<HudElement> = new Set<HudElement>(
+  ['panel', 'rounds', 'mags', 'icon', 'firemode', 'compass', 'marks', 'action', 'timer']);
+
 /** The words `PoseBitmap` writes. */
 export const STANCE_WORDS: Record<HudStance, string> = { stand: 'STAND', crouch: 'CROUCH', prone: 'PRONE' };
 /** A plain white texel: the bitmap the untextured draws (the health bar) modulate. */
@@ -211,7 +248,7 @@ export const WHITE = 'white';
 
 export type HudElement =
   | 'panel' | 'rounds' | 'mags' | 'icon' | 'firemode' | 'compass' | 'bar' | 'name' | 'box' | 'timer' | 'range'
-  | 'stance' | 'action' | 'banner' | 'message' | 'fader' | 'marks' | 'tacmap';
+  | 'stance' | 'action' | 'banner' | 'message' | 'fader' | 'marks' | 'tacmap' | 'zoom' | 'scopeRange' | 'scoreboard';
 
 /** One textured quad in frame pixels (y down): its centre, size, turn (radians, clockwise), texels, colour. */
 export interface HudQuad {
@@ -258,6 +295,10 @@ export interface HudModel {
   /** The map's nav points (AIMAPS named points of kind 1, world x, z) and the feet: the compass's marks. */
   navPoints: { name: string; x: number; z: number }[];
   position: [number, number] | null;
+  /** SELECT (Tab) held in a multiplayer round: the scoreboard (research 87 §12). */
+  scoreboard: boolean;
+  /** The game the scoreboard's details name: the viewer's is the map, and the map's game type. */
+  game: { name: string; type: string };
   /** The spawn's fade from black, 0..1 (1 is black). */
   fader: number;
   zoom: number;
@@ -266,7 +307,7 @@ export interface HudModel {
 export const DEFAULT_MODEL: HudModel = {
   rounds: 30, capacity: 30, spare: 2, reloading: false, fireMode: 'burst', weaponIcon: 'm4carbine_icon.tif',
   yaw: 0, action: null, actionColour: 'blue', stance: 'stand', name: '', health: 1, timer: 6 * 60, range: null,
-  message: null, banner: [], fader: 0, navPoints: [], position: null, zoom: 1,
+  message: null, banner: [], fader: 0, navPoints: [], position: null, scoreboard: false, game: { name: '', type: '' }, zoom: 1,
 };
 
 /** The HUD's time-varying alphas, 0..1: the spawn fade, the stance word, the action pulse. */
@@ -309,7 +350,9 @@ export function hudLayout(
     const [u0, v0, u1, v1] = src ?? [0, 0, size.width, size.height];
     quads.push({ element, texture, x: x + w / 2, y: y + h / 2, w, h, turn, u0, v0, u1, v1, rgba, ...(layer ? { layer } : {}) });
   };
-  const text = (element: HudElement, line: string, spot: TextSpot, anchor: (x: number) => number, a = 1): void => {
+  const text = (
+    element: HudElement, line: string, spot: TextSpot, anchor: (x: number) => number, a = 1, rgb?: [number, number, number],
+  ): void => {
     const font = FONT_TEXT_01.texture;
     if (!sizes[font] || a <= 0) return;
     const width = textWidth(line, spot.scale);
@@ -319,14 +362,16 @@ export function hudLayout(
     for (const pass of ['shadow', 'text'] as const) {
       const [ox, oy] = pass === 'shadow' ? [dx * spot.scale, dy * spot.scale] : [0, 0];
       for (const g of glyphs) {
-        bitmap(element, font, anchor(g.x + ox), Y(g.y + oy), g.w * s, g.h * s, alpha(HUD_COLOURS[pass], a),
+        const base: Rgba4 = pass === 'text' && rgb ? [rgb[0], rgb[1], rgb[2], HUD_COLOURS.text[3]] : HUD_COLOURS[pass];
+        bitmap(element, font, anchor(g.x + ox), Y(g.y + oy), g.w * s, g.h * s, alpha(base, a),
           0, [g.u0, g.v0, g.u1, g.v1]);
       }
     }
   };
 
-  // The ammo box, faded in on a spawn.
-  const A = HUD_LAYOUT.ammo, fade = timing.fade;
+  // The ammo box, faded in on a spawn; hidden while scoped (`FUN_00237de0`, L56217-56225: the zoom readout stands
+  // where it was).
+  const A = HUD_LAYOUT.ammo, fade = model.zoom > 1.01 ? 0 : timing.fade;
   bitmap('panel', 'newweapnbkrnd.tif', L(A.panel.x), Y(A.panel.y), A.panel.w * s, A.panel.h * s, alpha(HUD_COLOURS.panel, fade));
   const icon = sizes[model.weaponIcon];
   if (icon) bitmap('icon', model.weaponIcon, L(A.icon.x), Y(A.icon.y), icon.width * s, icon.height * s, alpha(HUD_COLOURS.icon, fade));
@@ -384,6 +429,12 @@ export function hudLayout(
   text('timer', timerText(model.timer), I.timer, R);
   if (model.range !== null) text('range', `${Math.round(model.range)}m`, I.range, R);
 
+  // The zoom readout and the scope's range (research 87 §13): while magnified.
+  if (model.zoom > 1.01) {
+    text('zoom', `ZOOM: ${model.zoom.toFixed(1)}x`, HUD_LAYOUT.zoom, L);
+    text('scopeRange', `RANGE(m): ${model.range === null ? '----' : model.range.toFixed(0)}`, HUD_LAYOUT.scopeRange, C);
+  }
+
   // The stance word, fading after a change.
   if (timing.stance > 0) text('stance', STANCE_WORDS[model.stance], HUD_LAYOUT.stance, R, timing.stance / HUD_COLOURS.text[3]);
 
@@ -407,7 +458,7 @@ export function hudLayout(
     for (let i = lines.length - 1; i >= 0; i--) {
       const l = lines[i]!;
       y = i === lines.length - 1 ? B.base + B.perScale * l.scale : y - B.pitch;
-      text('message', l.text, { x: B.x, y, scale: l.scale, align: 'centre' }, C, l.alpha);
+      text('message', l.text, { x: B.x, y, scale: l.scale, align: 'centre' }, C, l.alpha, l.rgb);
     }
   }
 
@@ -448,7 +499,7 @@ export interface HudSources {
 export interface HudPatch {
   fireMode?: FireMode; weaponIcon?: string; action?: ActionPrompt | null; climb?: ClimbPrompt | null;
   message?: string | null; zoom?: number; name?: string; health?: number; timer?: number; range?: number | null;
-  stance?: HudStance; yaw?: number; rounds?: number; capacity?: number; spare?: number;
+  stance?: HudStance; yaw?: number; rounds?: number; capacity?: number; spare?: number; scoreboard?: boolean;
   /** Skip the spawn fade and the round start (the tests' still frames). */
   settled?: boolean;
   /** Put the round start at this many seconds (the tests' frames of the sequence). */
@@ -538,6 +589,7 @@ export class Hud {
   private pulse = 0;
   private pulseUp = true;
   private messageLeft = 0;
+  private posts: { at: number; lines: BannerLine[] }[] = [];
   private frozen = false;
   private last = -1;
   private manual: ActionPrompt | null = null;
@@ -626,11 +678,24 @@ export class Hud {
     if (stance !== this.model.stance) this.stanceAlpha = STANCE_FADE.start;
     this.model.stance = stance;
   }
-  setZoom(zoom: number): void { this.model.zoom = zoom; }
+  /** The view's magnification (the zoom's `magnification()`): the readout and the scope's range over 1.01. */
+  setZoom(zoom: number): void { if (!this.frozen) this.model.zoom = zoom; }
+  /** SELECT (Tab) held or let go: the scoreboard shows while it is held (research 87 §12). */
+  setScoreboard(held: boolean): void { this.model.scoreboard = held; }
+  /** The game the scoreboard names: the viewer's map, and its game type (`./mapOrder`'s `mode`). */
+  setGame(name: string, type: string): void { this.model.game = { name, type: type.toUpperCase() }; }
   setPlayerName(name: string): void { this.model.name = name; }
   setHealth(health: number): void { this.model.health = health; }
   setTimer(seconds: number): void { this.model.timer = seconds; }
   setRange(metres: number | null): void { this.model.range = metres; }
+  /**
+   * A message on the message window (the round start's), as the game posts one: in over 0.36 s, out 7 s later, the
+   * newest at the bottom (research 87 §14 lists what the game posts).
+   */
+  postMessage(lines: string | BannerLine[], scale = MESSAGE_SCALE): void {
+    const list = typeof lines === 'string' ? [{ text: lines, scale }] : lines;
+    this.posts.push({ at: this.sinceOn, lines: list });
+  }
   /** A line on the event banner for `seconds`. */
   flashMessage(text: string, seconds = 3): void {
     this.model.message = text.toUpperCase();
@@ -661,13 +726,14 @@ export class Hud {
     if (p.action !== undefined) this.setAction(p.action);
     if (p.climb !== undefined) this.setClimbPrompt(p.climb);
     if (p.message !== undefined) { if (p.message === null) this.model.message = null; else this.flashMessage(p.message, 3600); }
-    if (p.zoom !== undefined) this.setZoom(p.zoom);
+    if (p.zoom !== undefined) this.model.zoom = p.zoom;
     if (p.name !== undefined) this.setPlayerName(p.name);
     if (p.health !== undefined) this.setHealth(p.health);
     if (p.timer !== undefined) this.setTimer(p.timer);
     if (p.range !== undefined) this.setRange(p.range);
     if (p.stance !== undefined) this.setStance(p.stance);
     if (p.yaw !== undefined) this.setHeading(p.yaw);
+    if (p.scoreboard !== undefined) this.setScoreboard(p.scoreboard);
     if (p.rounds !== undefined) this.model.rounds = p.rounds;
     if (p.capacity !== undefined) this.model.capacity = p.capacity;
     if (p.spare !== undefined) this.model.spare = p.spare;
@@ -678,6 +744,7 @@ export class Hud {
       this.fadeFrom = 0;
       this.pulse = 0;
       this.model.banner = []; this.model.fader = 0;
+      this.posts = [];
     }
     if (p.roundTime !== undefined) {
       this.sinceOn = p.roundTime;
@@ -697,6 +764,13 @@ export class Hud {
     const visible = this.on && this.batches.size > 0 && this.frame.height > 0;
     const timing = this.timing();
     const rects = visible ? hudLayout(this.frame, this.model, this.sizes(), timing).rects : {};
+    if (visible && this.model.scoreboard && !this.tacOpen) {
+      const q = this.board().quads;
+      const x0 = Math.min(...q.map((b) => b.x - b.w / 2)), y0 = Math.min(...q.map((b) => b.y - b.h / 2));
+      const x1 = Math.max(...q.map((b) => b.x + b.w / 2)), y1 = Math.max(...q.map((b) => b.y + b.h / 2));
+      if (q.length) rects.scoreboard = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+      for (const e of SCOREBOARD_HIDES) delete rects[e];
+    }
     return { visible, frame: { ...this.frame }, model: { ...this.model }, timing, rects };
   }
 
@@ -704,7 +778,9 @@ export class Hud {
   step(dt: number): void {
     if (this.on) this.sinceOn += dt;
     const start = roundStartAt(this.sinceOn, this.round);
-    this.model.banner = start.banner;
+    this.posts = this.posts.filter((m) => messageAlpha(this.sinceOn - m.at) !== null);
+    const posted = this.posts.map((m) => ({ lines: m.lines, alpha: messageAlpha(this.sinceOn - m.at)! }));
+    this.model.banner = capLines([...start.banner, ...posted]);
     this.model.fader = start.fader;
     this.stanceAlpha = Math.max(0, this.stanceAlpha - STANCE_FADE.perSecond * dt);
     if (this.model.action) {
@@ -730,9 +806,13 @@ export class Hud {
     this.camera.left = 0; this.camera.right = width; this.camera.top = 0; this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
     const { quads } = hudLayout(this.frame, this.model, this.sizes(), this.timing());
-    // The tactical map hides the in-round HUD and the compass (`FUN_001f71c0`); its own layer draws instead.
-    const base = this.tacOpen ? quads.filter((q) => q.element === 'fader') : quads;
-    const extra = this.overlay?.(this.frame, this.sizes()) ?? null;
+    // The tactical map hides the in-round HUD and the compass (`FUN_001f71c0`); its own layer draws instead. The
+    // scoreboard hides the ammo box, the compass, the prompts and the timer (L56808-56828) and draws on layer 1.
+    const base = this.tacOpen ? quads.filter((q) => q.element === 'fader')
+      : this.model.scoreboard ? quads.filter((q) => !SCOREBOARD_HIDES.has(q.element)) : quads;
+    const board = this.model.scoreboard && !this.tacOpen ? this.board() : null;
+    const tac = this.overlay?.(this.frame, this.sizes()) ?? null;
+    const extra = tac || board ? { quads: [...(tac?.quads ?? []), ...(board?.quads ?? [])], tris: [...(tac?.tris ?? []), ...(board?.tris ?? [])] } : null;
     const all = extra ? [...base, ...extra.quads] : base;
     const byKey = new Map<string, HudQuad[]>();
     for (const q of all) {
@@ -747,6 +827,11 @@ export class Hud {
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     try { renderer.render(this.scene, this.camera); } finally { renderer.autoClear = autoClear; }
+  }
+
+  /** The scoreboard's quads and shapes on the last frame's size. */
+  private board(): ReturnType<typeof scoreboardLayout> {
+    return scoreboardLayout(this.frame, { player: this.model.name || DEFAULT_PLAYER, game: this.model.game.name, type: this.model.game.type }, this.sizes());
   }
 
   /** Each bitmap's texel size, for the layouts. */
