@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { HAND_OFF, hotkey, KIT_SLOTS, Kit, type Firearm } from '../src/kit';
 import type { SwapPick, SwapProgress } from '../src/walk';
+import { DEFAULT_RIFLE } from '@s2u/scene';
+import { Fire, RELOAD_DELAY } from '../src/fire';
 
 /**
  * The WEAPON workstream's kit (`./kit`): L1 the rifle, L2 the Mark 23 (the controller's slots 0.0 and 1.0,
@@ -149,5 +151,22 @@ describe('the swap on the clock of the walk (swapProgress: the re-sync the hando
     kit.frame(1 / 60);
     expect(kit.state().mounts.rifle).toBe('hand');
     expect(items).toEqual(['rifle']);
+  });
+});
+
+describe('the reload waits out a swap (FUN_00594cf0 453460-453463: the request only while FUN_005a7ab0 is 0)', () => {
+  it('R mid-swap is refused, and taken once the swap has played to its end', () => {
+    const { kit } = rig();
+    const fire = new Fire({ grid: () => null, aim: () => null, ready: () => !kit.swapping() }, DEFAULT_RIFLE);
+    expect(kit.select('pistol')).toBe(true);
+    expect(fire.reload()).toBe(false);
+    expect(fire.state().magazine.reloading).toBe(false);
+    kit.frame(0.5);
+    expect(fire.reload()).toBe(false);
+    kit.frame(0.6);                                              // the clip's end: the swap is over
+    expect(kit.swapping()).toBe(false);
+    expect(fire.reload()).toBe(true);
+    fire.update(RELOAD_DELAY + 0.001);
+    expect(fire.state().magazine.reloading).toBe(true);
   });
 });
