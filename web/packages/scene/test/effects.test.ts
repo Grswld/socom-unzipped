@@ -80,7 +80,7 @@ describe('OBJECT_MOTION\'s arithmetic (FUN_00262690, FUN_00261370)', () => {
 
   const casing: ObjectMotion = {
     flags: MOTION.LIFETIME | MOTION.TERMINAL | MOTION.RANDOM_LAUNCH | MOTION.IMPACT_SOUND | MOTION.FLOOR_PROBE | MOTION.LINE_PROBE | MOTION.TUMBLE,
-    node: -7, frame: -6, launch: { azimuth: 170, zenith: 30, speed: 25, accel: 0 }, range: { azimuth: 20, zenith: 0, speed: 10, accel: 0 },
+    node: -7, frame: -6, direction: [0, 0, 0], launch: { azimuth: 170, zenith: 30, speed: 25, accel: 0 }, range: { azimuth: 20, zenith: 0, speed: 10, accel: 0 },
     gravityScale: 1, terminal: -1 / 980, callerVelocity: 1, bounce: 0.3, tolerance: 0.35, lifetime: 1.2, refSpeed: 0, sound: null,
     tumble: { rate: 0.5236, accel: -0.0873 }, angular: null,
     materials: [{ material: 25, sound: '.BUL_CASE_METAL', sequence: null, refSpeed: null, bounce: 0.35 }],
@@ -212,6 +212,16 @@ describe.skipIf(!MP2)(`the M4A1 SD's muzzle effect on Frostfire's CZANIM${MP2 ? 
     // shell_smoke_big, the same role, is on.
     const big = ops('shell_smoke_big').find((o) => o.op === 'particles') as { source: ParticleSource };
     expect(big.source.setActive).toBe(true);
+  });
+
+  it('FRAG_sparks throws its spark node by a fixed launch: +0x54 is the direction, block A the speed and the pull', () => {
+    const m = ops('FRAG_sparks').find((o) => o.op === 'motion') as { motion: ObjectMotion };
+    expect(m.motion.flags).toBe(0x0b);
+    expect(m.motion.direction.map((v) => +v.toFixed(3))).toEqual([0, 0.556, -0.444]);
+    const s = launchMotion(m.motion, [0, 0, 0], null, () => 0, -98, 0);
+    expect(s.velocity).toEqual([0, 0, 0]);                           // speed 0
+    expect(s.accel[1]).toBeCloseTo(0.5556 * -200 - 98, 1);           // pulled along the direction by -200, and gravity
+    expect(s.accel[2]).toBeCloseTo(-0.4444 * -200, 1);
   });
 
   it('bullet_hit_metal_thick sparks (streaked, reflected off the surface); bullet_hit_asphalt calls bullet_hit_stone', () => {

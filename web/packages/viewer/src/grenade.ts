@@ -221,6 +221,15 @@ export class GrenadeThrower {
     this.hand.visible = false;
   }
 
+  /**
+   * EFFECTS (web/docs/research/89): whether the explosion draws `EXPLOSION_READING`'s sprites -- only when the page
+   * has not the game's own zAnim explosion to run (`main.ts` answers false once the map's effect data is in).
+   */
+  private placeholderBurst: () => boolean = () => true;
+  setPlaceholderBurst(when: () => boolean): void {
+    this.placeholderBurst = when;
+  }
+
   /** Subscribes to an event; returns the unsubscribe. */
   on<K extends keyof GrenadeEvents>(kind: K, fn: GrenadeEvents[K]): () => void {
     (this.listeners[kind] as GrenadeEvents[K][]).push(fn);
@@ -594,7 +603,7 @@ export class GrenadeThrower {
     };
     this.explosionLog.push(info);
     if (this.explosionLog.length > 32) this.explosionLog.shift();
-    this.burst(pos);
+    if (this.placeholderBurst()) this.burst(pos);
     if (material !== null) this.scorch(pos, material);
     this.emit('explode', info);
   }

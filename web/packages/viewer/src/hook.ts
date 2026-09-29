@@ -202,6 +202,8 @@ export interface ViewerHook {
   playEffect(name: string, at?: [number, number, number], kind?: 'impact' | 'muzzle'): boolean;
   /** EFFECTS: holds every effect where it is (true) or lets them run (false), for a picture of a three-frame flash. */
   pauseEffects(on: boolean): void;
+  /** EFFECTS: stops every effect and drops its particles (a test's clean slate: headless drawing is slow under smoke). */
+  clearEffects(): void;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

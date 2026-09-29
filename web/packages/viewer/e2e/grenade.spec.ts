@@ -120,7 +120,12 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   expect(boom.explosions[1]!.pos).toEqual(lie);
   expect(boom.explosions[1]!.material).toBe('METAL_THICK');         // Frostfire's DefaultMaterial, byte 0
   expect(boom.explosions[1]!.anim).toBe('frag_grenade_metal_thick');
-  expect(boom.effects).toBeGreaterThan(20);
+  // EFFECTS: the game's own explosion -- frag_grenade_metal_thick, then the frag_grenade it calls and its parts.
+  const played = (await page.evaluate(() => window.__viewer.effects())).played;
+  expect(played['frag_grenade_metal_thick']).toBe(1);
+  expect(played['frag_grenade']).toBeGreaterThanOrEqual(1);
+  expect(played['FRAG_sparks']).toBeGreaterThanOrEqual(1);
+  expect((await page.evaluate(() => window.__viewer.effects())).particles).toBeGreaterThan(20);
   await page.waitForTimeout(500);
   await settle(page);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-explosion-smoke.png') });
@@ -140,14 +145,15 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   expect(await page.evaluate(() => window.__viewer.selectItem('M67'))).toBe(true);
 
   // A light press aimed low: the underhand toss.
-  // Its clip on the body, the camera pitched down over the SEAL to see it.
+  // Its clip on the body, the camera pitched down over the SEAL to see it. The explosions' ten-second smoke is cleared
+  // first: software-rendered in the headless browser it drops the frame rate below what the clip's timing assumes.
+  await page.evaluate(() => window.__viewer.clearEffects());
   await stand(210, -35);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__viewer.throwGrenade(0.1, false))).toBeNull();
-  await page.waitForTimeout(450);
-  await settle(page);
+  // The clip is caught while it plays (a poll, not a fixed wait: a slow headless frame rate stretches the wall clock).
+  await expect.poll(() => page.evaluate(() => window.__viewer.throwClip().clip), { timeout: 3_000, intervals: [50] }).toBe('seal_tossgrenade');
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-toss-clip.png') });
-  expect(await page.evaluate(() => window.__viewer.throwClip().clip)).toBe('seal_tossgrenade');
   await expect.poll(() => page.evaluate(() => window.__viewer.grenade().lastThrow?.clip), { timeout: 5_000 }).toBe('seal_tossgrenade');
   const toss = (await page.evaluate(() => window.__viewer.grenade())).lastThrow!;
   expect(toss.toss).toBe(true);

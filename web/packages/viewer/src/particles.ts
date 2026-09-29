@@ -53,6 +53,8 @@ interface Source {
   base: Vec3;
   world: Vec3;
   alive: () => boolean;
+  /** Its node's matrix now, for a source that follows it (flag A 0x10), or null. */
+  follow: (() => Matrix4 | null) | null;
   started: boolean;
   acc: number;
   events: number;
@@ -108,7 +110,7 @@ export class ParticleSystem {
    */
   emit(
     config: ParticleSource, node: Matrix4 | null, ctx: EffectContext, owner: string,
-    alive: () => boolean = () => false, ownerId: unknown = null,
+    alive: () => boolean = () => false, ownerId: unknown = null, follow: (() => Matrix4 | null) | null = null,
   ): void {
     const id = ownerId !== null && typeof ownerId === 'object' ? ownerIds.get(ownerId) ?? this.idOf(ownerId) : 0;
     const key = `${owner}|${config.name}|${id}`;
@@ -126,7 +128,7 @@ export class ParticleSystem {
     const world = sourceVelocity(config.worldFrom, config.worldVelocity, config.worldScale, config.worldUnit, ctx);
     let s = this.sources.get(key);
     if (!s) {
-      s = { key, config, active: false, node: node?.clone() ?? null, position, base, world, alive, started: false, acc: 0, events: config.events };
+      s = { key, config, active: false, node: node?.clone() ?? null, position, base, world, alive, follow, started: false, acc: 0, events: config.events };
       this.sources.set(key, s);
     } else {
       if (config.interval !== null) { s.config = config; s.events = config.events; }
@@ -154,6 +156,7 @@ export class ParticleSystem {
     for (const [key, s] of this.sources) {
       if (!s.alive()) { this.sources.delete(key); continue; }
       if (!s.active || s.config.interval === null || s.config.interval <= 0) continue;
+      if (s.follow && !s.position) { const m = s.follow(); if (m) s.node = m.clone(); }
       if (!s.started) { s.started = true; continue; }       // the first tick records the place and emits nothing
       s.acc += dt;
       let n = Math.floor(s.acc / s.config.interval + 1e-9);

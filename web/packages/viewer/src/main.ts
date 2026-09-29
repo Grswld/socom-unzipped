@@ -132,10 +132,29 @@ grenade.on('equip', (on) => {
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
 grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
-grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
+/**
+ * EFFECTS (web/docs/research/89): a grenade's bounce and explosion run the game's own zAnim animations through
+ * `effects.play` -- `grenade_hit_<material>` (its sound, and snow's and water's spurts), the material's
+ * `frag_grenade_<material>` (its own puff, then a call to `frag_grenade`: the sparks, the dust, the flash's light, the
+ * smoke, the ground roll, `.GREN_MED`) or `HE_grenade` -- at the point, as if the grenade's node were there (the
+ * sparks' `OBJECT_TRANSLATE_STATE` takes the caller's place). Their sounds come through the effects; the audio's own
+ * zAnim map is the fallback before the effect data is in.
+ */
+const grenadePlace = (pos: [number, number, number]) => ({
+  node: new Matrix4().makeTranslation(pos[0], pos[1], pos[2]), position: pos, normal: [0, 1, 0] as [number, number, number],
+  velocity: [0, 0, 0] as [number, number, number],
+});
+grenade.setPlaceholderBurst(() => !effects.has('frag_grenade'));
+grenade.on('bounce', (info) => {                                                          // grenade_hit_<material>
+  if (!info.sound) return;
+  if (!effects.play(info.anim, grenadePlace(info.pos))) audio.onAnimCallback(info.anim, info.pos);
+});
 grenade.on('explode', (info) => {
-  // The material's variant, else the base (`frag_grenade`: .GREN_MED) -- the variants reach the sound through a call.
-  if (!audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
+  // The material's variant, else the base (`frag_grenade`: .GREN_MED) -- the variants call the base.
+  const place = grenadePlace(info.pos);
+  if (!effects.play(info.anim, place) && !effects.play(info.baseAnim, place)) {
+    if (!audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
+  }
   // The game's screen shake by the distance (research 83, `./look`).
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
 });
@@ -1061,5 +1080,6 @@ window.__viewer = {
     return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
   },
   pauseEffects: (on) => { effects.paused = on; },
+  clearEffects: () => effects.reset(),
   revision,
 } satisfies ViewerHook;

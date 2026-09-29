@@ -126,6 +126,27 @@ describe.skipIf(!MP2)(`the M4A1 SD's round on the game's data${MP2 ? '' : ` (${F
     expect(fx.stats().shown).not.toContain('muzzle_flash_hider');
   });
 
+  it('runs a frag grenade explosion: the material puff, then frag_grenade sparks on a thrown node, smoke, dust', async () => {
+    const d = await load();
+    const sounds: string[] = [];
+    let r = 0.3;
+    const fx = new Effects(() => ((r = (r * 7 + 0.13) % 1)), (name) => sounds.push(name));
+    fx.setData(d);
+    const at: [number, number, number] = [10, 0, 10];
+    const place = { node: new Matrix4().makeTranslation(...at), position: at, normal: [0, 1, 0] as [number, number, number], velocity: [0, 0, 0] as [number, number, number] };
+    expect(fx.play('frag_grenade_stone', place)).toBe(true);
+    const camera = new PerspectiveCamera();
+    camera.position.set(10, 20, 80);
+    camera.updateMatrixWorld();
+    for (let i = 0; i < 30; i++) fx.update(1 / 60, camera);
+    const s = fx.stats();
+    expect(s.played['frag_grenade']).toBe(1);                       // after the stone's own 0.05 s puff
+    for (const part of ['FRAG_sparks', 'dust_explode_long', 'light_flash_large', 'bsmoke_explode_large', 'dust_ground_roll']) expect(s.played[part]).toBe(1);
+    expect(sounds).toContain('.GREN_MED');
+    expect(s.particles).toBeGreaterThan(20);
+    expect(s.emitted).toBeGreaterThan(40);
+  });
+
   it('plays the surface\'s impact at the hit: sparks off METAL_THICK, the stone\'s dust and chunks off STONE', async () => {
     const d = await load();
     const sounds: string[] = [];

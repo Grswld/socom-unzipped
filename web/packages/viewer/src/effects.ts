@@ -250,7 +250,7 @@ export class Effects {
       runs: this.runs.length, played: { ...this.played }, shells: this.shellsLive(), particles: this.particles.count(),
       sources: this.particles.activeSources(), emitted: this.particles.emitted,
       lastShell: this.lastShell, bounces: this.bounces, sounds: this.sounds.slice(-16),
-      shown: this.runs.map((r) => (r.context as RunContext).instance).filter((i): i is Instance => !!i && i.object.visible).map((i) => i.model),
+      shown: this.runs.map((r) => (r.context as RunContext).instance).filter((i): i is Instance => !!i && i.model !== '' && i.object.visible).map((i) => i.model),
     };
   }
 
@@ -263,17 +263,20 @@ export class Effects {
     return n;
   }
 
-  /** The run's own copy of its root model (`create_instance`: a casing a round), made on first use. */
+  /**
+   * The run's own node (`NODE_ROOT`, anim+0x3c): a copy of its root model (`create_instance`: a casing a round), or,
+   * for an animation rooted at no model (`FRAG_sparks` moves its bare root and hangs its sparks on it), an empty node.
+   * Made on first use.
+   */
   private instanceOf(run: EffectRun): Instance | null {
     const ctx = run.context as RunContext;
     if (ctx.instance) return ctx.instance;
-    const name = run.program.nodes[run.program.root];
-    const model = name ? this.models.get(name) : undefined;
-    if (!model || !name) return null;
-    const object = model.clone(true);
+    const name = run.program.nodes[run.program.root] ?? '';
+    const model = run.program.root > 0 ? this.models.get(name) : undefined;
+    const object = model ? model.clone(true) : new Group();
     object.visible = false;
     this.object.add(object);
-    ctx.instance = { object, model: name };
+    ctx.instance = { object, model: model ? name : '' };
     return ctx.instance;
   }
 
@@ -406,7 +409,9 @@ export class Effects {
       case 'motion': return this.motion(op.motion, run);
       case 'particles': {
         const node = this.nodeMatrix(run, op.source.node);
-        this.particles.emit(op.source, node, ctx.place, run.program.name, () => !run.finished, run);
+        // Flag A 0x10: the source follows its node while it lives (`FUN_00329b40` reads the node's matrix each tick).
+        const follow = op.source.follow ? () => this.nodeMatrix(run, op.source.node) : null;
+        this.particles.emit(op.source, node, ctx.place, run.program.name, () => !run.finished, run, follow);
         return;
       }
       case 'sound': {
