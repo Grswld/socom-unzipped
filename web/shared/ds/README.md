@@ -54,8 +54,8 @@ no sync, no manifest:
   config aliases to this directory (`resolve.alias` in `web/landing/vite.config.ts`); its stylesheet and scripts
   import it by relative path (`../../shared/ds/...`). The story page that `tools_py/story/site.py` generates links
   the same `/src/ds/index.css`.
-- **The map viewer** (`web/redotcom/packages/viewer`, served at `/map-viewer/`). `index.html` links
-  `../../../shared/ds/index.css`.
+- **redotcom**, the map viewer (`web/redotcom/packages/viewer`, served at `/redotcom/`). Its `index.html` links the
+  same `/src/ds/index.css`, aliased the same way in `packages/viewer/vite.config.ts`.
 
 `fonts.css` names the faces as `/fonts/<file>.woff2`; both Vite configs alias `/fonts/` to `web/shared/fonts/`
 (`web/shared/vite.ts`), so the build bundles the three woff2 files and copies their licences beside them. The

@@ -92,7 +92,7 @@ own container is `.s2u-panel__body`.
     <nav aria-label="Footer">
       <a href="/story.html">The story</a>
       <a href="/classic.html">Classic menu</a>
-      <a href="/map-viewer/">Map viewer (experimental)</a>
+      <a href="/redotcom/">redotcom (experimental)</a>
       <a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener">GitHub</a>
       <a href="/#report">Report a bug</a>
       <a href="/data.html">Your data</a>

@@ -411,7 +411,7 @@ def chrome_footer(base, fine, repo="https://github.com/Scotho/socom-unzipped"):
         '    <nav aria-label="Footer">',
         '      <a href="%s/story.html">The story</a>' % base,
         '      <a href="%s/classic.html">Classic menu</a>' % base,
-        '      <a href="%s/map-viewer/">Map viewer (experimental)</a>' % base,
+        '      <a href="%s/redotcom/">redotcom (experimental)</a>' % base,
         '      <a href="%s" target="_blank" rel="noopener">GitHub</a>' % repo,
         '      <a href="%s#report">Report a bug</a>' % w,
         '      <a href="%s/data.html">Your data</a>' % base,

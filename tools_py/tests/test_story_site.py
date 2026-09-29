@@ -72,7 +72,7 @@ class ChromeUsesTheSystem(unittest.TestCase):
 
     def test_footer_nav_has_map_viewer_and_data_links(self):
         foot = _text(site.chrome_footer("https://socomunzipped.com", "fine"))
-        self.assertIn('<a href="https://socomunzipped.com/map-viewer/">Map viewer (experimental)</a>', foot)
+        self.assertIn('<a href="https://socomunzipped.com/redotcom/">redotcom (experimental)</a>', foot)
         self.assertIn('<a href="https://socomunzipped.com/data.html">Your data</a>', foot)
 
     def test_timeline_css_speaks_tokens(self):
