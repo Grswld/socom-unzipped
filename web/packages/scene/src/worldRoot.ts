@@ -156,19 +156,35 @@ export interface EnvMaterial {
   texture: string;
 }
 
+/**
+ * The texture an entry draws with when it names none, or names one that will not resolve: the engine's
+ * `DAT_004b4d90`, the loaded texture whose name holds `specular_map` (the scan at decomp 49244) -- `specular_map.tif`,
+ * in every map's libraries.
+ */
+export const DEFAULT_ENV_TEXTURE = 'specular_map.tif';
+
+/**
+ * The palette as `FUN_003bb2c0` copies it into the world's records (`CWorld+0x5a4`, 0x3c bytes each): `dat` over the
+ * record, `tex_name` to `+0x38`. An entry flagged textured (`dat[7]` bit 0) becomes kind 2 with its texture resolved,
+ * or `DAT_004b4d90` when it will not; one not flagged keeps the kind it was saved with and no texture, so the pass
+ * falls back to the same default (`FUN_003b5f20`: `+0x38 == 0` takes `DAT_004b4d90`). A draw gets the pass when its
+ * record is kind 2 (decomp 306900) -- every entry on the disc: the untextured ones are `(kind 2, flag 0, no tex_name)`.
+ */
 export function parseMaterialPalette(zar: Zar): EnvMaterial[] {
   const out: EnvMaterial[] = [];
   for (const entry of zar.find('Material_Palette')?.children ?? []) {
     const index = Number(/(\d+)$/.exec(entry.name)?.[1] ?? NaN);
     const dat = zar.child(entry, 'dat');
-    const tex = zar.child(entry, 'tex_name');
-    if (!Number.isFinite(index) || !dat || dat.size < 56 || !tex) continue;
+    if (!Number.isFinite(index) || !dat || dat.size < 56) continue;
     const r = new Reader(zar.data(dat));
-    const texture = new Reader(zar.data(tex)).cstr(0, tex.size).toLowerCase();
-    if (!texture) continue;
+    const textured = (r.u32(28) & 1) !== 0;
+    const kind = textured ? 2 : r.u32(20);
+    if (kind !== 2) continue;
+    const tex = zar.child(entry, 'tex_name');
+    const named = textured && tex ? new Reader(zar.data(tex)).cstr(0, tex.size).toLowerCase() : '';
     out.push({
       index, rgba: [r.f32(0), r.f32(4), r.f32(8), r.f32(12)], uvScale: r.f32(16),
-      rimOffset: r.f32(48), rimSlope: r.f32(52), texture,
+      rimOffset: r.f32(48), rimSlope: r.f32(52), texture: named || DEFAULT_ENV_TEXTURE,
     });
   }
   return out;

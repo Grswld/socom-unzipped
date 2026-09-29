@@ -16,6 +16,8 @@ import {
   type DetailSpec, type DrawState, type Factor, type MaterialSpec, type TextureFlags,
 } from './materialSpec';
 import { engineOrder } from './engineOrder';
+import { shadowFactor } from './charShadow';
+import { nightLit } from './nightVision';
 import { fadeMaterial, fadePhase } from './lodFade';
 import type { Rgba } from '@s2u/gs';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
@@ -40,6 +42,12 @@ export interface WorldView {
   revealWorld: (() => void)[];
   /** The props, the flares and the line strips. These arrive behind the world, over further frames. */
   revealProps: (() => void)[];
+  /**
+   * The objects `revealWorld` and `revealProps` add, in their order: what the page compiles off-screen before each
+   * reveal (`ViewerRenderer.prepare`), so no program is linked by the draw that first meets it.
+   */
+  worldObjects: Object3D[];
+  propObjects: Object3D[];
   triangles: number;
   /** The extent of everything queued, accumulated as it was built rather than read off the group. */
   box: Box3;
@@ -163,6 +171,8 @@ interface Built {
   shadow: boolean;
   /** A scrolling texture's own shading graph, which `apply` must keep rather than replace. */
   scrollNode: ColorNode | null;
+  /** Takes the characters' shadow (`./charShadow`): the world and its props; not the held rifle or a grenade. */
+  receive: boolean;
 }
 
 /** Two LOD copies within half a metre (5 units at 0.1 m/unit) share a placement. */
@@ -292,10 +302,16 @@ export function buildWorld(map: LoadedMap): WorldView {
   const vec2Uniform = (x: number, y: number) => uniform(new Vector2(x, y));
   // The typings do not know a material reference to a texture is a vec4, which is what the sampler yields.
   const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
-  const modulated = vec4(texel.mul(vertexColor())).clamp(0, 1);
-  const plain = vec4(vertexColor()).clamp(0, 1);
-  const SHADED: ColorNode = vec4(modulated.rgb.mul(brighten), modulated.a);
-  const SHADED_PLAIN: ColorNode = vec4(plain.rgb.mul(brighten), plain.a);
+  // The lit colour through the night vision's command 0x5c while the goggles are on (`./nightVision`), before the GS.
+  const lane = nightLit(vertexColor());
+  const modulated = vec4(texel.mul(lane)).clamp(0, 1);
+  const plain = vec4(lane).clamp(0, 1);
+  // The characters' shadow (`./charShadow`, VU1 0x3c): black, source-alpha over the receiver, `Cd * (1 - a)`.
+  const unshadowed = float(1).sub(shadowFactor());
+  const SHADED: ColorNode = vec4(modulated.rgb.mul(brighten).mul(unshadowed), modulated.a);
+  const SHADED_PLAIN: ColorNode = vec4(plain.rgb.mul(brighten).mul(unshadowed), plain.a);
+  const SHADED_SELF: ColorNode = vec4(modulated.rgb.mul(brighten), modulated.a);
+  const SHADED_PLAIN_SELF: ColorNode = vec4(plain.rgb.mul(brighten), plain.a);
   const CARRIER: ColorNode = vec4(modulated.a, modulated.a, modulated.a, modulated.a);
   const CARRIER_PLAIN: ColorNode = vec4(plain.a, plain.a, plain.a, plain.a);
   /** The colour an untextured mesh takes when the highlight is on: nothing in the game is this. */
@@ -374,7 +390,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     material.polygonOffsetUnits = b.shadow ? -1 : 0;
     material.colorNode = highlight && !b.textured ? MAGENTA
       : carrier ? (b.textured ? CARRIER : CARRIER_PLAIN)
-      : b.scrollNode ?? (b.textured ? SHADED : SHADED_PLAIN);
+      : b.scrollNode ?? (b.receive ? (b.textured ? SHADED : SHADED_PLAIN) : (b.textured ? SHADED_SELF : SHADED_PLAIN_SELF));
     material.transparent = state.transparent;
     material.depthWrite = state.depthWrite;
     Object.assign(material, blendFactorsFor(state.factors));
@@ -395,8 +411,8 @@ export function buildWorld(map: LoadedMap): WorldView {
    * `PRIM.FGE` fog bit, so a sky texture drawn fogged in one chunk and clear in another gets two.
    */
   const materialCache = new Map<string, Basic>();
-  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line', cull: boolean, scroll: [number, number] | null = null): Basic => {
-    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}|${cull ? 1 : 0}|${scroll ? `${scroll[0]},${scroll[1]}` : ''}`;
+  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line', cull: boolean, scroll: [number, number] | null = null, receive = true): Basic => {
+    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}|${cull ? 1 : 0}|${scroll ? `${scroll[0]},${scroll[1]}` : ''}|${receive ? 'r' : ''}`;
     const cached = materialCache.get(cacheKey);
     if (cached) return cached;
     const rgba = name === null ? undefined : map.textures[name];
@@ -422,7 +438,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     const material: Basic = kind === 'mesh' ? new MeshBasicNodeMaterial() : new LineBasicNodeMaterial();
     material.map = texture ?? null;
     material.vertexColors = false;                     // the shading graph reads the attribute itself
-    const entry: Built = { material, flags, fog, textured: !!texture, cull, shadow: name !== null && SHADOW_TEXTURE.test(name), scrollNode: null };
+    const entry: Built = { material, flags, fog, textured: !!texture, cull, shadow: name !== null && SHADOW_TEXTURE.test(name), scrollNode: null, receive };
     const mip = gsMipLod(flags?.gs);
     if (texture && (scroll || mip)) {
       // A scrolling texture gets a graph of its own: the same modulate, with the uv pushed along by an
@@ -434,8 +450,8 @@ export function buildWorld(map: LoadedMap): WorldView {
         at = at.add(offset);
         scrolling.push({ offset, du: scroll[0], dv: scroll[1] });
       }
-      const moved = vec4(gsTexel(texture, at, mip).mul(vertexColor())).clamp(0, 1);
-      entry.scrollNode = vec4(moved.rgb.mul(brighten), moved.a);
+      const moved = vec4(gsTexel(texture, at, mip).mul(nightLit(vertexColor()))).clamp(0, 1);
+      entry.scrollNode = vec4(moved.rgb.mul(brighten).mul(receive ? unshadowed : float(1)), moved.a);
     }
     apply(entry);
     built.push(entry);
@@ -465,9 +481,9 @@ export function buildWorld(map: LoadedMap): WorldView {
   const detailColor = (texture: Texture, spec: DetailSpec): ColorNode => {
     const scale = uniform(spec.scale), fade = uniform(spec.fade);
     // The GS picks the detail's level off the depth as it does the base's; the uv scale does not enter it.
-    const texel = vec4(gsTexel(texture, uv().mul(scale), gsMipLod(map.textureFlags[spec.texture]?.gs)).mul(vertexColor())).clamp(0, 1);
+    const texel = vec4(gsTexel(texture, uv().mul(scale), gsMipLod(map.textureFlags[spec.texture]?.gs)).mul(nightLit(vertexColor()))).clamp(0, 1);
     const weight = float(1).sub(positionView.length().div(fade)).clamp(0, 1);
-    return vec4(texel.rgb.mul(brighten), texel.a.mul(weight));
+    return vec4(texel.rgb.mul(brighten).mul(unshadowed), texel.a.mul(weight));
   };
   /** Puts a detail pass's state on its material: its list follows its base's, which the two switches move. */
   const applyDetail = (entry: { material: MeshBasicNodeMaterial; flags: TextureFlags | undefined; fog: boolean; cull: boolean; spec: DetailSpec }): void => {
@@ -549,7 +565,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     const material = new MeshBasicNodeMaterial();
     material.name = `env ${m.texture}`;
     material.vertexColors = false;
-    material.colorNode = vec4(colour.mul(brighten), texel.a.mul(alpha).clamp(0, 1));
+    material.colorNode = vec4(colour.mul(brighten).mul(unshadowed), texel.a.mul(alpha).clamp(0, 1));
     material.transparent = true;
     material.depthWrite = false;
     material.depthFunc = LessEqualDepth;
@@ -607,6 +623,8 @@ export function buildWorld(map: LoadedMap): WorldView {
    */
   const revealWorld: (() => void)[] = [];
   const revealProps: (() => void)[] = [];
+  const propObjects: Object3D[] = [];
+  const worldObjects: Object3D[] = [];
   const box = new Box3();
   /**
    * Queues an object with its place in the scene walk and its grid cells, and grows the map's extent by it.
@@ -625,6 +643,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     object.visible = (!alternate || alternateOn) && (!shadow || shadowsOn) && (!line || (lineStripsOn && !wireframeOn))
       && (lod === null || lod.visible);
     queue.push(() => group.add(object));
+    (queue === revealProps ? propObjects : worldObjects).push(object);
   };
 
   for (const part of map.world) {
@@ -766,7 +785,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     weapon = new Group();
     weapon.name = map.weapon.name;
     for (const part of map.weapon.parts) {
-      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
+      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull, null, false));
       mesh.name = `${map.weapon.name} (${part.textureName ?? 'untextured'})`;
       weapon.add(mesh);
     }
@@ -779,7 +798,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     const g = new Group();
     g.name = model.name;
     for (const part of model.parts) {
-      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
+      const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull, null, false));
       mesh.name = `${model.name} (${part.textureName ?? 'untextured'})`;
       g.add(mesh);
     }
@@ -822,6 +841,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     warmExtras,
     revealWorld,
     revealProps,
+    worldObjects,
+    propObjects,
     triangles,
     box,
     untextured: untexturedDraws,

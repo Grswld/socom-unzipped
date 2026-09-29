@@ -4,11 +4,12 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import { fixture } from '../../archive/test/fixtures';
-import { parseMaterialPalette, parseSceneGraph, placeInstances } from '../src/index';
+import { DEFAULT_ENV_TEXTURE, parseMaterialPalette, parseSceneGraph, placeInstances } from '../src/index';
 
 /**
  * The environment-map materials: the world root's `Material_Palette` entries that name a reflection texture, and the
- * visuals that name an entry in `vparams` byte 7. Frostfire (a fixture) has only untextured entries; Blood Lake (the
+ * visuals that name an entry in `vparams` byte 7. Frostfire (a fixture) has only untextured entries, drawn with the
+ * engine's default texture; Blood Lake (the
  * served tree, when extracted) binds its water to `palEntry_3`, `m19_skycap01.tif`.
  */
 const MP2 = fixture('RUN/MP2.ZDB');
@@ -20,8 +21,12 @@ const open = (bytes: Uint8Array, stem: string) => {
 };
 
 describe('Material_Palette', () => {
-  it.skipIf(!MP2)('Frostfire names no reflection texture: its two entries are the untextured kind', () => {
-    expect(parseMaterialPalette(open(MP2!, 'MP2')('*.ZED'))).toEqual([]);
+  it.skipIf(!MP2)('Frostfire names no texture: its two entries (kind 2, unflagged) draw the default, specular_map.tif', () => {
+    // FUN_003bb2c0 leaves an unflagged entry's kind as saved and its `+0x38` empty; the pass takes DAT_004b4d90.
+    const palette = parseMaterialPalette(open(MP2!, 'MP2')('*.ZED'));
+    expect(palette.map((e) => [e.index, e.texture])).toEqual([[0, DEFAULT_ENV_TEXTURE], [1, DEFAULT_ENV_TEXTURE]]);
+    expect(palette[1]!.rgba).toEqual([123, 123, 123, 10]);
+    expect(DEFAULT_ENV_TEXTURE).toBe('specular_map.tif');
   });
 
   it.skipIf(!MP10)('Blood Lake: the water visuals name palEntry_3, the sky cap it reflects', () => {
