@@ -154,7 +154,14 @@ export interface AnimStats {
 }
 
 /** The play's main clip, as a pose layer sees it: the clip, its fractional key and its phase (0 to 1). */
-export interface LayerContext { clip: MotionClip; frame: number; phase: number }
+export interface LayerContext {
+  clip: MotionClip; frame: number; phase: number;
+  /**
+   * Every node of the play with a weight, each at its own phase (the main clip's among them): a layer made per motion
+   * slot -- the Fire set, `FUN_0057a330` blending each slot's Fire version into that slot -- reads these.
+   */
+  nodes?: readonly { clip: MotionClip; frame: number; phase: number; weight: number }[];
+}
 
 /**
  * A pose over the clips (the WEAPON workstream's fire set and reload, `./weaponPose`): the parts to blend toward and
@@ -168,6 +175,15 @@ export interface PoseLayer {
 export const HELD_PART = 'rifle', HELD_ALIAS = 'weapon';
 /** WEAPON: the held items' nodes (`FUN_00553290` slots 1 and 2), whose unmixed locals `Animator.heldLocal` keeps. */
 const HELD_NODES = [HELD_PART, 'pistol'] as const;
+/**
+ * WEAPON: the clips whose `rifle` track is not a hold in the hand but the rifle's place on `spinelo` (`./heldItem`'s
+ * `swap` mount): the four swaps, standing, crouched, prone and the moving overlay. Every other clip's `rifle` and
+ * `pistol` tracks are the grip in `rhand` (1.27 along the hand, give or take the clip's own turn of it).
+ */
+export const SPINE_HELD_CLIPS: ReadonlySet<string> = new Set([SEAL_ANIMS.swapStand, SEAL_ANIMS.swapCrouch, SEAL_ANIMS.swapProne, SEAL_ANIMS.swapMoving]);
+
+/** A held node's local and the frame its track is in: `spine` a swap clip's `rifle` on `spinelo`, else the hand's. */
+interface HeldLocal { local: Local; spine: boolean }
 
 /**
  * A clip part's skeleton slot. The held item's node is `rifle` in most of the pack's clips and `weapon` in the few
@@ -282,6 +298,11 @@ export function slerp(a: readonly number[], b: readonly number[], t: number): [n
   const x = wa * ax + wb * bx, y = wa * ay + wb * by, z = wa * az + wb * bz, w = wa * aw + wb * bw;
   const len = Math.hypot(x, y, z, w) || 1;
   return [x / len, y / len, z / len, w / len];
+}
+
+/** The cross-fade of one part (`FUN_0028e040`): the turn slerped, the place lerped, `w` of the way from `a` to `b`. */
+function mixLocal(a: Local, b: Local, w: number): Local {
+  return { q: slerp(a.q, b.q, w), t: [a.t[0] + (b.t[0] - a.t[0]) * w, a.t[1] + (b.t[1] - a.t[1]) * w, a.t[2] + (b.t[2] - a.t[2]) * w] };
 }
 
 type Quat = [number, number, number, number];
@@ -424,7 +445,7 @@ export class Animator {
   /** The pose on screen, per skeleton part. */
   private readonly shown: Local[];
   /** The pose the cross-fade leaves, frozen when the play changed (`FUN_0028e3e0`'s snapshot, research 17 §4.2). */
-  private from: { name: string; pose: Local[] } | null = null;
+  private from: { name: string; pose: Local[]; held: Map<number, HeldLocal> } | null = null;
   private blendElapsed = 0;
   private blendLength = BLEND_TIME_DEFAULT;
   private play: Play | null = null;
@@ -441,10 +462,11 @@ export class Animator {
   /** The head look (`./headLook`): the controller's request, the rotator at `actor+0x1190`, the pose. */
   readonly look: HeadLook;
   /**
-   * WEAPON: the held items' nodes (`rifle`, `pistol`) as the one clip that carries them this frame poses them, before
-   * the cross-fade and unmixed with the moving swap's overlay (`heldLocal`).
+   * WEAPON: the held items' nodes (`rifle`, `pistol`) as `heldLocal` gives them this frame, and the frame each is in:
+   * cross-faded with the arms where the pose left and the pose coming hold it in the same frame, else the clip coming's
+   * own (`heldLocal`). What a cross-fade starting freezes (`from.held`).
    */
-  private readonly heldRaw = new Map<number, Local>();
+  private readonly heldShown = new Map<number, HeldLocal>();
   /** The overlay play's clip this frame, or null (`stats().overlay`). */
   private overlayName: string | null = null;
   private lookDt = 0;
@@ -636,7 +658,7 @@ export class Animator {
     if (wanted.key === 'idle:crouch' && main) play.pick = main;
     if (!nodes.length) return play;
     if (prev) {
-      this.from = { name: this.main(prev).motion.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
+      this.from = this.freeze(this.main(prev).motion.name);
       this.blendElapsed = 0;
       this.blendLength = main!.blendTime;
     }
@@ -698,7 +720,7 @@ export class Animator {
     if (weapon === this.weapon) return;
     this.weapon = weapon;
     if (this.play && this.play.nodes.length) {
-      this.from = { name: this.main(this.play).motion.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
+      this.from = this.freeze(this.main(this.play).motion.name);
       this.blendElapsed = 0;
       this.blendLength = this.main(this.play).motion.blendTime;
     }
@@ -759,8 +781,13 @@ export class Animator {
       return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
     });
     const held = HELD_NODES.map((name) => this.skeleton.indexOf(name)).filter((i) => i >= 0);
-    this.heldRaw.clear();
-    const overlaid = new Set<number>();
+    // WEAPON: the frame each held node's track is in (`SPINE_HELD_CLIPS`): the main clip's, and the overlay's where its
+    // frame is not the main clip's -- that one is kept unmixed (`overlaid`), a rifle on the back is not eased into one
+    // in the hand.
+    const rifle = this.skeleton.indexOf(HELD_PART);
+    const onSpine = (i: number, clip: string): boolean => i === rifle && SPINE_HELD_CLIPS.has(clip);
+    const mainClip = this.main(play).motion.name;
+    const overlaid = new Map<number, HeldLocal>();
     // The overlay play (the moving swap, `FUN_0028d860(anim+0x60, ...)`): over the parts it carries, eased in and out
     // over its `BlendTime` [reading: the second channel's blend is not read].
     this.overlayName = null;
@@ -777,15 +804,20 @@ export class Animator {
         if (i < 0 || i === this.root || !(w > 0)) continue;
         const from = target[i]!;
         const t: [number, number, number] = this.clipTranslation[i] ? [...p.translation] : [...this.bind[i]!.t];
-        if (held.includes(i)) { this.heldRaw.set(i, { q: [...p.rotation], t: [...t] }); overlaid.add(i); }
+        if (held.includes(i) && onSpine(i, ov.name) !== onSpine(i, mainClip)) {
+          overlaid.set(i, { local: { q: [...p.rotation], t: [...t] }, spine: onSpine(i, ov.name) });
+        }
         target[i] = { q: slerp(from.q, p.rotation, w), t: [from.t[0] + (t[0] - from.t[0]) * w, from.t[1] + (t[1] - from.t[1]) * w, from.t[2] + (t[2] - from.t[2]) * w] };
       }
     }
     // The pose layers (`addPoseLayer`: the weapon's fire set and reload, `./weaponPose`), each over what is below it.
     if (this.poseLayers.length) {
       const main = this.main(play);
-      const phase = play.looped ? (((play.phase + main.offset) % 1) + 1) % 1 : Math.min(play.phase, main.motion.end);
-      const context: LayerContext = { clip: main.motion.clip, frame: phase * main.motion.frames, phase };
+      const phaseOf = (n: PlayNode): number => play.looped ? (((play.phase + n.offset) % 1) + 1) % 1 : Math.min(play.phase, n.motion.end);
+      const phase = phaseOf(main);
+      const nodes = play.nodes.filter((n) => n.weight > 0)
+        .map((n) => ({ clip: n.motion.clip, frame: phaseOf(n) * n.motion.frames, phase: phaseOf(n), weight: n.weight }));
+      const context: LayerContext = { clip: main.motion.clip, frame: phase * main.motion.frames, phase, nodes };
       for (const layer of this.poseLayers) {
         const over = layer.sample(context);
         if (!over || !(over.weight > 0)) continue;
@@ -803,16 +835,28 @@ export class Animator {
         }
       }
     }
-    for (const i of held) if (!overlaid.has(i)) this.heldRaw.set(i, { q: [...target[i]!.q], t: [...target[i]!.t] });
     const w = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     if (w >= 1) this.from = null;
+    // WEAPON: the held nodes cross-fade with the arms -- the hold in the hand changes from clip to clip (the run left
+    // turns the rifle 35 degrees from the stand's; the owner's playtest, 2026-09-29: a hot rifle snapped out of the
+    // hands at a strafe's start and stop) -- except across frames (the hand's and `spinelo`'s at a swap's ends: the
+    // owner's earlier playtest, the rifle snapped in front of the SEAL) and on the overlay's own channel.
+    this.heldShown.clear();
+    for (const i of held) {
+      const over = overlaid.get(i);
+      if (over) { this.heldShown.set(i, over); continue; }
+      const to: HeldLocal = { local: { q: [...target[i]!.q], t: [...target[i]!.t] }, spine: onSpine(i, mainClip) };
+      const from = this.from?.held.get(i);
+      this.heldShown.set(i, from && from.spine === to.spine ? { local: mixLocal(from.local, to.local, w), spine: to.spine } : to);
+    }
     target.forEach((to, i) => {
       const from = this.from?.pose[i];
       const shown = this.shown[i]!;
       if (!from) { shown.q = to.q; shown.t = to.t; }
       else {
-        shown.q = slerp(from.q, to.q, w);
-        shown.t = [from.t[0] + (to.t[0] - from.t[0]) * w, from.t[1] + (to.t[1] - from.t[1]) * w, from.t[2] + (to.t[2] - from.t[2]) * w];
+        const mixed = mixLocal(from, to, w);
+        shown.q = mixed.q;
+        shown.t = mixed.t;
       }
       this.skeleton.setLocal(i, partMatrix(shown.q, shown.t));
     });
@@ -888,16 +932,27 @@ export class Animator {
   }
 
   /**
-   * WEAPON: a held item's node (`rifle`, `pistol`) local this frame as the clip carrying it poses it -- the play's
-   * target before the cross-fade, or the moving swap's own key where the overlay carries the node -- or null before a
-   * pose or without the node. The two frames a node's track is in (the hand's, and `spinelo`'s in the swap clips:
-   * `./heldItem`'s `swap` mount) are never mixed here: the cross-fade and the overlay's ease blend the tracks of a
-   * rifle in the hand with those of a rifle on the back, a place neither is (the owner's playtest, 2026-09-29: the
-   * rifle snapped in front of the SEAL at the swap's start and up at its end). `./play` hangs the weapon from this.
+   * WEAPON: a held item's node (`rifle`, `pistol`) local this frame, or null before a pose or without the node.
+   * `./play` hangs the weapon from this, so the weapon is where the drawn hand holds it:
+   * - Cross-faded with the arms, over the same weight, while the pose left and the pose coming hold it in the same
+   *   frame: each clip holds the weapon its own way in the hand (the run left's rifle turned 35 degrees from the
+   *   stand's, the pistol's 90-degree run 0.7 further out) and the arms change with it (the owner's playtest,
+   *   2026-09-29: with the gun hot, a strafe's start and stop snapped the rifle 5.6 units at the muzzle in one frame
+   *   while the arms eased, the off hand 2 units off the fore-end).
+   * - The two frames a node's track is in (the hand's, and `spinelo`'s in the swap clips, `SPINE_HELD_CLIPS`:
+   *   `./heldItem`'s `swap` mount) are never mixed: across them it is the clip coming's own key -- the play's target,
+   *   or the moving swap's where the overlay carries the node (the owner's earlier playtest: a mix put the rifle in
+   *   front of the SEAL at the swap's start and up at its end; `./heldItem`'s `MountEase` eases that change).
    */
   heldLocal(name: string): Float32Array | null {
-    const l = this.heldRaw.get(this.skeleton.indexOf(name));
+    const l = this.heldShown.get(this.skeleton.indexOf(name))?.local;
     return l ? partMatrix(l.q, l.t) : null;
+  }
+
+  /** The pose on screen frozen for a cross-fade (`from`), the held nodes as `heldLocal` gave them with their frames. */
+  private freeze(name: string): { name: string; pose: Local[]; held: Map<number, HeldLocal> } {
+    const held = new Map([...this.heldShown].map(([i, h]) => [i, { local: { q: [...h.local.q], t: [...h.local.t] } as Local, spine: h.spine }]));
+    return { name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })), held };
   }
 
   /** The clip, the frame, the blend: the hook's `stats().anim`. */

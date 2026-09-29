@@ -1,5 +1,5 @@
 import { sampleClip, type MotionClip, type PartPose } from '@s2u/scene';
-import type { LayerContext, PoseLayer } from './animator';
+import { slerp, type LayerContext, type PoseLayer } from './animator';
 import { entryOf } from './locomotion';
 import type { MotionEntry, MotionTable } from './motionTable';
 
@@ -127,6 +127,30 @@ export function reloadLength(clip: MotionClip | undefined, table: MotionTable | 
  * The two layers over the clips, in the order the animator takes them: the Fire version at the raise weight, then the
  * reload over it. `step` runs their clocks once a frame, before the animator's.
  */
+/**
+ * Poses merged by weight, part by part (the node blend's way, `FUN_00577000`): each part's turn slerped in at its
+ * weight over the running sum, its place a weighted mean; a part only some poses carry is theirs.
+ */
+export function mergeParts(poses: readonly { parts: readonly PartPose[]; weight: number }[]): PartPose[] {
+  const acc = new Map<string, { part: PartPose; w: number }>();
+  for (const { parts, weight } of poses) {
+    if (!(weight > 0)) continue;
+    for (const p of parts) {
+      const a = acc.get(p.name);
+      if (!a) { acc.set(p.name, { part: { ...p, rotation: [...p.rotation], translation: [...p.translation] }, w: weight }); continue; }
+      const f = weight / (a.w + weight);
+      const t = a.part.translation;
+      a.part = {
+        ...a.part,
+        rotation: slerp(a.part.rotation, p.rotation, f),
+        translation: [t[0] + (p.translation[0] - t[0]) * f, t[1] + (p.translation[1] - t[1]) * f, t[2] + (p.translation[2] - t[2]) * f],
+      };
+      a.w += weight;
+    }
+  }
+  return [...acc.values()].map((a) => a.part);
+}
+
 export class WeaponPose {
   /** The raise weight (`./weaponRaise`), set once a frame. */
   fireWeight = 0;
@@ -188,20 +212,40 @@ export class WeaponPose {
   private sampleFire(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null {
     this.now.fire = null;
     this.now.fireWeight = 0;
-    const name = (this.item === 'pistol' ? PISTOL_FIRE_VERSIONS : FIRE_VERSIONS)[current.clip.name];
-    const fire = name ? this.clips.get(name) : undefined;
-    if (!fire || !(this.fireWeight > 0)) return null;
-    if (fire.name !== this.fireClip) { this.fireClip = fire.name; this.fireClock = 0; }
-    const entry = entryOf(fire.name, this.table);
-    // A still Fire clip plays over its `playback` seconds (the one-shot rule, research 77 §7); a moving one shares the
-    // base clip's phase (PHASE_SHARED).
-    const playback = entry?.playback !== null && entry?.playback !== undefined && entry.playback > 0 ? entry.playback : null;
-    const time = PHASE_SHARED && isLocomotion(entry)
-      ? current.phase * fire.duration
-      : this.fireClock * (playback ? fire.duration / playback : 1);
-    this.now.fire = fire.name;
-    this.now.fireWeight = this.fireWeight;
-    return { parts: sampleClip(fire, time, { loop: entry?.looped ?? true }).parts, weight: this.fireWeight };
+    if (!(this.fireWeight > 0)) return null;
+    // Per motion slot (`FUN_0057a330` 438828-438860: each slot flagged 0x40 takes its own type's Fire version at the
+    // raise weight): the play's nodes that have one, by their weights; a node without one (the strafes, the 90-degree
+    // runs) keeps its own clip, so its share of the layer is left out. Keyed on the main clip alone, the whole upper
+    // body jumped from the low ready to the shoulder in one frame when the stick's turn made a forward clip the main
+    // one (the owner's playtest, 2026-09-29: the hot rifle strafing -- 3.8 units at the muzzle in a frame).
+    const versions = this.item === 'pistol' ? PISTOL_FIRE_VERSIONS : FIRE_VERSIONS;
+    const nodes = current.nodes ?? [{ clip: current.clip, frame: current.frame, phase: current.phase, weight: 1 }];
+    let total = 0;
+    const picks: { fire: MotionClip; phase: number; weight: number }[] = [];
+    for (const n of nodes) {
+      total += n.weight;
+      const name = versions[n.clip.name];
+      const fire = name ? this.clips.get(name) : undefined;
+      if (fire && n.weight > 0) picks.push({ fire, phase: n.phase, weight: n.weight });
+    }
+    if (!picks.length || !(total > 0)) return null;
+    const lead = picks.reduce((a, b) => (b.weight > a.weight ? b : a));
+    if (lead.fire.name !== this.fireClip) { this.fireClip = lead.fire.name; this.fireClock = 0; }
+    const sampled = picks.map((p) => {
+      const entry = entryOf(p.fire.name, this.table);
+      // A still Fire clip plays over its `playback` seconds (the one-shot rule, research 77 §7); a moving one shares
+      // the base clip's phase (PHASE_SHARED).
+      const playback = entry?.playback !== null && entry?.playback !== undefined && entry.playback > 0 ? entry.playback : null;
+      const time = PHASE_SHARED && isLocomotion(entry)
+        ? p.phase * p.fire.duration
+        : this.fireClock * (playback ? p.fire.duration / playback : 1);
+      return { parts: sampleClip(p.fire, time, { loop: entry?.looped ?? true }).parts, weight: p.weight };
+    });
+    const share = picks.reduce((s, p) => s + p.weight, 0) / total;
+    const weight = this.fireWeight * Math.min(1, share);
+    this.now.fire = lead.fire.name;
+    this.now.fireWeight = weight;
+    return { parts: sampled.length === 1 ? sampled[0]!.parts : mergeParts(sampled), weight };
   }
 
   private sampleReload(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null {
