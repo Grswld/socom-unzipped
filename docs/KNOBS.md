@@ -88,7 +88,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_GS_RT_TEXTURE` | Int | `1` | 0 restores the readback + decode for render targets used as textures. |
 | `PS2X_GS_SCALE_FILTER` | Text | unset | box = box-filter the resolve of a scaled target. |
 | `PS2X_GS_SCALE_SELFTEST` | Int | `0` | 1 checks the native mirror of a scaled target against a fresh resolve each frame. |
-| `PS2X_GS_SETUP_FORMAT` | Flag | `0` | 1 formats the stats line's state and blend tags on every draw, as before S17 F1 attempt 2 (A/B). |
+| `PS2X_GS_SETUP_FORMAT` | Flag | unset | S17 F1 attempt 2 A/B: 1 formats the stats tags every draw, 0 never; unset = only with PS2X_GS_STATS. |
 | `PS2X_GS_SKIP_TBP0` | Spec | unset | Drop every textured draw binding one of these texture blocks (a bisect). |
 | `PS2X_GS_STATS` | Presence | unset | The [gs-gl stats] line every 60 command buffers. |
 | `PS2X_GS_TRACE_CMDS` | Int | unset | Presents to skip (or trig), then print the replayed GS commands. |

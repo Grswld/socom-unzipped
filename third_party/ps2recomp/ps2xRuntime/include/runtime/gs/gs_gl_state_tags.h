@@ -9,6 +9,8 @@
 // restores the old per-draw formatting for the A/B. Pure functions, so ps2x_tests checks the decision and the
 // tags without a GL context.
 
+#include "ps2x/knobs.h"
+
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -16,10 +18,13 @@
 namespace GsGlStateTags
 {
     // `statsKnob`: ps2x::knob("PS2X_GS_STATS") -- a Presence knob, so any value (0 too) turns the line on.
-    // `setupFormatOn`: ps2x::knobOn("PS2X_GS_SETUP_FORMAT"), the A/B back to formatting on every draw.
-    inline bool enabled(const char *statsKnob, bool setupFormatOn)
+    // `setupFormatKnob`: the raw value of the PS2X_GS_SETUP_FORMAT flag, three-way so the A/B can be read under PS2X_GS_STATS
+    // (the [gs-submit] setup= column prints only there): unset follows PS2X_GS_STATS; 0/false/off never formats
+    // (the stats line's states= and blends= print empty); anything else formats on every draw, as before attempt 2.
+    // The one flag rule (ps2x::knobOn), with PS2X_GS_STATS's presence as the default.
+    inline bool enabled(const char *statsKnob, const char *setupFormatKnob)
     {
-        return statsKnob != nullptr || setupFormatOn;
+        return ps2x::knobs::flagValue(setupFormatKnob, statsKnob != nullptr);
     }
 
     // " T<TEST & 0x7FFFF>/M<FBMSK>/tfx<TFX>[t]", appended once per distinct value while the log is under 600.

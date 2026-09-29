@@ -6342,11 +6342,16 @@ void register_ps2_gs_tests()
             // executeCommands prints (and clears) those logs only under PS2X_GS_STATS. Attempt 2 formats them only then;
             // PS2X_GS_SETUP_FORMAT=1 restores the unconditional formatting for the A/B (docs/KNOBS.md). The GL half --
             // setupDrawState calling these under the decision -- needs a context; the decision and the tags do not.
-            t.IsTrue(!GsGlStateTags::enabled(nullptr, false), "no stats and no A/B knob: nothing is formatted per draw");
-            t.IsTrue(GsGlStateTags::enabled("1", false), "PS2X_GS_STATS=1: the tags are formatted, and the stats line prints them");
-            t.IsTrue(GsGlStateTags::enabled("0", false), "PS2X_GS_STATS is a Presence knob: any value, 0 too, prints the line");
-            t.IsTrue(GsGlStateTags::enabled(nullptr, true), "PS2X_GS_SETUP_FORMAT=1 restores the per-draw formatting");
-            t.IsTrue(GsGlStateTags::enabled("1", true), "both: formatted");
+            // The knob is three-way so the A/B can be read under PS2X_GS_STATS, where the [gs-submit] setup= column is:
+            // unset follows PS2X_GS_STATS, 0 never formats (the tags print empty), anything else always formats.
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, nullptr), "no stats and no A/B knob: nothing is formatted per draw");
+            t.IsTrue(GsGlStateTags::enabled("1", nullptr), "PS2X_GS_STATS=1, A/B knob unset: formatted, as the stats line prints them");
+            t.IsTrue(GsGlStateTags::enabled("0", nullptr), "PS2X_GS_STATS is a Presence knob: any value, 0 too, prints the line");
+            t.IsTrue(GsGlStateTags::enabled(nullptr, "1"), "PS2X_GS_SETUP_FORMAT=1 restores the per-draw formatting");
+            t.IsTrue(GsGlStateTags::enabled("1", "1"), "both on: formatted");
+            t.IsTrue(!GsGlStateTags::enabled("1", "0"), "PS2X_GS_SETUP_FORMAT=0 never formats, even under PS2X_GS_STATS (the A/B's new arm)");
+            t.IsTrue(!GsGlStateTags::enabled("1", "off"), "off is 0, the one flag rule");
+            t.IsTrue(!GsGlStateTags::enabled(nullptr, "0"), "0 without stats: not formatted");
 
             // The tags the stats line prints are the ones setupDrawState wrote before the move, byte for byte.
             std::string states;

@@ -4033,8 +4033,9 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     // comment there -- resolveTexture runs between this point and the draw and can clear it.
 
     // Sprint 17 F1 attempt 2: the states= and blends= tags of the [gs-gl stats] line are formatted only when that line
-    // prints them (gs_gl_state_tags.h); PS2X_GS_SETUP_FORMAT=1 restores formatting them on every draw (the A/B).
-    static const bool s_formatTags = GsGlStateTags::enabled(ps2x::knob("PS2X_GS_STATS"), ps2x::knobOn("PS2X_GS_SETUP_FORMAT"));
+    // prints them (gs_gl_state_tags.h: GsGlStateTags::enabled is this rule); PS2X_GS_SETUP_FORMAT=1 formats them on
+    // every draw, =0 never, even under PS2X_GS_STATS (the A/B, read in the [gs-submit] setup= column).
+    static const bool s_formatTags = ps2x::knobOn("PS2X_GS_SETUP_FORMAT", ps2x::knob("PS2X_GS_STATS") != nullptr);
     if (s_formatTags)
         GsGlStateTags::noteState(m_stateLog, ctx.test, ctx.frame.fbmsk, ctx.tex0.tfx, state.prim.tme);
     // Depth test.
