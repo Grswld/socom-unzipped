@@ -283,3 +283,45 @@ it off through its node's `vtbl+0x38`; the inventory's bomb pickup (`FUN_005bbf1
 blend (`RELOAD_BLEND_PLACEHOLDER`), the aim lane as the controller's aim (`AIM_HOLDS_RAISE`), no stick term in the
 kick's fall (`STICK_FOLLOW_PLACEHOLDER`).
 
+### The sidearm, the swap and the reload (2026-09-29, the WEAPON workstream, round 2)
+
+**The kit.** Every `mp_seal1` (and Frostfire's `mp2_seal1`) kit in `character.rdr` is M4A1, Mark 23, M67, HE, then
+Double Ammo Load or C4 (`kitWeapons`); the Mark 23 is `ID` 15, `a_mark23`, `FireWait` 0.2, 12 x 3 of .45 ACP (`Piercing`
+4), `MaxFireMode` 1, one zoom mode, 125 m, knock 20/60/40, bloom 20 on 10..30 (prone 14..34), `muzzle_mark23`,
+`.MARK_23`/`_M`/`_F`, `.MARK_23_RLD`, `RecoilPct` 0.1 (`HELD_SIDEARM`, pinned to the file). **L1 and L2** (`FUN_00594cf0`
+453288-453312) press the slots at `ctrl+0x224` and `+0x228`, 0.0 and 1.0 from the constructor (`FUN_00598280`
+454785-454786): the primary and the sidearm; the grenades are the Inventory's (R2). The gate (`FUN_005a8cb0`,
+`FUN_005bdc30`, the slot's count, `FUN_005c4fd0`, else the denied sound `FUN_003419c0`) and `FUN_005c4b10`: the slot in
+the hand does nothing (no toggle back), a scope drops to first person, a change of category starts the swap
+(`FUN_005c50b0` -> `FUN_005c1660` -> `FUN_005a64c0`, the MOTION workstream's `WalkMode.swapWeapon`); refused while
+reloading, mid-swap, throwing, in the air. **Rifle to pistol:** `FUN_005a7260` re-parents the rifle to `spinelo` and
+sets `m_item` 2 at once (`FUN_0057d5e0` turns the playing clips to their pistol versions); `FUN_005a7730` moves the
+pistol to `rhand` at the clip's hand-off (0.72 standing, 0.82 crouched, 0.62 prone, 0.79 the moving overlay --
+normalised phase, not settled); at the end `FUN_005a60d0(seal, 2, 0)` slings the rifle at `character.rdr`'s "rifle"
+offset on `spinelo` (0.1, -1.39, -0.66; 48, 112.9, -33.98). The swap clips carry the rifle `spinelo`-relative (the
+muzzle ahead of the chest at key 0, on the back at the end: measured on MP2's skeleton) and the pistol `rhand`-relative.
+**Pistol to rifle:** the clip backwards; `FUN_005a75d0` holsters the pistol on `rthigh` at the "pistol" offset (1.03,
+-0.23, -1.03; -9.9, -186.5, 197.07) as the clip passes the hand-off going back; at the end `FUN_005a70f0` puts the rifle in
+the hand, `m_item` 1. At spawn the pistol hangs on `+0x304`, `hips`, at the identity. The pistol-fire pairs
+(`FUN_005e1af0`) are `seal_pfp_stand` ... `seal_pfp_crouch_step` (the strafes and 90-degree runs map to the pistol's own);
+the pistol's reloads `seal_p_reload`, `seal_p_crouch_reload`, `seal_p_prone_reload`, `seal_p_mv_reload`. **The reload.**
+Every start goes through `FUN_005c2a90` after the weapon spec's `ReloadDelay` (`+0x5c`, 0.01 by default); the magazine
+empties -> an automatic reload 0.01 s on (`FUN_005c5340` 479297-479320), not for grenades; a dry trigger plays the empty
+click and reloads. `FUN_005a82e0`: still is a speed of at most 20 (400.0 = 20², hard-coded; `min_running_reload_speed`
+is loaded and never read) -- standing or crouched still the stance's reload, moving the `Moving ... reload` overlay,
+prone always the prone reload; with a `ReloadTime` the still clip's rate is its duration over it. **The magazine is
+refilled at the start** (477483) and the old one keeps its rounds in the kit's ten-slot ring; the reload sound plays
+at the start; no round leaves during any reload (`FUN_005a7de0` via `FUN_005a7ab0`); walking out of a still reload turns
+it into the moving overlay at the same normalised time (`FUN_00550ef0` 418205-418224); nothing is lost. No magazine
+model moves (`gear_mag01` is static on `lthigh`). **First person:** the frame renderer `FUN_001ebed0` (50823-50842)
+hides the camera target's whole scene node (`body+0x28`, the weapon under its bones) for the world pass whenever the
+camera is in mode 3 -- every zoom state from 1 up (`FUN_001f1610` -> preset 2 -> `FUN_0029b0c0`): no body, head, arms
+or weapon, and no view model; a round zoomed plays the weapon's `%s_zoom` muzzle animation (`FUN_003d22b0`, `def+0x88`)
+at the weapon's firepoint. **The accuracy pip** (`FUN_005aa6e0` 464290-464350, `FUN_00215250` 69706-69770): while the
+raise envelope is up or coming down, the ray from the fire point to the aim point is cast; a hit short of it (0.008)
+is projected and kept as an offset from the reticle's centre; the HUD shows `ret_accuracy` there unless both offsets
+are within the drawn size (signed), fading 32 a frame to 128, pulled in to 200 px only scoped. Implemented in
+`viewer/src/kit.ts`, `heldItem.ts` (`PISTOL_ITEM`, `mountMatrix`), `play.ts` (`setSidearm`, `setItem`, `setMounts`),
+`weaponPose.ts` (`PISTOL_FIRE_VERSIONS`, `PISTOL_RELOAD_CLIPS`, `RELOAD_STILL_SPEED`), `fire.ts` (the magazine ring,
+`RELOAD_DELAY`, `dry`, `setWeapon`, `blockedMuzzle`), `reticle.ts` (`stepPip`), `body.ts` (`carries`).
+

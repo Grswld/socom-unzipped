@@ -179,9 +179,16 @@ describe('the Fire set and the reload as pose layers (FUN_005e0690 pairs, animse
     pose.step(0.5);
     expect(pose.reloadLayer.sample({ clip: still, frame: 0, phase: 0 })!.weight).toBe(1);
     expect(STILL_CLIPS.has('seal_run')).toBe(false);
-    const running = clip('seal_run', 10, []);
-    pose.reloadLayer.sample({ clip: running, frame: 0, phase: 0 });
+    // FUN_005a82e0: over 20 units a second (the page sets `moving`) the overlay, at the same normalised time
+    pose.moving = true;
+    pose.reloadLayer.sample({ clip: still, frame: 0, phase: 0 });
     expect(pose.stats().reload).toBe('seal_mv_reload');
+    expect(pose.reloadClip('prone', true)).toBe('seal_prone_reload');                // prone: no moving reload
+    pose.item = 'pistol';
+    expect([pose.reloadClip('stand', false), pose.reloadClip('crouch', false), pose.reloadClip('prone', false), pose.reloadClip('stand', true)])
+      .toEqual(['seal_p_reload', 'seal_p_crouch_reload', 'seal_p_prone_reload', 'seal_p_mv_reload']);
+    pose.item = 'rifle';
+    pose.moving = false;
     pose.step(1.1);
     expect(pose.reloading()).toBe(false);
     expect(pose.reloadLayer.sample({ clip: still, frame: 0, phase: 0 })).toBeNull();
@@ -191,7 +198,7 @@ describe('the Fire set and the reload as pose layers (FUN_005e0690 pairs, animse
 describe('the held item\'s node (FUN_00553290: "rifle" under rhand with the rifle in hand)', () => {
   it('adds the rifle after the body\'s parts, under rhand at the identity', () => {
     const sk = heldSkeleton(skeleton());
-    expect(sk.parts.map((p) => p.name)).toEqual(['skel_root', 'rhand', 'lbicep', HELD_ITEM.name]);
+    expect(sk.parts.map((p) => p.name)).toEqual(['skel_root', 'rhand', 'lbicep', HELD_ITEM.name, 'pistol']);
     expect(sk.parts[3]!.parent).toBe(1);
     expect(Array.from(sk.world[3]!)).toEqual(Array.from(sk.world[1]!));
   });
@@ -363,13 +370,17 @@ describe('the weapon in the hand changes (Fire.setWeapon): each keeps its magazi
     fire.shoot(); fire.update(0.5); fire.shoot();
     expect(fire.state().magazine.rounds).toBe(28);
     expect(fire.reload()).toBe(true);
+    fire.update(0.001);                                        // asked for, not begun (RELOAD_DELAY)
+    fire.setWeapon(HELD_RIFLE);                                // the same weapon: nothing
+    fire.update(0.02);                                         // begun: the second magazine in
+    expect(fire.state().magazine.rounds).toBe(30);
     fire.setWeapon(HELD_SIDEARM);
     expect(events.at(-1)).toMatchObject({ type: 'reloadEnd', completed: false, weapon: { name: 'M4A1 SD' } });
     expect(fire.state().magazine).toEqual({ rounds: 12, capacity: 12, spare: 2, reloading: false });
     fire.shoot();
     expect(events.at(-1)).toMatchObject({ type: 'round', weapon: { name: 'Mark 23', id: 15, fireAnim: 'muzzle_mark23', sounds: { close: '.MARK_23' } } });
     fire.setWeapon(HELD_RIFLE);
-    expect(fire.state().magazine).toMatchObject({ rounds: 28, capacity: 30, spare: 2 });
+    expect(fire.state().magazine).toMatchObject({ rounds: 30, capacity: 30, spare: 2 });   // 30 in, the 28 and a full one kept
     fire.setWeapon(HELD_SIDEARM);
     expect(fire.state().magazine.rounds).toBe(11);
     expect(fire.weaponRecord()).toBe(HELD_SIDEARM);

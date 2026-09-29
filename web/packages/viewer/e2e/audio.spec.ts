@@ -26,6 +26,14 @@ test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().byName['.M4A1_SIL'] ?? 0)).toBeGreaterThan(0);
   await page.keyboard.press('KeyR');
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().byName['.M4A1_SIL_RLD'] ?? 0)).toBe(1);
+  // WEAPON: L2's Mark 23 fires its own `.MARK_23` (`onFire` by the record's InternalName), then back to the rifle.
+  await expect.poll(() => page.evaluate(() => window.__viewer.fire().magazine.reloading)).toBe(false);
+  expect(await page.evaluate(() => window.__viewer.selectWeapon('pistol'))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__viewer.kit().swap)).toBeNull();
+  await page.evaluate(() => window.__viewer.shoot());
+  await expect.poll(() => page.evaluate(() => window.__viewer.audio().byName['.MARK_23'] ?? 0)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__viewer.selectWeapon('rifle'))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__viewer.kit().swap)).toBeNull();
 
   // A running jump (research 80: from 15 units a second the feet leave the floor; the standing jump's never do, so it
   // lands nothing): the launch's whoosh, then the landing.

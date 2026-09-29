@@ -344,8 +344,11 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     play.setBody(view, map.body!);
     const rifle = new Group();
     play.setWeapon(rifle, [{ name: 'firepoint', at: [7.7854, 0.8338, 0] }]);
-    expect(rifle.parent?.name).toBe('rifle');
-    expect(rifle.parent?.parent?.name).toBe('rhand');
+    expect(rifle.parent).toBe(view.group);                    // rides its mount in the body's frame (`mountMatrix`)
+    expect(rifle.matrixAutoUpdate).toBe(false);
+    const pistol = new Group();
+    play.setSidearm(pistol, [{ name: 'firepoint', at: [1.4723, 0.5647, 0] }]);
+    expect(pistol.parent).toBe(view.group);
     const hold = still('seal_fp_stand', 8);
     play.setClips({ clips: [still('seal_stand', 10), hold, still('seal_reload', 30)], table: null });
     let trigger = false;
@@ -368,6 +371,19 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     play.weaponEvent({ type: 'reloadStart', weapon: { name: 'M4A1', id: 54, fireAnim: null, sounds: { close: null, med: null, far: null, reload: null } }, seconds: 1 });
     play.frame(1 / 60, walk, fly.camera);
     expect(play.weaponStats().pose).toMatchObject({ reload: 'seal_reload' });
+    // WEAPON: the pistol drawn (`./kit`'s mounts and item): the rifle slung, the pistol's muzzle the fire point
+    expect(pistol.visible).toBe(true);                         // on the hips at spawn
+    play.setItem('pistol');
+    play.setMounts({ rifle: 'carry', pistol: 'hand' });
+    play.frame(1 / 60, walk, fly.camera);
+    expect(play.weaponStats()).toMatchObject({ item: 'pistol', mounts: { rifle: 'carry', pistol: 'hand' } });
+    const hip = play.muzzle()!;
+    expect(Math.hypot(hip[0] - 5, hip[2] - 6)).toBeLessThan(20);
+    expect(hip).not.toEqual(muzzle);
+    play.setMounts({ rifle: 'swap', pistol: 'spawn' });
+    expect(play.muzzle()).toBeNull();                          // the item not in the hand: no fire point
+    play.setItem('rifle');
+    play.setMounts({ rifle: 'hand', pistol: 'spawn' });
     // the bomb carrier's satchel, where the body is dressed (character.rdr beside the fixture)
     expect(play.setGearVisible('Satchel', true)).toBe(map.body!.fittings.some((f) => f.name === 'Satchel'));
     view.dispose();

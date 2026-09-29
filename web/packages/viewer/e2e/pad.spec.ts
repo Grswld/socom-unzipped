@@ -136,19 +136,29 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect(page.locator('#pad-layout tbody')).not.toContainText('boost');
   await expect(page.locator('#keys-list')).toContainText('fire (held)');
 
-  // L2 is the game's SwapWeapon2 (the viewer's slot: the M67), again the rifle; R2 its Inventory, one item a press; L1 its
+  // L2 is the game's SwapWeapon2 -- the controller's slot 1.0, the kit's Mark 23 (WEAPON: `./kit`) -- and a second press
+  // does nothing (no toggle back); R2 its Inventory, one slot a press (the rifle, the Mark 23, the throwables); L1 its
   // SwapWeapon1, the rifle.
-  const item = (): Promise<string> => page.evaluate(() => (window.__viewer.grenade().equipped ? window.__viewer.grenade().item : 'rifle'));
-  const tap = async (button: number, lane: 'swap2' | 'inventory'): Promise<void> => {
+  const item = (): Promise<string> => page.evaluate(() => (window.__viewer.grenade().equipped
+    ? window.__viewer.grenade().item : window.__viewer.kit().swap?.to ?? window.__viewer.kit().item));
+  const settled = (): Promise<boolean> => page.evaluate(() => window.__viewer.kit().swap === null);
+  const tap = async (button: number, lane: 'swap1' | 'swap2' | 'inventory'): Promise<void> => {
     await setPad(page, { press: [button] });
     await expect.poll(() => page.evaluate((l) => window.__viewer.pad().input[l], lane)).toBe(true);
     await setPad(page, {});
     await expect.poll(() => page.evaluate((l) => window.__viewer.pad().input[l], lane)).toBe(false);
   };
   await tap(6, 'swap2');
-  await expect.poll(item).toBe('M67');
+  await expect.poll(item).toBe('pistol');
+  await expect.poll(settled).toBe(true);                               // the swap's clip played out
   await tap(6, 'swap2');
+  await expect.poll(item).toBe('pistol');                              // already in the hand: nothing
+  await tap(4, 'swap1');
   await expect.poll(item).toBe('rifle');
+  await expect.poll(settled).toBe(true);
+  await tap(7, 'inventory');
+  await expect.poll(item).toBe('pistol');
+  await expect.poll(settled).toBe(true);
   await tap(7, 'inventory');
   await expect.poll(item).toBe('M67');
   await tap(7, 'inventory');
@@ -157,6 +167,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
     await tap(7, 'inventory');
     await expect.poll(item).toBe(next);
   }
+  await expect.poll(settled).toBe(true);
 
   // Square is the jump on foot (the mover's jump is W2.3a's): what reaches the page is the jump; Cross is the action
   // (web research 86), not a jump.

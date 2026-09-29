@@ -33,8 +33,8 @@ import type { MotionEntry, MotionTable } from './motionTable';
  *   second motion for it (`FUN_0028d860(slot, motion, -1)`), whose clock is not read here.
  * - `RELOAD_BLEND_PLACEHOLDER`: the reload clips have no `BlendTime` in `motion.rdr`, so they blend in and out over
  *   the animator's own placeholder (`BLEND_TIME_PLACEHOLDER`, 0.2 s).
- * - The moving reload (`STILL_CLIPS`): chosen while the clip below is not one of the still ones;
- *   the game's test (`min_running_reload_speed` in `dynamics.rdr`) is not ported.
+ * - The moving reload is the game's `FUN_005a82e0` test (`RELOAD_STILL_SPEED`), frame by frame at the same normalised
+ *   time: a still reload the SEAL walks out of turns into the moving overlay (`FUN_00550ef0` 418205-418224).
  */
 
 /**
@@ -58,15 +58,48 @@ export const FIRE_VERSIONS: Readonly<Record<string, string>> = Object.freeze({
   seal_prone: 'seal_fp_prone',
 });
 
+/**
+ * The pistol's Fire versions (`FUN_005e0690`'s `FUN_005e1af0` pairs, entry +6 of the anim set's table, read through
+ * `FUN_0058c970` -> `FUN_005e19d0` when `m_item` is 2): "Pistol fire stand" `seal_pfp_stand` ... twelve, keyed by the
+ * base clip as `FIRE_VERSIONS` is; the strafes and the 90-degree runs take the pistol's own strafe and run clips.
+ */
+export const PISTOL_FIRE_VERSIONS: Readonly<Record<string, string>> = Object.freeze({
+  seal_stand: 'seal_pfp_stand', seal_stand_alert01: 'seal_pfp_stand', seal_stand_alert02: 'seal_pfp_stand',
+  seal_walk: 'seal_pfp_walk', seal_walk_alert: 'seal_pfp_walk', seal_walk_alert02: 'seal_pfp_walk',
+  seal_jog: 'seal_pfp_jog', seal_jog_alert: 'seal_pfp_jog', seal_run: 'seal_pfp_run',
+  seal_walk_bw: 'seal_pfp_walk_bw', seal_run_bw: 'seal_pfp_run_bw',
+  seal_step: 'seal_pfp_step', seal_alert_step: 'seal_pfp_step',
+  seal_crouch: 'seal_pfp_crouch', seal_crouch_alert01: 'seal_pfp_crouch', seal_crouch_alert02: 'seal_pfp_crouch',
+  seal_crouchwalk: 'seal_pfp_crouchwalk', seal_crouch_step: 'seal_pfp_crouch_step', seal_crouchwalk_bw: 'seal_pfp_crouchwalk_bw',
+  seal_prone: 'seal_pfp_prone',
+  seal_rstrafe: 'seal_p_rstrafe', seal_lstrafe: 'seal_p_lstrafe', seal_rstrafe_fast: 'seal_p_rstrafe_fast',
+  seal_lstrafe_fast: 'seal_p_lstrafe_fast', seal_run_90r: 'seal_p_run_90r', seal_run_90l: 'seal_p_run_90l',
+});
+
 /** The reload clips by stance, and the moving one (animset.rdr's "Rifle reload" family). */
 export const RELOAD_CLIPS = {
   stand: 'seal_reload', crouch: 'seal_crouch_reload', prone: 'seal_prone_reload', moving: 'seal_mv_reload',
 } as const;
 
-/** Every clip the weapon's layer asks the worker for (the page adds them to `PLAY_CLIPS`). */
-export const WEAPON_CLIPS: readonly string[] = [...new Set([...Object.values(FIRE_VERSIONS), ...Object.values(RELOAD_CLIPS)])];
+/** The pistol's (animset.rdr's "Pistol reload", "Pistol crouch reload", "Pistol prone reload", "Moving pistol reload"). */
+export const PISTOL_RELOAD_CLIPS = {
+  stand: 'seal_p_reload', crouch: 'seal_p_crouch_reload', prone: 'seal_p_prone_reload', moving: 'seal_p_mv_reload',
+} as const;
 
-/** The clips the picker plays standing still in each stance: below one of them, a reload is the stance's own. */
+/**
+ * `FUN_005a82e0`'s still test for the reload: the mover's speed squared at most 400.0 (20 units a second) --
+ * hard-coded; `dynamics.rdr`'s `min_running_reload_speed` is loaded but never read. Faster, standing or crouched, the
+ * moving reload (an overlay on the upper body); prone always the prone one.
+ */
+export const RELOAD_STILL_SPEED = 20;
+
+/** Every clip the weapon's layer asks the worker for (the page adds them to `PLAY_CLIPS`). */
+export const WEAPON_CLIPS: readonly string[] = [...new Set([
+  ...Object.values(FIRE_VERSIONS), ...Object.values(RELOAD_CLIPS),
+  ...Object.values(PISTOL_FIRE_VERSIONS), ...Object.values(PISTOL_RELOAD_CLIPS),
+])];
+
+/** The clips the picker plays standing still in each stance (kept for the hook's readers; the reload reads the speed). */
 export const STILL_CLIPS: ReadonlySet<string> = new Set(['seal_stand', 'seal_crouch', 'seal_prone']);
 
 /** PLACEHOLDER (named): the reload clips' blend in and out, seconds (`motion.rdr` gives them no `BlendTime`). */
@@ -97,6 +130,10 @@ export function reloadLength(clip: MotionClip | undefined, table: MotionTable | 
 export class WeaponPose {
   /** The raise weight (`./weaponRaise`), set once a frame. */
   fireWeight = 0;
+  /** The firearm in use (`m_item`): the rifle's or the pistol's Fire versions and reloads. */
+  item: 'rifle' | 'pistol' = 'rifle';
+  /** The mover faster than `RELOAD_STILL_SPEED` (the page sets it each frame): the moving reload. */
+  moving = false;
   private fireClock = 0;
   private fireClip: string | null = null;
   private reload: { stance: ReloadStance; elapsed: number; length: number } | null = null;
@@ -135,7 +172,13 @@ export class WeaponPose {
 
   /** The reload's length in a stance, moving or not: the clip's `playback` (null without the clip). */
   reloadSeconds(stance: ReloadStance, moving: boolean): number | null {
-    return reloadLength(this.clips.get(moving ? RELOAD_CLIPS.moving : RELOAD_CLIPS[stance]), this.table);
+    return reloadLength(this.clips.get(this.reloadClip(stance, moving)), this.table);
+  }
+
+  /** `FUN_005a82e0`'s choice: prone the prone reload; else moving the overlay, still the stance's; the item's set. */
+  reloadClip(stance: ReloadStance, moving: boolean): string {
+    const set = this.item === 'pistol' ? PISTOL_RELOAD_CLIPS : RELOAD_CLIPS;
+    return stance === 'prone' ? set.prone : moving ? set.moving : set[stance];
   }
 
   stats(): WeaponPoseStats {
@@ -145,7 +188,7 @@ export class WeaponPose {
   private sampleFire(current: LayerContext): { parts: readonly PartPose[]; weight: number } | null {
     this.now.fire = null;
     this.now.fireWeight = 0;
-    const name = FIRE_VERSIONS[current.clip.name];
+    const name = (this.item === 'pistol' ? PISTOL_FIRE_VERSIONS : FIRE_VERSIONS)[current.clip.name];
     const fire = name ? this.clips.get(name) : undefined;
     if (!fire || !(this.fireWeight > 0)) return null;
     if (fire.name !== this.fireClip) { this.fireClip = fire.name; this.fireClock = 0; }
@@ -166,7 +209,7 @@ export class WeaponPose {
     this.now.reloadWeight = 0;
     const r = this.reload;
     if (!r) return null;
-    const name = STILL_CLIPS.has(current.clip.name) ? RELOAD_CLIPS[r.stance] : RELOAD_CLIPS.moving;
+    const name = this.reloadClip(r.stance, this.moving);
     const clip = this.clips.get(name);
     if (!clip) return null;
     const fraction = Math.min(1, r.elapsed / r.length);

@@ -2,7 +2,7 @@
 import { Matrix4, Scene, Timer, Vector3, type Object3D } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { HELD_RIFLE, materialTable, polygonNormal, probeFloor, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
+import { HELD_RIFLE, HELD_SIDEARM, materialTable, polygonNormal, probeFloor, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -33,6 +33,7 @@ import { nightVisionRow, setNightVision } from './nightVision';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
+import { Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
@@ -121,11 +122,12 @@ hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetX
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
  */
-const fire = new Fire({
+const fire: Fire = new Fire({
   grid: () => walk.grid(), aim: () => walk.fireAim(),
   muzzle: () => play.muzzle(), reloadSeconds: () => play.reloadSeconds(),   // WEAPON: the rifle in hand (`./play`)
   look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
   kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
+  ready: (): boolean => !kit.swapping(),                                     // WEAPON: no round mid-swap (`./kit`)
 }, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
 if (PLAY) fire.bindKey();
@@ -216,7 +218,7 @@ function showFireMode(): void {
 showFireMode();
 /** The fire-mode switch (`FUN_005c4600`; L3, `B`): not while scoped, nor while the grenade is up (it has one mode). */
 function switchFireMode(): string {
-  if (!grenade.equipped()) fireMode = nextFireMode(HELD_RIFLE, fireMode, zoom.target() > 1.01);
+  if (!grenade.equipped()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01);
   showFireMode();
   return FIRE_MODE_NAMES[fireMode] ?? String(fireMode);
 }
@@ -237,6 +239,65 @@ function stepZoom(how: 'in' | 'out' | 'cycle'): number {
   if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
   return zoom.state();
 }
+/**
+ * WEAPON (`./kit`): the kit's two firearms -- the M4A1 SD (W2.R4) and `mp_seal1`'s Mark 23 -- and the swap between them.
+ * L1 (`swap1`, `1`) takes the rifle, L2 (`swap2`, `2`) the sidearm -- the controller's slots 0.0 and 1.0
+ * (`FUN_00598280`) -- R2 (`inventory`) steps through every slot, the grenades among them. `m_item` drives the record the
+ * rounds, the bloom, the zoom and the fire mode use, the anim set, the reticle set and the HUD's icon.
+ */
+const KIT_RECORDS = { rifle: HELD_RIFLE, pistol: HELD_SIDEARM } as const;
+/** The HUD's icon per firearm (`IconTextureName`: the Mark 23's `mark23_icon.tif`; the rifle's the HUD's own). */
+const KIT_ICONS: Record<Firearm, string> = { rifle: RIFLE_ICON, pistol: 'mark23_icon.tif' };
+/** Each firearm's fire mode, kept while the other is in the hand (the rifle comes up on burst: research 84 §6). */
+const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(HELD_RIFLE), pistol: defaultFireMode(HELD_SIDEARM) };
+let kitItem: Firearm = 'rifle';
+const kit: Kit = new Kit({
+  swapClip: (to) => walk.swapWeapon(to),
+  // FUN_005a8cb0 / FUN_005bdc30's gates: not while reloading, not while a throw is held or thrown.
+  canSwap: (): boolean => walk.mode() === 'walk' && !fire.state().magazine.reloading && grenade.phase() !== 'holding' && grenade.phase() !== 'throwing',
+  item: (item) => {
+    fireModes[kitItem] = fireMode;
+    kitItem = item;
+    const record = KIT_RECORDS[item];
+    fire.setWeapon(record);
+    accuracy.setWeapon(record);
+    zoom.setWeapon(record);
+    fireMode = fireModes[item];
+    showFireMode();
+    play.setItem(item);
+  },
+  // FUN_005c4b10: the trigger lets go, and a scope drops to first person.
+  started: () => { fire.release(); if (zoom.state() >= 4) setZoom(1); },
+});
+/** L1 / L2: the grenade put away, then the firearm (`Kit.select`); the one in the hand does nothing. */
+function selectFirearm(to: Firearm): boolean {
+  if (walk.mode() !== 'walk') return false;
+  if (grenade.equipped()) grenade.select('rifle');
+  return kit.select(to);
+}
+/**
+ * R2, the Inventory (`FUN_0021bda0`'s menu over the kit's slots, one press a step here): the rifle, the Mark 23, then
+ * the throwables the pouch holds (`GrenadeThrower.cycleInventory`), and round to the rifle.
+ */
+function kitInventory(): string {
+  if (walk.mode() !== 'walk') return kitItem;
+  if (!grenade.equipped()) {
+    const firearm = kit.state().swap?.to ?? kit.item();
+    if (firearm === 'rifle') { kit.select('pistol'); return 'pistol'; }
+    const next = grenade.cycleInventory();                // from the firearm to the pouch's first throwable
+    if (next === 'rifle') kit.select('rifle');
+    return next;
+  }
+  const next = grenade.cycleInventory();
+  if (next === 'rifle') { kit.select('rifle'); return 'rifle'; }
+  return next;
+}
+if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
+  if ((e.code !== 'Digit1' && e.code !== 'Digit2') || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
+  const target = e.target;
+  if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+  selectFirearm(e.code === 'Digit2' ? 'pistol' : 'rifle');
+});
 if (PLAY) globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
   if (e.code !== 'KeyB' || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
   const target = e.target;
@@ -297,14 +358,15 @@ function warmEffects(): void {
   void compileEffects(g).catch(() => {}).finally(() => effects.warmDone(g));
 }
 // The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
-effects.setLightReceivers(() => [view?.group, view?.weapon].filter((o): o is NonNullable<typeof o> => !!o));
+effects.setLightReceivers(() => [view?.group, view?.weapon, view?.sidearm].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
  */
 function weaponFrame(): { matrix: Matrix4; muzzle: [number, number, number] | null } | null {
-  const object = view?.weapon;
-  const points = loaded?.weapon?.points ?? [];
+  const pistol = kit.item() === 'pistol';
+  const object = pistol ? view?.sidearm : view?.weapon;
+  const points = (pistol ? loaded?.sidearm?.points : loaded?.weapon?.points) ?? [];
   if (!object || !play.weaponStats().held) return null;
   object.updateWorldMatrix(true, false);
   const at = (name: string): [number, number, number] | null => {
@@ -706,9 +768,9 @@ function padFrame(dt: number): void {
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
   // The kit's slots (the game's L1 SwapWeapon1, L2 SwapWeapon2 and R2 Inventory, research 85 §9), walking only.
   if (PLAY && walk.mode() === 'walk') {
-    if (pressed.includes('swap1')) grenade.equip(false);
-    if (pressed.includes('swap2')) grenade.swap2();
-    if (pressed.includes('inventory')) grenade.cycleInventory();
+    if (pressed.includes('swap1')) selectFirearm('rifle');
+    if (pressed.includes('swap2')) selectFirearm('pistol');
+    if (pressed.includes('inventory')) kitInventory();
   }
   playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
   traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
@@ -876,6 +938,8 @@ async function boot(): Promise<void> {
     const walking = walk.mode() === 'walk';
     gunFrame(dt, walking);          // research 84: the bloom, the zoom and its FOV
     for (const name of throwPose.step(dt)) audio.onAnimCallback(name, walk.drawnFeet());   // the throw clip's `throw_whoosh`
+    if (walking) kit.frame(dt); else kit.settle();   // WEAPON: the swap's hand-off and end (`./kit`)
+    play.setMounts(kit.state().mounts);
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
@@ -908,7 +972,16 @@ async function boot(): Promise<void> {
       reticle.setSize(r.size, r.offset);
       reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
       // The weapon's reticle set (FUN_005be300: by its ID and the view): the rifle's for the M4A1 SD, the sidearm's for a pistol.
-      reticle.setSet(reticleType(HELD_RIFLE.id, zoom.state(), zoom.target()));
+      reticle.setSet(reticleType(fire.weaponRecord().id, zoom.state(), zoom.target()));
+      // WEAPON: the accuracy pip (FUN_005aa6e0 / FUN_00215250): where the raised muzzle's ray is blocked short of the aim.
+      const block = play.weaponStats().raise.weight > 0 && zoom.view() !== 'scope' && !grenade.equipped() ? fire.blockedMuzzle() : null;
+      let pip: [number, number] | null = null;
+      if (block) {
+        const [bx, by] = aimPoint(fly.camera, block);
+        const f = reticle.state().frame;
+        if (f.height > 0) pip = [(bx - nx) * f.width * (448 / f.height), (by - ny) * 448];
+      }
+      reticle.setPip(pip, zoom.state() > 4, dt);
     }
     if (!walking) tacMap.setOpen(false);
     tacMap.frame(dt);
@@ -919,7 +992,7 @@ async function boot(): Promise<void> {
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
     traversal.effectsFrame();       // research 86: the water's ripples (FUN_005b52b0)
-    hud.setWeaponIcon(grenade.icon() ?? RIFLE_ICON);   // the throwable's HUDW icon while it is up
+    hud.setWeaponIcon(grenade.icon() ?? KIT_ICONS[kit.item()]);   // WEAPON: the firearm's own icon   // the throwable's HUDW icon while it is up
     hud.feed({
       // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
@@ -1054,6 +1127,8 @@ function show(map: LoadedMap): void {
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
+  play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
+  kit.reset();
   void warmWalk?.().catch(() => {});                          // what entering the walk draws first, compiled now
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
@@ -1230,6 +1305,9 @@ window.__viewer = {
     return audio.stats();
   },
   weapon: () => play.weaponStats(),
+  kit: () => kit.state(),
+  selectWeapon: (item) => selectFirearm(item),
+  inventory: () => kitInventory(),
   trigger: (down) => trigger(down),
   setGear: (name, on) => play.setGearVisible(name, on),
   hud: () => hud.state(),

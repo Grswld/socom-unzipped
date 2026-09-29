@@ -71,6 +71,12 @@ export const DECAL_OFFSET = 0.05;
 export const MAX_DECALS = 150;
 /** A reload's length in seconds [estimate: the header]. */
 export const RELOAD_SECONDS = 2;
+/**
+ * WEAPON: the reload's delay, seconds (`ReloadDelay`, the weapon spec's `+0x5c`, default 0.01 -- no record sets it):
+ * every reload starts through `FUN_005c2a90` this long after it is asked for, by the button or by the magazine running
+ * dry (`FUN_005c5340` 479297-479320: the automatic reload, not for grenades).
+ */
+export const RELOAD_DELAY = 0.01;
 /** The tracer's start from the eye, in the view's own axes (right, up, ahead), units [estimate: a muzzle stand-in]. */
 const MUZZLE: Vec3 = [1.2, -1.5, 3];
 /** `FUN_005aa6e0`'s tolerance on a hit against the aim, units a coordinate (decomp 464340-464350): 0.008. */
@@ -109,6 +115,8 @@ export interface FireSource {
   look?(): { pitch: number; stance: KickStance } | null;
   /** WEAPON: turns the aim's pitch by `radians` (the kick). */
   kickPitch?(radians: number): void;
+  /** WEAPON: false while no round may leave (a weapon swap playing: `./kit`). */
+  ready?(): boolean;
 }
 
 /**
@@ -138,6 +146,8 @@ export type FireEvent =
     through?: { point: Vec3; normal: Vec3; material: number | null }[];
   }
   | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
+  /** WEAPON: the trigger pulled on an empty magazine (the game's empty click; a reload follows when there is a magazine). */
+  | { type: 'dry'; weapon: FireWeapon }
   | { type: 'reloadEnd'; weapon: FireWeapon; completed: boolean };
 export type FireListener = (event: FireEvent) => void;
 export interface ShotHit {
@@ -229,8 +239,14 @@ export class Fire {
   private nextDecal = 0;
   private readonly tracer: Line;
   private tracerFrames = 0;
-  private rounds: number;
-  private spare: number;
+  /**
+   * WEAPON: the magazines (the kit's ten-slot ring: `NumMags` of them, each keeping its own rounds -- a reload takes the
+   * next one with rounds and the old keeps what it had) and the one in the weapon.
+   */
+  private mags: number[] = [];
+  private current = 0;
+  /** A reload asked for and not yet begun (`RELOAD_DELAY`), seconds left; -1 none. */
+  private reloadPending = -1;
   private reloadLeft = 0;
   /** Seconds until the next round may go; at most 0 is ready. */
   private wait = 0;
@@ -244,7 +260,7 @@ export class Fire {
   private readonly listeners = new Set<FireListener>();
   private kick: RifleKick;
   /** WEAPON: each weapon's magazine while another is in the hand (`setWeapon`), by `InternalName`. */
-  private readonly stowedMags = new Map<string, { rounds: number; spare: number }>();
+  private readonly stowedMags = new Map<string, { mags: number[]; current: number }>();
   private marks: MarkTable | null = null;
   private penetrationOf: ((material: number | undefined) => number) | null = null;
   private tracerRule: ((weaponId: number, round: number) => boolean) | null = null;
@@ -257,8 +273,7 @@ export class Fire {
     private readonly mark: DecalEntry = BULLET_MARK,
     private readonly random: () => number = Math.random,
   ) {
-    this.rounds = rifle.magazine;
-    this.spare = Math.max(0, rifle.mags - 1);
+    this.fillMags();
     this.kick = new RifleKick(rifle, random);
     this.material = new MeshBasicMaterial({
       transparent: true, depthWrite: false, side: DoubleSide, fog: true, toneMapped: false,
@@ -332,10 +347,36 @@ export class Fire {
     return m;
   }
 
+  /** The round in the weapon's magazine (the ring's current slot). */
+  private get rounds(): number { return this.mags[this.current] ?? 0; }
+  private set rounds(n: number) { this.mags[this.current] = n; }
+  /** The other magazines with rounds in them: the ammo box's MAGS. */
+  private get spare(): number { return this.mags.filter((n, i) => i !== this.current && n > 0).length; }
+  /** The next magazine of the ring with rounds, after the one in the weapon; -1 none. */
+  private nextMag(): number {
+    for (let k = 1; k < this.mags.length; k++) {
+      const j = (this.current + k) % this.mags.length;
+      if (this.mags[j]! > 0) return j;
+    }
+    return -1;
+  }
+  /** `NumMags` full magazines, the first in the weapon. */
+  private fillMags(): void {
+    this.mags = Array.from({ length: Math.max(1, this.rifle.mags) }, () => this.rifle.magazine);
+    this.current = 0;
+  }
+
   /** The trigger pressed: a round now if the rifle is ready; held, `update` keeps firing at the rate. */
   pull(): Shot | null {
+    const edge = !this.held;
     if (!this.held) { this.pulled = 0; this.gun?.trigger(true); }
     this.held = true;
+    // WEAPON: a dry trigger clicks, then reloads when there is a magazine to take (`FUN_005c5340`).
+    if (edge && this.rounds <= 0 && this.reloadLeft <= 0 && this.reloadPending < 0 && this.source.aim()) {
+      this.emit({ type: 'dry', weapon: this.weapon() });
+      if (this.nextMag() >= 0) this.reloadPending = RELOAD_DELAY;
+      return null;
+    }
     return this.pullRound();
   }
 
@@ -386,11 +427,11 @@ export class Fire {
   setWeapon(record: WeaponRecord): void {
     if (record.name === this.rifle.name) return;
     this.cancelReload();
-    this.stowedMags.set(this.rifle.name, { rounds: this.rounds, spare: this.spare });
+    this.stowedMags.set(this.rifle.name, { mags: [...this.mags], current: this.current });
     this.rifle = record;
+    this.reloadPending = -1;
     const kept = this.stowedMags.get(record.name);
-    this.rounds = kept?.rounds ?? record.magazine;
-    this.spare = kept?.spare ?? Math.max(0, record.mags - 1);
+    if (kept) { this.mags = [...kept.mags]; this.current = kept.current; } else this.fillMags();
     this.wait = 0;
     this.pulled = 0;
     this.kick = new RifleKick(record, this.random);
@@ -403,6 +444,7 @@ export class Fire {
 
   /** WEAPON: a reload in progress stops, the magazine unchanged (`reloadEnd`, not completed); false when none ran. */
   cancelReload(): boolean {
+    this.reloadPending = -1;
     if (this.reloadLeft <= 0) return false;
     this.reloadLeft = 0;
     this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
@@ -433,13 +475,29 @@ export class Fire {
     return [p[0], p[1], p[2]];
   }
 
-  /** `R`: a fresh magazine from the spares over `RELOAD_SECONDS`; false when full, out of spares or already at it. */
+  /**
+   * `R`: the next magazine with rounds, `RELOAD_DELAY` from now; false when the magazine is full, there is no other
+   * with rounds, or a reload is already asked for or running.
+   */
   reload(): boolean {
-    if (this.reloadLeft > 0 || this.spare <= 0 || this.rounds >= this.rifle.magazine) return false;
+    if (this.reloadLeft > 0 || this.reloadPending >= 0 || this.nextMag() < 0 || this.rounds >= this.rifle.magazine) return false;
+    this.reloadPending = RELOAD_DELAY;
+    return true;
+  }
+
+  /**
+   * `FUN_005c2a90`: the reload begins -- the next magazine goes in at once (decomp 477483: **the magazine is refilled at
+   * the start**; the old one keeps its rounds in the ring), the reload sound plays (`reloadStart`), and for the clip's
+   * length (`FireSource.reloadSeconds`, else `RELOAD_SECONDS`) no round leaves (`FUN_005a7de0` via `FUN_005a7ab0`).
+   */
+  private beginReload(): void {
+    this.reloadPending = -1;
+    const next = this.nextMag();
+    if (next < 0 || this.rounds >= this.rifle.magazine) return;
+    this.current = next;
     const clip = this.source.reloadSeconds?.() ?? null;
     this.reloadLeft = clip !== null && clip > 0 ? clip : RELOAD_SECONDS;
     this.emit({ type: 'reloadStart', weapon: this.weapon(), seconds: this.reloadLeft });
-    return true;
   }
 
   /**
@@ -447,10 +505,14 @@ export class Fire {
    * tracer's one frame -- a tracer lit since the last frame is drawn in this one and gone in the next.
    */
   update(dt: number): number {
+    if (this.reloadPending >= 0) {
+      this.reloadPending -= dt;
+      if (this.reloadPending <= 1e-9) this.beginReload();
+    }
     if (this.reloadLeft > 0) {
       this.reloadLeft -= dt;
       if (this.reloadLeft <= 1e-9) {
-        this.reloadLeft = 0; this.rounds = this.rifle.magazine; this.spare--;
+        this.reloadLeft = 0;
         this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: true });
       }
     }
@@ -482,7 +544,7 @@ export class Fire {
   state(): FireState {
     return {
       shots: this.shots,
-      magazine: { rounds: this.rounds, capacity: this.rifle.magazine, spare: this.spare, reloading: this.reloadLeft > 0 },
+      magazine: { rounds: this.rounds, capacity: this.rifle.magazine, spare: this.spare, reloading: this.reloadLeft > 0 || this.reloadPending >= 0 },
       lastHit: this.lastHit ? { ...this.lastHit, point: [...this.lastHit.point], normal: [...this.lastHit.normal] } : null,
       decals: this.decals.filter((d) => d.visible).length,
       kick: this.kick.stats(),
@@ -495,8 +557,9 @@ export class Fire {
     for (const d of this.decals) this.object.remove(d);
     this.decals.length = 0;
     this.nextDecal = 0;
-    this.rounds = this.rifle.magazine;
-    this.spare = Math.max(0, this.rifle.mags - 1);
+    this.stowedMags.clear();
+    this.fillMags();
+    this.reloadPending = -1;
     this.reloadLeft = 0;
     this.wait = 0;
     this.held = false;
@@ -528,7 +591,8 @@ export class Fire {
   };
 
   private tryFire(): Shot | null {
-    if (this.wait > 1e-9 || this.reloadLeft > 0 || this.rounds <= 0) return null;
+    if (this.wait > 1e-9 || this.reloadLeft > 0 || this.reloadPending >= 0 || this.rounds <= 0) return null;
+    if (this.source.ready && !this.source.ready()) return null;          // WEAPON: no round mid-swap (`./kit`)
     const aim = this.source.aim(), grid = this.source.grid();
     if (!aim || !grid) return null;
     const look = unit(sub(aim.far, aim.eye));
@@ -578,6 +642,8 @@ export class Fire {
       if (h) { hit = face(h, span); this.place(hit, dir); }
     }
     this.rounds--;
+    // The automatic reload (`FUN_005c5340` 479297-479320): the magazine ran dry and another has rounds.
+    if (this.rounds <= 0 && this.nextMag() >= 0) this.reloadPending = RELOAD_DELAY;
     this.shots++;
     this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
     // The surface it stopped on, or -- went through everything and was spent in the air -- the last it struck.
