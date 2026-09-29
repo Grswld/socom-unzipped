@@ -20,7 +20,7 @@ The owner (Craig), 2026-09-29, verbatim in substance:
   limits** if they can be found.
 - **All assets and UI are the originals**, or highly accurate clones of them.
 
-Read against the repository's standing rules (`web/README.md`, the sprint 1-2 specs, the walk's research 80-90):
+Read against the repository's standing rules (`web/redotcom/README.md`, the sprint 1-2 specs, the walk's research 80-90):
 
 - **W3.R1 — the game is the reference.** Every rule of a round — damage per weapon and per body part, health,
   death, the respawn delay and where a SEAL respawns, team assignment and balance, the scoring, the kill messages, the
@@ -59,7 +59,7 @@ Read against the repository's standing rules (`web/README.md`, the sprint 1-2 sp
 
 ## 2. Where it stands (the data on hand)
 
-- **The player** (`web/packages/viewer/src/`): `walk.ts` (the mover: the decomp's stick law, stances, both jumps,
+- **The player** (`web/redotcom/packages/viewer/src/`): `walk.ts` (the mover: the decomp's stick law, stances, both jumps,
   landings, per-key action root motion, traversal seams), `playerCamera.ts` (`FUN_0029a950`), `look.ts` (the pad's
   look law), `animator.ts` + `locomotion.ts` (the game's pick-and-blend over `MOTION_P.ZAR`), `play.ts` + `bodyView.ts`
   (the SEAL mesh, gear, per-vertex GPU shading), `headLook.ts`, `weaponRaise.ts`/`weaponPose.ts`/`heldItem.ts` (the
@@ -68,7 +68,7 @@ Read against the repository's standing rules (`web/README.md`, the sprint 1-2 sp
   (ladders, climbs, peek, dive, water), `hud.ts` (the in-round HUD, **`scoreboard.ts`** — `FUN_0022a8b0`'s layout —
   and the message window `hud.postMessage`), `audio.ts` + `@s2u/sound` (the map's banks, positional, reverb),
   `effects.ts` (zAnim effects, lights), `gamepad.ts` (the PS2 layout incl. Select = scoreboard), `touchWalk` (phone).
-- **The research** (`web/docs/research/77-90`, `docs/research/`): motion, character mesh, weapons, jump, sounds,
+- **The research** (`web/redotcom/docs/research/77-90`, `docs/research/`): motion, character mesh, weapons, jump, sounds,
   maps, look, accuracy (84: every M4A1 SD number), grenades (85: damage 10 out to 75, 0 at 150), traversal, HUD (87:
   the scoreboard §12, the message window §14 incl. "%s falls to their death", suicide and frag lines, the respawn fade
   found by motion research 80 §6c: `FUN_005979a0`, `FUN_00599b60`), feel parity (88) and the playtests (90).
@@ -119,11 +119,11 @@ rows leaving as players do; the message window prints the game's kill lines.
 - **M1 — The round's rules from the decomp** (research, no code): damage model and hit zones, health, death and
   respawn (delay, spawn selection, protection), teams and balance, scoring and kill credit, friendly fire, the kill
   messages, the spectator camera, the name limit, the match timer and end (respawn matches have a time and/or score
-  limit — find the defaults). Output: `web/docs/research/91-the-round.md`, every value cited.
+  limit — find the defaults). Output: `web/redotcom/docs/research/91-the-round.md`, every value cited.
 - **M2 — The shared sim split.** Make the player's simulation runnable headless in Node without three.js/DOM
   (a `@s2u/sim` package or a clean `viewer/src/sim/` boundary): the mover, the probe and hull, the round and its
   accuracy, grenades; the render and audio stay in the viewer. Pinned by the existing tests.
-- **M3 — The server** (`web/packages/server`, Node/TypeScript): rooms per map, the 60 Hz loop, player/spectator
+- **M3 — The server** (`web/redotcom/packages/server`, Node/TypeScript): rooms per map, the 60 Hz loop, player/spectator
   sessions, the FIFO queue, input processing, snapshots (delta-compressed, quantised), the transport per W3.R3
   (WebSocket first, then WebRTC data channels with fallback), rate limits, health/metrics.
 - **M4 — Netcode in the client:** connect/join/leave, prediction and reconciliation of the local SEAL, interpolation

@@ -49,7 +49,7 @@ tree; the numbers below are counts, offsets and names.
 | `RUN/SOUNDS/VAGSTORE.ZAR` | 576,593,920 | 10,943 | `C0_0341A.vag`, `CH_0001.vag` ...: voice-overs, streamed (`snd_PlayVAGStreamByLoc`, research/32 §6) |
 | `RUN/SOUNDRDR.ZAR` | 1,897,008 | 2 | `sounds.rdr`, 1,896,864 B compiled |
 
-The head is the viewer's ZAR v2 (web/docs/research/72, research/36 §1): flags 0, key count at +4, string-table size
+The head is the viewer's ZAR v2 (web/redotcom/docs/research/72, research/36 §1): flags 0, key count at +4, string-table size
 +8, its packed address +12, padding +16 (0x800 here), data size +84 (**0** in both stores), version 0x20002 at +96.
 A map's banks sit together: Frostfire's `MP2_am.bnk` at 29,667,072 (986,408 B), `MP2_fx.bnk` 30,653,568 (687,344),
 `MP2_vc.bnk` 31,340,928 (176,088). The game loads them by disc location (`snd_BankLoadByLoc`, research/40 §9) from

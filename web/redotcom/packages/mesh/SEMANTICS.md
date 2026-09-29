@@ -198,7 +198,7 @@ For a viewer that does not emulate lighting, use the raw RGB as a baked vertex c
 
 **[corrected 2026-09-20]** Read that as a statement about *alpha*. 128 is unity on RGB too: every texture
 binds `TEX0.TFX = MODULATE` (every one of the 241 TEX0 register writes in the three maps' bind packets,
-`web/tools/dump-bindpacket.ts`) and MODULATE is `C = (Ct × Cf) >> 7`,
+`web/redotcom/tools/dump-bindpacket.ts`) and MODULATE is `C = (Ct × Cf) >> 7`,
 so `rgb/128` is the browser value and `rgb/255` draws 1.992× dark. See §11's bullet.
 
 **[data]** Alpha is 128 for 14,423 of 15,071 Frostfire vertices; the remainder (20, 0, 35, 30, …)
@@ -326,7 +326,7 @@ which concatenates `M_proj × M_obj` into data quadwords 0..3 and leaves `M_view
   **Superseded 2026-09-21:** they do not. The 123 chunks belong to 101 visual-bearing nodes carrying
   **6** distinct matrices; (960, 0, 800) is only the modal one, and "one translation serves all" held
   by luck of arithmetic. The `N%03d_%03d` → node mapping is `hookupVisuals`. See §11.2 / the
-  viewer spec §9, and `web/packages/scene/`.
+  viewer spec §9, and `web/redotcom/packages/scene/`.
 - With that translation applied, the decoded floor under spawn A `(796, 100, 614)` is
   **`floor_oilgrime.tif` at y = 100.0** (chunk `N013_000`) and under spawn B `(536, 143, 1254)` is
   **`floor_oilgrime.tif` at y = 142.0** (chunk `N038_000`). The known spawn heights are 100 and
@@ -485,7 +485,7 @@ Evidence the placement is right rather than merely different: the `di` collision
 the same matrices put a surface **directly under spawn A at y = 100.00** and **under spawn B at
 y = 142.00** (feet 100 and 143), and the render geometry still has `floor_oilgrime.tif` under A in chunk
 `N013_000` at y = 100 and under B in `N038_000` at y = 142 — the same two chunks and heights §8 reached
-with the modal translation. See `web/packages/scene/`.
+with the modal translation. See `web/redotcom/packages/scene/`.
 
 ### 11.3 Handedness against the console image
 The frame is self-consistent (§6, §8) and matches the collision geometry and both spawn points, but
@@ -496,7 +496,7 @@ or check that the AI-map briefing overlay in `AIMAPS.MPS` lines up.
 
 ### 11.4 `TOP+0.PRIM`'s `FGE` bit — settled 2026-09-26: a per-surface "no fog"
 33 of 416 packets clear `FGE` on the family-B template while the family-A template keeps it
-(water, sky, a ceiling and two monitors). Run over all 22 maps (`web/tools/dump-fge.ts`), the packets
+(water, sky, a ceiling and two monitors). Run over all 22 maps (`web/redotcom/tools/dump-fge.ts`), the packets
 that clear it are exactly the skies (`*sky*`, `skycap`, `clouds`, `moon`, `star`, `sunglow`), the
 self-lit surfaces (`lightrays`, `lightglow*`, `light_bulb`, `bomb_glow`, `monitor_*`,
 `tex_computer*`, `metallight`) and water, on every map that has them, plus a few interior surfaces.
@@ -516,7 +516,7 @@ in the EE's command list, not the archive, so its per-surface bindings must come
 check that the detail `uv` scale is 4.0 for the surfaces whose VU1 dumps use `0x30`/`0x32`.
 
 **Answer.** The test cannot be run as posed: the `0x30`/`0x32` commands are in the per-frame command
-list (§9), so no map-file tool (`web/tools/dump-prim.ts` included) can show which packets use them; and
+list (§9), so no map-file tool (`web/redotcom/tools/dump-prim.ts` included) can show which packets use them; and
 the dumps R13 §4.8 read the 4.0 off (`logs/vu1dump{2,3,4}`) are not in the tree, the one whose place is
 recorded (`vu1dump3`) having been captured in the Seeding Chaos mission (research 26 §3.2), not on a
 multiplayer map. What the archive does carry answers it instead:
@@ -567,7 +567,7 @@ Everything above is Task 11's research document, copied verbatim. This section r
   **[data]** Every texture in Frostfire, Desert Glory and Crossroads binds `TEX0.TFX = MODULATE`. The
   measurement is over the **TEX0 register writes** in the maps' texture bind packets — 241 of 241, both
   `TEX0_1` and `TEX0_2`, across the 240 textures research/72 counts — with
-  `web/tools/dump-bindpacket.ts`. MODULATE is `C = (Ct × Cf) >> 7`, so a lane
+  `web/redotcom/tools/dump-bindpacket.ts`. MODULATE is `C = (Ct × Cf) >> 7`, so a lane
   of 128 leaves the texel unchanged and 255 doubles it. Alpha's "128 is opaque" is that same unity point,
   not a second convention: the blend equation simply has nowhere to put a value above opaque.
 

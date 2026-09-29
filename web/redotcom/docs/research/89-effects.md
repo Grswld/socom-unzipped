@@ -2,7 +2,7 @@
 
 The EFFECTS workstream of the walk mode (the owner: "1:1 feel of SOCOM 2"). Everything a round shows around the
 rifle: the muzzle effect a weapon record names (`FireAnimName`), the ejected casing, the smoke, the bullet's impact
-per surface and its mark. Read-only on the disc (`game/disc/RUN/`, the owner's extraction under `web/public/maps/RUN`)
+per surface and its mark. Read-only on the disc (`game/disc/RUN/`, the owner's extraction under `web/redotcom/public/maps/RUN`)
 and on the decomp (`game/analysis/socom2_game.elf.decomp.c`, cited as `decomp <line>` with the `FUN_` address);
 reCOM (`research/recom/src/gamez/zAnim/zanim.h`) for the structures' names. No game run. The disc bytes stay out of
 the tree; `npx tsx tools/dump-effects.ts MP2 <animation> [--mission] [--decoded]` prints what this note reads.

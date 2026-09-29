@@ -5,7 +5,7 @@ floaty", "the walk sideways animation is off"). Everything below is read from `g
 (cited as `FUN_<address>` and the file's line numbers), the ELF's data (`game/disc/socom2_game.elf`, read with capstone
 where the decompilation lost an argument), and the disc's `RUN/READERC.ZAR` (`motion.rdr`, `animset.rdr`,
 `dynamics.rdr`) and `RUN/MOTION_P.ZAR`. No console run: §8 lists what one would confirm. The viewer's code is
-`web/packages/viewer/src/{walk,locomotion,animator,play,playerCamera}.ts`; the tests pin every number here.
+`web/redotcom/packages/viewer/src/{walk,locomotion,animator,play,playerCamera}.ts`; the tests pin every number here.
 
 ## 0. The answers
 

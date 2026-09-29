@@ -29,7 +29,8 @@ research notes (`docs/research/`); the notes are cited by number.
                                   +--- src/sim.ts -----+   headless: no three, no DOM, no Web Audio
 ```
 
-Everything is TypeScript in one npm workspace (`web/package.json`, `workspaces: packages/*, tools`). The packages are
+Everything is TypeScript in one npm workspace (`web/package.json`, whose members are `redotcom`, `redotcom/packages/*`,
+`redotcom/tools`, the landing site `landing` and the design system `shared`). The packages are
 not published to a registry; each exports its `src/index.ts` directly and Vite/`tsx` compile on the fly.
 
 ## The packages and their boundaries

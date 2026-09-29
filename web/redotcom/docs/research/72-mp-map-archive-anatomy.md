@@ -96,7 +96,7 @@ Root, then `models`, then one key per model prototype. Each is a `CNode` read by
 
 > **Superseded 2026-09-21:** `nparams`' 96 bytes are the 64-byte matrix, a **24**-byte bbox (`CBBox` is two
 > `CPnt3D`), then the u32 `m_type` (2 = instance node) and a u32 flag word -- not a 32-byte bbox. See
-> `web/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9.
+> `web/redotcom/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9.
 
 `vparams` / `detail_cnt` / `detail_size` / `detail_buff` are exactly `CVisual::Read`
 (`research/recom/src/gamez/zVisual/vis_main.cpp:276-297`). **`detail_buff` is not mesh data**: 28 bytes of LOD and
@@ -259,7 +259,7 @@ u32 { m_texelBitSize:8, m_selectQwc:8, m_pal_offset:8,
   08 00 00 00  00 00 00 00  AF AF AF AF  AF AF AF AF
   ```
 
-  Measured with `web/tools/probe-head.ts` over all **83 direct 32bpp textures across the 22 maps**
+  Measured with `web/redotcom/tools/probe-head.ts` over all **83 direct 32bpp textures across the 22 maps**
   (83 of 83) and all **53 palettised textures in MP2** (53 of 53). Sixteen bytes that do not vary
   with the map, the size, the format or the content are not image data.
 
@@ -302,7 +302,7 @@ u32 { m_texelBitSize:8, m_selectQwc:8, m_pal_offset:8,
   decodes upside down, so a viewer flips V.
   **Superseded 2026-09-21:** "bottom-up" is the same thing GL and glTF call V = 0, so a viewer that uploads
   the rows in memory order with `flipY = false` needs no flip at all, and the UVs go up unchanged. See
-  `web/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9 (M3).
+  `web/redotcom/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9 (M3).
 - **The 8-bit palettes do carry the GS `csm1` CLUT layout** (settled the same way): entries sit in blocks of 32
   whose two middle 8-entry groups are swapped, undone by `(i & ~0x18) | ((i & 0x08) << 1) | ((i & 0x10) >> 1)`.
   `cuba1a_sky01.tif` is the witness -- a smooth cloud sky with the swap undone, a hard-banded contour map
@@ -354,7 +354,7 @@ u32 { m_ditype:2, m_ptcount:8, m_material:8, m_cameratype:2,
 ```
 
 > **Superseded 2026-09-21:** `m_refcount` is **not** 0x2d in every polygon -- the sample that said so was
-> narrow; over all 2,756 it varies. See `web/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9.
+> narrow; over all 2,756 it varies. See `web/redotcom/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9.
 
 Decoded `m_ptcount` equals `sizeof(points)/16` in **all 2,756 Frostfire polygons** and all polygons of the other
 four maps. `points` are `CPnt4D` (4 x f32, `w` unused) in model space.
@@ -400,7 +400,7 @@ created at load from `grid_params`.
   `model_name` is the prototype reference (`node_io.cpp:251-320`).
   **Superseded 2026-09-21:** the 96 bytes are matrix 64 + bbox **24** + `m_type` u32 + flags u32, and
   `m_type == 2` is what marks an instance node -- which the reader needs. See
-  `web/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9.
+  `web/redotcom/packages/mesh/SEMANTICS.md` §11.2 / the viewer spec §9.
 - **DMA-chain walker plus VIF1 unpack**: medium. Only NOP, STCYCL, UNPACK, MSCAL, MSCNT and five UNPACK formats,
   all `FLG=1`, plus STCYCL skipping-write. The relocation byte and the ref-into-own-buffer convention are the only
   non-standard parts (`vis_main.cpp:325-370`). The repo's VIF1 lives in the C++ runtime

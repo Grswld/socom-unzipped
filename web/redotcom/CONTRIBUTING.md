@@ -1,13 +1,13 @@
 # Contributing to the web project
 
-The repository-wide rules are in [`../CONTRIBUTING.md`](../CONTRIBUTING.md): the leak check and its hooks, branch
+The repository-wide rules are in [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md): the leak check and its hooks, branch
 names, one topic per pull request, `type(scope): what and why` commit subjects, licensing of contributions (GPL-3.0
 compatible), how to report bugs and security problems, and the conduct section. Everything below is what is particular
-to `web/`.
+to `web/redotcom/` (the landing site's own notes are `../landing/README.md`).
 
 ## Setting up
 
-- Node 24 or newer; from `web/`: `npm install`.
+- Node 24 or newer; from `web/` (the workspace root) or `web/redotcom/`: `npm install`.
 - Install the repository's hooks once per clone: `bash scripts/install_hooks.sh` (from the repository root).
 - Without a disc you can run `npm run typecheck`, `npm test` (the tests that need game files skip themselves) and
   `npm run build`. That is what CI runs.
@@ -39,7 +39,7 @@ to `web/`.
 The project's own work is done by AI agents under the owner's direction (see [`docs/PROCESS.md`](docs/PROCESS.md)).
 Their conventions are the ones above plus: each workstream in its own git worktree and branch, merged into an
 integration branch by a controller; commits stage explicit paths (`git add -- <paths>`, never the whole tree); no
-`--no-verify`. Outside contributions follow the repository's pull-request flow in [`../CONTRIBUTING.md`](../CONTRIBUTING.md).
+`--no-verify`. Outside contributions follow the repository's pull-request flow in [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 ## Developer notes
 

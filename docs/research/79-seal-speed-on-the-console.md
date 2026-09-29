@@ -5,7 +5,7 @@
 synthetic rows only). The measurement is lock-bound and runs in a window the owner names (spec W2.R7).*
 
 What it settles: the bands and ramp of the web sprint 2 design's §7
-(`web/docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md`) -- forward 65, back 37, strafe 65, the
+(`web/redotcom/docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md`) -- forward 65, back 37, strafe 65, the
 stick ramp (90 % of full on tick 11, 0.18 s) -- and the skeleton root per stance (W2.R9: standing 11.484, crouched
 5.504, prone unknown). Ours is not the reference: it renders 18.7 game frames a second (KNOWN).
 

@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { checkRecords, llmsTxt, parseRecords, readNotes, sectionsJsonl } from './corpus';
 
 /**
- * Rebuilds the generated half of `web/docs/corpus/` -- `sections.jsonl` and `llms.txt` -- from the research notes and
+ * Rebuilds the generated half of `web/redotcom/docs/corpus/` -- `sections.jsonl` and `llms.txt` -- from the research notes and
  * the hand-written `records.jsonl`, and refuses (exit 1) when a record cites a note, a section or a file that does
  * not exist. Run it after editing a research note's headings or the records: `npx tsx tools/build-corpus.ts`.
  * `tools/test/corpus.test.ts` fails while the files on disk differ from what this would write.

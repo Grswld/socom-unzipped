@@ -2,7 +2,7 @@
 
 **Status: read from the disc, 2026-09-28, web sprint 2 task W2.2a.**
 
-- Every field below was read with `web/tools/dump-motion.ts`. It is held by `web/packages/scene/src/motion.ts` and
+- Every field below was read with `web/redotcom/tools/dump-motion.ts`. It is held by `web/redotcom/packages/scene/src/motion.ts` and
   `zanim.ts`, whose tests pin it on:
   - Frostfire's fixture;
   - all 22 maps;

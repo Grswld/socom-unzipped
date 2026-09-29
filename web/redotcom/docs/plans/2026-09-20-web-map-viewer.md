@@ -13,7 +13,7 @@ over `Uint8Array` and run under node for tests and tools; only `viewer` touches 
 **Tech Stack:** Node 24, npm workspaces, TypeScript 5 strict, vitest, Vite, three.js (r186+, `WebGPURenderer` with
 WebGL2 fallback), Playwright for rendered-frame checks. No GPL code enters `web/`.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-web-map-viewer-design.md`. Formats: `web/docs/research/72-mp-map-archive-anatomy.md`
+**Spec:** `docs/superpowers/specs/2026-09-20-web-map-viewer-design.md`. Formats: `web/redotcom/docs/research/72-mp-map-archive-anatomy.md`
 (cited below as "36 §N"). Both must be read before any task.
 
 ## Global Constraints
@@ -21,7 +21,7 @@ WebGL2 fallback), Playwright for rendered-frame checks. No GPL code enters `web/
 - Work only in the worktree `C:\projects\socom_pc_web` on branch `feat/web-map-viewer`. Never touch
   `C:\projects\socom_pc` (another agent's tree), never switch branches there, never take `scripts/loop_lock.sh`.
 - Disc tree for fixtures: `C:/projects/socom_pc/game/disc` (read-only; env `SOCOM_DISC` overrides). No file from it
-  is ever committed: `web/public/maps/`, `web/test-fixtures/` are git-ignored.
+  is ever committed: `web/redotcom/public/maps/`, `web/redotcom/test-fixtures/` are git-ignored.
 - Every commit: explicit pathspec (`git commit -m "..." -- <paths>`), subject `type(scope): what changed and why`,
   and the trailer lines:
   ```
@@ -69,9 +69,9 @@ web/
 ### Task 1: Workspace scaffold (M0)
 
 **Files:**
-- Create: `web/package.json`, `web/tsconfig.base.json`, `web/vitest.workspace.ts`,
-  `web/packages/archive/package.json`, `web/packages/archive/tsconfig.json`, `web/packages/archive/src/bytes.ts`,
-  `web/packages/archive/src/index.ts`, `web/packages/archive/test/bytes.test.ts`, `web/packages/archive/test/fixtures.ts`
+- Create: `web/package.json`, `web/redotcom/tsconfig.base.json`, `web/vitest.workspace.ts`,
+  `web/redotcom/packages/archive/package.json`, `web/redotcom/packages/archive/tsconfig.json`, `web/redotcom/packages/archive/src/bytes.ts`,
+  `web/redotcom/packages/archive/src/index.ts`, `web/redotcom/packages/archive/test/bytes.test.ts`, `web/redotcom/packages/archive/test/fixtures.ts`
 - Modify: `.gitignore` (repo root)
 
 **Interfaces:**
@@ -79,7 +79,7 @@ web/
   `new Reader(bytes: Uint8Array)`, `.length`, `.u8(o)`, `.u16(o)`, `.u32(o)`, `.i32(o)`, `.f32(o)`, `.u64(o): bigint`,
   `.cstr(o, max)` (NUL-terminated ASCII, at most `max` bytes), `.slice(o, n): Uint8Array` (a view, not a copy),
   all throwing `RangeError` on out-of-bounds. `fixture(name: string): Uint8Array | null` in `test/fixtures.ts`
-  reading `web/test-fixtures/<name>`.
+  reading `web/redotcom/test-fixtures/<name>`.
 
 - [ ] **Step 1: Root workspace files**
 
@@ -108,7 +108,7 @@ web/
   }
 }
 ```
-`web/tsconfig.base.json`:
+`web/redotcom/tsconfig.base.json`:
 ```json
 {
   "compilerOptions": {
@@ -127,11 +127,11 @@ Each package gets `vitest.config.ts`:
 import { defineConfig } from 'vitest/config';
 export default defineConfig({ test: { include: ['test/**/*.test.ts'] } });
 ```
-`web/packages/archive/package.json`:
+`web/redotcom/packages/archive/package.json`:
 ```json
 { "name": "@s2u/archive", "version": "0.0.0", "type": "module", "main": "src/index.ts", "types": "src/index.ts" }
 ```
-`web/packages/archive/tsconfig.json`:
+`web/redotcom/packages/archive/tsconfig.json`:
 ```json
 { "extends": "../../tsconfig.base.json", "compilerOptions": { "outDir": "dist", "rootDir": "." }, "include": ["src", "test"] }
 ```
@@ -149,7 +149,7 @@ Append to the repo root `.gitignore`:
 
 - [ ] **Step 2: Failing test for `Reader`**
 
-`web/packages/archive/test/bytes.test.ts`:
+`web/redotcom/packages/archive/test/bytes.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { Reader } from '../src/bytes';
@@ -230,8 +230,8 @@ export function fixture(name: string): Uint8Array | null {
 
 - [ ] **Step 6: Commit**
 ```bash
-git add .gitignore web/package.json web/package-lock.json web/tsconfig.base.json web/vitest.workspace.ts web/packages/archive
-git commit -m "build(web): the browser recreation's workspace -- npm workspaces, vitest, strict TypeScript, and the one little-endian Reader every archive decoder uses (M0)" -- .gitignore web/package.json web/package-lock.json web/tsconfig.base.json web/vitest.workspace.ts web/packages/archive
+git add .gitignore web/package.json web/package-lock.json web/redotcom/tsconfig.base.json web/vitest.workspace.ts web/redotcom/packages/archive
+git commit -m "build(web): the browser recreation's workspace -- npm workspaces, vitest, strict TypeScript, and the one little-endian Reader every archive decoder uses (M0)" -- .gitignore web/package.json web/package-lock.json web/redotcom/tsconfig.base.json web/vitest.workspace.ts web/redotcom/packages/archive
 ```
 (Add the trailer lines to every commit message; omitted from the snippets below for brevity.)
 
@@ -240,20 +240,20 @@ git commit -m "build(web): the browser recreation's workspace -- npm workspaces,
 ### Task 2: `extract-maps` tool (M0)
 
 **Files:**
-- Create: `web/tools/package.json`, `web/tools/tsconfig.json`, `web/tools/extract-maps.ts`
+- Create: `web/redotcom/tools/package.json`, `web/redotcom/tools/tsconfig.json`, `web/redotcom/tools/extract-maps.ts`
 
 **Interfaces:**
-- Produces: `web/test-fixtures/RUN/MP2.ZDB` (and MP6, MP72) and `web/public/maps/RUN/<all 22 MP*.ZDB>`; also
-  `web/public/maps/index.json` = `["RUN/MP1.ZDB", ...]` sorted. Paths mirror the disc so both asset sources
+- Produces: `web/redotcom/test-fixtures/RUN/MP2.ZDB` (and MP6, MP72) and `web/redotcom/public/maps/RUN/<all 22 MP*.ZDB>`; also
+  `web/redotcom/public/maps/index.json` = `["RUN/MP1.ZDB", ...]` sorted. Paths mirror the disc so both asset sources
   answer the same `read("RUN/MP2.ZDB")`.
 
 - [ ] **Step 1: Write the tool**
 
-`web/tools/package.json`: `{ "name": "@s2u/tools", "version": "0.0.0", "type": "module", "dependencies": { "@s2u/archive": "*", "@s2u/gs": "*", "@s2u/mesh": "*", "@s2u/scene": "*" } }`
+`web/redotcom/tools/package.json`: `{ "name": "@s2u/tools", "version": "0.0.0", "type": "module", "dependencies": { "@s2u/archive": "*", "@s2u/gs": "*", "@s2u/mesh": "*", "@s2u/scene": "*" } }`
 (`gs`, `mesh`, `scene` are created in later tasks; npm tolerates a missing workspace dep only once they exist, so
 list only `@s2u/archive` now and add the others in the task that creates each package.)
 
-`web/tools/extract-maps.ts`:
+`web/redotcom/tools/extract-maps.ts`:
 ```ts
 import { copyFileSync, mkdirSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -275,11 +275,11 @@ console.log(`copied ${mp.length} archives to public/maps, 3 fixtures`);
 ```
 
 - [ ] **Step 2: Run it** — `cd web && npm run extract-maps` → `copied 22 archives to public/maps, 3 fixtures`;
-  `git status --short` shows nothing under `web/public` or `web/test-fixtures` (ignored).
+  `git status --short` shows nothing under `web/public` or `web/redotcom/test-fixtures` (ignored).
 
 - [ ] **Step 3: Commit**
 ```bash
-git commit -m "build(web): extract-maps copies the 22 MP archives from the owner's disc tree into the served and fixture folders, both git-ignored (M0)" -- web/tools/package.json web/tools/tsconfig.json web/tools/extract-maps.ts web/package-lock.json
+git commit -m "build(web): extract-maps copies the 22 MP archives from the owner's disc tree into the served and fixture folders, both git-ignored (M0)" -- web/redotcom/tools/package.json web/redotcom/tools/tsconfig.json web/redotcom/tools/extract-maps.ts web/package-lock.json
 ```
 
 ---
@@ -287,8 +287,8 @@ git commit -m "build(web): extract-maps copies the 22 MP archives from the owner
 ### Task 3: ZDB reader (M1)
 
 **Files:**
-- Create: `web/packages/archive/src/zdb.ts`, `web/packages/archive/test/zdb.test.ts`
-- Modify: `web/packages/archive/src/index.ts`
+- Create: `web/redotcom/packages/archive/src/zdb.ts`, `web/redotcom/packages/archive/test/zdb.test.ts`
+- Modify: `web/redotcom/packages/archive/src/index.ts`
 
 **Interfaces:**
 - Produces: `interface ZdbEntry { name: string; offset: number; size: number }`,
@@ -389,7 +389,7 @@ Export from `index.ts`.
 ### Task 4: ZAR/ZED reader (M1)
 
 **Files:**
-- Create: `web/packages/archive/src/zar.ts`, `web/packages/archive/test/zar.test.ts`
+- Create: `web/redotcom/packages/archive/src/zar.ts`, `web/redotcom/packages/archive/test/zar.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -531,8 +531,8 @@ export class Zar {
 ### Task 5: compiled `.rdr` reader and the map index (M1)
 
 **Files:**
-- Create: `web/packages/archive/src/rdr.ts`, `web/packages/archive/src/mapIndex.ts`, `web/packages/archive/src/assetSource.ts`,
-  `web/packages/archive/src/fsAssetSource.ts`, `web/packages/archive/test/rdr.test.ts`, `web/packages/archive/test/mapIndex.test.ts`
+- Create: `web/redotcom/packages/archive/src/rdr.ts`, `web/redotcom/packages/archive/src/mapIndex.ts`, `web/redotcom/packages/archive/src/assetSource.ts`,
+  `web/redotcom/packages/archive/src/fsAssetSource.ts`, `web/redotcom/packages/archive/test/rdr.test.ts`, `web/redotcom/packages/archive/test/mapIndex.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -703,7 +703,7 @@ Export all from `index.ts` (keep `fsAssetSource` out of the browser bundle: expo
 ### Task 6: `HttpAssetSource` (M1)
 
 **Files:**
-- Create: `web/packages/archive/src/httpAssetSource.ts`, `web/packages/archive/test/httpAssetSource.test.ts`
+- Create: `web/redotcom/packages/archive/src/httpAssetSource.ts`, `web/redotcom/packages/archive/test/httpAssetSource.test.ts`
 
 **Interfaces:**
 - Produces: `class HttpAssetSource implements AssetSource { constructor(baseUrl: string) }`; `list()` fetches
@@ -736,9 +736,9 @@ describe('HttpAssetSource', () => {
 ### Task 7: texture and palette records (M2)
 
 **Files:**
-- Create: `web/packages/gs/{package.json,tsconfig.json,vitest.config.ts}`, `web/packages/gs/src/{tex0.ts,texture.ts,palette.ts,index.ts}`,
-  `web/packages/gs/test/records.test.ts`
-- Modify: `web/tools/package.json` (add `@s2u/gs`)
+- Create: `web/redotcom/packages/gs/{package.json,tsconfig.json,vitest.config.ts}`, `web/redotcom/packages/gs/src/{tex0.ts,texture.ts,palette.ts,index.ts}`,
+  `web/redotcom/packages/gs/test/records.test.ts`
+- Modify: `web/redotcom/tools/package.json` (add `@s2u/gs`)
 
 **Interfaces:**
 - Produces:
@@ -811,9 +811,9 @@ describe('records', () => {
 ### Task 8: texture decode, PNG dump, the swizzle question (M2)
 
 **Files:**
-- Create: `web/packages/gs/src/decode.ts`, `web/packages/gs/src/paletteTable.ts`, `web/packages/gs/test/decode.test.ts`,
-  `web/tools/dump-textures.ts`, `web/packages/gs/test/goldens/frostfire-textures.json`
-- Modify: spec section 9 (finding), `web/docs/research/72-mp-map-archive-anatomy.md` §5 (answer the open question)
+- Create: `web/redotcom/packages/gs/src/decode.ts`, `web/redotcom/packages/gs/src/paletteTable.ts`, `web/redotcom/packages/gs/test/decode.test.ts`,
+  `web/redotcom/tools/dump-textures.ts`, `web/redotcom/packages/gs/test/goldens/frostfire-textures.json`
+- Modify: spec section 9 (finding), `web/redotcom/docs/research/72-mp-map-archive-anatomy.md` §5 (answer the open question)
 
 **Interfaces:**
 - Produces:
@@ -869,7 +869,7 @@ The goldens file starts as `{}`; the golden test is expected to fail until Step 
 - [ ] **Step 2: Run, expect failure.** **Step 3: Implement `decode.ts`, `paletteTable.ts`.**
 
 - [ ] **Step 4: `tools/dump-textures.ts`**: for `RUN/MP2.ZDB` (arg 1, default) writes
-  `web/test-fixtures/textures/<archive>/<order>/<name>.png` for both orders, using a tiny PNG encoder (write one in
+  `web/redotcom/test-fixtures/textures/<archive>/<order>/<name>.png` for both orders, using a tiny PNG encoder (write one in
   `tools/png.ts`: zlib via `node:zlib` `deflateSync`, 8-bit RGBA, CRC32 table; about 40 lines) so no new dependency
   is needed. Also writes a contact sheet `sheet-<order>.png` tiling all textures at native size with 4 px gaps,
   256 px per cell.
@@ -884,16 +884,16 @@ The goldens file starts as `{}`; the golden test is expected to fail until Step 
 - [ ] **Step 6: Freeze goldens**: add a `--write-goldens` flag to `dump-textures.ts` that writes
   `packages/gs/test/goldens/frostfire-textures.json` (`{name: hash16}` for all 65). Run it, then `npx vitest run packages/gs` → pass.
 
-- [ ] **Step 7: Commit** — `feat(web/gs): Frostfire's 65 textures decode -- <raster|swizzled> pixel order and the <swapped|linear> 8-bit CLUT, settled by looking, frozen as goldens (M2)` — paths: `web/packages/gs`, `web/tools/dump-textures.ts`, `web/tools/png.ts`, the spec, `web/docs/research/72-mp-map-archive-anatomy.md`.
+- [ ] **Step 7: Commit** — `feat(web/gs): Frostfire's 65 textures decode -- <raster|swizzled> pixel order and the <swapped|linear> 8-bit CLUT, settled by looking, frozen as goldens (M2)` — paths: `web/redotcom/packages/gs`, `web/redotcom/tools/dump-textures.ts`, `web/redotcom/tools/png.ts`, the spec, `web/redotcom/docs/research/72-mp-map-archive-anatomy.md`.
 
 ---
 
 ### Task 9: DMA chain walker and VIF stream (M3)
 
 **Files:**
-- Create: `web/packages/mesh/{package.json,tsconfig.json,vitest.config.ts}`, `web/packages/mesh/src/{dma.ts,index.ts}`,
-  `web/packages/mesh/test/dma.test.ts`
-- Modify: `web/tools/package.json` (add `@s2u/mesh`)
+- Create: `web/redotcom/packages/mesh/{package.json,tsconfig.json,vitest.config.ts}`, `web/redotcom/packages/mesh/src/{dma.ts,index.ts}`,
+  `web/redotcom/packages/mesh/test/dma.test.ts`
+- Modify: `web/redotcom/tools/package.json` (add `@s2u/mesh`)
 
 **Interfaces:**
 - Produces:
@@ -943,7 +943,7 @@ describe('walkModel', () => {
 ### Task 10: VIF1 unpacker to per-packet VU memory (M3)
 
 **Files:**
-- Create: `web/packages/mesh/src/vif.ts`, `web/packages/mesh/test/vif.test.ts`
+- Create: `web/redotcom/packages/mesh/src/vif.ts`, `web/redotcom/packages/mesh/test/vif.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -1033,7 +1033,7 @@ real order after printing it once, keeping the layout facts: header 0-3, 36 vert
 ### Task 11: vertex semantics from the VU1 translation (M3, research)
 
 **Files:**
-- Create: `web/packages/mesh/src/SEMANTICS.md`
+- Create: `web/redotcom/packages/mesh/src/SEMANTICS.md`
 - Modify: spec section 9
 
 This task produces a document, not code. It is done by an agent reading, with citations to file and line, and it
@@ -1069,7 +1069,7 @@ decides how Task 12 is written. Read-only on `C:\projects\socom_pc` (the other a
 ### Task 12: `interpretPacket` to `MeshData` (M3)
 
 **Files:**
-- Create: `web/packages/mesh/src/interpret.ts`, `web/packages/mesh/src/meshData.ts`, `web/packages/mesh/test/interpret.test.ts`
+- Create: `web/redotcom/packages/mesh/src/interpret.ts`, `web/redotcom/packages/mesh/src/meshData.ts`, `web/redotcom/packages/mesh/test/interpret.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -1132,24 +1132,24 @@ on one axis; fix the convention in `interpret.ts` and record it in `SEMANTICS.md
 ### Task 13: glTF export tool (M3)
 
 **Files:**
-- Create: `web/tools/export-gltf.ts`, `web/tools/gltf.ts`
+- Create: `web/redotcom/tools/export-gltf.ts`, `web/redotcom/tools/gltf.ts`
 
 - [ ] **Step 1: Write `gltf.ts`**: a minimal `.glb` writer (JSON chunk + BIN chunk; one mesh per texture with
   `POSITION`, `TEXCOORD_0`, `COLOR_0`, indices; PNG textures embedded as `image/png` buffer views; sampler with
   nearest or linear per `bilinear`; `KHR_materials_unlit`). About 150 lines; no dependency.
 - [ ] **Step 2: `export-gltf.ts <RUN/MP2.ZDB> <out.glb>`**: loads the world via Tasks 3-12, writes the glb, prints
-  triangle count and bounds. Run it for Frostfire into `web/test-fixtures/frostfire-world.glb` and open the file in
+  triangle count and bounds. Run it for Frostfire into `web/redotcom/test-fixtures/frostfire-world.glb` and open the file in
   any glTF validator (`npx gltf-validator` if available; otherwise the viewer in Task 14 is the check).
-- [ ] **Step 3: Commit** — `feat(web/tools): a map exports to glTF, the debugging aid for eyes other than the viewer's (M3)`.
+- [ ] **Step 3: Commit** — `feat(web/redotcom/tools): a map exports to glTF, the debugging aid for eyes other than the viewer's (M3)`.
 
 ---
 
 ### Task 14: the viewer app renders Frostfire's world (M3)
 
 **Files:**
-- Create: `web/packages/viewer/{package.json,tsconfig.json,index.html,vite.config.ts}`,
-  `web/packages/viewer/src/{main.ts,renderer.ts,camera.ts,ui.ts,loadMap.ts,worker.ts,overlays.ts,styles.css}`,
-  `web/packages/viewer/e2e/viewer.spec.ts`, `web/playwright.config.ts`
+- Create: `web/redotcom/packages/viewer/{package.json,tsconfig.json,index.html,vite.config.ts}`,
+  `web/redotcom/packages/viewer/src/{main.ts,renderer.ts,camera.ts,ui.ts,loadMap.ts,worker.ts,overlays.ts,styles.css}`,
+  `web/redotcom/packages/viewer/e2e/viewer.spec.ts`, `web/redotcom/playwright.config.ts`
 
 **Interfaces:**
 - `loadMap.ts` (runs in `worker.ts`): `loadMap(source: AssetSource, path: string): Promise<LoadedMap>` where
@@ -1174,7 +1174,7 @@ on one axis; fix the convention in `interpret.ts` and record it in `SEMANTICS.md
   spawn B. Background dark grey; a grid helper at y = 100 toggled by a checkbox; an axes helper.
 - [ ] **Step 3: Playwright** (`e2e/viewer.spec.ts`): start `vite` (Playwright `webServer`), open `/`, choose
   `FROSTFIRE`, wait for the status line to contain `triangles`, assert triangles > 2000 and diagnostics empty,
-  screenshot to `web/test-fixtures/screens/frostfire-spawnA.png`; then set the camera to a top-down orbit via a
+  screenshot to `web/redotcom/test-fixtures/screens/frostfire-spawnA.png`; then set the camera to a top-down orbit via a
   `window.__viewer.setCamera({x, y, z, yaw, pitch})` debug hook and screenshot `frostfire-top.png`. Run with
   `npx playwright test` (chromium only; install with `npx playwright install chromium` if missing).
 - [ ] **Step 4: Look at both screenshots** with the Read tool. The spawn-A view should show a recognisable
@@ -1188,9 +1188,9 @@ on one axis; fix the convention in `interpret.ts` and record it in `SEMANTICS.md
 ### Task 15: scene graph and props (M4)
 
 **Files:**
-- Create: `web/packages/scene/{package.json,tsconfig.json,vitest.config.ts}`, `web/packages/scene/src/{worldRoot.ts,sceneGraph.ts,modelLibrary.ts,buildScene.ts,index.ts}`,
-  `web/packages/scene/test/scene.test.ts`
-- Modify: `web/packages/viewer/src/loadMap.ts`
+- Create: `web/redotcom/packages/scene/{package.json,tsconfig.json,vitest.config.ts}`, `web/redotcom/packages/scene/src/{worldRoot.ts,sceneGraph.ts,modelLibrary.ts,buildScene.ts,index.ts}`,
+  `web/redotcom/packages/scene/test/scene.test.ts`
+- Modify: `web/redotcom/packages/viewer/src/loadMap.ts`
 
 **Interfaces:**
 - ```ts
@@ -1221,8 +1221,8 @@ on one axis; fix the convention in `interpret.ts` and record it in `SEMANTICS.md
 ### Task 16: collision, spawn overlays, diagnostics, and the other two maps (M4)
 
 **Files:**
-- Create: `web/packages/scene/src/{collision.ts,spawns.ts,clutter.ts}`, `web/packages/viewer/src/overlays.ts`
-- Modify: `web/packages/viewer/src/{ui.ts,loadMap.ts}`, `web/packages/scene/test/scene.test.ts`
+- Create: `web/redotcom/packages/scene/src/{collision.ts,spawns.ts,clutter.ts}`, `web/redotcom/packages/viewer/src/overlays.ts`
+- Modify: `web/redotcom/packages/viewer/src/{ui.ts,loadMap.ts}`, `web/redotcom/packages/scene/test/scene.test.ts`
 
 - [ ] **Step 1: `spawns.ts`**: the measured A/B table for the maps that have one in `docs/research/33` and KNOWN §2
   (Frostfire A (796,100,614) B (536,143,1254); Crossroads A (1972,68,2150) B (748,93,766); Desert Glory
@@ -1239,7 +1239,7 @@ on one axis; fix the convention in `interpret.ts` and record it in `SEMANTICS.md
   `diagnostics: string[]`; the UI lists them; a map with diagnostics still renders what decoded.
 - [ ] **Step 5: Playwright**: load `DESERT GLORY` and `CROSSROADS` too; assert triangles > 2000 and record the
   diagnostics count for each (0 expected; if not 0, list them in spec section 9 as M6 work, do not fix tonight).
-  Screenshots into `web/test-fixtures/screens/`. Look at them.
+  Screenshots into `web/redotcom/test-fixtures/screens/`. Look at them.
 - [ ] **Step 6: Commit** — `feat(web/viewer): collision and spawn overlays, a diagnostics panel, and Desert Glory and Crossroads rendering beside Frostfire (M4)`.
 
 ---

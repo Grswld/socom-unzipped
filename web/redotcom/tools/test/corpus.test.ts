@@ -8,7 +8,7 @@ const WEB = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CORPUS = join(WEB, 'docs', 'corpus');
 const read = (f: string): string => readFileSync(join(CORPUS, f), 'utf8').replace(/\r\n/g, '\n');
 
-describe('the corpus (web/docs/corpus)', () => {
+describe('the corpus (web/redotcom/docs/corpus)', () => {
   const notes = readNotes(WEB);
   const records = parseRecords(read('records.jsonl'));
 

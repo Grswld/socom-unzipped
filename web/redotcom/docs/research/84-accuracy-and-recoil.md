@@ -323,7 +323,7 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
 
 ## 12. Evidence
 
-Screenshots (PS2 presentation, Frostfire spawn A; `web/test-fixtures/screens/accuracy/`, git-ignored, from
+Screenshots (PS2 presentation, Frostfire spawn A; `web/redotcom/test-fixtures/screens/accuracy/`, git-ignored, from
 `e2e/accuracy.spec.ts`): `1-rest.png` (third person, size 1 drawn at 0.5: the console's 65-pixel cross),
 `2-moving.png` (W held: pinned at 26, the arms 45 out), `3-burst.png` (automatic held 0.45 s: the reticle climbed and
 opened), `4-first-person.png`, `5-scope.png` (the SD at 3×: the tube and the dashed cross).

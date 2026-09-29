@@ -66,5 +66,5 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **After this close:** the PR `sprint-16 -> main` (approved 22:50Z), the three checks, the merge commit, the tag `v0.16.0` on it, `main` merged back; the push of `sprint-16` first -- the owner's hand (O24; this seat cannot move to the main tree); this session watches origin and opens the PR when it lands.
 - **Carried to Sprint 17's Task 0:** R1b (#70), R2 (#71), #57's r0004 leg, #59's fence, R3b, R3a's developer build, F1, F3
   (#32, backlog), X2, X4 (#41, backlog).
-- 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `../scotho/apps/s2u/src/ds`.
+- 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `web/shared/ds` (the default since 2026-09-29).
 

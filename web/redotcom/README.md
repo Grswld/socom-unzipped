@@ -1,14 +1,17 @@
-# SOCOM Unzipped for the browser: the map viewer and reCOM mode
+# redotcom: SOCOM Unzipped for the browser, the map viewer and reCOM mode
 
 SOCOM II: U.S. Navy SEALs' multiplayer maps, read byte for byte out of **your own copy of the disc** and drawn again in
 a browser with three.js -- and, in reCOM mode, walked, fought over and played online as a SEAL, with every speed,
 jump, reticle, round, sound, effect and rule read from the game's own data or its decompiled code. Nothing is
 pre-baked and no game asset is in this repository. It runs at
-[socomunzipped.com/map-viewer](https://socomunzipped.com/map-viewer/).
+[socomunzipped.com/redotcom](https://socomunzipped.com/redotcom/) (it was `/map-viewer/` until 2026-09-29, and the old
+address redirects; the owner named the project redotcom everywhere that day).
 
-It is a spin-off of [**SOCOM Unzipped**](../README.md), the static recompilation of the game for PC, and lives in that
-repository's `web/` directory as **a separate project**: its own npm workspace, tests, docs and CI, building alone and
-deploying as a static site plus an optional multiplayer server. It needs nothing from the recompilation and the
+It is a spin-off of [**SOCOM Unzipped**](../../README.md), the static recompilation of the game for PC, and lives in that
+repository's `web/redotcom/` directory as **a separate project**: its own tests, docs and CI, building alone and
+deploying as a static site plus an optional multiplayer server. `web/` is one npm workspace for three parts: this,
+[`../landing`](../landing/README.md) (the site socomunzipped.com) and `../shared` (the design system both use, in
+[`../shared/ds`](../shared/ds/README.md), and the site's deploy). It needs nothing from the recompilation and the
 recompilation needs nothing from it (see
 [What the viewer takes from the rest of the repository](#what-the-viewer-takes-from-the-rest-of-the-repository)).
 An agent working on the recomp can skip this directory entirely.
@@ -43,7 +46,7 @@ An agent working on the recomp can skip this directory entirely.
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the packages, their boundaries, the sim shared by page and server, adapting it to another PS2 game |
 | [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | every kind of data: where it comes from, the code that reads it, how it was verified; the legal stance |
 | [`docs/PROCESS.md`](docs/PROCESS.md) | the stack and the development process: ground truth, research notes, rulings, AI agents |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | the web project's conventions (the repository's rules are [`../CONTRIBUTING.md`](../CONTRIBUTING.md)) |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | the web project's conventions (the repository's rules are [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md)) |
 | [`docs/corpus/llms.txt`](docs/corpus/llms.txt) | the same knowledge as structured records for an AI assistant |
 | [`docs/research/`](docs/research/) | the evidence: research notes 71-91, each citing the disc files and decompiled functions it read |
 | [`docs/specs/`](docs/specs/), [`docs/plans/`](docs/plans/) | one design spec and plan per sprint; a plan's Log is the record of every task and number |
@@ -58,12 +61,13 @@ web sprint 1, "the engine's world" ([spec](docs/specs/2026-09-28-web-sprint-1-th
 The byte-level format authority is [`docs/research/72-mp-map-archive-anatomy.md`](docs/research/72-mp-map-archive-anatomy.md),
 and the meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in the
 code cite research notes by number (`research 84 §3`: notes 71-91 live in `docs/research/` here, lower numbers are the
-repository's [`../docs/research/`](../docs/research/)) and the decompilation's Ghidra function names
+repository's [`../../docs/research/`](../../docs/research/)) and the decompilation's Ghidra function names
 (`FUN_00xxxxxx`). The behaviour every change is checked against, maps and pictures included, is pinned down in the
 Playwright specs under [`packages/viewer/e2e/`](packages/viewer/e2e/) (`npm run e2e`); the viewer's chrome is the s2u
-design system, vendored under `packages/viewer/src/ds/` by `npm run ds:sync` (the manifest test refuses a hand edit).
+design system, read in place from `../shared/ds/` (`index.html` links `/src/ds/index.css`, which
+`packages/viewer/vite.config.ts` aliases there; no copy since 2026-09-29).
 
-**Licence:** GPL-3.0, the repository's ([`LICENSE`](../LICENSE)); see [Licence](#licence).
+**Licence:** GPL-3.0, the repository's ([`LICENSE`](../../LICENSE)); see [Licence](#licence).
 
 ## How it works (one paragraph)
 
@@ -94,13 +98,13 @@ The viewer needs **no recompiled game, no toolchain and no emulator** — nothin
 recompilation's build (`build.sh`, `recomp/`, `third_party/`, `tools/`). What it does take:
 
 1. **The disc tree.** The recompilation's launcher and tooling read the game out of your own ISO into
-   `game/disc/` ([the root README](../README.md), "The user supplies their own disc image");
+   `game/disc/` ([the root README](../../README.md), "The user supplies their own disc image");
    `tools/extract-maps.ts` defaults to that location. You do not have to go through the
    recompilation to get one: mounting the ISO (double-click on Windows, `hdiutil` on a Mac,
    `mount -o loop` on Linux) gives you the same `RUN/` directory, and that is all the extractor reads.
-2. **The research.** The format is documented in [`docs/research/`](../docs/research/) — `36` for the
+2. **The research.** The format is documented in [`docs/research/`](../../docs/research/) — `36` for the
    archives, `13` for the VU1 world-object program the vertex decode mirrors, `31` for the brighten
-   and the blend equations, `26` for the GS state — and the design specs in `web/docs/`. The code
+   and the blend equations, `26` for the GS state — and the design specs in `web/redotcom/docs/`. The code
    cites the notes by number.
 3. **reCOM**, the open-source re-implementation of the engine vendored under `recom/`, which is where
    the engine's draw order (`zRender/zrndr_pipe.cpp`) and the scene-graph hookup
@@ -108,17 +112,17 @@ recompilation's build (`build.sh`, `recomp/`, `third_party/`, `tools/`). What it
 
 ### Commands
 
-Run from `web/`:
+Run from `web/redotcom/` (npm finds the workspace root, `web/`, itself; from `web/` add `-w @s2u/redotcom`):
 
 | command | what it does |
 |---|---|
-| `npm install` | workspace install (six packages plus `tools`) |
+| `npm install` | workspace install (redotcom's seven packages plus `tools`, and the landing site and `shared`) |
 | `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR`, `SOUNDS/BNKSTORE.ZAR` and `IRX/LIBSD.IRX`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
-| `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
+| `VIEWER_BASE=/redotcom/ npm run build` | the same, to be served under a path prefix (the site's, `/redotcom/`) |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 
 **For developers: `?devmode`.** Opened by its plain address the viewer reads only the visitor's own disc image: it shows
@@ -145,7 +149,7 @@ index. So a server moving to web sprint 2 takes `dist/viewer/` first and the re-
 
 ## Layout
 
-Everything below is relative to `web/`.
+Everything below is relative to `web/redotcom/`.
 
 | Path | What |
 |---|---|
@@ -587,7 +591,7 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
   sprites for a grenade's blast.
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall
   are the game's tables and the decompilation's law (`viewer/src/walk.ts`'s header); the console measurement
-  (W2.2c: the instruments and the recipe are in the tree, [research 79](../docs/research/79-seal-speed-on-the-console.md))
+  (W2.2c: the instruments and the recipe are in the tree, [research 79](../../docs/research/79-seal-speed-on-the-console.md))
   waits for a window the owner names. Until it runs the prone root (1.8), the prone body (3.0), the scope's eye
   heights (the eye 18.3 standing, and the crouched and prone eyes derived from it) and the crouch and prone body
   columns are estimates, and two numbers are readings only: the crouch diagonal's speed-up along its axis (19.8 at
@@ -632,10 +636,10 @@ Entertainment.
 
 ## Licence
 
-GPL-3.0, the repository's ([`LICENSE`](../LICENSE)); contributions are accepted under GPL-3.0-compatible terms
-([`CONTRIBUTING.md`](CONTRIBUTING.md), [`../CONTRIBUTING.md`](../CONTRIBUTING.md)). The licence covers this project's
+GPL-3.0, the repository's ([`LICENSE`](../../LICENSE)); contributions are accepted under GPL-3.0-compatible terms
+([`CONTRIBUTING.md`](CONTRIBUTING.md), [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md)). The licence covers this project's
 code and documentation only, never the game or its data. CI for this directory is
-[`.github/workflows/web.yml`](../.github/workflows/web.yml), which runs only when `web/` changes.
+[`.github/workflows/web.yml`](../../.github/workflows/web.yml), which runs only when `web/` changes.
 
 ## Multiplayer server (web sprint 3)
 

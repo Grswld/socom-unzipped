@@ -4,7 +4,7 @@ Web sprint 1, task W1.5 (spec `../specs/2026-09-28-web-sprint-1-the-engines-worl
 Research 72 §6 left `AIMAPS.MPS` as "the one format gap for a viewer that wants to draw spawns": a `version 2`
 head, sub-map records, a table at 0x159D8 on Frostfire naming `PlayerStart`, `spectator`, `Charlie`...`Foxtrot`,
 and some strings it took for a 2D briefing overlay. This note is the whole file. No game run; the bytes are the
-owner's extraction under `web/public/maps/RUN` (all 22 `MP*.ZDB`); nothing of them is in the tree beyond the
+owner's extraction under `web/redotcom/public/maps/RUN` (all 22 `MP*.ZDB`); nothing of them is in the tree beyond the
 short hex excerpts quoted here.
 
 ## 0. The answer, for W1.R4
@@ -27,10 +27,10 @@ short hex excerpts quoted here.
 
 ## 1. Method, and the standard every claim here meets
 
-- `web/tools/dump-aimaps.ts` prints every field below per sub-map, a hex window around each named record
+- `web/redotcom/tools/dump-aimaps.ts` prints every field below per sub-map, a hex window around each named record
   (`--hex`), and every printable run of six bytes or more with the section of the file it lies in
-  (`--strings`); `--all` prints one line per archive. `web/tools/aimaps-spawns.ts` prints §7's table.
-  The reader is `web/packages/scene/src/aimaps.ts`; its tests are `web/packages/scene/test/aimaps.test.ts`
+  (`--strings`); `--all` prints one line per archive. `web/redotcom/tools/aimaps-spawns.ts` prints §7's table.
+  The reader is `web/redotcom/packages/scene/src/aimaps.ts`; its tests are `web/redotcom/packages/scene/test/aimaps.test.ts`
   (a hand-built file for CI, and Frostfire, Desert Glory and Crossroads).
 - **Coverage:** 22 files, 83 sub-maps, 946,155 stored cells, 206 named points, 4,591 spawn records.
 - **The proof of the layout** is that the reader consumes each of the 22 files to its last byte and refuses a
@@ -346,10 +346,10 @@ average). The next best convention places 22 of the 40. It is the exact negation
 same slot as before and only the signs of `along` and `perp` change.
 
 **Where it was corrected** (each place says so): `facingVector`, `fitSpawn`, `fitSlot` and `accountsFor` in
-`web/packages/scene/src/aimaps.ts` (the W1.R9 oracle: an actor row at a slot's centre, a camera row up to 30 units
+`web/redotcom/packages/scene/src/aimaps.ts` (the W1.R9 oracle: an actor row at a slot's centre, a camera row up to 30 units
 *behind* one along its facing); the viewer's slot arrows, which follow `facingVector`; `tools/aimaps-spawns.ts` and
 `tools/spawn-slots.ts`; §0, §7 (the window, the table's `along` and `perp` columns negated -- checked row by row
 against the re-run tool -- the counts, "The facing" and "The 20-28 units") and §10 here; and
-`web/packages/scene/src/spawns.ts`, whose comment called the 40 rows "the actor block of both players" at "the
+`web/redotcom/packages/scene/src/spawns.ts`, whose comment called the 40 rows "the actor block of both players" at "the
 players' feet". Nothing in §2-§6 depended on the facing's direction; §10's slot order (A on side 0's #0, B on side
 1's #1) is unchanged, the fitted slots being the same.

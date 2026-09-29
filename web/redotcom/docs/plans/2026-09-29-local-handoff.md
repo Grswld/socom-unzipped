@@ -1,7 +1,7 @@
 # Local controller handoff — the walk's 1:1 push (2026-09-29)
 
-For the next local agent or controller picking up the browser viewer's walk mode. Read this, then `web/README.md`,
-then the research notes 77-91 in `web/docs/research/` as needed. Rewritten 2026-09-29 ~11:30Z by the controller seated
+For the next local agent or controller picking up the browser viewer's walk mode. Read this, then `web/redotcom/README.md`,
+then the research notes 77-91 in `web/redotcom/docs/research/` as needed. Rewritten 2026-09-29 ~11:30Z by the controller seated
 in `C:/Projects/wt-web-play` after the owner's play test, the fix rounds, and the merge of web sprint 3.
 
 ## 1. The goal (the owner's words, condensed)
@@ -16,7 +16,7 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
 - **Integration branch:** `claude/web-viewer-playtest-fixes` in the worktree **`C:/Projects/wt-web-play`** — every
   workstream merges here. **Web sprint 3 (multiplayer) is merged in** (12725f26): the shared sim boundary
   (`mover.ts` now holds the `Walker`; the server runs it), the net protocol, remote players, deaths and respawn, the
-  net page, `packages/server`, the Lightsail deploy under `web/deploy/`.
+  net page, `packages/server`, the Lightsail deploy under `web/redotcom/deploy/`.
 - **Pushing:** the PreToolUse guard refuses a push from this seat, even via `git -C` into the main tree. The owner (or
   the main-tree controller at the owner's word) pushes: `git -C C:/Projects/socom_pc push origin
   claude/web-viewer-playtest-fixes`. Last pushed: d995b282 — everything after it is local.
@@ -53,7 +53,7 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
 
 ## 4. Rounds since the first rewrite (all merged here, 2026-09-29 afternoon)
 
-- **Multiplayer holes** (`wt-web-mp`): `web/deploy/env.example` (placeholders only; its allow line is on sprint-17
+- **Multiplayer holes** (`wt-web-mp`): `web/redotcom/deploy/env.example` (placeholders only; its allow line is on sprint-17
   7a176e35), only an accepted swap is replicated, remote players hand the weapon off mid-clip.
 - **Effects:** marks, footprints and the scorch clipped to the world triangles under them, shaded per vertex
   (`markClip.ts`, 6055a75e); the pool counts triangles as the game's does (`TEMP_DECAL_TRIANGLES` = 150, so ~30 marks

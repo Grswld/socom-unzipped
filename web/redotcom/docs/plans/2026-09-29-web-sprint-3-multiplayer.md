@@ -9,7 +9,7 @@
 game's hit rules, deaths, respawns, kill lines and scoreboard, and the walk's feel intact under latency.
 
 **Architecture:** a headless sim boundary (`@s2u/sim` or `viewer/src/sim/`) the server and client share; a Node
-server package (`web/packages/server`) with a 60 Hz authoritative loop, rooms per map, snapshots down and inputs up
+server package (`web/redotcom/packages/server`) with a 60 Hz authoritative loop, rooms per map, snapshots down and inputs up
 over WebRTC unreliable data channels with a WebSocket for signalling, reliable events and the fallback; the client's
 `net/` layer (prediction, reconciliation, interpolation, clock sync) under the existing `WalkMode`/`Play`; the
 viewer's `hud.ts`/`scoreboard.ts` fed from the server's state.
@@ -81,7 +81,7 @@ spectator camera polish, nameplates, mobile.
 Search the decomp (`grep -n` on names/strings: damage, health, hit zones/body parts — `CZSealBody`, `CZBodyPart`,
 `Damage`, `HeadShot`, respawn, `Respawn`, spectator, `Spectate`, team, score, `kills`, `deaths`, the scoreboard's
 `FUN_0022a8b0`, name entry / `persona` / the online UI strings, time limits) and reCOM (`zDamage`, `zSeal`, `zGame`).
-Deliver `web/docs/research/91-the-round.md`: every value cited, every unknown a named placeholder with what was
+Deliver `web/redotcom/docs/research/91-the-round.md`: every value cited, every unknown a named placeholder with what was
 searched. Include the terrorist character types per map (`chartype.rdr`) and their default kits (`character.rdr`).
 
 ### M2 — The shared sim
@@ -91,7 +91,7 @@ imports it back; all existing tests pass unchanged or are moved with it. Add a N
 input on Frostfire's real hull and matches the browser's `walkFor` result bit for bit.
 
 ### M3 — The server
-`web/packages/server`: Node LTS, TypeScript. Rooms (one per map; the agent picks rotation vs fixed and rules it),
+`web/redotcom/packages/server`: Node LTS, TypeScript. Rooms (one per map; the agent picks rotation vs fixed and rules it),
 sessions (player/spectator), the FIFO queue with promotion on leave, team assignment/balance per M1, the 60 Hz loop
 consuming inputs (sequence-numbered, redundantly sent), snapshots at 20-30 Hz (the agent measures and rules)
 delta-compressed against the last acked snapshot with quantised fields, the transport per W3.R3 (WebSocket first;
@@ -162,7 +162,7 @@ README sections (running a server, joining, the protocol), research 91 final, th
   spectators on Frostfire hold 60 Hz, 30 Hz snapshots to all, 28 KiB/s a client, no corrections; the climb search's
   cache took a server tick from 3.4 to 1.1 ms (the page gains the same). **E2E**: two pages against a real server
   (join, draw each other, walk, no correction) and a server restart mid-round (both rejoin) green; the 31 baseline specs
-  green. **Deploy** `web/deploy` (Docker+Caddy, systemd, `deploy.sh`), HUMAN_TASKS O27. **Deferred, named**:
+  green. **Deploy** `web/redotcom/deploy` (Docker+Caddy, systemd, `deploy.sh`), HUMAN_TASKS O27. **Deferred, named**:
   WebRTC (W3.R9: WebSocket holds the bar), delta snapshots (W3.R10), the maps' kits (KIT_PLACEHOLDER: everyone the held
   M4A1 SD and Mark 23), the claymore, the radio menu's look, the spectator's scenic views. **Spend**: not metered in
   this session; the work ran on the plan's model mix and stayed inside the phases' shape (no phase overran its scope).

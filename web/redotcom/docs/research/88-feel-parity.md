@@ -1,7 +1,7 @@
 # 88 — Feel parity: the walk driven by script, number by number against the console
 
 *(2026-09-28, the feel-parity workstream of the walk; branch `claude/web-feelqa`. The instrument is
-`web/tools/feel-parity.ts` (+ `web/tools/feel/`); its test is `web/packages/viewer/test/feelParity.test.ts`. No game
+`web/redotcom/tools/feel-parity.ts` (+ `web/redotcom/tools/feel/`); its test is `web/redotcom/packages/viewer/test/feelParity.test.ts`. No game
 or emulator was run: the console's side is what the logs, the notes and the console's RAM already hold.)*
 
 **Summary.**
@@ -30,7 +30,7 @@ or emulator was run: the console's side is what the logs, the notes and the cons
 
 ## 1. Method
 
-**The truth, by kind** (the table's `kind` column; `web/tools/feel/console.ts` carries every value with its line):
+**The truth, by kind** (the table's `kind` column; `web/redotcom/tools/feel/console.ts` carries every value with its line):
 
 | kind | what it is | strength |
 |---|---|---|
@@ -46,13 +46,13 @@ peeks), the `drive_*.txt` scripts are ours' and the menus', and research 79's pr
 frames a second then (back 25.30 and strafe 44.30 units per host second are both **0.68** of the console's 37 and 65,
 the same time scale), so the table takes their state words and their ratios, never their rates.
 
-**The rig** (`web/tools/feel/rig.ts`): the `FlyCamera` and `WalkMode` `main.ts` makes, on a synthetic hull -- a floor
+**The rig** (`web/redotcom/tools/feel/rig.ts`): the `FlyCamera` and `WalkMode` `main.ts` makes, on a synthetic hull -- a floor
 4,000 across and a 42-high deck (Frostfire's drop) -- stepped `fly.update(dt)` then `walk.frame(dt)` at 30, 60 or 144
 frames a second; the keys are key events, the pad is a `Gamepad`'s axes through `padInput`, as the page reads them. A
 sample per frame: the feet, the drawn feet, the speed, the look, the camera as placed. Under node it gives the fly
 camera a global event target (`ensureDom`).
 
-**The fitter** (`web/tools/feel/fit.ts`) is `tools_py/parity/seal_speed_fit.py`'s core in TypeScript: rows deduped on the
+**The fitter** (`web/redotcom/tools/feel/fit.ts`) is `tools_py/parity/seal_speed_fit.py`'s core in TypeScript: rows deduped on the
 clock, MoveScale 1.0 or REJECTED, RAMPING under 1 s, the steady speed a least-squares line over the last 60 % of the
 hold, t90 from a +-2-row smoothed speed. `--seal-speed` fits the console's rows and the viewer's replay of the same
 hold (stance, keys or the light macro as the pad at its push, the same seconds) with it, so a disagreement is the

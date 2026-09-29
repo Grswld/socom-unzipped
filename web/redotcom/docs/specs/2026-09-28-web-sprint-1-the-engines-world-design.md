@@ -143,7 +143,7 @@ leaf at (576-589, 1117) stops you.
 
 Decode enough of `AIMAPS.MPS` to place the two sides: the header (`version 2`, `map_count`, flags, bbox, counts,
 cell sizes, the 32-byte names — research 72 §6), then the region and layer table with `PlayerStart`, `spectator`
-and the lettered regions, to each named region's extent. Write-up as research **75** under `web/docs/research/`
+and the lettered regions, to each named region's extent. Write-up as research **75** under `web/redotcom/docs/research/`
 (the number is free). **W1.R4:** `spawns.ts` becomes the test oracle and the disc the source only when all 22 maps'
 44 measured positions fall inside their decoded `PlayerStart` regions; short of that, the table stays the source,
 the note records the layout learned and how far the check got, and the task is still DONE. The 2D briefing overlay
@@ -244,7 +244,7 @@ W1.R7. 22 detail blocks name 20 files; 21 of 22 maps bind a pass (all but MP7 an
 
 ### `AIMAPS.MPS` is decoded; the spawn list, not `PlayerStart`, holds the 44 (2026-09-28, W1.5)
 
-The layout is in `web/docs/research/75-aimaps-mps.md`: a 0x28-byte head; per sub-map a 0xA8-byte header, 8-byte cells
+The layout is in `web/redotcom/docs/research/75-aimaps-mps.md`: a 0x28-byte head; per sub-map a 0xA8-byte header, 8-byte cells
 stored as row spans, and eight counted tables; a trailer with the link block and the file's spawn list; every reference
 is a stored cell addressed by `CAiMapLoc` (low 6 bits the sub-map index), and the sub-map count and order match
 `aimaps.rdr`'s `map_list` on all 22. `PlayerStart` is a single named cell, not a region (the only records with extents
@@ -374,7 +374,7 @@ unit off the floor at a corner on 362 of 1,058 slots (median 0.24, p90 2.5).
 - **W1.R3** — the engine draw order is a switch until the sweep and the e2e clear it, then the default (W1.2).
 - **W1.R4** — `AIMAPS.MPS` becomes the spawn source only at 44 of 44; the note is the deliverable either way (W1.5).
 - **W1.R5** — the web project's sprints number from 1 with rulings `W<sprint>.R<n>`, kept in the web plan, not the
-  repository's global counter (a separate project, `web/README.md`); the docs live under `web/docs/`; the branch
+  repository's global counter (a separate project, `web/redotcom/README.md`); the docs live under `web/redotcom/docs/`; the branch
   is `agent/web-s1` in `C:\projects\wt-web-s1`, cut from sprint-16's tip because `origin/main` lacks the 25 web files
   sprint-16 carries; agents' worktrees are cut from it and merged back by the controller.
 - **W1.R6** — Opus implementers do the tasks, Fable reviews the documents and the two judgment calls (W1.2's region

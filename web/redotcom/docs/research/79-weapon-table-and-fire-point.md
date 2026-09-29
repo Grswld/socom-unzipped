@@ -6,7 +6,7 @@ bodies of `GetPutativeFirePointW` (0x57fa70), `CTFireWeapon_Parse` (0x5dc800) an
 and `RUN/READERC.ZAR`. The bodies are reference only: cited here as `decomp <name>_<address>:line`, never copied (the
 fire point's as `decomp CZSealBody_GetPutativeFirePointW` 0x57fa70, with a space: joined, the name reads to the leak
 check as a key); a bare `:n` in §3 is a line of that file.
-The disc bytes are the owner's extraction under `web/public/maps/RUN`; nothing of them is in the tree beyond the
+The disc bytes are the owner's extraction under `web/redotcom/public/maps/RUN`; nothing of them is in the tree beyond the
 short hex excerpts quoted. No game run.
 
 ## 0. The answers

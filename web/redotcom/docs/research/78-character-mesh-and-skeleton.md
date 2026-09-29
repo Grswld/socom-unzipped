@@ -344,7 +344,7 @@ index (`+0x40`).
 
 ## 8. Tools and tests
 
-- `web/tools/dump-characters.ts [--models]`: §4's table, every mesh decoded, every skeleton read, the palette checked,
+- `web/redotcom/tools/dump-characters.ts [--models]`: §4's table, every mesh decoded, every skeleton read, the palette checked,
   each map's player and gear.
 - `mesh/test/skin.test.ts` (synthetic chains and the three fixtures), `mesh/test/scaled.test.ts` (§5.1),
   `scene/test/skeleton.test.ts` (§3), `scene/test/character.test.ts` (§5), `viewer/test/body.test.ts` (§6).

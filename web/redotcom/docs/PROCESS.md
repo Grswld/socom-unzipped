@@ -1,7 +1,7 @@
 # How the web project is built
 
 The technology, and the way the work was actually done. For the PC recompilation's side of the same story, see
-[`../../docs/HOW_IT_WAS_BUILT.md`](../../docs/HOW_IT_WAS_BUILT.md).
+[`../../../docs/HOW_IT_WAS_BUILT.md`](../../../docs/HOW_IT_WAS_BUILT.md).
 
 ## Built with AI agents, under one person's direction
 
@@ -16,7 +16,7 @@ measurement or a console frame.
 
 | part | what | why |
 |---|---|---|
-| Language | TypeScript (strict), one npm workspace (`web/package.json`) | one language for the page, the tools and the server, so the rules run the same in both |
+| Language | TypeScript (strict), one npm workspace (`web/package.json`: redotcom, the landing site, the shared design system) | one language for the page, the tools and the server, so the rules run the same in both |
 | Rendering | three.js with `WebGPURenderer`, falling back to its WebGL2 backend; node materials (TSL) | the GS's arithmetic expressed once as a node graph runs on both backends |
 | App | Vite (dev server and static build), a Web Worker for decoding, Web Audio for sound, the Gamepad API | a static site: the page needs no server of its own |
 | Unit tests | Vitest (with jsdom where a DOM is needed) | fast, per package (`packages/*/vitest.config.ts`, `tools/vitest.config.ts`) |
@@ -45,7 +45,7 @@ searched. A reading that has not been measured on a console is called a reading,
 ## Research notes as evidence
 
 Every non-obvious behaviour has a numbered note in [`research/`](research/) (71-91 for the web project; the PC project's
-notes are in [`../../docs/research/`](../../docs/research/)). A note opens with its answers, then shows the work: the
+notes are in [`../../../docs/research/`](../../../docs/research/)). A note opens with its answers, then shows the work: the
 file offsets, the counts over all 22 maps, the functions and lines read, what is settled, what is not and what would
 settle it, and the placeholders by name. Code comments cite the note and section (`research 84 §3`) and the function
 (`FUN_005c2670`), so a reader can go from a line of code to the evidence and back. The
@@ -93,4 +93,4 @@ compare the port with the game:
 
 The repository is public. The leak check (`python -m tools_py.release.leakcheck`) runs in the commit and push hooks and
 in CI and refuses key material, tokens, private addresses, home directories and files the `.gitignore` refuses; game
-data never enters the tree at all. See [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
+data never enters the tree at all. See [`../../../CONTRIBUTING.md`](../../../CONTRIBUTING.md).

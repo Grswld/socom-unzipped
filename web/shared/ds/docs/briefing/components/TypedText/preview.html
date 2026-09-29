@@ -1,0 +1,18 @@
+<!-- @dsCard group="Briefing" height=170 subtitle="Typewriter reveal with block caret; boot variant" -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  body{margin:0;background:var(--ground);padding:24px;display:grid;gap:20px;max-width:560px}
+  .typed{color:var(--text);font:400 19px/26px var(--font-body);margin:0;min-height:52px}
+  .caret{display:inline-block;width:.55em;height:1em;background:var(--caret);vertical-align:-.15em;margin-left:.15em;animation:blink 1s steps(1) infinite}
+  .boot{background:var(--ground-deep);padding:16px;color:var(--cyan-boot);font:500 13px/18px var(--font-mono);letter-spacing:.2em;text-transform:uppercase;margin:0}
+  .boot .caret{background:var(--cyan-boot)}
+  @keyframes blink{50%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){.caret{animation:none}}
+</style>
+<p class="typed"><span id="t"></span><span class="caret" aria-hidden="true"></span></p>
+<p class="boot">Developed by<br>Zipper Interactive, Inc.<span class="caret" aria-hidden="true"></span></p>
+<script>
+  var s="US Special Operations Command has been called upon to assist in quelling the illegal arms trafficking of an organization known as the Sesseri Syndicate.",el=document.getElementById('t'),i=0;
+  var rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(rm){el.textContent=s}else{(function tick(){el.textContent=s.slice(0,++i);if(i<s.length)setTimeout(tick,25)})()}
+</script>

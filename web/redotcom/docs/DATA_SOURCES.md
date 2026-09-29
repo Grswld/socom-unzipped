@@ -13,7 +13,7 @@ this repository that reads it, and how it was checked. The same facts, as machin
   uploaded, nothing is stored on a server. The development tools read an extracted copy of the same files.
 - **The repository ships no game data** -- no archives, textures, models, sounds, clips, scripts, executable or
   decompilation. The directories the tools write into (`public/maps/`, `test-fixtures/`) are git-ignored, and a pull
-  request that adds game data is closed unread ([`../../CONTRIBUTING.md`](../../CONTRIBUTING.md)).
+  request that adds game data is closed unread ([`../../../CONTRIBUTING.md`](../../../CONTRIBUTING.md)).
 - **The research notes cite, they do not copy.** They name files, give counts, offsets and the few short constants a
   rule needs, and cite decompiled functions by address and line. The decompiled text itself is never quoted into the
   tree.
@@ -30,7 +30,7 @@ The page needs nothing but your `.iso`. The tools and the tests need the files o
 
 1. Make an extracted tree from your own disc: mount the `.iso` (double-click on Windows, `hdiutil attach` on macOS,
    `mount -o loop` on Linux) and use its `RUN/` directory, or use the one the PC project's disc chain writes to
-   `game/disc/` ([`../../docs/DEVELOPING.md`](../../docs/DEVELOPING.md), "From your own disc to a buildable ELF").
+   `game/disc/` ([`../../../docs/DEVELOPING.md`](../../../docs/DEVELOPING.md), "From your own disc to a buildable ELF").
 2. From `web/`: `SOCOM_DISC=/path/to/disc npm run extract-maps`. It copies the 22 `RUN/MP*.ZDB` map archives and the
    shared archives (`COMMON_ARCHIVES` in `packages/archive/src/mapIndex.ts`) into `public/maps/`, three maps into
    `test-fixtures/`, and writes `index.json` with each map's name read from its own `mission.rdr`.
@@ -39,7 +39,7 @@ The page needs nothing but your `.iso`. The tools and the tests need the files o
 ## The data, kind by kind
 
 The research notes are in [`research/`](research/); `repo/NN` is a note of the PC project's own research
-([`../../docs/research/`](../../docs/research/)).
+([`../../../docs/research/`](../../../docs/research/)).
 
 ### Maps
 

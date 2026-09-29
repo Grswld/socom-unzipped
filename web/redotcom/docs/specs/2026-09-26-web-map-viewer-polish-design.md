@@ -1,6 +1,6 @@
 # Web map viewer — audit and polish pass (design)
 
-**Date:** 2026-09-26. **Scope:** `web/packages/viewer` and the decoders it leans on. **Status:** the
+**Date:** 2026-09-26. **Scope:** `web/redotcom/packages/viewer` and the decoders it leans on. **Status:** the
 audit is done, the design below is what the pass implements; findings are appended as they land.
 
 ## 1. What was asked

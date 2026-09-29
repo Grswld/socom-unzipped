@@ -124,7 +124,7 @@ bodies are supplied, else a placeholder named and the task carried; (7) nothing 
 ### The motion format: one reader for all 341 clips; the player is not `zAnimObjectMotionBegin` (2026-09-28, W2.2a)
 
 Every clip -- `MOTION_S.ZAR`'s seven victory clips, identical on all 22 maps, and `MOTION_P.ZAR`'s 334 -- reads with one
-layout (`web/docs/research/77-motion-format.md`): 30 keys a second, per-part quaternion channels, translations at 1/256
+layout (`web/redotcom/docs/research/77-motion-format.md`): 30 keys a second, per-part quaternion channels, translations at 1/256
 of a unit (the constant offsets reproduce `seal_A_scuba`'s bind nodes within a step, so the clips carry the SEAL
 skeleton's bone lengths; on `al_gman01` they are up to 44 steps out), the bind rows reproduced as three.js reads them
 with no conjugation or axis swap. The upper-body clips (`seal_p_*`, `seal_pfp_*`, `seal_mv_*`: 14-16 parts, no root or
@@ -143,7 +143,7 @@ are `seal_run`'s root byte for byte.
 ### The character mesh, the skeleton and the gear (2026-09-28, W2.1)
 
 `CLIB_MDL`'s CMesh chain decodes on all 22 maps with no failure (411 meshes, 671,131 vertices, 485,725 triangles,
-24,061 batches; `web/docs/research/78-character-mesh-and-skeleton.md`): the head quadword's low u16 is the tag count
+24,061 batches; `web/redotcom/docs/research/78-character-mesh-and-skeleton.md`): the head quadword's low u16 is the tag count
 (= `ref_count`); per batch one reloc-9 matrix tag whose ADDR is the palette slot, one reloc-10 bone list per bone
 (VU1 `0x52`'s input), then one reloc-11 draw packet (indices, the two GIFtag templates PRIM 125/123, uvs; no colour,
 no face normal). The bind palette reproduces every vertex's per-bone copies to 0.0017. `zdb_CSubMesh_Read`
