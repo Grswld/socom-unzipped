@@ -75,6 +75,11 @@ export interface Command {
   /** The look after the tick's look law, degrees (yaw 0..360 to 1/182; pitch -90..90 to 1/100). */
   yaw: number;
   pitch: number;
+  /**
+   * The look's turn, radians a second, left positive (`Walker.turn`, `actor+0x48`): past 0.1 of `turn_maxrate` it cuts
+   * an interruptible action, so the server must see the turn the client's mover saw (to 1/1000).
+   */
+  turn: number;
   /** `Button` bits. */
   buttons: number;
   /** The stance asked when `Button.Stance` is set: an index into `STANCE_CODES`. */

@@ -23,3 +23,7 @@ export { oneShotSeconds, airBands, SEAL_ANIMS } from './locomotion';
 export { RifleKick } from './rifleKick';
 export { openingStand } from './stand';
 export * from './simMap';
+export * from './net/protocol';
+export * from './net/codec';
+export * from './net/body';
+export * from './net/moverSim';

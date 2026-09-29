@@ -16,7 +16,7 @@ const between = (lo: number, hi: number): number => lo + rand() * (hi - lo);
 
 function command(seq: number): Command {
   return {
-    seq, forward: between(-1, 1), right: between(-1, 1), yaw: between(-720, 720), pitch: between(-90, 90),
+    seq, forward: between(-1, 1), right: between(-1, 1), yaw: between(-720, 720), pitch: between(-90, 90), turn: between(-8, 8),
     buttons: Math.floor(rand() * 1024), stance: Math.floor(rand() * 3), weapon: Math.floor(rand() * 2),
   };
 }
@@ -42,7 +42,7 @@ describe('the command frame (M3)', () => {
       const cmds = [command(trial * 3 + 1), command(trial * 3 + 2), command(trial * 3 + 3)];
       const bytes = encodeCommands({ viewTick: trial * 1.5, commands: cmds });
       expect(frameKind(bytes)).toBe(Frame.Commands);
-      expect(bytes.byteLength).toBe(6 + 13 * 3);
+      expect(bytes.byteLength).toBe(6 + 15 * 3);
       const back = decodeCommands(bytes);
       expect(back.viewTick).toBeCloseTo(trial * 1.5, 3);
       back.commands.forEach((c, i) => {

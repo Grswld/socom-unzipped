@@ -167,14 +167,23 @@ W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owne
 - **W3.R10 (2026-09-29) — 30 Hz snapshots, full and quantised.** A body is 55 bytes; 15 bodies and one's own state
   are 860 bytes, 26 KB/s a client, 0.6 MB/s for 24 clients -- well inside a Lightsail box's allowance, so no delta
   compression until M9 measures a need (the plan's delta step is deferred, not dropped).
-- **W3.R11 (2026-09-29) — the round is SUPPRESSION with the game's RESPAWN option on** (research 91 §4, §9): the game
-  has no respawn mode of its own. Teams of 8 by the game's join rule (Terrorists if fewer, or SEALs full, or both
-  empty; else SEALs); a round of the create-game default 6 minutes; a match of 11 rounds, first side to 6 round wins,
-  scores and the kill lines by the game's rules (+2 kill, -2 suicide/fall/team kill, +5 each on a round's winners, +1
-  alive at its end); respawn pressable 5 s after death once the body has faded (10 s), at the respawn record farthest
-  from its nearest enemy (`FUN_002b7ee0`), with a fresh default kit; friendly fire off (the create-game default). A
-  round is won on time by the side with the higher score, a tie by neither (`SUPPRESSION_ROUND_END_PLACEHOLDER`).
+- **W3.R11 (2026-09-29, amended the same day by the owner) — one endless respawn match per map.** The rules are
+  SUPPRESSION's with the game's RESPAWN option on (research 91 §4, §9: the game has no respawn mode of its own), but
+  **each map is its own match and the match never ends** (the owner, 2026-09-29: "each map is its own respawn match
+  ... make rounds infinite"): no round clock, no round wins, no match end, so the game's +5 round-win and +1
+  alive-at-end bonuses never apply. Teams of 8 by the game's join rule (Terrorists if fewer, or SEALs full, or both
+  empty; else SEALs); scoring and the kill lines by the game's rules (+2 kill, -2 suicide/fall/team kill); respawn
+  pressable 5 s after death once the body has faded (10 s), at the respawn record farthest from its nearest enemy
+  (`FUN_002b7ee0`), with a fresh default kit; friendly fire off (the create-game default). Scores live as long as the
+  player stays in the room.
 - **W3.R12 (2026-09-29) — names.** At most 30 characters of printable ASCII (research 91 §13; the in-game buffer);
   a guest is the game's own `"Player%d"` default, with a random four-digit number in place of the network index; a
   duplicate takes the lowest free `(2)`, `(3)` suffix within the 30 (the game's server refused duplicates; a refusal
   would strand a guest, so the spec's deterministic resolution wins).
+- **W3.R13 (2026-09-29, the owner) — the kicks.** An **idle kick**: a player who sends no input for the room's kick
+  time (a server setting held to 3-5 minutes, default 4; the owner's "3-5 minute kick timer") is moved out -- to the
+  back of the spectators' queue when anyone is waiting, else disconnected -- so an idle player never holds a slot
+  from the queue. A **team vote to kick**, "pairing the original": the game's own vote rules (research 91c) where
+  they exist, each value cited; where the game has none, a named placeholder -- a teammate starts it against a
+  teammate, it passes only when every other player on that team votes yes (the owner's "full team vote"), and it
+  lapses after 30 s (`VOTE_KICK_*_PLACEHOLDER`).

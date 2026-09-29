@@ -5,7 +5,7 @@ import { Frame, type BodyState, type Command, type CommandBatch, type OwnState, 
  * game's own precision allows (`./protocol` names the steps). Positions stay float32: a map is a few thousand units
  * across, so float32 keeps a thousandth of a unit, and the mover's own state is float64 only in the sim.
  *
- * Sizes: a command is 13 bytes, a batch of 3 is 45; a body is 55 bytes, so a snapshot of 15 bodies and one's own is
+ * Sizes: a command is 15 bytes, a batch of 3 is 51; a body is 55 bytes, so a snapshot of 15 bodies and one's own is
  * 860 bytes -- 26 KB/s at 30 Hz per client, before the WebSocket's framing.
  */
 
@@ -63,6 +63,9 @@ export const dqYaw = (q: number): number => (q * 360) / 65536;
 /** A pitch, degrees, -90..90 to 1/100. */
 export const qPitch = (deg: number): number => Math.round(clamp(deg, -90, 90) * 100) || 0;
 export const dqPitch = (q: number): number => q / 100;
+/** A turn rate, radians a second, to 1/1000 (+-32). */
+export const qTurn = (v: number): number => Math.round(clamp(v, -32, 32) * 1000) || 0;
+export const dqTurn = (q: number): number => q / 1000;
 /** A speed, units a second, to 1/64 (+-512). */
 const qSpeed = (v: number): number => Math.round(clamp(v, -511.98, 511.98) * 64);
 const dqSpeed = (q: number): number => q / 64;
@@ -75,13 +78,13 @@ export function quantiseCommand(c: Command): Command {
   return {
     ...c,
     forward: dqStick(qStick(c.forward)), right: dqStick(qStick(c.right)),
-    yaw: dqYaw(qYaw(c.yaw)), pitch: dqPitch(qPitch(c.pitch)),
+    yaw: dqYaw(qYaw(c.yaw)), pitch: dqPitch(qPitch(c.pitch)), turn: dqTurn(qTurn(c.turn)),
   };
 }
 
 // ---- commands ---------------------------------------------------------------------------------------------------
 
-/** `Frame.Commands`: u8 kind, f32 view tick, u8 count, then per command u32 seq, i8 x2, u16 yaw, i16 pitch, u16 buttons, u8 stance|weapon<<4. */
+/** `Frame.Commands`: u8 kind, f32 view tick, u8 count, then per command u32 seq, i8 x2, u16 yaw, i16 pitch, i16 turn, u16 buttons, u8 stance|weapon<<4. */
 export function encodeCommands(batch: CommandBatch): Uint8Array {
   const w = new Writer();
   w.u8(Frame.Commands);
@@ -91,7 +94,7 @@ export function encodeCommands(batch: CommandBatch): Uint8Array {
   for (const c of list) {
     w.u32(c.seq);
     w.i8(qStick(c.forward)); w.i8(qStick(c.right));
-    w.u16(qYaw(c.yaw)); w.i16(qPitch(c.pitch));
+    w.u16(qYaw(c.yaw)); w.i16(qPitch(c.pitch)); w.i16(qTurn(c.turn));
     w.u16(c.buttons & 0xffff);
     w.u8((c.stance & 0x0f) | ((c.weapon & 0x0f) << 4));
   }
@@ -106,8 +109,8 @@ export function decodeCommands(bytes: Uint8Array): CommandBatch {
   const commands: Command[] = [];
   for (let i = 0; i < n; i++) {
     const seq = r.u32(), forward = dqStick(r.i8()), right = dqStick(r.i8()), yaw = dqYaw(r.u16()), pitch = dqPitch(r.i16());
-    const buttons = r.u16(), sw = r.u8();
-    commands.push({ seq, forward, right, yaw, pitch, buttons, stance: sw & 0x0f, weapon: sw >> 4 });
+    const turn = dqTurn(r.i16()), buttons = r.u16(), sw = r.u8();
+    commands.push({ seq, forward, right, yaw, pitch, turn, buttons, stance: sw & 0x0f, weapon: sw >> 4 });
   }
   return { viewTick, commands };
 }
@@ -125,7 +128,7 @@ function writeBody(w: Writer, b: BodyState): void {
   w.i8(qStick(b.groundForward)); w.i8(qStick(b.groundRight)); w.i8(b.groundCls);
   w.u8(b.action); w.u8(b.actionSerial & 0xff); w.u16(qSeconds(b.actionT)); w.u16(qSeconds(b.actionSeconds < 0 ? null : b.actionSeconds));
   w.u8(b.overlay); w.u16(qSeconds(b.overlayT)); w.u16(qSeconds(b.overlaySeconds));
-  w.i16(Math.round(clamp(b.turnRate, -32, 32) * 1000));
+  w.i16(qTurn(b.turnRate));
   w.u8(b.trav); w.f32(b.travFrame); w.f32(b.travRootY); w.u8(b.travBlend); w.u8(Math.round(clamp(b.travBlendWeight, 0, 1) * 255));
   w.i8(b.peek);
 }
@@ -141,7 +144,7 @@ function readBody(r: Reader): BodyState {
   const groundForward = dqStick(r.i8()), groundRight = dqStick(r.i8()), groundCls = r.i8();
   const action = r.u8(), actionSerial = r.u8(), actionT = dqSeconds(r.u16()), actionSeconds = dqSeconds(r.u16());
   const overlay = r.u8(), overlayT = dqSeconds(r.u16()), overlaySeconds = dqSeconds(r.u16());
-  const turnRate = r.i16() / 1000;
+  const turnRate = dqTurn(r.i16());
   const trav = r.u8(), travFrame = r.f32(), travRootY = r.f32(), travBlend = r.u8(), travBlendWeight = r.u8() / 255;
   const peek = r.i8();
   return {

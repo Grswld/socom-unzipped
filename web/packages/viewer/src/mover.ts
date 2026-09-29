@@ -919,11 +919,12 @@ export class Walker {
   }
 
   /** Feeds `seconds` of real time in and runs the whole ticks it makes, `afterTick` after each; returns how many ran. */
-  advance(seconds: number, input: WalkInput, afterTick?: () => void): number {
+  advance(seconds: number, input: WalkInput, afterTick?: () => void, beforeTick?: () => WalkInput): number {
     this.accumulator += Math.max(0, seconds);
     let ticks = 0;
     while (this.accumulator >= TICK - 1e-9 && ticks < MAX_TICKS) {
-      this.tick(input);
+      // MULTIPLAYER (web sprint 3, W3.R8): a command stream sets each tick's look, buttons and stick before it runs.
+      this.tick(beforeTick ? beforeTick() : input);
       afterTick?.();
       this.accumulator -= TICK;
       ticks++;
