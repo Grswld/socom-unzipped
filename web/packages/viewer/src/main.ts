@@ -223,7 +223,7 @@ fire.setGun({
   interval: (fireWait) => fireInterval(fireWait, fireMode),
   round: (dir) => {
     // The round goes by the cone as the frame left it (FUN_005bd100 runs before the shot), then counts.
-    const out = perturb(dir, accuracy.cone(zoom.state()));
+    const out = perturb(dir, accuracy.cone(zoom.state(), zoom.magnification()));
     const stance = walk.mover()?.stance ?? 'stand';
     if (accuracy.round(zoom.state(), stance).dropZoom) setZoom(0);   // the game's first person: third (owner, 2026-09-29)
     return out;
@@ -1429,7 +1429,7 @@ window.__viewer = {
   cycleZoom: () => stepZoom('cycle'),
   fireMode: () => FIRE_MODE_NAMES[fireMode] ?? String(fireMode),
   switchFireMode: () => switchFireMode(),
-  accuracy: () => ({ ...accuracy.state(), cone: accuracy.cone(zoom.state()) }),
+  accuracy: () => ({ ...accuracy.state(), cone: accuracy.cone(zoom.state(), zoom.magnification()) }),
   reticle: () => reticle.state(),
   stance: () => walk.stance(),
   setStance: (stance) => walk.setStance(stance),

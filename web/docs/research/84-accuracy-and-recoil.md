@@ -37,7 +37,8 @@ reCOM's order from `+0x18`: `m_retposx/y` +0x18/+0x1c, `m_retoffsetx/y` +0x20/+0
   out, no wrap; the magnification runs linearly at 3× the target a second; the look is divided by it; the move stick
   is × 0.2 scoped.
 - **The scoped kick** (§8): `FireRifleKick*` moves the aim pitch **only scoped, only on the first round of a pull** --
-  a second round drops the scope to first person. Scoped the cone is a point, moved by the `SniperDist*` sway.
+  a second round drops the scope to first person. Scoped the cone is a point, moved by the `SniperDist*` sway **divided
+  by the magnification** (§17: a third on the SD's 3×).
 - **The reticle is SOCOM II's per weapon** (§9): ten sets chosen by the weapon's `ID` and the view; the rifle's arms
   are coloured (200, 200, 24) at rest, green on a teammate, red on an identified enemy; the scope is a full-frame tube.
 
@@ -149,7 +150,9 @@ at 26 -- the look is the biggest term; a round +7, closing again in 0.14 s; auto
   divides by the half frame: `tx = tan(tan(hfov)) / 320`, `ty = tan(tan(hfov) × 448/640) / 224`. With the map's
   `hfov` 0.6109: tx = 0.0026346, ty = 0.0023817 per pixel -- ~1.2× the true tangent of a drawn pixel (0.0020342
   vertically), so the cone is a fifth wider than the reticle drawn. Ported as is (`tangentPerPixel`).
-- `+0x5d4 = kit+0x20 × tx`, `+0x5d8 = −kit+0x24 × ty` (up positive), `+0x5dc = size × ty × 0.707`. Scoped, see §8.
+- `+0x5d4 = kit+0x20 × tx × k`, `+0x5d8 = −kit+0x24 × ty × k` (up positive), `+0x5dc = size × ty × 0.707` -- `k` =
+  `d_aim / (cam+0x474 × (d_aim − d_fire))`, the depth ratio (≈ 1) **over the magnification** (§17); the radius has no
+  `k`. Scoped, see §8.
 - `FUN_00592260(seal, dir)` for each round: `right = dir × (0, 1, 0)`, `up = right × dir` (**unnormalised**: cos(pitch)
   long), `a = +0x5d4 + +0x5dc × s1`, `b = +0x5d8 + +0x5dc × s2`, `dir += right·a + up·b`, with `s = u·|u|`, `u =
   (rand() − 0x3fffffff) × 9.313226e-10` in [−1, 1). A square whose corners are on the circle of radius `size`; three
@@ -222,7 +225,8 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   0.25)`, `L = SniperDistLimit × (0.8 × steadiness + 0.2)`, and at ±L the sign of `SniperDistPPFrame` flips -- in the
   weapon's own table -- so it swings end to end, a little faster going positive (the +0.75/+0.25). Steadiness is the
   float behind body `+0xeb0` (1 when whole; `FUN_00578150` raises it). The SD standing: ±20 px across at 6.25-13 px/s,
-  ±24 px vertically. Turned by §5's tangents that is up to 0.053 rad -- 65 PS2 pixels at 3× -- and **no reader of it
+  ±24 px vertically. Turned by §5's tangents and divided by the magnification (§17) that is up to 0.018 rad at 3× (0.053 at 1×, what
+  the viewer used until 2026-09-29) -- 20 PS2 pixels of the scoped frame -- and **no reader of it
   draws it**: the scope overlay is at fixed frame coordinates (§9), and `kit+0x58/+0x5c`, which accumulate the sway,
   have no reader in the kit's functions. So scoped rounds wander off the scope's cross invisibly [reading: the view's
   own sway, if the game has one, was not found; the viewer ports the rounds' sway as the code has it].
@@ -308,7 +312,7 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
 | what | value | why |
 |---|---|---|
 | the aim-to-muzzle depth ratio in the knock clamp and the cone | 1 | `FUN_00290830`'s two depths ≈ equal at range |
-| steadiness (`body+0xeb0`) | 1 | whole; the damage that lowers it is not modelled |
+| steadiness (`body+0xeb0`) | 1 | **a reading corrected in §17**: it is an exertion that decays, not modelled |
 | the airborne term | `(vx² + vz²) / 65` while `airborne` | `+0x1350` read as the carried air velocity, bit 5 as airborne |
 | the look rates | differences of `fly.pose()` a frame | the body's `+0x44`/`+0x60`; a > 45° jump is a placement |
 | the scoped sway | ported, not drawn | no drawing reader found (§8) |
@@ -395,3 +399,36 @@ the round event's `through`); the eye's ray to the point under the reticle passe
   whole 20), no `FireRifleKick` (no kick even scoped), one fire mode (single), one zoom mode (1.5) -- so d-pad Up from
   first person goes to the 9x view (state 4, `ret_binocs`), not a scope. `accuracy.ts`, `zoom.ts` and the reticle take
   it as they take the SD.
+
+## 17. The zoom's factor on the round (2026-09-29, the owner: "the zoom is supposed to increase accuracy by quite a bit")
+
+- **The rule** (`FUN_005bd100`, decomp 474236-474266): `fVar8 = cam+0x474`; `fVar9 = d_aim / (fVar8 × (d_aim −
+  d_fire))` (`FUN_00290830`: a point's depth along the camera's axis; the aim point `+0x1458` and the fire point
+  `+0x1c`); `+0x5d4 = kit+0x20 × fVar9 × tx`, `+0x5d8 = −kit+0x24 × fVar9 × ty`; `+0x5dc = size × ty × 0.707` without
+  `fVar9`. `cam+0x474` is `FUN_0029b2f0`'s `zoom × DAT_004a44ac` (NTSC 1.0), fed every frame the **running**
+  magnification `DAT_003dc338` (decomp 52802). `cam+0x290` (the tangents' `tx`, `ty`) is `W/2 / tan(fov)` of the
+  unzoomed `+0x210` (`FUN_002915f0`): no zoom there.
+- **So per view:** third person (1.0) -- the cone is the bloom's square, the knock's offset as is; the night vision
+  (1.01) -- the same, the offset ÷ 1.01; the scope (state 5+) -- **no cone at all** (the radius is 0: no bloom from
+  moving, turning or firing, §8) and the sway's offset **÷ `ZoomMode[state − 4]`: ÷ 3 on the M4A1 SD, ÷ 2.5 on the
+  M4A1**; the 9× view (state 4) -- the sway ÷ 9. Stance and movement act on the scope only through the sway's limits
+  (`SniperDistLimit` per stance: 20 / 16 / 12 × 24 / 19 / 15 on the SD) and the move stick's × 0.2 (§7).
+- **The viewer before** (`accuracy.ts` `cone(zoomState)`): the offsets were never divided, so the SD's scoped rounds
+  wandered up to 20 × 0.0026346 = 0.053 rad (3.0°) off the cross -- three times the game's 0.018 -- worse on average
+  than walking in third person with the reticle pinned open. **Now** `cone(zoomState, magnification)` takes
+  `Zoom.magnification()` (required, so no caller can drop it again); `accuracy.test.ts` "the zoom on the cone" pins
+  the third and measures 600 rounds per stance against third person walking. The reticle is unchanged: the arms are
+  the size (halved in third person, §9) and the scope's tube is drawn at fixed frame coordinates, the sway undrawn --
+  both as the game. The multiplayer server walks the client's already-perturbed direction (`room.ts` `fire`), so it
+  applies the same rule by construction.
+- **Steadiness is an exertion, not health** (corrects §8 and §11). `body+0xeb0` points at `{cur, target, mode}` made
+  `{1.0, 0, 0}` (decomp 419589-419598); each tick `FUN_00550ef0` raises `cur` (`FUN_00578150`, clamped to 1) by the
+  body's `|+0x240| + 0.1 × |+0x23c| + |+0x244|` (copied from the controller's `[2]`, `[4]`, `[3]` at 418613-418615,
+  zeroed in several animation states: read as the stick inputs) and a vehicle's term, then pulls it toward `target`
+  0 at `−SniperDecayRate` a second (`cur += −rate × dt × (target − cur)`, snapping within 0.005; 418366-418388).
+  A round adds 0.35 (479407), entering the 9× view or a scope 0.5 (`FUN_005b9180`, 472025). The sway's limit is
+  `SniperDistLimit × (0.8 cur + 0.2)` and the sway moves only while `cur > 0.2` (472137-472185); the breath sound's
+  period is `(1 − cur) × 0.24 + 0.3` s (472076-472095). So holding still in a scope steadies it -- slowly standing
+  (0.04 a second), in about 8 s prone (0.2) -- and the viewer, which holds `cur` at 1, keeps the full sway. **Owed**:
+  port it once the three inputs are identified.
+
