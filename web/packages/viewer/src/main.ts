@@ -16,7 +16,9 @@ import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touch';
 import { WalkMode } from './walk';
 import { RemotePlayers } from './remotePlayers';
+import type { PlayClips } from './play';
 import { NetPage, netSettings } from './netPage';
+import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
 import { explosionShake } from './look';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
@@ -427,6 +429,8 @@ const play = new Play();
 const remote = new RemotePlayers(scene);
 const NET = PLAY ? netSettings(globalThis.location?.search ?? '', globalThis.location ?? { protocol: 'http:', host: 'localhost' }) : null;
 let net: NetPage | null = null;
+/** The clips the worker sent (the death clips among them, for the page's own death). */
+let playClips: PlayClips | null = null;
 /** The name the player set (`s2u.mp.name`), or '' for the server's guest name (W3.R12). */
 function playerName(): string {
   try { return globalThis.localStorage?.getItem('s2u.mp.name') ?? ''; } catch { return ''; }
@@ -479,7 +483,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS, ...(NET ? DEATH_CLIPS : [])] });
 }
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -622,7 +626,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.kind === 'play') {
-    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); remote.setClips(message.data); }
+    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); remote.setClips(message.data); playClips = message.data; }
     return;
   }
   if (message.kind === 'sound') {
@@ -1075,7 +1079,7 @@ function show(map: LoadedMap): void {
   if (NET) {
     net?.close();
     net = new NetPage({
-      walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM],
+      walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
       roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
     }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate);
   }

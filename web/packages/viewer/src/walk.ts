@@ -1,5 +1,6 @@
 import { groundGrid, moverSnapshot, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type TraversalHooks, type WalkInput } from './mover';
 import type { Grid } from '@s2u/scene';
+import type { TraversalPose } from './animator';
 import { Button, STANCE_CODES, type Command } from './net/protocol';
 import { MoverSim } from './net/moverSim';
 import { quantiseCommand } from './net/codec';
@@ -85,6 +86,7 @@ export class WalkMode {
   /** Dead or spectating in a networked round: the mover takes no stick and no presses. */
   private locked = false;
   private tickLook: [number, number, number] = [0, 0, 0];
+  private deathPose: (() => TraversalPose | null) | null = null;
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
@@ -184,6 +186,11 @@ export class WalkMode {
   /** Dead or spectating: the mover takes no stick and no presses (the Action press still goes to the server). */
   setLocked(on: boolean): void {
     this.locked = on;
+  }
+
+  /** The page's own death clip (`./remotePlayers` `deathPose`), or null when alive. */
+  setDeathPose(pose: (() => TraversalPose | null) | null): void {
+    this.deathPose = pose;
   }
 
   isLocked(): boolean {
@@ -317,7 +324,9 @@ export class WalkMode {
   snapshot(): PlaySnapshot | null {
     const w = this.walker;
     if (!this.walking || !w) return null;
-    return moverSnapshot(w, this.moves, this.jumps, this.turnRate);
+    const s = moverSnapshot(w, this.moves, this.jumps, this.turnRate);
+    if (this.deathPose) s.traversal = this.deathPose();     // MULTIPLAYER: the death clip in place of the mover's play
+    return s;
   }
 
   /** The action clips' root keys, by clip name (`./play` hands them over from the pack): `Walker.actionRoots`. */

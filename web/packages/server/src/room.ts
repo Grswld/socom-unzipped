@@ -7,6 +7,7 @@ import {
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type Team,
 } from '../../viewer/src/sim';
 import { bodyVolumes, rayBody, BODY_REACH, BODY_TOP, type V3 } from '../../viewer/src/net/hitVolumes';
+import { deathClip } from '../../viewer/src/net/deaths';
 
 /**
  * One map's match (web sprint 3, M3/M6; rulings W3.R8-R13): the lobby, every player's mover run from its command
@@ -381,7 +382,7 @@ export class Room {
     if (dmg === null) return;
     const died = applyHit(victim.health, part, dmg, record.piercing);
     this.send(victimId, { type: 'hurt', health: [...victim.health.hp], from: [...from], part });
-    if (died) this.kill(victim, p, record.name, 'weapon');
+    if (died) this.kill(victim, p, record.name, 'weapon', deathClip('bullet', part, victim.sim.walker.posture, this.opts.random));
     void overall;
   }
 
@@ -411,7 +412,7 @@ export class Room {
 
   // ---- deaths and score (research 91 sections 3, 8) ----
 
-  private kill(victim: Player, killer: Player | null, weapon: string | null, how: KillHow): void {
+  private kill(victim: Player, killer: Player | null, weapon: string | null, how: KillHow, clip: string | null = null): void {
     victim.alive = false;
     victim.diedAt = this.tick;
     victim.deaths++;
@@ -423,7 +424,7 @@ export class Room {
     } else {
       killer.kills++; killer.score += 2; killer.roundScore += 2;
     }
-    this.broadcast({ type: 'kill', killer: killer?.id ?? null, victim: victim.id, weapon, how: line });
+    this.broadcast({ type: 'kill', killer: killer?.id ?? null, victim: victim.id, weapon, how: line, clip });
   }
 
   // ---- the clock (W3.R11) ----

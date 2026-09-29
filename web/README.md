@@ -544,3 +544,20 @@ Entertainment.
 
 GPL-3.0, the repository's ([`LICENSE`](../LICENSE)). CI for this directory is
 [`.github/workflows/web.yml`](../.github/workflows/web.yml), which runs only when `web/` changes.
+
+## Multiplayer server (web sprint 3)
+
+`packages/server` is the match server behind the viewer's `?redotcom&mp` mode: one timed respawn match per map, HTTP
+`/health` and `/metrics` and a WebSocket on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
+`READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
+
+```
+SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS
+```
+
+Join from the viewer with `?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS).
+
+To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim Node 22 image, build context `web/`), a
+compose file with Caddy for HTTPS, a systemd unit for the no-Docker case, and `deploy.sh`. The owner's steps, the
+Lightsail size and the firewall are in [`deploy/README.md`](deploy/README.md). The disc is mounted read-only at run
+time and is never part of an image.

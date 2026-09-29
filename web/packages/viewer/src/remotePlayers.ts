@@ -5,6 +5,8 @@ import { buildBody, type BodyView } from './bodyView';
 import type { Lighting } from './lighting';
 import type { LoadedMap } from './loadMap';
 import { snapshotOf } from './net/body';
+import { BODY_FADE_S } from './net/deaths';
+import type { TraversalPose } from './animator';
 import type { BodyState, Team } from './net/protocol';
 import { Play, type PlayClips } from './play';
 
@@ -15,14 +17,28 @@ import { Play, type PlayClips } from './play';
  * mover (`./net/body` `snapshotOf`), the rifle in its hand raised by the replicated aim and trigger. A body the
  * snapshots stop naming is taken away.
  *
- * DEATH_CLIP_PLACEHOLDER: the game plays a death clip from `damanim.rdr` by the part and the stance and fades the body
- * at 0.1 a second (research 91 section 3); until those clips are wired, a dead body holds its last pose for the fade's
- * first second and is hidden.
+ * A death plays the clip the server chose from `damanim.rdr`'s lists (`./net/deaths`, research 91 section 3) and the
+ * body goes when the game's fade would have taken it (0.1 a second: 10 s). BODY_FADE_PLACEHOLDER: the body is drawn
+ * whole until then and hidden at once -- the skinned material has no opacity yet.
  */
 
-interface Remote { id: number; team: Team; view: BodyView; play: Play; weapon: Object3D | null; snap: ReturnType<typeof snapshotOf> | null; deadFor: number }
+interface Remote {
+  id: number; team: Team; view: BodyView; play: Play; weapon: Object3D | null; snap: ReturnType<typeof snapshotOf> | null;
+  deadFor: number; deathClip: string | null;
+}
 
-const DEATH_HOLD_S_PLACEHOLDER = 1;
+/**
+ * A death clip at `seconds` into it, as the animator's one-node play (the traversal seam, `./animator`): its key from
+ * its `motion.rdr` playback (the clip's own seconds), held on the last key once played.
+ */
+export function deathPose(clip: string, seconds: number, clips: PlayClips | null): TraversalPose | null {
+  const c = clips?.clips.find((k) => k.name === clip);
+  if (!c) return null;
+  const entry = clips?.table?.find(([name]) => name === clip)?.[1];
+  const playback = entry?.playback ?? c.frameCount / 30;
+  const frame = Math.min(c.frameCount - 1, (seconds / playback) * (c.frameCount - 1));
+  return { clip, frame, loop: false, rootY: null };
+}
 
 export class RemotePlayers {
   private readonly remotes = new Map<number, Remote>();
@@ -67,11 +83,12 @@ export class RemotePlayers {
       const r = this.remotes.get(b.id) ?? this.add(b.id);
       if (!r) continue;
       r.snap = snapshotOf(b);
-      if (r.snap.alive) r.deadFor = 0; else r.deadFor += dt;
-      const shown = r.snap.alive || r.deadFor < DEATH_HOLD_S_PLACEHOLDER;
+      if (r.snap.alive) { r.deadFor = 0; r.deathClip = null; } else r.deadFor += dt;
+      const shown = r.snap.alive || r.deadFor < BODY_FADE_S;
       r.view.group.visible = shown;
       if (!shown) continue;
-      r.play.frame(r.snap.alive ? dt : 0, { snapshot: () => r.snap, view: () => 'third' }, camera);
+      if (!r.snap.alive && r.deathClip) r.snap.traversal = deathPose(r.deathClip, r.deadFor, this.clips);
+      r.play.frame(dt, { snapshot: () => r.snap, view: () => 'third' }, camera);
       r.view.group.visible = true;
     }
     for (const id of [...this.remotes.keys()]) if (!seen.has(id)) this.remove(id);
@@ -81,6 +98,13 @@ export class RemotePlayers {
   muzzle(id: number): [number, number, number] | null {
     return this.remotes.get(id)?.play.muzzle() ?? null;
   }
+
+  /** A kill: the victim's death clip (the server's choice), played from now. */
+  died(id: number, clip: string | null): void {
+    const r = this.remotes.get(id);
+    if (r) { r.deathClip = clip; r.deadFor = 0; } else if (clip) this.pendingDeaths.set(id, clip);
+  }
+  private readonly pendingDeaths = new Map<number, string>();
 
   /** A body's weapon node in the world and its `firepoint` (the muzzle animation's frame, research 89 section 4), or null. */
   weaponFrame(id: number): { matrix: Matrix4; muzzle: [number, number, number] | null } | null {
@@ -115,7 +139,8 @@ export class RemotePlayers {
     play.setClips(this.clips);
     const weapon = this.weapon ? this.weapon.object.clone(true) : null;
     if (weapon && this.weapon) play.setWeapon(weapon, this.weapon.points);
-    const r: Remote = { id, team, view, play, weapon, snap: null, deadFor: 0 };
+    const r: Remote = { id, team, view, play, weapon, snap: null, deadFor: 0, deathClip: this.pendingDeaths.get(id) ?? null };
+    this.pendingDeaths.delete(id);
     play.setWeaponInput(() => ({ trigger: r.snap?.trigger ?? false, aiming: r.snap?.aiming ?? false }));
     this.remotes.set(id, r);
     return r;

@@ -1,0 +1,16 @@
+# Automatic HTTPS (Let's Encrypt) for {$MP_DOMAIN}; needs ports 80 and 443 reachable and the DNS A record in place.
+{
+	email {$ACME_EMAIL}
+}
+
+{$MP_DOMAIN} {
+	# /metrics is for the host only (scrape http://127.0.0.1:8787/metrics); nothing public.
+	@metrics_public {
+		path /metrics /metrics/*
+		not remote_ip 127.0.0.1 ::1
+	}
+	respond @metrics_public "forbidden" 403
+
+	# /health, /ws and the rest: WebSocket upgrades pass through reverse_proxy on their own.
+	reverse_proxy mp:8787
+}

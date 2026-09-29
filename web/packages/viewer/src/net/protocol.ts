@@ -220,7 +220,11 @@ export type ServerEvent =
   /** The recipient was hit: health left per part, and where from (research 91a section 7). */
   | { type: 'hurt'; health: number[]; from: [number, number, number]; part: number }
   /** A kill, for the message window (research 87 section 14, 91): `how` names the game's line. */
-  | { type: 'kill'; killer: number | null; victim: number; weapon: string | null; how: KillHow }
+  | {
+    type: 'kill'; killer: number | null; victim: number; weapon: string | null; how: KillHow;
+    /** The death clip the victim plays (`./deaths`), or null (a fall or a blast plays its own). */
+    clip: string | null;
+  }
   | { type: 'score'; rows: ScoreRow[]; timeLeft: number | null }
   | { type: 'chat'; text: string }
   /** W3.R13: the votes against the recipient (" Voting: You have %d votes against you.", 0x3f26c0). */

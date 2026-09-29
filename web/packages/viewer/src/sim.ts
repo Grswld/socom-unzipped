@@ -29,3 +29,4 @@ export * from './net/body';
 export * from './net/moverSim';
 export * from './net/damage';
 export * from './net/lobby';
+export * from './net/deaths';

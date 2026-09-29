@@ -3,7 +3,10 @@ import type { WeaponRecord } from '@s2u/scene';
 import type { FireEvent, FireWeapon } from './fire';
 import { NetClient, type Simulate } from './net/client';
 import type { ScoreRow, ServerEvent, Team } from './net/protocol';
-import type { RemotePlayers } from './remotePlayers';
+import { deathPose, type RemotePlayers } from './remotePlayers';
+import { overall } from './net/damage';
+import { RESPAWN_PROMPT_S } from './net/deaths';
+import type { PlayClips } from './play';
 import type { WalkMode } from './walk';
 
 /**
@@ -17,7 +20,9 @@ export interface NetPageDeps {
   walk: WalkMode;
   remote: RemotePlayers;
   /** The HUD's message window and clock (`./hud`). */
-  hud: { postMessage(text: string, scale?: number): void; setTimer(seconds: number): void };
+  hud: { postMessage(text: string, scale?: number): void; setTimer(seconds: number): void; setHealth(health: number): void };
+  /** The clips (the death clips among them), once the worker has sent them. */
+  clips(): PlayClips | null;
   /** A round's effects and sound at a point (`Effects.onRound`, `GameAudio.onFire`). */
   roundEffects(e: Extract<FireEvent, { type: 'round' }>, muzzleOf: number): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
@@ -52,6 +57,8 @@ export class NetPage {
   /** The round's end, in `performance.now()` ms, or null between rounds. */
   private endsAt: number | null = null;
   rows: ScoreRow[] = [];
+  /** The page's own death: when (ms), and whether the respawn prompt has been posted. */
+  private dead: { at: number; prompted: boolean } | null = null;
   private readonly unsubscribe: () => void;
 
   constructor(private readonly deps: NetPageDeps, url: string, map: string, name: string, simulate?: Simulate) {
@@ -82,6 +89,11 @@ export class NetPage {
     this.deps.walk.setTrigger(trigger);
     this.deps.remote.frame(dt, this.client.bodies(), camera);
     if (this.endsAt !== null) this.deps.hud.setTimer(Math.max(0, (this.endsAt - performance.now()) / 1000));
+    // Research 91 section 4.1: "Press the %c button to respawn." from 5 s dead (the press counts once the body faded).
+    if (this.dead && !this.dead.prompted && performance.now() - this.dead.at >= RESPAWN_PROMPT_S * 1000) {
+      this.dead.prompted = true;
+      this.deps.hud.postMessage('Press the X button to respawn.');
+    }
   }
 
   nameOf(id: number): string {
@@ -100,7 +112,17 @@ export class NetPage {
       case 'left': remote.forget(ev.id); this.teams.delete(ev.id); break;
       case 'kill':
         hud.postMessage(killLine(ev.how, ev.killer === null ? null : this.nameOf(ev.killer), this.nameOf(ev.victim), ev.weapon));
+        if (ev.victim === this.client.id) {
+          const at = performance.now(), clip = ev.clip;
+          this.dead = { at, prompted: false };
+          hud.setHealth(0);
+          this.deps.walk.setDeathPose(clip ? () => deathPose(clip, (performance.now() - at) / 1000, this.deps.clips()) : null);
+        } else remote.died(ev.victim, ev.clip);
         break;
+      case 'spawn':
+        if (ev.id === this.client.id) { this.dead = null; hud.setHealth(1); this.deps.walk.setDeathPose(null); }
+        break;
+      case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
       case 'shot': {
         const w = this.deps.weapons[ev.weapon ? 1 : 0];
         this.deps.roundEffects({
