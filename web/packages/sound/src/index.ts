@@ -5,3 +5,4 @@ export * from './script';
 export * from './materials';
 export * from './rules';
 export * from './catalog';
+export * from './spuReverb';

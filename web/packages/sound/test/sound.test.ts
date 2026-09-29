@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readZarMembers, Zar } from '@s2u/archive';
 import { fixture } from '../../archive/test/fixtures';
 import {
-  bankTone, callbackSounds, decodeVag, FootfallClock, footfallMoving, footstepSound, GRAIN, HARD_LANDING_SOUND,
+  bankTone, callbackSounds, closestOnSegment, decodeVag, findReverbPresets, landingHurts, passingSound, reverbImpulse,
+  SOCOM_REVERB_MODE, zanimEmitters, zanimSounds, FootfallClock, footfallMoving, footstepSound, GRAIN, HARD_LANDING_SOUND,
   landingClass, landingSounds, landSpeeds, makeVolume, materialsFromArchive, note2Pitch, panDegrees, parseBankFile,
   parseSoils, rangeGain, renderSound, SampleCache, sdNote2Pitch, soundHash, soundNameHash, soundParams,
   soundScriptFromArchive, voiceLevel, weaponScriptFromArchive, weaponSounds, type Material, type SoundBank,
@@ -94,15 +95,52 @@ describe('the rules (81 §4-§6)', () => {
     expect(panDegrees(-1, 0)).toBe(270);
     expect(panDegrees(0, -1)).toBe(180);
   });
-  it('reads the callbacks that play a sound', () => {
-    const archive = { sets: [{ name: 'common', anims: [
-      { name: 'jump_whoosh', names: ['NA', 'jump_whoosh', 'dummy_node', '.JUMP_WHOOSH', 'spinehi'], sequences: [{ commands: [{ offset: 28, set: 0, cmd: 30 }] }] },
+  it('reads the callbacks that play a sound, through the animations they start', () => {
+    // Two archives' animations; a command's bytes: play-sound (30) names its sound at +6 and its node at +16, a start
+    // (45) its animation at +7, a stop (46) at +4.
+    const bytes: Record<string, Uint8Array> = {};
+    const cmd = (anim: string, offset: number, b: number[]): { offset: number; set: number; cmd: number } => {
+      const key = `${anim}:${offset}`; const d = new Uint8Array(32); b.forEach((v, i) => { d[i] = v; }); bytes[key] = d;
+      return { offset, set: 0, cmd: d[0]! };
+    };
+    const common = { sets: [{ name: 'common', anims: [
+      { name: 'jump_whoosh', names: ['NA', 'jump_whoosh', 'dummy_node', '.JUMP_WHOOSH', 'spinehi'],
+        params: { flags: 162, rootNodeIndex: 1 }, nodeRefs: [{ name: 'NA' }, { name: 'dummy_node' }, { name: 'spinehi' }],
+        sequences: [{ commands: [cmd('jump_whoosh', 28, [30, 0, 0x82, 0, 0x82, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2])] }] },
+      { name: 'frag_grenade', names: ['NA', 'frag_grenade', 'FRAG_sparks', '.GREN_MED'], params: { flags: 162, rootNodeIndex: 1 },
+        sequences: [{ commands: [cmd('frag_grenade', 28, [45, 0, 0x52, 0, 4, 0, 0, 2]), cmd('frag_grenade', 48, [30, 0, 0x82, 0, 0x88, 0, 3, 0])] }] },
+      { name: 'frag_grenade_stone', names: ['NA', 'frag_grenade_stone', 'flash', 'frag_grenade'], params: { flags: 162, rootNodeIndex: 1 },
+        sequences: [{ commands: [cmd('frag_grenade_stone', 28, [45, 0, 0x52, 0, 1, 0, 0, 3])] }] },
       { name: 'seal_thud', names: ['NA', 'seal_thud', 'dummy_node'], sequences: [{ commands: [{ offset: 28, set: 0, cmd: 60 }] }] },
-      { name: 'law_impact', names: ['NA', 'law_impact', '.EXP_1', '.GREN_FAR'], sequences: [{ commands: [{ offset: 28, set: 0, cmd: 30 }, { offset: 60, set: 0, cmd: 30 }] }] },
     ] }] };
-    expect([...callbackSounds(archive)]).toEqual([['jump_whoosh', ['.JUMP_WHOOSH']], ['law_impact', ['.EXP_1']]]);
-    const payload = (_s: string, anim: string, offset: number): number => (anim === 'law_impact' ? (offset === 28 ? 2 : 3) : 3);
-    expect(callbackSounds(archive, payload).get('law_impact')).toEqual(['.EXP_1', '.GREN_FAR']);
+    const mission = { sets: [{ name: 'mission', anims: [
+      { name: 'fanblade1_start', names: ['NA', 'fan1', 'fanblade1_start', '~FAN_ROTATE', 'fanblade1'], params: { flags: 33, rootNodeIndex: 1 },
+        nodeRefs: [{ name: 'NA' }, { name: 'fan1' }, { name: 'fanblade1' }],
+        sequences: [{ commands: [cmd('fanblade1_start', 28, [30, 0, 0x82, 0, 0x82, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xf9])] }] },
+      { name: 'check_camera_inside_state1', names: ['NA', 'check_camera_inside_state1', 'outside_noise', 'inside_noise'],
+        params: { flags: 33, rootNodeIndex: 0 },
+        sequences: [{ commands: [cmd('check_camera_inside_state1', 8, [46, 0, 0x22, 0, 2, 0, 0, 0]), cmd('check_camera_inside_state1', 16, [45, 0, 0x52, 0, 0, 0, 0, 3])] }] },
+    ] }] };
+    const payload = (_set: string, anim: string, offset: number, length: number): Uint8Array | null =>
+      bytes[`${anim}:${offset}`]?.subarray(0, length) ?? null;
+    const map = callbackSounds([common, mission], payload);
+    expect(map.get('jump_whoosh')).toEqual(['.JUMP_WHOOSH']);
+    expect(map.get('frag_grenade_stone')).toEqual(['.GREN_MED']);              // through frag_grenade
+    expect(map.has('seal_thud')).toBe(false);
+    const infos = zanimSounds([common, mission], payload);
+    expect(infos.get('jump_whoosh')!.sounds).toEqual([{ sound: '.JUMP_WHOOSH', flags: 0x82, node: 'spinehi' }]);
+    expect(infos.get('check_camera_inside_state1')).toMatchObject({ activation: 1, stops: ['outside_noise'], calls: ['inside_noise'] });
+    expect(zanimEmitters(infos)).toEqual([{ anim: 'fanblade1_start', sound: '~FAN_ROTATE', node: 'fan1', flags: 0x282 }]);
+    // Without the bytes: the first sigiled name, no calls.
+    expect(callbackSounds(common).get('frag_grenade_stone')).toBeUndefined();
+  });
+  it('hears another shooter round passing within 20 units, never the player own', () => {
+    expect(passingSound([0, 0, 0], [-50, 10, 0], [50, 10, 0])).toEqual({ sound: '.BUL_PASSING', at: [0, 10, 0] });
+    expect(passingSound([0, 0, 0], [-50, 25, 0], [50, 25, 0])).toBeNull();
+    expect(passingSound([0, 0, 0], [-50, 60, 0], [50, 60, 0], true)?.sound).toBe('.ROCKET_BY');
+    expect(closestOnSegment([5, 5, 0], [0, 0, 0], [0, 0, 0]).distance).toBeCloseTo(Math.hypot(5, 5), 9);
+    expect(landingHurts(0)).toBe(false);
+    expect(landingHurts(1)).toBe(true);
   });
   it('hashes names as the script files them', () => {
     expect(soundHash('.STEP_STONE')).toBe(1440126871);
@@ -179,6 +217,16 @@ describe.skipIf(!store)('BNKSTORE.ZAR (81 §1)', () => {
     expect(new Set(picks).size).toBeGreaterThan(5);
     expect(cache.size).toBe(new Set(picks).size);
   });
+  it('renders a loop to its length and the reverb send of the voices that ask for it', () => {
+    const am = bank('MP2_am.bnk');
+    const bed = renderSound(am, am.names.get('~INDOOR_AMB')!, new SampleCache(am.vag), { random: seeded(2), loop: true, maxSeconds: 3 });
+    expect(bed.left.length).toBe(3 * 48_000);
+    expect(bed.sendLeft).not.toBeNull();                                        // its tones carry flags bit 0
+    expect(Math.max(...bed.left.subarray(2 * 48_000).map(Math.abs))).toBeGreaterThan(0);   // still sounding at the end
+    const fx = bank('MP2_fx.bnk');
+    const dry = renderSound(fx, fx.names.get('.M4A1')!, new SampleCache(fx.vag), { random: seeded(2) });
+    expect(dry.sendLeft).not.toBeNull();
+  });
   it('reads a bank out of the store by range', async () => {
     const source = {
       list: async () => [], read: async () => store!, size: async () => store!.byteLength,
@@ -222,5 +270,25 @@ describe.skipIf(!zweapon)('zweapon.rdr sounds (81 §5)', () => {
     expect(weaponSounds(script, 'M4A1 SD')).toEqual({ name: 'M4A1 SD', fireClose: '.M4A1_SIL', fireMed: null, fireFar: null, reload: '.M4A1_SIL_RLD' });
     expect(weaponSounds(script, 'M4A1')).toMatchObject({ fireClose: '.M4A1', fireMed: '.M4A1_M', fireFar: '.M4A1_F', reload: '.M4A1_RLD' });
     expect(weaponSounds(script, 'NOPE')).toBeNull();
+  });
+});
+
+const libsd = fixture('RUN/IRX/LIBSD.IRX');
+describe.skipIf(!libsd)('the SPU2 reverb (81 §9)', () => {
+  it('finds the libsd nine presets and rings mode 3 for about a second', () => {
+    const presets = findReverbPresets(libsd!)!;
+    expect(presets.length).toBe(9);
+    expect(Array.from(presets[0]!.slice(0, 2))).toEqual([0x7d, 0x5b]);          // Room
+    expect(Array.from(presets[SOCOM_REVERB_MODE - 1]!.slice(0, 2))).toEqual([0xb1, 0x7f]);
+    const ir = reverbImpulse(presets[SOCOM_REVERB_MODE - 1]!);
+    expect(ir.ll.length).toBe(ir.rr.length);
+    expect(ir.ll.length / ir.sampleRate).toBeGreaterThan(0.5);
+    expect(ir.ll.length / ir.sampleRate).toBeLessThan(3);
+    const first = ir.ll.findIndex((x) => x !== 0);
+    expect(first / 48_000).toBeGreaterThan(0.01);                               // the comb taps' pre-delay
+    const energy = (x: Float32Array, a: number, b: number): number => x.subarray(a, b).reduce((n, v) => n + v * v, 0);
+    expect(energy(ir.ll, 0, 9600)).toBeGreaterThan(100 * energy(ir.ll, 38_400, 48_000));   // it decays
+    expect(energy(ir.lr, 0, 48_000)).toBeGreaterThan(0);                          // and crosses to the other side
+    expect(findReverbPresets(new Uint8Array(4096))).toBeNull();
   });
 });
