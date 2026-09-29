@@ -21,9 +21,10 @@ describe('buildSignup', () => {
 });
 
 describe('replySignup', () => {
-  it('tells the three outcomes apart', () => {
+  it('tells the outcomes apart', () => {
     expect(replySignup(201, { ok: true, id: 'PT-20260920-abcdef' }).state).toBe('new');
-    expect(replySignup(200, { ok: true, already: true }).state).toBe('already');
+    // the inbox no longer says whether an address was on the list (launch review PL-13); the old answer is not a success
+    expect(replySignup(200, { ok: true, already: true }).state).toBe('bad');
     expect(replySignup(400, { ok: false, error: 'email: that does not look like an address' })).toEqual({ state: 'bad', text: 'NOT SENT. EMAIL: THAT DOES NOT LOOK LIKE AN ADDRESS' });
     expect(replySignup(429, {}).state).toBe('bad');
     expect(replySignup(503, {}).text).toMatch(/FULL/);

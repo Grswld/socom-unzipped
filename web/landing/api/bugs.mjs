@@ -9,7 +9,7 @@ export const LIMITS = Object.freeze({
   contact: 120, short: 64,
   contextPairs: 16, contextKey: 32, contextValue: 256,
   log: 65536,
-  body: 98304, // the whole POST, enforced by the server (and by nginx)
+  body: 98304, // the whole POST, enforced by server.mjs's readBody (bodyLimit); nginx allows 128k in front
 });
 
 const SOURCES = new Set(['site', 'launcher']);

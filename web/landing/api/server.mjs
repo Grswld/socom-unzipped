@@ -1,6 +1,6 @@
 // s2u-api: the bug-report inbox behind https://socomunzipped.com/api/bugs, and the play-tester list behind
-// /api/testers (one file per address under $DATA_DIR/testers/, named by the address's hash so a repeat is
-// answered "already on the list"). Zero dependencies.
+// /api/testers (one file per address under $DATA_DIR/testers/, named by the address's hash: a repeat is logged and
+// answered like a new signup, nothing is stored twice). Zero dependencies.
 // POST /api/bugs (JSON, see bugs.mjs) -> one file per report under $DATA_DIR/bugs/ (test reports under
 // bugs-test/). Nothing is ever served back: there is no GET for reports. Reports are read over SSH.
 // Reached only through the s2u nginx on the compose network; never published on a host port.
@@ -8,8 +8,8 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, readdirSync, writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
-import { validateReport, makeId, RateLimiter, LIMITS } from './bugs.mjs';
-import { validateSignup, makeSignupId, signupFileName } from './testers.mjs';
+import { validateReport, makeId, RateLimiter } from './bugs.mjs';
+import { validateSignup, makeSignupId, signupFileName, fileSignup, bodyLimit } from './testers.mjs';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const DATA_DIR = process.env.DATA_DIR ?? '/data';
@@ -31,13 +31,14 @@ function send(res, status, body, headers = {}) {
   res.end(text);
 }
 
-function readBody(req) {
+/** The request body, refused with 413 past `limit` bytes (bodyLimit: each endpoint's own whole-POST cap). */
+function readBody(req, limit) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > LIMITS.body) { reject(Object.assign(new Error('too large'), { status: 413 })); req.destroy(); return; }
+      if (size > limit) { reject(Object.assign(new Error('too large'), { status: 413 })); req.destroy(); return; }
       chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
@@ -57,7 +58,7 @@ const server = createServer(async (req, res) => {
     const caller = String(req.headers['x-real-ip'] ?? req.socket.remoteAddress ?? 'unknown').slice(0, 64);
 
     let raw;
-    try { raw = JSON.parse(await readBody(req)); }
+    try { raw = JSON.parse(await readBody(req, bodyLimit(path))); }
     catch (e) { return send(res, e.status === 413 ? 413 : 400, { ok: false, error: e.status === 413 ? 'body: too large' : 'body: not JSON' }); }
 
     if (path === '/api/testers') return signup(req, res, raw, caller);
@@ -90,8 +91,8 @@ const server = createServer(async (req, res) => {
     try { send(res, 500, { ok: false, error: 'server error' }); } catch { /* socket gone */ }
   }
 });
-// The play-tester list. Validation in testers.mjs; the file name is the address's hash, and `wx` makes the
-// second signup from one mailbox fail with EEXIST, which is the "already on the list" answer -- no read, no race.
+// The play-tester list. Validation and filing in testers.mjs; the file name is the address's hash, and a repeat is
+// logged here and answered exactly like a new signup, so the reply never says whether an address is on the list.
 function signup(req, res, raw, caller) {
   const v = validateSignup(raw);
   if (!v.ok) return v.silent ? send(res, 201, { ok: true, id: makeSignupId() }) : send(res, 400, { ok: false, error: v.error });
@@ -110,17 +111,10 @@ function signup(req, res, raw, caller) {
     ...v.signup,
   };
   const file = join(dir, signupFileName(v.signup.email));
-  try {
-    writeFileSync(file, JSON.stringify(record, null, 2) + '\n', { mode: 0o640, flag: 'wx' });
-  } catch (e) {
-    if (e && e.code === 'EEXIST') {
-      console.log(`${record.receivedUtc} signup repeat test=${record.test}`);
-      return send(res, 200, { ok: true, already: true });
-    }
-    throw e;
-  }
-  console.log(`${record.receivedUtc} signup stored ${id} test=${record.test}`);
-  return send(res, 201, { ok: true, id });
+  const write = (f, text) => writeFileSync(f, text, { mode: 0o640, flag: 'wx' });
+  const { stored, reply } = fileSignup(write, file, JSON.stringify(record, null, 2) + '\n', id);
+  console.log(`${record.receivedUtc} signup ${stored ? `stored ${id}` : 'repeat'} test=${record.test}`);
+  return send(res, reply.status, reply.body);
 }
 
 server.requestTimeout = 15_000;

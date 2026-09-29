@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateSignup, normaliseEmail, signupFileName, makeSignupId, SIGNUP_LIMITS } from './testers.mjs';
+import { validateSignup, normaliseEmail, signupFileName, makeSignupId, fileSignup, SIGNUP_LIMITS } from './testers.mjs';
 
 describe('validateSignup', () => {
   it('accepts an address and an optional note', () => {
@@ -50,5 +50,31 @@ describe('the file name', () => {
 describe('ids', () => {
   it('look like PT-YYYYMMDD-hex', () => {
     expect(makeSignupId(new Date('2026-09-20T12:00:00Z'))).toMatch(/^PT-20260920-[0-9a-f]{6}$/);
+  });
+});
+
+// Launch review PL-13: the answer must not say whether an address is already on the list (a membership oracle).
+// A repeat is logged on the server and answered exactly like a new signup; nothing is stored twice.
+describe('fileSignup', () => {
+  const eexist = () => { throw Object.assign(new Error('exists'), { code: 'EEXIST' }); };
+  it('answers a repeat exactly like a new signup', () => {
+    const id = 'PT-20260929-abcdef';
+    const writes: string[] = [];
+    const stored = fileSignup((file: string) => { writes.push(file); }, 'f.json', '{}', id);
+    const repeat = fileSignup(eexist, 'f.json', '{}', id);
+    expect(stored.stored).toBe(true);
+    expect(repeat.stored).toBe(false);
+    expect(writes).toEqual(['f.json']);
+    expect(repeat.reply).toEqual(stored.reply);
+    expect(stored.reply).toEqual({ status: 201, body: { ok: true, id } });
+    expect('already' in repeat.reply.body).toBe(false);
+  });
+  it('the id in either answer looks like a signup id', () => {
+    const r = fileSignup(eexist, 'f.json', '{}', makeSignupId());
+    expect(r.reply.body.id).toMatch(/^PT-\d{8}-[0-9a-f]{6}$/);
+  });
+  it('any other write failure is not a signup', () => {
+    const eacces = () => { throw Object.assign(new Error('denied'), { code: 'EACCES' }); };
+    expect(() => fileSignup(eacces, 'f.json', '{}', 'PT-20260929-abcdef')).toThrow(/denied/);
   });
 });
