@@ -344,6 +344,40 @@ The viewer runs that (`hangDown`, `hangDropFall`). "Ledge -> Hang backwards", "H
 in this ELF plays them** (0x25 only on a branch no caller takes, 442360; 0x26 never; 0x2b only tested, 418310); no
 climb down is offered at a ledge.
 
+### 3.8 The climb's facing, and the owner's "turned around and climbed the wrong way" (round 6, 2026-09-29) [read, viewer]
+
+**The game's rule** [read]. The facing is the body's, never the stick's or the camera's apart from it (in SOCOM II the
+look's yaw is the body's): the offer `FUN_005b3ce0` takes the actor matrix's third row, horizontal
+(`*(actor+0x28) + 0x20`, `+0x28`, decomp 469213-469218), dots it with the contact's normal and wants >= 0.3
+(section 3.2); no forward probe picks the wall (section 3.1: the contact is the move solver's). So **walking backwards
+or strafing into a box offers nothing** (the facing is 180 or 90 degrees off), and neither does a look more than 72.5
+degrees away. On the press, `FUN_005b2620` hands the contact's normal (`pfVar13 + 4`, 468504) to `FUN_005b1a10`, which
+stores it **negated** at the steer record's `+0x7c` (467938-467946): the facing to reach is into the wall, the
+polygon's, not the probe's or the stick's. `FUN_005b2d20` (468637-468680) turns to it by vectors: the target facing
+brought into the actor's frame by the rotation's conjugate (`FUN_00306fd0` with `-q.xyz`), `acos` of its dot with the
+frame's forward (`DAT_003f6500`) over the tick's time, clamped to 4.712 a second, its sign from the cross product's y
+(`FUN_001bfc78`; `fStack_ec < 0` negates it). **The turn is always the short way** -- there is no angle to wrap.
+
+**The viewer's fault** [viewer, measured]. `align` and the ladder head's `mountTop` took the turn as
+`((want - yaw + 540) % 360) - 180`. JavaScript's `%` keeps the dividend's sign, so for a yaw more than 540 over `want`
+the result is -180 or under: the SEAL spun the long way. The page's camera yaw is never wrapped (`camera.ts` adds the
+mouse's turn to it; only the net command quantises it to 0..360, so an online mover never saw it), so two turns to the
+left were enough. At 4.5 degrees a tick, `FUN_005b2d20`'s 46 ticks ran out mid-spin and the clip played with the body
+off the ledge while the feet went onto it. Frostfire's crate `crates1/prop02`, its west face (x 922.8; the plan's yaw
+-90), approached head on at yaw 630 (-90 two turns round): **153.0 degrees off the clip's travel as it started, the
+body's facing against the feet's travel -0.89 at worst, the feet 0.92 short of the head-on end**; at yaw 700 on a
+synthetic 12 crate 133 degrees off. Every other approach was already right: head on 0 degrees; 30 and 60 degrees
+either side turned the short way and climbed (0 off); backwards, strafing either way and 85 degrees off offered
+nothing (the facing test); the south face's inside corner with `prop01` (x 916.6-934.4, z 778.1-795.2, 18.96 tall) and
+the north-west outside corner climbed whichever face the contact held, facing it; standing against it then pressing,
+the same. The ladder head at yaw 720 played a needless full-circle "180" before a mount that wanted no turn.
+
+**The fix**: `shortTurn(from, to)` (`traversal.ts`), the signed short turn in [-180, 180) for any winding, in `align`
+and `mountTop`. After it every approach above starts the clip within the steer's 6.8 degrees (0 measured), the feet end
+where the head-on climb's do, and the ladder head at any winding mounts straight. The mover stays deterministic (plain
+arithmetic on the same yaw; the server's is the quantised command's). Pinned in `test/climbFacing.test.ts` (Frostfire,
+and a synthetic box and ladder that run without the disc).
+
 ## 4. The peek
 
 ### 4.1 Input and conditions [read]
