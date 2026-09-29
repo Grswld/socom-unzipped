@@ -9,7 +9,7 @@ import {
 } from '@s2u/scene';
 import { fixture } from '../../archive/test/fixtures';
 import {
-  Animator, BANK_FACTOR, HELD_ALIAS, HELD_PART, PLAY_CLIPS, TWIST_SHARE, blendWeight, crosses, isCycle, layerName,
+  Animator, BANK_FACTOR, BODY_PARTS, SAMPLED_TRANSLATIONS, HELD_ALIAS, HELD_PART, PLAY_CLIPS, TWIST_SHARE, blendWeight, crosses, isCycle, layerName,
   mergeRotations, partIndex, qmul, qrot, quatOfMatrix, slerp, turnStepSpeed, writePose,
   type AnimEvent, type LayerContext, type MoverSnapshot,
 } from '../src/animator';
@@ -677,5 +677,42 @@ describe('a traversal move\'s clip in place of the mover\'s play (web research 8
     expect(anim.rootY()).toBeCloseTo(15.6, 6);                       // the move's root, not the clip's 15.6 + 0.625 x 9
     anim.step(1 / 60, REST);
     expect(anim.stats().play).toBe('idle:stand');                    // the move over: the mover's own play again
+  });
+});
+
+describe('the translations the engine takes from a clip (FUN_005777d0) and the zeroed root (FUN_0057a330)', () => {
+  it('the six parts and the props take the clip\'s translation; the other body parts keep the skeleton\'s own', () => {
+    expect([...SAMPLED_TRANSLATIONS].sort()).toEqual(['hips', 'lbicep', 'lshoulder_wgt', 'rbicep', 'rshoulder_wgt', 'skel_root']);
+    expect(BODY_PARTS.has('rifle')).toBe(false);
+    expect(BODY_PARTS.size).toBe(26);
+    const sk = skeleton();                                          // skel_root, lthigh (body), lbicep (sampled), body
+    const moved = clip('seal_stand', 10, [
+      { name: 'skel_root', t: [[3, 11, 4]], q: [Q_ID] }, { name: 'lthigh', t: [[5, -5, 5]], q: [Q_ID] },
+      { name: 'lbicep', t: [[7, 7, 7]], q: [Q_ID] },
+    ]);
+    new Animator(sk, [moved], null).step(1 / 60, REST);
+    expect(Array.from(sk.local[0]!.subarray(12, 15))).toEqual([0, 11, 0]);   // the root: x and z zeroed, the clip's y
+    expect(Array.from(sk.local[1]!.subarray(12, 15))).toEqual([1, -1, 0]);   // lthigh: the bind's
+    expect(Array.from(sk.local[2]!.subarray(12, 15))).toEqual([7, 7, 7]);    // lbicep: the clip's
+  });
+});
+
+describe('the pistol action set (FUN_0058c9e0, FUN_00576bb0)', () => {
+  it('each node takes its own pistol version over the parts it carries, and setWeapon switches with a cross-fade', () => {
+    const sk = skeleton();
+    const run = walker('seal_run', 19, 57.7, 0), side = clip('seal_run_90r', 18, [{ name: 'skel_root', t: [[0.5, 10, 20]], q: [Q_ID] }, { name: 'lthigh', t: [[1, -1, 0]], q: [qx(10)] }]);
+    const pRun = clip('seal_p_run', 19, [{ name: 'lbicep', t: [[2, 6, 0]], q: [qx(60)] }]);
+    const pSide = clip('seal_p_run_90r', 18, [{ name: 'lbicep', t: [[2, 6, 0]], q: [qx(20)] }]);
+    const table = new Map<string, MotionEntry>([['seal_run', cycle(6.5, 4.01, 6.5)], ['seal_run_90r', cycle(6.5, 3, 6.5, { lateral: true })]]);
+    const anim = new Animator(sk, [run, side, pRun, pSide], table);
+    anim.step(1 / 60, running(Math.SQRT1_2, Math.SQRT1_2));
+    expect(angleOf(quatOfMatrix(sk.local[2]!))).toBeCloseTo(0, 6);             // the rifle: no pistol arms
+    anim.setWeapon('pistol');
+    anim.step(0, running(Math.SQRT1_2, Math.SQRT1_2));
+    expect(anim.stats().blend).toBe(0);                                          // the cross-fade from the rifle's pose
+    for (let i = 0; i < 40; i++) anim.step(1 / 60, running(Math.SQRT1_2, Math.SQRT1_2));
+    // each node's arm its own pistol clip's, merged half and half: 40 degrees
+    expect(angleOf(quatOfMatrix(sk.local[2]!)) * 180 / Math.PI).toBeCloseTo(40, 1);
+    expect(anim.stats().layer).not.toBeNull();
   });
 });

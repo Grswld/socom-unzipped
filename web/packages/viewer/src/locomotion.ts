@@ -56,6 +56,24 @@ export const SEAL_ANIMS = {
 } as const;
 
 /**
+ * The pistol's version of each action the plays use (`FUN_0058c9e0` / `FUN_0058c820`, decomp 448153-448283: with the
+ * item byte `actor+0xf79` at 2 the action maps through the anim set's table at `+0x5c`, `FUN_005e1a50`, to its
+ * `Pistol ...` action -- `Walk` to `Pistol walk` -- and keeps its own where there is none): the clip each `Pistol ...`
+ * action plays in the `Seal anim set`. The crouch's fast right strafe, the crouch walk back (`Pistol crouch walk back`
+ * does not match its name), the jump, the fall, prone's crawl, strafes and turn, the hits and the falls have none.
+ */
+export const PISTOL_ANIMS: Readonly<Record<string, string>> = Object.freeze({
+  seal_stand: 'seal_p_stand', seal_walk_alert: 'seal_p_walk', seal_jog_alert: 'seal_p_jog', seal_run: 'seal_p_run',
+  seal_walk_bw: 'seal_p_walk_bw', seal_run_bw: 'seal_p_run_bw',
+  seal_rstrafe: 'seal_p_rstrafe', seal_lstrafe: 'seal_p_lstrafe', seal_rstrafe_fast: 'seal_p_rstrafe_fast',
+  seal_lstrafe_fast: 'seal_p_lstrafe_fast', seal_run_90r: 'seal_p_run_90r', seal_run_90l: 'seal_p_run_90l',
+  seal_crouch: 'seal_p_crouch', seal_crouchwalk: 'seal_p_crouchwalk', seal_crouchstrafe_left: 'seal_p_crouchstrafe_left',
+  seal_prone: 'seal_p_prone', seal_step: 'seal_p_step', seal_crouch_step: 'seal_p_crouch_step',
+  seal_stand2crouch: 'seal_p_stand2crouch', seal_stand2prone: 'seal_p_stand2prone',
+  seal_runningjump_launch: 'seal_p_runningjump_launch', seal_land_soft: 'seal_p_land_soft', seal_land_hard: 'seal_p_land_hard',
+});
+
+/**
  * The `Crouch` action's default mode in the `Seal anim set`: three clips and their chances (`(seal_crouch 0.3)
  * (seal_crouch_alert01 0.3) (seal_crouch_alert02 0.4)`), one drawn each time the crouch starts.
  */
@@ -84,7 +102,7 @@ export type SetName = keyof typeof SEAL_SETS;
 
 /** Every clip the plays above can ask for. */
 export const MOTION_CLIPS: readonly string[] = [...new Set<string>([
-  ...Object.values(SEAL_ANIMS), ...CROUCH_IDLES.map((c) => c.clip),
+  ...Object.values(SEAL_ANIMS), ...CROUCH_IDLES.map((c) => c.clip), ...Object.values(PISTOL_ANIMS),
 ])];
 
 /** A motion's constants as the game holds them once loaded (the header's table). */

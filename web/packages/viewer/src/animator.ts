@@ -1,6 +1,6 @@
 import { partMatrix, sampleClip, SEAL_TUNING, type MotionClip, type PartPose, type Skeleton } from '@s2u/scene';
 import {
-  BLEND_TIME_DEFAULT, CROUCH_IDLES, MOTION_CLIPS, SEAL_ANIMS, SEAL_SETS, crouchPlay, entryOf, motionOf, nodeSpeed,
+  BLEND_TIME_DEFAULT, CROUCH_IDLES, PISTOL_ANIMS, MOTION_CLIPS, SEAL_ANIMS, SEAL_SETS, crouchPlay, entryOf, motionOf, nodeSpeed,
   phaseRate, pronePlay, standPlay, type DirectionClass, type Motion, type MotionSets, type PlayNode, type SetName,
 } from './locomotion';
 import type { MotionTable } from './motionTable';
@@ -190,6 +190,24 @@ export function crosses(t: number, from: number, to: number, looped: boolean, ba
 /** A part's local pose: a unit quaternion (x, y, z, w) and a translation. */
 type Local = { q: [number, number, number, number]; t: [number, number, number] };
 
+/**
+ * The SEAL skeleton's own parts (`CLIB_GEO.ZED`'s `seal_A_scuba`, research 78): a clip part not among them -- the
+ * held item's `rifle`, the props -- keeps the clip's translation.
+ */
+export const BODY_PARTS: ReadonlySet<string> = new Set([
+  'skel_root', 'hips', 'rthigh', 'rcalf', 'rfoot', 'rtoe', 'lthigh', 'lcalf', 'lfoot', 'ltoe', 'aimnodes', 'spinelo',
+  'spinehi', 'rshoulder_wgt', 'rscap', 'rbicep', 'rforearm', 'rhand', 'neck', 'head', 'lshoulder_wgt', 'lscap', 'lbicep',
+  'lforearm', 'lhand', 'body',
+]);
+
+/**
+ * The body parts whose translation the engine takes from the clip (`FUN_005777d0`, decomp 437177-437297: `+0x0e` = 0 for
+ * the nodes at `actor+0x2e8` skel_root, `+0x304` hips, `+0x328` lbicep, `+0x320` rbicep, `+0x338` lshoulder_wgt,
+ * `+0x33c` rshoulder_wgt); every other body part keeps the skeleton's own (the node's `+0x30`). They are exactly the
+ * parts whose clip translations move (hips 0.73, the biceps and shoulders 0.6; the rest within 0.18 of the bind).
+ */
+export const SAMPLED_TRANSLATIONS: ReadonlySet<string> = new Set(['skel_root', 'hips', 'lbicep', 'rbicep', 'lshoulder_wgt', 'rshoulder_wgt']);
+
 /** The skeleton's root part, `m_root` (77 §4). */
 const ROOT = 'skel_root';
 
@@ -373,7 +391,7 @@ export class Animator {
   private readonly sets: MotionSets;
   private readonly bind: Local[];
   private readonly root: number;
-  private readonly weapon: Weapon;
+  private weapon: Weapon;
   private readonly random: () => number;
   /** The pose on screen, per skeleton part. */
   private readonly shown: Local[];
@@ -388,6 +406,8 @@ export class Animator {
   private feet = { left: false, right: false };
   private readonly listeners = new Set<(e: AnimEvent) => void>();
   private readonly poseLayers: PoseLayer[] = [];
+  /** Per part: the clip's translation (`SAMPLED_TRANSLATIONS`, the props), else the skeleton's own. */
+  private readonly clipTranslation: boolean[];
   private lastBank = 0;
   private lastTwist = 0;
   /** TRAVERSAL SEAM: the root's height over the feet a traversal move sets, or null for the clip's own. */
@@ -404,6 +424,7 @@ export class Animator {
     this.bind = bindLocals(skeleton);
     this.shown = this.bind.map((l) => ({ q: [...l.q], t: [...l.t] }));
     this.root = skeleton.indexOf(ROOT);
+    this.clipTranslation = skeleton.parts.map((p) => SAMPLED_TRANSLATIONS.has(p.name) || !BODY_PARTS.has(p.name));
     this.weapon = options.weapon ?? 'rifle';
     this.random = options.random ?? Math.random;
   }
@@ -599,11 +620,35 @@ export class Animator {
     for (const l of this.listeners) l(e);
   }
 
-  /** The node's clip, the pistol's whole-body version standing in for it where there is one. */
+  /** The node's clip (the pistol's version is laid over it per node: `pistolOf`). */
   private clipOf(motion: Motion): MotionClip {
-    if (this.weapon !== 'pistol') return motion.clip;
-    const pistol = this.motions.get(layerName(motion.name));
-    return pistol && pistol.clip.parts.some((p) => p.name === ROOT) ? pistol.clip : motion.clip;
+    return motion.clip;
+  }
+
+  /**
+   * The pistol's version of a node's motion (`PISTOL_ANIMS`), when the SEAL holds the pistol and the pack has it: the
+   * sub-node `FUN_0057a330` (438760-438850) hangs under the node through `FUN_0058c9e0` at weight 1, which
+   * `FUN_00576bb0` lays over the node's parts it carries (`FUN_00577ea0`), before the nodes are merged.
+   */
+  private pistolOf(motion: Motion): MotionClip | null {
+    if (this.weapon !== 'pistol') return null;
+    const name = PISTOL_ANIMS[motion.name];
+    return (name && this.motions.get(name)?.clip) || null;
+  }
+
+  /**
+   * The held item (the WEAPON workstream's sidearm switch): the rifle's clips or the pistol's versions laid over them
+   * (`PISTOL_ANIMS`), from the next frame, cross-fading from the pose on screen over the playing motion's `BlendTime`
+   * [reading: the swap's own clips, `seal_rifle2pistol`..., are the weapon's to play].
+   */
+  setWeapon(weapon: Weapon): void {
+    if (weapon === this.weapon) return;
+    this.weapon = weapon;
+    if (this.play && this.play.nodes.length) {
+      this.from = { name: this.main(this.play).motion.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
+      this.blendElapsed = 0;
+      this.blendLength = this.main(this.play).motion.blendTime;
+    }
   }
 
   /**
@@ -614,6 +659,7 @@ export class Animator {
   private pose(mover: MoverSnapshot): void {
     const play = this.play!;
     const n = this.bind.length;
+    this.layer = null;
     const acc: { q: [number, number, number, number]; t: [number, number, number]; w: number }[] =
       Array.from({ length: n }, () => ({ q: [0, 0, 0, 0], t: [0, 0, 0], w: 0 }));
     const rotations: { q: Quat | null; w: number; lateral: boolean }[][] = Array.from({ length: n }, () => []);
@@ -636,31 +682,25 @@ export class Animator {
       let frame: number;
       if (play.looped) frame = (((play.phase + node.offset) % 1) + 1) % 1 * clip.frameCount;
       else frame = Math.min(play.phase, node.motion.end) * clip.frameCount;
-      add(sampleClip(clip, frame / clip.rate, { loop: play.looped }).parts, node.weight, node.motion.lateral);
+      const parts = sampleClip(clip, frame / clip.rate, { loop: play.looped }).parts;
+      const pistol = this.pistolOf(node.motion);
+      if (pistol) {
+        const over = sampleClip(pistol, ((frame / clip.frameCount) * pistol.frameCount) / pistol.rate, { loop: play.looped }).parts;
+        const byName = new Map(over.map((p) => [p.name, p]));
+        add([...parts.filter((p) => !byName.has(p.name)), ...over], node.weight, node.motion.lateral);
+        if (node === this.main(play)) this.layer = pistol;
+      } else add(parts, node.weight, node.motion.lateral);
     }
     for (let i = 0; i < n; i++) {
       const q = mergeRotations(rotations[i]!);
       if (q) acc[i]!.q = q;
     }
-    this.layer = null;
-    if (this.weapon === 'pistol') {
-      const main = this.main(play).motion;
-      const pistol = this.motions.get(layerName(main.name));
-      if (pistol && !pistol.clip.parts.some((p) => p.name === ROOT)) {
-        this.layer = pistol.clip;
-        const phase = play.looped ? play.phase : Math.min(play.phase, main.end);
-        const parts = sampleClip(pistol.clip, (phase * pistol.clip.frameCount) / pistol.clip.rate, { loop: true }).parts;
-        for (const p of parts) {
-          const i = partIndex(this.skeleton, parts, p.name);
-          if (i >= 0) acc[i] = { q: [...p.rotation], t: [...p.translation], w: 1 };
-        }
-      }
-    }
     const target: Local[] = acc.map((a, i) => {
       if (!(a.w > 0)) return { q: [...this.bind[i]!.q], t: [...this.bind[i]!.t] } as Local;
       const len = Math.hypot(...a.q) || 1;
-      const t: [number, number, number] = [a.t[0] / a.w, a.t[1] / a.w, a.t[2] / a.w];
-      if (i === this.root) { t[0] = this.bind[i]!.t[0]; t[2] = this.bind[i]!.t[2]; }
+      const t: [number, number, number] = this.clipTranslation[i] ? [a.t[0] / a.w, a.t[1] / a.w, a.t[2] / a.w] : [...this.bind[i]!.t];
+      // FUN_0057a330 (439110-439130): the root's x and z are zeroed after the update -- the travel is the velocity's
+      if (i === this.root) { t[0] = 0; t[2] = 0; }
       if (i === this.root && this.rootOverride !== null) t[1] = this.rootOverride;   // TRAVERSAL SEAM: the move's root
       return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
     });
@@ -677,7 +717,8 @@ export class Animator {
           const i = partIndex(this.skeleton, over.parts, p.name);
           if (i < 0) continue;
           const from = target[i]!;
-          const t: [number, number, number] = i === this.root ? [this.bind[i]!.t[0], p.translation[1], this.bind[i]!.t[2]] : [...p.translation];
+          const t: [number, number, number] = i === this.root ? [0, p.translation[1], 0]
+            : this.clipTranslation[i] ? [...p.translation] : [...this.bind[i]!.t];
           target[i] = w >= 1 ? { q: [...p.rotation], t } : {
             q: slerp(from.q, p.rotation, w),
             t: [from.t[0] + (t[0] - from.t[0]) * w, from.t[1] + (t[1] - from.t[1]) * w, from.t[2] + (t[2] - from.t[2]) * w],
