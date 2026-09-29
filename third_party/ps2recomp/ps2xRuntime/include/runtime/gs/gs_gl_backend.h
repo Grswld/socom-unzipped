@@ -77,6 +77,20 @@ public:
     // GSRasterBackend pointer and cannot see this class.
     bool glUnavailable() const { return m_glCapsLatch.failed(); }
     std::string glMissing() const { return m_glCapsLatch.report().missing; }
+    // Sprint 17 F1 attempt 3, ps2x_tests only: the Upload commands recorded and not yet replayed; the replay of the
+    // pending queue on the calling thread (host->local transfers and uploads make no GL call; a queue holding draws
+    // needs a context); the render thread's shadow VRAM; how many uploads the replay swizzled itself; and the
+    // PS2X_GS_DOUBLE_SWIZZLE decision, which the constructor otherwise takes from the knob.
+    struct PendingUploadForTest
+    {
+        bool swizzledByRecorder = false;
+        std::vector<uint8_t> data;
+    };
+    std::vector<PendingUploadForTest> pendingUploadsForTest() const;
+    void replayPendingForTest();
+    const std::vector<uint8_t> &shadowVramForTest() const { return m_shadowMemory; }
+    uint64_t replaySwizzlesForTest() const { return m_replaySwizzles; }
+    void setDoubleSwizzleForTest(bool on) { m_doubleSwizzle = on; }
     static bool glUnavailableForProcess();
     static std::string glMissingForProcess();
 
@@ -97,6 +111,9 @@ private:
     struct Cmd
     {
         CmdType type = CmdType::Submit;
+        // Sprint 17 F1 attempt 3: an Upload whose data is GSCpuBackend::UploadImageAsBlocks' payload (the blocks the
+        // recorder already swizzled into the game VRAM), not the transfer's raw bytes; executeUpload copies them.
+        bool swizzledByRecorder = false;
         GSPrimitiveBatch batch{};
         GSTransferCommand transfer{};
         GSPresentationRequest present{};
@@ -263,7 +280,7 @@ private:
     void executeCommands(CommandBuffer &buffer);
     void executeSubmit(const GSPrimitiveBatch &batch);
     void executeTransfer(const GSTransferCommand &command);
-    void executeUpload(const uint8_t *data, size_t size);
+    void executeUpload(const uint8_t *data, size_t size, bool swizzledByRecorder);
     void executeClear(const GSContext &context, uint32_t rgba);
     void executePresent(const GSPresentationRequest &request);
     void executeReadback();
@@ -429,6 +446,13 @@ private:
     // Fed only with PS2X_GS_STATS or the skip knob set. Render thread only.
     GsGlUploadReasons::Gate m_uploadGate;
     std::vector<uint32_t> m_uploadBlocks;
+    // Sprint 17 F1 attempt 3: PS2X_GS_DOUBLE_SWIZZLE=1 (read once, in the constructor) keeps the old path, the raw
+    // tile recorded and swizzled a second time by the replay. Otherwise UploadImage records the swizzled blocks when
+    // the upload is whole blocks (m_recordBlocks, game thread only). m_replaySwizzles counts the uploads executeUpload
+    // swizzled into the shadow itself (render thread; read by ps2x_tests).
+    bool m_doubleSwizzle = false;
+    std::vector<uint8_t> m_recordBlocks;
+    uint64_t m_replaySwizzles = 0;
     std::string m_blendLog;
     std::string m_stateLog;
     uint64_t m_uploadExpectedBytes = 0;

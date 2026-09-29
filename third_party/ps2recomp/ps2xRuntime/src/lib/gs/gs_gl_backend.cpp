@@ -10,6 +10,7 @@
 #include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
+#include "runtime/gs/gs_gl_state_tags.h"
 #include "ps2x/knobs.h"
 
 // raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
@@ -704,6 +705,9 @@ GSGlBackend::GSGlBackend()
                    GsPendingCap::parseCapMb(ps2x::knob("PS2X_GS_PENDING_HARD_CAP_MB"), GsPendingCap::kDefaultHardCapMb) * 1024ull * 1024ull)
 {
     m_backpressure.setMaxPendingFrames(GsFrameBackpressure::parseMaxPendingFrames(ps2x::knob("PS2X_GS_MAX_PENDING_FRAMES")));
+    // Sprint 17 F1 attempt 3: the A/B back to swizzling every tile twice (docs/KNOBS.md).
+    static const bool s_doubleSwizzle = ps2x::knobOn("PS2X_GS_DOUBLE_SWIZZLE");
+    m_doubleSwizzle = s_doubleSwizzle;
 }
 
 GSGlBackend::~GSGlBackend() = default;
@@ -1128,10 +1132,48 @@ void GSGlBackend::BeginTransfer(const GSTransferCommand &command)
 
 void GSGlBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
 {
-    m_cpu->UploadImage(data, sizeBytes);
     Cmd cmd;
     cmd.type = CmdType::Upload;
+    // Sprint 17 F1 attempt 3: a whole-block upload is swizzled once, here, and the replay copies the blocks into the
+    // shadow instead of swizzling the raw bytes again. The command carries the blocks' bytes, not a pointer into the
+    // game VRAM: this thread runs frames ahead of the replay and may rewrite those blocks before it gets here.
+    if (!m_doubleSwizzle && m_cpu->UploadImageAsBlocks(data, sizeBytes, m_recordBlocks))
+    {
+        cmd.swizzledByRecorder = true;
+        record(std::move(cmd), m_recordBlocks.data(), m_recordBlocks.size());
+        return;
+    }
+    m_cpu->UploadImage(data, sizeBytes);
     record(std::move(cmd), data, sizeBytes);
+}
+
+std::vector<GSGlBackend::PendingUploadForTest> GSGlBackend::pendingUploadsForTest() const
+{
+    std::lock_guard<std::mutex> lock(m_queueMutex);
+    std::vector<PendingUploadForTest> out;
+    for (const Cmd &cmd : m_pending.commands)
+    {
+        if (cmd.type != CmdType::Upload)
+            continue;
+        PendingUploadForTest u;
+        u.swizzledByRecorder = cmd.swizzledByRecorder;
+        u.data.assign(m_pending.data.begin() + static_cast<std::ptrdiff_t>(cmd.dataOffset),
+                      m_pending.data.begin() + static_cast<std::ptrdiff_t>(cmd.dataOffset + cmd.dataSize));
+        out.push_back(std::move(u));
+    }
+    return out;
+}
+
+void GSGlBackend::replayPendingForTest()
+{
+    CommandBuffer buffer;
+    {
+        std::lock_guard<std::mutex> lock(m_queueMutex);
+        buffer.commands.swap(m_pending.commands);
+        buffer.data.swap(m_pending.data);
+        m_pendingCap.onReplayed(buffer.commands.size() * sizeof(Cmd) + buffer.data.size());
+    }
+    executeCommands(buffer);
 }
 
 void GSGlBackend::LoadClut(const GSClutLoad &load)
@@ -1807,7 +1849,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         }
         case CmdType::Upload:
             flushBatch();
-            executeUpload(buffer.data.data() + cmd.dataOffset, cmd.dataSize);
+            executeUpload(buffer.data.data() + cmd.dataOffset, cmd.dataSize, cmd.swizzledByRecorder);
             break;
         case CmdType::WriteVram:
             flushBatch();
@@ -2199,8 +2241,12 @@ void GSGlBackend::executeTransfer(const GSTransferCommand &command)
                             GSInternal::bitsPerPixel(command.bitbltbuf.dpsm) / 8u;
 }
 
-void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
+void GSGlBackend::executeUpload(const uint8_t *data, size_t size, bool swizzledByRecorder)
 {
+    // Sprint 17 F1 attempt 3: `data` is either the transfer's raw bytes or, swizzledByRecorder, the blocks the
+    // recorder swizzled (GSCpuBackend::UploadImageAsBlocks: 4 address bytes + 256 block bytes each), which the
+    // recorder builds only for a transfer that one chunk completes. `pixelBytes` is what the transfer delivered.
+    const size_t pixelBytes = swizzledByRecorder ? (size / (4u + 256u)) * 256u : size;
     // Sprint 8 Goal 2 Task 1: term (a) of the tile path, split -- the CPU swizzle into shadow VRAM,
     // and the page + rect marking. These two are the whole of the [gs-gl stats] upload= column.
     static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
@@ -2210,7 +2256,7 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     // R119 kept as the population split the [gs-transfer] line reports: a rectangle split across
     // several IMAGE GIF tags (gs_frontend.cpp:938-943) arrives as several calls.
     const bool wholeTransfer = (m_uploadReceivedBytes == 0u && m_uploadExpectedBytes != 0u &&
-                                static_cast<uint64_t>(size) == m_uploadExpectedBytes);
+                                static_cast<uint64_t>(pixelBytes) == m_uploadExpectedBytes);
     // Task 1's identical= counter, and nothing else: computed only with the trace on, so the
     // production upload path is exactly what it was before this goal touched it.
     bool identicalBytes = false;
@@ -2253,7 +2299,13 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     }
     double traceShadowUs = 0.0, traceMarkUs = 0.0;
     const auto tShadow0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    m_shadow->UploadImage(data, static_cast<uint32_t>(size));
+    if (swizzledByRecorder)
+        m_shadow->WriteUploadBlocks(data, size);   // attempt 3: no second swizzle
+    else
+    {
+        m_shadow->UploadImage(data, static_cast<uint32_t>(size));
+        ++m_replaySwizzles;
+    }
     if (s_uploadTrace)
         traceShadowUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tShadow0).count();
     const auto tMark0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -2263,9 +2315,9 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     if (tracePagesHit(page, span))
         std::fprintf(stderr, "[gs-pages] frame=%llu upload dbp=%05x dbw=%u psm=%02x dst=(%u,%u) %ux%u pages %03x+%u bytes=%zu\n",
                      (unsigned long long)m_frameCounter, t.bitbltbuf.dbp, t.bitbltbuf.dbw, t.bitbltbuf.dpsm,
-                     t.trxpos.dsax, t.trxpos.dsay, t.trxreg.rrw, t.trxreg.rrh, page, span, size);
+                     t.trxpos.dsax, t.trxpos.dsay, t.trxreg.rrw, t.trxreg.rrh, page, span, pixelBytes);
     // Uploads arrive in chunks; refresh overlapping render targets once per completed rectangle.
-    m_uploadReceivedBytes += size;
+    m_uploadReceivedBytes += pixelBytes;
     if (m_uploadExpectedBytes != 0u && m_uploadReceivedBytes >= m_uploadExpectedBytes)
     {
         m_uploadReceivedBytes = 0u;
@@ -2304,7 +2356,7 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     }
     if (s_uploadTrace)
     {
-        GsGlUploadTrace::noteUpload(g_uploadTrace, size, traceShadowUs, traceMarkUs);
+        GsGlUploadTrace::noteUpload(g_uploadTrace, pixelBytes, traceShadowUs, traceMarkUs);
         GsGlUploadTrace::noteUploadShape(g_uploadTrace, wholeTransfer, identicalBytes);
     }
 }
@@ -3980,13 +4032,13 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     // NOT dirtySinceResolve: that is set in flushBatch at the glDrawArrays, not here. See the
     // comment there -- resolveTexture runs between this point and the draw and can clear it.
 
-    {
-        char tag[64];
-        std::snprintf(tag, sizeof(tag), " T%05llx/M%08x/tfx%u%s", (unsigned long long)(ctx.test & 0x7FFFFu), ctx.frame.fbmsk,
-                      ctx.tex0.tfx & 3u, state.prim.tme ? "t" : "");
-        if (m_stateLog.find(tag) == std::string::npos && m_stateLog.size() < 600u)
-            m_stateLog += tag;
-    }
+    // Sprint 17 F1 attempt 2: the states= and blends= tags of the [gs-gl stats] line are formatted only when that line
+    // prints them (gs_gl_state_tags.h: GsGlStateTags::enabled is this rule); PS2X_GS_SETUP_FORMAT=1 formats them on
+    // every draw, =0 never, even under PS2X_GS_STATS (the A/B, read in the [gs-submit] setup= column).
+    static const bool s_formatTags = GsGlStateTags::enabled(
+        ps2x::knob("PS2X_GS_STATS"), [](bool dflt) { return ps2x::knobOn("PS2X_GS_SETUP_FORMAT", dflt); });
+    if (s_formatTags)
+        GsGlStateTags::noteState(m_stateLog, ctx.test, ctx.frame.fbmsk, ctx.tex0.tfx, state.prim.tme);
     // Depth test.
     uint32_t ztst = (ctx.test >> 17) & 3u;
     if (!zte)
@@ -4017,12 +4069,8 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     {
         const uint64_t alpha = ctx.alpha;
         const uint32_t asel = alpha & 3u, bsel = (alpha >> 2) & 3u, csel = (alpha >> 4) & 3u, dsel = (alpha >> 6) & 3u;
-        {
-            char tag[48];
-            std::snprintf(tag, sizeof(tag), " A%uB%uC%uD%u/fix%02llx", asel, bsel, csel, dsel, (unsigned long long)((alpha >> 32) & 0xFFu));
-            if (m_blendLog.find(tag) == std::string::npos && m_blendLog.size() < 400u)
-                m_blendLog += tag;
-        }
+        if (s_formatTags)
+            GsGlStateTags::noteBlend(m_blendLog, alpha);
         const float fix = std::min(1.0f, static_cast<float>((alpha >> 32) & 0xFFu) / 128.0f);
         GLenum cFactor = GL_SRC1_ALPHA, cInv = GL_ONE_MINUS_SRC1_ALPHA;
         if (csel == 1u) { cFactor = GL_DST_ALPHA; cInv = GL_ONE_MINUS_DST_ALPHA; }
