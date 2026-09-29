@@ -7,6 +7,7 @@
 
 #include "runtime/ps2_vu1.h"
 #include "ps2_vu1_detail.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <cmath>
@@ -293,15 +294,18 @@ namespace vu1ops
     // differs from x by |PP - pp| < ulp(p). For a dest lane the double/long double classification
     // (fmacProductSum4Slow) is provably "no flag but the sign, value r" when all of
     //   (1) pp != -acc          : s == 0 needs PP == -acc, i.e. pp == -acc with an exact product
-    //                             (and the zero-acc / zero-product cases go the slow way too),
+    //                             (and the zero-acc / zero-product cases fail it too: +0 == -0;
+    //                             under PS2X_VU1_FMAC_ZERO_FAST=1 productSumZeroLanes takes those),
     //   (2) exp(r) >= 2         : |r| >= 2*FLT_MIN, so |s| >= |x| - |r|/4 > FLT_MIN (no underflow),
     //   (3) exp(r) <= 253       : |r| < 2^127, so |s| <= |x| + |r|/4 < FLT_MAX (no overflow),
     //   (4) exp(r) + 21 >= exp(p): no catastrophic cancellation, |PP - pp| < ulp(p) <= |r|/4,
     // and the sign of s is the sign of x, which is the sign of r. The product's own sticky flags are
     // the single-multiply classification of p (fmacSingle4<FmacMul>), except |p| == FLT_MAX, which
     // (like any lane failing (1)-(4)) takes the slow path.
+    //
+    // The lanes (SSE order, bit i = lane i) passing (1)-(5) above.
     template <bool Sub>
-    __attribute__((always_inline)) inline void fmacProductSum4(__m128 acc, __m128 a, __m128 b, uint8_t dest, FmacResult &out)
+    __attribute__((always_inline)) inline uint32_t productSumFastLanes(__m128 acc, __m128 a, __m128 b)
     {
         const __m128 p = _mm_mul_ps(a, b);
         const __m128 r = Sub ? _mm_sub_ps(acc, p) : _mm_add_ps(acc, p);
@@ -318,11 +322,96 @@ namespace vu1ops
         const __m128i pMag = _mm_and_si128(pb, _mm_set1_epi32(0x7FFFFFFF));
         const __m128i c5 = _mm_xor_si128(_mm_cmpeq_epi32(pMag, _mm_set1_epi32(0x7F7FFFFF)), _mm_set1_epi32(-1));
         const __m128i fast = _mm_and_si128(_mm_and_si128(_mm_and_si128(c1, c2), _mm_and_si128(c3, c4)), c5);
+        return static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(fast)));
+    }
+
+    // S17 F C1 (research/81): the exact-zero lanes of a product-sum. acc == +/-0 and a or b == +/-0
+    // (by bit pattern, whatever MXCSR.DAZ says) and p == +/-0 (so not Inf/NaN * 0): the product and
+    // the sum are exact, and fmacProductSum4Slow's answer is fixed -- the double sum is a zero whose
+    // sign is IEEE's zero-sum rule, the same rule the float r = acc +/- p obeys under the same
+    // MXCSR, so value r, MAC Z plus S when r is -0, no U/O; the product sticky Z plus p's sign (the
+    // double product's sign is the float one's). They fail (1) above (+0 == -0 under cmpneq) and
+    // (2) (exp(r) = 0). A product that chops to zero from non-zero operands is NOT one of these
+    // (the exact sum underflows: U|Z), nor is a denormal accumulator.
+    __attribute__((always_inline)) inline uint32_t productSumZeroLanes(__m128 acc, __m128 a, __m128 b)
+    {
+        const __m128i magMask = _mm_set1_epi32(0x7FFFFFFF);
+        const __m128i zero = _mm_setzero_si128();
+        const __m128i accZero = _mm_cmpeq_epi32(_mm_and_si128(_mm_castps_si128(acc), magMask), zero);
+        const __m128i aZero = _mm_cmpeq_epi32(_mm_and_si128(_mm_castps_si128(a), magMask), zero);
+        const __m128i bZero = _mm_cmpeq_epi32(_mm_and_si128(_mm_castps_si128(b), magMask), zero);
+        const __m128i pZero = _mm_cmpeq_epi32(_mm_and_si128(_mm_castps_si128(_mm_mul_ps(a, b)), magMask), zero);
+        const __m128i lanes = _mm_and_si128(_mm_and_si128(accZero, pZero), _mm_or_si128(aZero, bZero));
+        return static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(lanes)));
+    }
+
+    // Who decides whether the exact-zero lanes take the fast path: the knob (the runtime), or a
+    // fixed answer (the tests, which run both against the slow classifier).
+    enum class ZeroLanes : uint8_t
+    {
+        Knob,
+        Slow,
+        Fast
+    };
+
+    // PS2X_VU1_FMAC_ZERO_FAST (Dev, default 0 = the old path): 1 lets the exact-zero lanes take the
+    // fast path. Read once, on the first product-sum that fails the fast test, so after the process
+    // set developer mode.
+    inline bool fmacZeroFastKnob()
+    {
+        static const bool s_on = ps2x::knobOn("PS2X_VU1_FMAC_ZERO_FAST");
+        return s_on;
+    }
+
+    // With the knob on: product-sums that failed the fast test (refused) and, of those, the ones
+    // whose failing dest lanes were all exact-zero lanes (rescued) -- research/81's unmeasured share.
+    // Plain counters (VU1 runs on one thread at a time); vu1_replay prints them.
+    struct ProductSumZeroCounts
+    {
+        uint64_t refused;
+        uint64_t rescued;
+    };
+    inline ProductSumZeroCounts &productSumZeroCounts()
+    {
+        static ProductSumZeroCounts s_counts{0u, 0u};
+        return s_counts;
+    }
+
+    // The lanes fmacProductSum4<Sub, Zero> computes without the slow classifier.
+    template <bool Sub, ZeroLanes Zero>
+    __attribute__((always_inline)) inline uint32_t productSumPathLanes(__m128 acc, __m128 a, __m128 b)
+    {
+        return productSumFastLanes<Sub>(acc, a, b) | (Zero == ZeroLanes::Fast ? productSumZeroLanes(acc, a, b) : 0u);
+    }
+
+    template <bool Sub, ZeroLanes Zero = ZeroLanes::Knob>
+    __attribute__((always_inline)) inline void fmacProductSum4(__m128 acc, __m128 a, __m128 b, uint8_t dest, FmacResult &out)
+    {
+        const __m128 p = _mm_mul_ps(a, b);
+        const __m128 r = Sub ? _mm_sub_ps(acc, p) : _mm_add_ps(acc, p);
+        const __m128i pb = _mm_castps_si128(p);
+        const __m128i pMag = _mm_and_si128(pb, _mm_set1_epi32(0x7FFFFFFF));
         const uint32_t destBits = kRev4[dest & 0xFu];
-        if (__builtin_expect((static_cast<uint32_t>(_mm_movemask_ps(_mm_castsi128_ps(fast))) & destBits) != destBits, 0))
+        const uint32_t fastBits = productSumFastLanes<Sub>(acc, a, b);
+        uint32_t zeroBits = 0u;   // dest lanes computed here as exact zeros (C1)
+        if (__builtin_expect((fastBits & destBits) != destBits, 0))
         {
-            fmacProductSum4Slow<Sub>(acc, a, b, dest, out);
-            return;
+            const bool zeroFast = Zero == ZeroLanes::Fast || (Zero == ZeroLanes::Knob && fmacZeroFastKnob());
+            if (!zeroFast)
+            {
+                fmacProductSum4Slow<Sub>(acc, a, b, dest, out);
+                return;
+            }
+            zeroBits = productSumZeroLanes(acc, a, b) & destBits;
+            if (Zero == ZeroLanes::Knob)
+                ++productSumZeroCounts().refused;
+            if (((fastBits | zeroBits) & destBits) != destBits)
+            {
+                fmacProductSum4Slow<Sub>(acc, a, b, dest, out);
+                return;
+            }
+            if (Zero == ZeroLanes::Knob)
+                ++productSumZeroCounts().rescued;
         }
         // Product sticky: single-multiply classification of p.
         const __m128i pZero = _mm_cmpeq_epi32(pMag, _mm_setzero_si128());
@@ -335,8 +424,8 @@ namespace vu1ops
         out.sticky = (pz ? 1u : 0u) | (ps ? 2u : 0u) | (pu ? 4u : 0u);
         out.value = r;
         const uint32_t sr = static_cast<uint32_t>(_mm_movemask_ps(r)) & destBits;
-        out.mac = kRev4[sr] << 4;
-        out.status = sr ? 2u : 0u;
+        out.mac = (kRev4[sr] << 4) | kRev4[zeroBits];
+        out.status = (sr ? 2u : 0u) | (zeroBits ? 1u : 0u);
     }
 
     enum ArithKind : uint8_t
