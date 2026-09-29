@@ -6,11 +6,13 @@
 #include "MiniTest.h"
 #include "runtime/gs/gs_gl_replay_file.h"
 #include "runtime/gs/gs_gl_upload_trace.h"
+#include "runtime/gs/gs_gl_backend.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -291,6 +293,152 @@ void register_gs_replay_file_tests()
             t.Equals(total.rtDirect, static_cast<uint64_t>(1u), "rt_direct adds");
             t.Equals(total.uploads, static_cast<uint64_t>(1u), "uploads add");
             t.Equals(total.shadowUs, 1.5, "the upload's shadow time adds");
+        });
+
+        // Fix round (review of the bench, blocking): F1 attempt 3 put Cmd::swizzledByRecorder on an Upload whose data
+        // is then 4 address bytes + a 256-byte block each, not raw pixels. sizeof(Cmd) did not move, so a guard of
+        // struct sizes alone read such a recording as raw pixels with no error. The header now carries the command
+        // record's layout hash (field offsets and sizes) and the knob environment of the recording run.
+        tc.Run("the header carries the command layout hash and the recorded PS2X_GS_* knobs; a foreign command layout is refused", [](TestCase &t)
+        {
+            const std::string path = tempPath("ps2x_gs_replay_knobs.gsr");
+            const Planted p = plant();
+            const std::vector<std::pair<std::string, std::string>> knobs = {{"PS2X_GS_STATS", "1"}, {"PS2X_GS_DOUBLE_SWIZZLE", ""}};
+            {
+                GsReplayFile::Writer w;
+                t.IsTrue(w.open(path, 7u, p.vram.data(), static_cast<uint32_t>(p.vram.size()), p.cluts, 0xC0FFEEu, knobs), "the writer opens with a layout hash and knobs");
+                w.beginBatch(7u);
+                w.submit(p.a);
+                w.endBatch();
+                t.IsTrue(w.close(0u), "... and closes");
+            }
+            GsReplayFile::Reader r;
+            std::string err;
+            t.IsTrue(r.open(path, err, 0xC0FFEEu), "the reader opens with the matching hash: " + err);
+            t.Equals(r.cmdLayout(), 0xC0FFEEu, "the hash is kept");
+            t.IsTrue(r.knobs() == knobs, "the knobs round-trip, the unset one as an empty value");
+            GsReplayFile::Reader r2;
+            err.clear();
+            t.IsFalse(r2.open(path, err, 0xBADu), "another command layout does not open");
+            t.IsTrue(err.find("layout") != std::string::npos, "... and says layout: " + err);
+            t.IsTrue(GSGlBackend::replayCmdLayoutHash() != 0u, "the backend's own hash is not the unchecked 0");
+            std::remove(path.c_str());
+        });
+
+        tc.Run("every command type round-trips through the recorder's packing and the bench's rebuild, command by command (no GL)", [](TestCase &t)
+        {
+            using K = GSGlBackend::CmdType;
+            std::vector<GSGlBackend::ReplayCmdForTest> in;
+            auto add = [&](K type) -> GSGlBackend::ReplayCmdForTest & {
+                in.emplace_back();
+                in.back().type = type;
+                return in.back();
+            };
+            {
+                auto &c = add(K::Submit);   // a draw
+                c.batch = triangle(3.0f, 0x8c);
+            }
+            {
+                auto &c = add(K::BeginTransfer);
+                c.transfer.bitbltbuf.dbp = 0x3852;
+                c.transfer.bitbltbuf.dbw = 4;
+                c.transfer.bitbltbuf.dpsm = 0x13;
+                c.transfer.trxpos.dsax = 16;
+                c.transfer.trxpos.dsay = 32;
+                c.transfer.trxreg.rrw = 16;
+                c.transfer.trxreg.rrh = 16;
+                c.transfer.direction = 0;
+            }
+            {
+                auto &c = add(K::Upload);   // raw pixels
+                c.data.assign(1024, 0);
+                for (size_t i = 0; i < c.data.size(); ++i)
+                    c.data[i] = static_cast<uint8_t>(i * 3u);
+            }
+            {
+                auto &c = add(K::Upload);   // attempt 3's blocks: 4 address bytes + 256 block bytes
+                c.swizzledByRecorder = true;
+                c.data.assign(260, 0x5A);
+                c.data[0] = 0x40;
+            }
+            {
+                auto &c = add(K::WriteVram);
+                c.args[0] = 0;
+                c.args[1] = 0x1180;
+                c.args[2] = 10;
+                c.args[3] = (7u << 16) | 5u;
+                c.args[4] = 0xFF00FF00u;
+            }
+            {
+                auto &c = add(K::Clear);   // the colour in args[0]
+                c.args[0] = 0x80402010u;
+                c.context.frame.fbp = 0x46;
+                c.context.frame.fbw = 10;
+                c.context.scissor.x1 = 639;
+            }
+            {
+                auto &c = add(K::Present);   // the frame-dump request in args[0]
+                c.args[0] = 1u;
+                c.present.pmode = 0x66;
+                c.present.dispfb1 = 0x1400;
+                c.present.display1 = 0x1BF9FF0218224ull;
+                c.present.preferredDestFbp = 0x8c;
+                c.present.hasPreferredSource = true;
+            }
+            add(K::Readback);
+            add(K::Reset);
+            {
+                auto &c = add(K::ClutLoad);
+                GSClutLoad load{};
+                load.id = 42;
+                load.cbp = 0x3854;
+                load.bytes[5] = 9;
+                c.data.resize(sizeof(GSClutLoad));
+                std::memcpy(c.data.data(), &load, sizeof(GSClutLoad));
+            }
+
+            const std::string path = tempPath("ps2x_gs_replay_cmds.gsr");
+            std::vector<GSGlBackend::ReplayCmdForTest> out;
+            std::string err;
+            t.IsTrue(GSGlBackend::replayRoundTripForTest(in, path, out, err), "the batch writes and reads back: " + err);
+            t.Equals(out.size(), in.size(), "every command comes back");
+            for (size_t i = 0; i < in.size() && i < out.size(); ++i)
+            {
+                const auto &a = in[i], &b = out[i];
+                const std::string at = " (command " + std::to_string(i) + ", type " + std::to_string(static_cast<int>(a.type)) + ")";
+                t.IsTrue(a.type == b.type, "the type" + at);
+                t.Equals(a.swizzledByRecorder, b.swizzledByRecorder, "the recorder-swizzled flag" + at);
+                t.IsTrue(std::memcmp(a.args, b.args, sizeof(a.args)) == 0, "args" + at);
+                t.IsTrue(a.data == b.data, "the data bytes" + at);
+                switch (a.type)
+                {
+                case K::Submit:
+                    t.IsTrue(sameVertices(a.batch, b.batch), "the vertices" + at);
+                    t.Equals(b.batch.state.context.frame.fbp, a.batch.state.context.frame.fbp, "the draw state" + at);
+                    break;
+                case K::BeginTransfer:
+                    t.Equals(b.transfer.bitbltbuf.dbp, a.transfer.bitbltbuf.dbp, "dbp" + at);
+                    t.Equals(static_cast<uint32_t>(b.transfer.bitbltbuf.dpsm), static_cast<uint32_t>(a.transfer.bitbltbuf.dpsm), "dpsm" + at);
+                    t.Equals(static_cast<uint32_t>(b.transfer.trxpos.dsay), 32u, "dsay" + at);
+                    t.Equals(static_cast<uint32_t>(b.transfer.trxreg.rrh), 16u, "rrh" + at);
+                    t.Equals(b.transfer.direction, 0u, "direction" + at);
+                    break;
+                case K::Clear:
+                    t.Equals(b.context.frame.fbp, 0x46u, "the cleared target" + at);
+                    t.Equals(static_cast<uint32_t>(b.context.scissor.x1), 639u, "its scissor" + at);
+                    break;
+                case K::Present:
+                    t.Equals(b.present.pmode, a.present.pmode, "pmode" + at);
+                    t.Equals(b.present.dispfb1, a.present.dispfb1, "dispfb1" + at);
+                    t.Equals(b.present.display1, a.present.display1, "display1" + at);
+                    t.Equals(b.present.preferredDestFbp, 0x8cu, "the preferred destination" + at);
+                    t.IsTrue(b.present.hasPreferredSource, "the preferred-source flag" + at);
+                    break;
+                default:
+                    break;
+                }
+            }
+            std::remove(path.c_str());
         });
     });
 }

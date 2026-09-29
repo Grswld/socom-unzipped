@@ -70,6 +70,29 @@ class Compare(unittest.TestCase):
         self.assertIn("n/a", readback)
 
 
+class Knobs(unittest.TestCase):
+    """The bench applies the recording's PS2X_GS_* knobs unless overridden and writes what it applied under `knobs`;
+    a pair whose knobs differ is not a clean A/B, and compare says so (before.json has PS2X_GS_STATS=1, after.json
+    PS2X_GS_SETUP_FORMAT=0 instead; both have PS2X_GS_SCALE=1 and PS2X_GS_UPLOAD_TRACE=1)."""
+
+    def test_the_differing_knobs_are_named(self):
+        diffs = replay_bench.knob_differences(replay_bench.load(BEFORE), replay_bench.load(AFTER))
+        self.assertEqual(diffs, [("PS2X_GS_SETUP_FORMAT", None, "0"), ("PS2X_GS_STATS", "1", None)])
+
+    def test_equal_knobs_give_no_difference(self):
+        b = replay_bench.load(BEFORE)
+        self.assertEqual(replay_bench.knob_differences(b, b), [])
+
+    def test_compare_warns_on_stderr_and_still_compares(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = replay_bench.main(["compare", BEFORE, AFTER])
+        self.assertEqual(rc, 0)
+        self.assertIn("WARNING", err.getvalue())
+        self.assertIn("PS2X_GS_STATS", err.getvalue())
+        self.assertIn("setup", out.getvalue())
+
+
 class ParseLine(unittest.TestCase):
     def test_the_line_reads_as_the_json_does(self):
         s = replay_bench.parse_line(LINE)
@@ -117,6 +140,16 @@ class Run(unittest.TestCase):
         self.assertEqual(s["argv"][0], "rec.gsr")
         self.assertEqual(s["argv"][s["argv"].index("--warmup") + 1], "10")
         self.assertEqual(s["argv"][s["argv"].index("--frames") + 1], "100")
+
+    def test_a_stale_json_is_deleted_first_and_a_run_that_writes_none_fails(self):
+        out = os.path.join(self.tmp, "stale.json")
+        shutil.copyfile(BEFORE, out)          # a summary from an earlier run sits at the path
+        path = os.path.join(self.tmp, "no_json.py")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("import sys\nsys.stdout.write(%r)\n" % LINE)   # prints the line, writes no JSON, exits 0
+        with self.assertRaises(RuntimeError):
+            replay_bench.run([sys.executable, path], "rec.gsr", out)
+        self.assertFalse(os.path.exists(out), "the stale summary was removed before the bench ran")
 
     def test_a_failing_bench_raises(self):
         path = os.path.join(self.tmp, "fail.py")
