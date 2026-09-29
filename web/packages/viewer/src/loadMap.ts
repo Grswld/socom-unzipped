@@ -7,7 +7,7 @@ import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba, type Textur
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
   buildGrid, collisionLines, DEFAULT_GRID_PARAMS, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter,
-  parseGlobalLighting, parseGridParams, parseMaterialPalette, parseSceneGraph, parseWorldRoot, placeClutter, type EnvMaterial, type LodBand,
+  DEFAULT_ENV_TEXTURE, parseGlobalLighting, parseGridParams, parseMaterialPalette, parseSceneGraph, parseWorldRoot, placeClutter, type EnvMaterial, type LodBand,
   placeInstances, placementCells, resolveChunk, transformPoint, worldCollision,
   type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
   type PlacedModel, type SceneNode,
@@ -349,7 +349,9 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name), ...usedEnv.map((e) => e.texture)];
+    // The env pass's default (`DAT_004b4d90`) whenever any draw has the pass: an entry's texture may not resolve.
+    const envTextures = usedEnv.length > 0 ? [...usedEnv.map((e) => e.texture), DEFAULT_ENV_TEXTURE] : [];
+    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name), ...envTextures];
     let decoded = 0;
     for (const name of wanted) {
       step('textures', decoded++, wanted.length);
@@ -450,7 +452,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     props,
     textures,
     textureMips,
-    envMaterials: usedEnv.filter((e) => e.texture in textures),
+    envMaterials: usedEnv.map((e) => (e.texture in textures ? e : { ...e, texture: DEFAULT_ENV_TEXTURE })).filter((e) => e.texture in textures),
     shadowVector: shadowVectorOf(bytes, toc, stem),
     textureFlags,
     detail,
