@@ -166,6 +166,8 @@ export interface PoseLayer {
 
 /** The held item's node (`FUN_00553290` 0x553290 names it `rifle`) and SOCOM 1's name for it in the older clips. */
 export const HELD_PART = 'rifle', HELD_ALIAS = 'weapon';
+/** WEAPON: the held items' nodes (`FUN_00553290` slots 1 and 2), whose unmixed locals `Animator.heldLocal` keeps. */
+const HELD_NODES = [HELD_PART, 'pistol'] as const;
 
 /**
  * A clip part's skeleton slot. The held item's node is `rifle` in most of the pack's clips and `weapon` in the few
@@ -438,6 +440,11 @@ export class Animator {
   private lastTwist = 0;
   /** The head look (`./headLook`): the controller's request, the rotator at `actor+0x1190`, the pose. */
   readonly look: HeadLook;
+  /**
+   * WEAPON: the held items' nodes (`rifle`, `pistol`) as the one clip that carries them this frame poses them, before
+   * the cross-fade and unmixed with the moving swap's overlay (`heldLocal`).
+   */
+  private readonly heldRaw = new Map<number, Local>();
   /** The overlay play's clip this frame, or null (`stats().overlay`). */
   private overlayName: string | null = null;
   private lookDt = 0;
@@ -751,6 +758,9 @@ export class Animator {
       if (i === this.root && this.rootTurn) return { q: [...this.rootTurn], t };           // TRAVERSAL SEAM: the move turns it
       return { q: [a.q[0] / len, a.q[1] / len, a.q[2] / len, a.q[3] / len], t };
     });
+    const held = HELD_NODES.map((name) => this.skeleton.indexOf(name)).filter((i) => i >= 0);
+    this.heldRaw.clear();
+    const overlaid = new Set<number>();
     // The overlay play (the moving swap, `FUN_0028d860(anim+0x60, ...)`): over the parts it carries, eased in and out
     // over its `BlendTime` [reading: the second channel's blend is not read].
     this.overlayName = null;
@@ -767,6 +777,7 @@ export class Animator {
         if (i < 0 || i === this.root || !(w > 0)) continue;
         const from = target[i]!;
         const t: [number, number, number] = this.clipTranslation[i] ? [...p.translation] : [...this.bind[i]!.t];
+        if (held.includes(i)) { this.heldRaw.set(i, { q: [...p.rotation], t: [...t] }); overlaid.add(i); }
         target[i] = { q: slerp(from.q, p.rotation, w), t: [from.t[0] + (t[0] - from.t[0]) * w, from.t[1] + (t[1] - from.t[1]) * w, from.t[2] + (t[2] - from.t[2]) * w] };
       }
     }
@@ -792,6 +803,7 @@ export class Animator {
         }
       }
     }
+    for (const i of held) if (!overlaid.has(i)) this.heldRaw.set(i, { q: [...target[i]!.q], t: [...target[i]!.t] });
     const w = this.from ? blendWeight(this.blendLength > 0 ? this.blendElapsed / this.blendLength : 1) : 1;
     if (w >= 1) this.from = null;
     target.forEach((to, i) => {
@@ -873,6 +885,19 @@ export class Animator {
     this.skeleton.setLocal(lo, partMatrix(local.lo, this.shown[lo]!.t));
     this.skeleton.setLocal(hi, partMatrix(local.hi, this.shown[hi]!.t));
     this.skeleton.update();
+  }
+
+  /**
+   * WEAPON: a held item's node (`rifle`, `pistol`) local this frame as the clip carrying it poses it -- the play's
+   * target before the cross-fade, or the moving swap's own key where the overlay carries the node -- or null before a
+   * pose or without the node. The two frames a node's track is in (the hand's, and `spinelo`'s in the swap clips:
+   * `./heldItem`'s `swap` mount) are never mixed here: the cross-fade and the overlay's ease blend the tracks of a
+   * rifle in the hand with those of a rifle on the back, a place neither is (the owner's playtest, 2026-09-29: the
+   * rifle snapped in front of the SEAL at the swap's start and up at its end). `./play` hangs the weapon from this.
+   */
+  heldLocal(name: string): Float32Array | null {
+    const l = this.heldRaw.get(this.skeleton.indexOf(name));
+    return l ? partMatrix(l.q, l.t) : null;
   }
 
   /** The clip, the frame, the blend: the hook's `stats().anim`. */

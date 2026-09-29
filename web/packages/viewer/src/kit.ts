@@ -1,5 +1,5 @@
 import type { Mount } from './heldItem';
-import type { SwapPick } from './walk';
+import type { SwapPick, SwapProgress } from './walk';
 
 /**
  * The SEAL's kit slots and the rifle <-> pistol swap (the WEAPON workstream's sidearm round). What the game does:
@@ -34,6 +34,20 @@ export type KitItem = Firearm | 'M67' | 'HE';
 export const KIT_SLOTS: readonly KitItem[] = ['rifle', 'pistol', 'M67', 'HE'];
 
 /**
+ * The PC's number keys (the owner, 2026-09-29): `1` the main weapon, `2` the sidearm (L1's and L2's slots), `3` and
+ * `4` the kit's equipment slots 1 and 2 (`./grenade`'s `equipmentSlots`, whatever the kit holds there in order).
+ */
+export type Hotkey = { firearm: Firearm } | { equipment: 1 | 2 };
+const HOTKEYS: Readonly<Record<string, Hotkey>> = {
+  Digit1: { firearm: 'rifle' }, Digit2: { firearm: 'pistol' }, Digit3: { equipment: 1 }, Digit4: { equipment: 2 },
+};
+
+/** A key's `code` to what it takes up, or null for a key that is none of the four (`Numpad1` .. are not bound). */
+export function hotkey(code: string): Hotkey | null {
+  return HOTKEYS[code] ?? null;
+}
+
+/**
  * The clips' hand-off points, normalised phase (`FUN_005a7730` / `FUN_005a75d0`'s callbacks): standing 0.72, crouched
  * 0.82, prone 0.62, the moving overlay 0.79 [reading: the phases are this round's research's, not settled].
  */
@@ -56,6 +70,13 @@ export interface KitHost {
   item(item: Firearm): void;
   /** A swap began (`FUN_005c4b10`): the scope drops to first person. */
   started?(to: Firearm): void;
+  /**
+   * The swap clip on the mover and its progress (`WalkMode.swapProgress`), null once it is over or cut. Given, the kit
+   * runs on the walk's clock -- the one the body is drawn by -- so the mounts change on the frame the clip does: a
+   * standing swap that the stick turns into the moving overlay carries on at the overlay's own length and hand-off
+   * (the handoff's "re-sync the swap clock"). Absent, the kit counts the pick's seconds itself.
+   */
+  swapProgress?(): SwapProgress | null;
 }
 
 /** The hand-off of a pick. */
@@ -106,10 +127,19 @@ export class Kit {
   frame(dt: number): void {
     const pick = this.pick, s = this.state_;
     if (!pick || !s.swap) return;
-    this.elapsed += dt;
-    const progress = pick.seconds > 0 ? Math.min(1, this.elapsed / pick.seconds) : 1;
+    let progress: number, h: number;
+    if (this.host.swapProgress) {
+      const on = this.host.swapProgress();
+      if (!on) { this.finish(); return; }                        // the clip is over (or cut): the swap with it
+      progress = on.progress;
+      h = on.overlay ? HAND_OFF.moving : HAND_OFF[on.action ?? 'swapStand'];
+      if (on.overlay) s.swap.clip = 'seal_mv_rifle2pistol';
+    } else {
+      this.elapsed += dt;
+      progress = pick.seconds > 0 ? Math.min(1, this.elapsed / pick.seconds) : 1;
+      h = handOffOf(pick);
+    }
     s.swap.progress = progress;
-    const h = handOffOf(pick);
     if (!s.swap.handed && (s.swap.to === 'pistol' ? progress >= h : 1 - progress <= h)) {
       s.swap.handed = true;
       if (s.swap.to === 'pistol') s.mounts.pistol = 'hand';      // FUN_005a7730
