@@ -32,13 +32,13 @@ constant (`*_PLACEHOLDER`) stands in. Code and test paths are relative to `web/r
 - [82](../research/82-map-fidelity-audit.md): Map fidelity audit: the viewer against the console's own frames (2026-09-28) (15 sections)
 - [83](../research/83-look-and-aim.md): The look and the aim: the pad's law, the body and the camera, the scope, the shake, the bob (8 sections)
 - [84](../research/84-accuracy-and-recoil.md): Accuracy and recoil: the reticle's size, its climb, the cone, the fire modes, the zoom and the scope (2026-09-28) (19 sections)
-- [85](../research/85-grenades.md): The frag grenade: the hold, the throw, the flight, the fuse and the explosion (2026-09-28) (28 sections)
+- [85](../research/85-grenades.md): The frag grenade: the hold, the throw, the flight, the fuse and the explosion (2026-09-28) (29 sections)
 - [86](../research/86-traversal.md): Traversal: the ladder, the climb, the peek, the water (39 sections)
 - [87](../research/87-hud.md): SOCOM II's in-game HUD: every element, its bitmap, place, colour and driver (2026-09-28) (13 sections)
 - [88](../research/88-feel-parity.md): Feel parity: the walk driven by script, number by number against the console (11 sections)
 - [89](../research/89-effects.md): The gunplay's effects: the zAnim effect commands, the casing, the particles, the impacts and the marks (2026-09-28) (16 sections)
 - [90](../research/90-playtest-2026-09-28.md): Playtest, 2026-09-28: the walk played as the owner plays it, on Frostfire, Desert Glory and Crossroads (15 sections)
-- [91](../research/91-the-round.md): The round: damage, death, respawn, teams, score, names (web sprint 3, M1) (42 sections)
+- [91](../research/91-the-round.md): The round: damage, death, respawn, teams, score, names (web sprint 3, M1) (43 sections)
 - [92](../research/92-doors.md): Doors: what the action button does to a door, and the viewer's (2026-09-29) (6 sections)
 
 ## Records

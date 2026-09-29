@@ -282,7 +282,8 @@ For an exploded projectile (states 5, 6): `damage = ammo+0x18 (Explosion_Damage)
 ammo+0x1c (Explosion_Radius)`; `r > 1` -> 0; `r > 0.5` -> `damage x (1 - (r - 0.5) x 2)`; else full. For the M67:
 10 out to 75 units, 5 at 112.5, 0 at 150. (`weapon+0x64` is a key not in the M67's record; 0.) The query is a sphere
 of the explosion radius registered at the point in `PreTick` state 3 (`FUN_0031dc90` with `FUN_003d4500(ammo)`).
-Nothing in the viewer takes damage; the `explode` event carries the damage at the player's feet.
+The page's own `explode` event carries the damage at the player's feet for its looks; the damage itself is the room's
+(the match server's, and offline the same room in the page): section 12.
 
 ### 7.2 The picture: the zAnim `frag_grenade` (`RUN/CZANIM.ZAR`, the set `common`)
 
@@ -642,3 +643,66 @@ frame at all); reCOM has no `CDynGrenade` or arc code. The translucent line list
 renderer) is taken from the opaque path's (`ARC_DEPTH_TEST_PLACEHOLDER`). The line is one pixel of the PS2's 512x448
 frame, which reads thinner on a large canvas; WebGL lines are one pixel wide, so the viewer's is thinner still at
 high resolution. `FUN_005c9b30`, called first in the draw, was not read (it does not touch the arc's inputs).
+
+## 12. The blast on the player: damage, the thrower, the wall, the knock, the ears (2026-09-29)
+
+The owner, playing offline: "should grenades be doing damage? they do not appear to be to myself, nor are they knocking
+me." They were not. **Before this round:** offline, the page had no health at all -- `GrenadeThrower.explode` computed
+`damageToPlayer` and nothing read it; the HUD's bar stayed full. Online, the match server's room applied the fragments to
+every living SEAL in the radius with a line to its head, the thrower included and its team spared (friendly fire off),
+and the page showed it (`hurt` -> the bar, `kill` -> the death); nothing moved the body, anywhere. The screen shake by
+distance (research 83, `explosionShake`) was the only reaction, offline and on.
+
+**The game's rules**, per actor a blast reaches (all in `socom2_game.elf.decomp.c`; the `.data` words read from
+`game/disc/socom2_game.elf`, file offset = va - 0x4c5380 + 0x2f7a80):
+
+| rule | value | source |
+|---|---|---|
+| who is reached | every actor whose `GetDamage` at its origin is over 0 (or any, for the flashbang `{`), with the line from the blast to its head node clear; in MP each client resolves its own SEAL (controller `+0x34`) -- **nothing asks who threw it: the thrower is hurt as anyone** | `FUN_005ac070` L464806-464850 |
+| occlusion | the ray query from the projectile's point to the head node's world position (`FUN_0031dd90`); a hit on a blocker ends it unless `FUN_003c8310` lets the round through | `FUN_005ac070`; `FUN_005a0e70` L459110-459158 |
+| the reach factor | `f = 1 - d^2 / r^2`, `d` from the actor's origin (the feet), `r` the ammo's `Explosion_Radius`; nothing at f <= 0 | `FUN_005a0e70` L459160-459172 |
+| the effect timer | a frag sets the actor's slot-4 effect timer to `5 f` s (decaying at `recovery_factor` 2 a second, `FUN_005a50a0`); the flashbang slot 0 (2 s), the smoke `z` and `0x7f` slot 3, `}` slot 1; each is handed to the controller's `+0x50` -- the player's (`FUN_00597c00`) acts on slot 0 only (the white-out, section 9.5): **a frag's timer has no player effect** | `FUN_005a5250` L461250-461292; vtable 0x6694b0 + 0x50 = 0x597c00 |
+| the ringing ears | the player (controller `+0x2c`: `FUN_005431f0` returns 1), any weapon but the shotguns `Q`-`T`: `.RINGING_EARS` and channels 0-6 at **0.35 for 5 s** | L459221-459227, `FUN_003412f0(0x40a00000, 0x3eb33333, ...)` |
+| the fragments | `FUN_005a18b0`'s count (research 91 section 5); each `GetDamage` at the feet (full to r/2, 0 at r, x 14) at the round's piercing | L459236-459256 |
+| the part a fragment strikes | the first of `DAT_006508e0` = 0.3, 0.6, 0.7, 0.8, 0.9, 1.0 over a draw names `DAT_006508d0` = bytes 00 03 02 01 05 04: **head 30 %, body 30 %, left arm, right arm, left leg, right leg 10 % each** (was `FRAGMENT_PART_PLACEHOLDER`) | L459240-459252; `.data` |
+| the push, stored | when fragments struck and `GetDamage` at the feet is over 0: the blast point, `dmg / 14`, `r` (`FUN_0057ed10`; stored for the player: its controller's `+0x34` is `FUN_00544200`, returning 0) | L459261-459281; `FUN_0057ed10` L441094-441127 |
+| the push, applied | from the root (the origin plus the y of `actor+0x2e8` = `skel_root`, bound at L419606): inside the radius (or dead), `f = clamp(1 - len^2 / r^2)`; **prone: no push, the `Prone cover` action in place**; standing or crouched: `Fall forward` or `Fall backwards` (`FUN_005807d0`) and the velocity `min(100, f x (DAT_0044c250 / 98.1) x (dmg/14) x DAT_0044c254 / mass)` along the unit line, its y at least `50 f`; `DAT_0044c250` = 98.1, `DAT_0044c254` = 120 (L328368-328369), mass `actor+0xf84` = 90 (L419803) | `FUN_0057e770` L440940-441092 |
+| the root's height | `skel_root` y at key 0 of `seal_stand` 11.48, `seal_crouch` 5.50, `seal_prone` 2.17 (`MOTION_P.ZAR`) | the clips |
+| the knock's clips | on the ground in `Fall forward` / `Fall backwards`, `Land forward` / `Land backwards` (`FUN_005805b0`, via L441960-441985); at its end, alive, `Get up forward` / `Get up backwards` (L446653-446700); dead, state 8 | as cited; `animset.rdr` `Seal anim set`: `seal_fallforward01`, `seal_landforward01`, `seal_getupforward01`, `seal_fallbackwards01`, `seal_landbackwards01`, `seal_getupbackwards01` |
+| the other throwables | the smoke (AN-M8): `Explosion_Damage` 0 -- nothing (not queued); the flashbang: reached without damage, the white-out (section 9.5) and the ringing, no fragments, no push | `FUN_005ac070`; zweapon.rdr |
+| camera shake, blur | the shake by distance is research 83's (kept); no blur or other screen effect in these functions | `FUN_005a0e70` |
+
+For an M67 standing 20 units off: `f` from the root (11.48 up) is 0.976, the push 13.0 u/s away and **48.8 u/s up** --
+the knock is mostly a hop (about 0.4 s in the air) and the fall clip, not a throw across the map.
+
+**What the viewer does now** (`packages/viewer/src/net/blast.ts`, behind the shared sim; `packages/server/src/room.ts`
+`blast`):
+- `resolveBlast`: the reach, the line (the room's `segmentHit` to the head, as before), the factor, the ringing, the
+  fragments on `fragmentPart`'s table, the knock. `blastKnock`: `FUN_0057e770` as above. `applyKnock`: lays it on a
+  `Walker` (`Walker.knock` in `mover.ts`: off the ground at the velocity in the fall clip; the landing plays `Land
+  forward` / `Land backwards`, then the get-up; `ACTION_CLIPS` and `SEAL_ANIMS` carry the four new clips, pinned to the
+  disc's `motion.rdr`, `MOTION_P.ZAR` and `animset.rdr` by `test/locomotion.test.ts`).
+- The room resolves each blast on every living SEAL (the thrower too; the thrower's team spared: friendly fire off,
+  W3.R11), lays the knock on its own mover and sends the victim `blast` (the ring, the knock, the command it followed);
+  the page's `NetClient` lays the same knock on its prediction (`WalkMode.knock`), and `NetPage` rings the ears
+  (`../src/ringingEars.ts`: `.RINGING_EARS`, the whole mix at 0.35 for 5 s).
+- **Offline** the page now runs the same room in the page (`net/loopback.ts`, research 91 section 20): a grenade hurts,
+  knocks and kills the player through exactly this path.
+
+Tests: `test/netBlast.test.ts` (an M67 at 2, 5, 10, 20 units: 9-15 fragments of 140, dead; 50 and 100 units; the HE;
+out of reach; the wall; the ringing; the knock's numbers and sides; prone), `test/knock.test.ts` (the mover's knock and
+its clips, two movers agreeing), `server/test/roomBlast.test.ts` (a survivor knocked in the room, the thrower killed by
+its own, the wall), `test/netDamage.test.ts` (the part table), `test/ringingEars.test.ts`.
+
+Placeholders and readings this adds:
+- `KNOCK_SIDE_READING`: which of the two fall clips -- the game puts the line through a VU0 matrix routine
+  (`FUN_00306fd0`) on a stack copy of the actor's negated first row (L441044-441051) and takes `Fall backwards` for a
+  positive third component; read as "pushed against the facing falls backwards".
+- `PRONE_COVER_PLACEHOLDER`: the prone SEAL's `Prone cover` action (`DAT_003dece0`) has no clip in the SEAL's pack;
+  nothing plays.
+- `KNOCK_IN_MOVE_PLACEHOLDER`: on a ladder or a hang the game drops the SEAL out of the state first; the viewer skips
+  the knock while a traversal move holds the mover.
+- `CORPSE_KNOCK_PLACEHOLDER`: the game pushes the dead too (state 8); a SEAL the blast kills is not thrown here.
+- `KNOCK_REPLAY_PLACEHOLDER`: the server lays the knock after command `after`; the page lays it when the event comes
+  (the loopback's same tick; online a round trip later) -- the difference is a correction the reconciliation takes.
+- `RING_VOLUME_READING`: the page has one mix; the whole of it is held at 0.35 (the game lowers channels 0-6).

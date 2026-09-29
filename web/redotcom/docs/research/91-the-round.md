@@ -201,7 +201,7 @@ Where the notes overlap: 91b listed `RESPAWN_POINT_PLACEHOLDER` (the rebuild cop
 | each fragment: `(Explosion_Damage + Dmg_Mod) x falloff x 14` at `Piercing`, random part (`DAT_006508d0/e0`) | falloff: full to r/2, linear to 0 at r (research 85 §7.1) | `FUN_005a0e70` L459235-459256; `FUN_003c7600` L318720-318735 |
 | M67: 10 -> 140/fragment to 75 units, 0 at 150 (P 4) | one head or body fragment kills | zweapon.rdr; §1.1 |
 | HE: 11 -> 154 to 50, 0 at 100 (P 1); Claymore 16 -> 224 to 125, 0 at 250, /32 outside its cone; C4 18 r 50; PMN 6.5 r 40; Satchel 20 r 280 | | zweapon.rdr; research 85 §9.7 |
-| knock-down factor `1 - d^2/r^2`; push `FUN_0057ed10(dmg/14)` | | L459178-459191, L459277 |
+| knock-down factor `1 - d^2/r^2`; push `FUN_0057ed10(dmg/14)`, applied by `FUN_0057e770`: up to `min(100, f (dmg/14) 120/90)` u/s from the blast, rising at least `50 f`, in `Fall forward` / `Fall backwards`; none prone | research 85 section 12 | L459178-459191, L459277; L440940-441092 |
 | fall: speeds `m_landSpeed = g sqrt(2h/g)`, g 235, h 62/91/120 (`FALLING_DAMAGE_LIGHT/HEAVY/DEATH` 6.2/9.1/12 x10) = 170.7 / 206.8 / 237.5 | | `FUN_0059ba80` L456671-456682; dynamics.rdr |
 | fall damage: `f = clamp((v-170.7)/(237.5-170.7))`, every part `-= max x f`; class 2 (>= 206.8) a hit clip, 3 death | victim-local | `FUN_005ac1f0` L464864-464960 |
 | fall death posts "%s falls to their death" (cause 0xfd), counts a suicide (the killer is set to the local player) | -2 score | L464955-464959 |
@@ -525,9 +525,9 @@ Neither note could read `.data` (no ELF). Deduplicated from both notes.
 | `FRIENDLY_FIRE_DEFAULT_PLACEHOLDER` (91a) | host-menu default; searched writers of `0x3f2860`/`0x3f5940`/`0x3f6230`/`0x3f1220` (only copies from the settings struct, `FUN_002e34d0` L197221) | resolved by 91b: the create-game screen reads "Friendly Fire is disabled." (`A_49_creategame`) |
 | `RESPAWN_OPTION_DEFAULT_PLACEHOLDER` (91a) | as above for respawn | resolved by 91b: "Respawn is disabled." (`A_49`, UIMnLOC 249-250) |
 | `RESPAWN_WAIT_CAMERA_PLACEHOLDER` (91a) | camera during the respawn wait (no call in `FUN_005979a0`) | partly: 91b says with respawn off the dead spectate (L454484-454487); respawn on still unknown |
-| `LIMB_SPILL_SCALE_PLACEHOLDER` / `LIMB_SPILL_PIERCING_PLACEHOLDER` (91a) | `DAT_006508a8` / `DAT_006508b0`, `.data`; read from `socom2_game.elf` at those addresses | open |
-| `FRAGMENT_PART_TABLE_PLACEHOLDER` (91a) | `DAT_006508e0` 6 thresholds, `DAT_006508d0` 6 parts; receiver's copy `DAT_00650900`/`DAT_006508f8`; `.data` | open |
-| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` (91a) | `DAT_006508b8` SP, `DAT_006508c0` MP 8 pellets, `DAT_006508c8` MP 4; `.data` | open |
+| `LIMB_SPILL_SCALE_PLACEHOLDER` / `LIMB_SPILL_PIERCING_PLACEHOLDER` (91a) | `DAT_006508a8` / `DAT_006508b0`, `.data`; read from `socom2_game.elf` at those addresses | resolved (section 20): 0.3 at piercing 10 |
+| `FRAGMENT_PART_TABLE_PLACEHOLDER` (91a) | `DAT_006508e0` 6 thresholds, `DAT_006508d0` 6 parts; receiver's copy `DAT_00650900`/`DAT_006508f8`; `.data` | resolved (section 20): head 30 %, body 30 %, each limb 10 % |
+| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` (91a) | `DAT_006508b8` SP, `DAT_006508c0` MP 8 pellets, `DAT_006508c8` MP 4; `.data` | read (section 20): 2500, 6400, 22500; not used |
 | `FRIENDLY_FIRE_ENFORCEMENT_PLACEHOLDER` (91a) | searched `DAT_0044cdb8`/`44cdb8`, team-mask tests (`+200 & +200`) in L455000-466000, `FUN_005abbc0`, `FUN_005a5a80`, `FUN_005a1b80`; reCOM has no friendly-fire code. Next: the net receive of msg 0x40 before `FUN_005a1b80` (L160800-160840) | open |
 | `HEAD_NODE_NAMES_PLACEHOLDER` (91a) | strings at 0x65c4f8/0x65c500/0x65c508 under the strings dump's length cut; inferred `hips`, `head`, `neck` from research 78's skeleton | open (inferred) |
 | `DEATH_SOUND_IDS_PLACEHOLDER` (91a) | 0x3c/0x3d not mapped to `CHRSND_*` names | open |
@@ -864,3 +864,48 @@ The placeholders this adds:
   glyph. "Use the" is taken from the spectator's 0x3e30f0.
 - `OBJECTIVE_BY_MAP_PLACEHOLDER`: the non-SUPPRESSION maps' objectives. The rooms run SUPPRESSION's rules everywhere.
 - The standing placeholders `KIT_PLACEHOLDER`, `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
+
+## 20. The single-player match and the blast on the player (2026-09-29)
+
+The owner, 2026-09-29: "should grenades be doing damage? they do not appear to be to myself, nor are they knocking me"
+and "let's make offline tick rounds etc too". Offline, the page had no match: no health, no deaths, no rounds.
+
+**The design** (`packages/viewer/src/net/loopback.ts`): offline, in reCOM mode, the page runs the match server's own
+`Room` (`packages/server/src/room.ts` -- no socket, no Node in it; imported as it is, not moved) inside the page, behind
+a socket that never leaves it (`LoopbackMatch.socket`), and joins it with the same `NetClient` and `NetPage` a match uses.
+One implementation, online and off: the round's clock and banner ("STARTING ROUND 1 OF 11"), the round and match
+screens, the game's damage (bullets, falls, blasts), deaths and death clips, respawns (the press after the fade, at the
+respawn records -- `LoadedMap.respawns` now carries the slots' twins, placed as the server places them), the scores and
+the scoreboard. The room is stepped at 60 Hz by the server's own clock (at most five steps a wake, a stall dropped); its
+frames cross on a microtask. The room gets its own copy of the hull (its doors turn their polygons; the page's hull
+follows the snapshots, as online) and the page's clips (`simClipsOfPlay`; a match made before the worker sent them is
+made again when they come). `&nomatch` keeps the old free walk, and so does `&fly` (the tests' and the tools' opening
+in the fly camera; every e2e spec but the new `soloMatch.spec.ts` opens with it).
+
+The room runs `solo` (`RoomOptions.solo`, the only change to the room besides the blast):
+
+| rule | implemented | source |
+|---|---|---|
+| the player's side | the host's: the SEALs | `FUN_002c5450` L166238-166262 (section 7: "host: SEALs"); `Lobby.join(..., host)` |
+| the idle kick | none | the owner's W3.R13 kick is the server's guard; a page alone takes no seat from anyone |
+| classic's launch | round 1 starts with the one player | `SOLO_ROUND_PLACEHOLDER`: the game launches only with both sides seated (`FUN_002c3cf0` L165325-165352), so it has no one-player round |
+| classic's elimination | a side with nobody on it is never eliminated: the round runs to its clock (a draw at 00:00, `mission_timer` -> `abort`); the lone SEAL dead eliminates the SEALs, the Terrorists win the round | the `objectives` script's tests (section 18.2) with `SOLO_ROUND_PLACEHOLDER`'s empty side (the script's `aiteam_08 == 0` would give the SEALs every round at 15 s) |
+| respawn rules | as a match: one timed round, the press after 10 s, the respawn records | sections 4, 18 |
+
+**The blast on the player** (research 85 section 12 has the whole table): the thrower is not spared (`FUN_005ac070`
+asks no thrower); a wall between the blast and the head stops all of it; each fragment strikes the head 30 %, the body
+30 %, each limb 10 % (`.data` `DAT_006508e0` / `DAT_006508d0`, below); the knock (`FUN_0057e770`) lifts a standing or
+crouched SEAL at up to `f x 50` u/s in `Fall forward` / `Fall backwards`, then `Land ...` and `Get up ...`; the ears ring
+(the mix at 0.35 for 5 s). Offline and online, through `resolveBlast` in the room.
+
+**Placeholders resolved from `.data`** (read from `game/disc/socom2_game.elf`, file offset = va - 0x4c5380 + 0x2f7a80):
+
+| name (section 16) | value | now |
+|---|---|---|
+| `LIMB_SPILL_SCALE_PLACEHOLDER` / `LIMB_SPILL_PIERCING_PLACEHOLDER` | `DAT_006508a8` = 0x3e99999a (0.3), `DAT_006508b0` = 0x41200000 (10) | `LIMB_SPILL`, `LIMB_SPILL_PIERCING` in `net/damage.ts`: a hit on a spent limb is 0.3 of it on the body, through the armour |
+| `FRAGMENT_PART_TABLE_PLACEHOLDER` | thresholds 0.3, 0.6, 0.7, 0.8, 0.9, 1.0; parts 00 03 02 01 05 04 (the receiver's copy at 0x6508f8 the same) | `FRAGMENT_ROLLS`, `FRAGMENT_PARTS`, `fragmentPart` |
+| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` | `DAT_006508b8` 2500, `DAT_006508c0` 6400, `DAT_006508c8` 22500 (squared: 50, 80, 150 units) | read only; no shotgun in the kits |
+
+Tests: `test/loopback.test.ts` (the join as the host's SEAL, the commands in the room, a grenade at the feet killing the
+player through the client, the respawn at a respawn record, classic alone, the close), `server/test/roomBlast.test.ts`
+(the solo rules), with research 85 section 12's. E2E owed (no browser this round): `e2e/soloMatch.spec.ts`.
