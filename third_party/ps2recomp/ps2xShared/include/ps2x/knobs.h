@@ -103,7 +103,7 @@
     X("PS2X_GS_SCALE_SELFTEST", Dev, Int, "0", "1 checks the native mirror of a scaled target against a fresh resolve each frame.") \
     X("PS2X_GS_SETUP_FORMAT", Dev, Flag, "", "S17 F1 attempt 2 A/B: 1 formats the stats tags every draw, 0 never; unset = only with PS2X_GS_STATS.") \
     X("PS2X_GS_SKIP_TBP0", Dev, Spec, "", "Drop every textured draw binding one of these texture blocks (a bisect).") \
-    X("PS2X_GS_STATS", Dev, Presence, "", "The [gs-gl stats] line every 60 command buffers.") \
+    X("PS2X_GS_STATS", Dev, Presence, "", "The [gs-gl stats] line every 60 command buffers, and the [gs-loop] frame hand-off split (S17 F3) with it.") \
     X("PS2X_GS_TRACE_CMDS", Dev, Int, "", "Presents to skip (or trig), then print the replayed GS commands.") \
     X("PS2X_GS_TRACE_CMDS_BOX", Dev, Spec, "", "With GS_TRACE_CMDS: only draws touching this screen box.") \
     X("PS2X_GS_TRACE_CMDS_FROM", Dev, Int, "-1", "With GS_TRACE_CMDS: start at this frame.") \

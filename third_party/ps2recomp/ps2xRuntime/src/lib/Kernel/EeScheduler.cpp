@@ -9,6 +9,7 @@
 #include "ps2_log.h"
 #include "ps2_runtime_macros.h"
 #include "ps2x/knobs.h"
+#include "runtime/gs/gs_loop_phases.h"
 
 #include <algorithm>
 #include <cassert>
@@ -2110,6 +2111,7 @@ void EeScheduler::processPendingEvents()
 
 void EeScheduler::processDueDeadlines()
 {
+    static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;   // Sprint 17 F3: [gs-loop] pace=
     // m_nextDeadlineCycle is the earliest deadlineCycle in m_deadlines (updateNextDeadline): before
     // it nothing is due, so skip the mutex and the clock read that cost ~4% of the game thread.
     {
@@ -2145,6 +2147,8 @@ void EeScheduler::processDueDeadlines()
                 m_eventCv.wait_until(lock, pacingDeadline, [this]()
                                      { return !m_events.empty() ||
                                               m_stopRequested.load(std::memory_order_acquire); });
+                if (s_loopPhases)   // Sprint 17 F3: the [gs-loop] pace= column
+                    GsLoopPhases::live().add(GsLoopPhases::EePace, GsLoopPhases::nsBetween(now, std::chrono::steady_clock::now()));
                 if (m_traceOn)
                 {
                     const double waited = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - now).count();
@@ -2386,12 +2390,18 @@ void EeScheduler::waitForEvent()
     {
         return;
     }
+    // Sprint 17 F3: the [gs-loop] idle= column -- no guest thread ready (a sceGsSyncV, a semaphore) until the next
+    // event, on either wait below. The return above waits on nothing and is not counted.
+    static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;
+    const auto idleStart = s_loopPhases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const uint64_t timerCycles = m_runtime.memory().cyclesUntilNextEeTimerInterrupt();
     const bool hasTimerDeadline = timerCycles != std::numeric_limits<uint64_t>::max();
     if (m_deadlines.empty() && !hasTimerDeadline)
     {
         m_eventCv.wait(lock, [this]()
                        { return !m_events.empty() || m_stopRequested.load(std::memory_order_acquire); });
+        if (s_loopPhases)
+            GsLoopPhases::live().add(GsLoopPhases::EeIdle, GsLoopPhases::nsBetween(idleStart, std::chrono::steady_clock::now()));
         return;
     }
 
@@ -2438,6 +2448,8 @@ void EeScheduler::waitForEvent()
     const bool signaled = m_eventCv.wait_until(lock, wakeAt, [this]()
                                                { return !m_events.empty() ||
                                                         m_stopRequested.load(std::memory_order_acquire); });
+    if (s_loopPhases)
+        GsLoopPhases::live().add(GsLoopPhases::EeIdle, GsLoopPhases::nsBetween(idleStart, std::chrono::steady_clock::now()));
     if (!signaled)
     {
         const uint64_t elapsed = deadlineCycle > m_eeCycle ? deadlineCycle - m_eeCycle : 0u;

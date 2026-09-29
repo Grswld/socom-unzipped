@@ -18,6 +18,7 @@
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_frame_histogram.h"
+#include "runtime/gs/gs_loop_phases.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
 #include "runtime/gs/gs_gl_state_tags.h"
 #include "Stubs/Helpers/Support.h"
@@ -6895,6 +6896,69 @@ void register_ps2_gs_tests()
             t.IsTrue(line.find("le17=3 ") != std::string::npos && line.find("over=1 ") != std::string::npos &&
                          line.find("longest_ms=2500.0") != std::string::npos,
                      line);
+        });
+
+        // Sprint 17 F3: the [gs-loop] line -- where the GL thread's second goes (the five disjoint phases of
+        // one host-loop iteration, and other= the rest of the second), and where the EE thread's goes (its four
+        // waits, and work= the rest). Header-only arithmetic; the stamps are in the loop, the backend and
+        // the scheduler.
+        tc.Run("F3: GsLoopPhases sums the five GL phases and the four EE waits, and [gs-loop] names the remainder in ms/s", [](TestCase &t)
+        {
+            GsLoopPhases::Accum a{};
+            GsLoopPhases::add(a, GsLoopPhases::Latch, 2'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::LatchLock, 1'500'000ull);   // inside latch=, not a sixth phase
+            GsLoopPhases::add(a, GsLoopPhases::Queue, 1'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::Replay, 400'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::Replay, 200'000'000ull);    // adds accumulate
+            GsLoopPhases::add(a, GsLoopPhases::Draw, 50'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::End, 300'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::EeBackpressure, 30'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::EeToken, 5'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::EeIdle, 200'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::EeIdle, 25'000'000ull);
+            GsLoopPhases::add(a, GsLoopPhases::EePace, 15'000'000ull);
+            t.Equals(GsLoopPhases::glAccountedNs(a), 953'000'000ull, "the five GL phases sum; latch_lock is inside latch");
+            t.Equals(GsLoopPhases::eeWaitNs(a), 275'000'000ull, "the four EE waits sum");
+            t.Equals(a.counts[GsLoopPhases::EeIdle], 2ull, "each add is counted");
+            const std::string line = GsLoopPhases::format(a, 1000.0);
+            t.IsTrue(line.rfind("[gs-loop] elapsed=1000ms ", 0) == 0, "the line is tagged [gs-loop]: " + line);
+            t.IsTrue(line.find(" gl: latch=2.0 latch_lock=1.5 queue=1.0 replay=600.0 draw=50.0 end=300.0 other=47.0 ms/s") != std::string::npos,
+                     "the GL phases in ms/s, other= the second less the five: " + line);
+            t.IsTrue(line.find(" ee: bp=30.0 token=5.0 idle=225.0 pace=15.0 work=725.0 ms/s idles=2.0/s") != std::string::npos,
+                     "the EE waits in ms/s, work= the second less the four: " + line);
+            const std::string half = GsLoopPhases::format(a, 500.0);
+            t.IsTrue(half.find(" replay=1200.0 ") != std::string::npos && half.find(" idle=450.0 ") != std::string::npos,
+                     "half the interval doubles every rate: " + half);
+        });
+
+        tc.Run("F3: GsLoopPhases counts host iterations and the ones raylib's 60 fps limiter slept in; Live takes and resets across threads", [](TestCase &t)
+        {
+            GsLoopPhases::Accum a{};
+            GsLoopPhases::noteIteration(a, 12'000'000ull);   // work before EndDrawing under 16.67 ms: the limiter sleeps
+            GsLoopPhases::noteIteration(a, 16'000'000ull);
+            GsLoopPhases::noteIteration(a, 25'000'000ull);   // over one host frame: no sleep
+            t.Equals(a.iterations, 3ull, "three iterations");
+            t.Equals(a.capped, 2ull, "two under one 60 Hz frame before EndDrawing");
+            const std::string line = GsLoopPhases::format(a, 1000.0);
+            t.IsTrue(line.find(" iters=3.0/s capped=2.0/s ") != std::string::npos, line);
+
+            GsLoopPhases::Live live;
+            std::thread ee([&live]
+                           {
+                               for (int i = 0; i < 1000; ++i)
+                                   live.add(GsLoopPhases::EeIdle, 1000ull);
+                           });
+            for (int i = 0; i < 1000; ++i)
+                live.add(GsLoopPhases::Replay, 2000ull);
+            live.noteIteration(1'000'000ull);
+            ee.join();
+            const GsLoopPhases::Accum got = live.take();
+            t.Equals(got.ns[GsLoopPhases::EeIdle], 1'000'000ull, "the EE thread's adds all land");
+            t.Equals(got.ns[GsLoopPhases::Replay], 2'000'000ull, "the GL thread's adds all land");
+            t.Equals(got.iterations, 1ull, "the iteration is taken");
+            const GsLoopPhases::Accum again = live.take();
+            t.Equals(again.ns[GsLoopPhases::EeIdle] + again.ns[GsLoopPhases::Replay] + again.iterations, 0ull,
+                     "take() resets: the next interval starts at zero");
         });
 
         // Sprint 16 F2: the [gs-submit] line -- the submit= column of [gs-gl stats] split over EVERY
