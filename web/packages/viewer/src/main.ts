@@ -140,6 +140,7 @@ const grenade = new GrenadeThrower({
   grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view(),
   handPoint: (part, p) => play.partPoint(part, p), heldNode: () => play.heldNode(),
   peek: () => traversal.stats()?.peek ?? 0,           // research 86's lean: the lean tosses
+  viewState: () => zoom.state(),                      // the arc: none in the 9x view or a scope, pale in the night vision
 });
 scene.add(grenade.object);
 if (PLAY) grenade.bindKey();
