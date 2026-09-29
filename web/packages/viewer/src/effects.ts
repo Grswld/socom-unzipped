@@ -12,6 +12,7 @@ import { ParticleSystem } from './particles';
 import { EffectLights } from './effectLights';
 import type { EffectData, EffectTexture } from './effectData';
 import type { FireEvent, MarkTable } from './fire';
+import { SOUND_NAME_FIXES } from './soundNames';
 
 /**
  * The gunplay's effects (web/docs/research/89), drawn in walk mode: the game's own zAnim effect animations out of the
@@ -120,6 +121,8 @@ interface Instance { object: Object3D; model: string }
 interface RunContext {
   place: EffectPlace;
   instance: Instance | null;
+  /** A map's ambient effect: its looping (`~`) sounds are the audio's emitters', not played here. */
+  ambient?: boolean;
 }
 
 export interface EffectStats {
@@ -137,6 +140,8 @@ export interface EffectStats {
   lastShell: { position: Vec3; velocity: Vec3 } | null;
   /** The `LIGHT` passes live now, begun so far, their overlays, and their ranges now. */
   lights: ReturnType<EffectLights['stats']>;
+  /** The mission's ambient effects running now. */
+  ambient: string[];
   /** The SEAL's splashes, the ripple loops running, the footprints placed. */
   water: { splashes: number; ripples: string; footprints: number };
   /** The effect models drawn now, by name. */
@@ -145,36 +150,7 @@ export interface EffectStats {
   sounds: string[];
 }
 
-/**
- * The effect data's sound names the banks do not hold, and the name they meant -- **a deliberate departure from the
- * retail game** (the owner's playtest, 2026-09-29). `shell_eject`, `shell_eject_60` and `shell_eject_first_person`
- * name the metal bounce `.BUL_CASE_METAL`; no bank of the 115 and no `sounds.rdr` entry carries it, while
- * `.BUL_CAS_METAL` is in 16 banks (Frostfire's `MP2_am` among them) beside `.BUL_CAS_STONE`, `_DIRT`, `_SAND` and
- * `_WOOD`, the table's other names. The game looks a sound up by its name's CRC (`FUN_00344f30`), so on the console a
- * casing lands on metal in silence; the viewer plays the bank's `.BUL_CAS_METAL` (research 89 §11).
- */
-export const SOUND_NAME_FIXES: Readonly<Record<string, string>> = { '.BUL_CASE_METAL': '.BUL_CAS_METAL' };
-
-/**
- * The casing sounds a map's banks may lack, and what stands in -- **a departure from the retail game** (the feel-QA
- * playtest, research 90 item 12). The game resolves a sound by its name's CRC among the loaded banks' sounds, a binary
- * search over one sorted table (`FUN_00344f30` -> `FUN_00344bf0`, decomp 243197): no fallback bank, no other name, so a
- * name the map's banks lack plays nothing. The shell table sends grass and dirt (materials 4 and 8) to `.BUL_CAS_DIRT`,
- * which 13 banks hold and Blood Lake's (MP10) does not, beside its own `.BUL_CAS_GRASS`; so on the console its casings
- * land on the ground in silence. The viewer plays the first of these the map holds.
- */
-export const SOUND_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
-  '.BUL_CAS_DIRT': ['.BUL_CAS_GROUND', '.BUL_CAS_GRASS', '.BUL_CAS_SAND'],
-  '.BUL_CAS_SAND': ['.BUL_CAS_GROUND', '.BUL_CAS_DIRT'],
-  '.BUL_CAS_METAL': ['.BUL_CAS_GR8ING'],
-};
-
-/** The sound to play for an effect's sound name: the data's slips mended, then a fallback when the banks lack it. */
-export function soundFor(name: string, has: (name: string) => boolean): string {
-  const fixed = SOUND_NAME_FIXES[name] ?? name;
-  if (has(fixed)) return fixed;
-  return SOUND_FALLBACKS[fixed]?.find(has) ?? fixed;
-}
+export { SOUND_FALLBACKS, SOUND_NAME_FIXES, soundFor } from './soundNames';
 
 /** The zAnim main gravity (`Anim_Main_Params`, -98 on every archive: 77 §9). */
 export const ZANIM_GRAVITY = -98;
@@ -189,6 +165,10 @@ export class Effects {
   private readonly materials = new Map<string, MeshBasicNodeMaterial>();
   private runs: EffectRun[] = [];
   private readonly particles: ParticleSystem;
+  /** The map's scene nodes the ambient effects sit at (`EffectData.sceneNodes`). */
+  private sceneNodes = new Map<string, Matrix4>();
+  /** The ambient effects running (`EffectData.ambient`). */
+  private ambientRuns: EffectRun[] = [];
   /** The `LIGHT` commands' passes over the world (`./effectLights`). */
   readonly lights = new EffectLights();
   private readonly valves = new Map<string, number>();
@@ -236,15 +216,22 @@ export class Effects {
     for (const p of data?.programs ?? []) if (!this.programs.has(p.name.toLowerCase())) this.programs.set(p.name.toLowerCase(), p);
     this.textures = new Map(data?.textures ?? []);
     this.particles.setTextures(this.textures);
+    this.sceneNodes = new Map((data?.sceneNodes ?? []).map(([n, m]) => [n, new Matrix4().fromArray(m)]));
     this.lights.setTexture(this.textures.get('light_map.tif') ?? null);
     for (const model of data?.models ?? []) this.models.set(model.name, buildEffectModel(model, this.textures, this.materials));
+    // The mission's ambient effects start with the map, as the game starts its activation-1 animations.
+    for (const name of data?.ambient ?? []) {
+      const program = this.programs.get(name.toLowerCase());
+      if (program) this.ambientRuns.push(this.start(program, { node: null }, true));
+    }
   }
 
   /**
    * Everything the map's effects draw with, in one group for the renderer to compile before the first shot (research
    * 90 item 16: the first explosion's frames up to 417 ms were first use -- programs built, bitmaps uploaded): the
-   * effect models, a particle group per particle texture, the marks' and the footprints' materials, the light pass's two
-   * programs. `warmDone` takes them back. The group sits far under the map, so a frame drawn meanwhile shows nothing.
+   * effect models, a particle group per particle texture, the marks' and the footprints' materials; and the light
+   * passes' overlays over every receiver, beside it (`EffectLights.warmMeshes`). `warmStarted` takes them out of the
+   * drawn scene once the compile call has its list, `warmDone` after.
    */
   warmUp(): Group {
     const g = new Group();
@@ -261,15 +248,26 @@ export class Effects {
       const t = this.textures.get(tex.toLowerCase());
       if (t) g.add(new Mesh(quad, markMaterial(t)));
     }
-    for (const m of this.lights.warmMeshes()) g.add(m);
+    // The light passes' overlays, beside what they re-draw: the page compiles them with the scene.
+    this.lights.warmMeshes();
     g.traverse((o) => { o.frustumCulled = false; });
     this.object.add(g);
     return g;
   }
 
+  /**
+   * The compile call has taken its list of what to build (synchronously): the warm-up's objects leave the drawn scene,
+   * so the frames drawn while the programs build do not build them in the frame (research 90 item 19).
+   */
+  warmStarted(g: Group): void {
+    this.object.remove(g);
+    this.lights.warmHide();
+  }
+
   /** The pre-warm is done: its group goes (the particle groups stay, hidden until they draw). */
   warmDone(g: Group): void {
     this.object.remove(g);
+    this.lights.warmDone();
   }
 
   /** The per-material marks for `Fire.setMarks`, or null without the tables. */
@@ -396,9 +394,9 @@ export class Effects {
     return this.run(name, place);
   }
 
-  private start(program: EffectProgram, place: EffectPlace): EffectRun {
+  private start(program: EffectProgram, place: EffectPlace, ambient = false): EffectRun {
     this.played[program.name] = (this.played[program.name] ?? 0) + 1;
-    const run = new EffectRun(program, this.host, { place, instance: null } satisfies RunContext);
+    const run = new EffectRun(program, this.host, { place, instance: null, ambient } satisfies RunContext);
     this.runs.push(run);
     run.update(0);
     return run;
@@ -456,6 +454,7 @@ export class Effects {
       if (ctx.instance) this.object.remove(ctx.instance.object);
     }
     this.runs = [];
+    this.ambientRuns = [];
     this.valves.clear();
     this.particles.clear();
     this.lights.clear();
@@ -474,6 +473,7 @@ export class Effects {
       runs: this.runs.length, played: { ...this.played }, shells: this.shellsLive(), particles: this.particles.count(),
       sources: this.particles.activeSources(), emitted: this.particles.emitted,
       lastShell: this.lastShell, bounces: this.bounces, sounds: this.sounds.slice(-16), lights: this.lights.stats(),
+      ambient: this.ambientRuns.filter((r) => !r.finished).map((r) => r.program.name),
       water: { ...this.water },
       shown: this.runs.map((r) => (r.context as RunContext).instance).filter((i): i is Instance => !!i && i.model !== '' && i.object.visible).map((i) => i.model),
     };
@@ -524,6 +524,12 @@ export class Effects {
   private nodeMatrix(run: EffectRun, node: number): Matrix4 | null {
     if (node === NODE_CALLER) return this.callerMatrix(run);
     if (node === 0) return null;
+    // A node the map's scene holds (a mission's flame at `r_tower_flames`), and the camera (the snow and the rain
+    // fall about it): the engine's node search finds them in the world (`_zanim_node_ref`'s search scope).
+    const name = node === NODE_ROOT ? run.program.nodes[run.program.root] : run.program.nodes[node];
+    if (name === 'camera' && this.camera) { this.camera.updateMatrixWorld(); return this.camera.matrixWorld; }
+    const scene = name && !this.models.has(name) ? this.sceneNodes.get(name) : undefined;
+    if (scene) return scene;
     const o = this.nodeOf(run, node);
     if (!o) return null;
     o.updateWorldMatrix(true, false);
@@ -652,7 +658,18 @@ export class Effects {
         let t = 0;
         return l.duration > 0 ? (dt) => (t += dt) >= l.duration : undefined;
       }
+      case 'pauseAnimation': {
+        const name = op.anim.toLowerCase();
+        for (const r of this.runs) if (r !== run && r.program.name.toLowerCase() === name) r.paused = true;
+        return;
+      }
+      case 'stopAnimation': {
+        const name = op.anim.toLowerCase();
+        for (const r of this.runs) if (r !== run && r.program.name.toLowerCase() === name) r.stop();
+        return;
+      }
       case 'sound': {
+        if (ctx.ambient && op.sound.startsWith('~')) return;
         const at = op.node > 0 ? this.nodeMatrix(run, op.node) : null;
         this.playSound(op.sound, at ? [at.elements[12]!, at.elements[13]!, at.elements[14]!] : this.runPosition(run), 1);
         return;

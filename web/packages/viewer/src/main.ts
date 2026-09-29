@@ -287,13 +287,18 @@ grenade.setEffectPlayer((anim, at) => effects.play(anim, { ...grenadePlace(at.po
  * data arrives, not in the frame of the first explosion. Set once the renderer is up.
  */
 let compileEffects: ((g: ReturnType<typeof effects.warmUp>) => Promise<void>) | null = null;
+/** The world whose warm-up (`warmScene`, after its props) has run. */
+let worldWarmed: WorldView | null = null;
 function warmEffects(): void {
-  if (!compileEffects || !effects.stats().loaded) return;
+  // Before the world's own warm-up the effects ride in it (`show`: one pass over the scene, not two).
+  if (!compileEffects || !effects.stats().loaded || !view || worldWarmed !== view) return;
   const g = effects.warmUp();
-  void compileEffects(g).catch(() => {}).finally(() => effects.warmDone(g));
+  const compiling = compileEffects(g);
+  effects.warmStarted(g);                           // the list is taken: the frames meanwhile do not draw the warm-up
+  void compiling.catch(() => {}).finally(() => effects.warmDone(g));
 }
-// The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
-effects.setLightReceivers(() => [view?.group, view?.weapon].filter((o): o is NonNullable<typeof o> => !!o));
+// The `LIGHT` passes re-draw the lit world, the held weapon and the SEAL's body (`./effectLights`: the game's second pass, research 89 §10).
+effects.setLightReceivers(() => [view?.group, view?.weapon, body?.group].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -820,7 +825,9 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
-  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.renderer.compileAsync(effects.object, fly.camera, scene); };
+  // The effects with the scene they light, the way the world is warmed (the PS2 frame's target, the hidden through
+  // stand-ins): research 90 item 19, a light pass compiled for the canvas alone still stalled the first blast.
+  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.warm(scene, fly.camera); };
   warmEffects();
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
@@ -1146,7 +1153,16 @@ function show(map: LoadedMap): void {
     // and the flares among them are turned by the render loop on the frame after they land.
     revealing = spreadAcrossFrames(built0.revealProps);
     // Then every program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
-    void revealing.done.then(() => { if (view === built0) void warmScene?.(built0.warmExtras()); });
+    // The effects' warm-up rides along when their data is in (one pass: their models, particles and marks, and the
+    // light passes' overlays over every prop -- research 90 item 19); data coming later warms by itself.
+    void revealing.done.then(async () => {
+      if (view !== built0) return;
+      const g = effects.stats().loaded ? effects.warmUp() : null;
+      const warming = warmScene?.(built0.warmExtras());
+      if (g) effects.warmStarted(g);
+      try { await warming; } finally { if (g) effects.warmDone(g); }
+      if (view === built0) worldWarmed = built0;
+    });
   });
 }
 
@@ -1247,7 +1263,8 @@ window.__viewer = {
       const node = new Matrix4().makeBasis(x, y, z).setPosition(where);
       return effects.play(name, { node, position: [0, 0, 0], velocity: forward.toArray() as [number, number, number] });
     }
-    return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
+    // As a grenade's (`grenadePlace`): a node at the point too, for the sources that follow their caller's node.
+    return effects.play(name, { ...grenadePlace(where.toArray()), velocity: forward.toArray() as [number, number, number] });
   },
   pauseEffects: (on) => { effects.paused = on; },
   tacMap: () => tacMap.state(),

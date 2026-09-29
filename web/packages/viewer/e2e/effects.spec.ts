@@ -195,3 +195,40 @@ test('water and footprints: the splash and the ripples on Enowapi, the prints on
   expect((await page.evaluate(() => window.__viewer.effects())).water.footprints).toBeGreaterThan(2);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-footprints.png') });
 });
+
+/**
+ * The smoke grenade's screen (`smoke_grenade` -> `smoke_stream`: two sources on the canister, a puff each every 0.4 s
+ * growing tenfold over 5-7 s, 20 s of it) on Desert Glory, from outside and from inside; and a mission's ambient
+ * effects, started with the map (Frostfire's tower flames).
+ */
+test('the smoke screen reads as a screen; the mission ambient effects burn', async ({ page }) => {
+  test.setTimeout(170_000);
+  mkdirSync(SCREENS, { recursive: true });
+  await page.goto('/?map=MP6&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(() => window.__viewer.walkFor(0.4, { forward: 0 }));
+  await page.evaluate(() => window.__viewer.setCamera({ yaw: 200, pitch: -5 }));
+  await page.waitForTimeout(1000);
+  const feet = (await page.evaluate(() => window.__viewer.feet()))!;
+  const r = (200 * Math.PI) / 180;
+  const at: [number, number, number] = [feet[0] - Math.sin(r) * 60, feet[1] + 1, feet[2] - Math.cos(r) * 60];
+  expect(await page.evaluate((p) => window.__viewer.playEffect('smoke_grenade', p), at)).toBe(true);
+  await page.waitForTimeout(6000);
+  expect((await page.evaluate(() => window.__viewer.effects())).particles).toBeGreaterThan(25);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-smoke-screen.png') });
+  await page.evaluate(() => window.__viewer.walkFor(1.4, { forward: 1 }));   // into it
+  await page.waitForTimeout(300);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-smoke-inside.png') });
+
+  await page.goto('/?map=MP2&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  await page.evaluate(() => window.__viewer.setCamera({ x: 1055, y: 250, z: 1530, yaw: 0, pitch: -6 }));
+  await page.waitForTimeout(2500);
+  const fx = await page.evaluate(() => window.__viewer.effects());
+  expect(fx.ambient).toContain('firey_flames');
+  expect(fx.particles).toBeGreaterThan(20);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-tower-flames.png') });
+});
