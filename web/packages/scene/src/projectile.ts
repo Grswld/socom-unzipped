@@ -58,6 +58,13 @@ export interface ThrowableRecord {
   explosionAnim: string;
   /** `DecalSet`: the scorch (`GRENADE_BLAST` in `decals.rdr`). */
   decalSet: string;
+  /** `IconTextureName`: the HUD's weapon icon in `HUDW_TXR.ZED`. */
+  icon: string;
+  /**
+   * Goes off on the first surface it meets rather than bouncing: every type outside `HandleIntersections`' bounce list
+   * (`BOUNCE_TYPES`) takes `HandleImpact` (0x3c8920), which sets an explosive projectile to detonate at the hit.
+   */
+  impact: boolean;
   /** `AMMO_TYPES`' `NAME` and that round's `ZAMMO` record. */
   ammo: string;
   ammoId: number;
@@ -72,8 +79,26 @@ export const M67: ThrowableRecord = {
   name: 'M67', id: 121, fuse: 3, removal: 3.1, muzzleVelocity: 1, gravity: 98,
   impactRadius: 450, effectiveRange: 400, maximumRange: 100000, capacity: 3, mags: 1, soundRadius: 700,
   model: 'grenade', fireAnim: 'frag_start', hitAnim: 'grenade_hit', explosionAnim: 'frag_grenade', decalSet: 'GRENADE_BLAST',
-  ammo: 'M67 Ammo', ammoId: 11, explosionDamage: 10, explosionRadius: 150,
+  icon: 'grenade_frag_icon.tif', impact: false, ammo: 'M67 Ammo', ammoId: 11, explosionDamage: 10, explosionRadius: 150,
 };
+
+/**
+ * `zweapon.rdr`'s HE (the `mp_seal1` and `mp_seal3` kits' second throwable) and its `HE Grenade Ammo`, transcribed:
+ * the same fuse, `Explosion_Radius` 10 (100 units) and `Explosion_Damage` 11 -- and ID 126, not in the bounce list:
+ * it goes off where it first lands.
+ */
+export const HE: ThrowableRecord = {
+  name: 'HE', id: 126, fuse: 3, removal: 3.1, muzzleVelocity: 1, gravity: 98,
+  impactRadius: 400, effectiveRange: 400, maximumRange: 100000, capacity: 3, mags: 1, soundRadius: 650,
+  model: 'HEgrenade', fireAnim: 'HE_start', hitAnim: 'grenade_hit', explosionAnim: 'HE_grenade', decalSet: 'GRENADE_BLAST',
+  icon: 'grenade_he_icon.tif', impact: true, ammo: 'HE Grenade Ammo', ammoId: 26, explosionDamage: 11, explosionRadius: 100,
+};
+
+/**
+ * The type bytes `HandleIntersections` (0x3c9b70, decomp 320032-320041) sends to `HandleBounce`: 0x79 (121, the M67),
+ * 0x97, 0xac, 0xad, 0xb2 (and 0xb9, 0xba with no parent: the launched rounds' carriers). Every other goes to `HandleImpact`.
+ */
+export const BOUNCE_TYPES: ReadonlySet<number> = new Set([0x79, 0x97, 0xac, 0xad, 0xb2]);
 
 const text = (node: RdrNode, key: string, where: string): string => {
   const v = rdrGet(node, key);
@@ -107,7 +132,8 @@ export function throwableRecord(script: RdrNode, name = 'M67'): ThrowableRecord 
     maximumRange: n('Maximum_Range', WORLD_SCALE), capacity: n('Ammo_Capacity'), mags: n('NumMags'),
     soundRadius: n('Sound_Radius'), model: text(record, 'ModelName', where), fireAnim: text(record, 'FireAnimName', where),
     hitAnim: text(record, 'HitAnimName', where), explosionAnim: text(record, 'DefaultSpecialAnimName', where),
-    decalSet: text(record, 'DecalSet', where), ammo, ammoId: n('ID', 1, round, at),
+    decalSet: text(record, 'DecalSet', where), icon: text(record, 'IconTextureName', where).toLowerCase(),
+    impact: !BOUNCE_TYPES.has(n('ID')), ammo, ammoId: n('ID', 1, round, at),
     explosionDamage: n('Explosion_Damage', 1, round, at), explosionRadius: n('Explosion_Radius', WORLD_SCALE, round, at),
   };
 }
@@ -254,7 +280,9 @@ export interface ThrowAnim {
   clip: string;
   /** The clip's length, seconds (`MOTION_P.ZAR`: frames / 30). */
   duration: number;
-  /** `motion.rdr`'s `playback` for the clip. */
+  /** Its keys (`duration x 30`). */
+  frames: number;
+  /** `motion.rdr`'s `playback` for the clip: a one-shot's seconds a pass (`FUN_00287620` puts it at `+0x10`). */
   playback: number;
   /** The release, as a fraction of the clip. */
   release: number;
@@ -265,7 +293,7 @@ export interface ThrowAnim {
 }
 
 const anim = (type: string, clip: string, duration: number, playback: number, release: number, offset: V3, toss: boolean): ThrowAnim =>
-  ({ type, clip, duration, playback, release, offset, toss });
+  ({ type, clip, duration, frames: Math.round(duration * 30), playback, release, offset, toss });
 
 /** `GetThrowAnim`'s table (0x57fce0): the `.data` offsets at 0x66b310-0x66b3a8 and its release fractions. */
 export const THROW_ANIMS = {
@@ -302,11 +330,16 @@ export function throwAnim(power: number, aimSin: number, stance: ThrowStance, sp
 }
 
 /**
- * Seconds from the throw's start to the release: the fraction of the clip, at the clip's playback [reading:
- * `FUN_005802b0` computes `release x clip(+0x10) x FUN_0028ada0(clip)`, the two factors not decoded; `motion.rdr`'s
- * `throw_whoosh` callback at 0.45 beside the stand throw's 0.46 says the fraction is of the clip].
+ * Seconds from the throw's start to the release (`FUN_005802b0`): `release x clip(+0x10) x FUN_0028ada0(clip)`. The
+ * motion workstream read both factors (web/docs/research/80, `viewer/src/locomotion.ts`): `+0x10` of a one-shot is
+ * `motion.rdr`'s `playback` (`FUN_00287620`) and `FUN_0028ada0` is `(n - 1) / n` -- so the release is the moment the
+ * clip's phase, which runs at `1 / (playback (n - 1) / n)` a second (`FUN_0028c4f0`), reaches the fraction. The
+ * standing throw lets go 0.71 s in (`motion.rdr`'s `throw_whoosh` callback sits at phase 0.45, beside its 0.46).
  */
-export const releaseSeconds = (a: ThrowAnim): number => (a.release * a.duration) / a.playback;
+export const releaseSeconds = (a: ThrowAnim): number => a.release * a.playback * ((a.frames - 1) / a.frames);
+
+/** The throw clip's whole play: keys 0 to n - 1 in `playback ((n - 1) / n)^2` seconds (`FUN_0028c4f0`, the one-shot rule). */
+export const throwClipSeconds = (a: ThrowAnim): number => a.playback * ((a.frames - 1) / a.frames) ** 2;
 
 /** The farthest a throw reaches from `stance`: `max_distance_stand` standing, `max_distance_crouch` otherwise (0x5c1970). */
 export const maxThrowDistance = (stance: ThrowStance): number =>
@@ -435,6 +468,8 @@ export interface Grenade {
   bounces: number;
   /** Seconds since the release. */
   age: number;
+  /** Its weapon record: the fuse, the gravity, bounce or impact. */
+  record: ThrowableRecord;
 }
 
 /** What the hull answered along a segment: the crossing, the polygon's normal (either side) and its material. */
@@ -465,7 +500,7 @@ export function launchGrenade(pos: V3, vel: V3, record: ThrowableRecord = M67): 
   const s = record.muzzleVelocity;
   return {
     pos: [...pos], vel: [vel[0] * s, vel[1] * s, vel[2] * s], state: 'flight',
-    fuse: record.fuse, removal: record.removal, firstBounce: true, bounces: 0, age: 0,
+    fuse: record.fuse, removal: record.removal, firstBounce: true, bounces: 0, age: 0, record,
   };
 }
 
@@ -520,7 +555,7 @@ function bounce(g: Grenade, hit: HullHit): GrenadeEvent[] {
  *    one scales the velocity by its elasticity and the search goes on past it; no bounce, the segment's end.
  * 4. `HandleTimers` (0x3c99a0): the fuse run out detonates it where it is; `Timer2` run out removes it.
  */
-export function stepGrenade(g: Grenade, dt: number, cast: HullCast, record: ThrowableRecord = M67): GrenadeEvent[] {
+export function stepGrenade(g: Grenade, dt: number, cast: HullCast, record: ThrowableRecord = g.record): GrenadeEvent[] {
   const events: GrenadeEvent[] = [];
   if (g.state === 'removed') return events;
   g.age += dt;
@@ -531,6 +566,15 @@ export function stepGrenade(g: Grenade, dt: number, cast: HullCast, record: Thro
     let moved = false;
     for (const hit of cast(start, end)) {
       if (ignoredBy(hit.material)) continue;
+      if (record.impact && !hit.material.liquid) {
+        // `HandleImpact` (0x3c8920): an explosive round is set to detonate where it hit (state 3, grenade state 2).
+        g.pos = [...hit.point];
+        g.vel = [0, 0, 0];
+        g.state = 'detonated';
+        events.push({ kind: 'explode', point: [...g.pos] });
+        moved = true;
+        break;
+      }
       if (bouncesOff(hit.material)) {
         events.push(...bounce(g, hit));
         moved = true;
