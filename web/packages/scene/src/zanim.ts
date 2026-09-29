@@ -77,6 +77,11 @@ export interface ZAnimCommand {
   timeless: boolean;
   /** Bytes, the header included (bits 18-31). */
   size: number;
+  /**
+   * The command's own bytes, its header included: a view into the animation's `Seq_Data`, not a copy. The effect
+   * commands' payloads are decoded from it (`./effects`, web/docs/research/89).
+   */
+  bytes: Uint8Array;
 }
 
 /** A sequence: a 28-byte `_zsequence` head (zanim.h:463-481) and its commands. */
@@ -242,7 +247,10 @@ function readSequences(r: Reader, path: string, local: (i: number, what: string)
     while (c < o + size) {
       const h = r.u32(c), bytes = h >>> 18;
       if (bytes < 4 || c + bytes > o + size) throw new Error(`zAnim ${path}: command at ${c} claims ${bytes} bytes`);
-      commands.push({ offset: c, type: h & 0xffff, set: (h >>> 8) & 0xff, cmd: h & 0xff, quadAlign: (h & 1 << 16) !== 0, timeless: (h & 1 << 17) !== 0, size: bytes });
+      commands.push({
+        offset: c, type: h & 0xffff, set: (h >>> 8) & 0xff, cmd: h & 0xff, quadAlign: (h & 1 << 16) !== 0, timeless: (h & 1 << 17) !== 0,
+        size: bytes, bytes: r.bytes.subarray(c, c + bytes),
+      });
       c += bytes;
     }
     out.push({ offset: o, name: local(r.u16(o), 'sequence name'), word: r.u32(o + 4), size, commands });

@@ -92,10 +92,15 @@ describe('parseAnimSets on a hand-built archive (77 §9)', () => {
 
   it('splits the command stream into sequences and each sequence into its commands, to the byte', () => {
     expect(anim.sequences.map((s) => [s.offset, s.name, s.word, s.size])).toEqual([[0, 'muzzle_m4', 0x102, 56], [56, 'NA', 0x104, 60]]);
-    expect(anim.sequences[0]!.commands).toEqual([
+    expect(anim.sequences[0]!.commands.map(({ bytes: _, ...c }) => c)).toEqual([
       { offset: 28, type: 0x2d, set: 0, cmd: 0x2d, quadAlign: false, timeless: false, size: 20 },
       { offset: 48, type: 0x27, set: 0, cmd: 0x27, quadAlign: false, timeless: true, size: 8 },
     ]);
+    // Each command carries its own bytes, header first, as a view of the stream.
+    for (const c of anim.sequences.flatMap((s) => s.commands)) {
+      expect(c.bytes.length).toBe(c.size);
+      expect(new DataView(c.bytes.buffer, c.bytes.byteOffset).getUint32(0, true) & 0xffff).toBe(c.type);
+    }
     expect(anim.sequences[1]!.commands.map((c) => [c.offset, c.type, c.size])).toEqual([[84, 0x1e, 32]]);
   });
 
