@@ -5,9 +5,9 @@ import {
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
-  actorToWorldDir, actorToWorldPoint, AN_M8, CLAYMORE, claymoreCone, explosionDamage, flashLevel, GRENADE_BLAST, gridCast, heldPower, HE,
+  actorToWorldDir, actorToWorldPoint, AN_M8, CLAYMORE, CLAYMORE_RULES, claymoreCone, explosionDamage, flashLevel, GRENADE_BLAST, gridCast, heldPower, HE,
   launchGrenade, M67, MARK141,
-  materialAnim, maxThrowDistance, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
+  materialAnim, maxThrowDistance, PLACE_CLAYMORE_ANIM, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
   throwVelocity,
   type Grenade, type GrenadeEvent, type Grid, type HullCast, type ThrowAnim, type ThrowLaunch, type ThrowStance,
   type ThrowableRecord, type V3,
@@ -77,16 +77,18 @@ export type GrenadeItem = 'M67' | 'HE' | 'AN-M8' | 'Mark141' | 'Claymore';
  * Mark141 flashbang, which no MP default kit carries (the loadout screen's to give).
  */
 export const THROWABLES: Readonly<Record<GrenadeItem, ThrowableRecord>> = { M67, HE, 'AN-M8': AN_M8, Mark141: MARK141, Claymore: CLAYMORE };
-/** The kit's items in slot order as the viewer holds them (the Mark 23, slot 1, is not in the viewer). */
-export const KIT_ITEMS: readonly ('rifle' | GrenadeItem)[] = ['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore'];
+/** What the hand can hold besides the rifle: a throwable, or the claymore's Detonator (`CLAYMORE_RULES`). */
+export type HeldItem = GrenadeItem | 'Detonator';
+/** A kit slot: the rifle, a throwable, the Detonator. */
+export type KitItem = 'rifle' | HeldItem;
+/**
+ * The kit's items in slot order as the viewer holds them (the Mark 23, slot 1, is not in the viewer); the Detonator
+ * last, as `FUN_005c74e0` appends it to a kit with a claymore.
+ */
+export const KIT_ITEMS: readonly KitItem[] = ['rifle', 'M67', 'HE', 'AN-M8', 'Mark141', 'Claymore', 'Detonator'];
 
 /** A placed item rather than a thrown one: `Muzzle_Velocity` 0 (the claymore; the C4 is no MP SEAL kit's). */
 export const isPlaced = (r: ThrowableRecord): boolean => r.muzzleVelocity === 0;
-/**
- * How far below the hand the placement looks for the ground (`FUN_005c2430` walks the vertical probe's hits under the
- * right hand's point and takes the highest at or below it) [placeholder: the probe's reach is not read].
- */
-export const PLACE_REACH = 60;
 
 /**
  * The smoke the AN-M8 pours out from `Timer1` to `Timer2`, as `smoke_stream` (`CZANIM.ZAR`, called by `smoke_grenade`)
@@ -183,8 +185,8 @@ export interface EffectAt { position: V3; normal?: V3 | null; velocity?: V3 | nu
 
 /** The events other workstreams hang off (`on`). */
 export interface GrenadeEvents {
-  /** The slot changed: the weapon workstream hides the rifle while this is true. */
-  equip: (equipped: boolean, item: GrenadeItem | null) => void;
+  /** The slot changed: the weapon workstream hides the rifle while this is true (the Detonator's too). */
+  equip: (equipped: boolean, item: HeldItem | null) => void;
   /** The throw's clip starts (`./throwPose` plays `anim.clip`); the hand lets go in `releaseIn` s. */
   throwStart: (info: { anim: ThrowAnim; power: number; releaseIn: number }) => void;
   /** A charge set down (the claymore): where, facing which way, and its zAnim (`c4_start`: `.PLACE_CHARGE`). */
@@ -195,6 +197,10 @@ export interface GrenadeEvents {
   bounce: (info: BounceInfo) => void;
   /** The explosion (audio `.GREN_MED`; the look workstream's screen shake by distance). */
   explode: (info: ExplosionInfo) => void;
+  /** The claymore not set down: `CLAYMORE_RULES.maxPlacedMessage` for `seconds` (the UI's message line). */
+  refuse: (info: { item: GrenadeItem; text: string; seconds: number }) => void;
+  /** The Detonator fired (`CZKit_DetonateRemoteExplosives`): how many charges it set off, from where. */
+  detonate: (info: { count: number; from: V3 }) => void;
 }
 
 export interface GrenadeStats {
@@ -202,8 +208,16 @@ export interface GrenadeStats {
   /** The throwable up, or the one that would be taken (`KIT_ITEMS`); `leftByItem` its count and the other's. */
   item: GrenadeItem;
   leftByItem: Record<GrenadeItem, number>;
-  /** Its HUD icon (`IconTextureName`). */
+  /** Its HUD icon (`IconTextureName`; the Detonator's while it is up). */
   icon: string;
+  /** What is in the hand: a throwable, the Detonator, or null for the rifle. */
+  held: HeldItem | null;
+  /** The claymores down (`CLAYMORE_RULES.maxPlaced` at most). */
+  placed: number;
+  /** The placing action's clock running (`CLAYMORE_RULES.placeSeconds` to the charge on the ground). */
+  placing: boolean;
+  /** The refusal on screen (`CLAYMORE_RULES.maxPlacedMessage`), null when none. */
+  message: string | null;
   /** Whether the grenade rides the posed hand's node (else the placeholder hold). */
   inHand: boolean;
   phase: GrenadePhase;
@@ -241,7 +255,13 @@ export class GrenadeThrower {
   private readonly hand = new Group();
   private handModel: Group | null = null;
   /** The clone on the body's held node, and which item it is. */
-  private heldModel: { item: GrenadeItem; object: Group } | null = null;
+  private heldModel: { item: HeldItem; object: Group } | null = null;
+  /** The Detonator is up (`item_` stays the claymore, the slot it came from). */
+  private detonatorUp = false;
+  private detonatorTemplate: Group | null = null;
+  /** The claymore's placing action: its clock to the charge down, and its clip's whole length. */
+  private placing: { left: number; total: number } | null = null;
+  private refusal: { text: string; left: number } | null = null;
   private item_: GrenadeItem = 'M67';
   private textures = new Map<string, Texture>();
   private defaultMaterial = '';
@@ -262,7 +282,7 @@ export class GrenadeThrower {
   private readonly bounceLog: BounceInfo[] = [];
   private readonly explosionLog: ExplosionInfo[] = [];
   private trail = false;
-  private readonly listeners: Listeners = { equip: [], throwStart: [], place: [], throw: [], bounce: [], explode: [] };
+  private readonly listeners: Listeners = { equip: [], throwStart: [], place: [], throw: [], bounce: [], explode: [], refuse: [], detonate: [] };
   private bound: EventTarget | null = null;
   private readonly scorchGeometry = new PlaneGeometry(1, 1);
 
@@ -292,7 +312,11 @@ export class GrenadeThrower {
 
   /** The current throwable's record. */
   private get record(): ThrowableRecord { return this.records[this.item_]; }
-  private get template(): Group | null { return this.templates[this.item_] ?? null; }
+  private get template(): Group | null { return this.detonatorUp ? this.detonatorTemplate : this.templates[this.item_] ?? null; }
+  /** What is in the hand. */
+  held(): HeldItem | null { return !this.equipped_ ? null : this.detonatorUp ? 'Detonator' : this.item_; }
+  /** The SEAL's claymores down (`FUN_003cc1f0` over the placed list, by owner). */
+  placedCount(): number { return this.live.filter((l) => l.facing !== undefined && l.g.state === 'rest').length; }
 
   /**
    * A new map: its throwables' models by model name (`WorldView.grenades`) and assets; the pouch refilled, the air and
@@ -305,6 +329,7 @@ export class GrenadeThrower {
       const t = templates?.[this.records[item].model];
       if (t) this.templates[item] = t;
     }
+    this.detonatorTemplate = templates?.[CLAYMORE_RULES.detonator.model] ?? null;
     this.refreshHandModel();
     this.dropHeld();
     for (const t of this.textures.values()) t.dispose();
@@ -333,6 +358,9 @@ export class GrenadeThrower {
     this.bounceLog.length = 0;
     this.explosionLog.length = 0;
     this.accumulator = 0;
+    this.placing = null;
+    this.refusal = null;
+    if (this.detonatorUp) { this.detonatorUp = false; this.refreshHandModel(); }   // no charge down: no Detonator
     if (this.phase_ !== 'holstered') this.phase_ = this.left[this.item_] > 0 ? 'ready' : 'holstered';
   }
 
@@ -341,7 +369,7 @@ export class GrenadeThrower {
   /** The throwable up (or next taken). */
   item(): GrenadeItem { return this.item_; }
   /** The HUD icon of what is in the hand: the throwable's while it is up, null for the rifle's. */
-  icon(): string | null { return this.equipped_ ? this.record.icon : null; }
+  icon(): string | null { return !this.equipped_ ? null : this.detonatorUp ? CLAYMORE_RULES.detonator.icon : this.record.icon; }
 
   /**
    * Takes a throwable up (true; `item`, else the last one), puts it away for the rifle (false) or toggles; false when
@@ -350,32 +378,60 @@ export class GrenadeThrower {
   equip(on: boolean = !this.equipped_, item: GrenadeItem = this.item_): boolean {
     if (this.phase_ === 'throwing' || this.phase_ === 'holding') return this.equipped_;
     if (on && this.left[item] <= 0) return this.equipped_;
-    if (on === this.equipped_ && (!on || item === this.item_)) return this.equipped_;
+    if (on === this.equipped_ && (!on || item === this.item_) && !this.detonatorUp) return this.equipped_;
     this.equipped_ = on;
-    if (on) { this.item_ = item; this.refreshHandModel(); }
+    this.detonatorUp = false;
+    if (on) this.item_ = item;
+    this.refreshHandModel();
     this.phase_ = on ? 'ready' : 'holstered';
     this.power = 0;
     this.emit('equip', on, on ? item : null);
     return on;
   }
 
-  /** Selects a kit item by name (`1` the rifle, `4` the M67, `5` the HE); false when it cannot be taken up. */
-  select(item: 'rifle' | GrenadeItem): boolean {
+  /** Selects a kit item by name (`1` the rifle, `4` the M67, `5` the HE, `9` the Detonator); false when it cannot be taken up. */
+  select(item: KitItem): boolean {
     if (item === 'rifle') return !this.equip(false);
-    return this.equip(true, item) && this.item_ === item;
+    if (item === 'Detonator') return this.takeDetonator();
+    return this.equip(true, item) && this.item_ === item && !this.detonatorUp;
+  }
+
+  /** Whether a kit slot can be taken up now (`FUN_005bdc30`: the Detonator only with a charge down). */
+  private available(item: KitItem): boolean {
+    if (item === 'rifle') return true;
+    if (item === 'Detonator') return this.placedCount() > 0;
+    return this.left[item] > 0;
+  }
+
+  /**
+   * The Detonator up (`FUN_005c8a20(0xc1)`): after a claymore goes down, or from the kit while one is down
+   * (`FUN_005bdc30`). `force` is the placement's own switch, mid-clip.
+   */
+  private takeDetonator(force = false): boolean {
+    if (!force && (this.phase_ === 'throwing' || this.phase_ === 'holding')) return false;
+    if (this.placedCount() === 0) return false;
+    if (this.detonatorUp) return true;
+    this.equipped_ = true;
+    this.detonatorUp = true;
+    this.item_ = 'Claymore';
+    this.refreshHandModel();
+    if (this.phase_ !== 'throwing') this.phase_ = 'ready';
+    this.power = 0;
+    this.emit('equip', true, 'Detonator');
+    return true;
   }
 
   /**
    * R2, the game's `Inventory` (`controller.rdr`; the menu `FUN_0021bda0` it opens lists the kit's slots): the viewer
    * steps to the next item of the kit that has any left, as a one-press stand-in for the menu [placeholder].
    */
-  cycleInventory(): 'rifle' | GrenadeItem {
-    const now = this.equipped_ ? this.item_ : 'rifle';
+  cycleInventory(): KitItem {
+    const now = this.held() ?? 'rifle';
     for (let k = 1; k <= KIT_ITEMS.length; k++) {
       const next = KIT_ITEMS[(KIT_ITEMS.indexOf(now) + k) % KIT_ITEMS.length]!;
-      if (next === 'rifle' || this.left[next] > 0) { this.select(next); break; }
+      if (this.available(next)) { this.select(next); break; }
     }
-    return this.equipped_ ? this.item_ : 'rifle';
+    return this.held() ?? 'rifle';
   }
 
   /**
@@ -383,15 +439,15 @@ export class GrenadeThrower {
    * through `FUN_005c4b10`, or plays `FUN_003419c0`'s refusal when the slot is empty): `L2_SLOT_PLACEHOLDER` here, and
    * a second press, already on it, goes back to the rifle [reading].
    */
-  swap2(): 'rifle' | GrenadeItem {
-    if (this.equipped_ && this.item_ === L2_SLOT_PLACEHOLDER) this.select('rifle');
+  swap2(): KitItem {
+    if (this.held() === L2_SLOT_PLACEHOLDER) this.select('rifle');
     else this.select(L2_SLOT_PLACEHOLDER);
-    return this.equipped_ ? this.item_ : 'rifle';
+    return this.held() ?? 'rifle';
   }
 
   /** The throw's clip done: the next of the same in the hand, or none left and back to the rifle. */
   private finishThrow(): void {
-    if (this.left[this.item_] > 0) { this.phase_ = 'ready'; return; }
+    if (this.detonatorUp || this.left[this.item_] > 0) { this.phase_ = 'ready'; return; }
     this.phase_ = 'holstered';
     this.equipped_ = false;
     this.emit('equip', false, null);
@@ -414,8 +470,10 @@ export class GrenadeThrower {
 
   /** The fire button pressed with the grenade up: the throw's hold begins, its power from 0 (`FUN_00594cf0`). */
   pull(): void {
-    if (!this.equipped_ || this.phase_ !== 'ready' || this.left[this.item_] <= 0 || !this.source.snapshot()) return;
-    if (isPlaced(this.record)) { this.placeCharge(); return; }
+    if (!this.equipped_ || this.phase_ !== 'ready' || !this.source.snapshot()) return;
+    if (this.detonatorUp) { this.detonateCharges(); return; }
+    if (this.left[this.item_] <= 0) return;
+    if (isPlaced(this.record)) { this.startPlacing(); return; }
     this.phase_ = 'holding';
     this.power = 0;
     this.pressure = 1;
@@ -456,7 +514,16 @@ export class GrenadeThrower {
       this.power = step.power;
       if (step.release) this.startThrow();
     }
-    if (this.pending) {
+    if (this.refusal && (this.refusal.left -= dt) <= 0) this.refusal = null;
+    if (this.placing) {
+      this.placing.left -= dt;
+      if (this.placing.left <= 0) {
+        const total = this.placing.total;
+        this.placing = null;
+        this.recover = Math.max(0, total - CLAYMORE_RULES.placeSeconds);
+        if (!this.placeCharge()) this.recover = 0;
+      }
+    } else if (this.pending) {
       this.pending.left -= dt;
       if (this.pending.left <= 0) this.letGo();
     } else if (this.phase_ === 'throwing') {
@@ -472,7 +539,8 @@ export class GrenadeThrower {
   stats(): GrenadeStats {
     const r = this.record;
     return {
-      equipped: this.equipped_, item: this.item_, leftByItem: { ...this.left }, icon: r.icon,
+      equipped: this.equipped_, item: this.item_, leftByItem: { ...this.left }, icon: this.icon() ?? r.icon,
+      held: this.held(), placed: this.placedCount(), placing: this.placing !== null, message: this.refusal?.text ?? null,
       inHand: this.heldModel !== null && this.heldModel.object.visible,
       phase: this.phase_, power: this.power, left: this.left[this.item_], thrown: this.thrown,
       record: { name: r.name, fuse: r.fuse, removal: r.removal, gravity: r.gravity, explosionRadius: r.explosionRadius, explosionDamage: r.explosionDamage, capacity: r.capacity, model: r.model },
@@ -500,50 +568,90 @@ export class GrenadeThrower {
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
-    if (e.code === 'Digit9' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && this.source.snapshot()) { this.detonateCharges(); return; }
-    const pick = ({ Digit1: 'rifle', Digit4: 'M67', Digit5: 'HE', Digit6: 'AN-M8', Digit7: 'Mark141', Digit8: 'Claymore' } as const)[
-      e.code as 'Digit1' | 'Digit4' | 'Digit5' | 'Digit6' | 'Digit7' | 'Digit8'];
+    const pick = ({ Digit1: 'rifle', Digit4: 'M67', Digit5: 'HE', Digit6: 'AN-M8', Digit7: 'Mark141', Digit8: 'Claymore', Digit9: 'Detonator' } as const)[
+      e.code as 'Digit1' | 'Digit4' | 'Digit5' | 'Digit6' | 'Digit7' | 'Digit8' | 'Digit9'];
     if (!pick || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if (e.target instanceof HTMLElement && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
     if (!this.source.snapshot()) return;
-    if (pick !== 'rifle' && this.equipped_ && this.item_ === pick) this.select('rifle');
+    if (pick !== 'rifle' && this.held() === pick) this.select('rifle');
     else this.select(pick);
   };
 
   // ---- the placed charges ---------------------------------------------------------------------------------------
 
   /**
-   * Sets a claymore down (`CZKit_TickExplosives`' placement branch: `FUN_005c2430` then `FUN_005bc730`): the highest
-   * ground at or under the right hand's point, the charge facing the SEAL's way, still (`SetProjectile` with no
-   * velocity); its fuse never runs out (no `Timer1`). Null when there is no SEAL or no ground.
+   * The claymore's fire (`FUN_005be9a0`, type -0x67; `CLAYMORE_RULES`): refused with the game's message once
+   * `maxPlaced` are down, not started while the SEAL moves faster than `maxSpeed`; else the `Place claymore` action --
+   * its clip (`PLACE_CLAYMORE_ANIM`) on the body through the throw's pose layer (the `throwStart` event) and its
+   * clock to the charge on the ground (`placeSeconds`). False when it does not start.
+   */
+  private startPlacing(): boolean {
+    const snap = this.source.snapshot();
+    if (!snap || this.placing) return false;
+    if (this.placedCount() >= CLAYMORE_RULES.maxPlaced) {
+      if (!this.refusal) {
+        this.refusal = { text: CLAYMORE_RULES.maxPlacedMessage, left: CLAYMORE_RULES.refuseSeconds };
+        this.emit('refuse', { item: this.item_, text: this.refusal.text, seconds: CLAYMORE_RULES.refuseSeconds });
+      }
+      return false;
+    }
+    if (Math.hypot(snap.vx, snap.vz) > CLAYMORE_RULES.maxSpeed) return false;
+    const anim = PLACE_CLAYMORE_ANIM;
+    this.placing = { left: CLAYMORE_RULES.placeSeconds, total: throwClipSeconds(anim) };
+    this.phase_ = 'throwing';
+    this.power = 0;
+    this.emit('throwStart', { anim, power: 0, releaseIn: CLAYMORE_RULES.placeSeconds });
+    return true;
+  }
+
+  /**
+   * Sets a claymore down now -- the placing action's end (`FUN_005c2430` then `FUN_005bc730`): the highest ground at
+   * or under the right hand's point (`+0x300`) no lower than the feet less `placeDrop`, the charge facing the SEAL's
+   * way, still; its fuse never runs (`+0xc5`). Then the Detonator comes up (`FUN_005c8a20(0xc1)`). Null when there is
+   * no SEAL, no claymore up, or no ground in reach (nothing is set down, as the game's test fails).
    */
   placeCharge(): V3 | null {
     const snap = this.source.snapshot();
-    if (!snap || !this.equipped_ || !isPlaced(this.record) || this.left[this.item_] <= 0) return null;
+    if (!snap || !this.equipped_ || this.detonatorUp || !isPlaced(this.record) || this.left[this.item_] <= 0) return null;
     const hand = this.source.handPoint?.('rhand', [0, 0, 0]) ?? actorToWorldPoint(snap.feet, snap.yaw, [2, 8, -8]);
     const cast = this.hull();
-    const hits = cast ? cast([hand[0], hand[1] + 1, hand[2]], [hand[0], hand[1] - PLACE_REACH, hand[2]]) : [];
+    const low = snap.feet[1] - CLAYMORE_RULES.placeDrop;
+    const hits = cast && hand[1] > low ? cast([hand[0], hand[1] + 1, hand[2]], [hand[0], low, hand[2]]) : [];
     const ground = hits.find((h) => !h.material.volumetric && h.material.penetration !== 1 && !h.material.liquid);
-    const pos: V3 = ground ? [ground.point[0], ground.point[1] + 0.1, ground.point[2]] : [hand[0], snap.feet[1] + 0.1, hand[2]];
+    if (!ground) return null;
+    const pos: V3 = [ground.point[0], ground.point[1] + 0.1, ground.point[2]];
     const record = this.record;
     const g = launchGrenade(pos, [0, 0, 0], record);
     g.state = 'rest';
-    const model = this.template ? this.template.clone() : null;
+    const model = this.templates[this.item_]?.clone() ?? null;
     if (model) { model.position.set(...pos); model.rotation.set(0, (snap.yaw * Math.PI) / 180, 0); this.object.add(model); }
-    this.live.push({ g, model, spin: [0, 0, 0], trail: [], line: null, dots: null, rest: ground?.material.name ?? null, facing: snap.yaw });
+    this.live.push({ g, model, spin: [0, 0, 0], trail: [], line: null, dots: null, rest: ground.material.name, facing: snap.yaw });
     this.left[this.item_]--;
     this.emit('place', { item: this.item_, pos, yaw: snap.yaw, fireAnim: record.fireAnim });
-    if (this.left[this.item_] <= 0) this.finishThrow();
+    this.takeDetonator(true);
     return pos;
   }
 
   /**
-   * Sets off every placed charge (the claymores) on the next tick [placeholder: the claymore's own trigger -- the
-   * game's placed-explosive tick (`PlacedExplosive`, 0x3c5310) and its detection query -- is not ported]. The count set off.
+   * The Detonator's fire (`CZKit_DetonateRemoteExplosives`, 0x5c0130): every claymore of the SEAL's within
+   * `CLAYMORE_RULES.detonateRange` goes off on the next tick; then the claymore comes back up (`FUN_005c8a20(0x99)`;
+   * the rifle when none is left [reading: the game selects the empty slot]). The count set off. The hook calls it
+   * without the Detonator up (the fire's rule all the same).
    */
   detonateCharges(): number {
+    const snap = this.source.snapshot();
+    if (!snap) return 0;
     let n = 0;
-    for (const l of this.live) if (l.facing !== undefined && l.g.state === 'rest') { l.g.fuse = 0; n++; }
+    for (const l of this.live) {
+      if (l.facing === undefined || l.g.state !== 'rest') continue;
+      const d = Math.hypot(l.g.pos[0] - snap.feet[0], l.g.pos[1] - snap.feet[1], l.g.pos[2] - snap.feet[2]);
+      if (d <= CLAYMORE_RULES.detonateRange) { l.g.fuse = 0; n++; }
+    }
+    this.emit('detonate', { count: n, from: [snap.feet[0], snap.feet[1], snap.feet[2]] });
+    if (this.detonatorUp && this.phase_ === 'ready') {
+      if (this.left.Claymore > 0) this.equip(true, 'Claymore');
+      else this.equip(false);
+    }
     return n;
   }
 
@@ -867,16 +975,18 @@ export class GrenadeThrower {
   // ---- the hand -----------------------------------------------------------------------------------------------
 
   private placeHand(snap: PlaySnapshot | null): void {
-    const held = !!snap && this.equipped_ && this.left[this.item_] > 0 && (this.phase_ === 'ready' || this.phase_ === 'holding' || !!this.pending);
+    const held = !!snap && this.equipped_ && (this.detonatorUp || this.left[this.item_] > 0) &&
+      (this.phase_ === 'ready' || this.phase_ === 'holding' || !!this.pending || !!this.placing);
     // On the body's held node (the rifle's `rifle` under `rhand`, which the throw clip moves): the grenade in the hand.
     const node = this.source.heldNode?.() ?? null;
     const template = this.template;
     if (node && template) {
-      if (!this.heldModel || this.heldModel.item !== this.item_ || this.heldModel.object.parent !== node) {
+      const item = this.held() ?? this.item_;
+      if (!this.heldModel || this.heldModel.item !== item || this.heldModel.object.parent !== node) {
         this.dropHeld();
         const object = template.clone();
         node.add(object);
-        this.heldModel = { item: this.item_, object };
+        this.heldModel = { item, object };
       }
       this.heldModel.object.visible = held;
       this.hand.visible = false;
