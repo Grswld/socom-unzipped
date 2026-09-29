@@ -12,9 +12,9 @@ const doc = new JSDOM(html).window.document;
 const OWN = ['row', 'checks', 'section', 'touch-lift', 'ps2-look', 'chrome-hidden', 'touch', 'panel-collapsed'];
 
 describe('the viewer chrome uses the design system', () => {
-  it('links the vendored system once, before styles.css', () => {
+  it('links the shared system once (web/shared/ds, aliased as /src/ds/), before styles.css', () => {
     const links = [...doc.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute('href'));
-    expect(links).toEqual(['./src/ds/index.css', './src/styles.css']);
+    expect(links).toEqual(['/src/ds/index.css', './src/styles.css']);
     expect(html).not.toMatch(/googleapis|gstatic/);
   });
   it.each([
@@ -53,7 +53,7 @@ describe('the viewer chrome uses the design system', () => {
   const declares = (selectors: string, cls: string): boolean =>
     new RegExp(`\\.${cls.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')}(?![\\w-])`).test(selectors);
   it('every class on the page is a system class, a state, or the viewer’s own (whole tokens)', () => {
-    const selectors = readFileSync(resolve(here, '../src/ds/components.css'), 'utf-8') + readFileSync(resolve(here, '../src/ds/base.css'), 'utf-8');
+    const selectors = readFileSync(resolve(here, '../../../../shared/ds/components.css'), 'utf-8') + readFileSync(resolve(here, '../../../../shared/ds/base.css'), 'utf-8');
     const bad = new Set<string>();
     for (const el of doc.querySelectorAll('[class]')) for (const c of el.classList)
       if (!c.startsWith('is-') && !OWN.includes(c) && !declares(selectors, c)) bad.add(c);

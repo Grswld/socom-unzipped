@@ -18,7 +18,6 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -b packages/archive packages/gs packages/mesh packages/scene packages/sound && tsc --noEmit -p packages/viewer && tsc --noEmit -p tools && tsc --noEmit -p packages/server",
-    "ds:sync": "tsx tools/ds-sync.ts",
     "extract-maps": "tsx tools/extract-maps.ts",
     "dump-textures": "tsx tools/dump-textures.ts",
     "export-gltf": "tsx tools/export-gltf.ts",

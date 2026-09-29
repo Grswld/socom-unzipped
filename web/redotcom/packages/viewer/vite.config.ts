@@ -1,8 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
+import { dsAlias, fontsAlias, shipFontLicences } from '../../../shared/vite';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const webRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -26,14 +25,14 @@ function gitRevision(): string {
 const buildStamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 /**
- * The viewer is its own Vite root inside the workspace. `publicDir` points at `web/public`, so the
+ * The viewer is its own Vite root inside the workspace. `publicDir` points at `web/redotcom/public`, so the
  * extracted disc tree served at `/maps/` is the app's default `AssetSource` without a copy.
  */
 /**
  * `VIEWER_BASE` is the path the built site is served under (for example `/map-viewer/`); the dev server
  * and the default build use `/`. The extracted maps are never copied into the build: on a server they are a
  * separate directory mounted beside the site, in dev Vite serves
- * `web/public` itself.
+ * `web/redotcom/public` itself.
  */
 /** `map-viewer`, `/map-viewer` and `/map-viewer/` all mean `/map-viewer/`; unset means `/`. Only the last path
  *  segment counts, because on Windows Git Bash rewrites a leading-slash value into `C:/Program Files/Git/...`. */
@@ -44,28 +43,12 @@ function basePath(value: string | undefined): string {
 }
 
 /**
- * The fonts ship with the build. `copyPublicDir` is off because `web/public/` is the extracted disc
- * tree, which must never be copied into `dist/`; but the vendored `fonts.css` names `/fonts/*.woff2`,
- * which Vite rewrites under `base`, and a build without the files answered `text/html` for each one live
- * (nginx's try_files handing back index.html). So the woff2 files, and their OFL texts, are copied into
- * `<outDir>/fonts/` once the bundle is written. `packages/viewer/test/build_fonts.test.ts` reads the
- * result; the vendored CSS stays byte-exact.
+ * The design system and its fonts are read in place from `web/shared` (no vendored copy since 2026-09-29):
+ * `/src/ds/` in `index.html` is aliased to `web/shared/ds/`, and `fonts.css`'s `/fonts/*.woff2` to `web/shared/fonts/`,
+ * so the build bundles the woff2 files under `base` and `shipFontLicences` copies them and their OFL texts into
+ * `<outDir>/fonts/`. `copyPublicDir` stays off: `web/redotcom/public/` is the extracted disc tree, which must never
+ * be copied into `dist/`. `packages/viewer/test/build_fonts.test.ts` reads the result.
  */
-function shipFonts(publicDir: string): Plugin {
-  let outDir = '';
-  return {
-    name: 'viewer:ship-fonts',
-    apply: 'build',
-    configResolved(config) { outDir = config.build.outDir; },
-    closeBundle() {
-      const src = join(publicDir, 'fonts');
-      const dst = join(outDir, 'fonts');
-      mkdirSync(dst, { recursive: true });
-      for (const f of readdirSync(src)) if (/\.(woff2|txt)$/.test(f)) copyFileSync(join(src, f), join(dst, f));
-    },
-  };
-}
-
 const publicDir = fileURLToPath(new URL('../../public', import.meta.url));
 
 export default defineConfig({
@@ -76,5 +59,6 @@ export default defineConfig({
   build: { outDir: fileURLToPath(new URL('../../dist/viewer', import.meta.url)), emptyOutDir: true, copyPublicDir: false },
   worker: { format: 'es' },
   define: { __VIEWER_REV__: JSON.stringify(gitRevision()), __BUILD_STAMP__: JSON.stringify(buildStamp) },
-  plugins: [shipFonts(publicDir)],
+  resolve: { alias: [dsAlias, fontsAlias] },
+  plugins: [shipFontLicences()],
 });

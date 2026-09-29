@@ -1,6 +1,6 @@
-"""`tools_py.story.site` renders the story on the s2u design system (the scotho site's `src/ds/`), in both copies.
+"""`tools_py.story.site` renders the story on the s2u design system (`web/shared/ds/`), in both copies.
 
-The chrome it emits is the markup contract in ../scotho/apps/s2u/src/chrome.md; the timeline's own styles speak
+The chrome it emits is the markup contract in web/shared/ds/chrome.md; the timeline's own styles speak
 only `--s2u-*` tokens; the repository copy inlines the system's four layer files and the site copy links them once.
 """
 import os
@@ -11,7 +11,7 @@ import unittest
 from tools_py.story import site
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DS = os.path.join(ROOT, "..", "scotho", "apps", "s2u", "src", "ds")
+DS = os.path.join(ROOT, "web", "shared", "ds")
 
 _DOC = """# SOCOM Unzipped: a story
 
@@ -91,7 +91,6 @@ class ChromeUsesTheSystem(unittest.TestCase):
         self.assertNotIn("classList.add('in')", site.JS)
         self.assertIn(":target", site.CSS)
 
-    @unittest.skipUnless(os.path.isdir(DS), "scotho not beside this tree")
     def test_inline_copy_carries_the_layers_not_imports(self):
         css = site.design_system_css(DS, absolute="https://socomunzipped.com")
         self.assertTrue(css.startswith("@layer s2u.tokens, s2u.base, s2u.components;"))
