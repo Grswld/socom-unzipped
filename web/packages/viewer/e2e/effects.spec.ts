@@ -1,0 +1,124 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { expect, test, type Page } from '@playwright/test';
+// `src/hook.ts` is types only; its `declare global` is what makes `window.__viewer` exist inside `page.evaluate`.
+import type {} from '../src/hook';
+
+/**
+ * The gunplay's effects on Frostfire (web/docs/research/89): in walk mode at spawn A facing west, rounds from the M4A1 SD
+ * play its `muzzle_m4SD` -- the casing thrown to the rifle's right and bouncing on the rig's metal deck -- and, where
+ * each round meets the hull, the surface's `bullet_hit_<material>` from the map's `MZANIM` and the surface's mark from
+ * `decals.rdr`. The screenshots are the evidence: a casing in the air, the sparks and the metal mark on the container.
+ */
+
+const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/effects', import.meta.url));
+const SPAWN_A: [number, number, number] = [796, 100, 614];
+const EYE = 15.4;
+const REST_PITCH = -9.167;
+
+const settle = (page: Page): Promise<void> => page.evaluate(
+  () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
+);
+
+test('Frostfire: the M4A1 SD throws its casings and marks the container by its material', async ({ page }) => {
+  mkdirSync(SCREENS, { recursive: true });
+  const problems: string[] = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
+
+  await page.goto('/?map=MP2&redotcom');
+  const status = page.locator('#status');
+  await expect(status).toContainText('FROSTFIRE (MP2)');
+  await expect(status).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  const loaded = await page.evaluate(() => window.__viewer.effects());
+  expect(loaded.missing).toEqual([]);
+  expect(loaded.models).toContain('bullet_shell_9m');
+
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(([x, y, z, eye, pitch]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 90, pitch }),
+    [...SPAWN_A, EYE, REST_PITCH] as const);
+  await page.evaluate(() => window.__viewer.walkFor(0.5, { forward: 0 }));
+  await page.waitForTimeout(1500);
+  await settle(page);
+
+  // One round: the muzzle animation, the casing in the air, the impact on the container.
+  const shot = await page.evaluate(() => window.__viewer.shoot());
+  expect(shot?.hit).not.toBeNull();
+  await page.waitForTimeout(120);
+  const flying = await page.evaluate(() => window.__viewer.effects());
+  expect(flying.played['muzzle_m4SD']).toBe(1);
+  expect(flying.played['shell_eject']).toBe(1);
+  expect(flying.shells).toBe(1);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-casing-in-the-air.png') });
+  const hitAnim = Object.keys(flying.played).find((k) => k.startsWith('bullet_hit_'));
+  expect(hitAnim).toBeDefined();
+
+  // A burst: the casings bounce on the deck (the metal's sound) and are gone once at rest or at 1.2 s.
+  await page.evaluate(() => window.__viewer.trigger(true));
+  await page.waitForTimeout(600);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-burst.png') });
+  await page.evaluate(() => window.__viewer.trigger(false));
+  await page.waitForTimeout(1600);
+  const after = await page.evaluate(() => window.__viewer.effects());
+  expect(after.shells).toBe(0);
+  expect(after.bounces).toBeGreaterThan(0);
+  // The container's marks, a few degrees off the reticle.
+  await page.evaluate((pitch) => window.__viewer.setCamera({ yaw: 88, pitch }), REST_PITCH);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-marks.png') });
+  expect(problems).toEqual([]);
+});
+
+/** Desert Glory at spawn A: a stone wall 20 units off at yaw 40 and the sand under it -- the concrete's mark and dust. */
+test('Desert Glory: stone and sand take their own marks and impacts; the M4A1 flash plays on demand', async ({ page }) => {
+  mkdirSync(SCREENS, { recursive: true });
+  const problems: string[] = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
+  await page.goto('/?map=MP6&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(() => window.__viewer.walkFor(0.4, { forward: 0 }));
+  await page.waitForTimeout(1500);
+
+  const shootAt = async (yaw: number, pitch: number): Promise<number | undefined> => {
+    await page.evaluate(([y, p]) => window.__viewer.setCamera({ yaw: y, pitch: p }), [yaw, pitch]);
+    await settle(page);
+    await page.evaluate(() => window.__viewer.shoot());
+    return (await page.evaluate(() => window.__viewer.fire())).lastHit?.material;
+  };
+  // Materials by the SOILS index (research 81 §4): 7 STONE, 5 SAND.
+  expect(await shootAt(40, -5)).toBe(7);
+  await page.waitForTimeout(90);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-stone-impact.png') });
+  for (let i = 0; i < 4; i++) { await page.waitForTimeout(160); await shootAt(40 + i, -5 - i); }
+  await page.waitForTimeout(1200);                     // the kick settles
+  expect(await shootAt(220, -45)).toBe(5);
+  await page.waitForTimeout(90);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-sand-impact.png') });
+  await page.waitForTimeout(1500);
+  const played = (await page.evaluate(() => window.__viewer.effects())).played;
+  expect(played['bullet_hit_stone']).toBeGreaterThanOrEqual(5);
+  expect(played['bullet_hit_sand']).toBe(1);
+  await page.evaluate(() => window.__viewer.setCamera({ yaw: 38, pitch: -6 }));
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-stone-marks.png') });
+
+  // The M4A1's flash (`muzzle_m4` calls `flash_fire_hider`), played ahead of the camera as a muzzle effect.
+  // The flash lives three or four frames, so the effects are held for the picture.
+  await page.evaluate(() => window.__viewer.setCamera({ yaw: 38, pitch: 10 }));
+  await settle(page);
+  expect(await page.evaluate(() => window.__viewer.playEffect('muzzle_m4', undefined, 'muzzle'))).toBe(true);
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    window.__viewer.pauseEffects(true);
+    done();
+  }))));
+  expect((await page.evaluate(() => window.__viewer.effects())).shown).toContain('muzzle_flash_hider');
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-m4a1-flash.png') });
+  await page.evaluate(() => window.__viewer.pauseEffects(false));
+  expect((await page.evaluate(() => window.__viewer.effects())).played['flash_fire_hider']).toBe(1);
+  expect(problems).toEqual([]);
+});
