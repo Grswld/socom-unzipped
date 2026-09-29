@@ -79,6 +79,14 @@ describe('IsoAssetSource over a synthetic ISO9660 image', () => {
     await expect(source.read('RUN')).rejects.toThrow(/directory/);
   });
 
+  it('says which part of a path is a file when the path wants a directory there', async () => {
+    const source = new IsoAssetSource(image());
+    await expect(source.read('SYSTEM.CNF/MP2.ZDB')).rejects.toThrow('ISO: no SYSTEM.CNF/MP2.ZDB on the disc image (SYSTEM.CNF is a file)');
+    await expect(source.read('RUN/MP2.ZDB/X')).rejects.toThrow('ISO: no RUN/MP2.ZDB/X on the disc image (MP2.ZDB is a file)');
+    // A part that is simply missing keeps the plain message.
+    await expect(source.read('NOPE/MP2.ZDB')).rejects.toThrow(/^ISO: no NOPE\/MP2\.ZDB on the disc image$/);
+  });
+
   it('gives the extent a file sits at, sector-aligned, as the engine reads it by LBN', async () => {
     const iso = buildIso(MEMBERS);
     const extent = await new IsoAssetSource(new Blob([iso])).extent('RUN/MP6.ZDB');
@@ -237,6 +245,14 @@ describe('IsoAssetSource over a synthetic dual-layer image', () => {
     expect(await source.read('RUN/MP2.ZDB')).toEqual(LAYER0[0]!.bytes);
     expect(await source.read('BOTH.BIN')).toEqual(LAYER0[2]!.bytes);
     await expect(source.read('RUN/MP7.ZDB')).rejects.toThrow('ISO: no RUN/MP7.ZDB on the disc image');
+  });
+
+  it('keeps the file-in-the-way detail whichever volume the path stops in', async () => {
+    const source = new IsoAssetSource(new Blob([buildDualLayerIso(LAYER0, LAYER1).iso]));
+    // Stopped in layer 0 (SYSTEM.CNF is a file there) and absent from layer 1.
+    await expect(source.read('SYSTEM.CNF/X')).rejects.toThrow('ISO: no SYSTEM.CNF/X on the disc image (SYSTEM.CNF is a file)');
+    // Absent from layer 0, stopped in layer 1 (DEEP.BIN is a file there).
+    await expect(source.read('LAYER1/DEEP.BIN/X')).rejects.toThrow('ISO: no LAYER1/DEEP.BIN/X on the disc image (DEEP.BIN is a file)');
   });
 
   it('lists both volumes, a path both hold once', async () => {
