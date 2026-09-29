@@ -139,6 +139,26 @@ README sections (running a server, joining, the protocol), research 91 final, th
 
 *(newest first)*
 
+- **2026-09-29 — M3-M9 in** (the cloud agent; Sonnet/Opus implementers for the lobby, the terrorist body, the deploy,
+  the bots, the scoreboard, the round screens and the hit volumes, each reviewed and committed by the main agent).
+  **Server** `packages/server`: rooms per map, the 60 Hz command stream (W3.R8) with a 200 ms credit and a 100 ms gap
+  wait, 30 Hz quantised snapshots (W3.R10), the game's damage/deaths/respawns/score/kill lines (research 91), rounds on
+  the original's clock with its screens (W3.R11 as amended twice by the owner: one timed respawn match per map, one
+  6-minute round), grenades (the server's flight, the game's blast), the idle kick and the original's team vote to
+  remove (W3.R13, research 91 §17), `/health`, `/metrics`, rate limits, JSON logs. **Client** `net/client.ts` +
+  `netPage.ts`: prediction with **zero corrections at 0/50/100/150 ms each way with jitter and 2 % loss**
+  (`packages/server/test/netcode.test.ts`), interpolation 100 ms behind, reconnection with backoff; the others drawn
+  as the map's own first SEAL / first Terrorist type (Frostfire: `mp2_seal1`, `mp2_terror1` on `al_gman01`) in the
+  game's clips, their rounds and grenades, the game's death clips, the live scoreboard, spectators (follow/free), the
+  name setting, the round screens. **Load** (`tools/mp-bots.ts`, this container: 4 x Xeon 2.8 GHz): 16 players + 8
+  spectators on Frostfire hold 60 Hz, 30 Hz snapshots to all, 28 KiB/s a client, no corrections; the climb search's
+  cache took a server tick from 3.4 to 1.1 ms (the page gains the same). **E2E**: two pages against a real server
+  (join, draw each other, walk, no correction) and a server restart mid-round (both rejoin) green; the 31 baseline specs
+  green. **Deploy** `web/deploy` (Docker+Caddy, systemd, `deploy.sh`), HUMAN_TASKS O27. **Deferred, named**:
+  WebRTC (W3.R9: WebSocket holds the bar), delta snapshots (W3.R10), the maps' kits (KIT_PLACEHOLDER: everyone the held
+  M4A1 SD and Mark 23), the claymore, the radio menu's look, the spectator's scenic views. **Spend**: not metered in
+  this session; the work ran on the plan's model mix and stayed inside the phases' shape (no phase overran its scope).
+
 - **2026-09-29 — M1 done, M2 core done, M3 protocol and codec.** Research 91 (`docs/research/91-the-round.md`,
   two Opus readers of the decomp and one Sonnet merge): health per part (head 8, body 50, limbs 30; armour 0/25/25),
   damage `(ImpactDamage + Damage_Modifier) x 14` with falloff, hit location by skeleton node, the SUPPRESSION +

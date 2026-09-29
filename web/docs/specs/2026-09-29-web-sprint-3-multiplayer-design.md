@@ -148,6 +148,18 @@ gives.
 
 *(dated, newest last — the agent appends here as earlier sprints did)*
 
+- **2026-09-29 — the game has no respawn mode.** Respawn is SUPPRESSION's off-by-default create-game option
+  (research 91 §4), and with it on the original's match is one timed round (§18). W3.R11 follows the owner's call:
+  one timed match per map at that length.
+- **2026-09-29 — the shared sim is exact.** The server's Frostfire hull is byte-identical to the page's and a 10 s
+  scripted walk with root motion and traversal matches bit for bit (`simMap.test.ts`); with the command quantised the
+  same on both sides, the page's prediction needs no correction under 150 ms and 2 % loss (`netcode.test.ts`).
+- **2026-09-29 — the original's vote to remove** is a teammates-only strict majority applied at the round's end, with a
+  rejoin refusal (research 91 §17); it has no idle kick (the owner's 3-5 minutes is new).
+- **2026-09-29 — performance.** The traversal's climb search walked every grid cell (`ringCells`) and every polygon of
+  every nearby object each tick; cached per cell with exact bounding rejects it runs 3x faster on server and page.
+- **2026-09-29 — load.** 16 players + 8 spectators on one map: 60 Hz held, 1.1 ms a tick, 28 KiB/s a client.
+
 ## 7. Rulings
 
 W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owner can overturn any by number.

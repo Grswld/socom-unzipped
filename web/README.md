@@ -561,3 +561,23 @@ To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim N
 compose file with Caddy for HTTPS, a systemd unit for the no-Docker case, and `deploy.sh`. The owner's steps, the
 Lightsail size and the firewall are in [`deploy/README.md`](deploy/README.md). The disc is mounted read-only at run
 time and is never part of an image.
+
+### Playing a match
+
+Open the viewer with `?redotcom&mp` (the server at this page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the
+map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
+§7); past 16 players it spectates, and is moved in, first come first served, when a place frees up.
+
+| key | in the match |
+|---|---|
+| the walk's keys | as in single play: the page predicts its own SEAL and the server agrees (W3.R8) |
+| X | respawn, once "Press the X button to respawn." shows (5 s dead; the press counts once the body has faded, 10 s) |
+| Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
+| K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
+| Space / V | spectating: the next living player / the free camera |
+| Settings > Multiplayer > name | your name, 30 characters at most; blank is the game's `Player####` |
+
+A match is the original's SUPPRESSION with RESPAWN on: one 6-minute round, "TIME EXPIRED" and 15 s more, the side with
+more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. `?lag=100&loss=2` runs the page's latency and
+loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a
+server under 16 bots and 8 spectators.
