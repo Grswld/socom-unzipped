@@ -69,7 +69,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_GS_BACKEND` | Text | `gpu` | cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65). |
 | `PS2X_GS_DEPTH_LEGACY` | Int | `0` | 1 forces the legacy depth mapping instead of clip control. |
 | `PS2X_GS_DISABLE_EARLY_DEPTH` | Presence | unset | CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B). |
-| `PS2X_GS_DOUBLE_SWIZZLE` | Flag | `0` | 1 records raw tiles and swizzles each again into the shadow, as before S17 F1 attempt 3 (A/B). |
+| `PS2X_GS_DOUBLE_SWIZZLE` | Flag | `1` | 1 (default): tiles swizzled again into the shadow; 0: S17 F1 attempt 3's one swizzle, which froze the intro. |
 | `PS2X_GS_DUMP_DISPLAY` | Spec | unset | <dir>:<t0>:<t1>: every ~2 s write the displayed buffer three ways (gpu, shadow, cpu). |
 | `PS2X_GS_DUMP_TEX` | Path | unset | Directory: write every decoded texture as PPM + PGM, and the CLUT diagnostic. |
 | `PS2X_GS_DUMP_TEX_EVERY` | Int | `1` | With GS_DUMP_TEX: keep one decode in n. |
