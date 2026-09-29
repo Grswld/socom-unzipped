@@ -543,6 +543,10 @@ Neither note could read `.data` (no ELF). Deduplicated from both notes.
 | `SUPPRESSION_ROUND_END_PLACEHOLDER` (91b) | what ends a SUPPRESSION round (elimination, clock) and which side wins on time; `mp_45_sec_clock`, `mp_x_sec_clock` created only (L149578-149586) | open |
 | `AUTOCOMM_TEXT_PLACEHOLDER` (91b) | text of comms 0x27/0x28/0x44; searched `FUN_005e7f20`; HudCLOC 60555-60561 candidates | open |
 | `GHOST_ROW_PLACEHOLDER` (91b) | that `+0xfd1` (rows hidden from the scoreboard) is the ghost flag; `FUN_0022de60` L80608; `FUN_00223970` L76148 copies `+0xfd1` to `+0xfd2` | open (91a's `+0xd2` bit 0x10000 ghost test is a related but different field) |
+| `CONE_WINDOW_PLACEHOLDER` (launch review, OWNER-3: the server's cone, `net/shotCone.ts`) | the ticks of the server's own run of `Accuracy` a round's cone may be matched against (6, 100 ms): the page ticks its bloom by frames (`main.ts` `gunFrame`), the server by commands; no game source -- the game has no server | open (a server tolerance) |
+| `CONE_SLACK_PX_PLACEHOLDER` (launch review, OWNER-3) | reticle pixels (`kit+0x84c`'s units) the page's cone may stand off the server's (2): frame- against tick-sampled turn and pitch rates | open (a server tolerance) |
+| `ROOT_POSE_SLACK_PLACEHOLDER` (launch review, OWNER-3) | units the body's posed root (the clips', which the page's camera stands on, `FUN_0029a950` via `FUN_002869d0`) may stand off the stance's measured root the server has (4: the standing jump lifts it 3.6); the server poses no skeleton | open |
+| `STANCE_CHANGE_TICKS_PLACEHOLDER` (launch review, OWNER-3) | ticks after a posture change during which the posed root may be anywhere between the two stances' (60); the change clips' lengths are not read into the server | open |
 
 ## 17. The kicks: the vote to remove, and no idle kick (research 91c, 2026-09-29)
 
@@ -830,6 +834,13 @@ The wire is protocol 4:
 - The welcome carries `rules`, `round`, `rounds` and `ghost`.
 - The round start carries `rounds`.
 - There is a new `eliminated` event.
+
+Protocol 5 (the launch review, 2026-09-29): a `fire` carries the eye its aim left from and that aim (`eye`, `aim`),
+which the room checks against its own run of the page's accuracy cone (OWNER-3, `packages/viewer/src/net/shotCone.ts`;
+its tolerances in section 16); `promoted` carries `ghost` (a promotion into a classic round in play); an idler moved out
+is sent `demoted` with its place in the queue. The room decides a round or a reload at its own command, once the
+command after it has run, and counts the fire rate (the fastest enabled mode's wait, `FUN_005c09f0`) and the reload's
+lock (the clip's length, `reloadClip.ts`) on the player's commands run, never on a number the client sends.
 
 The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZAR`, with `parseAnimSets` and
 `decodeEffectProgram`, for the `start`, `mission_timer`, `abort`, `success`, `failure` and `game_over` sequences.
