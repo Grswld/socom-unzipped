@@ -5,7 +5,8 @@ import {
 import { MeshBasicNodeMaterial, type Node } from 'three/webgpu';
 import { materialReference, uniform, vec4, vertexColor } from 'three/tsl';
 import type { BodyStats, FittingMesh, LoadedBody } from './body';
-import { applyLighting, brightenOf, type Lightable, type Lighting } from './lighting';
+import { brightenOf, type Lighting } from './lighting';
+import { rigShading } from './rigShading';
 import type { LoadedMap } from './loadMap';
 import { drawState, materialSpec } from './materialSpec';
 import { blendFactorsFor, makeTexture } from './world';
@@ -22,10 +23,11 @@ import { blendFactorsFor, makeTexture } from './world';
  * vertices drawn are the decoded ones.
  *
  * **Shaded as the world is** (`./world`): the GS's MODULATE, clamped, times the frame brighten, each texture's
- * own state from its bind packet (`materialSpec`). The vertex colour is `record2 * lit`, the rig of the map's
- * `GlobalLighting` (`./lighting`) on a unity material: the character's colour lane is a constant the EE
- * uploads (data quadword 338, research 15 §4.4), not on the disc -- read as unity, the value every fitting vertex
- * stores (78 §5.1) -- and lit, as a unity material only makes sense lit. Both are named placeholders (78 §6.2).
+ * own state from its bind packet (`materialSpec`). The vertex colour is `record2 * lit`: `record2` the character's
+ * colour lane, the constant the EE uploads to data quadword 338 (research 15 §4.4) -- (128, 128, 128, 128), unity, in
+ * all 26 skinning dumps of `logs/vu1dump3` -- or a fitting's own lane; `lit` the map's `GlobalLighting` rig on the
+ * posed normal, per vertex every frame on the GPU (`./rigShading`). That the SEAL takes the light command is the one
+ * reading left (78 §6.2): no dump of a textured character pass was captured.
  */
 
 export interface BodyView {
@@ -75,8 +77,6 @@ export const HIDDEN_AT_SPAWN: ReadonlySet<string> = new Set(['Satchel']);
 const CULL = true;
 /** 78 §6.2: the character's colour lane, a placeholder for the EE's quadword 338: the PS2's unity, 128. */
 const UNITY = 1;
-/** W2.2b: how far the body turns, radians, before its lit colours are worked out again (the viewer's: ten degrees). */
-const RELIGHT_STEP = Math.PI / 18;
 
 export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 'textureFlags'>, lighting: Lighting): BodyView {
   const group = new Group();
@@ -95,10 +95,15 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
   const skeleton = new Skeleton(bones, body.parts.map((p) => new Matrix4().fromArray(p.bindWorld).invert()));
 
   const brighten = uniform(brightenOf(lighting));
+  // The vertex colour is the material's (`record2`: unity on the skin -- data quadword 338 is (128,128,128,128) in
+  // every one of the 26 skinning dumps in logs/vu1dump3 -- and the fitting's own), lit here per vertex, every frame,
+  // from the posed normal (`./rigShading`).
+  const rig = rigShading(lighting.rig);
+  const litColour = vec4(vertexColor().rgb.mul(rig.lit), vertexColor().a);
   const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
-  const modulated = vec4(texel.mul(vertexColor())).clamp(0, 1);
+  const modulated = vec4(texel.mul(litColour)).clamp(0, 1);
   const shaded = vec4(modulated.rgb.mul(brighten), modulated.a);
-  const plain = vec4(vertexColor()).clamp(0, 1);
+  const plain = vec4(litColour).clamp(0, 1);
   const shadedPlain = vec4(plain.rgb.mul(brighten), plain.a);
 
   const textures = new Map<string, Texture>();
@@ -128,34 +133,15 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
     return material;
   };
 
-  // The rig's directions are the world's, so a normal is lit where the placement turns it.
-  const yaw = body.at?.yaw ?? 0;
-  const placementTurn = new Matrix4().makeRotationY(yaw);
-  /**
-   * Every lit part beside its colour buffer, its normals as decoded, and the turn they are lit through before the
-   * placement's: the identity for the skin, the part's bind and the gear's offset for a fitting. W2.2b: the body turns
-   * with the look, so `place` lights it again through the new turn (the bind pose's normals: a pose's own turn of a
-   * limb is not lit, a carry).
-   */
-  const lit: { part: Lightable; attribute: BufferAttribute; raw: Float32Array; base: Matrix4 }[] = [];
-  let lightNow = lighting;
-  let litYaw = yaw;
-  const colour = (count: number, normals: Float32Array, base: Matrix4, material: Float32Array | null): BufferAttribute => {
-    const part: Lightable = {
-      colors: material ?? new Float32Array(count * 4).fill(UNITY), normals: turnNormals(normals, placementTurn.clone().multiply(base)), lit: true,
-    };
-    const out = new Float32Array(count * 4);
-    applyLighting(part, lighting, out);
-    const attribute = new BufferAttribute(out, 4);
-    lit.push({ part, attribute, raw: normals, base });
-    return attribute;
-  };
+  /** The material colour a part is drawn with before the rig: unity for the skin, the fitting's own lane. */
+  const colour = (count: number, material: Float32Array | null): BufferAttribute =>
+    new BufferAttribute(material ? Float32Array.from(material) : new Float32Array(count * 4).fill(UNITY), 4);
   for (const sub of body.subMeshes) {
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(sub.positions, 3));
     geometry.setAttribute('normal', new BufferAttribute(sub.normals, 3));
     geometry.setAttribute('uv', new BufferAttribute(sub.uvs, 2));
-    geometry.setAttribute('color', colour(sub.positions.length / 3, sub.normals, new Matrix4(), null));
+    geometry.setAttribute('color', colour(sub.positions.length / 3, null));
     geometry.setAttribute('skinIndex', new Uint16BufferAttribute(sub.skinIndex, 4));
     geometry.setAttribute('skinWeight', new BufferAttribute(sub.skinWeight, 4));
     geometry.setIndex(new BufferAttribute(sub.indices, 1));
@@ -175,9 +161,8 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
     gear.set(fitting.name, holder);
     new Matrix4().fromArray(fitting.offset).decompose(holder.position, holder.quaternion, holder.scale);
     bones[fitting.part]!.add(holder);
-    const turn = new Matrix4().fromArray(body.parts[fitting.part]!.bindWorld).multiply(new Matrix4().fromArray(fitting.offset));
     for (const m of fitting.meshes) {
-      const mesh = new Mesh(fittingGeometry(m, colour(m.positions.length / 3, m.normals ?? new Float32Array(m.positions.length), turn, m.colors)),
+      const mesh = new Mesh(fittingGeometry(m, colour(m.positions.length / 3, m.colors)),
         materialFor(m.textureName, m.fog, m.cull));
       mesh.name = `${fitting.name} ${m.textureName ?? 'untextured'}`;
       holder.add(mesh);
@@ -225,23 +210,10 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
       group.rotation.y = (yaw * Math.PI) / 180;           // the camera's yaw is three's turn about y (`camera.ts`)
       view.stats.at = [feet[0], feet[1], feet[2]];
       view.stats.yaw = group.rotation.y;
-      const turned = Math.abs(Math.atan2(Math.sin(group.rotation.y - litYaw), Math.cos(group.rotation.y - litYaw)));
-      if (turned < RELIGHT_STEP) return;
-      litYaw = group.rotation.y;
-      const turn = new Matrix4().makeRotationY(litYaw);
-      for (const l of lit) {
-        l.part.normals = turnNormals(l.raw, turn.clone().multiply(l.base));
-        applyLighting(l.part, lightNow, l.attribute.array as Float32Array);
-        l.attribute.needsUpdate = true;
-      }
     },
     setLighting: (next) => {
-      lightNow = next;
       brighten.value = brightenOf(next);
-      for (const l of lit) {
-        applyLighting(l.part, next, l.attribute.array as Float32Array);
-        l.attribute.needsUpdate = true;
-      }
+      rig.set(next.rig);
     },
     dispose: () => {
       group.traverse((o) => { if (o instanceof Mesh) o.geometry.dispose(); });
@@ -253,27 +225,15 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
   return view;
 }
 
-/** A fitting's geometry: its own positions and uvs, and the lit colour. */
+/** A fitting's geometry: its own positions, normals and uvs, and its material colour (the rig lights it on the GPU). */
 function fittingGeometry(m: FittingMesh, color: BufferAttribute): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(m.positions, 3));
+  if (m.normals) geometry.setAttribute('normal', new BufferAttribute(m.normals, 3));
   geometry.setAttribute('uv', new BufferAttribute(m.uvs, 2));
   geometry.setAttribute('color', color);
   geometry.setIndex(new BufferAttribute(m.indices, 1));
+  if (!m.normals) geometry.computeVertexNormals();     // a fitting with no normal lane still has a surface to light
   geometry.computeBoundingSphere();
   return geometry;
-}
-
-/** Normals through a matrix's 3x3 (column-major, as three stores it), renormalised; a zero normal stays zero. */
-function turnNormals(normals: Float32Array, m: Matrix4): Float32Array {
-  const e = m.elements;
-  const out = new Float32Array(normals.length);
-  for (let i = 0; i < out.length; i += 3) {
-    const x = normals[i]!, y = normals[i + 1]!, z = normals[i + 2]!;
-    const nx = x * e[0]! + y * e[4]! + z * e[8]!, ny = x * e[1]! + y * e[5]! + z * e[9]!, nz = x * e[2]! + y * e[6]! + z * e[10]!;
-    const len = Math.hypot(nx, ny, nz);
-    const k = len > 1e-6 ? 1 / len : 0;
-    out[i] = nx * k; out[i + 1] = ny * k; out[i + 2] = nz * k;
-  }
-  return out;
 }

@@ -206,20 +206,20 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     view.dispose();
   });
 
-  it('lights the body again when it turns: the rig is the world\'s, so a SEAL facing about is lit from its other side', async () => {
+  it('lights the body on the GPU from its posed normals: the colour lane is the material, unity, whatever it faces', async () => {
+    // Data quadword 338, the character's colour lane, is (128,128,128,128) in every skinning dump (logs/vu1dump3): the
+    // skin carries unity and the rig lights it per vertex in the shader (`./rigShading`), from the normal as skinned
+    // -- a turn or a raised arm is lit where it points, not re-lit on the CPU every ten degrees of the body's yaw.
     const map = await loaded();
     const view = buildBody(map.body!, map, { ...DEFAULT_LIGHTING, rig: map.lightRig });
-    const skin = view.group.children.find((o) => o.type === 'SkinnedMesh') as unknown as { geometry: { getAttribute(n: string): { array: Float32Array } } };
-    const colours = (): number[] => Array.from(skin.geometry.getAttribute('color').array);
-    const atA = colours();
-    const yawA = (map.body!.at!.yaw * 180) / Math.PI;
-    view.place(map.body!.at!.position, yawA + 5);                   // under the step: not lit again
-    expect(colours()).toEqual(atA);
-    view.place(map.body!.at!.position, yawA + 180);
-    const about = colours();
-    expect(about.some((v, i) => Math.abs(v - atA[i]!) > 0.05)).toBe(true);
-    view.place(map.body!.at!.position, yawA);
-    colours().forEach((v, i) => expect(v).toBeCloseTo(atA[i]!, 5));
+    const skin = view.group.children.find((o) => o.type === 'SkinnedMesh') as unknown as { geometry: { getAttribute(n: string): { array: Float32Array } | undefined } };
+    const colours = (): number[] => Array.from(skin.geometry.getAttribute('color')!.array);
+    expect(colours().every((v) => v === 1)).toBe(true);
+    expect(skin.geometry.getAttribute('normal')).toBeDefined();
+    view.place(map.body!.at!.position, (map.body!.at!.yaw * 180) / Math.PI + 180);
+    expect(colours().every((v) => v === 1)).toBe(true);
+    // Every drawn mesh of the body -- skin and gear -- has a normal to light.
+    view.group.traverse((o) => { if ((o as { isMesh?: boolean }).isMesh) expect((o as unknown as { geometry: { getAttribute(n: string): unknown } }).geometry.getAttribute('normal'), o.name).toBeDefined(); });
     view.dispose();
   });
 
