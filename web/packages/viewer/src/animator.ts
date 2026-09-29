@@ -685,7 +685,7 @@ export class Animator {
   private snapshot(seconds: number): void {
     const play = this.play;
     if (!play || !play.nodes.length) return;
-    this.from = { name: this.main(play).motion.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
+    this.from = this.freeze(this.main(play).motion.name);      // the held weapon's shown local too: it fades with the arms
     this.blendElapsed = 0;
     this.blendLength = seconds;
   }
