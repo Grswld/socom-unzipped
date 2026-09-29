@@ -1,5 +1,8 @@
 import { groundGrid, moverSnapshot, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type TraversalHooks, type WalkInput } from './mover';
 import type { Grid } from '@s2u/scene';
+import { Button, STANCE_CODES, type Command } from './net/protocol';
+import { MoverSim } from './net/moverSim';
+import { quantiseCommand } from './net/codec';
 import type { GroundWish, Pose } from './camera';
 import { firstPersonHeight, firstPersonPeekShift, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
 
@@ -69,6 +72,19 @@ export class WalkMode {
   /** The look's yaw at the last frame, degrees, and the turn since, radians a second (left positive). */
   private lastYaw: number | null = null;
   private turnRate = 0;
+  /**
+   * MULTIPLAYER (web sprint 3, W3.R8): each tick's command, handed to the net client after the tick with the feet it
+   * left the mover on (the prediction), and the presses since the last tick, which ride on the next command. The page
+   * applies a press at once, between frames -- before the next tick, where the server's `MoverSim.prepare` applies it.
+   */
+  private netTap: ((cmd: Omit<Command, 'seq'>, feet: [number, number, number]) => void) | null = null;
+  private pressed = 0;
+  private pressedStance = 0;
+  private weapon_: 0 | 1 = 0;
+  private trigger_ = false;
+  /** Dead or spectating in a networked round: the mover takes no stick and no presses. */
+  private locked = false;
+  private tickLook: [number, number, number] = [0, 0, 0];
 
   constructor(private readonly camera: WalkCamera, private readonly onChange: (walking: boolean) => void = () => undefined) {}
 
@@ -89,7 +105,8 @@ export class WalkMode {
 
   /** TRAVERSAL SEAM: the action button (the ladder's slide, the climb): false when not walking. */
   action(): boolean {
-    if (!this.walking || !this.moves) return false;
+    if (this.walking) this.pressed |= Button.Action;              // MULTIPLAYER: also the respawn's press (research 91 §4.1)
+    if (this.locked || !this.walking || !this.moves) return false;
     this.moves.action();
     return true;
   }
@@ -115,6 +132,8 @@ export class WalkMode {
    */
   setStance(stance: Stance): boolean {
     if (!STANCES.includes(stance)) return false;
+    if (this.locked && this.walking) return false;
+    if (this.walking) { this.pressed |= Button.Stance; this.pressedStance = STANCE_CODES.indexOf(stance); }   // MULTIPLAYER
     if (this.walking && this.walker && this.moves?.busy()) return this.moves.stanceButton(this.walker, stance);   // TRAVERSAL SEAM
     if (this.walking && this.walker && stance === 'prone' && this.stance_ !== 'prone' && this.moves?.dive(this.walker)) {   // TRAVERSAL SEAM: the dive
       this.stance_ = 'prone';
@@ -147,6 +166,81 @@ export class WalkMode {
     if (!this.walking) return;
     if (this.stand()) this.restart();
     else this.leave();
+  }
+
+  // ---- MULTIPLAYER (web sprint 3, W3.R8) ----
+
+  /** The net client's tap: each tick's command (numbered by the client) and the feet it predicted; null to stop. */
+  setNetTap(tap: ((cmd: Omit<Command, 'seq'>, feet: [number, number, number]) => void) | null): void {
+    this.netTap = tap;
+    this.pressed = 0;
+  }
+
+  /** The trigger held (the body's fire pose on the other screens). */
+  setTrigger(on: boolean): void {
+    this.trigger_ = on;
+  }
+
+  /** Dead or spectating: the mover takes no stick and no presses (the Action press still goes to the server). */
+  setLocked(on: boolean): void {
+    this.locked = on;
+  }
+
+  isLocked(): boolean {
+    return this.locked;
+  }
+
+  private tap(w: Walker, wish: WalkInput): void {
+    if (!this.netTap) return;
+    let buttons = this.pressed;
+    this.pressed = 0;
+    if (wish.boost) buttons |= Button.Boost;
+    if (this.aiming) buttons |= Button.Aim;
+    if (this.trigger_) buttons |= Button.Trigger;
+    const lean = this.moves?.peeking() ?? 0;
+    const leanHeld = (this.moves as { leanHeld?: () => -1 | 0 | 1 } | null)?.leanHeld?.() ?? lean;
+    if (leanHeld < 0) buttons |= Button.LeanLeft;
+    if (leanHeld > 0) buttons |= Button.LeanRight;
+    if ((this.moves as { actionHeldNow?: () => boolean } | null)?.actionHeldNow?.()) buttons |= Button.ActionHeld;
+    const q = quantiseCommand({ seq: 0, forward: wish.forward, right: wish.right, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
+    this.netTap({
+      forward: q.forward, right: q.right, yaw: this.tickLook[0], pitch: this.tickLook[1], turn: this.tickLook[2],
+      buttons, stance: this.pressedStance, weapon: this.weapon_,
+    }, [w.state.x, w.state.y, w.state.z]);
+  }
+
+  /**
+   * A spawn from the server: a new mover (the server makes a fresh one too) stood at `at` facing `yaw`, then the
+   * commands the server has not run on it replayed through the shared apply (`MoverSim`). False with no ground.
+   */
+  respawn(at: readonly [number, number, number], yaw: number, replay: readonly Command[] = []): boolean {
+    const grid = this.walker?.grid ?? (this.ground ? groundGrid(this.ground) : null);
+    if (!grid) return false;
+    const w = new Walker(grid);
+    w.actionRoots = this.actionRoots;
+    this.walker = w;
+    if (!this.player) this.player = new PlayerCamera(grid);
+    this.attachMoves(w);
+    if (!w.place(at[0], at[1] + EYE_HEIGHT, at[2])) return false;
+    w.state.yaw = yaw;
+    this.stance_ = 'stand';
+    this.jumps = 0;
+    this.weapon_ = 0;
+    this.camera.setPose({ yaw, pitch: INIT_AIM_PITCH });
+    if (!this.walking) { this.walking = true; this.camera.setWalking(true); this.onChange(true); }
+    const sim = new MoverSim(w, this.moves);
+    for (const cmd of replay) { const r = sim.apply(cmd); if (r.jumped) this.jumps++; }
+    w.settle();
+    this.stance_ = w.stance;
+    this.restart();
+    return true;
+  }
+
+  /** A correction from the server: the mover moved by (dx, dy, dz) now (a small one is spread over ticks by the caller). */
+  nudge(dx: number, dy: number, dz: number): void {
+    const w = this.walker;
+    if (!w) return;
+    w.state.x += dx; w.state.y += dy; w.state.z += dz;
   }
 
   mode(): 'walk' | 'fly' {
@@ -184,6 +278,8 @@ export class WalkMode {
   /** Walk mode: the mover's jump (`Walker.jump`); false when flying, or in the air. */
   jump(): boolean {
     const w = this.walker;
+    if (this.locked) return false;
+    if (this.walking) this.pressed |= Button.Jump;              // MULTIPLAYER: the press rides on the next command
     if (this.moves?.busy()) return !!w && this.walking && this.moves.jump(w);   // TRAVERSAL SEAM: hanging, the jump lets go
     if (!this.walking || !w || !w.jump()) return false;
     this.stance_ = w.stance;
@@ -196,7 +292,10 @@ export class WalkMode {
    * full-body action or the overlay over the locomotion, or null when refused (not walking, in the air, an action).
    */
   swapWeapon(to: 'pistol' | 'rifle'): SwapPick | null {
-    if (!this.walking || !this.walker || this.moves?.busy()) return null;
+    if (!this.walking || !this.walker || this.locked) return null;
+    this.pressed |= Button.Swap;                                  // MULTIPLAYER
+    this.weapon_ = to === 'pistol' ? 1 : 0;
+    if (this.moves?.busy()) return null;
     return this.walker.swapWeapon(to);
   }
 
@@ -261,7 +360,16 @@ export class WalkMode {
     }
     this.lastYaw = yaw;
     w.turn = this.turnRate;
-    w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
+    const wish = this.locked ? { forward: 0, right: 0, boost: false } : this.camera.groundWish();
+    w.advance(dt, wish, () => { this.tap(w, wish); this.cameraTick(); }, () => {
+      // MULTIPLAYER: the look each tick starts from (a move may turn the mover inside a tick; the next starts there).
+      if (!this.netTap) return wish;
+      // Networked, the tick runs on the command as the server will read it (`quantiseCommand`), so the two agree.
+      const q = quantiseCommand({ seq: 0, forward: wish.forward, right: wish.right, yaw: w.state.yaw, pitch: w.state.pitch, turn: w.turn, buttons: 0, stance: 0, weapon: 0 });
+      w.state.yaw = q.yaw; w.state.pitch = q.pitch; w.turn = q.turn;
+      this.tickLook = [q.yaw, q.pitch, q.turn];
+      return { forward: q.forward, right: q.right, boost: wish.boost };
+    });
     this.stance_ = w.stance;                                     // TRAVERSAL SEAM: a move or the water may stand the SEAL up
     this.follow();
   }

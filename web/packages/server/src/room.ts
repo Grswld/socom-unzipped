@@ -50,6 +50,8 @@ export const VOTE_BAN_MS = 10 * 60_000;
 export const EXPIRED_PLAY_S = 15, RESULT_S = 1, ENGINE_READ_S = 3, ROUND_COMPLETE_S = 5, FINAL_ROUND_S = 10, GAME_COMPLETE_S = 10;
 /** A client may run this many commands ahead of the ticks it has been given (a burst after a stall): 200 ms. */
 const CREDIT_MAX = 12;
+/** Ticks a gap in the command numbers is waited on before the queue goes on without the missing one (100 ms). */
+const GAP_WAIT = 6;
 /** A command's stick past this, a button, or a turn counts as input for the idle kick. */
 const ACTIVE_STICK = 0.05;
 /** How far a round may leave from the shooter's eye as the server holds it (the client's muzzle and lean). */
@@ -67,6 +69,8 @@ interface Past { tick: number; feet: V3; yaw: number; posture: 'stand' | 'crouch
 class Player {
   sim: MoverSim;
   readonly queue: Command[] = [];
+  /** The tick a gap in the command numbers was first seen, or -1. */
+  gapSince = -1;
   credit = CREDIT_MAX;
   lastActive: number;
   alive = false;
@@ -195,9 +199,14 @@ export class Room {
     if (!p) return;
     let batch;
     try { batch = decodeCommands(bytes); } catch { return; }
-    p.viewTick = batch.viewTick;
-    const last = p.queue.length ? p.queue[p.queue.length - 1]!.seq : p.sim.seq;
-    for (const c of batch.commands) if (c.seq > last && c.seq > p.sim.seq) p.queue.push(c);
+    p.viewTick = Math.max(p.viewTick, batch.viewTick);
+    // Frames can arrive out of order (the jitter): every command not yet run and not yet queued goes in, in order.
+    for (const c of batch.commands) {
+      if (c.seq <= p.sim.seq || p.queue.some((q) => q.seq === c.seq)) continue;
+      let at = p.queue.length;
+      while (at > 0 && p.queue[at - 1]!.seq > c.seq) at--;
+      p.queue.splice(at, 0, c);
+    }
     if (p.queue.length > 240) p.queue.splice(0, p.queue.length - 240);   // a flood is dropped, not queued
   }
 
@@ -231,6 +240,9 @@ export class Room {
   private run(p: Player, now: number): void {
     p.credit = Math.min(CREDIT_MAX, p.credit + 1);
     while (p.queue.length && p.credit >= 1) {
+      // A gap (a command lost past the redundancy, or still on its way): wait for it a while, then go on without it.
+      if (p.queue[0]!.seq > p.sim.seq + 1 && p.gapSince + GAP_WAIT > this.tick) { if (p.gapSince < 0) p.gapSince = this.tick; break; }
+      p.gapSince = -1;
       const cmd = p.queue.shift()!;
       p.credit--;
       const active = Math.abs(cmd.forward) > ACTIVE_STICK || Math.abs(cmd.right) > ACTIVE_STICK || (cmd.buttons & ~Button.Boost) !== 0

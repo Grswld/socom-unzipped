@@ -409,6 +409,15 @@ export class Traversal implements TraversalHooks {
     this.leanSide = side;
   }
 
+  /** MULTIPLAYER: the lean buttons as last held (what the command carries), and the action button held. */
+  leanHeld(): -1 | 0 | 1 {
+    return this.leanSide;
+  }
+
+  actionHeldNow(): boolean {
+    return this.actionHeld;
+  }
+
   /** The peek held (state 3): -1 left, 1 right, 0 none (`TraversalHooks.peeking`). */
   peeking(): -1 | 0 | 1 {
     return this.leanOn ? this.leanOn.side : 0;
