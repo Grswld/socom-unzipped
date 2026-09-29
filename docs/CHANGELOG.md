@@ -2,12 +2,22 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-268 merges (62 on the first-parent line, 206 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+278 merges (63 on the first-parent line, 215 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-43 merges.
+53 merges.
 
+- 2026-09-29 `e7f8c336` merge main (f6499f0e) into sprint-17: PR #109's web sprint 2 'the player' (R333) and the feature label [branch not named]
+  - 2026-09-28 `f6499f0e` Merge pull request #109: the cloud's web sprint 2 'the player' onto main (the owner's word, R333) [branch not named]
+  - 2026-09-28 `64c6cd3a` the cloud branch's web sprint 2 'the player' onto main, the cloud's side on every collision (the owner's word) [branch not named]
+  - 2026-09-28 `ab3bf4d7` the SEAL runs the game's clips on the mover; the shoulder camera and the aim view (W2.2b, W2.6) [agent/web-s2-play]
+  - 2026-09-28 `0cec524a` the M4A1 SD drawn, the fire point per GetPutativeFirePointW, the shot; research 79 (W2.4) [agent/web-s2-weapon]
+  - 2026-09-28 `ec2ec816` full controller support on the PS2 layout, fly and walk alike, a toast on connect (W2.7) [agent/web-s2-pad]
+  - 2026-09-28 `c636a8b2` the SEAL mesh, skeleton and gear decoded and drawn in the bind pose at slot A (W2.1) [agent/web-s2-char]
+  - 2026-09-28 `5279e154` the skeletal motion format read [agent/web-s2-motion]
+  - 2026-09-28 `7d59c5d3` the owner's main v0.16.0 and design-system merges [origin/claude/web-sprint-cloud-8wa72q]
+  - 2026-09-28 `fb905d44` the request label is feature, not enhancement (PR #106, checks green) [docs/feature-label]
 - 2026-09-29 `632593b3` build.sh test skips the full Python suite in a linked worktree or under a queue (R334) [agent/s17-suite-guard]
 - 2026-09-29 `a683efdd` hostprof_symbolize skips and counts a stacks histogram's stack lines (#95) [agent/i95-symbolize]
 - 2026-09-28 `da44affb` the message-driven copies and indexes bounded at their handlers (reviewed PASS) [agent/medusa-rt2]
