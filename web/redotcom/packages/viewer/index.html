@@ -90,7 +90,7 @@
       -->
       <div class="section" id="recom-section">
         <p class="s2u-field__label" id="recom-label">Mode</p>
-        <div id="recom" class="s2u-tabs" role="radiogroup" aria-labelledby="recom-label">
+        <div id="recom" class="s2u-tabs" role="group" aria-labelledby="recom-label">
           <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly the free camera through the maps.">Explore<span class="s2u-tab__what">fly the maps</span></button>
           <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play as a SEAL on the map: on foot, the rifle, the HUD, the game&rsquo;s sound.">Play<span class="s2u-tab__what">play as a SEAL</span></button>
         </div>
@@ -109,34 +109,36 @@
         </label>
       </div>
       <p id="status" class="s2u-status">booting</p>
-      <!-- View: how the picture is drawn, and (with `?redotcom`) how the camera moves. Two segmented toggles, one markup. -->
+      <!-- View: how the picture is drawn, and (on Play) how the camera moves. Two segmented toggles, one markup. -->
       <p class="s2u-field__label" id="view-label">View</p>
       <!--
         The one choice a visitor makes: the picture as a modern screen shows it, or as the console drew
         it. It is the `ps2look` checkbox under Advanced, presented as a switch; the checkbox stays the
         state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
       -->
-      <div id="look" class="s2u-tabs" role="radiogroup" aria-label="picture">
+      <div id="look" class="s2u-tabs" role="group" aria-label="picture">
         <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true" title="The game&rsquo;s own 49&deg; vertical field (46&deg; on Rat&rsquo;s Nest), kept at any screen shape: the width widens with a wider screen, to 78&deg; across on 16:9 (owner, 2026-09-29).">Modern<span class="s2u-tab__what">your screen&rsquo;s shape</span></button>
         <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false" title="The 640&times;448 frame the console drew, stretched smooth onto a 4:3 box as a television showed it (owner, 2026-09-29).">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
       </div>
       <!--
-        Walk mode -- behind the `redotcom` URL parameter (`./src/features.ts`): without it this switch, the body row, the ammo
-        box and the touch buttons are not rendered at all (each carries `data-play`, and `./src/main.ts` takes them out before
-        the page is wired). (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
+        Walk mode -- the play's, so shown only while the Mode switch above is on Play (`mode=play` in the address,
+        `?redotcom` read as that; remembered under `s2u.viewer.recom`): on Explore, `PlayUi` (`./src/features.ts`) takes this
+        switch, the body row, the Sound and Mouse look sections and the touch buttons (each carries `data-play`) out of the
+        page after it is wired, and puts the same nodes back when Play is chosen, at run time, without a reload.
+        (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
         the floor the engine's ground probe finds, stepping at the game's 60 Hz at motion.rdr's speeds, stopped by its
         walls, falling off its edges. Fly or Walk, as the Modern / PS2 switch above is Modern or PS2: the same markup, and
         the hidden `walk` checkbox stays the state everything reads (the hook, the tests). G and the pad's Start toggle
         it and this follows (`./src/ui.ts`, `onWalkSwitch`, `setWalk`).
       -->
-      <div id="mode" class="s2u-tabs" data-play role="radiogroup" aria-label="camera">
+      <div id="mode" class="s2u-tabs" data-play role="group" aria-label="camera">
         <button type="button" class="s2u-tab" data-mode="fly" aria-pressed="true" title="Fly the free camera through the map, through walls and over floors: WASD along the look, Space and Shift up and down, a double-tapped W boosts, the wheel trims the speed. G switches to walking.">Fly<span class="s2u-tab__what">free camera (G)</span></button>
         <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="Walk on the game's own floors, seen from behind as the game's camera sees you, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched, 11 prone. The floor is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, and the step runs at the game's 60 Hz. There is no sprint on foot. G switches back to flying.">Walk<span class="s2u-tab__what">on the floors (G)</span></button>
       </div>
       <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
       <!--
         Sound (web/docs/research/81, `./src/audio`): the mix's volume and a mute, driving `gameAudio.setVolume` and `setMuted`.
-        The sound plays on the play's events, so with the play off (no `?redotcom`) the section is not rendered (`data-play`).
+        The sound plays on the play's events, so on Explore the section is taken out of the page (`data-play`, `PlayUi`).
         Remembered in this browser only (`./src/ui.ts`, `onSound`).
       -->
       <div class="section" id="sound-section" data-play>
@@ -150,7 +152,8 @@
       <!--
         Online (owner, 2026-09-29; `./src/online.ts`): Off, the single page; Shared, the public match server; Local, the
         static server `npm start -w @s2u/server` runs here. In reCOM mode the page joins as a player, in the map viewer as
-        a spectator watching the match (Space the next player, V the free camera). The URL's `mp` / `server=` override it.
+        a spectator watching the match (Space the next player, V the free camera). The URL's `mp` / `server=` override it
+        on load, until the visitor picks a choice here, which takes them out of the address (`onlineChoiceAddress`).
         The line under it is the connection: connecting, online and the players, or unreachable and the retry. Remembered
         in this browser (`s2u.viewer.online`).
         The Rules (web sprint 3, classic mode): Respawn, the one timed round, or Classic, respawn off (the game's create-game
@@ -162,14 +165,14 @@
       -->
       <div class="section" id="mp-section">
         <p class="s2u-field__label" id="online-label">Online</p>
-        <div id="online" class="s2u-tabs" role="radiogroup" aria-labelledby="online-label">
+        <div id="online" class="s2u-tabs" role="group" aria-labelledby="online-label">
           <button type="button" class="s2u-tab" data-online="off" aria-pressed="true" title="No server: this page alone.">Off<span class="s2u-tab__what">single</span></button>
           <button type="button" class="s2u-tab" data-online="shared" aria-pressed="false" title="The public match server, mp.socomunzipped.com.">Shared<span class="s2u-tab__what">public server</span></button>
           <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine: npm start -w @s2u/server, on port 8787.">Local<span class="s2u-tab__what">localhost:8787</span></button>
         </div>
         <p id="online-state" class="s2u-status"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
         <p class="s2u-field__label" id="rules-label">Rules</p>
-        <div id="rules" class="s2u-tabs" role="radiogroup" aria-labelledby="rules-label">
+        <div id="rules" class="s2u-tabs" role="group" aria-labelledby="rules-label">
           <button type="button" class="s2u-tab" data-rules="respawn" aria-pressed="true" title="One timed round: respawn once the body has faded, and the side with more points wins at 00:00.">Respawn<span class="s2u-tab__what">one timed round</span></button>
           <button type="button" class="s2u-tab" data-rules="classic" aria-pressed="false" title="Respawn off, the game's default: 11 rounds, first to 6; a round ends when a side is eliminated or the clock runs out (a draw). The dead watch their living teammates (Space) until the next round.">Classic<span class="s2u-tab__what">11 rounds, no respawn</span></button>
         </div>
@@ -179,13 +182,13 @@
         </div>
       </div>
       <!--
-        The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so behind `?redotcom` like the
-        rest of the play. Raw is the default (owner, 2026-09-29; the stick curve kept beside it): one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
+        The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so on the page only while
+        the Mode switch is on Play, like the rest of the play (`data-play`). Raw is the default (owner, 2026-09-29; the stick curve kept beside it): one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
         in this browser only (`./src/ui.ts`, `onLookControls`).
       -->
       <div class="section" id="look-section" data-play>
         <p class="s2u-field__label">Mouse look</p>
-        <div id="mouselaw" class="s2u-tabs" role="radiogroup" aria-label="mouse look">
+        <div id="mouselaw" class="s2u-tabs" role="group" aria-label="mouse look">
           <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="The default (owner, 2026-09-29). Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
           <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more. Kept beside raw (owner, 2026-09-29).">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
         </div>
@@ -256,7 +259,9 @@
         <p><b>Known to differ:</b> blended surfaces are sorted by the browser where the engine traversed its
           grid outward from the camera, the frame brighten is a fixed value where the game meters it, the
           alternate states a map holds (destroyed, unlit, far LOD) are hidden rather than switched by
-          play, and there is no game &mdash; just the world.</p>
+          play.</p>
+        <p><b>Play</b> is a reading of the game's rules, not the game: no game code runs there either, and
+          what it gets wrong is listed in the README's known gaps.</p>
         <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
           <a href="https://socomunzipped.com/" target="_blank" rel="noopener noreferrer">socomunzipped.com &rarr;</a></p>
         <p class="s2u-fine" id="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,

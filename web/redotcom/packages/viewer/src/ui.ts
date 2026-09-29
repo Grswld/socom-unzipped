@@ -336,7 +336,8 @@ export class Ui {
    * pointer is over the tab or the popover (a mouse or pen; a touch has no hover), while a keyboard focus is on
    * either, and while a click or tap has pinned it; Esc closes it whatever held it, and so does a press outside. It
    * never takes the focus and never asks for the pointer lock, and a key pressed with the tab focused still reaches
-   * the game (the camera's own listeners are on the window).
+   * the game (the camera's own listeners are on the window). On a focused Controller / Mouse & Keyboard tab the arrows,
+   * Home and End switch the tab (the ARIA tabs pattern); the game binds none of them.
    */
   onControlsPopover(): void {
     const button = find<HTMLButtonElement>('controls-toggle');
@@ -384,14 +385,32 @@ export class Ui {
       el.addEventListener('focusout', focusOut as EventListener);
     }
     button.addEventListener('click', () => { pinned = !pinned; sync(); });
-    for (const t of Array.from(pop.querySelectorAll<HTMLButtonElement>('#controls-tabs [data-tab]'))) {
-      t.addEventListener('click', () => {
-        const tab: ControlsTab = t.dataset['tab'] === 'pad' ? 'pad' : 'keys';
-        this.tabChosen = true;
-        write(CONTROLS_TAB_KEY, tab);
-        this.showTab(tab);
-      });
-    }
+    const tabs = Array.from(pop.querySelectorAll<HTMLButtonElement>('#controls-tabs [data-tab]'));
+    const tabOf = (t: HTMLElement): ControlsTab => (t.dataset['tab'] === 'pad' ? 'pad' : 'keys');
+    const choose = (tab: ControlsTab): void => {
+      this.tabChosen = true;
+      write(CONTROLS_TAB_KEY, tab);
+      this.showTab(tab);
+    };
+    for (const t of tabs) t.addEventListener('click', () => choose(tabOf(t)));
+    // The WAI-ARIA tabs pattern's keys (the markup declares role=tablist/tab, and `showTab` keeps the unselected tab out
+    // of the Tab order): the arrows move to the other tab (two tabs, so they wrap), Home to the first (Controller), End
+    // to the last (Mouse & Keyboard); the selection follows the focus. Any other key goes on to the game untouched.
+    pop.querySelector('#controls-tabs')?.addEventListener('keydown', (ev) => {
+      const e = ev as KeyboardEvent;
+      const at = tabs.findIndex((t) => t === e.target);
+      if (at < 0) return;
+      let next: number;
+      if (e.key === 'ArrowLeft') next = (at - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'ArrowRight') next = (at + 1) % tabs.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      else return;
+      e.preventDefault();
+      const t = tabs[next]!;
+      choose(tabOf(t));
+      t.focus();
+    });
     const stored = read(CONTROLS_TAB_KEY);
     this.tabChosen = stored === 'pad' || stored === 'keys';
     this.showTab(chooseTab(stored, this.padConnected));
@@ -625,7 +644,7 @@ export class Ui {
 
   /**
    * The mouse's look (round 2; `./look`): the law (raw or the game's stick curve), the sensitivity, invert pitch and the
-   * game's or a uniform pitch, in the panel's Mouse look section (walk mode's, so behind `?redotcom`). Remembered like the
+   * game's or a uniform pitch, in the panel's Mouse look section (walk mode's, so on the page only on Play: `data-play`). Remembered like the
    * sound. `handler` gets the whole option set (the four the panel owns; `throttle` is the game's own and stays off) at
    * the start and on every change.
    */

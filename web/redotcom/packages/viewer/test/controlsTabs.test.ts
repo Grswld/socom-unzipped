@@ -51,6 +51,13 @@ describe('the lists', () => {
     expect(pad).toMatch(/Left stick = fly/);
   });
 
+  it('reCOM mode, flying: the five fly rows and Start = walk (Start is G; e2e pad.spec counts the same six)', () => {
+    const g = padControlGroups('fly', true);
+    expect(g.flatMap((x) => x.rows)).toHaveLength(6);
+    expect(rows(g)).toContain('Start = walk');
+    expect(rows(controlGroups('fly', true))).toContain('G = walk');
+  });
+
   it('marks the face buttons with their glyphs', () => {
     const face = padControlGroups('walk', true).flatMap((g) => g.rows).filter((r) => r.glyph);
     expect(face.map((r) => r.glyph).sort()).toEqual(['cross', 'square', 'triangle']);
@@ -140,6 +147,46 @@ describe('the popover', () => {
     expect(document.querySelector('#pad-list svg.s2u-hint__glyph--square')).not.toBeNull();
     ui.setWalk(false);
     expect(text('pad-list')).not.toContain('R1');
+  });
+
+  /** The WAI-ARIA tabs pattern's keys: a keydown on the focused tab, as a keyboard sends it. */
+  const key = (el: HTMLElement, k: string): KeyboardEvent => {
+    const e = new KeyboardEvent('keydown', { key: k, code: k, bubbles: true, cancelable: true });
+    el.dispatchEvent(e);
+    return e;
+  };
+  const selected = (which: 'pad' | 'keys'): void => {
+    const other = which === 'pad' ? 'keys' : 'pad';
+    expect(tab(which).getAttribute('aria-selected')).toBe('true');
+    expect(tab(other).getAttribute('aria-selected')).toBe('false');
+    expect(tab(which).tabIndex).toBe(0);
+    expect(tab(other).tabIndex).toBe(-1);
+    expect(panel(which).hidden).toBe(false);
+    expect(panel(other).hidden).toBe(true);
+    expect(document.activeElement).toBe(tab(which));
+    expect(localStorage.getItem(CONTROLS_TAB_KEY)).toBe(which);
+  };
+
+  it('ArrowLeft / ArrowRight on the focused tab move the selection and the focus to the other tab', () => {
+    tab('keys').focus();
+    const e = key(tab('keys'), 'ArrowLeft');
+    expect(e.defaultPrevented).toBe(true);
+    selected('pad');
+    key(tab('pad'), 'ArrowRight');
+    selected('keys');
+    key(tab('keys'), 'ArrowRight');                  // two tabs: the arrows wrap
+    selected('pad');
+  });
+
+  it('Home lands on Controller and End on Mouse & Keyboard; other keys pass to the game', () => {
+    tab('keys').focus();
+    key(tab('keys'), 'Home');
+    selected('pad');
+    key(tab('pad'), 'End');
+    selected('keys');
+    const e = key(tab('keys'), 'KeyW');
+    expect(e.defaultPrevented).toBe(false);
+    selected('keys');
   });
 
   it('says whether a controller is connected, on the Controller panel', () => {

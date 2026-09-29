@@ -3,34 +3,19 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import {
-  PLAY_ATTRIBUTE, PLAY_KEY, PlayUi, playWanted, readPlayChoice, withoutPlayParam, writePlayChoice,
+  PLAY_ATTRIBUTE, PLAY_KEY, PlayUi, readPlayChoice, writePlayChoice,
 } from '../src/features';
 import { Ui } from '../src/ui';
 
 /**
- * The owner's 2026-09-29 settings: the Mode switch (Map viewer / reCOM, at run time, remembered, `?redotcom` forcing it
- * on), the Online setting's markup, and the disc page the page opens on without `?devmode`.
+ * The owner's 2026-09-29 settings: the Mode switch (Explore / Play, at run time, remembered; the address's `mode=play` /
+ * `mode=explore` beats the memory and `?redotcom` is read as `mode=play` -- `./shareUrl`, pinned in shareUrl.test.ts),
+ * the Online setting's markup, and the disc page the page opens on without `?devmode`.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
 const load = (): void => { document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML; };
 const keys = (): string => [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
-
-describe('playWanted: the URL forces reCOM on, else the remembered choice, else the map viewer', () => {
-  it('is the map viewer on a first visit', () => {
-    expect(playWanted('', null)).toBe(false);
-    expect(playWanted('?map=MP2', null)).toBe(false);
-  });
-  it('is reCOM when the switch left it so, and not when it left it off', () => {
-    expect(playWanted('', '1')).toBe(true);
-    expect(playWanted('?map=MP6', '0')).toBe(false);
-    expect(playWanted('', 'yes')).toBe(false);
-  });
-  it('is reCOM with ?redotcom whatever was remembered (a deep link)', () => {
-    expect(playWanted('?redotcom', '0')).toBe(true);
-    expect(playWanted('?map=MP2&redotcom&fly', null)).toBe(true);
-  });
-});
 
 describe('the remembered mode', () => {
   beforeEach(() => { localStorage.clear(); });
@@ -40,10 +25,10 @@ describe('the remembered mode', () => {
     expect(readPlayChoice()).toBeNull();
     writePlayChoice(true);
     expect(localStorage.getItem(PLAY_KEY)).toBe('1');
-    expect(playWanted('', readPlayChoice())).toBe(true);
+    expect(readPlayChoice()).toBe('1');
     writePlayChoice(false);
     expect(localStorage.getItem('s2u.viewer.recom')).toBe('0');
-    expect(playWanted('', readPlayChoice())).toBe(false);
+    expect(readPlayChoice()).toBe('0');
   });
 
   it('survives a storage that throws', () => {
@@ -57,13 +42,6 @@ describe('the remembered mode', () => {
       Storage.prototype.getItem = get;
       Storage.prototype.setItem = set;
     }
-  });
-
-  it('turning reCOM off takes redotcom out of the address, and leaves an address without it alone', () => {
-    expect(withoutPlayParam('http://h/?map=MP2&redotcom&fly')).toBe('http://h/?map=MP2&fly');
-    expect(withoutPlayParam('http://h/map-viewer/?redotcom')).toBe('http://h/map-viewer/');
-    expect(withoutPlayParam('http://h/?map=MP2')).toBeNull();
-    expect(withoutPlayParam('not a url')).toBeNull();
   });
 });
 
@@ -100,6 +78,14 @@ describe('PlayUi: the play markup out and back in, at run time', () => {
     expect(heard).toBe(1);
   });
 
+  it('the panel kicker says redotcom, the product name, in both modes (owner ruling, handoff s3; do not flip it again)', () => {
+    const kicker = (): string | null | undefined => document.getElementById('panel-kicker')?.textContent;
+    expect(kicker()).toBe('redotcom · SOCOM II multiplayer');
+    const ui = new PlayUi();
+    ui.detach();
+    expect(kicker()).toMatch(/^redotcom /);
+  });
+
   it('with the markup out, no word about walking is left in the page text or tooltips (the mode and online switches included)', () => {
     new PlayUi().detach();
     const words = (document.body.textContent ?? '') + [...document.querySelectorAll('[title],[aria-label]')]
@@ -115,7 +101,7 @@ describe('the Mode switch in the panel', () => {
   it('is the picture switch markup, in the panel, not the play (it is there in both modes)', () => {
     const recom = document.getElementById('recom')!;
     expect(recom.className).toBe(document.getElementById('look')!.className);
-    expect(recom.getAttribute('role')).toBe('radiogroup');
+    expect(recom.getAttribute('role')).toBe('group');
     expect(recom.closest('#panel')).not.toBeNull();
     expect(recom.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
     const buttons = [...recom.querySelectorAll('button')];
@@ -159,7 +145,7 @@ describe('the Online setting in the panel', () => {
   it('is Off / Shared / Local in the picture switch markup, with a connection line, outside the play', () => {
     const online = document.getElementById('online')!;
     expect(online.className).toBe(document.getElementById('look')!.className);
-    expect(online.getAttribute('role')).toBe('radiogroup');
+    expect(online.getAttribute('role')).toBe('group');
     expect([...online.querySelectorAll('button')].map((b) => b.dataset['online'])).toEqual(['off', 'shared', 'local']);
     expect(online.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
     expect(document.getElementById('mp-name')!.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
