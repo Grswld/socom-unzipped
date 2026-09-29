@@ -12,7 +12,7 @@ test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps
   await page.goto('/?map=MP2&redotcom');
   await page.waitForFunction(() => window.__viewer?.stats().map === 'FROSTFIRE' && window.__viewer.audio().banks.length >= 3);
   const loaded = await page.evaluate(() => window.__viewer.audio());
-  expect(loaded.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
+  expect(loaded.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC', 'HUDUI']);
   expect(loaded.defaultMaterial).toBe('METAL_THICK');
   // Nothing wanted is missing: the casings' names go through the effects' table (research 90 item 18) -- shell_eject's
   // .BUL_CASE_METAL is the banks' .BUL_CAS_METAL, the shotgun's .SG_SHELL_TIN the map's .SG_SHELL_METAL.
