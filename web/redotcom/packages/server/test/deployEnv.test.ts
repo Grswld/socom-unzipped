@@ -40,3 +40,74 @@ describe('deploy/env.example', () => {
     expect(addresses.filter((a) => a !== '0.0.0.0' && a !== '127.0.0.1')).toEqual([]);   // only the bind defaults
   });
 });
+
+/** The paths the server answers: its HTTP routes (`req.url === '/x'`) and the WebSocket's upgrade path. */
+function serverPaths(): string[] {
+  const src = read('packages/server/src/server.ts');
+  const http = [...src.matchAll(/req\.url === '(\/[a-z]+)'/g)].map((m) => m[1]!);
+  const ws = [...src.matchAll(/WS_PATH = '(\/[a-z]+)'/g)].map((m) => m[1]!);
+  return [...new Set([...http, ...ws])].sort();
+}
+
+/** The paths the Caddyfile answers 403 off the host: each matcher's `path` under a `not remote_ip` loopback test. */
+function caddyHostOnly(): string[] {
+  const out: string[] = [];
+  for (const m of read('deploy/Caddyfile').matchAll(/@\w+ \{([^}]*)\}/g)) {
+    const body = m[1]!;
+    if (!/not remote_ip 127\.0\.0\.1 ::1/.test(body)) continue;
+    for (const p of body.match(/path ([^\n]*)/)?.[1]!.trim().split(/\s+/) ?? []) if (!p.endsWith('*')) out.push(p);
+  }
+  return out.sort();
+}
+
+describe('the public surface (owner ruling 2026-09-29, OWNER-4: /rooms stays public and documented)', () => {
+  const PUBLIC = ['/health', '/rooms', '/ws'];
+  const HOST_ONLY = ['/metrics'];
+
+  it('the server answers exactly /health, /metrics, /rooms and /ws', () => {
+    expect(serverPaths()).toEqual([...PUBLIC, ...HOST_ONLY].sort());
+  });
+
+  it('behind Caddy only /metrics is host-only: the public set is /health, /rooms and /ws', () => {
+    expect(caddyHostOnly()).toEqual(HOST_ONLY);
+    expect(serverPaths().filter((p) => !caddyHostOnly().includes(p))).toEqual(PUBLIC);
+  });
+
+  it('behind the Cloudflare tunnel the ingress rule passes the same public set and nothing else', () => {
+    const readme = read('deploy/README.md');
+    const rule = readme.match(/path: \^\/\(([a-z|]+)\)\$/);
+    expect(rule, 'the README\'s cloudflared ingress path rule').not.toBeNull();
+    expect(rule![1]!.split('|').map((p) => `/${p}`).sort()).toEqual(PUBLIC);
+    expect(readme).toMatch(/service: http_status:404/);                    // the catch-all: everything else 404
+  });
+
+  it('the deploy README names every public path, /rooms as public, and /metrics as host-only, in its first paragraph', () => {
+    const first = read('deploy/README.md').split(/\n\n/)[1]!;
+    for (const p of PUBLIC) expect(first).toContain(`\`${p === '/ws' ? '/ws' : `GET ${p}`}\``);
+    expect(first).toMatch(/\/rooms`[^.]*public/);
+    expect(first).toMatch(/\/metrics`[^.]*host only/);
+  });
+});
+
+describe('the deploy text against the tree', () => {
+  it('compose trusts its proxy for the client address (Caddy and cloudflared append X-Forwarded-For)', () => {
+    expect(read('deploy/compose.yaml')).toMatch(/^\s+TRUST_PROXY: "1"$/m);
+    expect(read('deploy/env.example')).toMatch(/^# TRUST_PROXY=1$/m);
+  });
+
+  it('the no-Docker commands name files that exist (the post-2026-09-29 layout, from web/)', () => {
+    const readme = read('deploy/README.md');
+    const block = readme.slice(readme.indexOf('## Without Docker'));
+    const named = [...block.matchAll(/(redotcom\/[\w/.-]+\.(?:ts|service))/g)].map((m) => m[1]!);
+    expect(named).toEqual(expect.arrayContaining(['redotcom/packages/server/src/main.ts', 'redotcom/deploy/systemd/socom-mp.service']));
+    for (const rel of named) expect(existsSync(resolve(WEB, '..', rel)), rel).toBe(true);
+    expect(block).not.toMatch(/esbuild packages\/server|scp deploy\//);
+  });
+
+  it('says one room per map and rules, and names the heartbeat', () => {
+    const readme = read('deploy/README.md');
+    expect(readme).toMatch(/one room per map and rules/);
+    expect(readme).not.toMatch(/one room per map[^ ]/);
+    expect(readme).toMatch(/HEARTBEAT_MS/);
+  });
+});

@@ -12,6 +12,8 @@ services:
       SOCOM_DISC: /disc
       PORT: "8787"
       HOST: 0.0.0.0
+      # Every client reaches mp through a proxy (caddy here, or cloudflared): the address is X-Forwarded-For's last entry.
+      TRUST_PROXY: "1"
     volumes:
       # The owner's private disc files, read-only, never in the image.
       - ${DISC_DIR:-/srv/socom-disc}:/disc:ro
