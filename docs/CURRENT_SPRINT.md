@@ -18,8 +18,8 @@ branch:       sprint-17 -- OPEN 2026-09-28 03:05Z, cut off main at d77b58c5 (the
 spec:         docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md (four milestones F, Q, A, H in the
               owner's order; approved by the owner 2026-09-27 ~23:00Z). The Sprint 16, 15, 14, 13, 12 and 11 specs closed
               with v0.16.0 down to v0.11.0.
-plans:        docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, the rulings R322-R330 from the global counter, the
-              Outcome, the Log newest first; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
+plans:        docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, the rulings R322-R335 from the global counter, the
+              Outcome, the Log newest first -- its entries before 2026-09-29 in docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
               The Sprint 16 plan (R299-R321, R314 vacant; docs/superpowers/plans/2026-09-27-sprint-16.md) and the Sprint 15
               plan (R282-R289; R298 the close's window, superseded) with the owner's sitting (R290-R297,
               docs/superpowers/plans/2026-09-26-owner-sitting.md) are closed, their blocks below; the Sprint 14 plan
@@ -37,7 +37,7 @@ rulings:      indexed in docs/RULINGS.md (generated: every ruling with its statu
 baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 17's batch-4 chain `s17_b4d` on `881c5a18` (2026-09-29 10:03Z-10:55Z: gate 3/3 PINS MATCH, FRAME mean 16.90 worst1s 17.86, SYNCV 23.4/s; the quiet gates on that exe 16.67-16.92 ms, the VBlank cap); before it Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
               the player archive); the close gate `s16_b4g` by hand on the batch-4 exe `2430919f…` (2026-09-28 01:00Z-01:16Z: 3/3 PINS MATCH,
               HELDOUT 12/12, FRAME mean 28.82; the chain itself red on HEAD moving under other sessions' commits); the quiet baseline F0's three gates on `4cbbb14f` (median 27.09 ms, spread 7.0 %); before them the Sprint 14
               close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
