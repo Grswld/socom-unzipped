@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Box3, OrthographicCamera, Vector3 } from 'three';
-import { fitShadowCamera, shadowFactor, shadowStrength, SHADOW_MAP_SIZE, SHADOW_WEIGHT } from '../src/charShadow';
+import { Box3, BoxGeometry, Group, Mesh, MeshBasicMaterial, OrthographicCamera, Vector3 } from 'three';
+import { CharacterShadow, fitShadowCamera, markCasters, shadowFactor, shadowStrength, SHADOW_LAYER, SHADOW_MAP_SIZE, SHADOW_WEIGHT } from '../src/charShadow';
 
 /** A SEAL-sized box standing on the ground at (100, 0, -50). */
 const seal = new Box3(new Vector3(96, 0, -54), new Vector3(104, 18, -46));
@@ -36,5 +36,33 @@ describe('charShadow: the receivers\' darkening (VU1 0x3c)', () => {
   });
   it('builds a node for the world\'s graphs', () => {
     expect(shadowFactor()).toBeTruthy();
+  });
+});
+
+describe('charShadow: who draws into the map (VU1 0x40: the actor\'s own triangles)', () => {
+  /** A body part and, beside it, an effect light's overlay re-drawing it (`./effectLights`' `overlayOf`). */
+  const actor = (): { group: Group; part: Mesh; overlay: Mesh } => {
+    const group = new Group();
+    const geometry = new BoxGeometry(1, 1, 1);
+    const part = new Mesh(geometry, new MeshBasicMaterial());
+    const overlay = new Mesh(geometry, new MeshBasicMaterial());
+    overlay.userData.effectLightPass = true;
+    group.add(part, overlay);
+    return { group, part, overlay };
+  };
+
+  it('puts the actor\'s own meshes on the map\'s layer, never a light pass\'s overlay (#23: a blast linked its silhouette)', () => {
+    const { group, part, overlay } = actor();
+    overlay.layers.enable(SHADOW_LAYER);                 // as the old per-frame traversal had left it
+    markCasters(group);
+    expect(part.layers.isEnabled(SHADOW_LAYER)).toBe(true);
+    expect(overlay.layers.isEnabled(SHADOW_LAYER)).toBe(false);
+  });
+
+  it('the warm-up\'s set-up marks the same casters', () => {
+    const { group, part, overlay } = actor();
+    new CharacterShadow().warmSetup(group);
+    expect(part.layers.isEnabled(SHADOW_LAYER)).toBe(true);
+    expect(overlay.layers.isEnabled(SHADOW_LAYER)).toBe(false);
   });
 });
