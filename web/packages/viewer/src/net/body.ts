@@ -38,7 +38,7 @@ export function bodyOf(id: number, s: PlaySnapshot, extras: BodyExtras): BodySta
     landing: s.landing ? LANDING_CODES.indexOf(s.landing) + 1 : 0,
     jumps: s.jumps & 0xff,
     ground: s.ground.state === 'idle' ? 0 : 1 + stanceCode(s.ground.state),
-    groundForward: s.ground.forward, groundRight: s.ground.right, groundCls: s.ground.cls,
+    groundForward: s.ground.forward, groundRight: s.ground.right, groundCls: s.ground.cls, stickSnaps: (s.stickSnaps ?? 0) & 1,
     action: s.action ? actionCode(s.action.name) : 0, actionSerial: s.action ? s.action.serial & 0xff : 0,
     actionT: s.action?.t ?? 0, actionSeconds: s.action?.seconds ?? -1,
     overlay: s.overlay ? (s.overlay.serial % 255) + 1 : 0, overlayT: s.overlay?.t ?? 0, overlaySeconds: s.overlay?.seconds ?? 0,
@@ -65,6 +65,7 @@ export function snapshotOf(b: BodyState): PlaySnapshot & { alive: boolean; weapo
     landing: b.landing ? (LANDING_CODES[b.landing - 1] as LandingKind) : null,
     jumps: b.jumps,
     ground: { state: groundState, forward: b.groundForward, right: b.groundRight, cls: b.groundCls as GroundMotion['cls'] },
+    stickSnaps: b.stickSnaps ?? 0,
     action,
     overlay: b.overlay
       ? { clip: SEAL_ANIMS.swapMoving, serial: b.overlay - 1, t: b.overlayT, seconds: b.overlaySeconds, reversed: (b.flags & BodyFlag.OverlayReversed) !== 0 }

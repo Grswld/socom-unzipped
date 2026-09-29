@@ -350,6 +350,32 @@ slid. The game plays `seal_run_90r/l` at full stick (1.18x), `seal_rstrafe_fast`
   full-body ones as actions holding the mover, the moving one as `MoverOverlay`, laid by the animator over the parts
   it carries): the WEAPON workstream calls it and `Animator.setWeapon` at the hand-off.
 
+## 6d. Letting go of a diagonal (2026-09-29, the owner's play test)
+
+The owner: "run forward -> run forward-left -> let go of left causes a janky animation cancel". The diagonal is one
+play, not a separate clip: with W+A the stick is (1, -1), `w = 0.5`, and `FUN_00583030` plays `seal_run` x 0.5 and
+`seal_run_90l` x 0.5 at one shared phase. Letting go of A is **`FUN_00586c10`'s snap** (decomp 445037-445050): an
+axis whose last value is past 0.78 (the `+0x248` axis; 0.9 for `+0x24c`) and whose wish moves faster than 7.8 (9) a
+second takes the wish at once -- so `w` goes from 0.5 to 0 in one tick. The game covers that tick: on a snap it calls
+**`FUN_0028e3e0(actor+0x170)`**, the pose snapshot (135387-135414: each node's shown translation and rotation copied to
+its blend source), and writes **0.2** (`0x3e4ccccd`) to `actor+0x178` and `+0x17c` (445051-445055) -- the same two play
+fields `FUN_0028dc90` fills with a new motion's `BlendTime` (`iVar9 + 8`, `+0xc`, after its own `FUN_0028e3e0`). So
+the play runs on (same nodes, same phase: the gait keeps its foot) and the body cross-fades into it from the pose on
+screen over 0.2 s. reCOM names the fields only (`zBody` `m_take_snapshot`, `zAnim` `m_blendtime`).
+
+The viewer took the snap (`throttleStep`) and not the cross-fade (the mover's header listed "the clips' own blend-in
+(0.2 s)" as not modelled). Measured with the real clips and `motion.rdr` (`test/stickSnap.test.ts`, 60 Hz): the
+release tick moved a joint **3.56** units (the mirror 3.56; strafe right then forward 5.94) against a steady stride's
+largest 1.55; now the largest move over the fade is 1.39 (1.40; 1.60 against that script's 1.80), the play and its
+phase unbroken. The press's tail snaps too (the ramp at 5 a second reaches 0.833, and 0.833 -> 1 is 10 a second, past
+7.8), so a 0.2 s fade also starts on the 11th tick of pressing a full side -- as the game's. A crouch walk's diagonal
+(0.669 an axis after the 14 / 14.8 rescale) never snaps; the crouch at full keys runs the standing blend, and snaps.
+
+Ported: `throttleSnaps`, `STICK_SNAP_BLEND`, `Walker.stickSnaps` (every `FUN_00586c10` caller: the stand, the crouch
+walk, the jump's stick), `PlaySnapshot.stickSnaps`; the animator snapshots and fades when the count changes (a new play
+the same tick keeps its own `BlendTime`, as `FUN_0028dc90` writes after); the wire carries its low bit in the body's
+packed byte (bit 7, no size change), so the other screens fade on the same tick.
+
 ## 7. Readings and placeholders (named in the code)
 
 - **Death**: the viewer gets up after `Land forward` (the game dies there: §6c); no damage is kept.

@@ -123,7 +123,7 @@ function writeBody(w: Writer, b: BodyState): void {
   w.u16(qYaw(b.yaw)); w.i16(qPitch(b.pitch));
   w.i16(qSpeed(b.vx)); w.i16(qSpeed(b.vy)); w.i16(qSpeed(b.vz));
   w.u16(b.flags);
-  w.u8((b.stance & 3) | ((b.landing & 3) << 2) | ((b.ground & 3) << 4) | ((b.weapon & 1) << 6));
+  w.u8((b.stance & 3) | ((b.landing & 3) << 2) | ((b.ground & 3) << 4) | ((b.weapon & 1) << 6) | (((b.stickSnaps ?? 0) & 1) << 7));
   w.u8(b.jumps & 0xff);
   w.i8(qStick(b.groundForward)); w.i8(qStick(b.groundRight)); w.i8(b.groundCls);
   w.u8(b.action); w.u8(b.actionSerial & 0xff); w.u16(qSeconds(b.actionT)); w.u16(qSeconds(b.actionSeconds < 0 ? null : b.actionSeconds));
@@ -149,7 +149,7 @@ function readBody(r: Reader): BodyState {
   const peek = r.i8();
   return {
     id, feet, yaw, pitch, vx, vy, vz, flags,
-    stance: packed & 3, landing: (packed >> 2) & 3, ground: (packed >> 4) & 3, weapon: (packed >> 6) & 1,
+    stance: packed & 3, landing: (packed >> 2) & 3, ground: (packed >> 4) & 3, weapon: (packed >> 6) & 1, stickSnaps: (packed >> 7) & 1,
     jumps, groundForward, groundRight, groundCls, action, actionSerial, actionT, actionSeconds, overlay, overlayT, overlaySeconds,
     turnRate, trav, travFrame, travRootY, travBlend, travBlendWeight, peek,
   };
