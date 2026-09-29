@@ -135,6 +135,8 @@ export interface BodyState {
   peek: number;
   /** The weapon in hand: 0 the rifle, 1 the sidearm. */
   weapon: number;
+  /** `PlaySnapshot.stickSnaps`' low bit (the packed byte's spare bit 7): a flip starts the snap's 0.2 s cross-fade. */
+  stickSnaps?: number;
 }
 
 /** `BodyState.flags`. */

@@ -6,7 +6,7 @@ import {
 import { HEAD_LOOK_NODES, HeadLook, lookFractions } from './headLook';
 import type { MotionTable } from './motionTable';
 import type { LandingKind } from './physics';
-import type { GroundMotion, MoverAction, Stance } from './walk';
+import { STICK_SNAP_BLEND, type GroundMotion, type MoverAction, type Stance } from './mover';
 
 /**
  * The SEAL's clips on the mover, played the game's way (web sprint 2 W2.2b; the motion workstream's port, web/docs/
@@ -75,6 +75,11 @@ export interface MoverSnapshot {
   stance?: Stance;
   /** The ground state and its stick (`Walker.ground`); absent or `idle`: no locomotion. */
   ground?: GroundMotion;
+  /**
+   * `Walker.stickSnaps` (or its low bit, from the wire): when it changes, `FUN_00586c10` snapped a stick axis back and
+   * the play cross-fades from the pose on screen over `STICK_SNAP_BLEND`, 0.2 s (decomp 445051-445055). Absent: none.
+   */
+  stickSnaps?: number;
   /** The action holding the mover, or none. */
   action?: MoverAction | null;
   /**
@@ -477,6 +482,8 @@ export class Animator {
   private rootTurn: [number, number, number, number] | null = null;
   /** TRAVERSAL SEAM: the move's play has had its first key (its phase is the move's, not the one carried over). */
   private traversalStarted = false;
+  /** The last `MoverSnapshot.stickSnaps` seen: a change is a snap's cross-fade. */
+  private lastSnaps: number | undefined = undefined;
 
   constructor(private readonly skeleton: Skeleton, clips: Iterable<MotionClip>, private readonly table: MotionTable | null, options: AnimatorOptions = {}) {
     for (const c of clips) this.motions.set(c.name, motionOf(c, entryOf(c.name, table)));
@@ -518,6 +525,8 @@ export class Animator {
     // The controller's look request runs every tick (FUN_00596f10 -> FUN_00600550), whatever the body plays.
     this.look.request(dt, (mover.turnRate ?? 0) / SEAL_TUNING.turnMaxRate);
     this.lookDt = dt;
+    const snapped = mover.stickSnaps !== undefined && this.lastSnaps !== undefined && mover.stickSnaps !== this.lastSnaps;
+    this.lastSnaps = mover.stickSnaps;
     if (mover.traversal) { this.traversalStep(dt, mover.traversal, mover); return; }
     this.rootOverride = null;
     this.rootTurn = null;
@@ -528,6 +537,7 @@ export class Animator {
     else if (wanted.rebuild) play.nodes = wanted.nodes();
     if (!play.nodes.length) return;
     if (play !== this.play) this.play = play;
+    else if (snapped) this.snapshot(STICK_SNAP_BLEND);         // FUN_00586c10's snap: FUN_0028e3e0, 0.2 s
     else this.blendElapsed += dt;
 
     const before = play.phase;
@@ -665,6 +675,19 @@ export class Animator {
     this.feet = { left: false, right: false };
     this.emit({ kind: 'play', clip: main!.name, play: wanted.key });
     return play;
+  }
+
+  /**
+   * `FUN_0028e3e0` on the playing play: the pose on screen frozen, and a cross-fade from it over `seconds` into the play
+   * as it runs on -- same nodes, same phase. `FUN_00586c10` does this when it snaps a stick axis (0.2 s), which is what
+   * keeps letting go of a diagonal's side from popping the body from the blend to the straight run in one tick.
+   */
+  private snapshot(seconds: number): void {
+    const play = this.play;
+    if (!play || !play.nodes.length) return;
+    this.from = { name: this.main(play).motion.name, pose: this.shown.map((l) => ({ q: [...l.q], t: [...l.t] })) };
+    this.blendElapsed = 0;
+    this.blendLength = seconds;
   }
 
   /** The play's heaviest node: its clip names the play in the stats. */

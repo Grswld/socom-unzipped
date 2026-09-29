@@ -61,8 +61,8 @@ import type { TraversalPose } from './animator';
  *   stick's, not the speed's: 0 to full in 1 / 5 s, 90 % on tick 11 (0.18 s). `fb_accel` / `lr_accel`
  *   (`DAT_0044c360/364`, `dynamics.rdr` 0.01) and `throt_exp` have no reader in the decompilation besides the
  *   static initialiser `FUN_00400870` and the loader: they do not shape the SEAL's walk. Not modelled: the slope
- *   and water slow-down `FUN_005b56c0` (`DAT_0044c358/35c`), the clips' own blend-in (0.2 s), and the root
- *   motion's shape within a stride. One consequence is kept as read: `FUN_00582d10` calls `FUN_00583350`, whose
+ *   and water slow-down `FUN_005b56c0` (`DAT_0044c358/35c`) and the root motion's shape within a stride
+ *   (the snap's 0.2 s cross-fade is modelled: `throttleSnaps`, `Walker.stickSnaps`). One consequence is kept as read: `FUN_00582d10` calls `FUN_00583350`, whose
  *   `DAT_0064fc80` then scales the crouch walk's single set, so a crouch diagonal runs 1 / sqrt(w^2 + (1 - w)^2)
  *   faster along its class's axis (19.8 at 45 degrees). Research 18 section 3.13's 0.9 s "lead" and its average of
  *   40 are the orbit camera trailing the actor on our recomp at 18.7 frames a second, not this ramp. [reading of
@@ -215,14 +215,28 @@ const FORWARD_DEAD = 0.03;
 const MAX_SLOPE_COS = Math.cos((SEAL_TUNING.maxSlopeDeg * Math.PI) / 180);
 
 /**
+ * `FUN_00586c10`'s snap on one axis (decomp 445037-445050): last tick's value past `at` (0.78 lateral, 0.9 forward) and
+ * the wish moving faster than `rate` (7.8, 9) a second -- a full axis let go or thrown across. The axis takes the wish
+ * at once, and the game snapshots the pose on screen and cross-fades from it over `STICK_SNAP_BLEND`
+ * (`FUN_0028e3e0(actor+0x170)`, then `actor+0x178 = actor+0x17c = 0x3e4ccccd`, 445051-445055): `Walker.stickSnaps`
+ * counts them for the animator.
+ */
+export function throttleSnaps(prev: number, target: number, axis: 'forward' | 'right', dt: number = TICK): boolean {
+  const snap = SNAP[axis];
+  return Math.abs(prev) > snap.at && Math.abs(target - prev) / dt > snap.rate;
+}
+
+/** The cross-fade `FUN_00586c10` starts on a snap, seconds (`0x3e4ccccd`, decomp 445053-445054). */
+export const STICK_SNAP_BLEND = 0.2;
+
+/**
  * One tick of `FUN_00586c10` on one stick axis: `prev` is last tick's value, `target` the pad's; the value the
  * mover uses this tick. `forward` takes `lower/upper_z_accel`, `right` `lower/upper_x_accel` (`dynamics.rdr` 2 and
  * 5; the game's x is the actor's lateral, its z the forward).
  */
 export function throttleStep(prev: number, target: number, axis: 'forward' | 'right', dt: number = TICK): number {
   const [lo, hi] = axis === 'forward' ? SEAL_TUNING.accelZ : SEAL_TUNING.accelX;
-  const snap = SNAP[axis];
-  if (Math.abs(prev) > snap.at && Math.abs(target - prev) / dt > snap.rate) return target;
+  if (throttleSnaps(prev, target, axis, dt)) return target;
   const rest = (1 - Math.abs(target)) ** 2;
   const limit = lo + (hi - lo) * (1 - (rest * rest) ** 2);
   if (Math.abs(target - prev) / dt <= limit) return target;
@@ -396,6 +410,8 @@ export interface PlaySnapshot {
   jumps: number;
   /** The ground state and its stick (`GroundMotion`): what the locomotion clips play by. */
   ground: GroundMotion;
+  /** `Walker.stickSnaps`: a change starts the snap's 0.2 s cross-fade (`FUN_00586c10`); over the wire its low bit. */
+  stickSnaps?: number;
   /** The action holding the mover, or null. */
   action: MoverAction | null;
   /** The upper-body overlay over the locomotion (the moving swap), or null. */
@@ -680,6 +696,8 @@ export class Walker {
   private ground_: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
   /** The ground state the feet left the floor in: the play the launch or the fall was pushed over (`land`). */
   private groundBefore: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
+  /** `FUN_00586c10`'s snaps so far (`throttleSnaps`): each one a cross-fade of `STICK_SNAP_BLEND` in the animator. */
+  private stickSnaps_ = 0;
 
   /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
   get stance(): Stance {
@@ -770,6 +788,22 @@ export class Walker {
   /** The ground state as it last ran (`GroundMotion`). */
   get ground(): GroundMotion {
     return this.ground_;
+  }
+
+  /**
+   * How many ticks `FUN_00586c10` snapped an axis (`throttleSnaps`): the game snapshots the pose each time and
+   * cross-fades from it over 0.2 s (`STICK_SNAP_BLEND`); the animator starts that fade when the count moves.
+   */
+  get stickSnaps(): number {
+    return this.stickSnaps_;
+  }
+
+  /** `FUN_00586c10` on both axes against last tick's: the ramped stick in the state, a snap counted once a tick. */
+  private throttle(forward: number, right: number, dt: number): void {
+    const s = this.state;
+    if (throttleSnaps(s.stickForward, forward, 'forward', dt) || throttleSnaps(s.stickRight, right, 'right', dt)) this.stickSnaps_++;
+    s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
+    s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
   }
 
   private start(name: MoverActionName, seconds: number | null, reversed = false): void {
@@ -1076,8 +1110,7 @@ export class Walker {
     const s = this.state;
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
     if (idle(forward, right)) { s.stickForward = forward; s.stickRight = right; return { forward: 0, right: 0 }; }
-    s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
-    s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
+    this.throttle(forward, right, dt);
     const b = airBands(this.stance_ === 'crouch' ? 'crouch' : 'stand', null);
     return {
       forward: s.stickForward * (s.stickForward >= 0 ? b.forward : b.back),
@@ -1114,8 +1147,7 @@ export class Walker {
       const run = push >= CROUCH_RUN && (STANCE[this.posture_].rootY >= 9 || this.headroom());
       if (!run) {
         const k = CROUCH_WALK / push;
-        s.stickForward = throttleStep(s.stickForward, forward * k, 'forward', dt);
-        s.stickRight = throttleStep(s.stickRight, right * k, 'right', dt);
+        this.throttle(forward * k, right * k, dt);
         this.posture_ = 'crouch';
         this.ground_ = { state: 'crouch', forward: s.stickForward, right: s.stickRight, cls: this.cls };
         // FUN_00582d10: one set by the class at m, no blend; FUN_00583350's DAT_0064fc80 scales it all the same.
@@ -1132,8 +1164,7 @@ export class Walker {
     } else {
       this.posture_ = 'stand';
     }
-    s.stickForward = throttleStep(s.stickForward, forward, 'forward', dt);
-    s.stickRight = throttleStep(s.stickRight, right, 'right', dt);
+    this.throttle(forward, right, dt);
     this.ground_ = { state: 'stand', forward: s.stickForward, right: s.stickRight, cls: this.cls };
     return locomotion(s.stickForward, s.stickRight, STANCE.stand.bands);   // FUN_00583030
   }
@@ -1393,7 +1424,7 @@ export function moverSnapshot(w: Walker, moves: TraversalHooks | null, jumps: nu
     feet: w.drawnFeet(), yaw: s.yaw, pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
     airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
     landing: w.landing?.kind ?? null, jumps,
-    ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate,
+    ground: { ...w.ground }, stickSnaps: w.stickSnaps, action: w.action && { ...w.action }, turnRate,
     traversal: moves?.pose() ?? null, peek: moves?.peeking() ?? 0,
     overlay: w.overlay && { ...w.overlay },
   };
