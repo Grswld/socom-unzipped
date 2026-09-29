@@ -26,6 +26,10 @@ export const HUD_LIBRARIES = {
   ],
   HUD2: [
     'newweapnbkrnd.tif', 'compass_lo.tif', 'compass_bkrnd.tif', 'team_background.tif', 'teammate_health.tif',
+    // The tactical map's and the compass marks' (research 87 §9, §10): the view cone, the edge arrows, the marks' arrow,
+    // and the nav letters C..Z.
+    'fov.tif', 'hud_arrow_off2.tif', 'ret_triangle.tif',
+    ...Array.from({ length: 24 }, (_, i) => `ret_nav_${String(i + 1).padStart(2, '0')}.tif`),
   ],
   HUDW: ['m4carbine_icon.tif', 'firemode.tif'],
   FONT: ['font_text_01.tif'],

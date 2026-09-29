@@ -21,6 +21,8 @@ import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, place
 import { DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
 import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
 import { readHud, type HudBitmaps } from './hudAssets';
+import { readMapActions, type MapAction } from './mapActions';
+import { readTacData, type TacData } from './tacMap';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -154,6 +156,10 @@ export interface LoadedMap {
   bulletMark?: Rgba | null;
   /** The in-game HUD's bitmaps off `HUD_TXR`/`HUD2_TXR`/`HUDW_TXR`/`FONT_TXR` (`./hudAssets`, research 87), top row first. */
   hud?: HudBitmaps;
+  /** The map's own context actions, `READERM.ZAR/actions.rdr` on placed nodes (`./mapActions`, research 87 §5). */
+  actions?: MapAction[];
+  /** The tactical map's lines, zones and named points, `AIMAPS.MPS` in world units (`./tacMap`, research 87 §9). */
+  tac?: TacData | null;
   diagnostics: string[];
   loadMs: number;
   /**
@@ -395,6 +401,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   for (const line of bulletMark.diagnostics) notes.add(line);
   const hud = readHud(bytes, toc);
   for (const line of hud.diagnostics) notes.add(line);
+  const actions = readMapActions(bytes, toc, stem);
+  for (const line of actions.diagnostics) notes.add(line);
+  const tac = readTacData(bytes, toc);
+  for (const line of tac.diagnostics) notes.add(line);
   return {
     archive: stem,
     lines: segments.result(),
@@ -419,6 +429,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     reticle: reticle.bitmaps,
     bulletMark: bulletMark.rgba,
     hud: hud.bitmaps,
+    actions: actions.actions,
+    tac: tac.data,
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
     timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },

@@ -137,6 +137,10 @@ export interface ViewerHook {
   hud(): HudView;
   /** The HUD's inputs the walk does not drive yet (a prompt, a message, the fire mode, the team list), for the tests. */
   setHud(patch: HudPatch): HudView;
+  /** The tactical map (`./tacMap`, research 87 §9): open or not, its zoom (world units across its box), pan, heading. */
+  tacMap(): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
+  /** Opens or closes it as `M` (SELECT) does, the heading the camera's now. */
+  setTacMap(open: boolean): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

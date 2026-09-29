@@ -22,6 +22,8 @@ import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { Hud, RangeFinder } from './hud';
+import { actionInReach } from './mapActions';
+import { TacMap } from './tacMap';
 import { buildBody, type BodyView } from './bodyView';
 import { Fire } from './fire';
 import { HELD_RIFLE } from '@s2u/scene';
@@ -80,6 +82,12 @@ const reticle = new Reticle();
 /** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
 const hud = new Hud();
 const rangeFinder = new RangeFinder();
+/** SOCOM II's tactical map (`./tacMap`, research 87 §9): `M` while walking (SELECT on the console), in the HUD pass. */
+const tacMap = new TacMap(() => walk.mode() === 'walk');
+tacMap.bindKey(globalThis, () => fly.pose().yaw);
+tacMap.onToggle = (open) => hud.setTacMapOpen(open);
+const feetXZ = (): [number, number] | null => { const f = walk.feet(); return f ? [f[0], f[2]] : null; };
+hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes));
 /**
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
@@ -539,12 +547,16 @@ async function boot(): Promise<void> {
       // The run's spread (W2.4's estimate) or a round's knock (W2.5, `ZWEAPON.ZAR/zweapon.rdr`), the larger.
       reticle.setSpread(Math.max(walk.speed() / RUN_SPEED, fire.spread()));
     }
-    reticle.setVisible(walking);
+    if (!walking) tacMap.setOpen(false);
+    tacMap.frame(dt);
+    reticle.setVisible(walking && !tacMap.isOpen());
     reticle.render(created.renderer);
     hud.setVisible(walking);
     hud.feed({
       magazine: fire.state().magazine, yaw: fly.pose().yaw, stance: walk.posture(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
+      nearby: walking && actionInReach(loaded?.actions ?? [], walk.feet(), ['DOOR']) ? 'door' : null,
+      position: walking ? feetXZ() : null,
     });
     hud.render(created.renderer);
 
@@ -633,6 +645,8 @@ function show(map: LoadedMap): void {
   }
   reticle.setBitmaps(map.reticle);
   hud.setBitmaps(map.hud);
+  hud.setNavPoints((map.tac?.points ?? []).filter((p) => p.kind === 1));
+  tacMap.setOpen(false);
   fire.reset();                                   // a new map: no marks, full magazines
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
@@ -808,5 +822,7 @@ window.__viewer = {
   setGear: (name, on) => play.setGearVisible(name, on),
   hud: () => hud.state(),
   setHud: (patch) => { hud.patch(patch); return hud.state(); },
+  tacMap: () => tacMap.state(),
+  setTacMap: (open) => { tacMap.setOpen(open, fly.pose().yaw); return tacMap.state(); },
   revision,
 } satisfies ViewerHook;
