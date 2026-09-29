@@ -7,6 +7,7 @@ import type { GroundWish, Pose } from './camera';
 import { airBands, oneShotSeconds, SEAL_ANIMS } from './locomotion';
 import { landingKind, sealTuning, type LandingKind } from './physics';
 import type { TraversalPose } from './animator';
+import { SCOPE_SLOW } from './zoom';
 
 /**
  * Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): a mover that stands on the floor the engine's probe finds,
@@ -522,6 +523,81 @@ export const ACTION_CLIPS = Object.freeze({
   swapProne: { playback: 1.8, frames: 38, noInterrupt: 1, travel: [0, 0] },
 } as const);
 
+/**
+ * The movement locks (the owner, 2026-09-29: "SOCOM should lock your movement when throwing a grenade or planting
+ * certain equipment"): the one-shots the kit pushes on the actor's action stack (`FUN_00588bc0`), by clip. The rule:
+ *
+ * - **What locks.** A throw (`FUN_005802b0` pushes `GetThrowAnim`'s clip at the release of the button, decomp
+ *   441900-441903), the claymore's placing (`Place claymore`, `seal_place_claymore`), and a reload started still
+ *   crouched (`|v|^2 <= 400`) or prone (`FUN_005a82e0` 462786-462930: `Rifle crouch reload` / `Rifle prone reload`, the
+ *   pistol's `Pistol ...`). None is a `BlendOverlay` motion, so each goes on the stack itself, not on the second
+ *   channel over the locomotion; with a non-looped entry on top `FUN_00550ef0` does not run the ground state
+ *   (418172-418246: `FUN_005870e0` only when the entry is cut), so the SEAL moves by the clip's root alone
+ *   (`FUN_0028c250`): not at all on a throw (one root key), 0.4 over the claymore's 2.4 s.
+ * - **A full lock, not a slow-down; the turn stays free.** The move axes are not scaled, they are not read; the turn
+ *   (`actor+0x23c`) is zeroed only for a clip flagged `NoTurn` (`FUN_00587e00` at 418689-418692), and none of these is.
+ * - **When it ends.** When a move axis or the turn passes 0.1 once the clip's phase is past its `NoInterrupt`
+ *   (`FUN_00587c20` 445514-445576 with the stick test at 418180-418190), or at the clip's end. Every throw's release
+ *   comes before its `NoInterrupt` (0.46 / 0.49 standing, the toss 0.69 / 0.75, crouched 0.70 / 0.8, prone 0.66 and
+ *   0.56 / 0.9, the peeks' 0.55 and 0.87 / 0.9), so the grenade is always out first; the claymore is down at 1.3 s, its
+ *   `NoInterrupt` 0.9 is 2.39 s.
+ * - **What does not lock.** Holding the throw (the power's chase, `FUN_00594cf0` 0x595ea0-0x595f28: nothing there
+ *   touches the move axes); the standing reload (`seal_reload` has no `NoInterrupt`: the first push cuts it, and
+ *   `FUN_00550ef0` 418202-418214 carries it on as `Moving rifle reload`, the upper body's); a reload started moving
+ *   (that overlay from the start); the Detonator (`CZKit_DetonateRemoteExplosives` plays no SEAL clip); a door (the
+ *   action runs the door's zAnim, `FUN_002b44e0` from `FUN_00592d50` 452017-452018, which moves the leaf, not the SEAL).
+ *
+ * Each as `motion.rdr`'s `playback` and `NoInterrupt` and `MOTION_P.ZAR`'s key count and root travel, pinned against
+ * both by `test/moverHold.test.ts`. `still`: only started at 20 a second or under (`FUN_005a82e0`'s `bVar3`).
+ */
+export const HOLD_CLIPS = Object.freeze({
+  seal_throwgrenade: { playback: 1.6, frames: 28, noInterrupt: 0.49, travel: [0, 0], still: false },
+  seal_tossgrenade: { playback: 1.6, frames: 30, noInterrupt: 0.75, travel: [0, 0], still: false },
+  seal_crouch_throwgrenade: { playback: 1.1, frames: 19, noInterrupt: 0.8, travel: [0, 0], still: false },
+  seal_prone_throwgrenade: { playback: 1.6, frames: 27, noInterrupt: 0.9, travel: [0, 0], still: false },
+  seal_prone_tossgrenade: { playback: 1.1, frames: 27, noInterrupt: 0.9, travel: [0, 0], still: false },
+  seal_toss_rlean: { playback: 1.25, frames: 35, noInterrupt: 0.9, travel: [0, 0], still: false },
+  seal_toss_llean: { playback: 1.2, frames: 28, noInterrupt: 0.9, travel: [0, 0], still: false },
+  seal_place_claymore: { playback: 2.7, frames: 55, noInterrupt: 0.9, travel: [-0.36, 0.23], still: false },
+  seal_crouch_reload: { playback: 1.9, frames: 28, noInterrupt: 0.35, travel: [0.28, -0.19], still: true },
+  seal_p_crouch_reload: { playback: 1.7, frames: 29, noInterrupt: 0.35, travel: [0.02, 0.04], still: true },
+  seal_prone_reload: { playback: 1.7, frames: 30, noInterrupt: 0.5, travel: [-0.03, 0.01], still: false },
+  seal_p_prone_reload: { playback: 1.7, frames: 31, noInterrupt: 0.5, travel: [0.02, -0.01], still: false },
+} as const);
+export type HoldClip = keyof typeof HOLD_CLIPS;
+
+/** The holds in a fixed order: the wire sends a hold as its index here plus 1 (`./net/protocol` `holdBits`). */
+export const HOLD_CODES: readonly HoldClip[] = Object.freeze(Object.keys(HOLD_CLIPS) as HoldClip[]);
+
+/** How long each runs if nothing cuts it: the one-shot's run to its last key (`oneShotSeconds`, `FUN_0028c4f0`). */
+export const HOLD_SECONDS: Readonly<Record<HoldClip, number>> = Object.freeze(Object.fromEntries(
+  Object.entries(HOLD_CLIPS).map(([k, c]) => [k, oneShotSeconds(c.playback, c.frames)]),
+) as Record<HoldClip, number>);
+
+/** Whether a clip name is one of the holds. */
+export const isHoldClip = (clip: string): clip is HoldClip => Object.prototype.hasOwnProperty.call(HOLD_CLIPS, clip);
+
+/**
+ * The reload's clip that holds the mover (`FUN_005a82e0`, decomp 462786-462930), or null: crouched `Rifle crouch
+ * reload` / `Pistol crouch reload`, prone `Rifle prone reload` / `Pistol prone reload`; standing none -- `seal_reload`
+ * gives way to the first push and goes on over the locomotion (the header of `HOLD_CLIPS`). Whether the SEAL is still
+ * enough for the crouched one is `Walker.hold`'s test.
+ */
+export function reloadHold(stance: Stance, pistol: boolean): HoldClip | null {
+  if (stance === 'crouch') return pistol ? 'seal_p_crouch_reload' : 'seal_crouch_reload';
+  if (stance === 'prone') return pistol ? 'seal_p_prone_reload' : 'seal_prone_reload';
+  return null;
+}
+
+/** A hold on the mover: its clip and seconds since it started. */
+export interface MoverHold { clip: HoldClip; t: number; seconds: number }
+
+/**
+ * `DAT_00650638`: the move stick in the 9x view or a scope (`FUN_005966a0` 453818-453821: both axes x 0.2 when
+ * `FUN_005b9990` or `FUN_005b90f0` answers, before the controller stores them) -- `./zoom`'s `SCOPE_SLOW`.
+ */
+export const SCOPED_STICK = SCOPE_SLOW;
+
 /** `Moving rifle -> Pistol` (`seal_mv_rifle2pistol`, 21 keys, `playback` 1.32, `BlendOverlay`): the swap on the move. */
 export const SWAP_OVERLAY = { playback: 1.32, frames: 21 } as const;
 
@@ -705,6 +781,15 @@ export class Walker {
   private groundBefore: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
   /** `FUN_00586c10`'s snaps so far (`throttleSnaps`): each one a cross-fade of `STICK_SNAP_BLEND` in the animator. */
   private stickSnaps_ = 0;
+  /** The kit's one-shot holding the mover (`HOLD_CLIPS`: a throw, the claymore's placing, a still reload), or null. */
+  private hold_: MoverHold | null = null;
+
+  /**
+   * In the 9x view or a scope (the page: `./zoom`'s state 4 and up; the server: the command's `Button.Scope`): the move
+   * stick x `SCOPED_STICK` before anything reads it (`FUN_005966a0` 453818-453821) -- the ground state, the ramp, the
+   * stick's cut of an action, a move's own tick.
+   */
+  scoped = false;
 
   /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
   get stance(): Stance {
@@ -745,6 +830,36 @@ export class Walker {
   /** The action holding the mover (`MoverAction`), or null. */
   get action(): MoverAction | null {
     return this.action_;
+  }
+
+  /** The kit's one-shot holding the mover (`hold`), or null. */
+  get holding(): MoverHold | null {
+    return this.hold_;
+  }
+
+  /**
+   * The kit's one-shot starts now and holds the mover (`HOLD_CLIPS`' header: a throw's clip at the button's release, the
+   * claymore's placing, a crouched or prone reload): the ground state stops, the clip's root moves the SEAL, and the
+   * stick or the turn cut it only past its `NoInterrupt`. Refused (false) for a clip that is no hold, in the air, and
+   * for a `still` one (the crouched reload) above 20 a second -- the game plays the moving reload over the locomotion
+   * then. The page's kit calls it (`WalkMode.hold`), the server's command (`./net/moverSim`).
+   */
+  hold(clip: string): boolean {
+    if (!isHoldClip(clip) || this.inAir) return false;
+    const s = this.state;
+    if (HOLD_CLIPS[clip].still && s.vx * s.vx + s.vz * s.vz + s.vy * s.vy > 400) return false;
+    this.hold_ = { clip, t: 0, seconds: HOLD_SECONDS[clip] };
+    return true;
+  }
+
+  /** `FUN_00587c20` with `FUN_00550ef0`'s stick test, for the hold: past its `NoInterrupt`, a move axis or the turn past 0.1. */
+  private holdCut(forward: number, right: number): boolean {
+    const h = this.hold_;
+    if (!h) return false;
+    const c = HOLD_CLIPS[h.clip];
+    if (!(h.t / (c.playback * ((c.frames - 1) / c.frames)) > c.noInterrupt)) return false;
+    return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK
+      || Math.abs(this.turn / SEAL_TUNING.turnMaxRate) > INTERRUPT_STICK;
   }
 
   /** The upper-body overlay playing over the locomotion (the moving swap), or null. */
@@ -859,11 +974,18 @@ export class Walker {
    * backwards. The phase is the one-shot's `t / (playback (n - 1) / n)`, from its end when backwards.
    */
   actionVelocity(name: keyof typeof ACTION_CLIPS, t: number, reversed: boolean): [number, number] {
-    const c = ACTION_CLIPS[name], n = c.frames, end = (n - 1) / n;
-    const keys = this.actionRoots?.get(SEAL_ANIMS[name]);
+    return this.clipVelocity(SEAL_ANIMS[name], ACTION_CLIPS[name], ACTION_SECONDS[name], t, reversed);
+  }
+
+  /** `actionVelocity` for any one-shot: its clip's name, its constants and its length. */
+  private clipVelocity(
+    clip: string, c: { playback: number; frames: number; travel: readonly number[] }, seconds: number, t: number, reversed: boolean,
+  ): [number, number] {
+    const n = c.frames, end = (n - 1) / n;
+    const keys = this.actionRoots?.get(clip);
     if (!keys || keys.length < 2 * n) {
-      const v = (reversed ? -1 : 1) / ACTION_SECONDS[name];
-      return [c.travel[0] * v, c.travel[1] * v];
+      const v = (reversed ? -1 : 1) / seconds;
+      return [c.travel[0]! * v, c.travel[1]! * v];
     }
     const run = t / (c.playback * end);
     const phase = Math.min(end, Math.max(0, reversed ? end - run : run));
@@ -908,6 +1030,7 @@ export class Walker {
    */
   setAirborne(on: boolean, vy = 0): void {
     this.action_ = null;
+    this.hold_ = null;
     this.jumping = false; this.jumpDelay = 0;
     if (on) {
       this.takeOff();
@@ -935,6 +1058,7 @@ export class Walker {
     this.landing_ = null;
     this.action_ = null;
     this.overlay_ = null;
+    this.hold_ = null;
     this.jumpLock = 0; this.jumpDelay = 0; this.jumping = false; this.carried = [0, 0];
     this.floorNormalY = floor.normal[1];
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
@@ -966,7 +1090,7 @@ export class Walker {
    */
   jump(): boolean {
     if (this.inAir || this.jumpLock > 1e-9 || this.stance_ === 'prone') return false;
-    if (this.action_) return false;                              // every action the walk plays is a one-shot
+    if (this.action_ || this.hold_) return false;               // every action the walk plays is a one-shot, the holds too
     if (this.floorNormalY < MAX_SLOPE_COS) return false;
     const s = this.state;
     if (s.vx * s.vx + s.vz * s.vz + s.vy * s.vy >= RUNNING_JUMP_SPEED * RUNNING_JUMP_SPEED) {
@@ -983,6 +1107,7 @@ export class Walker {
 
   /** Leaves the floor: the velocity across it carried (`actor+0x1350 = +0x38`), the fall from 0. */
   private takeOff(): void {
+    this.hold_ = null;                                           // off the floor, the fall's clip takes the stack
     this.groundBefore = this.ground_;
     this.inAir = true;
     this.landing_ = null;
@@ -1040,6 +1165,11 @@ export class Walker {
   tick(input: WalkInput, dt: number = TICK): void {
     const s = this.state;
     this.prev = { x: s.x, y: s.y, z: s.z };
+    if (this.scoped) {
+      // FUN_005966a0 453818-453821: the pad's axes (each clamped, `./moveStick`) x 0.2 in the 9x view or a scope.
+      const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
+      input = { ...input, forward: clamp(input.forward) * SCOPED_STICK, right: clamp(input.right) * SCOPED_STICK };
+    }
     if (this.driver?.tick(this, input, dt)) return;               // TRAVERSAL SEAM: a ladder or a climb has the tick
     this.jumpLock = Math.max(0, this.jumpLock - dt);
     const o = this.overlay_;
@@ -1057,6 +1187,8 @@ export class Walker {
         else this.action_ = null;
       }
     }
+    const h = this.hold_;
+    if (h) { h.t += dt; if (h.t >= h.seconds - 1e-9) this.hold_ = null; }
     // The pad reader clamps each axis to +-1 and never puts the pair in the unit disc (`./moveStick`): a full
     // diagonal is (1, 1), which the standing blend takes as min(1, |stick|) and prone as one axis at 1.
     let forward = Math.max(-1, Math.min(1, input.forward)), right = Math.max(-1, Math.min(1, input.right));
@@ -1073,6 +1205,22 @@ export class Walker {
         this.overlay_ = { clip: SEAL_ANIMS.swapMoving, serial: ++this.serial, t: phase * seconds, seconds, reversed: cut.reversed };
         this.action_ = null;
       } else this.action_ = null;
+    }
+    const hold = this.hold_;
+    if (hold && !this.action_) {
+      if (this.holdCut(forward, right)) this.hold_ = null;       // FUN_00587c20: cut; the ground state takes over
+      else {
+        // The kit's one-shot on top of the stack: no ground state (FUN_00550ef0 418172-418246); the clip's root alone
+        // moves the SEAL (FUN_0028c250), along the facing. The stick is read, not obeyed.
+        s.stickForward = forward; s.stickRight = right;
+        this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
+        const [tx, tz] = this.clipVelocity(hold.clip, HOLD_CLIPS[hold.clip], hold.seconds, hold.t, false);
+        const yaw = (s.yaw * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
+        s.vx = tx * c + tz * sn;
+        s.vz = -tx * sn + tz * c;
+        this.move(s.vx * dt, s.vz * dt);
+        return;
+      }
     }
     const held = this.action_?.name;
     if (held === 'hit' || held === 'hitStomach' || held === 'landDeath' || held === 'getUp'
@@ -1420,11 +1568,11 @@ export class Walker {
 
 /**
  * The root keys of the clips the mover plays as actions (`./walk` `ACTION_CLIPS`: the hits, the death landing, the
- * get-up, the transitions), x and z a key in the model's frame: what the mover's per-key root motion reads
- * (`Walker.actionVelocity`, `FUN_0028c250`).
+ * get-up, the transitions) and holds (`HOLD_CLIPS`: the claymore's placing, the reloads), x and z a key in the model's
+ * frame: what the mover's per-key root motion reads (`Walker.actionVelocity`, `FUN_0028c250`).
  */
 export function actionRoots(clips: readonly MotionClip[]): Map<string, Float32Array> {
-  const wanted = new Set<string>(Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]));
+  const wanted = new Set<string>([...Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]), ...HOLD_CODES]);
   const out = new Map<string, Float32Array>();
   for (const c of clips) {
     if (!wanted.has(c.name)) continue;

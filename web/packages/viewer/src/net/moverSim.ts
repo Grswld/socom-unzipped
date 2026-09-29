@@ -1,6 +1,6 @@
 import { STANCES, type Stance, type SwapPick, type TraversalHooks, type Walker, type WalkInput, type PlaySnapshot } from '../mover';
 import { moverSnapshot } from '../mover';
-import { Button, STANCE_CODES, type Command } from './protocol';
+import { Button, holdOf, STANCE_CODES, type Command } from './protocol';
 
 /**
  * One command applied to a mover (web sprint 3, W3.R8): the page's prediction and the server run every tick through
@@ -42,6 +42,7 @@ export class MoverSim {
     w.state.pitch = cmd.pitch;
     w.turn = cmd.turn;
     const b = cmd.buttons;
+    w.scoped = (b & Button.Scope) !== 0;                         // FUN_005966a0: the stick x 0.2 in the 9x view or a scope
     m?.lean((b & Button.LeanLeft) ? -1 : (b & Button.LeanRight) ? 1 : 0);
     m?.holdAction?.((b & Button.ActionHeld) !== 0);
     if (b & Button.Action) m?.action();
@@ -56,6 +57,8 @@ export class MoverSim {
         if (swap) this.weapon = to;
       }
     }
+    const hold = holdOf(b);
+    if (hold) w.hold(hold);                                      // the kit's one-shot: a throw, the claymore, a still reload
     if (out) { out.jumped = jumped; out.stance = w.stance; out.swap = swap; }
     return { forward: cmd.forward, right: cmd.right, boost: (b & Button.Boost) !== 0 };
   }

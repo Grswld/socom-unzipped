@@ -443,9 +443,10 @@ the round event's `through`); the eye's ray to the point under the reticle passe
   5.0 / 9.8 at 30-40 s, frozen at 40.3 s (f 0.2); crouched frozen at 32 s; **prone 6.3 / 11.1 to 2 s, 3.6 / 5.7 at
   5-8 s, frozen at 8.05 s** (483 ticks: `(1 − 0.2/60)^n ≤ 0.2`). Any move stick pins it back at 1; a look adds 0.1 ×
   the turn axis a tick. Client-only: the server walks the client's deflected direction.
-- **Not ported, found here:** the move stick's × 0.2 while scoped (453818-453821) reaches the exertion's throttles
-  (`main.ts`) but **not the mover**: the shared `Walker` moves at full speed in the scope (its owner's to add, with
-  the server's `Button.Aim`).
+- **Found here, ported since:** the move stick's × 0.2 while scoped (453818-453821) reached the exertion's throttles
+  (`main.ts`) but not the mover, which walked at full speed in the scope. Now the shared `Walker` takes it
+  (`Walker.scoped`, research 80 section 6e), and the server's from the command's `Button.Scope` (not `Button.Aim`,
+  which the night vision sets too).
 
 ## 18. The magazines: the ring, the reload, the ammo box (2026-09-29)
 

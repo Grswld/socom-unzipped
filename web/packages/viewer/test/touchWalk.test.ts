@@ -39,8 +39,8 @@ describe('the layout in the page', () => {
     const lanes = new Set([...document.querySelectorAll<HTMLElement>('#touch-walk button[data-lane]')].map((b) => b.dataset['lane']));
     const skipped = PAD_LAYOUT.filter((r) => r.action !== 'move' && r.action !== 'look' && !lanes.has(r.action)).map((r) => r.action);
     // The sticks move and look; the mode is the panel's switch; the boost is the fly camera's alone; the fire mode, the
-    // weapon slots (NEXT steps through them), the peek and the scoreboard are left to a pad (owner, 2026-09-29: tidied).
-    expect(skipped.sort()).toEqual(['boost', 'fireMode', 'leanLeft', 'leanRight', 'mode', 'scoreboard', 'swap1', 'swap2']);
+    // weapon slots (NEXT steps through them), the peek and the scoreboard are left to a pad (owner, 2026-09-29: tidied); the reload (the pad's R3) is the touch's own `data-do="reload"` button, not a lane.
+    expect(skipped.sort()).toEqual(['boost', 'fireMode', 'leanLeft', 'leanRight', 'mode', 'reload', 'scoreboard', 'swap1', 'swap2']);
   });
 
   it('every button is named, and the face buttons wear the pad\'s glyphs', () => {

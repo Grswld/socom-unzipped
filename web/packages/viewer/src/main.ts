@@ -204,7 +204,9 @@ grenade.on('equip', (on) => {
   // (to its first person, here third: owner, 2026-09-29); what a scoped grenade does was not traced -- research 84 section 7].
   if (on && zoom.state() >= 4) setZoom(0);
 });
-grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
+// The throw's clip (and the claymore's placing) holds the mover as the game's one-shot does: the ground state stops
+// until the stick may cut it past the clip's NoInterrupt (`Walker.hold`, `HOLD_CLIPS`' header; the owner, 2026-09-29).
+grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); walk.hold(anim.clip); });
 grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
 // The claymore refused once four are down: the game's message line (0x65f880) [placeholder: the viewer's toast].
 grenade.on('refuse', (info) => { ui.toast(info.text); });
@@ -605,6 +607,8 @@ play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locom
 // audio's hook (`FireEvent`: every round, every reload's start and end).
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'scope' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); net?.fireEvent(e); });   // the pose and the sound, per round and reload
+// A reload started still crouched, or prone, holds the mover to its clip's NoInterrupt (`FUN_005a82e0`; `reloadHold`).
+fire.subscribe((e) => { if (e.type === 'reloadStart') walk.holdReload(); });
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
 // to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
@@ -677,6 +681,7 @@ function playLanes(before: Input, after: Input, dt: number): void {
   if (go !== null) walk.setStance(go);
   // The view from the head in the zoom's lens views (the scope, the 9x, the night vision); third person otherwise.
   walk.setScoped(walking && zoom.lens());
+  walk.setScopedMove(walking && zoom.moveScale() < 1);   // FUN_005966a0: the move stick x 0.2 in the 9x view or a scope
 }
 
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
@@ -889,6 +894,8 @@ function padFrame(dt: number): void {
   if (pressed.includes('zoom')) stepZoom('in');
   if (pressed.includes('zoomOut')) stepZoom('out');
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
+  // R3 the reload, as R is (the owner's ruling, 2026-09-29; the game's controller.rdr Default binds R3 to Reload).
+  if (pressed.includes('reload') && walk.mode() === 'walk') fire.reload();
   // The kit's slots (the game's L1 SwapWeapon1, L2 SwapWeapon2 and R2 Inventory, research 85 §9), walking only.
   if (playOn && walk.mode() === 'walk') {
     if (pressed.includes('swap1')) selectFirearm('rifle');

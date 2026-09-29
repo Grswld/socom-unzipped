@@ -95,7 +95,7 @@ describe('the snapshot frame (M3)', () => {
   });
 
   it('carries the doors, two bytes each, after the bodies (protocol 2)', () => {
-    expect(PROTOCOL_VERSION).toBe(2);
+    expect(PROTOCOL_VERSION).toBeGreaterThanOrEqual(2);         // 3 added the scope and the hold bits (moverHold.test.ts)
     const doors = [{ valve: 0, phase: 255 }, { valve: 1, phase: 17 }, { valve: 1, phase: 255 }];
     const plain = encodeSnapshot({ tick: 5, own: null, bodies: [body(1)] });
     const bytes = encodeSnapshot({ tick: 5, own: null, bodies: [body(1)], doors });

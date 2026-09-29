@@ -240,7 +240,7 @@ away. `&mp` and `&server=` in the address still override it (`viewer/src/online.
 | `C` | the stance: a tap toggles stand and crouch (from prone, a tap crouches); held 0.4 s, prone (`STANCE_HOLD_S_PLACEHOLDER`, the pad's Triangle's too); `Ctrl+C` stays the browser's. On a touch screen, the **C** button beside the lift buttons is `C`: tap and hold alike, its release the tap, a cancelled touch nothing (the walk's touch layout hides it and puts Triangle, the pad's rule, in its place, so today it shows only in the fly camera, where it does nothing) |
 | right button | steps the zoom: third person → the scope (drawn from the SEAL's eyes, the body hidden) → third person. There is no first person: the views are third person and scoped, as SOCOM II's (the owner, 2026-09-29). The Mark 23 has no scope: with it the zoom does nothing (the owner's ruling, 2026-09-29). On a wide screen the scope's black fills the frame beside it |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, **SHOOT** |
-| `R` | reloads; an empty magazine waits for it |
+| `R` | reloads (the pad's R3); an empty magazine waits for it |
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: opens or shuts the door under the reticle (the door icon shows it; [research 92](docs/research/92-doors.md)), climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
@@ -267,7 +267,8 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | d-pad Up / Down | zoom in / out, a step a press (the scope; research 84) | — |
 | Start | fly (as `G`) | walk (as `G`) |
 | L3 | fire mode (research 84 section 6) | — |
-| R3 | reload (the motion workstream's binding, 2026-09-29) | boost |
+| R3 | reload, as `R` (the owner's ruling, 2026-09-29, and the game's own: `controller.rdr`'s Default binds R3 to Reload) | — |
+| Circle | — (the game's TeamCommand, which the viewer does not have) | boost (on R3 until R3 became the reload) |
 
 Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/stanceButton.ts`, `C`'s too): the game
 reads the button's pressure, which a browser pad does not give. Triangle keeps the game's own rule, where a tap from prone

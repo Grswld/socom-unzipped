@@ -1,7 +1,7 @@
-import { groundGrid, moverSnapshot, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type SwapProgress, type TraversalHooks, type WalkInput } from './mover';
+import { groundGrid, moverSnapshot, reloadHold, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type HoldClip, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type SwapProgress, type TraversalHooks, type WalkInput } from './mover';
 import type { Grid } from '@s2u/scene';
 import type { TraversalPose } from './animator';
-import { Button, STANCE_CODES, type Command } from './net/protocol';
+import { Button, holdBits, STANCE_CODES, type Command } from './net/protocol';
 import { MoverSim } from './net/moverSim';
 import { quantiseCommand } from './net/codec';
 import type { GroundWish, Pose } from './camera';
@@ -61,6 +61,10 @@ export class WalkMode {
   private jumps = 0;
   /** In the scope (the zoom's lens views, `main.ts`): the view from the head while on, third person after. */
   private scoped = false;
+  /** In the 9x view or a scope (`./zoom` state 4 and up; not the night vision): the mover's stick x 0.2 (`Walker.scoped`). */
+  private scopedMove = false;
+  /** MULTIPLAYER: a hold the mover took since the last tick (`hold`), as its bits on the next command. */
+  private pressedHold = 0;
   /**
    * `C`, the PC's stance button (owner, 2026-09-29): held or not, a press not yet seen by a frame (a tap quicker than
    * a frame still counts), and its tap-and-hold machine -- a tap toggles stand and crouch (prone to crouch), a hold of
@@ -235,8 +239,10 @@ export class WalkMode {
 
   private tap(w: Walker, wish: WalkInput): void {
     if (!this.netTap) return;
-    let buttons = this.pressed;
+    let buttons = this.pressed | this.pressedHold;
     this.pressed = 0;
+    this.pressedHold = 0;
+    if (this.scopedMove) buttons |= Button.Scope;
     if (wish.boost) buttons |= Button.Boost;
     if (this.scoped) buttons |= Button.Aim;                    // the scope is the aim now (no first person, 2026-09-29)
     if (this.trigger_) buttons |= Button.Trigger;
@@ -316,6 +322,34 @@ export class WalkMode {
     if (this.scoped === on) return;
     this.scoped = on;
     if (this.walking && this.walker) this.follow();
+  }
+
+  /**
+   * The 9x view or a scope is on (`main.ts`: `./zoom`'s `moveScale()` under 1): the mover's move stick x 0.2
+   * (`Walker.scoped`, `FUN_005966a0`), sent as `Button.Scope` so the server's mover walks as slowly.
+   */
+  setScopedMove(on: boolean): void {
+    this.scopedMove = on;
+    if (this.walker) this.walker.scoped = on && this.walking;
+  }
+
+  /**
+   * The kit's one-shot on the mover (`Walker.hold`: a throw's clip at the release, the claymore's placing, a still
+   * crouched or prone reload), walking only; the hold rides the next command (`holdBits`) so the server's mover holds
+   * on the same tick. False, and nothing sent, when the mover refuses it or the clip is no hold.
+   */
+  hold(clip: string): boolean {
+    const w = this.walker;
+    if (!this.walking || !w || this.locked || !w.hold(clip)) return false;
+    this.pressedHold = holdBits(clip as HoldClip);
+    return true;
+  }
+
+  /** The reload's hold for the stance and the weapon in hand (`reloadHold`): the crouched and prone ones only. */
+  holdReload(): boolean {
+    const w = this.walker;
+    const clip = w ? reloadHold(w.stance, this.weapon_ === 1) : null;
+    return clip !== null && this.hold(clip);
   }
 
   /** Walk mode: the mover's jump (`Walker.jump`); false when flying, or in the air. */
@@ -406,6 +440,7 @@ export class WalkMode {
     this.lastYaw = yaw;
     this.stanceKeyFrame(dt);
     w.turn = this.turnRate;
+    w.scoped = this.scopedMove;
     const wish = this.locked ? { forward: 0, right: 0, boost: false } : this.camera.groundWish();
     w.advance(dt, wish, () => { this.tap(w, wish); this.cameraTick(); }, () => {
       // MULTIPLAYER: the look each tick starts from (a move may turn the mover inside a tick; the next starts there).

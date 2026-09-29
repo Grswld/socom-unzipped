@@ -112,6 +112,7 @@ export function padControlGroups(mode: ControlMode, play: boolean): ControlGroup
           { keys: 'Right stick', does: 'look' },
           { keys: 'Square', does: 'up', glyph: 'square' },
           { keys: 'Triangle', does: 'down', glyph: 'triangle' },
+          { keys: 'Circle', does: 'boost (hold)', glyph: 'circle' },
         ],
       },
       ...(play ? [{ name: GROUP_GENERAL, rows: [{ keys: 'Start', does: 'walk' }] }] : []),

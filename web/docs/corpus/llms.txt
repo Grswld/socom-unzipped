@@ -27,7 +27,7 @@ constant (`*_PLACEHOLDER`) stands in. Code and test paths are relative to `web/`
 - [77](../research/77-motion-format.md): The skeletal motion format (`MOTION_S.ZAR`, `MOTION_P.ZAR`) and the zAnim command archives (12 sections)
 - [78](../research/78-character-mesh-and-skeleton.md): The character mesh, its skeleton and its gear: `CMesh`/`CSubMesh`, `CLIB_GEO`, `character.rdr` (2026-09-28) (24 sections)
 - [79](../research/79-weapon-table-and-fire-point.md): The weapon table, the M4A1 SD's model, the fire point and the recoil: what the bodies on hand show (2026-09-28) (16 sections)
-- [80](../research/80-the-jump.md): The jump, the landings and the locomotion blend: how SOCOM II plays the SEAL's clips (2026-09-28) (18 sections)
+- [80](../research/80-the-jump.md): The jump, the landings and the locomotion blend: how SOCOM II plays the SEAL's clips (2026-09-28) (19 sections)
 - [81](../research/81-sounds.md): The walk's sounds: the 989snd banks on the disc, how the game names them, and when it plays a step, a round, a jump and a landing (2026-09-28) (13 sections)
 - [82](../research/82-map-fidelity-audit.md): Map fidelity audit: the viewer against the console's own frames (2026-09-28) (15 sections)
 - [83](../research/83-look-and-aim.md): The look and the aim: the pad's law, the body and the camera, the scope, the shake, the bob (8 sections)

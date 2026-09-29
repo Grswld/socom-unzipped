@@ -376,6 +376,49 @@ walk, the jump's stick), `PlaySnapshot.stickSnaps`; the animator snapshots and f
 the same tick keeps its own `BlendTime`, as `FUN_0028dc90` writes after); the wire carries its low bit in the body's
 packed byte (bit 7, no size change), so the other screens fade on the same tick.
 
+## 6e. The movement locks, the scoped stick and R3 (2026-09-29, the owner's play test)
+
+The owner: "SOCOM should lock your movement when throwing a grenade or planting certain equipment"; reload on R3; and
+research 84 section 17's finding that the scoped SEAL moved at full speed.
+
+- **What locks, and how.** `FUN_00550ef0` (418172-418246) runs the ground state (`FUN_005870e0(actor, 0)`) only while
+  the entry on top of the action stack (`actor+0x1c0`) plays a looped motion (`FUN_005551a0(entry+0x28, 0x40)`); with a
+  one-shot there it runs it only when `FUN_00587c20` lets the stick cut the one-shot. The kit's one-shots are pushed
+  there by `FUN_00588bc0`, and none is a `BlendOverlay` motion (the second channel over the locomotion): the throw
+  (`FUN_005802b0`, 441900-441903: `GetThrowAnim`'s clip, pushed when the button is let go), the claymore
+  (`Place claymore`, `seal_place_claymore`), and the reload (`FUN_005a82e0`, 462786-462930) when it starts still
+  crouched (`|v|^2 <= 400`: `Rifle crouch reload`, else `Moving rifle reload`, the overlay) or prone (`Rifle prone
+  reload` always), each with its `Pistol ...` twin. While one holds, the SEAL moves by its clip's root alone
+  (`FUN_0028c250`): not at all on a throw, whose clips have one root key; 0.4 units over the claymore's 2.4 s. A
+  **full lock**: the move axes are not scaled, they are not read.
+- **The turn stays free**: `FUN_00551ec0` zeroes the turn axis only in its listed states and for a clip carrying
+  `NoTurn` (`FUN_00587e00`, 418689-418692); no throw, placing or reload clip carries it. Turning past 0.1 of
+  `turn_maxrate` once the phase is past `NoInterrupt` cuts the clip, as the stick does (418183-418186).
+- **When it ends**: a move axis (or the turn) past 0.1 with the phase past the clip's `NoInterrupt`, or the clip's
+  end. `motion.rdr`: the standing throw 0.49 (0.76 s), the toss 0.75, the crouched throw 0.8, the prone throw and toss
+  and both peeks' tosses 0.9, the claymore 0.9 (2.39 s), the crouched reload 0.35, the prone 0.5. Every throw's release
+  fraction (research 85 section 3) is under its `NoInterrupt`: the grenade is always out before the stick can move.
+- **What does not lock**: the throw's hold (the power's chase in `FUN_00594cf0`, 0x595ea0-0x595f28, touches no move
+  axis; the clip is pushed at the let-go); the standing reload (`seal_reload` has no `NoInterrupt`, so the first push
+  cuts it, and `FUN_00550ef0` 418202-418214 carries it on as `Moving rifle reload` over the locomotion); a reload begun
+  moving; the Detonator (`CZKit_DetonateRemoteExplosives` plays no SEAL clip); the door (`FUN_00592d50` 452017-452018
+  runs the door's zAnim, `FUN_002b44e0`; `singleDoor_right` moves the leaf only, research 92 section 2). The jump is
+  refused while a lock holds (`FUN_0057e1b0` wants a looped entry on top).
+- **Ported** as `Walker.hold` / `HOLD_CLIPS` (`viewer/src/mover.ts`, the mover the server runs): the page starts a hold
+  from the grenade's `throwStart` (the throws and the claymore) and the fire's `reloadStart` (`reloadHold`: crouched and
+  prone only); each rides the next command in four bits over `HOLD_SHIFT` (`net/protocol.ts`, protocol 3), so the
+  server's mover holds on the same tick. The body's clip is still the grenade's and the weapon's pose layers
+  (`throwPose.ts`, `weaponPose.ts`): the lock stops the legs' locomotion, it plays no clip of its own. [reading: when the
+  stick cuts a throw the game pops its clip; the viewer's throw layer plays on to its end.]
+- **The scoped stick**: `FUN_005966a0` (453818-453821) multiplies both move axes by `DAT_00650638` (0.2) in the 9x view
+  (`FUN_005b9990`) or a scope (`FUN_005b90f0`) before it stores them -- so before the ramp, the ground state and the
+  cut test read them. Ported in the mover (`Walker.scoped`: the axes clamped, then x 0.2); the page sets it from the
+  zoom's state 4 and up (not the night vision, which `Button.Aim` covers too) and sends `Button.Scope`.
+- **R3** is the game's `Reload`: `READERC.ZAR/controller.rdr`'s Default binds it (research 85 section 9.1), the pad
+  result 6 `FUN_00594cf0` reads with `FUN_002c64e0(6)` (453459-453463) to arm the reload timer. So the owner's ruling and
+  the game agree. R3 held the fly camera's boost (assumed) before; the boost moved to Circle (the game's `TeamCommand`,
+  which the viewer does not have), so no button carries two actions.
+
 ## 7. Readings and placeholders (named in the code)
 
 - **Death**: the viewer gets up after `Land forward` (the game dies there: §6c); no damage is kept.
