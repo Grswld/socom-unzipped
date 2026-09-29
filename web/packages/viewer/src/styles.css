@@ -112,7 +112,10 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #controls { top: 56px; left: 12px; width: min(380px, calc(100vw - 24px)); }
 #controls .s2u-overlay__body { max-height: calc(100dvh - 80px); }
 #controls .s2u-fine { margin: 0; }
-#controls #pad-box { margin-top: var(--s2u-space-1); }
+/* The popover's two tabs (Controller, Mouse & Keyboard): the system's tab pair, over the list it shows. */
+#controls-tabs { margin-bottom: var(--s2u-space-2); }
+#controls-tabs .s2u-tab { text-align: center; }
+#controls [role="tabpanel"][hidden] { display: none; }
 
 /*
  * One segmented toggle for the panel's two-way choices (Modern / PS2, Fly / Walk): a dark track, the chosen segment
@@ -178,43 +181,42 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
   color: var(--s2u-gold);
 }
 #toast[hidden], body.chrome-hidden #toast { display: none; }
-#pad-layout { border-collapse: collapse; margin-top: var(--s2u-space-1); font: var(--s2u-type-readout-caption); color: var(--s2u-text); }
-#pad-layout th { text-align: left; font-weight: 500; color: var(--s2u-text-dim); }
-#pad-layout th, #pad-layout td { padding: 2px var(--s2u-space-2) 2px 0; vertical-align: top; }
-#pad-layout td:first-child { white-space: nowrap; color: var(--s2u-text-strong); }
-/* The Controls popover's two grouped tables: a heading row a group, the keys or the pad's button first. */
-#keys-list { border-collapse: collapse; font: var(--s2u-type-readout-caption); color: var(--s2u-text); }
-#keys-list td { padding: 2px var(--s2u-space-3) 2px 0; vertical-align: top; }
-#keys-list td:first-child { white-space: nowrap; color: var(--s2u-text-strong); }
+/* The Controls popover's two grouped tables: a heading row a group, the key or the pad's button first. */
+#keys-list, #pad-list { border-collapse: collapse; margin-top: var(--s2u-space-1); font: var(--s2u-type-readout-caption); color: var(--s2u-text); }
+#keys-list td, #pad-list td { padding: 2px var(--s2u-space-3) 2px 0; vertical-align: top; }
+#keys-list td:first-child, #pad-list td:first-child { white-space: nowrap; color: var(--s2u-text-strong); }
 .pad-group th { padding: var(--s2u-space-2) 0 2px; text-align: left; font: var(--s2u-type-stat-caption); letter-spacing: var(--s2u-tracking-stat-caption); text-transform: uppercase; color: var(--s2u-gold); }
-#pad-layout .s2u-hint__glyph { vertical-align: -2px; margin-right: var(--s2u-space-1); }
-#pad-layout .s2u-label { margin: 0; }
+#pad-list .s2u-hint__glyph { vertical-align: -2px; margin-right: var(--s2u-space-1); }
 @media (max-width: 480px), (pointer: coarse) {
   #toast { top: 8px; max-width: calc(100vw - 16px); }
 }
 
 /*
- * Touch movement. Nothing here exists until `body.touch` is set: on a mouse these would only be four
- * things in the way. The stick takes the left half and the bottom two thirds -- the part of a phone a
- * thumb reaches -- and the right half is left to the look drag. Not a system component: there is no
- * touchstick or lift-button anywhere else on the site.
+ * The touch layer. Nothing here exists until `body.touch` is set: on a mouse these would only be things in the way; and
+ * a pad connected hides it (`body.pad-on`, owner 2026-09-29: the pad then works as on a desktop). Flying, the move stick
+ * takes the left half's bottom -- the part of a phone a thumb reaches -- and the right half is left to the look drag;
+ * walking, the two sticks take a half each below the bar (the look stick's zone is walking's alone). Not a system
+ * component: there is no touchstick or lift-button anywhere else on the site.
  */
 #touch { display: none; }
 body.touch #touch { display: block; }
+body.touch.pad-on #touch { display: none; }
 #stick-zone {
   /* The bottom 45vh of the left half: the part of a phone a thumb reaches, and clear of the panel,
      whose body is capped at 45vh below the site bar in the top strip. */
   position: fixed; left: 0; bottom: 0; width: 50vw; height: 45vh; z-index: 4;
   touch-action: none;
 }
-#stick-base {
+#aim-zone { display: none; position: fixed; right: 0; bottom: 0; width: 50vw; z-index: 4; touch-action: none; }
+body.touch.is-walking #stick-zone, body.touch.is-walking #aim-zone { display: block; top: calc(56px + env(safe-area-inset-top, 0px)); height: auto; }
+#stick-base, #aim-base {
   position: fixed; z-index: 4; width: 116px; height: 116px; margin: -58px 0 0 -58px;
   border: 1px solid var(--s2u-glyph-cross); border-radius: 50%;
   background: rgba(255, 255, 255, 0.06); /* the stick's own translucent white ring over the canvas, not a panel */
   pointer-events: none;
 }
-#stick-base[hidden] { display: none; }
-#stick-knob {
+#stick-base[hidden], #aim-base[hidden] { display: none; }
+#stick-knob, #aim-knob {
   position: absolute; left: 50%; top: 50%; width: 46px; height: 46px;
   border: 1px solid var(--s2u-gold); border-radius: 50%;
   background: rgba(255, 255, 255, 0.14); /* the stick's own translucent white knob over the canvas, not a panel */
@@ -269,22 +271,22 @@ body.touch #touch { display: block; }
 }
 
 /*
- * Walk mode's touch layout (round 3; `index.html` `#touch-walk`, `./touch.ts` `attachWalkTouch`), for a phone held sideways,
- * the PS2 pad's positions under the thumbs: the face buttons in a diamond at the bottom right (Triangle top, Square left,
- * Cross bottom; the Circle's place is empty) with R1's fire, larger, at the edge beside them; the zoom, fire mode and reload
- * in a row under the compass; the kit's slots along the bottom middle; the peek and the fullscreen button in a column at
- * the left edge, above the stick's zone. It shows while walking on a touch screen only (`body.touch.is-walking`; the fly
+ * Walk mode's touch layout (owner, 2026-09-29: what a player needs, tidied; `index.html` `#touch-walk`, `./touch.ts`
+ * `attachWalkTouch`), for a phone held sideways: under the right thumb the large SHOOT at the edge and JUMP beside it,
+ * the stance (Triangle) over JUMP and the action (Cross) over SHOOT; a row of pills under the compass (reload at the edge,
+ * the next item, the zoom out and in). It shows while walking on a touch screen only (`body.touch.is-walking`; the fly
  * camera keeps the lift buttons). The HUD keeps its corners: the ammo box bottom left, the compass top right, and the
- * range and timer strip along the bottom right, which the clusters clear by `--tw-floor`. Sizes are tokens' spacing, the
- * safe-area insets are added to every edge.
+ * range and timer strip along the bottom right, which the cluster clears by `--tw-floor`. The safe-area insets are added
+ * to every edge. No two buttons overlap (`e2e/touch.spec.ts`, `e2e/phonePanel.spec.ts`, at 812x375, 667x375, 915x412).
  */
 #touch-walk, #rotate-hint { display: none; }
 body.touch.is-walking #touch-walk { display: block; }
 body.touch.is-walking #touch-lift, body.touch.is-walking #touch-stance, body.touch.is-walking #touch-fire { display: none; }
 #touch-walk {
-  --tw-btn: 46px; --tw-fire: 84px; --tw-small: 36px; --tw-gap: var(--s2u-space-1);
+  --tw-fire: 84px; --tw-jump: 64px; --tw-btn: 48px; --tw-small: 36px; --tw-gap: 10px;
   /* What the HUD's bottom strip (the range and the timer) takes, so no button sits over it. */
   --tw-floor: 44px;
+  --tw-right: env(safe-area-inset-right, 0px); --tw-bottom: env(safe-area-inset-bottom, 0px);
 }
 #touch-walk button {
   z-index: 5; margin: 0; padding: 0; display: grid; place-items: center;
@@ -295,39 +297,64 @@ body.touch.is-walking #touch-lift, body.touch.is-walking #touch-stance, body.tou
 }
 #touch-walk button.is-down { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
 #touch-walk button svg { width: 22px; height: 22px; pointer-events: none; }
-/* The face cluster: cells of --tw-btn on a 3 x 3 diamond, its right edge one fire button and a gap from the screen's. */
-#tw-stance, #tw-jump, #tw-action, #tw-fire { position: fixed; }
-#tw-stance, #tw-jump, #tw-action { width: var(--tw-btn); height: var(--tw-btn); border-radius: 50%; }
 #tw-actions { display: contents; }
-#tw-stance { right: calc(var(--tw-fire) + 12px + var(--tw-btn) + var(--tw-gap) + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + 2 * (var(--tw-btn) + var(--tw-gap)) + env(safe-area-inset-bottom, 0px)); }
-#tw-jump { right: calc(var(--tw-fire) + 12px + 2 * (var(--tw-btn) + var(--tw-gap)) + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + var(--tw-btn) + var(--tw-gap) + env(safe-area-inset-bottom, 0px)); }
-#tw-action { right: calc(var(--tw-fire) + 12px + var(--tw-btn) + var(--tw-gap) + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + env(safe-area-inset-bottom, 0px)); }
-#tw-fire { width: var(--tw-fire); height: var(--tw-fire); border-radius: 50%; right: calc(8px + env(safe-area-inset-right, 0px)); bottom: calc(var(--tw-floor) + var(--tw-btn) / 2 + env(safe-area-inset-bottom, 0px)); font-size: 15px; border-color: var(--s2u-gold); }
+#tw-fire, #tw-jump, #tw-stance, #tw-action { position: fixed; border-radius: 50%; }
+/* SHOOT, the largest, at the right edge. */
+#tw-fire {
+  width: var(--tw-fire); height: var(--tw-fire); font-size: 14px; border-color: var(--s2u-gold);
+  right: calc(12px + var(--tw-right)); bottom: calc(var(--tw-floor) + 12px + var(--tw-bottom));
+}
+/* JUMP beside it, a gap to its left, on the floor. */
+#tw-jump {
+  width: var(--tw-jump); height: var(--tw-jump); font-size: 11px; gap: 2px; align-content: center;
+  right: calc(12px + var(--tw-fire) + var(--tw-gap) + var(--tw-right)); bottom: calc(var(--tw-floor) + var(--tw-bottom));
+}
+#touch-walk #tw-jump svg { width: 16px; height: 16px; }
+/* The stance over JUMP, the action over SHOOT, each centred on the button under it. */
+#tw-stance {
+  width: var(--tw-btn); height: var(--tw-btn);
+  right: calc(12px + var(--tw-fire) + var(--tw-gap) + (var(--tw-jump) - var(--tw-btn)) / 2 + var(--tw-right));
+  bottom: calc(var(--tw-floor) + var(--tw-jump) + var(--tw-gap) + var(--tw-bottom));
+}
+#tw-action {
+  width: var(--tw-btn); height: var(--tw-btn);
+  right: calc(12px + (var(--tw-fire) - var(--tw-btn)) / 2 + var(--tw-right));
+  bottom: calc(var(--tw-floor) + 12px + var(--tw-fire) + var(--tw-gap) + var(--tw-bottom));
+}
 /* Under the compass, on the right: a row of pills, reload at the edge. */
-#tw-scope, #tw-weapons, #tw-peek { position: fixed; z-index: 5; display: flex; gap: var(--s2u-space-2); }
-#tw-scope button, #tw-weapons button, #tw-peek button { position: static; height: var(--tw-small); min-width: var(--tw-small); padding: 0 var(--s2u-space-3); border-radius: var(--s2u-radius-pill); font-size: 13px; }
-#tw-scope { top: 124px; right: calc(8px + env(safe-area-inset-right, 0px)); flex-direction: row-reverse; }
-/* Along the bottom middle, over the range strip's left and clear of the ammo box. */
-#tw-weapons { left: 50%; transform: translateX(-50%); bottom: calc(var(--tw-floor) + env(safe-area-inset-bottom, 0px)); }
-/* The left edge: fullscreen (`#fullscreen`, moved there while walking) over the two peeks. */
-#tw-peek { top: 150px; left: calc(8px + env(safe-area-inset-left, 0px)); }
-#tw-peek button { width: var(--tw-small); padding: 0; border-radius: 50%; font-size: 12px; }
+#tw-scope { position: fixed; z-index: 5; display: flex; flex-direction: row-reverse; gap: var(--s2u-space-2); top: 124px; right: calc(8px + var(--tw-right)); }
+#tw-scope button { position: static; height: var(--tw-small); min-width: var(--tw-small); padding: 0 var(--s2u-space-3); border-radius: var(--s2u-radius-pill); font-size: 13px; }
 /* The fullscreen button, while walking: the HUD owns the bottom right (the range strip), so it stands at the left edge. */
 body.is-walking #fullscreen { right: auto; bottom: auto; left: calc(8px + env(safe-area-inset-left, 0px)); top: 96px; width: 44px; height: 44px; }
-/* Held upright the layout has no room beside the HUD's tall bottom strip: it is asked to turn, and lifts the clusters. */
+/* Held upright the layout has no room beside the HUD's tall bottom strip: it is asked to turn, and lifts the cluster. */
 @media (orientation: portrait) {
   body.touch.is-walking #rotate-hint { display: block; top: 60px; left: 50%; right: auto; transform: translateX(-50%); max-width: calc(100vw - 16px); white-space: nowrap; pointer-events: none; color: var(--s2u-gold); }
   #touch-walk { --tw-floor: 150px; }
   #tw-scope { top: 250px; }
-  #tw-weapons { bottom: calc(var(--tw-floor) - 48px + env(safe-area-inset-bottom, 0px)); }
 }
+/* The tip says the same and more: while it is up, the turn line waits. */
+body.touch.is-walking.tip-on #rotate-hint { display: none; }
+
+/*
+ * The phone's tip (owner, 2026-09-29; `./mobileTip.ts`): the system's notice, top centre under the bar, its close button
+ * the system's icon control. Above the touch layer, under the popover and the panel.
+ */
+#mobile-tip {
+  position: fixed; z-index: 6; top: calc(56px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  box-sizing: border-box; width: min(460px, calc(100vw - 16px)); margin: 0; padding: 10px 12px;
+  display: flex; align-items: center; gap: var(--s2u-space-3);
+}
+#mobile-tip[hidden], body.chrome-hidden #mobile-tip { display: none; }
+#mobile-tip p { flex: 1; font: var(--s2u-type-readout); }
+#mobile-tip .s2u-iconbtn { flex: none; width: 36px; height: 36px; }
 
 /*
  * The panel on a phone held sideways: the full width under the bar would lie over every touch control, so it docks in the
- * top middle band instead -- right of the left edge's column (the fullscreen button and the two peeks, to 88px), left of
- * the zoom row under the compass (`--panel-right` keeps its width clear), and above the stick's zone (the bottom 45vh)
- * and so above the kit's row and the face buttons below it -- and scrolls inside itself. Flying, the lift buttons and the
- * fullscreen button are at the right edge, clear of the same band. Held upright the panel is as it was.
+ * top middle band instead -- right of the left edge's fullscreen button (to 52px, with room to spare), left of the pill
+ * row under the compass (`--panel-right` keeps its width clear), and above the SHOOT / JUMP cluster -- and scrolls inside
+ * itself. It lies over the stick zones, which are open ground rather than buttons: a thumb on the panel is the panel's.
+ * Flying, the lift buttons and the fullscreen button are at the right edge, clear of the same band. Held upright the
+ * panel is as it was.
  */
 @media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
   #panel {

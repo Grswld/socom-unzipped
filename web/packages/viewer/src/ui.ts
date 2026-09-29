@@ -1,8 +1,7 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
 import { viewerRevision, viewerRevisionBadge } from './revision';
-import { ACTION_WORDS, GROUP_ORDER, padGroup, shortSource, type PadRow } from './gamepad';
-import { controlGroups } from './controlsList';
+import { chooseTab, CONTROLS_TAB_KEY, controlGroups, padControlGroups, type ControlGroup, type ControlsTab, type FaceGlyph } from './controlsList';
 import type { LookOptions } from './look';
 import type { OnlineChoice } from './online';
 
@@ -192,14 +191,13 @@ export class Ui {
   }
 
   /**
-   * The play's lists follow the mode: the Controls popover's keys and the pad's table name the walk and Start only while
-   * the play is on the page.
+   * The play's lists follow the mode: the Controls popover's two lists name the walk and Start only while the play is
+   * on the page.
    */
   setPlay(on: boolean): void {
     if (this.play === on) return;
     this.play = on;
     this.setCameraHint(...this.hintArgs);
-    this.renderPadLayout();
   }
 
   /** The Online setting (owner, 2026-09-29; `./online`): Off, Shared or Local, the picture switch's markup (`#online`). */
@@ -312,8 +310,9 @@ export class Ui {
   }
 
   /**
-   * The Controls popover (owner, 2026-09-28): `#controls`, anchored under the bar's Controls tab, holding the hint line
-   * and the pad's table -- both the current mode's alone (`setCameraHint`, `renderPadLayout`). It is open while the
+   * The Controls popover (owner, 2026-09-28; two tabs, 2026-09-29): `#controls`, anchored under the bar's Controls tab,
+   * holding the Controller and the Mouse & Keyboard lists -- the current mode's alone (`renderControls`), one shown at a
+   * time (`showTab`; the choice remembered under `CONTROLS_TAB_KEY`). It is open while the
    * pointer is over the tab or the popover (a mouse or pen; a touch has no hover), while a keyboard focus is on
    * either, and while a click or tap has pinned it; Esc closes it whatever held it, and so does a press outside. It
    * never takes the focus and never asks for the pointer lock, and a key pressed with the tab focused still reaches
@@ -365,6 +364,17 @@ export class Ui {
       el.addEventListener('focusout', focusOut as EventListener);
     }
     button.addEventListener('click', () => { pinned = !pinned; sync(); });
+    for (const t of Array.from(pop.querySelectorAll<HTMLButtonElement>('#controls-tabs [data-tab]'))) {
+      t.addEventListener('click', () => {
+        const tab: ControlsTab = t.dataset['tab'] === 'pad' ? 'pad' : 'keys';
+        this.tabChosen = true;
+        write(CONTROLS_TAB_KEY, tab);
+        this.showTab(tab);
+      });
+    }
+    const stored = read(CONTROLS_TAB_KEY);
+    this.tabChosen = stored === 'pad' || stored === 'keys';
+    this.showTab(chooseTab(stored, this.padConnected));
     globalThis.addEventListener('keydown', (e) => {
       if (e.code !== 'Escape' || pop.hidden) return;
       hover = focus = pinned = false;
@@ -450,7 +460,7 @@ export class Ui {
    * The picture switch: Modern or PS2. It drives the hidden `ps2look` checkbox -- the state the
    * toggles, the hook and the tests read -- and remembers the choice, so a return visit opens on it.
    */
-  onLook(): void {
+  onLook(fromAddress: 'modern' | 'ps2' | null = null, changed: (view: 'modern' | 'ps2') => void = () => undefined): void {
     const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look button[data-look]'));
     const box = this.checks.ps2look;
     const show = (): void => {
@@ -464,10 +474,12 @@ export class Ui {
         box.dispatchEvent(new Event('change', { bubbles: true }));
         write(LOOK_KEY, ps2 ? 'ps2' : 'modern');
         show();
+        changed(ps2 ? 'ps2' : 'modern');
       });
     }
     box.addEventListener('change', show);
-    const stored = read(LOOK_KEY);
+    // The address's `view` (a shared link, `./shareUrl`) beats the remembered picture, for this visit.
+    const stored = fromAddress ?? read(LOOK_KEY);
     if (stored === 'ps2' || stored === 'modern') box.checked = stored === 'ps2';
     show();
   }
@@ -679,36 +691,39 @@ export class Ui {
     if (this.walking === walking) return;
     this.walking = walking;
     this.setCameraHint(...this.hintArgs);
-    this.renderPadLayout();
   }
 
   /**
-   * The popover's first line: how the mouse stands (click to look, or Esc to release it), the fly speed while flying, and
-   * the pad. The controls themselves are the grouped list under it (`renderKeys`), the current mode's alone. Rebuilt on
-   * every mode change (`setWalk`).
+   * The Mouse & Keyboard tab's first line: how the mouse stands (click to look, or Esc to release it), and the fly speed
+   * while flying. The controls themselves are the two grouped lists (`renderControls`), the current mode's alone.
+   * Rebuilt on every mode change (`setWalk`).
    */
   setCameraHint(multiplier: number, locked: boolean): void {
-    this.hintArgs = [multiplier, locked];     // W2.7: kept, so a pad's connecting or a mode change can rebuild the line
+    this.hintArgs = [multiplier, locked];     // kept, so a pad's connecting or a mode change can rebuild the line
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
-    this.hint.textContent = `${locked ? 'esc to release' : 'click to look'}${this.walking ? '' : ` · ${speed}`}`
-      + (this.padConnected ? ' · pad: connected' : '');
-    this.renderKeys();
+    this.hint.textContent = `${locked ? 'esc to release' : 'click to look'}${this.walking ? '' : ` · ${speed}`}`;
+    this.renderControls();
   }
 
-  /** The keyboard and mouse list (`./controlsList`): grouped, for the mode you are in and no other. */
-  private renderKeys(): void {
-    const body = document.querySelector('#keys-list tbody');
-    if (!body) return;
-    const rows: HTMLTableRowElement[] = [];
-    for (const group of controlGroups(this.walking ? 'walk' : 'fly', this.play)) {
-      rows.push(groupRow(group.name));
-      for (const row of group.rows) {
-        const tr = document.createElement('tr');
-        for (const text of [row.keys, row.does]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
-        rows.push(tr);
-      }
+  /** The two lists (`./controlsList`): grouped, for the mode you are in and no other. */
+  private renderControls(): void {
+    const mode = this.walking ? 'walk' : 'fly';
+    fillList('#keys-list tbody', controlGroups(mode, this.play));
+    fillList('#pad-list tbody', padControlGroups(mode, this.play));
+  }
+
+  /** One of the popover's two tabs shown, the other hidden; the tab lit and selected. */
+  private showTab(tab: ControlsTab): void {
+    for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>('#controls-tabs [data-tab]'))) {
+      const on = t.dataset['tab'] === tab;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.classList.toggle('is-on', on);
+      t.tabIndex = on ? 0 : -1;
     }
-    body.replaceChildren(...rows);
+    const pad = document.getElementById('controls-pad');
+    const keys = document.getElementById('controls-keys');
+    if (pad) pad.hidden = tab !== 'pad';
+    if (keys) keys.hidden = tab !== 'keys';
   }
 
   /**
@@ -743,17 +758,17 @@ export class Ui {
     }));
   }
 
-  // ---- the controller (W2.7, ruling W2.R5: a toast when a pad connects or leaves, naming it; the layout shown) ----
+  // ---- the controller (W2.7, ruling W2.R5: a toast when a pad connects or leaves, naming it) ----
 
   private readonly toastEl = find<HTMLElement>('toast');
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
-  /** What the hint line was last built from, and whether it carries the pad's note. */
+  /** What the hint line was last built from. */
   private hintArgs: [number, boolean] = [1, false];
   private padConnected = false;
-  /** The mode the page shows, which picks the hint line's and the pad table's words (`setWalk`). */
+  /** Whether the player picked a Controls tab (now or on an earlier visit): a pad connecting then moves nothing. */
+  private tabChosen = false;
+  /** The mode the page shows, which picks the lists' words (`setWalk`). */
   private walking = false;
-  /** The layout the table was last filled from, kept so a mode change can redraw it. */
-  private padRows: readonly PadRow[] | null = null;
 
   /**
    * A short line in the frame counter's pill, top centre, for `TOAST_MS`. One at a time: a second replaces the first
@@ -769,39 +784,51 @@ export class Ui {
     }, TOAST_MS);
   }
 
-  /** "pad: connected" at the end of the hint line while a pad is, however the line is rebuilt. */
+  /**
+   * Whether a pad is connected: the Controller tab's status line says so, an unchosen popover moves to the Controller
+   * tab, and `body.pad-on` hides the touch layer on a phone (owner, 2026-09-29: a pad on a phone works as on a desktop;
+   * its leaving brings the touch controls back).
+   */
   setPadConnected(on: boolean): void {
     this.padConnected = on;
+    document.body.classList.toggle('pad-on', on);
+    const status = document.getElementById('pad-status');
+    if (status) status.textContent = on ? 'Controller connected' : 'No controller connected: press a button on it';
+    if (!this.tabChosen) this.showTab(chooseTab(null, on));
+    if (on) this.hideTip();
     this.setCameraHint(...this.hintArgs);
   }
 
+  // ---- the phone's tip (owner, 2026-09-29: a controller and landscape recommended; `./mobileTip`) ----
+
+  private tipTimer: ReturnType<typeof setTimeout> | null = null;
+
   /**
-   * The layout table under the hint line (`index.html`, `#pad-box`), shown: a row per control that does something in
-   * the mode you are in, what it does, and its source -- the owner's word or the repository's, or the system's warn
-   * label, "assumed", on a row neither documents. The row's note is its tooltip. Redrawn on a mode change.
+   * The tip shown, with `text`, until its close button is pressed (`onDismiss`, which the page remembers) or `TIP_MS`
+   * pass. Shown again replaces the text and starts the time again.
    */
-  showPadLayout(rows: readonly PadRow[]): void {
-    this.padRows = rows;
-    this.renderPadLayout();
-    find<HTMLElement>('pad-box').hidden = false;
+  showTip(text: string, onDismiss: () => void): void {
+    const tip = document.getElementById('mobile-tip');
+    const words = document.getElementById('mobile-tip-text');
+    const close = document.getElementById('mobile-tip-close');
+    if (!tip || !words || !close) return;
+    words.textContent = text;
+    tip.hidden = false;
+    document.body.classList.add('tip-on');
+    close.onclick = () => { this.hideTip(); onDismiss(); };
+    if (this.tipTimer !== null) clearTimeout(this.tipTimer);
+    this.tipTimer = setTimeout(() => this.hideTip(), TIP_MS);
   }
 
-  private renderPadLayout(): void {
-    const rows = this.padRows;
-    const body = document.querySelector('#pad-layout tbody');
-    if (!rows || !body) return;
-    const mode = this.walking ? 'walk' : 'fly';
-    find<HTMLElement>('pad-mode').textContent = this.walking ? 'on foot' : 'flying';
-    // With the play off there is no walk to switch to, so Start has no row either.
-    const listed = rows.filter((r) => ACTION_WORDS[r.action][mode] !== null && (this.play || r.action !== 'mode'));
-    const out: HTMLTableRowElement[] = [];
-    for (const name of GROUP_ORDER) {
-      const inGroup = listed.filter((r) => padGroup(r.action, mode) === name);
-      if (inGroup.length === 0) continue;
-      out.push(groupRow(name, 3));
-      out.push(...inGroup.map((r) => padRow(r, mode)));
-    }
-    body.replaceChildren(...out);
+  hideTip(): void {
+    if (this.tipTimer !== null) { clearTimeout(this.tipTimer); this.tipTimer = null; }
+    const tip = document.getElementById('mobile-tip');
+    if (tip) tip.hidden = true;
+    document.body.classList.remove('tip-on');
+  }
+
+  tipShown(): boolean {
+    return document.getElementById('mobile-tip')?.hidden === false;
   }
 }
 
@@ -811,15 +838,15 @@ export const POPOVER_GRACE_MS = 200;
 /** How long a toast stays: long enough to read a pad's id, short enough not to sit over the map. */
 export const TOAST_MS = 3500;
 
-/**
- * The four face buttons' glyphs, in the system's own colours (`.s2u-hint__glyph--*`, the site's hint bar): the
- * PlayStation shapes on a 14-unit box.
- */
-const FACE_GLYPHS: Partial<Record<PadRow['control'], { kind: string; d: string }>> = {
-  Cross: { kind: 'cross', d: 'M3 3 11 11M11 3 3 11' },
-  Circle: { kind: 'circle', d: 'M12 7a5 5 0 1 1-10 0a5 5 0 1 1 10 0' },
-  Square: { kind: 'square', d: 'M2.5 2.5h9v9h-9z' },
-  Triangle: { kind: 'triangle', d: 'M7 2 12.5 11.5h-11z' },
+/** How long the phone's tip stays when it is not dismissed: long enough to read two lines. */
+export const TIP_MS = 12000;
+
+/** The four face buttons' glyphs, in the system's own colours (`.s2u-hint__glyph--*`): the PlayStation shapes on a 14-unit box. */
+const FACE_PATHS: Record<FaceGlyph, string> = {
+  cross: 'M3 3 11 11M11 3 3 11',
+  circle: 'M12 7a5 5 0 1 1-10 0a5 5 0 1 1 10 0',
+  square: 'M2.5 2.5h9v9h-9z',
+  triangle: 'M7 2 12.5 11.5h-11z',
 };
 
 /** A group's heading row, spanning the table (`.pad-group`). */
@@ -834,39 +861,34 @@ function groupRow(name: string, span = 2): HTMLTableRowElement {
   return tr;
 }
 
-function padRow(row: PadRow, mode: 'walk' | 'fly'): HTMLTableRowElement {
-  const tr = document.createElement('tr');
-  tr.classList.toggle('is-assumed', row.documented === 'assumed');
-  tr.title = row.note;
-  const cell = (...content: (Node | string)[]): HTMLTableCellElement => {
-    const td = document.createElement('td');
-    td.append(...content);
-    tr.append(td);
-    return td;
-  };
-  const glyph = FACE_GLYPHS[row.control];
-  if (glyph) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', `s2u-hint__glyph s2u-hint__glyph--${glyph.kind}`);
-    svg.setAttribute('viewBox', '0 0 14 14');
-    svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', glyph.d);
-    svg.append(path);
-    cell(svg, row.control);
-  } else {
-    cell(row.control);
+/** One of the popover's lists filled: a heading row a group, then the button or key (a face button's glyph first) and what it does. */
+function fillList(selector: string, groups: ControlGroup[]): void {
+  const body = document.querySelector(selector);
+  if (!body) return;
+  const rows: HTMLTableRowElement[] = [];
+  for (const group of groups) {
+    rows.push(groupRow(group.name));
+    for (const row of group.rows) {
+      const tr = document.createElement('tr');
+      const key = document.createElement('td');
+      if (row.glyph) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('class', `s2u-hint__glyph s2u-hint__glyph--${row.glyph}`);
+        svg.setAttribute('viewBox', '0 0 14 14');
+        svg.setAttribute('aria-hidden', 'true');
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', FACE_PATHS[row.glyph]);
+        svg.append(path);
+        key.append(svg);
+      }
+      key.append(row.keys);
+      const does = document.createElement('td');
+      does.textContent = row.does;
+      tr.append(key, does);
+      rows.push(tr);
+    }
   }
-  cell(ACTION_WORDS[row.action][mode] ?? '');
-  if (row.documented === 'assumed') {
-    const label = document.createElement('span');
-    label.className = 's2u-label s2u-label--warn';
-    label.textContent = 'assumed';
-    cell(label);
-  } else {
-    cell(shortSource(row.documented)).title = row.documented;
-  }
-  return tr;
+  body.replaceChildren(...rows);
 }
 
 function find<T extends HTMLElement>(id: string): T {

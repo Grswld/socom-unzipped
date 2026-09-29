@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The Mode switch (owner, 2026-09-29): Map viewer / reCOM in the settings, the picture switch's markup, switched at run
+ * The Mode switch (owner, 2026-09-29): Explore / Play in the settings, the picture switch's markup, switched at run
  * time both ways without a reload (`../src/features.ts` `PlayUi`), remembered in this browser, `?redotcom` forcing it on.
  * A clean context but for the panel's "open" (the switch is in it), so no remembered mode leaks in from another spec.
  */
@@ -50,16 +50,19 @@ test('a first visit is the map viewer; reCOM comes on and off at run time and is
   await expect(page.locator('#mode')).toHaveCount(1);
 });
 
-test('?redotcom forces reCOM on over a remembered map viewer, and switching it off takes it out of the address', async ({ page }) => {
+test('?redotcom forces reCOM on over a remembered Explore, is rewritten to mode=play, and the switch writes mode', async ({ page }) => {
   await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('s2u.viewer.recom', '0'); sessionStorage.setItem('seeded', '1'); } });
   await open(page, '?redotcom&fly&devmode&map=MP2');
   await expect(recom(page, 'on')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#mode')).toHaveCount(1);
   expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');           // &fly: the free camera at the start
+  let url = new URL(page.url());
+  expect(url.searchParams.has('redotcom')).toBe(false);                            // the alias, rewritten
+  expect(url.searchParams.get('mode')).toBe('play');
   await recom(page, 'off').click();
   await expect(page.locator('#mode')).toHaveCount(0);
-  const url = new URL(page.url());
-  expect(url.searchParams.has('redotcom')).toBe(false);
+  url = new URL(page.url());
+  expect(url.searchParams.get('mode')).toBe('explore');
   expect(url.searchParams.has('devmode')).toBe(true);
   expect(url.search).toMatch(/[?&]fly(&|$)/);
 });

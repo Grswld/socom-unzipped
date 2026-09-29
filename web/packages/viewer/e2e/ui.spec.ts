@@ -89,7 +89,7 @@ test('without ?redotcom there is no walking anywhere on the page', async ({ page
   await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = true; });
   await page.locator('#controls-toggle').click();
   await expect(page.locator('#controls')).toBeVisible();
-  await expect(page.locator('#keys-list')).toContainText('fly along the look');
+  await expect(page.locator('#keys-list')).toContainText('W A S Dfly');
   await expect(page.locator('#keys-list')).not.toContainText(/walk|jump|stance|fire|reload|peek|zoom/i);
   await expect(page.locator('#hint')).not.toContainText(/walk/i);
   const text = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll('[title],[aria-label]')]
@@ -126,15 +126,15 @@ test.describe('with ?redotcom&fly', () => {
     await tab.hover();
     await expect(pop).toBeVisible();
     await expect(tab).toHaveAttribute('aria-expanded', 'true');
-    await expect(hint).toContainText('double-tap W');
+    await expect(hint).toContainText('Double-tap W');
     await expect(hint).toContainText('walk');
     await expect(hint).not.toContainText('jump');
     // The mode changes under an open popover: the list follows.
     await page.evaluate(() => window.__viewer.setMode('walk'));
     await expect(hint).toContainText('jump');
-    await expect(hint).toContainText('right click');
-    for (const group of ['Move', 'Combat', 'Stance & traversal', 'Weapons']) await expect(hint.locator('.pad-group', { hasText: group })).toHaveCount(1);
-    await expect(hint).not.toContainText('double-tap W');
+    await expect(hint).toContainText('Right click');
+    for (const group of ['Move', 'Combat', 'Stance & action', 'Weapons']) await expect(hint.locator('.pad-group', { hasText: group })).toHaveCount(1);
+    await expect(hint).not.toContainText('Double-tap W');
     await page.keyboard.press('Escape');
     await expect(pop).toBeHidden();
     await expect(tab).toHaveAttribute('aria-expanded', 'false');
@@ -147,6 +147,29 @@ test.describe('with ?redotcom&fly', () => {
     await expect(pop).toBeVisible();
     await page.mouse.click(700, 500);
     await expect(pop).toBeHidden();
+  });
+
+  test('the Controls popover has two tabs, Controller and Mouse & Keyboard, player words only, and remembers the one chosen', async ({ page }) => {
+    await loaded(page, '?redotcom&fly');
+    await page.locator('#controls-toggle').click();
+    const padTab = page.locator('#controls-tab-pad'), keysTab = page.locator('#controls-tab-keys');
+    await expect(padTab).toHaveText('Controller');
+    await expect(keysTab).toHaveText('Mouse & Keyboard');
+    await expect(keysTab).toHaveAttribute('aria-selected', 'true');             // no pad: Mouse & Keyboard first
+    await expect(page.locator('#keys-list')).toBeVisible();
+    await expect(page.locator('#pad-list')).toBeHidden();
+    await padTab.click();
+    await expect(page.locator('#pad-list')).toBeVisible();
+    await expect(page.locator('#keys-list')).toBeHidden();
+    await page.evaluate(() => window.__viewer.setMode('walk'));
+    await expect(page.locator('#pad-list')).toContainText('R3reload');
+    const words = await page.locator('#controls').innerText();
+    expect(words).not.toMatch(/research|decomp|FUN_|0x|\.md|stub|reading|assumed|placeholder|owner|debug/i);
+    await page.reload();
+    await expect(page.locator('#status')).toContainText('triangles');
+    await page.locator('#controls-toggle').click();
+    await expect(page.locator('#controls-tab-pad')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#pad-list')).toBeVisible();
   });
 
   test('a key pressed with the Controls tab focused still reaches the game, and the popover took no focus', async ({ page }) => {

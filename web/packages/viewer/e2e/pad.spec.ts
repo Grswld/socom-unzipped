@@ -90,25 +90,24 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   // Nothing plugged in: no toast, no layout, no pad.
   const toast = page.locator('#toast');
   await expect(toast).toBeHidden();
-  await expect(page.locator('#pad-box')).toHaveJSProperty('hidden', true);
-  await expect(page.locator('#hint')).not.toContainText('pad: connected');
+  await expect(page.locator('#pad-status')).toContainText('No controller connected');
+  await expect(page.locator('#controls-pad')).toHaveJSProperty('hidden', true);          // the popover opens on Mouse & Keyboard
   expect(await page.evaluate(() => window.__viewer.pad().id)).toBeNull();
 
-  // Plugged in: the toast names it, the layout shows the flying controls (R3's boost the one assumed row of them), the
-  // hint line says so.
+  // Plugged in: the toast names it, the Controls popover moves to its Controller tab (nothing chosen yet) with the flying
+  // controls, and its status line says so.
   await plug(page, true);
   await expect(toast).toBeVisible();
   await expect(toast).toHaveText(`Controller connected: ${PAD_ID}`);
-  await expect(page.locator('#pad-box')).toHaveJSProperty('hidden', false);
-  await page.locator('#controls-toggle').hover();                              // the table lives in the Controls popover
-  await expect(page.locator('#pad-box')).toBeVisible();
+  await expect(page.locator('#pad-status')).toHaveText('Controller connected');
+  await page.locator('#controls-toggle').hover();                              // the list lives in the Controls popover
+  await expect(page.locator('#controls-pad')).toBeVisible();
+  await expect(page.locator('#controls-tab-pad')).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Escape');
   await page.mouse.move(700, 500);
-  await expect(page.locator('#pad-layout tbody tr:not(.pad-group)')).toHaveCount(6);
-  await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(1);
-  await expect(page.locator('#pad-layout tbody')).toContainText('boost');
-  await expect(page.locator('#pad-layout tbody')).not.toContainText('fire');
-  await expect(page.locator('#hint')).toContainText('pad: connected');
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(5);
+  await expect(page.locator('#pad-list tbody')).toContainText('up');
+  await expect(page.locator('#pad-list tbody')).not.toContainText('fire');
   expect(await page.evaluate(() => window.__viewer.pad().id)).toBe(PAD_ID);
 
   // Walk: the left stick held forward for a second walks the feet toward the first waypoint, on the floor at 100.
@@ -126,15 +125,15 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[2]).toBeGreaterThan(start[2]);
   expect(walked[1]).toBeCloseTo(100, 3);
 
-  // On foot the table lists the walking controls: R1's fire, the zoom and fire mode, Cross's action, the d-pad's peek, the
-  // game's weapon slots (L1, L2, R2), Select's scoreboard (research 87 section 12), no boost.
-  await expect(page.locator('#pad-layout tbody tr:not(.pad-group)')).toHaveCount(16);
-  await expect(page.locator('#pad-layout tbody')).toContainText('scoreboard (held)');
-  await expect(page.locator('#pad-layout tbody')).toContainText('action (climb, ladder slide)');
-  await expect(page.locator('#pad-layout tbody tr.is-assumed')).toHaveCount(0);
-  await expect(page.locator('#pad-layout tbody')).toContainText('fire (held)');
-  await expect(page.locator('#pad-layout tbody')).not.toContainText('boost');
-  await expect(page.locator('#keys-list')).toContainText('fire (held)');
+  // On foot the list names the walking controls: R1's fire, the zoom, R3's reload, the fire mode, Cross's action, the
+  // d-pad's peek, the weapon slots (L1, L2, R2), Select's scoreboard, no boost.
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(15);
+  await expect(page.locator('#pad-list tbody')).toContainText('scoreboard');
+  await expect(page.locator('#pad-list tbody')).toContainText('action: doors, climb, ladders');
+  await expect(page.locator('#pad-list tbody')).toContainText('R3reload');
+  await expect(page.locator('#pad-list tbody')).toContainText('fire');
+  await expect(page.locator('#pad-list tbody')).not.toContainText('boost');
+  await expect(page.locator('#keys-list')).toContainText('Left clickfire');
 
   // L2 is the game's SwapWeapon2 -- the controller's slot 1.0, the kit's Mark 23 (WEAPON: `./kit`) -- and a second press
   // does nothing (no toggle back); R2 its Inventory, one slot a press (the rifle, the Mark 23, the throwables); L1 its
@@ -227,7 +226,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await setPad(page, {});
   await expect(page.locator('#walk')).not.toBeChecked();
   await expect(page.locator('#mode button[data-mode="fly"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#pad-layout tbody tr:not(.pad-group)')).toHaveCount(6);         // and the table is the flying controls again
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(5);           // and the list is the flying controls again
 
   // Fly: the same stick flies along the look (yaw 0 looks down -z) and does not turn it.
   await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 160, z: 614, yaw: 0, pitch: 0 }));
@@ -257,11 +256,11 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await page.waitForTimeout(300);
   expect((await pose(page)).yaw).toBeCloseTo(turned.yaw, 1);
 
-  // Unplugged: the toast says so, once, and the hint line lets it go.
+  // Unplugged: the toast says so, once, and the status line lets it go.
   await plug(page, false);
   await expect(toast).toHaveText('Controller disconnected');
   await expect(toast).toBeVisible();
-  await expect(page.locator('#hint')).not.toContainText('pad: connected');
+  await expect(page.locator('#pad-status')).toContainText('No controller connected');
   expect(await page.evaluate(() => window.__viewer.pad().id)).toBeNull();
 
   expect(problems).toEqual([]);

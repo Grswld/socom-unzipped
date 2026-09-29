@@ -15,7 +15,7 @@ import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
-import { attachTouchControls, attachWalkTouch, wantsTouchControls } from './touch';
+import { attachTouchControls, attachWalkTouch, wantsTouchControls, type TouchControls } from './touch';
 import { WalkMode } from './walk';
 import { RemotePlayers } from './remotePlayers';
 import type { PlayClips } from './play';
@@ -23,8 +23,9 @@ import { NetPage } from './netPage';
 import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
 import { explosionShake, MAX_PITCH_RATE } from './look';
-import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
+import { mergeInput, noInput, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
 import type { TouchTarget } from './touch';
+import { MobileTip, storeOf, tipText } from './mobileTip';
 import { openingStand } from './stand';
 import { Reticle, reticleType } from './reticle';
 import { Hud, RangeFinder } from './hud';
@@ -41,7 +42,8 @@ import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, k
 import { Zoom } from './zoom';
 import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
-import { PlayUi, playWanted, readPlayChoice, withoutPlayParam, writePlayChoice } from './features';
+import { PlayUi, readPlayChoice, writePlayChoice } from './features';
+import { readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { PLAY_CLIPS } from './animator';
@@ -89,13 +91,19 @@ if (!canvas) throw new Error('the page has no #view canvas');
 /** The page's query string, read once. */
 const SEARCH = globalThis.location?.search ?? '';
 /**
+ * The shareable settings the address carries (owner, 2026-09-29; `./shareUrl`): `mode`, `map`, `view`, `online`. On load
+ * they beat the remembered choices; each is written back into the address as it changes, so the address is a link to
+ * this setup. `?redotcom` is read as `mode=play` and rewritten to it.
+ */
+const SHARE = readShare(SEARCH);
+/**
  * Playing as a SEAL (walk mode, the body, the rifle, the HUD) is reCOM mode (`./features`; the owner 2026-09-28 and
  * 2026-09-29): the settings' Mode switch, remembered, and `?redotcom` forces it on. Off, the play's markup is out of the
  * page (`PlayUi`, put back when it is switched on) and nothing binds `G`, the pad's Start, `R` or the hook's walk: the
  * page is the fly camera alone. Switched at run time, both ways (`setPlayMode`), without a reload -- a reload would lose
  * the visitor's disc image.
  */
-let playOn = playWanted(SEARCH, readPlayChoice());
+let playOn = SHARE.play ?? readPlayChoice() === '1';
 /** `&fly` keeps the free camera when reCOM mode opens (the tests that measure the fly view ask for it). */
 const FLY_START = new URLSearchParams(SEARCH).has('fly');
 /** reCOM mode opens on foot (owner, 2026-09-29): the map's walk starts once it is ready. Later maps keep the mode. */
@@ -571,7 +579,7 @@ const play = new Play();
 // the URL's `&mp` / `&server=` over it. reCOM mode joins as a player, the map viewer as a watcher (`connectNet`).
 const remote = new RemotePlayers(scene);
 const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
-let NET: OnlineTarget = resolveOnline(SEARCH, readOnline(), PAGE_LOCATION);
+let NET: OnlineTarget = resolveOnline(SEARCH, SHARE.online ?? readOnline(), PAGE_LOCATION);
 let net: NetPage | null = null;
 /** The clips the worker sent (the death clips among them, for the page's own death). */
 let playClips: PlayClips | null = null;
@@ -806,7 +814,9 @@ ui.onMapChange((path) => {
   ui.setStatus(`loading ${path} ...`);
   load(path);
 });
-ui.onLook();                 // restores the remembered picture before the toggles are read
+// Restores the picture -- the address's `view`, else the remembered one -- before the toggles are read; the link follows it.
+ui.onLook(SHARE.view, (view) => updateAddress({ view }));
+updateAddress({ view: ui.toggles().ps2look ? 'ps2' : 'modern' });
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
@@ -814,15 +824,19 @@ ui.onFullscreen();
 
 // ---- W2.7: the controller (`./gamepad`, ruling W2.R5) ------------------------------------------------------------
 /**
- * The touch stick's lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
- * each frame (`padFrame`). The up and down buttons are the same `jump` and `crouch` a pad's Square and L3 are.
+ * The touch sticks' lane (`./touch`), held here rather than written into the camera so a pad's can be merged with it
+ * each frame (`padFrame`). The two sticks come already read through the pad's pipeline (`stickInput`), so they are a
+ * pad's left and right sticks from here on. The up and down buttons are the same `jump` and `crouch` a pad's are.
  */
 const touchInput: Input = noInput();
 const touchLane: TouchTarget = {
   setStick: (x, y) => { touchInput.moveX = x; touchInput.moveY = y; },
+  setLook: (x, y) => { touchInput.lookX = x; touchInput.lookY = y; },
   setLift: (v) => { touchInput.jump = v > 0; touchInput.crouch = v < 0; },
   setStickBoost: (on) => { touchInput.boost = on; },
 };
+/** The touch layer's sticks, let go when a pad connects and the layer hides (`body.pad-on`). */
+let touchControls: TouchControls | null = null;
 /**
  * Walk mode's touch buttons (`attachWalkTouch`) hold the same lanes a pad's buttons do, in `touchInput`. A release is
  * kept until the frame after the press was read (`touchReleased`, cleared at the end of `padFrame`), so a tap shorter
@@ -836,8 +850,8 @@ function holdTouch(lane: PadFlag, down: boolean): void {
 const pads = new PadWatch({
   connected: (id) => {
     ui.toast(`Controller connected: ${id}`);
-    ui.showPadLayout(PAD_LAYOUT);                 // the first connect shows the layout; a later one finds it there
-    ui.setPadConnected(true);
+    ui.setPadConnected(true);                     // the Controls popover's Controller tab; on a phone the touch layer hides
+    touchControls?.release();
   },
   disconnected: () => {
     ui.toast('Controller disconnected');
@@ -888,11 +902,20 @@ function padFrame(dt: number): void {
   for (const lane of touchReleased) touchInput[lane] = false;   // read this frame; let go for the next
   touchReleased.clear();
 }
-attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
+touchControls = attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
 attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
 ui.onControlsPopover();
+/**
+ * The phone's tip (owner, 2026-09-29; `./mobileTip`): a controller and landscape recommended on a touch device, once a
+ * visit and again on each turn to portrait, until the player dismisses it (remembered). A pad connected hides it.
+ */
+const mobileTip = new MobileTip(storeOf(() => localStorage), storeOf(() => sessionStorage));
+const portraitQuery = ((): MediaQueryList | null => { try { return globalThis.matchMedia?.('(orientation: portrait)') ?? null; } catch { return null; } })();
+const offerTip = (show: boolean): void => { if (show) ui.showTip(tipText(pads.count() > 0), () => mobileTip.dismiss()); };
+offerTip(mobileTip.start(wantsTouchControls(), portraitQuery?.matches ?? false));
+portraitQuery?.addEventListener?.('change', (e) => offerTip(mobileTip.rotate(e.matches)));
 // Round 2: the panel's Sound and Mouse look sections (each is on the page only in reCOM mode), remembered in this browser.
 ui.onSound({ volume: (v) => audio.setVolume(v), muted: (m) => audio.setMuted(m) });
 ui.onLookControls((opts) => fly.setLookOptions(opts));
@@ -912,11 +935,8 @@ function setPlayMode(on: boolean, remember: boolean): void {
   ui.setPlay(on);
   ui.setRecom(on);
   if (on) { walk.bindKey(); fire.bindKey(); } else { walk.unbindKey(); fire.unbindKey(); }
-  if (remember) {
-    writePlayChoice(on);
-    const href = on ? null : withoutPlayParam(globalThis.location?.href ?? '');
-    if (href) { try { history.replaceState(null, '', href); } catch { /* a page without a history */ } }
-  }
+  if (remember) writePlayChoice(on);
+  updateAddress({ play: on });                  // the link says the mode (and `?redotcom` becomes `mode=play`)
   if (!on) {
     fire.release();
     if (walk.mode() === 'walk') walk.setMode('fly');
@@ -938,8 +958,11 @@ ui.onRecomSwitch((on) => setPlayMode(on, true));
  * left. A server the URL named is replaced by the choice.
  */
 ui.setOnline(NET.choice);
+// The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten.
+if (NET.choice !== 'url') updateAddress({ online: NET.choice });
 ui.onOnline((choice: OnlineChoice) => {
   writeOnline(choice);
+  updateAddress({ online: choice });
   NET = resolveOnline('', choice, PAGE_LOCATION);
   if (loaded) connectNet(loaded);
   showOnline();
@@ -976,11 +999,7 @@ function wantedArchive(): string {
 function rememberMap(path: string): void {
   const archive = mapList.find((m) => m.path === path)?.archive;
   if (!archive) return;
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set('map', archive);
-    history.replaceState(null, '', url);
-  } catch { /* a page without a history, such as a file: URL */ }
+  updateAddress({ map: archive });              // `./shareUrl`: the other parameters kept as they were, `&fly` still bare
   try { localStorage.setItem(LAST_MAP_KEY, archive); } catch { /* the default next time */ }
 }
 ui.onSlider((name, value) => {
@@ -1020,6 +1039,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
     presentation = on ? 'ps2' : 'native';
     document.body.classList.toggle('ps2-look', on);
     fit?.();
+    updateAddress({ view: on ? 'ps2' : 'modern' });   // however it was switched, the link follows (`./shareUrl`)
   }
 }
 

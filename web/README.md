@@ -165,17 +165,20 @@ Everything below is relative to `web/`.
 ## Controls
 
 The camera flies like a creative-mode build camera: momentum, not teleporting. The page lists only the controls of the
-mode you are in, in the **Controls** popover in the top bar (hover it, focus it, or click or tap it; **Esc** closes it),
-and, once a pad is connected, the pad's layout for that mode under them.
+mode you are in, in the **Controls** popover in the top bar (hover it, focus it, or click or tap it; **Esc** closes it).
+It has two tabs, **Controller** and **Mouse & Keyboard** (owner, 2026-09-29), each the action and its button or key and
+nothing else -- no sources, readings or debug keys, which live in this README's tables below. The tab chosen is remembered
+(`s2u.viewer.controlsTab`); with nothing chosen it opens on Controller when a pad is connected, else on Mouse & Keyboard
+(`viewer/src/controlsList.ts`, `padControlGroups`, `controlGroups`, `chooseTab`).
 
-**Playing as a SEAL is reCOM mode**, the settings' **Mode** switch (**Map viewer** / **reCOM**, owner 2026-09-29). In
+**Playing as a SEAL is reCOM mode**, the settings' **Mode** switch (**Explore** / **Play**, owner 2026-09-29). In
 reCOM mode the page also has walk mode, the SEAL's body, the rifle, the HUD, the Sound and Mouse look sections and the
 touch stance and fire buttons. In the map viewer none of that is rendered, bound or answered: no `G`, no Start, no Fly /
 Walk switch, no walk in the Controls popover, and the debug hook's `setMode('walk')` returns false. The switch works at
 run time, both ways, without a reload (the disc you opened stays open), and is remembered in this browser
-(`s2u.viewer.recom`). `?redotcom` in the address forces reCOM on for that visit (a deep link: `?redotcom`, or
-`?map=MP2&redotcom`); switching to the map viewer takes it out of the address. (`viewer/src/features.ts`, `playWanted`,
-`PlayUi`.) reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
+(`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and the old `?redotcom` is
+read as `mode=play` and rewritten to it (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
+`viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
 add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
@@ -186,15 +189,23 @@ In reCOM mode the panel also has a **Sound** section (a volume slider and a mute
 `setMuted`) and a **Mouse look** section (raw, the default, or the game's stick curve -- both kept by the owner's ruling of
 2026-09-29 -- a sensitivity slider, invert pitch, and equal
 pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
-`s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover lists
-the keyboard and mouse for the current mode in groups (Move, Combat, Stance & traversal, Weapons, General; the fly list is
-Move and General), and the pad's layout under them, grouped the same way, once a pad is connected.
+`s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover's two
+lists are grouped the same way (Move, Combat, Stance & action, Weapons, General; the fly lists are Move and General).
 
-| setting | choices | remembered as |
-|---|---|---|
-| **Mode** | Map viewer (the default) · reCOM (play as a SEAL; `?redotcom` forces it) | `s2u.viewer.recom` |
-| **View** | Modern · PS2 | `s2u.viewer.look` |
-| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `s2u.viewer.online` |
+**Shareable links** (owner, 2026-09-29; `viewer/src/shareUrl.ts`). The page's state lives in its address and follows every
+change (`history.replaceState`: no reload, no history entries), so copying the address bar gives a friend the same setup:
+`mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`. On load the
+address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
+written in. A value the page does not know is ignored. `devmode`, `fly`, `mp`, `server=`, `lag=` and `loss=` work as
+before and pass through untouched (never added); `server=` (or `mp`) beats `online=` and implies it. A link with
+`online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with `mode=explore`.
+
+| setting | choices | in the address | remembered as |
+|---|---|---|---|
+| **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` (`?redotcom` read as it) | `s2u.viewer.recom` |
+| **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
+| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
+| map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
 
 **Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
 (Space follows the next player, V the free camera) and never takes a player's place. The line under it says what the
@@ -228,7 +239,7 @@ away. `&mp` and `&server=` in the address still override it (`viewer/src/online.
 | `Space` | jump |
 | `C` | the stance: a tap toggles stand and crouch (from prone, a tap crouches); held 0.4 s, prone (`STANCE_HOLD_S_PLACEHOLDER`, the pad's Triangle's too); `Ctrl+C` stays the browser's. On a touch screen, the **C** button beside the lift buttons is `C`: tap and hold alike, its release the tap, a cancelled touch nothing (the walk's touch layout hides it and puts Triangle, the pad's rule, in its place, so today it shows only in the fly camera, where it does nothing) |
 | right button | steps the zoom: third person → the scope (drawn from the SEAL's eyes, the body hidden) → third person. There is no first person: the views are third person and scoped, as SOCOM II's (the owner, 2026-09-29). The Mark 23 has no scope: with it the zoom does nothing (the owner's ruling, 2026-09-29). On a wide screen the scope's black fills the frame beside it |
-| left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
+| left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, **SHOOT** |
 | `R` | reloads; an empty magazine waits for it |
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: opens or shuts the door under the reticle (the door icon shows it; [research 92](docs/research/92-doors.md)), climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
@@ -253,10 +264,10 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | R1 | fire (held fires at the rifle's rate; let go stops) | — |
 | Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
 | L1 | the rifle (the game's SwapWeapon1); no held aim, no first person | — |
-| d-pad Up | zoom (scope): the lane is read, the zoom itself is a stub until the accuracy work merges | — |
+| d-pad Up / Down | zoom in / out, a step a press (the scope; research 84) | — |
 | Start | fly (as `G`) | walk (as `G`) |
-| L3 | crouch toggle on release (the launcher's crouch shortcut) | down |
-| R3 | — | boost |
+| L3 | fire mode (research 84 section 6) | — |
+| R3 | reload (the motion workstream's binding, 2026-09-29) | boost |
 
 Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/stanceButton.ts`, `C`'s too): the game
 reads the button's pressure, which a browser pad does not give. Triangle keeps the game's own rule, where a tap from prone
@@ -306,40 +317,47 @@ constants, which are meant to be tuned.
 
 ## On a touch screen
 
-A one-finger drag looks around, which the canvas gives for free. Moving is the part a phone had no way
-to do, so the left half of the screen is a virtual stick — a circle that appears wherever the thumb
-lands and follows it — and two buttons in the bottom-right corner do what Q and E do. Beside them, for the
-walk, a **C** button is `C` (a tap stands or crouches, from prone crouches; held 0.4 s, prone -- its label says so), and a round **fire** button is the trigger: held, the rifle
-fires at its rate. The right half is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
-same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
-that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
+**Two floating sticks** (owner, 2026-09-29). A finger landing on the left half of the screen is the move stick: a circle
+appears where the thumb lands, its knob follows the thumb clamped to the circle, and it goes on the lift. While walking a
+finger landing on the right half is the look stick, the same way; flying, the right half keeps the canvas's one-finger
+drag. Each half tracks its own finger, so both are held at once. The sticks are a pad: their knobs are the Gamepad API's
+standard axes 0/1 and 2/3 (`sticksPad` in `viewer/src/touch.ts`), read by the pad's own `padInput` -- the same dead zone
+(0.15), rescale and y flip, and from there the same path a pad's sticks take (the walk's stick law, the mover's analog
+run, the look's turn rate). There is no second touch pipeline: `stickInput` is `padInput` of the two knobs, and
+`test/dualStick.test.ts` pins that it is, and that the old single stick's shaping is unchanged pixel for pixel. The move
+stick held at its rim for 400 ms is still the fly camera's boost.
 
-**Walking on a phone** (reCOM mode) has its own layout, in the PS2 pad's positions, shown while walking on a touch screen
-and held sideways (upright, the page asks for a turn and lifts the buttons off the HUD's tall bottom strip). The left
-thumb has the stick; the right has a diamond of face buttons at the bottom right -- Triangle the stance (tap crouches, hold
-goes prone, as the pad's), Square the jump, Cross the action (climb, ladder slide) -- and a larger **FIRE** (R1) at the edge
-beside it. Under the compass are zoom in and out (d-pad Up and Down), **MODE** (fire mode, L3) and **RELOAD**; along the
-bottom middle **RIFLE**, **M67** and **NEXT** (L1, L2, R2); at the left edge, over the stick's zone, the two peek buttons
-(the d-pad's sides, held) and fullscreen. Every button holds the lane the pad's button holds (`touchInput`, merged with the
-pad's in `padFrame`, `viewer/src/touch.ts` `attachWalkTouch`), so the behaviour is the pad's; each owns its pointer, so fire
-and jump can be held at once. The HUD keeps its corners: nothing sits on the ammo box, the compass or the range and timer
-strip. While walking, the fullscreen button leaves the bottom right for the left edge on every screen, since the HUD owns
-that corner. Flying keeps the lift buttons as they were.
+**Walking on a phone** (reCOM mode) shows the buttons a player needs, tidied, for a phone held sideways: a large
+**SHOOT** (R1) at the right edge and **JUMP** (Square) beside it, under the right thumb; the stance (Triangle: a tap
+crouches, a hold goes prone) over JUMP and the action (Cross: doors, climb, ladders) over SHOOT; and a row under the
+compass with **RELOAD** at the edge, **NEXT** (the next item: grenades and equipment, as R2), and zoom out and in (d-pad
+Down and Up). The fire mode, the weapon slots, the peek and the scoreboard are a pad's or a keyboard's. The buttons lie
+above the stick zones: a press on a button never starts a stick, and a stick holds its finger, so dragging it across a
+button presses nothing. Every button holds the lane the pad's button holds (`touchInput`, merged with the pad's in
+`padFrame`, `viewer/src/touch.ts` `attachWalkTouch`), so the behaviour is the pad's; each owns its pointer, so SHOOT and
+JUMP can be held at once. No two buttons overlap and the HUD keeps its corners (the ammo box, the compass, the range and
+timer strip) at 812x375, 667x375 and 915x412 (`e2e/touch.spec.ts`). Held upright the page asks for a turn and lifts the
+cluster off the HUD's tall bottom strip. Flying keeps the lift buttons, the **C** button (`C`'s rule: a tap stands or
+crouches, from prone crouches; held 0.4 s, prone) and a round **fire** button.
 
-They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
-and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
-has a phone's width to work with; the stick held at its rim for 400 ms is the flight's boost, the one gesture a
-thumb can make without leaving the stick (on foot, with `?redotcom`, it is simply a full stick: the walk has no boost); and a round fullscreen button sits above the lift buttons,
-which on a phone also asks for a landscape lock. The canvas is `100dvh`, so the picture's centre is the
-screen's whether or not the browser bar is showing, and the pixel ratio starts at 1.5 on a coarse
-pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
-step it back up.
+**A controller on a phone.** A pad connected hides the whole touch layer (`body.pad-on`) and plays exactly as on a desktop
+(the Gamepad API path is shared); disconnecting it brings the touch layer back. **The tip**: on a touch device a notice
+recommends a controller and landscape, once a visit (the tab's session) and again on each turn to portrait, until its
+close button dismisses it for good (`s2u.viewer.mobileTipDismissed`; `viewer/src/mobileTip.ts`).
+
+The touch controls appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong, and not
+at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb has a phone's width to work
+with; a round fullscreen button sits above the lift buttons (at the left edge while walking), which on a phone also asks
+for a landscape lock. The canvas is `100dvh`, so the picture's centre is the screen's whether or not the browser bar is
+showing, and the pixel ratio starts at 1.5 on a coarse pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it
+down to 0.75, frames under 12 ms step it back up.
 
 Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Controls,
 Settings and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
 panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself;
-on a phone held sideways, open, it docks in the top middle band -- right of the fullscreen and peek column, left of the
-zoom row, above the stick's zone -- so no touch button is under it (`e2e/phonePanel.spec.ts`, at 812x375, 667x375 and
+on a phone held sideways, open, it docks in the top middle band -- right of the fullscreen button, left of the pill row
+under the compass, above the SHOOT / JUMP cluster -- so no touch button is under it (it lies over the stick zones, open
+ground a thumb on the panel does not reach) (`e2e/phonePanel.spec.ts`, at 812x375, 667x375 and
 915x412); upright it is the full width under the bar, as before. The
 status line is two dim lines whose whole text is its tooltip. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
