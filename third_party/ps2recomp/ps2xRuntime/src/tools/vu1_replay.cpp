@@ -112,6 +112,7 @@ namespace
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/ps2_memory.h"
 #include "ps2x/knobs.h"
+#include "../lib/vu/ps2_vu1_ops.h"   // S17 F C1: vu1ops::productSumZeroCounts
 
 // g_ps2xTraceArmed (the interpreter's triggered program dump) is the runtime's own since Sprint 13 C8
 // (runtime/ps2_trace_armed.h); never armed here.
@@ -1356,6 +1357,15 @@ int main(int argc, char **argv)
                      (unsigned long long)g_vu1NativeEntered.load(),
                      (unsigned long long)g_vu1NativeEnded.load(),
                      (unsigned long long)g_vu1NativeHandBacks.load());
+    }
+    if (ps2x::knobOn("PS2X_VU1_FMAC_ZERO_FAST"))
+    {
+        // S17 F C1 (research/81): product-sums that failed the fast test, and the share of them whose
+        // failing lanes were all exact zeros (now fast). Only counted with the knob on.
+        const vu1ops::ProductSumZeroCounts &z = vu1ops::productSumZeroCounts();
+        std::fprintf(stderr, "[vu1_replay] fmac zero-fast: refused=%llu rescued=%llu (%.1f %%)\n",
+                     (unsigned long long)z.refused, (unsigned long long)z.rescued,
+                     z.refused ? 100.0 * (double)z.rescued / (double)z.refused : 0.0);
     }
     std::fprintf(stderr, "[vu1_replay] %zu programs x%d: %llu cycles, %llu pairs, host %.1f ms, %.1f ns/cycle, %.1f ns/pair\n",
                  inputs.size(), repeat, (unsigned long long)totalCycles, (unsigned long long)totalPairs,
