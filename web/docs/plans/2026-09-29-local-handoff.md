@@ -44,7 +44,7 @@ integration head into its own branch). State at the stop:
 | traversal (`wt-web-traversal`) | merged through round 3 (dive, hang, slopes) | its ripple keeper is unwired on purpose (effects owns water) |
 | hud (`wt-web-hud`) | merged through round 3 (scoreboard on Select/Tab, zoom/range text, message window) | idle |
 | feelqa (`wt-web-feelqa`) | merged; tools `web/tools/feel-parity.ts`, `web/tools/playtest.ts`; research 88, 90 | re-run after merges; open issues below |
-| **effects** (`wt-web-effects`) | **15 uncommitted files** — round 3 in progress: the per-blast freeze fix (#19, cache/pre-warm light materials), the smoke screen (so grenades can drop their placeholder), effect lights on the body (`rigShading.ts`), `.BUL_CASE_METAL`/`.SG_SHELL_TIN` leftovers (#18) | inspect the diff, finish, test, commit, merge |
+| **effects** (`wt-web-effects`) | **round 3 committed on `claude/web-effects`, NOT merged**: the per-blast freeze #19 fixed (pooled light passes; no frame over 45 ms at a blast on MP2/MP6/MP61), #18 casing names via a new `soundNames.ts`, the smoke screen now reads as a wall (grenades can set `SMOKE_ALWAYS_PLACEHOLDER` false), the SEAL relit by effect lights, the maps' ambient effects (zAnim commands 46/47/50), a PS2-target fix in `renderer.ts`. Merging it conflicts in 5 files: `effects.ts`, `main.ts`, `renderer.ts` (its warm-up fix against maps' new `compileQueue.ts` warm-up: keep ONE warm-up path that sets the PS2 target only around the synchronous compile call), `soundData.ts` and `test/audio.test.ts` (its `soundNames.ts` against audio's name table in `@s2u/sound`: keep one table and route everything through it) | merge it first, carefully; full e2e after |
 
 Merge recipe used all session: in `wt-web-play`, `git merge --no-ff --no-edit claude/web-<name>`; resolve conflicts by
 **union** where both sides add, and by **one path per effect** where both implement the same thing (e.g. explosions go
@@ -80,8 +80,8 @@ appears; typecheck + vitest + full e2e; commit with explicit paths (`git add -- 
 ## 7. First moves for the next agent
 
 1. `cd C:/Projects/wt-web-play/web && git status && git log --oneline -3` — confirm the head is `ff54c67b` or later.
-2. In `wt-web-effects`: `git diff --stat`, read the diff, finish or WIP-commit it, run its tests, commit, then merge
-   into the integration branch with the recipe above (weapon round 2 is merged).
+2. Merge `claude/web-effects` (round 3, committed) into the integration branch: 5 conflicts; the effects row
+   above says how to resolve them (one warm-up path, one sound-name table). Weapon round 2 and maps round 4 are merged.
 3. Run the full e2e (maps round 4 was merged without it).
 4. Full verification, push the integration branch, re-run `tools/playtest.ts` on five maps and update research 90.
 5. Continue the feel-first list: the open issues above, then the owner's decisions once answered.
