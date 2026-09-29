@@ -40,6 +40,7 @@ constant (`*_PLACEHOLDER`) stands in. Code and test paths are relative to `web/r
 - [90](../research/90-playtest-2026-09-28.md): Playtest, 2026-09-28: the walk played as the owner plays it, on Frostfire, Desert Glory and Crossroads (15 sections)
 - [91](../research/91-the-round.md): The round: damage, death, respawn, teams, score, names (web sprint 3, M1) (42 sections)
 - [92](../research/92-doors.md): Doors: what the action button does to a door, and the viewer's (2026-09-29) (6 sections)
+- [93](../research/93-data-hardening.md): Data hardening: what the parsers refuse in a dropped image, and why (2026-09-29) (4 sections)
 
 ## Records
 
