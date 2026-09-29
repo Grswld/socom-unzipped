@@ -122,3 +122,10 @@ tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "s
 #    as an address; it is a hostname in a URL, and the whole line is public by nature.
 email  web/README.md  git@github.com   # `git subtree push ... git@github.com:Scotho/...` -- a remote, not an address
 email  web/redotcom/README.md  git@github.com   # the same line since the web/ split of 2026-09-29 (the row above stays for the history leg)
+
+# -- the site's release: web/shared/deploy/site/deploy.sh runs `leakcheck artifact` over the staged tree (the landing
+#    build, redotcom's build under redotcom/, the inbox). Artifact paths are relative to the scanned directory.
+private-ip         *story/timeline.json                         # the landing build's copy of docs/story/timeline.json: commit subjects quoted verbatim (the tracked file's row is above)
+secret-assignment  *assets/index-*.js  'credentials="include'   # Vite's modulepreload polyfill sets fetch's credentials mode; not a credential
+postcode           *assets/index-*.js  RG16UI                   # three.js's WebGL texture format names (R16UI, RG16UI) in the minified bundle, not postcodes
+postcode           *assets/index-*.js  R16UI                    # same
