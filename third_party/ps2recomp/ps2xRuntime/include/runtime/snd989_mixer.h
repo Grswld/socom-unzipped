@@ -100,8 +100,11 @@ namespace snd989
         // (research/06 section 142: "if parentHandle != 0 the stream is QUEUED after that stream instead"). A queued
         // segment waits behind whatever the handle is playing and starts on the very next output frame after it ends;
         // without it, a play on a live handle replaces what is there, which is what cut every mission cue dead.
+        // Issue #94: `loopFile` is snd_PlayVAGStreamByLoc's flag 4, which the IRX's play worker (FUN_0000f7e0) turns
+        // into the stream's 0x400 "loop the file" bit: at the end of the data the stream goes back to the top of it
+        // (FUN_0001107c -> FUN_0001446c) and the handle keeps playing -- it never reports Done, only a stop ends it.
         bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group,
-                        bool queueBehind = false);
+                        bool queueBehind = false, bool loopFile = false);
         void stopAllStreams();
 
         // The decode-ahead half of the streams (audit 2026-09-17 section 2.3): reads and decodes the next chunk
