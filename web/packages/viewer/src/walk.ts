@@ -69,6 +69,10 @@ export class WalkMode {
   private stanceKeyHeld = false;
   private stanceKeyPressed = false;
   private readonly stanceKey = new StanceButton(STANCE_HOLD_S_PLACEHOLDER, KEY_STANCE);
+  /** The touch C button (`./touch`): `C`'s rule on its own machine, fed by `stanceTouch`, run beside the key's. */
+  private stanceTouchHeld = false;
+  private stanceTouchPressed = false;
+  private readonly stanceTouchButton = new StanceButton(STANCE_HOLD_S_PLACEHOLDER, KEY_STANCE);
   /** TRAVERSAL SEAM: the factory `useTraversal` set, and the moves on the current mover. */
   private traversalFactory: ((walker: Walker, ground: GroundData) => TraversalHooks) | null = null;
   private moves: TraversalHooks | null = null;
@@ -157,10 +161,23 @@ export class WalkMode {
     return true;
   }
 
-  /** The touch stance button: stand, crouch, prone, stand (the game's d-pad cycles them). `C` is `KEY_STANCE`'s. */
-  cycleStance(): Stance {
-    this.setStance(STANCES[(STANCES.indexOf(this.stance_) + 1) % STANCES.length]!);
-    return this.stance_;
+  /**
+   * The touch C button (`./touch` `attachTouchControls`), the PC's `C` rule (owner, 2026-09-29; `KEY_STANCE`): a tap
+   * toggles stand and crouch (prone to crouch), a hold of `STANCE_HOLD_S_PLACEHOLDER` goes prone; acted on in `frame`.
+   * A press is taken only while walking, a release always; a cancel forgets the press, so it is no tap.
+   */
+  stanceTouch(event: 'down' | 'up' | 'cancel'): void {
+    if (event === 'down') {
+      if (!this.walking) return;
+      this.stanceTouchHeld = true;
+      this.stanceTouchPressed = true;
+    } else if (event === 'up') {
+      this.stanceTouchHeld = false;
+    } else {
+      this.stanceTouchHeld = false;
+      this.stanceTouchPressed = false;
+      this.stanceTouchButton.reset();
+    }
   }
 
   /**
@@ -516,12 +533,16 @@ export class WalkMode {
     this.stanceKey.reset();
   };
 
-  /** One frame of `C`'s machine: a press between two frames is down for one; the stance it asks for, set. */
+  /** One frame of `C`'s machine and the touch C's: a press between two frames is down for one; the stance asked for, set. */
   private stanceKeyFrame(dt: number): void {
     const down = this.stanceKeyHeld || this.stanceKeyPressed;
     this.stanceKeyPressed = false;
     const go = this.stanceKey.update(down, dt, this.stance_);
     if (go !== null) this.setStance(go);
+    const touched = this.stanceTouchHeld || this.stanceTouchPressed;
+    this.stanceTouchPressed = false;
+    const goTouch = this.stanceTouchButton.update(touched, dt, this.stance_);
+    if (goTouch !== null) this.setStance(goTouch);
   }
 
   /** The floor under the camera, else spawn A's. */

@@ -135,7 +135,7 @@ export interface ViewerHook {
   switchFireMode(): string;
   /** Research 84 (`./accuracy`): the reticle's size, target, knock, sway, the pull's rounds, and the cone (tangents). */
   accuracy(): AccuracyState & { cone: Cone };
-  /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */
+  /** The walk's stance (W2.2b, `./walk`): what `C` and the touch C button change (tap: stand/crouch, hold: prone). */
   stance(): Stance;
   /** Sets the stance, walking or not; false for a name that is not a stance. */
   setStance(stance: Stance): boolean;

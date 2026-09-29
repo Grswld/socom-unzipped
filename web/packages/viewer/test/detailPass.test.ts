@@ -78,5 +78,9 @@ describe.skipIf(absent)(`the detail bindings out of loadMap${absent ? ` (${FIXTU
       expect(mp72.textures[d.name], `${base} -> ${d.name}`).toBeDefined();
     }
     for (const map of [mp6, mp72]) expect(map.diagnostics.filter((d) => /detail/i.test(d))).toEqual([]);
-  });
+    // Load-bound, not logic-bound: `loadMap` reads and decodes two whole maps (MP6, MP72) off the fixtures.
+    // Solo 0.39 s (vitest --maxWorkers=2, 2026-09-29). It passed alone and timed out at the default 5 s in
+    // full-suite runs on a loaded host: a slow-down past 12x, which solo x 6 (2.4 s) would not cover, so
+    // the budget is solo x ~26 -- this test's alone; the suite keeps the default.
+  }, 10_000);
 });

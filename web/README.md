@@ -166,7 +166,7 @@ Move and General), and the pad's layout under them, grouped the same way, once a
 | `W`/`S`, `A`/`D` | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
 | mouse (captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
 | `Space` | jump |
-| `C` | the stance: a tap toggles stand and crouch (from prone, a tap crouches); held 0.4 s, prone (`STANCE_HOLD_S_PLACEHOLDER`, the pad's Triangle's too); `Ctrl+C` stays the browser's. On a touch screen, the **C** button beside the lift buttons cycles stand → crouch → prone |
+| `C` | the stance: a tap toggles stand and crouch (from prone, a tap crouches); held 0.4 s, prone (`STANCE_HOLD_S_PLACEHOLDER`, the pad's Triangle's too); `Ctrl+C` stays the browser's. On a touch screen, the **C** button beside the lift buttons is `C`: tap and hold alike, its release the tap, a cancelled touch nothing (the walk's touch layout hides it and puts Triangle, the pad's rule, in its place, so today it shows only in the fly camera, where it does nothing) |
 | right button | steps the zoom: third person → the scope (drawn from the SEAL's eyes, the body hidden) → third person. There is no first person: the views are third person and scoped, as SOCOM II's (the owner, 2026-09-29). The Mark 23 has no scope: with it the zoom does nothing (the owner's ruling, 2026-09-29). On a wide screen the scope's black fills the frame beside it |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
 | `R` | reloads; an empty magazine waits for it |
@@ -199,7 +199,8 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | R3 | — | boost |
 
 Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/stanceButton.ts`, `C`'s too): the game
-reads the button's pressure, which a browser pad does not give.
+reads the button's pressure, which a browser pad does not give. Triangle keeps the game's own rule, where a tap from prone
+stands up; `C` and the touch **C** button take the owner's PC rule (2026-09-29), where a tap from prone crouches.
 
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
@@ -248,7 +249,7 @@ constants, which are meant to be tuned.
 A one-finger drag looks around, which the canvas gives for free. Moving is the part a phone had no way
 to do, so the left half of the screen is a virtual stick — a circle that appears wherever the thumb
 lands and follows it — and two buttons in the bottom-right corner do what Q and E do. Beside them, for the
-walk, a **C** button cycles the stance (stand, crouch, prone), and a round **fire** button is the trigger: held, the rifle
+walk, a **C** button is `C` (a tap stands or crouches, from prone crouches; held 0.4 s, prone -- its label says so), and a round **fire** button is the trigger: held, the rifle
 fires at its rate. The right half is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
 same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.

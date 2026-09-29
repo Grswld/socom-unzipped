@@ -102,7 +102,11 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(new Map(d.callbacks).get('jump_whoosh')).toEqual(['.JUMP_WHOOSH']);
     expect(new Map(d.callbacks).get('ladder_rung')).toEqual(['.STEP_LADDER']);
     expect(new Map(d.callbacks).get('RPG_impact')).toEqual(['.EXP_1', '.GREN_FAR']);
-  });
+    // Load-bound, not logic-bound: the first `mp2()` reads Frostfire's ZDB and its three sound banks off the fixtures.
+    // Solo 0.57 s (vitest --maxWorkers=2, 2026-09-29). It passed alone and timed out at the default 5 s in
+    // full-suite runs on a loaded host: a slow-down past 8x, which solo x 6 (3.4 s) would not cover, so
+    // the budget is solo x ~26 -- this test's alone; the suite keeps the default.
+  }, 15_000);
 
   it('plays the game\'s sound for each event, once unlocked', async () => {
     const out = new Recorder(), audio = new GameAudio(out, seeded(3));
@@ -211,7 +215,11 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     // The name played, through the one name table (`@s2u/sound`'s `soundFor`): the stone's bounce.
     expect(audio.onAnimCallback('grenade_hit_asphalt')).toBe('.GREN_STONE');
     expect(audio.has('.BUL_CASE_METAL')).toBe(true);                               // the misspelt casing, mended
-  });
+    // Load-bound, not logic-bound: it reads Crossroads' ZDB (MP72) and its banks off the fixtures.
+    // Solo 0.57 s (vitest --maxWorkers=2, 2026-09-29). It passed alone and timed out at the default 5 s in
+    // full-suite runs on a loaded host: a slow-down past 8x, which solo x 6 (3.4 s) would not cover, so
+    // the budget is solo x ~26 -- this test's alone; the suite keeps the default.
+  }, 15_000);
 
   it('plays .BUL_PASSING at the nearest point of another shooter round within 20 units', async () => {
     const out = new Recorder(), audio = new GameAudio(out, seeded(6));

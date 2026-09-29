@@ -13,8 +13,9 @@
  *   the zero point; plus the actor's position at `+0x1c` (`FUN_00309240(out, this + 0x1c, out)`, `:740-752`).
  *
  * **What is not in the body: the ten offsets' values.** They are data in the ELF's `.data` (16 bytes apart), not code,
- * and the handoff carries no image of it -- so `firePoint` takes them as a table (`FireOffsets`) and the viewer fills
- * the table with a named placeholder (`viewer/src/shot.ts`). The zero point is taken to be (0, 0, 0): `Tick_0` resets
+ * and the handoff carries no image of it -- so `firePoint` takes them as a table (`FireOffsets`) and nothing on the
+ * page fills it yet (the viewer's placeholder table lived in `viewer/src/shot.ts`, removed unused 2026-09-29; the page
+ * fires from the eye, `viewer/src/fire.ts`). The zero point is taken to be (0, 0, 0): `Tick_0` resets
  * `m_velM` from the same address (decomp `CZSealBody_Tick_0_0x57a330` :7201-7209, :7920-7952), and `:625-628` pass
  * its address where the other branches pass an offset's.
  *

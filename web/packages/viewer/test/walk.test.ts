@@ -573,6 +573,35 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(at[2] - after[2]).toBeLessThan(walked + 0.5);
   });
 
+  it('the touch C button is C: a tap toggles stand and crouch (prone: crouch), a hold goes prone, a cancel is nothing', () => {
+    const { fly, mode } = setUp();
+    fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });
+    const tap = (): void => { mode.stanceTouch('down'); mode.stanceTouch('up'); mode.frame(TICK); mode.frame(TICK); };
+    tap();
+    expect(mode.stance()).toBe('stand');                            // in fly mode the button does nothing
+    mode.setMode('walk');
+    tap();
+    expect(mode.stance()).toBe('crouch');
+    tap();
+    expect(mode.stance()).toBe('stand');
+    mode.stanceTouch('down');                                       // held: prone at 0.4 s
+    for (let t = 0; t < 0.5; t += TICK) mode.frame(TICK);
+    expect(mode.stance()).toBe('prone');
+    mode.stanceTouch('up');
+    mode.frame(TICK);
+    expect(mode.stance()).toBe('prone');                            // the hold's release does nothing
+    for (let t = 0; t < 3; t += TICK) mode.frame(TICK);             // the dive's clip runs out
+    tap();
+    expect(mode.stance()).toBe('crouch');                           // from prone a tap crouches, not the pad's stand
+    for (let t = 0; t < 3; t += TICK) mode.frame(TICK);
+    mode.stanceTouch('down');                                       // cancelled (a system gesture took the finger): no tap
+    mode.frame(TICK);
+    mode.stanceTouch('cancel');
+    mode.frame(TICK);
+    mode.frame(TICK);
+    expect(mode.stance()).toBe('crouch');
+  });
+
   it('Ctrl+C is left to the browser in fly and walk mode; a bare C while walking is the stance\'s', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 150, y: 40, z: 150, yaw: 0, pitch: 0 });
