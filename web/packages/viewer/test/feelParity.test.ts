@@ -17,9 +17,6 @@ import { moveStick } from '../src/moveStick';
 const REPORTED = new Set([
   'look.axis176',        // look: a single-byte edge of the dead zone (research 83 section 1's "one miss")
   'cam.hfov169',         // presentation: the native view widens the horizontal angle with the window (research 88 section 4)
-  'look.turn1s@30',      // look: the law steps per display frame, the console's per 60 Hz frame
-  'look.turn1s@144',
-  'look.corner',         // look / pad: ./gamepad clamps the pair to the rim before the law's circle
 ]);
 
 const pack = fixture('RUN/MOTION_P.ZAR'), readerc = fixture('RUN/READERC.ZAR');
