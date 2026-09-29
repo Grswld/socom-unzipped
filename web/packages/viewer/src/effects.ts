@@ -153,7 +153,8 @@ export interface EffectStats {
  * `_WOOD`, the table's other names. The game looks a sound up by its name's CRC (`FUN_00344f30`), so on the console a
  * casing lands on metal in silence; the viewer plays the bank's `.BUL_CAS_METAL` (research 89 §11).
  */
-export const SOUND_NAME_FIXES: Readonly<Record<string, string>> = { '.BUL_CASE_METAL': '.BUL_CAS_METAL' };
+import { SOUND_NAME_FIXES } from '@s2u/sound';
+export { SOUND_NAME_FIXES };   // AUDIO: one table, applied by `GameAudio`'s name resolution too
 
 /**
  * The casing sounds a map's banks may lack, and what stands in -- **a departure from the retail game** (the feel-QA

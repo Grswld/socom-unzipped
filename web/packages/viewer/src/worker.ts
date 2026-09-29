@@ -1,8 +1,10 @@
 import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 import { playFromDisc, playTransferables, type PlayData } from './motionTable';
-import { loopTransferables, renderAmbienceLoops, soundFromDisc, soundTransferables, type SoundData } from './soundData';
-import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
+import {
+  loopTransferables, renderAmbienceLoops, renderReverb, reverbTransferables, soundFromDisc, soundTransferables, type SoundData,
+} from './soundData';
+import { LONG_LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
 import type { RenderedSound } from '@s2u/sound';
 import { effectsFromDisc, effectTransferables, type EffectData } from './effectData';
 
@@ -100,8 +102,9 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         const data = await soundFromDisc(sourceFor(request.source), request.path, request.archive);
         data.loopsFollow = true;
         // The loops are rendered from the bank bytes before those are handed over, and sent after the data.
-        const loops = renderAmbienceLoops(data, LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER);
-        ctx.postMessage({ kind: 'sound', id: request.id, data }, soundTransferables(data));
+        const loops = renderAmbienceLoops(data, LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER, LONG_LOOP_SECONDS_PLACEHOLDER);
+        renderReverb(data);                           // the reverb's response here, not on the page's unlock
+        ctx.postMessage({ kind: 'sound', id: request.id, data }, [...soundTransferables(data), ...reverbTransferables(data)]);
         ctx.postMessage({ kind: 'soundLoops', id: request.id, loops }, loopTransferables(loops));
       } else if (request.kind === 'effects') {
         // Never an error either: a part that will not read is left out and named in `missing`.

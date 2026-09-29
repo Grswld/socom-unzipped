@@ -1,5 +1,5 @@
 import {
-  footstepSound, landingClass, landingHurts, landingSounds, landSpeeds, makeVolume, panDegrees, parseBankFile,
+  fixSoundName, footstepSound, landingClass, landingHurts, landingSounds, landSpeeds, makeVolume, panDegrees, parseBankFile,
   passingSound, PAN_RESET, rangeGain, renderLoop, renderSound, reverbImpulse, SampleCache, voiceLevel, type LandingClass,
   type Material, type RenderedSound, type ReverbImpulse, type SoundBank, type SoundParams, type StanceCode,
   type WeaponSounds,
@@ -53,6 +53,8 @@ export { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopL
 export const BED_FADE_SECONDS_PLACEHOLDER = 0.5;
 /** `FUN_00341a60`'s ramp to 0 when the zone's list has no entry: 0xf0 ticks at 240 Hz, one second. */
 export const REVERB_OFF_SECONDS = 1;
+/** The page's budget a frame for the work queued behind the unlock (`GameAudio.pump`). */
+export const PUMP_BUDGET_MS = 4;
 /** How many plays `stats().recent` keeps. */
 const RECENT = 16;
 
@@ -86,6 +88,8 @@ export interface AudioStats {
   reverb: { loaded: boolean; inside: boolean; zone: number; depth: number };
   /** The ambience: running, the beds and which is up, the emitters playing and their gains. */
   ambience: { on: boolean; beds: { outside: string[]; inside: string[] }; bed: 'outside' | 'inside' | null; emitters: { sound: string; node: string; gain: number }[] };
+  /** The unlock's cost and the most a frame spent on the queued work, milliseconds; the jobs still queued. */
+  timing: { unlockMs: number; pumpMaxMs: number; reverbMs: number; pending: number };
   missing: string[];
 }
 
@@ -101,6 +105,13 @@ export interface LoopHandle { setGains(left: number, right: number, seconds?: nu
 export interface AudioOut {
   /** Makes the output, on a gesture. */
   unlock(): void;
+  /**
+   * Makes the output ahead of the gesture, suspended (optional): the first `AudioContext` of a page costs the browser's
+   * audio service start -- about 300 ms, synchronous, measured in Chromium -- which should not land on a key press.
+   */
+  prepare?(): void;
+  /** Whether the output exists (prepared or unlocked): buffers can be built, sounds queued to start suspended. */
+  readonly ready?: boolean;
   readonly unlocked: boolean;
   readonly state: string;
   setGain(gain: number): void;
@@ -110,6 +121,8 @@ export interface AudioOut {
   rampReverb(depth: number, seconds: number): void;
   /** A buffer played round and round, silent until its gains are set. */
   loop(sound: RenderedSound): LoopHandle | null;
+  /** Builds part of a loop's buffer ahead of `loop` (optional); true once it is whole. */
+  warm?(sound: RenderedSound): boolean;
 }
 
 /** The page's output: an `AudioContext`, a master gain, the reverb bus, a buffer source a sound. */
@@ -123,10 +136,20 @@ export class WebAudioOut implements AudioOut {
   private ir: ReverbImpulse | null = null;
   private depth = 0;
 
-  get unlocked(): boolean { return this.ctx !== null; }
-  get state(): string { return this.ctx?.state ?? 'locked'; }
+  /** A gesture has resumed the context (it may exist before, suspended: `prepare`). */
+  private gestured = false;
+  get unlocked(): boolean { return this.ctx !== null && this.gestured; }
+  get ready(): boolean { return this.ctx !== null; }
+  get state(): string { return this.gestured ? this.ctx?.state ?? 'locked' : 'locked'; }
 
   unlock(): void {
+    this.prepare();
+    if (!this.ctx) return;
+    this.gestured = true;
+    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
+  }
+
+  prepare(): void {
     if (!this.ctx) {
       const Ctor = globalThis.AudioContext ?? (globalThis as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
@@ -141,7 +164,6 @@ export class WebAudioOut implements AudioOut {
       this.wet.connect(this.master);
       this.setReverb(this.ir);
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => undefined);
   }
 
   setGain(gain: number): void {
@@ -239,8 +261,33 @@ export class WebAudioOut implements AudioOut {
     node.start();
   }
 
+  /** Loop buffers, built a channel at a time (`warm`) and shared by every emitter of the sound. */
+  private readonly loopBuffers = new WeakMap<RenderedSound, { buffer: AudioBuffer; filled: number }>();
+
+  /**
+   * Copies one more channel of a loop's buffer; true once it is whole. A 12 s channel is a copy of a few milliseconds,
+   * so the page's queue (`GameAudio.pump`) spreads a loop over a frame or four.
+   */
+  warm(sound: RenderedSound): boolean {
+    const ctx = this.ctx;
+    if (!ctx || sound.left.length === 0) return true;
+    let entry = this.loopBuffers.get(sound);
+    if (!entry) {
+      const channels = sound.sendLeft && sound.sendRight && this.convolver ? 4 : 2;
+      entry = { buffer: ctx.createBuffer(channels, sound.left.length, sound.sampleRate), filled: 0 };
+      this.loopBuffers.set(sound, entry);
+    }
+    const data = [sound.left, sound.right, sound.sendLeft, sound.sendRight];
+    if (entry.filled < entry.buffer.numberOfChannels) {
+      entry.buffer.copyToChannel(data[entry.filled] as Float32Array<ArrayBuffer>, entry.filled);
+      entry.filled++;
+    }
+    return entry.filled >= entry.buffer.numberOfChannels;
+  }
+
   loop(sound: RenderedSound): LoopHandle | null {
-    const ctx = this.ctx, buffer = this.buffer(sound);
+    while (!this.warm(sound)) { /* whatever is left of the buffer, now */ }
+    const ctx = this.ctx, buffer = this.loopBuffers.get(sound)?.buffer ?? null;
     if (!ctx || !buffer) return null;
     const node = ctx.createBufferSource();
     node.buffer = buffer;
@@ -313,9 +360,20 @@ export class GameAudio {
   /** Whether the one warning about a tree with no sound archives has been given. */
   private warned = false;
 
-  constructor(private readonly out: AudioOut = new WebAudioOut(), private readonly random: () => number = Math.random) {
+  /**
+   * `inline`: whether a loop or the reverb's response the worker did not provide may be computed here, on the page's
+   * thread. True for the tests; the page's `gameAudio` is made without it, so nothing heavy ever runs on a gesture.
+   */
+  constructor(private readonly out: AudioOut = new WebAudioOut(), private readonly random: () => number = Math.random,
+              options: { inline?: boolean } = {}) {
+    this.inline = options.inline ?? true;
     this.out.setGain(this.gain());
   }
+  private readonly inline: boolean;
+  /** Work queued behind the unlock: the reverb's buffer, then one loop's buffer a job; `pump` runs them frame by frame. */
+  private jobs: { gen: number; run: () => void }[] = [];
+  private gen = 0;
+  private readonly timing = { unlockMs: 0, pumpMaxMs: 0, reverbMs: 0 };
 
   /** The map's sound data from the worker (`./soundData`); null silences the walk. */
   setData(data: SoundData | null): void {
@@ -356,6 +414,8 @@ export class GameAudio {
     this.env = null;
     this.loops.clear();
     this.loopsFollow = data?.loopsFollow ?? false;
+    // The context made now, while the map comes in, so the first key press only resumes it.
+    if (data && data.banks.length > 0) this.out.prepare?.();
     this.loadReverb();
     if (this.ambienceWanted) this.startAmbience();
   }
@@ -370,9 +430,12 @@ export class GameAudio {
   /** Makes the output on the first pointer or key press on `target` (and resumes it on any later one). */
   unlockOn(target: EventTarget): void {
     const unlock = (): void => {
+      const t0 = performance.now();
       const was = this.out.unlocked;
       this.out.unlock();
+      // Only the context here: the reverb and the loops are queued for the frames after (`pump`).
       if (!was && this.out.unlocked) { this.loadReverb(); if (this.ambienceWanted) this.startAmbience(); }
+      this.timing.unlockMs = Math.max(this.timing.unlockMs, performance.now() - t0);
     };
     for (const type of ['pointerdown', 'keydown', 'touchend']) target.addEventListener(type, unlock, { capture: true, passive: true });
   }
@@ -380,7 +443,43 @@ export class GameAudio {
   /** The listener: the camera's world matrix (column-major, as three.js holds it), once a frame; the emitters follow. */
   setListener(matrixWorld: ArrayLike<number> | null): void {
     this.listener = matrixWorld ? Array.from(matrixWorld) : null;
+    this.pump();
     this.updateEmitters();
+  }
+
+  /**
+   * Runs the queued work (the reverb's buffer, the loops' buffers) within `PUMP_BUDGET_MS` a frame, at least one job:
+   * a loop's buffer is 12 s of four channels, a copy of a few milliseconds, so a map's ambience comes up over a few
+   * frames rather than in the one that unlocked the context. The tests call it to drain the queue.
+   */
+  pump(budgetMs = PUMP_BUDGET_MS): void {
+    const t0 = performance.now();
+    while (this.jobs.length > 0) {
+      const job = this.jobs.shift()!;
+      if (job.gen === this.gen) job.run();
+      if (performance.now() - t0 >= budgetMs) break;
+    }
+    this.timing.pumpMaxMs = Math.max(this.timing.pumpMaxMs, performance.now() - t0);
+  }
+
+  private queue(run: () => void): void { this.jobs.push({ gen: this.gen, run }); }
+
+  /**
+   * Whether buffers and nodes can be made: once unlocked, or once the output was prepared ahead of the gesture -- the
+   * reverb's convolver (about 13 ms of the browser's partitioning) and the ambience's loops are built while the map
+   * comes in, so the gesture only resumes the context.
+   */
+  private canBuild(): boolean { return this.out.unlocked || this.out.ready === true; }
+
+  /** Queues a loop's start behind the warming of its buffer, a channel a job (`AudioOut.warm`). */
+  private queueWarm(name: string, cache: Map<string, RenderedSound>, start: () => void): void {
+    const gen = this.gen;
+    const step = (): void => {
+      const r = cache.get(name) ?? this.loops.get(name);
+      if (r && this.out.warm && !this.out.warm(r)) { this.jobs.unshift({ gen, run: step }); return; }
+      start();
+    };
+    this.jobs.push({ gen, run: step });
   }
 
   // ---- the controls the UI hooks up --------------------------------------------------------------------------
@@ -406,11 +505,17 @@ export class GameAudio {
   // ---- the place: reverb and beds ----------------------------------------------------------------------------
 
   private loadReverb(): void {
-    if (this.reverbLoaded || !this.out.unlocked) return;
-    const preset = this.data?.reverb.preset;
-    this.out.setReverb(preset ? reverbImpulse(Uint16Array.from(preset)) : null);
-    this.reverbLoaded = !!preset;
-    if (this.env) { const e = this.env; this.env = null; this.setEnvironment(e.inside, e.zone); }
+    if (this.reverbLoaded || !this.canBuild() || !this.data) return;
+    this.reverbLoaded = true;
+    this.queue(() => {
+      const t0 = performance.now();
+      const r = this.data?.reverb;
+      const ir = r?.ir ?? (r?.preset && this.inline ? reverbImpulse(Uint16Array.from(r.preset)) : null);
+      this.out.setReverb(ir);
+      this.timing.reverbMs = performance.now() - t0;
+      this.reverbLoaded = !!ir;
+      if (this.env) { const e = this.env; this.env = null; this.setEnvironment(e.inside, e.zone); }
+    });
   }
 
   /**
@@ -453,10 +558,11 @@ export class GameAudio {
    * null when the bank lacks it or the output is locked.
    */
   private startLoop(name: string, cache: Map<string, RenderedSound>): LoopHandle | null {
-    const found = this.lookup.get(name) ?? this.lookup.get(name.trim());
-    if (!found || !this.out.unlocked) return null;
+    const found = this.find(name);
+    if (!found || !this.canBuild()) return null;
     let r = cache.get(name) ?? this.loops.get(name);
     if (!r) {
+      if (!this.inline) return null;            // the page plays only the worker's loops
       r = renderLoop(found.loaded.bank, found.index, found.loaded.samples, LOOP_SECONDS_PLACEHOLDER, LOOP_FADE_SECONDS_PLACEHOLDER,
         { random: this.random, state: this.grainState });
       cache.set(name, r);
@@ -466,19 +572,31 @@ export class GameAudio {
   }
 
   private startAmbience(): void {
-    if (this.ambienceOn || !this.data || !this.out.unlocked || this.loopsFollow) return;
+    if (this.ambienceOn || !this.data || !this.canBuild() || this.loopsFollow) return;
     this.ambienceOn = true;
     const cache = new Map<string, RenderedSound>();
-    for (const side of ['outside', 'inside'] as const) {
-      this.beds[side] = this.data.beds[side].map((s) => this.startLoop(s, cache)).filter((h): h is LoopHandle => h !== null);
-    }
+    this.beds = { outside: [], inside: [] };
     this.bed = null;
     this.crossBeds();
-    this.emitters = this.data.emitters.map((e) => ({ sound: e.sound, node: e.node, position: e.position, handle: this.startLoop(e.sound, cache), gain: 0 }));
-    this.updateEmitters();
+    // One loop a job: each starts silent, then takes its gains -- the bed's side, the emitter's place.
+    for (const side of ['outside', 'inside'] as const) {
+      for (const s of this.data.beds[side]) {
+        this.queueWarm(s, cache, () => {
+          const h = this.startLoop(s, cache);
+          if (!h) return;
+          this.beds[side].push(h);
+          const up = this.bed === side ? 1 : 0;
+          h.setGains(up, up, BED_FADE_SECONDS_PLACEHOLDER);
+        });
+      }
+    }
+    this.emitters = this.data.emitters.map((e) => ({ sound: e.sound, node: e.node, position: e.position, handle: null, gain: 0 }));
+    for (const e of this.emitters) this.queueWarm(e.sound, cache, () => { e.handle = this.startLoop(e.sound, cache); this.updateEmitters(); });
   }
 
   private stopAmbience(): void {
+    this.gen++;                                  // queued loop starts of this ambience are dropped
+    this.jobs = this.jobs.filter((j) => j.gen === this.gen);
     for (const h of [...this.beds.outside, ...this.beds.inside]) h.stop();
     for (const e of this.emitters) e.handle?.stop();
     this.beds = { outside: [], inside: [] };
@@ -606,7 +724,17 @@ export class GameAudio {
 
   /** Whether the map's loaded banks hold a sound of that name (the effects' casing fallbacks ask it). */
   has(name: string): boolean {
-    return this.lookup.has(name) || this.lookup.has(name.trim());
+    return this.find(name) !== undefined;
+  }
+
+  /**
+   * A sound by name as the viewer resolves it: the data's slips mended first (`fixSoundName`: `.BUL_CASE_METAL` is
+   * `.BUL_CAS_METAL`), then the map's banks and the lent ones (`borrowMissing`), with or without a bank name's trailing
+   * blanks.
+   */
+  private find(name: string): { loaded: Loaded; index: number } | undefined {
+    const fixed = fixSoundName(name);
+    return this.lookup.get(fixed) ?? this.lookup.get(fixed.trim());
   }
 
   /**
@@ -615,7 +743,7 @@ export class GameAudio {
    */
   play(name: string, position: Vec3 | null = null, event: AudioEvent = 'play'): boolean {
     if (event === 'play') this.events.play++;
-    const found = this.lookup.get(name) ?? this.lookup.get(name.trim());
+    const found = this.find(name);
     if (!found) { this.dropped.unknown++; this.unknownNames[name] = (this.unknownNames[name] ?? 0) + 1; return false; }
     if (!this.out.unlocked) { this.dropped.locked++; return false; }
     if (this.muted_) { this.dropped.muted++; return false; }
@@ -662,6 +790,7 @@ export class GameAudio {
         on: this.ambienceOn, beds: { outside: [...(this.data?.beds.outside ?? [])], inside: [...(this.data?.beds.inside ?? [])] }, bed: this.bed,
         emitters: this.emitters.filter((e) => e.handle).map((e) => ({ sound: e.sound, node: e.node, gain: e.gain })),
       },
+      timing: { ...this.timing, pending: this.jobs.length },
       missing: [...this.missing],
     };
   }
@@ -671,4 +800,4 @@ export class GameAudio {
  * The page's one `GameAudio`: `main.ts` feeds it the map's data, the listener and the walk's events; the UI's panel
  * calls `setVolume` / `setMuted` on it, and the motion, weapon, grenade and traversal workstreams its `on*` methods.
  */
-export const gameAudio = new GameAudio();
+export const gameAudio = new GameAudio(undefined, undefined, { inline: false });

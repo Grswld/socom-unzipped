@@ -94,7 +94,7 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(d.banks.some((b) => b.only?.includes('.GREN_METAL'))).toBe(true);
     // The names no bank on the disc holds: the game's own shell_eject spells the metal casing `.BUL_CASE_METAL` (the
     // banks: `.BUL_CAS_METAL`), and names a shotgun shell on tin that no bank has.
-    expect(d.missing).toEqual(['MP2: no bank holds .BUL_CASE_METAL', 'MP2: no bank holds .SG_SHELL_TIN']);
+    expect(d.missing).toEqual(['MP2: no bank holds .SG_SHELL_TIN']);             // .BUL_CASE_METAL: read as .BUL_CAS_METAL
     expect(new Map(d.params).get('.STEP_STONE')?.range).toEqual([30, 200]);
     expect(d.materials[STONE]!.step).toBe('.STEP_STONE');
     expect(d.weapons.find((w) => w.name === 'M4A1 SD')).toMatchObject({ fireClose: '.M4A1_SIL', reload: '.M4A1_SIL_RLD' });
@@ -201,6 +201,16 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(audio.onLand(220, 0)).toEqual(['.BONE_BRK_1', '.SEAL_DAMAGE']);
   });
 
+  it('hears a grenade on asphalt: grenade_hit_asphalt calls .GREN_ASPHALT, which no bank holds, played as .GREN_STONE', async () => {
+    const d72 = await soundFromDisc(new FsAssetSource(fixtures), 'RUN/MP72.ZDB', 'MP72');
+    expect(new Map(d72.callbacks).get('grenade_hit_asphalt')).toEqual(['.GREN_ASPHALT']);
+    const out = new Recorder(), audio = new GameAudio(out, seeded(2));
+    audio.setData(d72);
+    out.unlock();
+    expect(audio.onAnimCallback('grenade_hit_asphalt')).toBe('.GREN_ASPHALT');
+    expect(audio.has('.BUL_CASE_METAL')).toBe(true);                               // the misspelt casing, mended
+  });
+
   it('plays .BUL_PASSING at the nearest point of another shooter round within 20 units', async () => {
     const out = new Recorder(), audio = new GameAudio(out, seeded(6));
     audio.setData(await mp2());
@@ -224,6 +234,9 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     audio.setListener(IDENTITY);
     audio.setAmbience(true);
     audio.setEnvironment(false, 0);
+    expect(out.loops.length).toBe(0);                                              // queued, not built on the gesture
+    audio.pump(1e9);
+    expect(audio.stats().timing.pending).toBe(0);
     expect(out.reverb!.ll.length).toBeGreaterThan(24_000);
     expect(out.ramps.at(-1)).toEqual([0.07, 1]);
     audio.setEnvironment(true, 0);

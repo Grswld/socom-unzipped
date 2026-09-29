@@ -1,7 +1,8 @@
 import { parseRdr, rdrGet, readZarMembers, readZdbMember, Zar, type AssetSource, type RdrNode } from '@s2u/archive';
-import { flattenScene, parseAnimSets, parseSceneGraph, parseWorldRoot, worldCollision, type SceneNode } from '@s2u/scene';
+import { flattenScene, parseAnimSets, parseSceneGraph, parseWorldRoot, spawnsFor, worldCollision, type SceneNode } from '@s2u/scene';
 import {
-  callbackSounds, findReverbPresets, parseBankFile, parseSoils, parseSoundScript, renderLoop, SampleCache,
+  callbackSounds, findReverbPresets, fixSoundName, globalRegister2, parseBankFile, parseSoils, parseSoundScript, renderLoopAtLeastOneVoice,
+  reverbImpulse, SampleCache, type ReverbImpulse,
   SOCOM_REVERB_MODE, soundHash, soundParams, weaponSounds, zanimEmitters, zanimSounds, type Material, type RenderedSound,
   type SoundParams, type SoundSet, type WeaponSounds, type ZAnimPayload,
 } from '@s2u/sound';
@@ -63,12 +64,19 @@ export interface SoundData {
   beds: { outside: string[]; inside: string[] };
   /** The emitters: a looping sound at a world position. */
   emitters: { anim: string; sound: string; node: string; position: [number, number, number] }[];
-  /** The reverb: the preset's 32 registers (null without `LIBSD.IRX`) and the depth zones (depth 0..1, ramp seconds). */
-  reverb: { preset: number[] | null; indoor: [number, number][]; outdoor: [number, number][] };
+  /**
+   * The reverb: the preset's 32 registers (null without `LIBSD.IRX`), the depth zones (depth 0..1, ramp seconds), and
+   * the preset's response, computed in the worker (`renderReverb`) so the page's unlock does no arithmetic.
+   */
+  reverb: { preset: number[] | null; indoor: [number, number][]; outdoor: [number, number][]; ir?: ReverbImpulse | null };
   /** The SEAL's `CHRSND_DAMAGE`, or null. */
   damageVoice: string | null;
   /** True when the worker renders the loops after (`renderAmbienceLoops`, a second message): the page waits for them. */
   loopsFollow?: boolean;
+  /** `mission.rdr`'s `elevation` (max, min): global register 2's band (`globalRegister2`); null when absent. */
+  elevation?: [number, number] | null;
+  /** The camera's height at spawn A (`BED_CAMERA_ABOVE_FEET_PLACEHOLDER` over its floor): what the beds are rendered at. */
+  standHeight?: number | null;
   /** The parts that could not be read, and why. */
   missing: string[];
 }
@@ -185,6 +193,7 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
 
   // The reverb: libsd's preset, and the mission's zones.
   const reverb: SoundData['reverb'] = { preset: null, indoor: [], outdoor: [] };
+  let elevation: [number, number] | null = null, standHeight: number | null = null;
   try {
     const presets = findReverbPresets(await source.read(SOUND_LIBSD_PATH));
     if (presets) reverb.preset = Array.from(presets[SOCOM_REVERB_MODE - 1]!);
@@ -197,6 +206,13 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
       const mission = parseRdr(readerm.data(key));
       reverb.indoor = reverbZones(rdrGet(mission, 'IndoorReverb'));
       reverb.outdoor = reverbZones(rdrGet(mission, 'OutdoorReverb'));
+      // `elevation (max (100) min (142))`: the band global register 2 maps the camera's height through.
+      const elev = rdrGet(mission, 'elevation');
+      const num = (k: string): number => { const v = elev === undefined ? undefined : rdrGet(elev, k); return typeof v === 'string' ? Number(v) : NaN; };
+      if (Number.isFinite(num('max')) && Number.isFinite(num('min'))) elevation = [num('max'), num('min')];
+      const description = rdrGet(mission, 'description');
+      const spawn = typeof description === 'string' ? spawnsFor(description) : undefined;
+      if (spawn) standHeight = spawn.a[1] + BED_CAMERA_ABOVE_FEET_PLACEHOLDER;
     }
   } catch (e) { missing.push(`${mapPath} mission.rdr: ${why(e)}`); }
 
@@ -223,10 +239,10 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
       // A grenade's bounce and a round's impact on the map's own surfaces, the explosions, the casings' bounces.
       const hit = /^(?:grenade|bullet)_hit_(.+)$/.exec(cb);
       if ((hit && surfaces.has(hit[1]!)) || /^(frag_grenade|he_grenade)/.test(cb)) {
-        for (const n of sounds) wanted.add(n);
+        for (const n of sounds) wanted.add(fixSoundName(n));
       }
     }
-    for (const n of casingSounds) wanted.add(n);
+    for (const n of casingSounds) wanted.add(fixSoundName(n));   // `.BUL_CASE_METAL` lent as the banks spell it
     if (damageVoice) wanted.add(damageVoice);
     try { await borrowMissing(source, banks, sets, wanted, archive, missing); } catch (e) { missing.push(`borrowing: ${why(e)}`); }
     for (const { bytes } of banks) {
@@ -238,7 +254,10 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
     }
   }
 
-  return { archive, banks, materials, params, weapons, callbacks, defaultMaterial, beds, emitters, reverb, damageVoice, missing };
+  return {
+    archive, banks, materials, params, weapons, callbacks, defaultMaterial, beds, emitters, reverb, damageVoice, missing,
+    elevation, standHeight,
+  };
 }
 
 /**
@@ -330,21 +349,42 @@ export function soundTransferables(data: SoundData): Transferable[] {
  * `fade` folded in. A sound the banks lack is left out; so is one whose grains start no voice (the crickets' conductors
  * wait on a global register the game sets and the viewer does not).
  */
-export function renderAmbienceLoops(data: SoundData, seconds: number, fade: number): { name: string; sound: RenderedSound }[] {
+export function renderAmbienceLoops(data: SoundData, seconds: number, fade: number, longSeconds = seconds): { name: string; sound: RenderedSound }[] {
   const banks = data.banks.map(({ bytes }) => parseBankFile(bytes));
   const caches = banks.map((b) => new SampleCache(b.vag));
   const names = [...new Set([...data.beds.outside, ...data.beds.inside, ...data.emitters.map((e) => e.sound)])];
   const out: { name: string; sound: RenderedSound }[] = [];
   const state = new Map<string, number>();
+  // Global register 2 at the stand's height (the beds that test it take their layers from it once, not per frame).
+  const globals = data.elevation && data.standHeight !== null && data.standHeight !== undefined
+    ? [0, globalRegister2(data.standHeight, data.elevation)] : [];
   for (const name of names) {
     const at = banks.findIndex((b) => b.names.has(name) || b.names.has(`${name} `));
     if (at < 0) continue;
     const bank = banks[at]!;
-    const sound = renderLoop(bank, bank.names.get(name) ?? bank.names.get(`${name} `)!, caches[at]!, seconds, fade, { state });
+    const sound = renderLoopAtLeastOneVoice(bank, bank.names.get(name) ?? bank.names.get(`${name} `)!, caches[at]!, seconds, fade,
+      longSeconds, { state, globals });
     if (sound.voices > 0) out.push({ name, sound });
   }
   return out;
 }
+
+/** The reverb's response for the data's preset, in the worker (`reverbImpulse`: tens of milliseconds). */
+export function renderReverb(data: SoundData): void {
+  data.reverb.ir = data.reverb.preset ? reverbImpulse(Uint16Array.from(data.reverb.preset)) : null;
+}
+
+/** The response's buffers, for the transfer list. */
+export function reverbTransferables(data: SoundData): Transferable[] {
+  const ir = data.reverb.ir;
+  return ir ? [ir.ll, ir.lr, ir.rl, ir.rr].map((x) => x.buffer as ArrayBuffer) : [];
+}
+
+/**
+ * PLACEHOLDER (not the game's): how far over spawn A's floor the camera is taken to be when the beds are rendered with
+ * global register 2 -- the standing third-person camera's height over the feet (about 25.7, `playerCamera.ts`).
+ */
+export const BED_CAMERA_ABOVE_FEET_PLACEHOLDER = 25;
 
 /** The loops' buffers, for the transfer list. */
 export function loopTransferables(loops: readonly { sound: RenderedSound }[]): Transferable[] {
