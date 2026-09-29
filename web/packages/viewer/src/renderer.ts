@@ -1,6 +1,7 @@
 import type { Camera, Scene } from 'three';
-import { Color, LinearSRGBColorSpace } from 'three';
-import { WebGPURenderer } from 'three/webgpu';
+import { Color, LinearSRGBColorSpace, NearestFilter, RenderTarget } from 'three';
+import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { texture as textureNode, uv, vec4 } from 'three/tsl';
 
 /** Which GPU API the pictures actually came out of, for the status line and the screenshot record. */
 export type Backend = 'webgpu' | 'webgl2';
@@ -67,10 +68,29 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
   renderer.outputColorSpace = LinearSRGBColorSpace;
   renderer.setClearColor(BACKGROUND, 1);
   const backend: Backend = (renderer.backend as BackendFlags).isWebGPUBackend === true ? 'webgpu' : 'webgl2';
+  // The PS2 presentation draws the world as the GS did, with no antialiasing (the GS has none; the static
+  // packet at 0x3E0880 sets DTHE 0 and nothing else smooths an edge): into a 640x448 target with no samples,
+  // copied texel for texel onto the canvas. The canvas keeps its multisampling for the Modern picture -- it
+  // is fixed when the context is made under WebGL2 -- and the HUD passes that follow draw onto the copy.
+  const frame = new RenderTarget(PS2_FRAME.width, PS2_FRAME.height, { samples: 0, depthBuffer: true });
+  frame.texture.minFilter = NearestFilter;
+  frame.texture.magFilter = NearestFilter;
+  const copy = new MeshBasicNodeMaterial();
+  copy.colorNode = vec4(textureNode(frame.texture, uv()).rgb, 1);   // opaque: the page must never show through
+  copy.depthTest = false;
+  copy.depthWrite = false;
+  const blit = new QuadMesh(copy);
   return {
     renderer,
     backend,
-    render: (scene, camera) => renderer.render(scene, camera),
+    render: (scene, camera) => {
+      if (mode !== 'ps2') { renderer.render(scene, camera); return; }
+      const previous = renderer.getRenderTarget();
+      renderer.setRenderTarget(frame);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(previous);
+      blit.render(renderer);
+    },
     resize: (width, height) => { cssWidth = width; cssHeight = height; apply(); },
     setPixelRatio: (r) => {
       const next = Math.max(0.25, Math.min(globalThis.devicePixelRatio || 1, r));
