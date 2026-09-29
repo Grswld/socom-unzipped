@@ -18,6 +18,10 @@ import { RifleKick, STICK_FOLLOW_PLACEHOLDER } from '../src/rifleKick';
 import {
   FIRE_VERSIONS, RELOAD_BLEND_PLACEHOLDER, RELOAD_CLIPS, reloadLength, STILL_CLIPS, WEAPON_CLIPS, WeaponPose,
 } from '../src/weaponPose';
+import {
+  ALL_RELOAD_CLIPS, PISTOL_RELOAD_CLIPS, RELOAD_CLIPS as SHARED_RELOAD_CLIPS, RELOAD_SECONDS_PLACEHOLDER, reloadClip, reloadLockSeconds,
+  reloadMoving, reloadSeconds, type ReloadItem, type ReloadStance,
+} from '../src/reloadClip';
 import { AIM_HOLDS_RAISE, ease, Envelope, LOWER_DELAY, nextEdge, RAISE_TIMES, WeaponRaise } from '../src/weaponRaise';
 
 /**
@@ -192,6 +196,64 @@ describe('the Fire set and the reload as pose layers (FUN_005e0690 pairs, animse
     pose.step(1.1);
     expect(pose.reloading()).toBe(false);
     expect(pose.reloadLayer.sample({ clip: still, frame: 0, phase: 0 })).toBeNull();
+  });
+});
+
+describe('the reload\'s one table, the page\'s and the room\'s (MJ-1; FUN_005a82e0, FUN_005c2a90)', () => {
+  /** motion.rdr's playbacks [data] for the rifle's four, made-up distinct ones for the pistol's. */
+  const PLAYBACK: Record<string, number> = {
+    seal_reload: 1.6, seal_crouch_reload: 1.9, seal_prone_reload: 1.7, seal_mv_reload: 1.2,
+    seal_p_reload: 1.45, seal_p_crouch_reload: 1.7, seal_p_prone_reload: 1.75, seal_p_mv_reload: 1.1,
+  };
+  const table = new Map<string, MotionEntry>(Object.entries(PLAYBACK).map(([n, p]) => [n, entry({ looped: false, maxVelocity: -1, playback: p })]));
+  const list = ALL_RELOAD_CLIPS.map((n) => clip(n, 30, [{ name: 'lbicep', t: [[-2, 6, 0]], q: [qx(0)] }]));
+  const byName = new Map(list.map((c) => [c.name, c]));
+
+  it('is the weapon layer\'s own table: the same clip names, eight of them', () => {
+    expect(RELOAD_CLIPS).toBe(SHARED_RELOAD_CLIPS);
+    expect(ALL_RELOAD_CLIPS).toEqual([...Object.values(RELOAD_CLIPS), ...Object.values(PISTOL_RELOAD_CLIPS)]);
+    expect(new Set(ALL_RELOAD_CLIPS).size).toBe(8);
+    for (const name of ALL_RELOAD_CLIPS) expect(WEAPON_CLIPS).toContain(name);
+  });
+
+  it('the rifle\'s lock is its clip\'s playback: stand 1.6, crouch 1.9, prone 1.7, moving 1.2 (prone never the moving one)', () => {
+    expect(reloadSeconds(byName, table, 'stand', false)).toBe(1.6);
+    expect(reloadSeconds(byName, table, 'crouch', false)).toBe(1.9);
+    expect(reloadSeconds(byName, table, 'prone', false)).toBe(1.7);
+    expect(reloadSeconds(byName, table, 'stand', true)).toBe(1.2);
+    expect(reloadSeconds(byName, table, 'crouch', true)).toBe(1.2);
+    expect(reloadSeconds(byName, table, 'prone', true)).toBe(1.7);
+    expect(reloadClip('prone', true, 'pistol')).toBe('seal_p_prone_reload');
+  });
+
+  it('WeaponPose.reloadSeconds equals the room\'s lock for every stance, speed and item, from a map or the sim\'s list', () => {
+    const pose = new WeaponPose(byName, table);
+    for (const item of ['rifle', 'pistol'] as ReloadItem[]) {
+      pose.item = item;
+      for (const stance of ['stand', 'crouch', 'prone'] as ReloadStance[]) {
+        for (const moving of [false, true]) {
+          const page = pose.reloadSeconds(stance, moving);
+          expect(page, `${item} ${stance} ${moving}`).toBe(PLAYBACK[reloadClip(stance, moving, item)]);
+          expect(reloadLockSeconds(list, table, stance, moving, item)).toBe(page);
+          expect(reloadLockSeconds(byName, table, stance, moving, item)).toBe(page);
+          expect(pose.reloadClip(stance, moving)).toBe(reloadClip(stance, moving, item));
+        }
+      }
+    }
+  });
+
+  it('FUN_005a82e0\'s still test: speed squared at most 400 is still, the fall speed counted too', () => {
+    expect(reloadMoving(20, 0, 0)).toBe(false);
+    expect(reloadMoving(12, 0, 16)).toBe(false);                               // 144 + 256 = 400: still
+    expect(reloadMoving(20.01, 0, 0)).toBe(true);
+    expect(reloadMoving(0, -21, 0)).toBe(true);                                // vy is in the game's sum
+  });
+
+  it('with no clips, or the clip missing, the lock is RELOAD_SECONDS_PLACEHOLDER (2 s)', () => {
+    expect(RELOAD_SECONDS_PLACEHOLDER).toBe(2);
+    expect(reloadLockSeconds(null, table, 'stand', false)).toBe(2);
+    expect(reloadLockSeconds([], table, 'stand', false)).toBe(2);
+    expect(reloadLockSeconds(list, null, 'stand', false)).toBe(1);             // no table: 30 keys at 30 a second
   });
 });
 

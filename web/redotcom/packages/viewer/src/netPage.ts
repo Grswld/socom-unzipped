@@ -266,9 +266,12 @@ export class NetPage {
     if (e.type === 'round') {
       const d = [e.to[0] - e.from[0], e.to[1] - e.from[1], e.to[2] - e.from[2]];
       const l = Math.hypot(d[0]!, d[1]!, d[2]!) || 1;
+      // Protocol 5: the eye's ray the round was aimed down, for the server's cone (a round without it is refused there).
+      const eye = e.eye ?? e.from, aim = e.aim ?? [d[0]! / l, d[1]! / l, d[2]! / l];
       this.client.send({
         type: 'fire', seq: this.client.lastSeq(), from: [...e.from], dir: [d[0]! / l, d[1]! / l, d[2]! / l],
         weapon: e.weapon.id === this.deps.weapons[1].id ? 1 : 0, viewTick: this.client.viewTick(),
+        eye: [eye[0], eye[1], eye[2]], aim: [aim[0]!, aim[1]!, aim[2]!],
       });
     } else if (e.type === 'reloadStart') this.client.send({ type: 'reload', seq: this.client.lastSeq() });
   }
@@ -452,7 +455,15 @@ export class NetPage {
         if (ev.timeLeft !== null) this.endsAt = performance.now() + ev.timeLeft * 1000;
         break;
       case 'queue': if (ev.position > 0) hud.postMessage(queueLine(ev.position)); break;
-      case 'promoted': this.deps.spectate(null); hud.postMessage('YOU ARE IN: A PLACE IS FREE'); break;
+      case 'promoted':
+        this.deps.spectate(null);
+        this.unbench();
+        // Protocol 5 (PL-8): seated in a classic round in play, a ghost until the next -- the welcome's lines.
+        if (ev.ghost) { this.benched = true; hud.postMessage(GHOST_LINES.map((text) => ({ text, scale: 0.8 }))); }
+        else hud.postMessage('YOU ARE IN: A PLACE IS FREE');
+        break;
+      // Protocol 5 (PL-8): moved out for idling (W3.R13) -- a spectator's view and the queue's line.
+      case 'demoted': this.spectatorWelcome(ev.position); break;
       case 'refused': this.reconnect.stopped = true; this.refusal = ev.reason; hud.postMessage(ev.reason); break;
       case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
       case 'kicked': this.reconnect.stopped = true; this.refusal = ev.reason === 'vote' ? 'kicked by a vote' : 'kicked for inactivity';

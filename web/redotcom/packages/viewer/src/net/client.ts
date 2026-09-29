@@ -181,6 +181,8 @@ export class NetClient {
       case 'refused': this.state = 'refused'; break;
       case 'queue': this.queue = ev.position; break;
       case 'promoted': this.role = 'player'; this.team = ev.team; this.queue = 0; break;
+      // Protocol 5 (PL-8): moved out for idling -- a spectator's role: no commands go up, the mover is held.
+      case 'demoted': this.role = 'spectator'; this.team = null; this.queue = ev.position; this.alive = false; this.walk.setLocked(true); break;
       case 'pong': this.rtt = performance.now() - ev.t; break;
       case 'spawn':
         if (ev.id === this.id) this.spawned(ev.at, ev.yaw, ev.after);

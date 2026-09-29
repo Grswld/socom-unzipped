@@ -149,6 +149,11 @@ export type FireEvent =
     normal?: Vec3 | null; material?: number | null;
     /** ACCURACY: the surfaces the round went through before `to`, each struck (research 84 section 13). */
     through?: { point: Vec3; normal: Vec3; material: number | null }[];
+    /**
+     * The eye's ray the round was aimed down: the camera's eye and its look after the cone (`gun.round`). Online the
+     * server checks them against its own run of the cone (protocol 5, `./net/shotCone`).
+     */
+    eye?: Vec3; aim?: Vec3;
   }
   | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
   /** WEAPON: the trigger pulled on an empty magazine (the game's empty click; a reload follows when there is a magazine). */
@@ -759,6 +764,7 @@ export class Fire {
     if (aimNow && (!this.gun?.kickStarts || this.gun.kickStarts())) this.kick.round(aimNow.pitch, aimNow.stance);
     this.emit({
       type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds,
+      eye: [...aim.eye], aim: [...ray],
       normal: hit ? [...hit.normal] : null, material: hit?.material ?? null,
       ...(through.length ? { through: through.map((t) => ({ point: [...t.point] as Vec3, normal: [...t.normal] as Vec3, material: t.material ?? null })) } : {}),
     });

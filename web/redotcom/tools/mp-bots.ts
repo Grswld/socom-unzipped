@@ -18,7 +18,7 @@ import { WebSocket } from 'ws';
 import type { AssetSource } from '@s2u/archive';
 import { FsAssetSource } from '@s2u/archive/node';
 import {
-  BodyFlag, Button, groundPolygons, loadSimClips, loadSimMap, MoverSim, quantiseCommand, TICK_HZ, Traversal, Walker,
+  BodyFlag, Button, centreClaim, groundPolygons, loadSimClips, loadSimMap, MoverSim, quantiseCommand, TICK_HZ, Traversal, Walker,
   type Command, type ServerEvent, type SimClips, type SimMap, type Role,
 } from '../packages/viewer/src/sim';
 import { NetClient, type NetWalk, type WebSocketLike } from '../packages/viewer/src/net/client';
@@ -179,24 +179,28 @@ class Bot {
     if (this.client.role === 'player' && !this.dead && this.walk.sim && !this.walk.locked && t >= this.fireAt) this.fire(t);
   }
 
-  /** A round at the nearest living other body: from the eye, toward its feet + 12, a little spread. */
+  /**
+   * A round down the look, when a living other body is in range: from the eye, along the camera's look at the cone's
+   * centre (protocol 5: the server checks the eye and the aim against its own cone, `shotCone.ts`), as far as that body.
+   */
   private fire(t: number): void {
     const r = this.rand;
     this.fireAt = t + 20 + r() * 60;
-    const s = this.walk.sim!.walker.state;
+    const sim = this.walk.sim!, s = sim.walker.state;
     const from: [number, number, number] = [s.x, s.y + 15.4, s.z];
-    let best: [number, number, number] | null = null, bestD = 4000;
+    let bestD = 4000;
     for (const b of this.client.bodies()) {
       if (!(b.flags & BodyFlag.Alive)) continue;
       const d = Math.hypot(b.feet[0] - from[0], b.feet[1] + 12 - from[1], b.feet[2] - from[2]);
-      if (d < bestD && d > 1) { bestD = d; best = [b.feet[0], b.feet[1] + 12, b.feet[2]]; }
+      if (d < bestD && d > 1) bestD = d;
     }
-    if (!best) return;
-    const spread = 0.03;
-    const d = [best[0] - from[0] + (r() * 2 - 1) * spread * bestD, best[1] - from[1] + (r() * 2 - 1) * spread * bestD, best[2] - from[2] + (r() * 2 - 1) * spread * bestD];
-    const len = Math.hypot(d[0]!, d[1]!, d[2]!) || 1;
+    if (bestD >= 4000) return;
+    const claim = centreClaim({
+      feet: [s.x, s.y, s.z], yaw: s.yaw, pitch: s.pitch, posture: sim.walker.posture, moveRoot: sim.moves?.rootY() ?? null,
+      peek: sim.moves?.peek() ?? 0,
+    }, from, bestD);
     this.client.send({
-      type: 'fire', seq: this.client.lastSeq(), from, dir: [d[0]! / len, d[1]! / len, d[2]! / len], weapon: 0, viewTick: this.client.viewTick(),
+      type: 'fire', seq: this.client.lastSeq(), from, dir: claim.dir, weapon: 0, viewTick: this.client.viewTick(), eye: claim.eye, aim: claim.aim,
     });
     if (++this.rounds % 20 === 0) this.client.send({ type: 'reload', seq: this.client.lastSeq() });
   }

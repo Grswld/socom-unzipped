@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
 import {
-  Button, groundGrid, MoverSim, packGround, quantiseCommand, Walker, type Command, type SimMap,
+  Button, cameraLook, centreClaim, faceToward, groundGrid, MoverSim, packGround, PROBE_LIFT, quantiseCommand, Walker, type Command, type SimMap,
 } from '../../viewer/src/sim';
 import { NetClient, type NetWalk, type WebSocketLike } from '../../viewer/src/net/client';
 import { Room } from '../src/room';
@@ -37,7 +37,7 @@ class PageWalk implements NetWalk {
   setLocked(on: boolean): void { this.locked = on; }
   respawn(at: readonly [number, number, number], yaw: number, replay: readonly Command[] = []): boolean {
     this.sim = new MoverSim(new Walker(this.grid), null);
-    this.sim.walker.place(at[0], at[1] + 15.4, at[2]);
+    this.sim.walker.place(at[0], at[1] + PROBE_LIFT, at[2]);   // `walk.ts` respawn: the tick's pick (PL-2)
     this.sim.walker.state.yaw = yaw;
     for (const c of replay) this.sim.apply(c);
     return true;
@@ -155,17 +155,25 @@ describe('a death and a respawn in the stream (M6)', () => {
     const a = new PageWalk(m.grid), b = new PageWalk(m.grid);
     const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1), simulate: { latencyMs: 40 } }, a);
     const cb = new NetClient({ url: 'mem', map: 'MP99', name: 'B', socket: pair(room, 2), simulate: { latencyMs: 40 } }, b);
-    let seq = 0;
+    let look = { yaw: 0, pitch: 0 };
     for (let t = 0; t < 14 * 60; t++) {
-      a.play({ forward: 0, right: 0, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
+      const firing = t >= 60 && t < 100 && a.sim !== null && room.player(2) !== undefined;
+      const pb = room.player(2)?.sim.walker.state ?? { x: 0, y: 0, z: 0 };
+      // A turns to B as the server has it (the test is about the stream, not the aim).
+      if (firing) {
+        const sa = a.sim!.walker.state;
+        look = faceToward({ feet: [sa.x, sa.y, sa.z], posture: a.sim!.walker.posture }, [pb.x, pb.y + 12, pb.z]);
+      }
+      a.play({ forward: 0, right: 0, yaw: look.yaw, pitch: look.pitch, turn: 0, buttons: 0, stance: 0, weapon: 0 });
       // B runs about, and presses Action every second (the respawn's press once dead).
       b.play({ forward: 1, right: t % 120 < 60 ? 0.5 : -0.5, yaw: 90 + (t % 360), pitch: 0, turn: 0.1, buttons: t % 60 === 0 ? Button.Action : 0, stance: 0, weapon: 0 });
-      if (t >= 60 && t < 100 && t % 9 === 0) {
-        // A's rounds straight at B, from the server's own places (the test is about the stream, not the aim).
-        const pa = room.player(1)!.sim.walker.state, pb = room.player(2)!.sim.walker.state;
-        const from: [number, number, number] = [pa.x, pa.y + 15.4, pa.z];
-        const d = [pb.x - from[0], pb.y + 12 - from[1], pb.z - from[2]], l = Math.hypot(d[0]!, d[1]!, d[2]!);
-        room.text(1, { type: 'fire', seq: ++seq * 10, from, dir: [d[0]! / l, d[1]! / l, d[2]! / l], weapon: 0, viewTick: room.tick });
+      if (firing && t % 9 === 0) {
+        // A's round down its look (protocol 5: the eye and the aim at the cone's centre), at the command just sent.
+        const sa = a.sim!.walker.state;
+        const body = { feet: [sa.x, sa.y, sa.z], yaw: sa.yaw, pitch: sa.pitch, posture: a.sim!.walker.posture };
+        const { eye } = cameraLook(body);
+        const claim = centreClaim(body, [sa.x, sa.y + 15.4, sa.z], Math.hypot(pb.x - eye[0], pb.y + 12 - eye[1], pb.z - eye[2]));
+        room.text(1, { type: 'fire', seq: ca.lastSeq(), ...claim, weapon: 0, viewTick: room.tick });
       }
       room.step();
       vi.advanceTimersByTime(1000 / 60);
@@ -234,5 +242,35 @@ describe('a watcher (the map viewer Online setting, 2026-09-29)', () => {
     cw.close();
     expect(w.tap).toBeNull();
     expect(w.locked).toBe(false);
+  });
+});
+
+describe('PL-8: the client of an idler moved out (protocol 5 `demoted`)', () => {
+  it('turns spectator: no commands go up after it, the mover is held', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const sent: (string | Uint8Array)[] = [];
+    let page: WebSocketLike | null = null;
+    const walk = new PageWalk(map().grid);
+    const client = new NetClient({
+      url: 'mem', map: 'MP99', name: 'Idle', socket: () => {
+        page = {
+          binaryType: 'arraybuffer', readyState: 1, onopen: null, onclose: null, onmessage: null, onerror: null,
+          send: (d) => { sent.push(d); }, close: () => undefined,
+        };
+        return page;
+      },
+    }, walk);
+    page!.onopen?.({});
+    page!.onmessage?.({ data: JSON.stringify({ type: 'welcome', id: 1, version: 5, map: 'MP99', tick: 0, role: 'player', team: 'seal', queue: 0, name: 'Idle', players: [], rules: 'respawn', round: 1, rounds: 11, ghost: false }) });
+    page!.onmessage?.({ data: JSON.stringify({ type: 'spawn', id: 1, at: [0, 0, 0], yaw: 0, after: 0 }) });
+    walk.play({ forward: 1, right: 0, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
+    expect(sent.some((d) => typeof d !== 'string')).toBe(true);
+    page!.onmessage?.({ data: JSON.stringify({ type: 'demoted', position: 2 }) });
+    expect(client.role).toBe('spectator');
+    expect(client.queue).toBe(2);
+    expect(walk.locked).toBe(true);
+    const before = sent.length;
+    for (let i = 0; i < 5; i++) walk.play({ forward: 1, right: 0, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
+    expect(sent.slice(before).filter((d) => typeof d !== 'string')).toHaveLength(0);
   });
 });
