@@ -1,3 +1,4 @@
+import type { EffectStats } from './effects';
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Input } from './gamepad';
@@ -188,6 +189,19 @@ export interface ViewerHook {
   selectItem(item: 'rifle' | GrenadeItem): boolean;
   /** The throw's clip on the body (`./throwPose`): the clip, its phase, its weight over the locomotion. */
   throwClip(): ThrowPoseStats;
+  /**
+   * EFFECTS (`./effects`, web/docs/research/89): the map's effect data loaded or not, the animations played by name,
+   * the runs live, the casings in the air and the last one's place, the bounces, the particles, the sounds.
+   */
+  effects(): EffectStats;
+  /**
+   * EFFECTS: plays an animation of the map's zAnim archives (`bullet_hit_stone`, `frag_grenade_stone`, `muzzle_m4` ...)
+   * at `at`, or 30 units ahead of the camera: as an impact (the point, the normal up) or as a muzzle effect (a node
+   * whose barrel runs to the camera's right, the flash seen from the side); false when the map has none of that name.
+   */
+  playEffect(name: string, at?: [number, number, number], kind?: 'impact' | 'muzzle'): boolean;
+  /** EFFECTS: holds every effect where it is (true) or lets them run (false), for a picture of a three-frame flash. */
+  pauseEffects(on: boolean): void;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

@@ -99,12 +99,12 @@ describe('the shot on a synthetic hull (W2.5)', () => {
     expect(mark.scale.y).toBeCloseTo(1.4, 9);
   });
 
-  it('keeps 64 marks and recycles the oldest', () => {
-    const { fire } = rig(world([wallAt(-30)]), [0, 0, -1], { ...DEFAULT_RIFLE, magazine: 100 });
-    for (let i = 0; i < 70; i++) { expect(fire.shoot()).not.toBeNull(); fire.update(DEFAULT_RIFLE.fireWait); }
-    expect(MAX_DECALS).toBe(64);
-    expect(fire.state().decals).toBe(64);
-    expect(fire.decalMeshes().filter((m) => m.visible)).toHaveLength(64);
+  it('keeps 150 marks (decals.rdr TEMP_DECAL_POOL BASE) and recycles the oldest', () => {
+    const { fire } = rig(world([wallAt(-30)]), [0, 0, -1], { ...DEFAULT_RIFLE, magazine: 200 });
+    for (let i = 0; i < 160; i++) { expect(fire.shoot()).not.toBeNull(); fire.update(DEFAULT_RIFLE.fireWait); }
+    expect(MAX_DECALS).toBe(150);
+    expect(fire.state().decals).toBe(150);
+    expect(fire.decalMeshes().filter((m) => m.visible)).toHaveLength(150);
   });
 
   it('draws the tracer for one frame', () => {

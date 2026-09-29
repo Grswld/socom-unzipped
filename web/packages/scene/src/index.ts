@@ -22,3 +22,7 @@ export * from './segment';
 export * from './weapons';
 export * from './projectile';
 export * from './ladder';
+export * from './effectModels';
+export * from './effects';
+export * from './effectMotion';
+export * from './effectParticles';

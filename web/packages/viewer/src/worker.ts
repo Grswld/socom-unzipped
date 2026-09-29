@@ -2,6 +2,7 @@ import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapIn
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 import { playFromDisc, playTransferables, type PlayData } from './motionTable';
 import { soundFromDisc, soundTransferables, type SoundData } from './soundData';
+import { effectsFromDisc, effectTransferables, type EffectData } from './effectData';
 
 /**
  * The decode thread. A 12 MB archive, 416 VIF packets and 37 palettised textures are a few hundred
@@ -28,7 +29,9 @@ export type ViewerRequest =
   /** The play mode's clips (W2.2b): `RUN/MOTION_P.ZAR`'s named clips and `motion.rdr`'s entries for them, once a source. */
   | { kind: 'play'; id: number; source: SourceRequest; clips: string[] }
   /** A map's sound (web/docs/research/81, `./soundData`): its banks, the script, the materials, the weapons, the callbacks. */
-  | { kind: 'sound'; id: number; source: SourceRequest; path: string; archive: string };
+  | { kind: 'sound'; id: number; source: SourceRequest; path: string; archive: string }
+  /** EFFECTS: a map's effect programs, models, textures and mark tables (web/docs/research/89, `./effectData`). */
+  | { kind: 'effects'; id: number; source: SourceRequest; path: string; archive: string };
 
 /**
  * What comes back. `error` carries the request that failed so the page can say what it was doing, and
@@ -45,6 +48,8 @@ export type ViewerResponse =
   | { kind: 'play'; id: number; data: PlayData | null }
   /** The map's sound data, or null when the source has no `SOUNDS/BNKSTORE.ZAR` (the walk is silent). */
   | { kind: 'sound'; id: number; data: SoundData | null }
+  /** The map's effect data: whatever would not read is left out and said in its `missing`. */
+  | { kind: 'effects'; id: number; data: EffectData }
   | { kind: 'error'; id: number; doing: string; message: string };
 
 /** Worker globals without pulling the WebWorker lib in beside the DOM one (they collide on `self`). */
@@ -90,6 +95,10 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         // Never an error either: without the banks the walk is silent.
         const data = await soundFromDisc(sourceFor(request.source), request.path, request.archive);
         ctx.postMessage({ kind: 'sound', id: request.id, data }, data ? soundTransferables(data) : []);
+      } else if (request.kind === 'effects') {
+        // Never an error either: a part that will not read is left out and named in `missing`.
+        const data = await effectsFromDisc(sourceFor(request.source), request.path, request.archive);
+        ctx.postMessage({ kind: 'effects', id: request.id, data }, effectTransferables(data));
       } else if (request.kind === 'play') {
         // Never an error either: without the owner's pack the body stands in its bind pose.
         const data = await playFromDisc(sourceFor(request.source), request.clips);

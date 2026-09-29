@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
-import { Scene, Timer } from 'three';
+import { Matrix4, Scene, Timer, Vector3 } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { HELD_RIFLE, SEAL_TUNING, spawnsFor, type Spawns } from '@s2u/scene';
+import { HELD_RIFLE, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -32,6 +32,7 @@ import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
 import { TraversalPage } from './traversalPage';
 import { gameAudio } from './audio';
+import { Effects } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
@@ -225,6 +226,31 @@ const walkSounds = new WalkSounds(audio, {
   wish: () => fly.groundWish(),
   grid: () => walk.grid(),
 });
+/**
+ * EFFECTS (web/docs/research/89, `./effects`): the game's own zAnim effect animations out of the map's `CZANIM.ZAR` --
+ * a round's `FireAnimName` (the M4A1 SD's `muzzle_m4SD`: the casing, and the smoke source the retail data switches
+ * off), the casings bouncing on the hull with their material's sound, the marks per surface (`Fire.setMarks`).
+ * `effects.play(name, place)` is the grenades' door to their impacts and explosions.
+ */
+const effects = new Effects(Math.random, (name, at) => { audio.play(name, at); });
+fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
+scene.add(effects.object);
+effects.setWorld(() => walk.grid());
+/**
+ * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
+ * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
+ */
+function weaponFrame(): { matrix: Matrix4; muzzle: [number, number, number] | null } | null {
+  const object = view?.weapon;
+  const points = loaded?.weapon?.points ?? [];
+  if (!object || !play.weaponStats().held) return null;
+  object.updateWorldMatrix(true, false);
+  const at = (name: string): [number, number, number] | null => {
+    const p = points.find((q) => q.name === name);
+    return p ? [p.at[0], p.at[1], p.at[2]] : null;
+  };
+  return { matrix: object.matrixWorld.clone(), muzzle: at('firepoint') ?? at('firepont') };
+}
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
 let view: WorldView | null = null;
@@ -337,9 +363,17 @@ play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locom
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
-fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });
-play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard   // the pose and the sound, per round and reload
+fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); });   // the pose and the sound, per round and reload
+play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
+// EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in first person (the aim view).
+fire.subscribe((e) => { if (e.type === 'round') effects.onRound(e, weaponFrame(), walk.view() === 'first'); });
 let wantedPlay = -1;
+/** EFFECTS: the map's effect data, asked of the source the map came from once it is shown (`./effectData`). */
+let wantedEffects = -1;
+function askEffects(from: SourceRequest, path: string, archive: string): void {
+  wantedEffects = ++requests;
+  ask({ kind: 'effects', id: wantedEffects, source: from, path, archive });
+}
 /** The map's sound, asked of the source the map came from once it is shown (`./soundData`). */
 let wantedSound = -1;
 function askSound(from: SourceRequest, path: string, archive: string): void {
@@ -455,6 +489,12 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id === wantedSound) audio.setData(message.data);
     return;
   }
+  if (message.kind === 'effects') {
+    if (message.id !== wantedEffects) return;
+    effects.setData(message.data);
+    fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
+    return;
+  }
   if (message.kind === 'progress') {
     if (message.id !== wantedMap) return;               // a stage of a load we have moved on from
     ui.setLoading(true, STAGE_WORDS[message.stage], message.total > 0 ? message.done / message.total : 0);
@@ -464,6 +504,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   shownFrom = wantedMapFrom;
   show(message.map);
   askSound(mapSource, message.map.path, message.map.archive);
+  askEffects(mapSource, message.map.path, message.map.archive);
 });
 
 ui.onMapChange((path) => {
@@ -683,6 +724,8 @@ async function boot(): Promise<void> {
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
+    effects.setBrighten(brightenOf(lighting));
+    effects.update(dt, fly.camera); // EFFECTS: the zAnim effect runs, the casings, the particles
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
     grenade.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
@@ -799,6 +842,8 @@ function show(map: LoadedMap): void {
   reticle.setBitmaps(map.reticle);
   hud.setBitmaps(map.hud);
   fire.reset();                                   // a new map: no marks, full magazines
+  effects.setData(null);                          // EFFECTS: the old map's effects go; the new map's follow it
+  fire.setMarks(null);
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
@@ -998,5 +1043,23 @@ window.__viewer = {
   resetGrenades: () => grenade.reset(),
   selectItem: (item) => grenade.select(item),
   throwClip: () => throwPose.stats(),
+  effects: () => effects.stats(),
+  playEffect: (name, at, kind = 'impact') => {
+    // 30 units ahead of the camera unless told where; a muzzle effect with a node whose barrel runs across the view to
+    // the right (the flash seen from the side), an impact at the world point facing up, the round coming down the view.
+    fly.camera.updateMatrixWorld();
+    const cam = fly.camera.matrixWorld;
+    const ahead = new Vector3(0, 0, -30).applyMatrix4(cam);
+    const where = at ? new Vector3(...at) : ahead;
+    const forward = new Vector3(0, 0, -1).transformDirection(cam);
+    if (kind === 'muzzle') {
+      // The weapon's frame: x along the barrel (the camera's right), y up, z to the barrel's right.
+      const x = new Vector3(1, 0, 0).transformDirection(cam), z = new Vector3().crossVectors(x, new Vector3(0, 1, 0)).normalize(), y = new Vector3().crossVectors(z, x);
+      const node = new Matrix4().makeBasis(x, y, z).setPosition(where);
+      return effects.play(name, { node, position: [0, 0, 0], velocity: forward.toArray() as [number, number, number] });
+    }
+    return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
+  },
+  pauseEffects: (on) => { effects.paused = on; },
   revision,
 } satisfies ViewerHook;

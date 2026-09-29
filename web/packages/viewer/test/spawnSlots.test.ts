@@ -206,5 +206,5 @@ describe.skipIf(noMaps)(`the slots on every map${noMaps ? ' (public/maps absent:
       + `${overSlot[0]!.toFixed(3)}-${overSlot.at(-1)!.toFixed(3)} over their slot's floor, median ${overSlot[19]!.toFixed(3)}`);
     expect(slotCount).toBe(1058);
     expect(onFloor).toBe(1058);
-  });
+  }, 30_000);                                                          // 22 maps read: seconds under a loaded suite
 });
