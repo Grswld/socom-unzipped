@@ -129,6 +129,9 @@ namespace ui
                     note = "made on " + serverText(r.server) + "; on this server the game makes a new persona";
                     ink = theme::warn;
                 }
+                else if (app.running && app.pendingFirst.held && app.pendingFirst.row.name == r.name && app.pendingFirst.row.card == r.card)
+                    // The review, finding 4: the game holds the card, so the reorder waits for the next LAUNCH.
+                    note = "the game is running: " + ps::displayName(r.name) + " goes first on its card at the next LAUNCH";
                 else
                     note = "LAUNCH, then pick " + ps::displayName(r.name) + " in the game's list";
             }

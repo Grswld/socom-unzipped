@@ -6,6 +6,8 @@
 #include "json_reader.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -179,7 +181,51 @@ namespace launcher::personas
 
         std::mutex g_resolveLock;
         Resolver g_resolver = nullptr;
-        std::map<std::string, std::string> g_resolved;   // host -> dotted address, "" for a host that did not resolve
+        Clock g_clock = nullptr;
+        std::map<std::string, std::string> g_resolved;    // host -> dotted address; only answers are kept for good
+        std::map<std::string, std::int64_t> g_failedAt;   // host -> when it last failed to resolve (seconds)
+
+        std::int64_t nowSeconds()
+        {
+            if (g_clock != nullptr)
+                return g_clock();
+            return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        }
+
+        // resolveIPv4's lookup. `fresh` (a player's CREATE) asks even inside a failure's retry interval.
+        std::string lookupIPv4(const std::string &address, bool fresh)
+        {
+            const std::string host = hostOf(address);
+            if (host.empty())
+                return std::string();
+            if (dottedQuad(host))
+                return host;
+            std::lock_guard<std::mutex> hold(g_resolveLock);
+            const auto known = g_resolved.find(host);
+            if (known != g_resolved.end())
+                return known->second;
+            const std::int64_t now = nowSeconds();
+            const auto failed = g_failedAt.find(host);
+            if (!fresh && failed != g_failedAt.end() && now - failed->second < kResolveRetrySeconds)
+                return std::string();   // failed a moment ago: the frame path does not ask every frame
+            std::string ip = g_resolver != nullptr ? g_resolver(host) : systemResolve(host);
+            if (!dottedQuad(ip))
+            {
+                g_failedAt[host] = now;   // remembered for the retry interval only, never for the process
+                return std::string();
+            }
+            g_failedAt.erase(host);
+            g_resolved[host] = ip;
+            return ip;
+        }
+
+        // cardHost's address: the Custom server's MUIS Endpoint when one is set, else the server itself.
+        std::string cardHostAddress(const Config &c)
+        {
+            if (c.serverPreset == "custom" && !c.serverEndpoint.empty())   // a preset's Endpoint is its address
+                return c.serverEndpoint;
+            return effectiveServer(c);
+        }
 
         // A card's records, or false with `note` (the card is then neither listed nor rewritten).
         bool readCardRecords(const fs::path &file, const std::string &shown, std::vector<cs::Persona> &out, std::string &note)
@@ -381,20 +427,7 @@ namespace launcher::personas
 
     std::string resolveIPv4(const std::string &address)
     {
-        const std::string host = hostOf(address);
-        if (host.empty())
-            return std::string();
-        if (dottedQuad(host))
-            return host;
-        std::lock_guard<std::mutex> hold(g_resolveLock);
-        const auto known = g_resolved.find(host);
-        if (known != g_resolved.end())
-            return known->second;
-        std::string ip = g_resolver != nullptr ? g_resolver(host) : systemResolve(host);
-        if (!dottedQuad(ip))
-            ip.clear();
-        g_resolved[host] = ip;   // a failure is remembered too: the frame path never asks twice
-        return ip;
+        return lookupIPv4(address, false);
     }
 
     int serverPort(const std::string &address)
@@ -419,11 +452,23 @@ namespace launcher::personas
         return resolveIPv4(effectiveServer(c));
     }
 
+    std::string cardHost(const Config &c)
+    {
+        return resolveIPv4(cardHostAddress(c));
+    }
+
     void setResolverForTests(Resolver resolver)
     {
         std::lock_guard<std::mutex> hold(g_resolveLock);
         g_resolver = resolver;
         g_resolved.clear();
+        g_failedAt.clear();
+    }
+
+    void setClockForTests(Clock clock)
+    {
+        std::lock_guard<std::mutex> hold(g_resolveLock);
+        g_clock = clock;
     }
 
     bool createPersona(const std::string &home, const Config &c, const std::string &name, const std::string &password,
@@ -442,10 +487,13 @@ namespace launcher::personas
             return false;
         }
         const std::string server = effectiveServer(c);
-        const std::string host = resolveIPv4(server);
+        // HOST is what the game connects to after MUIS (cardHost): a Custom server's Endpoint when one is set. Asked
+        // afresh -- a press, not a frame -- so a failure remembered from an offline start does not refuse it.
+        const std::string hostAddress = cardHostAddress(c);
+        const std::string host = lookupIPv4(hostAddress, true);
         if (host.empty())
         {
-            note = "the server " + server + " does not resolve to an address; nothing written";
+            note = "the server " + hostAddress + " does not resolve to an address; nothing written";
             return false;
         }
         const std::string cardsDir = (fs::path(home) / "cards").string();
@@ -532,6 +580,26 @@ namespace launcher::personas
         }
         note = shown + ": no longer holds " + displayName(row.name);
         return false;
+    }
+
+    void holdFirst(PendingFirst &pending, const Persona &row)
+    {
+        pending.held = true;
+        pending.row = row;   // the last pick wins
+    }
+
+    bool applyPendingFirst(PendingFirst &pending, const Config &c, const std::string &cardsDir, std::string &note)
+    {
+        if (!pending.held)
+            return true;
+        const Persona row = pending.row;
+        pending = PendingFirst{};
+        // Picked, then moved away from (another row, NEW PERSONA): the card's order is the player's later choice's.
+        // pick() leaves the name empty for one the keyboard cannot type, so an empty name still matches that row.
+        const bool named = row.name == c.loginName || (c.loginName.empty() && normalizeLoginName(row.name) != row.name);
+        if (!named || row.card != cardLeaf(c))
+            return true;
+        return moveFirst(cardsDir, row, note);
     }
 
     Cards readCards(const std::string &cardsDir)
@@ -656,7 +724,8 @@ namespace launcher::personas
 
     bool counts(const Persona &row, const Config &c)
     {
-        const std::string server = effectiveServer(c);
+        // The address the game connects to: a Custom server's MUIS Endpoint when one is set (the review, finding 1).
+        const std::string server = cardHostAddress(c);
         if (row.server == server)
             return true;
         // A card row holds HOST, the address the game connected to, with no port; the config may name the server by

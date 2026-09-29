@@ -68,6 +68,21 @@ namespace
     {
         return host == "persona-card.test" ? std::string("203.0.113.5") : std::string();
     }
+
+    // Review finding 6's resolver and clock: the name fails until `g_upNow` is set (the network came back), and every
+    // question it is asked is counted; the clock is the test's own seconds.
+    bool g_upNow = false;
+    int g_asked = 0;
+    std::int64_t g_now = 1000;
+    std::string flakyResolver(const std::string &host)
+    {
+        ++g_asked;
+        return g_upNow && host == "later.test" ? std::string("203.0.113.8") : std::string();
+    }
+    std::int64_t testClock()
+    {
+        return g_now;
+    }
 }
 
 void register_personas_card_tests()
@@ -268,6 +283,118 @@ void register_personas_card_tests()
             t.IsFalse(fs::exists(home / "cards"), "not even the directory");
             removeHome(home);
             ps::setResolverForTests(nullptr);
+        });
+
+        tc.Run("(vi) review finding 1: a Custom server with a MUIS Endpoint writes HOST from the Endpoint; a row on it counts", [](TestCase &t)
+        {
+            // A self-hosted server: the launcher reaches it at 127.0.0.1, its muis.json names the LAN address, and the
+            // game connects to (and the card's HOST holds) the Endpoint -- never the loopback address.
+            const fs::path home = makeHome();
+            ps::setResolverForTests(&testResolver);   // the preset's name below must not leave the host
+            launcher::Config c = customAt("127.0.0.1");
+            c.serverEndpoint = "198.51.100.20";   // a documentation address standing in for the LAN one
+            t.Equals(ps::cardHost(c), std::string("198.51.100.20"), "the card's HOST is the Endpoint");
+            std::string note;
+            t.IsTrue(ps::createPersona(home.string(), c, "lanpc", "pwlan", note), "created: " + note);
+            std::vector<card::Persona> records;
+            std::string why;
+            t.IsTrue(card::readCardFile(readBytes(cardFile(home, "player")), records, why), "read back: " + why);
+            t.IsTrue(records.size() == 1 && records[0].host == "198.51.100.20", "HOST 198.51.100.20, not 127.0.0.1");
+            const ps::Cards read = ps::readCards((home / "cards").string());
+            t.IsTrue(read.rows.size() == 1 && ps::counts(read.rows[0], c), "the row counts on the server the config points at");
+            t.IsTrue(read.rows.size() == 1 && !ps::counts(read.rows[0], customAt("127.0.0.1")),
+                     "and not on 127.0.0.1 with no Endpoint: that is the address the game would not match");
+            launcher::Config plain = customAt("203.0.113.5");
+            t.Equals(ps::cardHost(plain), std::string("203.0.113.5"), "no Endpoint: HOST is the resolved address, as before");
+            launcher::Config preset;
+            preset.serverPreset = "unzipped";
+            preset.serverEndpoint = "198.51.100.20";   // left over from a Custom server
+            t.IsTrue(ps::cardHost(preset) != "198.51.100.20", "a preset's HOST is its own address; a Custom Endpoint does not follow it");
+            launcher::Config loaded;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), loaded), "config.json round-trips");
+            t.Equals(loaded.serverEndpoint, std::string("198.51.100.20"), "and keeps the Endpoint under its own key");
+            ps::setResolverForTests(nullptr);
+            removeHome(home);
+        });
+
+        tc.Run("(vii) review finding 4: a pick made while the game runs is held and put first at LAUNCH, while it is still the pick", [](TestCase &t)
+        {
+            const fs::path home = makeHome();
+            const std::string cards = (home / "cards").string();
+            launcher::Config c = customAt("203.0.113.5");
+            std::string note;
+            t.IsTrue(ps::createPersona(home.string(), c, "alpha", "pwa", note) && ps::createPersona(home.string(), c, "bravo", "pwb", note), "two");
+            const ps::Cards before = ps::readCards(cards);
+            if (before.rows.size() != 2)
+            {
+                t.IsTrue(false, "bravo, alpha");
+                removeHome(home);
+                return;
+            }
+            ps::PendingFirst pending;
+            t.IsTrue(ps::applyPendingFirst(pending, c, cards, note), "nothing held: nothing to do");
+            // The game is running: the pick switches the config and the card is left alone -- but the pick is held.
+            ps::pick(c, before.rows[1]);
+            ps::holdFirst(pending, before.rows[1]);
+            t.IsTrue(pending.held, "held");
+            t.IsTrue(ps::readCards(cards).rows[0].name == "bravo", "the card untouched while the game runs");
+            // LAUNCH: the same moveFirst the pick uses, before the game starts.
+            t.IsTrue(ps::applyPendingFirst(pending, c, cards, note), "applied at LAUNCH: " + note);
+            t.IsFalse(pending.held, "and let go");
+            const ps::Cards after = ps::readCards(cards);
+            t.IsTrue(after.rows.size() == 2 && after.rows[0].name == "alpha", "alpha is first on the card now");
+            // A held pick the player then moved away from (NEW PERSONA, another row) is dropped, not applied.
+            ps::holdFirst(pending, after.rows[1]);   // bravo
+            ps::pickNewPersona(c);
+            const std::vector<uint8_t> bytes = readBytes(cardFile(home, "player"));
+            t.IsTrue(ps::applyPendingFirst(pending, c, cards, note), "a stale pick is no failure");
+            t.IsFalse(pending.held, "it is let go");
+            t.IsTrue(readBytes(cardFile(home, "player")) == bytes, "and the card is left as it was");
+            removeHome(home);
+        });
+
+        tc.Run("(viii) review finding 6: a failed lookup is asked again after kResolveRetrySeconds, and CREATE asks at once", [](TestCase &t)
+        {
+            ps::setResolverForTests(&flakyResolver);
+            ps::setClockForTests(&testClock);
+            g_upNow = false;
+            g_asked = 0;
+            g_now = 1000;
+            t.Equals(ps::resolveIPv4("later.test"), std::string(), "offline: no address");
+            t.Equals(g_asked, 1, "asked once");
+            t.Equals(ps::resolveIPv4("later.test"), std::string(), "asked again at once: still none");
+            t.Equals(g_asked, 1, "from the failure's memory -- the frame path does not ask every frame");
+            g_upNow = true;
+            g_now += ps::kResolveRetrySeconds;
+            t.Equals(ps::resolveIPv4("later.test"), std::string("203.0.113.8"), "the network is back: the next need asks again");
+            t.Equals(g_asked, 2, "one more question");
+            // CREATE ON CARD is a player's press, not a frame: it asks at once even inside the retry interval.
+            ps::setResolverForTests(&flakyResolver);   // clears the cache
+            g_upNow = false;
+            g_asked = 0;
+            t.Equals(ps::resolveIPv4("later.test"), std::string(), "offline again");
+            g_upNow = true;
+            const fs::path home = makeHome();
+            std::string note;
+            t.IsTrue(ps::createPersona(home.string(), customAt("later.test"), "alpha", "pw", note), "CREATE resolves now: " + note);
+            t.Equals(g_asked, 2, "by asking, not by reading the failure");
+            removeHome(home);
+            ps::setClockForTests(nullptr);
+            ps::setResolverForTests(nullptr);
+            g_upNow = false;
+        });
+
+        tc.Run("(ix) review finding 5: the headless creator's running-game test knows a game image in the home by its folder and name", [](TestCase &t)
+        {
+            const std::string home = fs::path("C:/games/socom").string();
+            t.IsTrue(launcher::isGameImage(home, (fs::path(home) / "socom2.exe").string(), "socom2.exe"), "r0001's exe in the home");
+            t.IsTrue(launcher::isGameImage(home, (fs::path(home) / "socom2_r0004.exe").string(), "socom2.exe"), "r0004's exe in the home");
+#ifdef _WIN32
+            t.IsTrue(launcher::isGameImage(home, (fs::path(home) / "SOCOM2.EXE").string(), "socom2.exe"), "Windows names ignore case");
+#endif
+            t.IsFalse(launcher::isGameImage(home, (fs::path(home) / "socom_unzipped_launcher.exe").string(), "socom2.exe"), "the launcher is not the game");
+            t.IsFalse(launcher::isGameImage(home, (fs::path("C:/other") / "socom2.exe").string(), "socom2.exe"), "a game in another folder writes another card");
+            t.IsFalse(launcher::isGameImage(home, std::string(), "socom2.exe"), "an image with no path is nothing");
         });
     });
 }

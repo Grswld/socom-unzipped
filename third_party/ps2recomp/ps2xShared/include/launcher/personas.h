@@ -81,18 +81,30 @@ namespace launcher::personas
     std::string cardFilePath(const std::string &cardsDir, const std::string &leaf);
 
     // The IPv4 an address resolves to, as the game's HOST holds it: a dotted quad as is, a name through getaddrinfo
-    // (AF_INET), a ":port" suffix ignored; "" when it does not resolve. Each distinct host is asked once per process
-    // (a cache), so counts() stays cheap on the frame path. serverPort is the suffix's port, else 10075.
+    // (AF_INET), a ":port" suffix ignored; "" when it does not resolve. An answer is kept for the process (a cache),
+    // so counts() stays cheap on the frame path; a FAILURE is kept only kResolveRetrySeconds (the review, finding 6: a
+    // launcher opened offline must not read every row as another server's until it is restarted) -- the next need
+    // after that asks again. The lookup runs on the caller's thread, the UI's included: at most once per host per
+    // interval while it fails. serverPort is the suffix's port, else 10075.
+    constexpr int kResolveRetrySeconds = 30;
     std::string resolveIPv4(const std::string &address);
     int serverPort(const std::string &address);
     // resolveIPv4(effectiveServer(c)).
     std::string resolvedServer(const Config &c);
+    // The address the card's HOST holds for the server `c` points at -- what the game connects to after MUIS: a
+    // Custom server's Config::serverEndpoint when one is set (resolved like any address), else resolvedServer(c).
+    // The review, finding 1: a self-hosted server at 127.0.0.1 whose MUIS Endpoint is its LAN address.
+    std::string cardHost(const Config &c);
     // The tests' seam: a resolver in place of getaddrinfo (nullptr restores it); either way the cache is cleared.
     using Resolver = std::string (*)(const std::string &host);
     void setResolverForTests(Resolver resolver);
+    // The retry interval's clock, in seconds (nullptr restores the steady clock).
+    using Clock = std::int64_t (*)();
+    void setClockForTests(Clock clock);
 
     // NEW PERSONA's CREATE ON CARD: the name and password as the game's keyboards could type them (empty after that
-    // -> false), HOST the resolved effectiveServer(c) (unresolvable -> false), PORT 10075 or the address's own; the
+    // -> false), HOST cardHost(c), asked afresh -- a player's press, not a frame, so a remembered failure is not the
+    // answer (unresolvable -> false), PORT 10075 or the effectiveServer address's own; the
     // card cardLeaf(c) under <home>/cards/ read (unreadable -> false, the file untouched) or started from the virgin
     // template; the record upserted by (HOST, NAME) with SAVEPASSWORD 1 and put FIRST; the directories made and the
     // file written atomically. `note` is one line: the path written, or why nothing was.
@@ -101,6 +113,20 @@ namespace launcher::personas
     // R-C: the row's record (by NAME and HOST) moved first on its card, the file rewritten only when it was not first
     // already. False with `note` when the card cannot be read or written or no longer holds the record.
     bool moveFirst(const std::string &cardsDir, const Persona &row, std::string &note);
+    // The review, finding 4: a pick made while the game runs switches the config at once, but the game holds the
+    // card and saves over it, so the reorder is HELD, not dropped (the last pick wins) and applyPendingFirst makes it
+    // at the next LAUNCH, before the game starts -- moveFirst, the pick's own path. A held row that is no longer the
+    // selection (c.loginName or cardLeaf(c) is not the row's: another row, NEW PERSONA) is let go unapplied: true,
+    // the card untouched.
+    struct PendingFirst
+    {
+        bool held = false;
+        Persona row;
+    };
+    void holdFirst(PendingFirst &pending, const Persona &row);
+    // True when nothing was held, the held row was stale, or moveFirst succeeded; false with moveFirst's `note`.
+    // `pending` is empty afterwards either way.
+    bool applyPendingFirst(PendingFirst &pending, const Config &c, const std::string &cardsDir, std::string &note);
 
     // Every record of every card under cardsDir whose leaf is a profile name (cards/<leaf>/BASCUS-97275SOCOMII/
     // BASCUS-97275SOCOMII), cards in name order and each card's records in the card's own order (the game's list).

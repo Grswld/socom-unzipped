@@ -425,9 +425,18 @@ namespace
 
     // --create-persona <name> <password> [profile] [dir]: the persona-card plan's creator without the window -- the
     // same createPersona the ONLINE page's CREATE ON CARD calls, on <dir>/config.json (the profile given replaces its
-    // own). Prints the note (the file written, or why nothing was); 0 written, 1 not.
+    // own). Prints the note (the file written, or why nothing was); 0 written, 1 not, 2 refused because a game runs
+    // from <dir> -- it holds the card and its next save would overwrite the new persona (the review, finding 5; the
+    // window refuses the same case through GameProcess::running(), which this process has no game to ask).
     int createPersonaHeadless(const std::string &name, const std::string &password, const char *profile, const fs::path &home)
     {
+        std::string running;
+        if (win32glue::gameRunningFrom(home.string(), running))
+        {
+            std::printf("the game is running (%s): it holds the card and would save over the new persona; nothing "
+                        "written -- quit the game, then create the persona\n", running.c_str());
+            return 2;
+        }
         launcher::Config config;
         const std::string text = readText(home / "config.json");
         if (!text.empty() && !launcher::fromJson(text, config))
@@ -1950,11 +1959,14 @@ int main(int argc, char **argv)
             // The persona-card plan: CREATE ON CARD writes the typed persona into the selected card; the list is read
             // again and the new row picked, and both typed strings go (the card holds the password now, R-B).
             // A running game holds the card and saves over it: neither write happens under it (the button is dead
-            // then too; a pad press that raced the launch lands here).
+            // then too; a pad press that raced the launch lands here). A pick's reorder is held, not dropped: the next
+            // LAUNCH makes it before the game starts (the review, finding 4).
             if (app.running && (app.requestCreatePersona || app.requestPersonaFirst >= 0))
             {
                 if (app.requestCreatePersona)
                     app.personaNote = "the game is running: CREATE ON CARD waits until it exits";
+                if (app.requestPersonaFirst >= 0 && app.requestPersonaFirst < static_cast<int>(app.personas.rows.size()))
+                    launcher::personas::holdFirst(app.pendingFirst, app.personas.rows[static_cast<size_t>(app.requestPersonaFirst)]);
                 app.requestCreatePersona = false;
                 app.requestPersonaFirst = -1;
             }
@@ -1994,6 +2006,7 @@ int main(int argc, char **argv)
             if (app.requestPersonaFirst >= 0 &&
                 app.requestPersonaFirst < static_cast<int>(app.personas.rows.size()))
             {
+                app.pendingFirst = launcher::personas::PendingFirst{};   // a later pick, made now, supersedes a held one
                 std::string note;
                 if (!launcher::personas::moveFirst((dir / "cards").string(),
                                                    app.personas.rows[static_cast<size_t>(app.requestPersonaFirst)], note))
@@ -2127,6 +2140,15 @@ int main(int argc, char **argv)
             }
             if (app.requestLaunch && !app.running && app.discOk)
             {
+                // The review, finding 4: a pick made while the last game ran goes first on its card now, before this
+                // game opens the card -- moveFirst, the pick's own path; silent unless it fails, as a pick is.
+                if (app.pendingFirst.held)
+                {
+                    std::string note;
+                    if (!launcher::personas::applyPendingFirst(app.pendingFirst, app.config, (dir / "cards").string(), note))
+                        std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+                    readPersonas(app, dir);   // the rows' order is the card's
+                }
                 writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
                 mic->stopMeter();   // Review F8: two processes must not hold the same microphone

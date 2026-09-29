@@ -115,6 +115,9 @@ namespace ui
         std::string personaNote;
         bool requestCreatePersona = false;
         int requestPersonaFirst = -1;
+        // The review, finding 4: a pick made while the game runs (the game holds the card) is held here and main.cpp
+        // puts it first at the next LAUNCH, before the game starts (personas::applyPendingFirst).
+        launcher::personas::PendingFirst pendingFirst;
 
         std::string activeField;   // the text field holding the keyboard, by node id
         Nav nav;

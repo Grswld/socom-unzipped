@@ -16,6 +16,7 @@
 #include <windows.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <tlhelp32.h>   // the persona-card review, finding 5: the headless creator looks for a running game
 #include <winhttp.h>
 #include <xinput.h>   // Sprint 10 Q4: XINPUT_STATE for the guide button (the DLL is loaded by hand, never linked)
 #endif
@@ -249,6 +250,36 @@ namespace win32glue
 #endif
         process = nullptr;
         log = nullptr;
+    }
+
+    bool gameRunningFrom(const std::string &dir, std::string &which)
+    {
+        which.clear();
+        std::error_code ec;
+        const std::string home = fs::absolute(fs::path(dir), ec).string();
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap == INVALID_HANDLE_VALUE)
+            return false;
+        PROCESSENTRY32W entry{};
+        entry.dwSize = sizeof(entry);
+        for (BOOL more = Process32FirstW(snap, &entry); more && which.empty(); more = Process32NextW(snap, &entry))
+        {
+            // A process this user cannot open is not one the launcher started from this folder.
+            HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, entry.th32ProcessID);
+            if (p == nullptr)
+                continue;
+            wchar_t image[MAX_PATH * 4];
+            DWORD size = static_cast<DWORD>(sizeof(image) / sizeof(image[0]));
+            if (QueryFullProcessImageNameW(p, 0, image, &size))
+            {
+                const std::string path = fs::path(std::wstring(image, size)).string();
+                if (launcher::isGameImage(home, path, "socom2.exe"))
+                    which = path + " (pid " + std::to_string(entry.th32ProcessID) + ")";
+            }
+            CloseHandle(p);
+        }
+        CloseHandle(snap);
+        return !which.empty();
     }
 
     bool startGame(const std::string &dirStr, const launcher::Config &config, GameProcess &out)
