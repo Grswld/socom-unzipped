@@ -128,6 +128,14 @@ export interface WorldView {
    * door leaf's swing. The identity puts them back. Returns how many placements it moved.
    */
   moveNode(path: string, delta: ArrayLike<number>): number;
+  /**
+   * EFFECTS (research 92 §6): hangs `object` -- a mark whose world-space triangles were made where the placement at
+   * `path` stands now -- on that placement, so every later `moveNode` over it carries the object by the swing since
+   * (its matrix = the new delta x the inverse of the delta it was made under). Returns the remover, or null when no
+   * placement has that exact path. The game's decal list is the hit visual's own (`FUN_003b3800` 306396-306416), drawn
+   * in the node's packet (`FUN_003b2ea0` 306133-306135): a mark on a door's leaf swings with the leaf.
+   */
+  attachToNode(path: string, object: Object3D): (() => void) | null;
   /** Whether the flares are turned at all, for seeing the pose the disc actually holds. */
   setBillboards(on: boolean): void;
   /** Where the flares are, in world space -- for aiming a camera at one. */
@@ -663,11 +671,16 @@ export function buildWorld(map: LoadedMap): WorldView {
     triangles += part.indices.length / 3;
   }
 
-  /** DOORS: every prop placement by its node's path, and how to put it at a matrix (`moveNode`). */
-  const movable: { path: string; base: Matrix4; set: (m: Matrix4) => void }[] = [];
+  /**
+   * DOORS: every prop placement by its node's path, and how to put it at a matrix (`moveNode`); `delta` is the swing it
+   * stands at now (the identity on disc). `rider`: a mark hung on the placement (`attachToNode`), not a placement.
+   */
+  interface Movable { path: string; base: Matrix4; delta: Matrix4; set: (m: Matrix4) => void; rider?: boolean }
+  const movable: Movable[] = [];
   const movableMesh = (path: string | undefined, mesh: Mesh, base: Matrix4): void => {
     if (!path) return;
-    movable.push({ path, base: base.clone(), set: (m) => { m.decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.updateMatrix(); } });
+    mesh.userData.nodePath = path;                        // the marks' clip reads it (`./markClip`, `lastNodePath`)
+    movable.push({ path, base: base.clone(), delta: new Matrix4(), set: (m) => { m.decompose(mesh.position, mesh.quaternion, mesh.scale); mesh.updateMatrix(); } });
   };
   for (const prop of map.props) {
     const count = prop.matrices.length / 16;
@@ -737,10 +750,11 @@ export function buildWorld(map: LoadedMap): WorldView {
         mesh.name = prop.modelName;
         for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
         mesh.instanceMatrix.needsUpdate = true;
+        if (prop.paths) mesh.userData.nodePaths = prop.paths;   // per instance, for the marks' clip (`./markClip`)
         for (let i = 0; i < count; i++) {
           const path = prop.paths?.[i];
           // The detail and env passes share `instanceMatrix` (`addDetail`, `addEnv`): one write moves them too.
-          if (path) movable.push({ path, base: new Matrix4().fromArray(prop.matrices, i * 16), set: (m) => { mesh.setMatrixAt(i, m); mesh.instanceMatrix.needsUpdate = true; mesh.boundingSphere = null; } });
+          if (path) movable.push({ path, base: new Matrix4().fromArray(prop.matrices, i * 16), delta: new Matrix4(), set: (m) => { mesh.setMatrixAt(i, m); mesh.instanceMatrix.needsUpdate = true; mesh.boundingSphere = null; } });
         }
         later(revealProps, mesh, part.order, allCells, prop.alternate, part.textureName);
         addDetail(mesh, part);
@@ -938,10 +952,22 @@ export function buildWorld(map: LoadedMap): WorldView {
       let moved = 0;
       for (const m of movable) {
         if (!under(m.path)) continue;
+        m.delta.copy(d);
         m.set(d.clone().multiply(m.base));
-        moved++;
+        if (!m.rider) moved++;
       }
       return moved;
+    },
+    attachToNode: (path, object) => {
+      const at = movable.find((m) => !m.rider && m.path === path);
+      if (!at) return null;
+      // Made under the swing `at.delta`: each later delta D puts it at D x inverse(at.delta).
+      const rider: Movable = {
+        path, base: at.delta.clone().invert(), delta: at.delta.clone(), rider: true,
+        set: (m) => { object.matrix.copy(m); object.matrixWorldNeedsUpdate = true; },
+      };
+      movable.push(rider);
+      return () => { const i = movable.indexOf(rider); if (i >= 0) movable.splice(i, 1); };
     },
     setBillboards: (on) => {
       billboardsOn = on;
@@ -972,11 +998,19 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const { mesh } of envPasses) mesh.renderOrder = detailRenderOrder(0, false) + 0.25;
     },
     dispose: () => {
-      for (const child of group.children) {
-        if (!(child instanceof Mesh) && !(child instanceof LineSegments)) continue;   // an InstancedMesh is a Mesh too
-        child.geometry.dispose();
-        if (child instanceof InstancedMesh) child.dispose();
+      // Every object built, revealed or not: `prepare` compiles (and uploads) the props before their reveal, and three's
+      // renderer holds an uploaded geometry until its 'dispose' (`Geometries._geometryDisposeListeners`), so a map
+      // switched away from mid-stream would keep its unrevealed props, flares and instance buffers for good. Each
+      // geometry once: the LOD copies share one.
+      const geometries = new Set<BufferGeometry>();
+      for (const { object } of drawn) {
+        if (!(object instanceof Mesh) && !(object instanceof LineSegments)) continue;   // an InstancedMesh is a Mesh too
+        geometries.add(object.geometry as BufferGeometry);
+        if (object instanceof InstancedMesh) object.dispose();
       }
+      for (const geometry of geometries) geometry.dispose();
+      group.clear();
+      movable.length = 0;
       for (const { material } of built) material.dispose();
       for (const twin of fades.values()) twin.dispose();
       for (const { material } of detailMaterials.values()) material.dispose();

@@ -428,9 +428,31 @@ export class GrenadeThrower {
     this.scorchMaterial = null;
     this.scorchWarm?.geometry.dispose();                // the warm-up's scorch was the old material's
     this.scorchWarm = null;
+    this.scorchClipWarm?.geometry.dispose();            // and its clipped twin (the next map's warm-up makes both again)
+    this.scorchClipWarm = null;
     this.defaultMaterial = assets?.defaultMaterial ?? '';
     this.cast = null;
     this.castGrid = null;
+  }
+
+  /**
+   * A spawn's fresh kit (research 91 §4.3: `FUN_00598b90` -> `FUN_00599b60` -> `FUN_00599f00` 455760-455800 rebuild it
+   * at every respawn and every round's start, grenades included): the pouch full, nothing held or cooking, the rifle
+   * back in the hand. What is in the air, the charges down and the scorches stay: they are the world's, not the kit's.
+   */
+  refill(): void {
+    this.left = capacities(this.records);
+    this.pending = null;
+    this.power = 0;
+    this.recover = 0;
+    this.placing = null;
+    this.refusal = null;
+    if (!this.equipped_ && this.phase_ === 'holstered') return;
+    this.equipped_ = false;
+    this.detonatorUp = false;
+    this.refreshHandModel();
+    this.phase_ = 'holstered';
+    this.emit('equip', false, null);
   }
 
   /** Clears the air, the effects and the marks, and refills the pouch (a new map, or the hook). */

@@ -14,6 +14,8 @@ import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './
 import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
+import { createWorldSwap } from './worldSwap';
+import { reportDecodeFailure, wireWorkerFailure } from './decodeFailure';
 import { spreadAcrossFrames, type Spread } from './scheduler';
 import { attachTouchControls, attachWalkTouch, wantsTouchControls, type TouchControls } from './touch';
 import { WalkMode } from './walk';
@@ -181,6 +183,8 @@ const fire: Fire = new Fire({
   look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
   kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
   ready: (): boolean => !kit.swapping(),                                     // WEAPON: no round mid-swap (`./kit`)
+  airborne: (): boolean => walk.mover()?.airborne ?? false,                  // WEAPON: no reload begins in the air
+  attachToNode: (path, mark) => view?.attachToNode(path, mark) ?? null,      // EFFECTS: a mark rides a door's leaf
 }, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
 /**
@@ -531,6 +535,11 @@ const STAGE_WORDS: Record<LoadStage, string> = {
 let askedAt = 0;
 /** The reveal in progress. A new load cancels it: half a map is not drawn under the next one. */
 let revealing: Spread | null = null;
+/**
+ * Whether a map switch is under way: the loading overlay stands from a load's ask until its world is revealed or the
+ * load fails (`ui.setLoading`); the disc is not opened over it (`openDisc`).
+ */
+const switching = (): boolean => document.getElementById('loading')?.hidden === false;
 
 const load = (path: string): void => {
   askedAt = performance.now();
@@ -755,21 +764,25 @@ function gunFrame(dt: number, walking: boolean): void {
  * never uploaded and the page itself reads none of it.
  */
 function openDisc(file: File): void {
+  // Not over a map switch still under way: its world would be orphaned under the disc's first map (the release review's
+  // MJ-3; `worldSwap` takes it down regardless). The picker is taken away for the same reason (`load`).
+  if (switching()) { ui.setStatus(`a map is still loading: open ${file.name} again once it is drawn`); return; }
   ui.setStatus(`reading the disc image ${file.name} ...`);
   ui.setDiscState(`reading the disc image ${file.name} ...`);
   askIndex({ kind: 'iso', file });
 }
 ui.onDisc(openDisc);
 
+// A worker that fails without a reply -- its module will not load, an exception outside a request's `try`, a reply the
+// page cannot read -- is told as the worker's own errors are, not left on "reading ..." (`./decodeFailure`).
+wireWorkerFailure(worker, ui, () => { wantedIndexFrom = source; });
 worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   const message = event.data;
   if (message.kind === 'error') {
     if (message.id !== wantedIndex && message.id !== wantedMap) return;
     if (message.id === wantedIndex) wantedIndexFrom = source;   // a disc that will not open changes nothing
-    ui.setLoading(false);
-    const text = `failed while ${message.doing}: ${message.message}`;
     // On the disc page the page's own line says it; the panel is not unfolded over it.
-    if (ui.discPageShown()) { ui.setDiscState(text, 'error'); ui.setStatus(text); } else ui.setStatus(text, 'error');
+    reportDecodeFailure(ui, `failed while ${message.doing}: ${message.message}`);
     return;
   }
   if (message.kind === 'index') {
@@ -1308,12 +1321,21 @@ function connectNet(map: LoadedMap): void {
   net?.close();
   net = null;
   if (NET.url) {
-    net = new NetPage({
-      walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
-      spectate: (pose) => { if (pose) fly.setPose(pose); },
-      remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
-      roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
-    }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate, !playOn, RULES);
+    try {
+      net = new NetPage({
+        walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+        spectate: (pose) => { if (pose) fly.setPose(pose); },
+        remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
+        roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
+        // The server's fresh kit at this spawn (room.ts, FUN_00599f00): the rifle in the hand, every magazine full, the
+        // pouch too -- the page's spent rings and a pistol in the hand do not outlive a death or a round.
+        respawned: () => { kit.reset(); fire.refill(); grenade.refill(); showFireMode(); },
+      }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate, !playOn, RULES);
+    } catch (e) {
+      // A socket the browser refuses outright (a `server=` it will not open) must not stop `show` half-way: no match.
+      net = null;
+      ui.setStatus(`the match could not be joined: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    }
   }
   showOnline();
 }
@@ -1330,9 +1352,10 @@ function connectNet(map: LoadedMap): void {
  * The old map is taken down when the world's own meshes are in, not before -- so the swap happens
  * between two drawn maps rather than through a blank one -- and the props stream in behind it.
  */
+/** The world on screen and the one waiting to be taken down (`./worldSwap`: an interrupted switch orphans none). */
+const worlds = createWorldSwap<WorldView>(scene);
 function show(map: LoadedMap): void {
   const t0 = performance.now();
-  let previous = view;
   loaded = map;
   // The lighting is the map's own, read from its `GlobalLighting` record: three directional lights and
   // an ambient. The two sliders are trims on top of it and stay where the panel has them.
@@ -1358,11 +1381,13 @@ function show(map: LoadedMap): void {
   tacMap.setOpen(false);
   fire.reset();                                   // a new map: no marks, full magazines
   effects.setData(null);                          // EFFECTS: the old map's effects go; the new map's follow it
+  audio.setData(null);                            // AUDIO: the old map's banks, SOILS, beds and emitters too
   fire.setMarks(null);
   fire.setPenetration(null);
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
+  worlds.begin(built);                            // a world still waiting from an interrupted switch goes now
   grenade.setMap(built.grenades, map.grenade);
   throwPose.stop();     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
@@ -1483,12 +1508,7 @@ function show(map: LoadedMap): void {
   // two maps share a coordinate range and leaving both up for the whole reveal draws one through the
   // other. Disposing it only then also means nothing is freed while it is still being drawn.
   const built0 = built;
-  const retire = (): void => {
-    if (!previous) return;
-    scene.remove(previous.group);
-    previous.dispose();
-    previous = null;
-  };
+  const retire = (): void => { worlds.retirePrevious(built0); };
   // Each reveal waits for its objects' programs, linked off the draw (research 90 item 17: a draw that meets a new
   // program links it there and then -- 3.6 s of stalls through Guidance's first seconds).
   const stale = (): boolean => view !== built0;

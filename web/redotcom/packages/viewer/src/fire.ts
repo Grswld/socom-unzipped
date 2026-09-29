@@ -2,7 +2,7 @@ import {
   BufferGeometry, DataTexture, DoubleSide, Float32BufferAttribute, Group, Line, LineBasicMaterial, LinearFilter, Matrix4, Mesh,
   MeshBasicMaterial, PlaneGeometry, RGBAFormat, UnsignedByteType, Vector3,
 } from 'three';
-import type { Material } from 'three';
+import type { Material, Object3D } from 'three';
 import type { Rgba } from '@s2u/gs';
 import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
 import { roundPath } from './round';
@@ -120,8 +120,23 @@ export interface FireSource {
   look?(): { pitch: number; stance: KickStance } | null;
   /** WEAPON: turns the aim's pitch by `radians` (the kick). */
   kickPitch?(radians: number): void;
-  /** WEAPON: false while no round may leave (a weapon swap playing: `./kit`). */
+  /**
+   * WEAPON: false while no round may leave and no reload may be asked for (a weapon swap playing: `./kit`) -- the
+   * game's action lock `FUN_005a7ab0`, which the reload button also asks (`FUN_00594cf0`, decomp 453460-453463).
+   */
   ready?(): boolean;
+  /**
+   * WEAPON: whether the mover is in the air: the reload refuses to begin then (`FUN_005c2a90`, decomp 477394: body
+   * `+0x105e` bit 5, the airborne bit -- research 80 and 86).
+   */
+  airborne?(): boolean;
+  /**
+   * EFFECTS (research 92 §6): hangs a mark on a moving scene node -- `path` a prop placement's node path, the mark's
+   * world-space triangles made where the node stands now -- so it follows the node (a door's leaf); returns the
+   * remover, or null when no node of that path moves. The game's decal entries are the hit visual's own, node-local
+   * list (`FUN_003b3800` 306396-306416), drawn in the node's own packet (`FUN_003b2ea0` 306133-306135).
+   */
+  attachToNode?(path: string, mark: Object3D): (() => void) | null;
 }
 
 /**
@@ -140,7 +155,7 @@ export interface FireWeapon {
  * - `round`: a round left `from` -- the fire point in the world (the muzzle, or the eye without one) -- toward
  *   `to`, where it met the hull when `hit`; `rounds` left in the magazine after it.
  * - `reloadStart`: a reload began, `seconds` long.
- * - `reloadEnd`: the reload finished and the magazine is full (`completed`), or it was cut short (a new map).
+ * - `reloadEnd`: the reload finished with the next magazine in (`completed`), or it was cut short (a new map).
  */
 export type FireEvent =
   | {
@@ -314,6 +329,8 @@ export class Fire {
   /** EFFECTS: each clipped mark's world triangles and its place in the order, for the pool (`TEMP_DECAL_TRIANGLES`). */
   private readonly markTriangles = new Map<Mesh, { triangles: number; order: number }>();
   private markOrder = 0;
+  /** EFFECTS (research 92 §6): the marks hung on a moving node (a door's leaf), and how to take each off it. */
+  private readonly onNode = new Map<Mesh, () => void>();
 
   constructor(
     private readonly source: FireSource,
@@ -535,13 +552,34 @@ export class Fire {
   }
 
   /**
-   * `R`: the next magazine with rounds, `RELOAD_DELAY` from now; false when the magazine is full, there is no other
-   * with rounds, or a reload is already asked for or running.
+   * `R`: the next magazine with rounds, `RELOAD_DELAY` from now; false when there is no other magazine with rounds, a
+   * reload is already asked for or running, or an action holds the weapon (a swap: `FireSource.ready`).
+   *
+   * The game's chain reads no fullness anywhere (`FUN_00594cf0` 453459-453463 -> `FUN_005c32b0` 477655-477679 ->
+   * `FUN_005c0fd0` 476549-476561 -> `FUN_005c2a90`; its walk from `m_currentmag + 1`, 477462-477483, is the only gate on
+   * the magazines): a full magazine reloads whenever another slot holds rounds. The request itself is refused only
+   * while `FUN_005a7ab0` answers (453461: the swap/action lock -- `ready`).
    */
   reload(): boolean {
-    if (this.reloadLeft > 0 || this.reloadPending >= 0 || !this.mags.canReload() || this.mags.full()) return false;
+    if (this.reloadLeft > 0 || this.reloadPending >= 0 || !this.mags.canReload()) return false;
+    if (this.source.ready && !this.source.ready()) return false;
     this.reloadPending = RELOAD_DELAY;
     return true;
+  }
+
+  /**
+   * WEAPON (research 91 §4.3): a spawn's fresh kit -- a respawn and every round's start rebuild it at `Ammo_Capacity` x
+   * `NumMags` (`FUN_00598b90` -> `FUN_00599b60` 455604-455700 -> `FUN_00599f00` 455760-455800), as the server's room
+   * does: every weapon's magazines full again, the first in the weapon, a reload cut short. The marks stay (they are
+   * the world's, not the kit's).
+   */
+  refill(): void {
+    this.cancelReload();
+    this.release();
+    this.stowedMags.clear();
+    this.fillMags();
+    this.wait = 0;
+    this.kick.reset();
   }
 
   /**
@@ -551,7 +589,10 @@ export class Fire {
    */
   private beginReload(): void {
     this.reloadPending = -1;
-    if (this.mags.full() || !this.mags.reload()) return;
+    // FUN_005c2a90's gates (477392-477397): refused in the air (body +0x105e bit 5) or while an action holds the weapon
+    // (FUN_005a7ab0); the timer is spent either way (FUN_005c0fd0 476557-476559 clears it), so the ask is dropped.
+    if (this.source.airborne?.() || (this.source.ready && !this.source.ready())) return;
+    if (!this.mags.reload()) return;
     const clip = this.source.reloadSeconds?.() ?? null;
     this.reloadLeft = clip !== null && clip > 0 ? clip : RELOAD_SECONDS;
     this.emit({ type: 'reloadStart', weapon: this.weapon(), seconds: this.reloadLeft });
@@ -613,6 +654,7 @@ export class Fire {
       this.unclipped.delete(mesh);
       const kept = this.clipper.clip(frame, mesh.geometry, DECAL_OFFSET);
       if (kept === 0) { this.unclipped.set(mesh, frame); continue; }   // to the back of the queue
+      this.hangOnNode(mesh);
       const entry = this.markTriangles.get(mesh);
       if (entry) entry.triangles = kept;
       this.trimPool(mesh);
@@ -633,8 +675,33 @@ export class Fire {
       if (!oldest) break;
       oldest.visible = false;
       this.unclipped.delete(oldest);
+      this.detach(oldest);
       live -= this.markTriangles.get(oldest)!.triangles;
     }
+  }
+
+  /** EFFECTS: a mark off the node it rode (recycled, trimmed, a new map); its matrix back to the world's identity. */
+  private detach(mesh: Mesh): void {
+    const off = this.onNode.get(mesh);
+    if (!off) return;
+    off();
+    this.onNode.delete(mesh);
+    mesh.matrix.identity();
+    mesh.matrixWorldNeedsUpdate = true;
+  }
+
+  /** EFFECTS: the mark just clipped onto the node the clip chose, when that node moves (`FireSource.attachToNode`). */
+  private hangOnNode(mesh: Mesh): void {
+    this.detach(mesh);
+    const path = this.clipper?.lastNodePath ?? null;
+    if (!path) return;
+    const off = this.source.attachToNode?.(path, mesh) ?? null;
+    if (off) this.onNode.set(mesh, off);
+  }
+
+  /** EFFECTS: how many marks ride a moving node now (tests and the hook). */
+  marksOnNodes(): number {
+    return this.onNode.size;
   }
 
   tracerVisible(): boolean {
@@ -660,7 +727,7 @@ export class Fire {
   /** A new map: the marks go, the magazines are full again. */
   reset(): void {
     if (this.reloadLeft > 0) this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
-    for (const d of this.decals) { this.object.remove(d); d.geometry.dispose(); }
+    for (const d of this.decals) { this.detach(d); this.object.remove(d); d.geometry.dispose(); }
     this.unshaded.clear();
     this.unclipped.clear();
     this.markTriangles.clear();
@@ -783,6 +850,7 @@ export class Fire {
       this.object.add(mesh);
     }
     this.nextDecal = (this.nextDecal + 1) % MAX_DECALS;
+    this.detach(mesh);                                  // a recycled mark leaves the node it was on
     if (this.clipper) { this.placeClipped(mesh, hit, row); return; }
     if (mesh.geometry.userData.markClip) { mesh.geometry.dispose(); mesh.geometry = markGeometry(this.geometry); }
     this.markTriangles.delete(mesh);
@@ -847,6 +915,11 @@ export class Fire {
     mesh.matrixAutoUpdate = false;
     mesh.matrix.identity();                                // the clip is in world space
     mesh.position.set(hit.point[0], hit.point[1], hit.point[2]);   // for the hook; the matrix stays the identity
+    // Research 92 §6: the game files each kept triangle in the hit visual's own decal list (`FUN_003b3800` 306396-306416,
+    // from `FUN_003139e0` 213931-213935 per visual of the hit node) and draws that list in the node's packet
+    // (`FUN_003b2ea0` 306133-306135) -- node-local, so a mark on a door's leaf swings with it. The clip's node, when it
+    // is a placement that moves, carries this one (`FireSource.attachToNode`); the world's own node never moves.
+    if (kept > 0) this.hangOnNode(mesh);
     mesh.visible = true;
     mesh.updateMatrixWorld(true);
     this.trimPool(mesh);

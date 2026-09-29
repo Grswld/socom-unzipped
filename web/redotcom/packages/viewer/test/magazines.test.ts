@@ -109,10 +109,27 @@ describe('the owner\'s Mark 23 sequence (2026-09-29): where the 11 comes from', 
     expect(box(fire)).toBe('8/12 2');
     expect(reload(fire)).toBe(true);
     expect(box(fire)).toBe('12/12 2');
-    expect(reload(fire)).toBe(false);                           // full: R does nothing
+    // Full, and R still reloads (FUN_005c2a90 477462-477483: the walk from m_currentmag + 1 is the only gate on the
+    // magazines): round the ring to the first, the 10; the full third keeps its 12.
+    expect(reload(fire)).toBe(true);
+    expect(box(fire)).toBe('10/12 2');
     fireN(fire, 1);
     expect(reload(fire)).toBe(true);
-    expect(box(fire)).toBe('10/12 2');                          // round the ring to the first, the 10
+    expect(box(fire)).toBe('8/12 2');                           // on to the second, as it was left
+  });
+
+  it('a full magazine reloads when another slot holds rounds; with no other slot holding rounds it does not', () => {
+    const ring = new MagazineRing(12, 3);
+    expect(ring.full()).toBe(true);
+    expect(ring.reload()).toBe(true);
+    expect(ring.state()).toEqual({ slots: [12, 12, 12, 0, 0, 0, 0, 0, 0, 0], current: 1 });
+    expect(new MagazineRing(12, 1).reload()).toBe(false);
+    const fresh = gun(HELD_SIDEARM);
+    expect(reload(fresh)).toBe(true);
+    expect(box(fresh)).toBe('12/12 2');
+    const one = gun({ ...HELD_SIDEARM, mags: 1 });
+    expect(reload(one)).toBe(false);
+    expect(box(one)).toBe('12/12 0');
   });
 
   it('one round spent from the first magazine before: the second reload comes round to it -- the 11', () => {

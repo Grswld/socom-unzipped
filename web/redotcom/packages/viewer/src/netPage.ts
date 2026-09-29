@@ -40,6 +40,12 @@ export interface NetPageDeps {
   spectate(pose: { x: number; y: number; z: number; yaw: number; pitch: number } | null): void;
   /** A round's effects and sound at a point (`Effects.onRound`, `GameAudio.onFire`). */
   roundEffects(e: Extract<FireEvent, { type: 'round' }>, muzzleOf: number): void;
+  /**
+   * The page's own mover placed by the server (a respawn, and every round's start in classic): the kit fresh as the
+   * server's (`FUN_00598b90` -> `FUN_00599b60` -> `FUN_00599f00`, research 91 §4.3) -- every magazine full, the rifle
+   * in the hand, the pouch refilled.
+   */
+  respawned(): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
   weapons: readonly [WeaponRecord, WeaponRecord];
   /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default. */
@@ -425,7 +431,10 @@ export class NetPage {
         } else remote.died(ev.victim, ev.clip);
         break;
       case 'spawn':
-        if (ev.id === this.client.id) { this.dead = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null); }
+        if (ev.id === this.client.id) {
+          this.dead = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null);
+          this.deps.respawned();                        // the server refilled its kit at this spawn (room.ts)
+        }
         break;
       case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
       case 'shot': {
