@@ -312,7 +312,7 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
 | what | value | why |
 |---|---|---|
 | the aim-to-muzzle depth ratio in the knock clamp and the cone | 1 | `FUN_00290830`'s two depths ≈ equal at range |
-| steadiness (`body+0xeb0`) | 1 | **a reading corrected in §17**: it is an exertion that decays, not modelled |
+| steadiness (`body+0xeb0`) | the exertion, ported (§17) | the pitch stick from the mouse's pitch rate is a reading |
 | the airborne term | `(vx² + vz²) / 65` while `airborne` | `+0x1350` read as the carried air velocity, bit 5 as airborne |
 | the look rates | differences of `fly.pose()` a frame | the body's `+0x44`/`+0x60`; a > 45° jump is a placement |
 | the scoped sway | ported, not drawn | no drawing reader found (§8) |
@@ -421,14 +421,28 @@ the round event's `through`); the eye's ray to the point under the reticle passe
   the size (halved in third person, §9) and the scope's tube is drawn at fixed frame coordinates, the sway undrawn --
   both as the game. The multiplayer server walks the client's already-perturbed direction (`room.ts` `fire`), so it
   applies the same rule by construction.
-- **Steadiness is an exertion, not health** (corrects §8 and §11). `body+0xeb0` points at `{cur, target, mode}` made
-  `{1.0, 0, 0}` (decomp 419589-419598); each tick `FUN_00550ef0` raises `cur` (`FUN_00578150`, clamped to 1) by the
-  body's `|+0x240| + 0.1 × |+0x23c| + |+0x244|` (copied from the controller's `[2]`, `[4]`, `[3]` at 418613-418615,
-  zeroed in several animation states: read as the stick inputs) and a vehicle's term, then pulls it toward `target`
-  0 at `−SniperDecayRate` a second (`cur += −rate × dt × (target − cur)`, snapping within 0.005; 418366-418388).
-  A round adds 0.35 (479407), entering the 9× view or a scope 0.5 (`FUN_005b9180`, 472025). The sway's limit is
-  `SniperDistLimit × (0.8 cur + 0.2)` and the sway moves only while `cur > 0.2` (472137-472185); the breath sound's
-  period is `(1 − cur) × 0.24 + 0.3` s (472076-472095). So holding still in a scope steadies it -- slowly standing
-  (0.04 a second), in about 8 s prone (0.2) -- and the viewer, which holds `cur` at 1, keeps the full sway. **Owed**:
-  port it once the three inputs are identified.
-
+- **Steadiness is an exertion, not health** (corrects §8 and §11; ported 2026-09-29). `body+0xeb0` points at
+  `{cur, target, mode}` made `{1.0, 0, 0}` (decomp 419589-419598). Each tick `FUN_00550ef0` (418340-418390), for the
+  body holding a weapon under a player controller:
+  - **raises** `cur` (`FUN_00578150`: `+ x`, clamped to 1, nothing at 1) by `|+0x240| + 0.1 × |+0x23c| + |+0x244|`
+    and `0.05 × |controller+0x138|`. The three body fields are the controller's `m_throttle[3]` (reCOM
+    `zEntity/zentity.h:159-176`, `CEntityCtrl` at `+0x8/+0xc/+0x10`), copied at 418613-418615 and zeroed in the
+    held animation states; `FUN_005966a0` (453738-453864, the player controller's tick) fills them from the pad:
+    `[2]` = the move stick's long axis (`+0x240`, forward), `[3]` = its strafe (`+0x244`), both × 0.2 in the 9× view
+    or a scope; `[4]` = the look's x after × 1.72, the curve and ÷ the zoom (`+0x23c`, the turn: ω = `turn_maxrate` 2 ×
+    it, research 83); `+0x138` is the raw pitch stick (`FUN_002c6280`, also the kick's stick follow);
+  - **pulls** it toward the target 0: `cur += −rate × dt × (0 − cur)`, `rate` = the stance's `SniperDecayRate`
+    (−0.04 / −0.05 / −0.2 on the SD: a decay) or, while `FUN_0058a820` says running (`|v|² ≥ 400`), `1 − |+0x240|`
+    (a climb); within the step (or 0.005) of 0 it snaps to 0 (`FUN_0052eb60`).
+  A round adds 0.35 (479407, every view); entering the 9× view, or a scope from any state but 6, adds 0.5
+  (`FUN_005448a0` 410995/411011 -> `FUN_005b9180` 472025). The sway's limits are `SniperDistLimit × (0.8 cur + 0.2)`
+  and it moves only while `cur > 0.2` (472137-472185) -- below, it **stops where it is**, so the rounds keep that last
+  offset. The breath sound (`FUN_00592b40`, period `(1 − cur) × 0.24 + 0.3` s, 472076-472095) is not ported.
+- **What it does, still in the SD's scope (3×) from entering it** (the sway's offset off the cross, mean / worst,
+  mrad, each window up to the time; `accuracy.ts`): standing 9.4 / 21.0 to 2 s, 8.6 / 13.1 at 8-10 s (f 0.67),
+  5.0 / 9.8 at 30-40 s, frozen at 40.3 s (f 0.2); crouched frozen at 32 s; **prone 6.3 / 11.1 to 2 s, 3.6 / 5.7 at
+  5-8 s, frozen at 8.05 s** (483 ticks: `(1 − 0.2/60)^n ≤ 0.2`). Any move stick pins it back at 1; a look adds 0.1 ×
+  the turn axis a tick. Client-only: the server walks the client's deflected direction.
+- **Not ported, found here:** the move stick's × 0.2 while scoped (453818-453821) reaches the exertion's throttles
+  (`main.ts`) but **not the mover**: the shared `Walker` moves at full speed in the scope (its owner's to add, with
+  the server's `Button.Aim`).

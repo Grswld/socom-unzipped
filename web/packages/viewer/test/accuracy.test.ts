@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_RIFLE, HELD_RIFLE } from '@s2u/scene';
 import {
-  Accuracy, burstScalar, defaultFireMode, fireInterval, kickStarts, kickTicks, MAP_FOV, movementSize, nextFireMode,
+  Accuracy, burstScalar, defaultFireMode, enterRaises, fireInterval, kickStarts, kickTicks, MAP_FOV, movementSize, nextFireMode,
   penetrate, perturb, RADIUS_FACTOR, roundsPerPull, tangentPerPixel, TICK, type AccuracyInput,
 } from '../src/accuracy';
 
@@ -166,8 +166,11 @@ describe('the scoped sway (FUN_005b9280)', () => {
     a.update(1, still);
     expect(a.state().sway).toEqual([0, 0]);
     let maxX = 0;
-    for (let i = 0; i < 600; i++) { a.update(TICK, { ...still, zoomState: 5 }); maxX = Math.max(maxX, Math.abs(a.state().sway[0])); }
-    expect(maxX).toBe(20);                                           // SniperDistLimitX standing
+    // The turn stick holds the exertion at 1 before each tick's decay step (research 84 section 17): the limit is
+    // 20 x (0.8 (1 - 0.04/60) + 0.2), a hair under SniperDistLimitX.
+    const busy = { ...still, zoomState: 5, sticks: { forward: 0, right: 0, turn: 1, pitch: 0 } };
+    for (let i = 0; i < 600; i++) { a.update(TICK, busy); maxX = Math.max(maxX, Math.abs(a.state().sway[0])); }
+    expect(maxX).toBeCloseTo(20 * (0.8 * (1 - 0.04 * TICK) + 0.2), 9);
     expect(Math.abs(a.state().sway[1])).toBeLessThanOrEqual(24);
     // The first tick: x += dt x (6 + 0.25) at the centre.
     const b = new Accuracy(HELD_RIFLE);
@@ -218,12 +221,13 @@ describe('the zoom on the cone (FUN_005bd100: the offsets over cam+0x474, the ma
       const a = new Accuracy(HELD_RIFLE);
       let worstX = 0, worstY = 0;
       for (let i = 0; i < 1200; i++) {
-        a.update(TICK, { ...still, stance, zoomState: 5 });
+        a.update(TICK, { ...still, stance, zoomState: 5, sticks: { forward: 0, right: 0, turn: 1, pitch: 0 } });
         const c = a.cone(5, sd3x);
         worstX = Math.max(worstX, Math.abs(c.offsetX));
         worstY = Math.max(worstY, Math.abs(c.offsetY));
       }
-      expect(worstX).toBeCloseTo((sd[stance].swayLimitX * t.x) / 3, 9);
+      const k = 0.8 * (1 + sd[stance].sniperDecay * TICK) + 0.2;       // the exertion held at 1 by the turn stick
+      expect(worstX).toBeCloseTo((sd[stance].swayLimitX * k * t.x) / 3, 9);
       expect(worstY).toBeLessThanOrEqual((sd[stance].swayLimitY * t.y) / 3 + 1e-12);
     }
   });
@@ -248,6 +252,112 @@ describe('the zoom on the cone (FUN_005bd100: the offsets over cam+0x474, the ma
       expect(scoped).toBeCloseTo(spread({ ...still, stance, zoomState: 5 }, 1) / 3, 12);
       expect(scoped).toBeLessThan(spread({ ...walking, stance }, 1));
     }
+  });
+});
+
+describe('the exertion (body+0xeb0: FUN_00550ef0 418340-418390, FUN_00578150, FUN_005b9280)', () => {
+  // {cur 1, target 0, mode 0} at the body's creation (decomp 419589-419598). Each tick: raised (clamped to 1) by
+  // |+0x240| + 0.1 |+0x23c| + |+0x244| + 0.05 |controller+0x138|, then pulled toward 0 at -SniperDecayRate a second
+  // (cur += -rate x dt x (0 - cur)), snapped to 0 within 0.005. The sway's limit is SniperDistLimit x (0.8 cur + 0.2)
+  // and it moves only while cur > 0.2.
+  const scope = { ...still, zoomState: 5 };
+  const ticksTo = (a: Accuracy, input: AccuracyInput, n: number): void => { for (let i = 0; i < n; i++) a.update(TICK, input); };
+
+  it('starts at 1; still in the scope it decays at the stance SniperDecayRate a second', () => {
+    expect(sd.stand.sniperDecay).toBe(-0.04);
+    expect(sd.prone.sniperDecay).toBe(-0.2);
+    for (const stance of ['stand', 'crouch', 'prone'] as const) {
+      const a = new Accuracy(HELD_RIFLE);
+      expect(a.state().exertion).toBe(1);
+      a.enterView(0, 5);
+      ticksTo(a, { ...scope, stance }, 240);                              // 4 s
+      const r = -sd[stance].sniperDecay * TICK;
+      expect(a.state().exertion).toBeCloseTo((1 - r) ** 240, 9);
+    }
+  });
+
+  it('prone, the sway reaches its floor in about 8 s and stops: the limit 0.36 of SniperDistLimit', () => {
+    const a = new Accuracy(HELD_RIFLE);
+    a.enterView(0, 5);
+    const prone = { ...scope, stance: 'prone' as const };
+    // (1 - 0.2/60)^n <= 0.2: n = 483 ticks, 8.05 s.
+    expect(Math.ceil(Math.log(0.2) / Math.log(1 - 0.2 * TICK))).toBe(483);
+    ticksTo(a, prone, 482);
+    expect(a.state().exertion).toBeGreaterThan(0.2);
+    ticksTo(a, prone, 1);
+    expect(a.state().exertion).toBeLessThanOrEqual(0.2);
+    const frozen = a.state().sway;
+    ticksTo(a, prone, 600);
+    expect(a.state().sway).toEqual(frozen);                              // below 0.2 the sway stops where it is
+    expect(Math.abs(frozen[0])).toBeLessThanOrEqual(sd.prone.swayLimitX * (0.8 * 0.2 + 0.2) + 1e-3);
+    expect(Math.abs(frozen[1])).toBeLessThanOrEqual(sd.prone.swayLimitY * (0.8 * 0.2 + 0.2) + 1e-3);
+    expect(a.swayLimit('prone')).toEqual([sd.prone.swayLimitX * (0.8 * a.state().exertion + 0.2), sd.prone.swayLimitY * (0.8 * a.state().exertion + 0.2)]);
+  });
+
+  it('standing the limit narrows slowly: 10 s still is 0.8 x 0.67 + 0.2 of it', () => {
+    const a = new Accuracy(HELD_RIFLE);
+    a.enterView(0, 5);
+    ticksTo(a, scope, 600);
+    const f = (1 - 0.04 * TICK) ** 600;
+    expect(f).toBeCloseTo(0.670, 3);
+    expect(a.swayLimit('stand')[0]).toBeCloseTo(20 * (0.8 * f + 0.2), 9);
+    let worst = 0;
+    for (let i = 0; i < 1200; i++) { a.update(TICK, scope); worst = Math.max(worst, Math.abs(a.state().sway[0])); }
+    expect(worst).toBeLessThanOrEqual(20 * (0.8 * f + 0.2) + 1e-9);
+  });
+
+  it('the sticks, a round and the scope raise it: a move stick pins it at 1, a round adds 0.35, the scope 0.5', () => {
+    const a = new Accuracy(HELD_RIFLE);
+    ticksTo(a, { ...scope, stance: 'prone' }, 600);
+    const low = a.state().exertion;
+    expect(low).toBeLessThan(0.2);
+    a.round(0, 'prone');
+    expect(a.state().exertion).toBeCloseTo(low + 0.35, 12);
+    a.enterView(0, 5);
+    expect(a.state().exertion).toBeCloseTo(low + 0.35 + 0.5, 12);
+    a.round(0, 'prone');
+    expect(a.state().exertion).toBe(1);                                  // clamped at 1
+    const b = new Accuracy(HELD_RIFLE);
+    ticksTo(b, { ...scope, stance: 'prone' }, 600);
+    const before = b.state().exertion;
+    b.update(TICK, { ...scope, stance: 'prone', sticks: { forward: 0, right: 0, turn: 0.1, pitch: 0 } });
+    // + 0.1 x 0.1, then the decay's step on the sum.
+    expect(b.state().exertion).toBeCloseTo((before + 0.01) * (1 - 0.2 * TICK), 12);
+    const mid = b.state().exertion;
+    b.update(TICK, { ...scope, stance: 'prone', sticks: { forward: 0.05, right: 0.05, turn: 0, pitch: 0.2 } });
+    expect(b.state().exertion).toBeCloseTo((mid + 0.05 + 0.05 + 0.05 * 0.2) * (1 - 0.2 * TICK), 12);
+    const c = new Accuracy(HELD_RIFLE);
+    ticksTo(c, { ...scope, stance: 'prone' }, 600);
+    c.update(TICK, { ...scope, stance: 'prone', sticks: { forward: 0.9, right: 0, turn: 0, pitch: 0 } });
+    expect(c.state().exertion).toBeCloseTo(1 - 0.2 * TICK, 12);          // pinned at 1, then one step of decay
+    expect(enterRaises(0, 5)).toBe(true);
+    expect(enterRaises(6, 5)).toBe(false);                               // FUN_005448a0: not from state 6
+    expect(enterRaises(5, 6)).toBe(true);
+    expect(enterRaises(0, 4)).toBe(true);
+    expect(enterRaises(4, 3)).toBe(false);
+  });
+
+  it('running (|v| of 20 a second or more) the pull is 1 - |forward| instead of the decay: it climbs', () => {
+    const a = new Accuracy(HELD_RIFLE);
+    ticksTo(a, { ...still, stance: 'prone' }, 600);
+    const low = a.state().exertion;
+    // FUN_0058a820 class 3; the throttle 0 so nothing is raised: cur += -(1 - 0) dt (0 - cur).
+    a.update(TICK, { ...still, stance: 'prone', velocity: [25, 0, 0] });
+    expect(a.state().exertion).toBeCloseTo(low * (1 + TICK), 12);
+  });
+
+  it('the scoped spread, still for 20 s: prone settles to a frozen point, a fraction of its first seconds', () => {
+    const t = tangentPerPixel();
+    const a = new Accuracy(HELD_RIFLE);
+    a.enterView(0, 5);
+    const prone = { ...scope, stance: 'prone' as const };
+    let early = 0;
+    for (let i = 0; i < 120; i++) { a.update(TICK, prone); early = Math.max(early, Math.abs(a.cone(5, 3).offsetX)); }
+    ticksTo(a, prone, 1080);
+    const late = Math.abs(a.cone(5, 3).offsetX);
+    expect(late).toBeLessThanOrEqual((sd.prone.swayLimitX * 0.36 * t.x) / 3 + 1e-6);
+    expect(a.cone(5, 3)).toEqual((a.update(TICK, prone), a.cone(5, 3)));
+    expect(early).toBeGreaterThan(0);
   });
 });
 
