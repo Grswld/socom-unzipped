@@ -24,8 +24,13 @@ import type { Pnt3D } from './firePoint';
 
 /** The default target: the SEAL's M4A1 SD (W2.R4, the owner's word of 2026-09-28). */
 export const DEFAULT_WEAPON = 'm4Acarbine_sd';
-/** The sidearm, the controller's default after it (W2.R4). */
-export const DEFAULT_SIDEARM = 'baretta_m9';
+/**
+ * The sidearm the SEAL carries: `a_mark23`, the `ModelName` of `zweapon.rdr`'s "Mark 23" -- the second weapon of every
+ * `mp_seal1` kit in `READERC.ZAR/character.rdr` (Frostfire's `mp2_seal1`: M4A1, Mark 23, M67, HE, Double Ammo Load),
+ * the slot the game's L2 (`SwapWeapon2`) takes up (`scene/src/weapons.ts` `HELD_SIDEARM`). W2.R4 first named the M9
+ * (`baretta_m9`) as the controller's default; the kit is the game's.
+ */
+export const DEFAULT_SIDEARM = 'a_mark23';
 /** The two members of a map archive the weapons live in (research 72 §0-§2: the asset library's stem is `WEAP`). */
 export const WEAPON_MEMBERS = { geo: 'WEAP_GEO.ZED', mdl: 'WEAP_MDL.ZED' } as const;
 

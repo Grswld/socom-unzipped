@@ -280,6 +280,27 @@ export function kitPrimaries(character: RdrNode, who = 'mp_seal1'): string[] {
   return out;
 }
 
+/**
+ * `character.rdr`: every `wep_name` under `default_weapons` of the **first** `characters` record named `who` that has
+ * a kit, in slot order -- `mp_seal1`: M4A1, Mark 23, M67, HE, Double Ammo Load (the kit's slot 0 the primary, 1 the
+ * sidearm: `CSealCtrl`'s L1/L2 slots, research 85 §9).
+ */
+export function kitWeapons(character: RdrNode, who = 'mp_seal1'): string[] {
+  const characters = rdrGet(character, 'characters');
+  if (!Array.isArray(characters)) throw new Error('character.rdr has no characters');
+  for (let i = 0; i + 1 < characters.length; i++) {
+    if (characters[i] !== who) continue;
+    // `name : base record` (the inheritance line) or `name record`.
+    const record = characters[i + 1] === ':' ? characters[i + 3] : characters[i + 1];
+    const weapons = record === undefined ? undefined : rdrGet(record, 'default_weapons');
+    if (!Array.isArray(weapons)) continue;
+    const list = (typeof weapons[0] === 'string' ? [weapons] : weapons) as RdrNode[];
+    const out = list.map((w) => rdrGet(w, 'wep_name')).filter((n): n is string => typeof n === 'string');
+    if (out.length) return out;
+  }
+  return [];
+}
+
 /** The first of `kitPrimaries` (`mp_seal1`: the header). */
 export function defaultPrimary(character: RdrNode, who = 'mp_seal1'): string {
   const name = kitPrimaries(character, who)[0];
@@ -398,6 +419,31 @@ export const HELD_RIFLE: WeaponRecord = {
   },
   fireAnim: 'muzzle_m4SD',
   sounds: { close: '.M4A1_SIL', med: null, far: null, reload: '.M4A1_SIL_RLD' },
+};
+
+/**
+ * `zweapon.rdr`'s **Mark 23** (`ID 15`, `ModelName a_mark23`), transcribed and pinned as `HELD_RIFLE` is: the sidearm of
+ * every `mp_seal1` kit (`kitWeapons`' second slot), the one the SEAL draws with L2. One fire mode (`MaxFireMode 1`:
+ * semi), `FireWait` 0.2 (300 a minute), 12 rounds and three magazines of .45 ACP, 125 m; one zoom mode, so its first
+ * step in goes to the 9x view (research 84 §7); the reticle set 0 (`ID` 4-30: `ret_sidearm_01/02`); a heavy knock
+ * (20 a round, back at 60, capped at 40) and bloom (20 a round, rest 10, max 30; prone 14 to 34), no kick, no sway;
+ * `muzzle_mark23` and `.MARK_23` / `_M` / `_F`, reloading to `.MARK_23_RLD`.
+ */
+export const HELD_SIDEARM: WeaponRecord = {
+  name: 'Mark 23', id: 15, fireWait: 0.2, roundsPerMinute: 300, magazine: 12, mags: 3,
+  ammo: '45 ACP', ammoId: 3, maximumRange: 125, effectiveRange: 50, decalSet: 'BULLET_MARK_SMALL',
+  knock: { knock: 20, knockReturn: 60, knockMax: 40 },
+  stances: {
+    stand: stance(20, 60, 40, [0, 0, 0, 0, 0], [20, 0.75, 1, 75, 10, 30], [0, 0, 0, 0], 1, 1),
+    crouch: stance(20, 60, 40, [0, 0, 0, 0, 0], [20, 0.75, 10, 75, 10, 30], [0, 0, 0, 0], 1, 1),
+    prone: stance(20, 60, 40, [0, 0, 0, 0, 0], [20, 0.75, 60, 75, 14, 34], [0, 0, 0, 0], 1, 1),
+  },
+  zoomModes: [1.5],
+  accuracyBurst: { countMin: 0, countMax: 0, scalarMin: 0, scalarMax: 0 },
+  maxFireMode: 1, fireModes: [1], recoilPct: 0.1,
+  rifleKick: { stand: null, crouch: null, prone: null },
+  fireAnim: 'muzzle_mark23',
+  sounds: { close: '.MARK_23', med: '.MARK_23_M', far: '.MARK_23_F', reload: '.MARK_23_RLD' },
 };
 
 /** `READERC.ZAR/decals.rdr`'s `BULLET_MARK_SMALL` row for `STONE`, transcribed and pinned as `DEFAULT_RIFLE` is. */
