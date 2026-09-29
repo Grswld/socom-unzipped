@@ -209,6 +209,19 @@ const REF_AHEAD: Record<string, number> = {
   seal_step_up: 8, seal_climbcrate: 8.92, seal_climb_medium: 8.92, seal_climb_over: 10.28, seal_stand2hang: 5.65,
 };
 /**
+ * `motion.rdr`'s `refPt` y of each climb (research 86 section 1's table [data]): the point the clip is placed by, this far
+ * over the root -- the ledge the hands take, for the crate and the medium 13 and 21.5 less the root's 11.52. "Step up"
+ * adds 1 (`FUN_005b1a10`, decomp 467905); the crate/medium blend weighs the two (467919; `lift`).
+ */
+const REF_UP: Record<string, number> = {
+  seal_step_up: -3.48 + 1, seal_climbcrate: 1.48, seal_climb_medium: 9.98, seal_climb_over: -0.96, seal_stand2hang: 18.51,
+};
+/**
+ * `FUN_0059afd0` (decomp 456455-456460): under a `UseVelY` clip the root is held at most 11.487 over the actor, the
+ * vertical going to the actor -- so the steer (`FUN_005b2d20`) measures the clip's `refPt` from 11.487 over the feet.
+ */
+const STEER_ROOT = 11.4869995;
+/**
  * `FUN_005b2d20`'s steering: at most 30 a second on each axis and 4.712 radians a second of turn, for at most 46 ticks;
  * done inside 1 and facing within 0.993; not begun past 30.
  */
@@ -295,6 +308,8 @@ export class Traversal implements TraversalHooks {
   private contact: ClimbContact | null = null;
   private plan: ClimbPlan | null = null;
   private climbing: { plan: ClimbPlan; start: [number, number, number]; ticks: number } | null = null;
+  /** The hang's root over the feet: where "Stand -> Hang" left the body, the steer's lift in it (`climbClip`). */
+  private hangRoot: number | null = null;
 
   constructor(readonly grid: Grid, polys: readonly WorldPoly[]) {
     this.ladders = findLadders(polys, grid);
@@ -378,7 +393,7 @@ export class Traversal implements TraversalHooks {
     }
     if (this.kind_ === 'ladder') return { clip: TRAVERSAL_CLIP.ladder, frame: this.phase, loop: true, rootY: this.ladderRoot() };
     if (this.kind_ === 'climbAlign' && this.climbing) return { clip: this.climbing.plan.clip, frame: 0, loop: false, rootY: null };
-    if (this.kind_ === 'hang') return { clip: TRAVERSAL_CLIP.hang, frame: 0, loop: true, rootY: rootAt(this.shapes.get(TRAVERSAL_CLIP.hangUp), 0)[1] };
+    if (this.kind_ === 'hang') return { clip: TRAVERSAL_CLIP.hang, frame: 0, loop: true, rootY: this.hangRootY() };
     if (this.kind_ === 'turn180' && this.turn) {
       const shape = this.shapes.get(TRAVERSAL_CLIP.turn180);
       // The yaw turns by code (`+0x48`, decomp 468245-468252), so the clip's own root turn is held at its key 0.
@@ -484,6 +499,23 @@ export class Traversal implements TraversalHooks {
     const shape = r.path.shape;
     const k = Math.min(shape.keys - 1, (r.time / shape.seconds) * (shape.keys - 1));
     return r.reverse ? shape.keys - 1 - k : k;
+  }
+
+  /** The hang's root over the feet: "Stand -> Hang"'s end, else "Hang -> Climb"'s key 0. */
+  private hangRootY(): number {
+    return this.hangRoot ?? rootAt(this.shapes.get(TRAVERSAL_CLIP.hangUp), 0)[1];
+  }
+
+  /**
+   * The climb's vertical steer (`FUN_005b2d20`; `ClipPath`'s `lift`): the ledge's top (the contact polygon's, no
+   * `FOOT_STEP_OFFSET`: `FUN_005b1a10` takes the top point's y, 467887) less where the clip puts it over the feet at `y`
+   * -- the root the steer reads (`STEER_ROOT`) plus the clip's `refPt` y (the blend's weighed).
+   */
+  private lift(plan: ClimbPlan, y: number): number {
+    const up = plan.blend
+      ? plan.blend.weight * (REF_UP[plan.clip] ?? 0) + (1 - plan.blend.weight) * (REF_UP[plan.blend.clip] ?? 0)
+      : REF_UP[plan.clip] ?? 0;
+    return plan.contact.top - (y + STEER_ROOT + up);
   }
 
   /** The climb's root over the feet: the cycle's key-0 root, its rise carried by the feet. */
@@ -678,12 +710,16 @@ export class Traversal implements TraversalHooks {
     const from: [number, number, number] = [s.x, s.y, s.z];
     const ahead = (d: number): [number, number] => [s.x - c.nx * d, s.z - c.nz * d];
     const startRoot = stanceRootY(w.posture);
+    const lift = this.lift(plan, s.y);
     if (plan.kind === 'high') {
-      // "Stand -> Hang": its share of the height (6.81 of the two clips' 29.4), the whoosh at 0.5.
+      // "Stand -> Hang": its share of the height (6.81 of the two clips' 29.4), the whoosh at 0.5. The body ends where
+      // the clip and the steer put it -- the hands on the ledge -- and the hang holds it there (`hangRoot`).
       const hangUp = shapeTravel(this.shapes.get(TRAVERSAL_CLIP.hangUp));
       const share = travel.rise / (travel.rise + hangUp.rise);
       const [x, z] = ahead(travel.ahead);
-      const path = new ClipPath(shape, from, [x, s.y + plan.h * share, z], startRoot, rootAt(this.shapes.get(TRAVERSAL_CLIP.hangUp), 0)[1]);
+      const top = s.y + plan.h * share;
+      this.hangRoot = s.y + startRoot + travel.rise + lift - top;
+      const path = new ClipPath(shape, from, [x, top, z], startRoot, this.hangRoot, lift);
       this.run('climb', plan.clip, path, false, () => { this.kind_ = 'hang'; }, [{ at: 0.5, event: { type: 'jumpWhoosh' }, fired: false }]);
       return;
     }
@@ -693,7 +729,7 @@ export class Traversal implements TraversalHooks {
       const bt = shapeTravel(blended);
       const [bx, bz] = ahead(bt.ahead);
       const past = Math.max(0.5, bt.ahead - (REF_AHEAD[plan.clip] ?? 8.92));
-      const path = new ClipPath(blended, from, [bx, topFloor(this.grid, plan.target, c, past) ?? c.top, bz], startRoot, STAND_ROOT);
+      const path = new ClipPath(blended, from, [bx, topFloor(this.grid, plan.target, c, past) ?? c.top, bz], startRoot, STAND_ROOT, lift);
       this.run('climb', plan.clip, path, false, (m) => this.endClimb(m), [{ at: 0.1, event: { type: 'climbUp' }, fired: false }]);
       this.running!.blend = plan.blend;
       return;
@@ -707,7 +743,7 @@ export class Traversal implements TraversalHooks {
       const past = Math.max(0.5, travel.ahead - (REF_AHEAD[plan.clip] ?? 8.92));
       to = [x, topFloor(this.grid, plan.target, c, past) ?? c.top, z];
     }
-    const path = new ClipPath(shape, from, to, startRoot, STAND_ROOT);
+    const path = new ClipPath(shape, from, to, startRoot, STAND_ROOT, lift);
     this.run('climb', plan.clip, path, false, (m) => this.endClimb(m), [{ at: 0.1, event: { type: 'climbUp' }, fired: false }]);
   }
 
@@ -731,7 +767,7 @@ export class Traversal implements TraversalHooks {
     const t = shapeTravel(shape);
     const top = topFloor(this.grid, k.plan.target, c, Math.max(0.5, t.ahead)) ?? c.top;
     const to: [number, number, number] = [s.x - c.nx * t.ahead, top, s.z - c.nz * t.ahead];
-    const path = new ClipPath(shape, [s.x, s.y, s.z], to, rootAt(shape, 0)[1], STAND_ROOT);
+    const path = new ClipPath(shape, [s.x, s.y, s.z], to, this.hangRootY(), STAND_ROOT);
     this.run('hangUp', TRAVERSAL_CLIP.hangUp, path, false, (m) => this.endClimb(m), [{ at: 0.01, event: { type: 'pullUp' }, fired: false }]);
   }
 
@@ -749,7 +785,8 @@ export class Traversal implements TraversalHooks {
     const rise = r1[1] - r0[1];
     const to: [number, number, number] = [s.x + c.nx * back, s.y + rise, s.z + c.nz * back];
     const push = truncateShape(shape, HANG_PUSH);
-    const path = new ClipPath(push, [s.x, s.y, s.z], to, rootAt(this.shapes.get(TRAVERSAL_CLIP.hangUp), 0)[1], r1[1]);
+    // From where the hang holds the body (`hangRootY`) to the clip's own root at the push's end, the fall's start.
+    const path = new ClipPath(push, [s.x, s.y, s.z], to, this.hangRootY(), r1[1]);
     this.emit({ type: 'climbEnd', kind: k.plan.kind });
     this.run('hangDown', TRAVERSAL_CLIP.hangDown, path, false, (m) => {
       // The push over: the fall from here, at the root's rise rate at 0.2 (the clip's own, per second).
@@ -1107,6 +1144,7 @@ export class Traversal implements TraversalHooks {
     this.contact = null;
     this.plan = null;
     this.climbing = null;
+    this.hangRoot = null;
     this.turn = null;
     this.diving = null;
     this.actionHeld = false;
