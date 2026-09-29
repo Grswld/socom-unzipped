@@ -79,5 +79,9 @@ describe('the shared sim runs headless (M2, W3.R2)', () => {
     expect(typeof sim.Walker).toBe('function');
     expect(typeof sim.Traversal).toBe('function');
     expect(typeof sim.roundPath).toBe('function');
-  });
+    // Load-bound, not logic-bound: the dynamic import transforms the whole sim module graph cold.
+    // Solo 0.54 s (vitest --maxWorkers=2, 2026-09-29). It passed alone and timed out at the default 5 s in
+    // full-suite runs on a loaded host: a slow-down past 9x, which solo x 6 (3.2 s) would not cover, so
+    // the budget is solo x ~28 -- this test's alone; the suite keeps the default.
+  }, 15_000);
 });
