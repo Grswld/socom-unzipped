@@ -1,4 +1,4 @@
-import { groundGrid, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type TraversalHooks, type WalkInput } from './mover';
+import { groundGrid, moverSnapshot, rootY, EYE_HEIGHT, STANCES, TICK, Walker, type GroundData, type MoverState, type PlaySnapshot, type Stance, type SwapPick, type TraversalHooks, type WalkInput } from './mover';
 import type { Grid } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
 import { firstPersonHeight, firstPersonPeekShift, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
@@ -218,15 +218,7 @@ export class WalkMode {
   snapshot(): PlaySnapshot | null {
     const w = this.walker;
     if (!this.walking || !w) return null;
-    const s = w.state;
-    return {
-      feet: w.drawnFeet(), yaw: s.yaw, pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
-      airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
-      landing: w.landing?.kind ?? null, jumps: this.jumps,
-      ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate: this.turnRate,
-      traversal: this.moves?.pose() ?? null, peek: this.moves?.peeking() ?? 0,
-      overlay: w.overlay && { ...w.overlay },
-    };
+    return moverSnapshot(w, this.moves, this.jumps, this.turnRate);
   }
 
   /** The action clips' root keys, by clip name (`./play` hands them over from the pack): `Walker.actionRoots`. */

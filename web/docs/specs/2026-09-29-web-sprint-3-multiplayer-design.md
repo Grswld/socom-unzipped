@@ -151,3 +151,30 @@ gives.
 ## 7. Rulings
 
 W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owner can overturn any by number.
+
+- **W3.R8 (2026-09-29) — the command stream.** The client's mover ticks at 60 Hz and every tick becomes one numbered
+  command (stick, look, buttons); the server runs each player's commands in order through that player's own `Walker`
+  (the same code on the same hull: `test/simMap.test.ts` shows the server's Frostfire hull byte-identical and a 10 s
+  scripted walk bit-for-bit equal). The server stays authoritative -- it alone places, damages, kills and respawns --
+  but prediction agrees with it by construction, so the local player sees no correction unless a command is refused or
+  the sims disagree (then the error is smoothed; snapped past a named threshold). A respawn names the last command run
+  on the old mover; the client replays the rest on the new one. *Why:* the walk's feel (research 88) survives latency
+  only if the local mover never waits for the server; a lockstep-free command stream is the standard way (Source's
+  usercmds), and the shared sim makes it exact.
+- **W3.R9 (2026-09-29) — WebSocket first.** Binary frames for the hot path (commands up, snapshots down,
+  `viewer/src/net/codec.ts`), JSON text frames for the rare reliable events (`net/protocol.ts`). WebRTC data channels
+  stay the plan's second step, only if the measured WebSocket round shows head-of-line stalls under loss (M9).
+- **W3.R10 (2026-09-29) — 30 Hz snapshots, full and quantised.** A body is 55 bytes; 15 bodies and one's own state
+  are 860 bytes, 26 KB/s a client, 0.6 MB/s for 24 clients -- well inside a Lightsail box's allowance, so no delta
+  compression until M9 measures a need (the plan's delta step is deferred, not dropped).
+- **W3.R11 (2026-09-29) — the round is SUPPRESSION with the game's RESPAWN option on** (research 91 §4, §9): the game
+  has no respawn mode of its own. Teams of 8 by the game's join rule (Terrorists if fewer, or SEALs full, or both
+  empty; else SEALs); a round of the create-game default 6 minutes; a match of 11 rounds, first side to 6 round wins,
+  scores and the kill lines by the game's rules (+2 kill, -2 suicide/fall/team kill, +5 each on a round's winners, +1
+  alive at its end); respawn pressable 5 s after death once the body has faded (10 s), at the respawn record farthest
+  from its nearest enemy (`FUN_002b7ee0`), with a fresh default kit; friendly fire off (the create-game default). A
+  round is won on time by the side with the higher score, a tie by neither (`SUPPRESSION_ROUND_END_PLACEHOLDER`).
+- **W3.R12 (2026-09-29) — names.** At most 30 characters of printable ASCII (research 91 §13; the in-game buffer);
+  a guest is the game's own `"Player%d"` default, with a random four-digit number in place of the network index; a
+  duplicate takes the lowest free `(2)`, `(3)` suffix within the 30 (the game's server refused duplicates; a refusal
+  would strand a guest, so the spec's deterministic resolution wins).

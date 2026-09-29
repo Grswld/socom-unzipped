@@ -1339,3 +1339,19 @@ export function actionRoots(clips: readonly MotionClip[]): Map<string, Float32Ar
   }
   return out;
 }
+
+/**
+ * The mover as the body and its clips read it (`PlaySnapshot`): what `WalkMode.snapshot` hands the page's animator and
+ * what the multiplayer server sends of every other player (web sprint 3, `./net/body`) -- one function for both.
+ */
+export function moverSnapshot(w: Walker, moves: TraversalHooks | null, jumps: number, turnRate: number): PlaySnapshot {
+  const s = w.state;
+  return {
+    feet: w.drawnFeet(), yaw: s.yaw, pitch: s.pitch, vx: s.vx, vz: s.vz, vy: s.vy,
+    airborne: w.airborne, crouched: w.posture === 'crouch', stance: w.posture,
+    landing: w.landing?.kind ?? null, jumps,
+    ground: { ...w.ground }, action: w.action && { ...w.action }, turnRate,
+    traversal: moves?.pose() ?? null, peek: moves?.peeking() ?? 0,
+    overlay: w.overlay && { ...w.overlay },
+  };
+}

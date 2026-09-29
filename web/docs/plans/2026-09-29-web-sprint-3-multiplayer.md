@@ -139,5 +139,25 @@ README sections (running a server, joining, the protocol), research 91 final, th
 
 *(newest first)*
 
+- **2026-09-29 — M1 done, M2 core done, M3 protocol and codec.** Research 91 (`docs/research/91-the-round.md`,
+  two Opus readers of the decomp and one Sonnet merge): health per part (head 8, body 50, limbs 30; armour 0/25/25),
+  damage `(ImpactDamage + Damage_Modifier) x 14` with falloff, hit location by skeleton node, the SUPPRESSION +
+  RESPAWN option as the only respawn the game has, the respawn point farthest from the nearest enemy, the join rule,
+  scoring, the three kill lines, names 30 printable ASCII, per-map character types. Rulings W3.R8-R12 (spec section
+  7): the command stream, WebSocket first, 30 Hz full quantised snapshots, the round's rules, names. M2: `mover.ts`
+  (the headless mover, re-exported by `walk.ts`), `round.ts` (the round's path, `Fire` now uses it), `sim.ts` (the
+  boundary; `simBoundary.test.ts` refuses three/DOM under it), `simMap.ts` (hull + spawns + clips without textures;
+  byte-identical to the page's hull; 10 s scripted walk bit-for-bit). M3: `net/protocol.ts`, `net/codec.ts` (13-byte
+  commands, 55-byte bodies), `net/body.ts` (the `PlaySnapshot` to the wire and back; `moverSnapshot` now shared by
+  `WalkMode.snapshot` and the server).
+- **2026-09-29 — M0 baseline** (the cloud agent). Handoff laid out at `~/socom-handoff/socom-web-sprint-3` (manifest
+  OK; the archive is a tar despite its `.zip` name); `extract-maps` 22 maps. `typecheck` clean; vitest 1389 passed / 2
+  skipped; `build` OK; feel-parity headless 61 rows, 59 within tolerance, 0 divergent in the mover/camera (2 reported
+  to presentation/look, as before). E2E on a pristine copy of the branch head in this container: **31/39**; the 8
+  failures are real-time timing checks under SwiftShader at this host's frame rate (a stance key held past a second
+  press, the grenade still in flight at its check, the HUD fade not at 1, the effects light still live), with the
+  cloud's Chromium 1194 under Playwright 1.63 (`PW_CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`).
+  The e2e gate for this sprint is therefore "the same 31 green, nothing new red" here; the owner's host runs all 39.
+
 - **2026-09-29 — opened** by the local controller: spec and plan written; branch `web-sprint-3-multiplayer` cut from
   `claude/web-viewer-playtest-fixes`; the handoff zip built (see `HANDOFF.md`).
