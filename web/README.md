@@ -113,7 +113,7 @@ Everything below is relative to `web/`.
 | `packages/gs` | GS texture and palette decode, and the GS state block (`ALPHA`, `TEX1`, `TEST`, `CLAMP`) per texture |
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
 | `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
-| `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`) |
+| `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`), the zAnim effect commands, the thrown casing's flight, the particle sources and the effect models (`effects.ts`, `effectMotion.ts`, `effectParticles.ts`, `effectModels.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
 | `docs/specs/`, `docs/plans/` | the viewer's own design specs and plan, kept here rather than in the repository's `docs/superpowers/` so the recomp's agents do not have to read past them |
@@ -197,6 +197,14 @@ footstep per foot of every run or walk cycle, in the sound of the surface underf
 metal on Frostfire's rig, sand in Desert Glory), the stealth step at a light stick and the crawl prone; the jump's
 whoosh and the landing (the surface's, or a bone's crack from a deadly height); the M4A1 SD's suppressed round and its
 reload. The browser starts sound on the first click or key press; `window.__viewer.audio()` reports what played.
+
+**The rounds show** with the game's own effects (`docs/research/89-effects.md`). Each round plays the weapon's zAnim
+muzzle animation out of the map's `CZANIM.ZAR`. For the M4A1 SD that is the brass casing thrown to the rifle's right,
+tumbling, bouncing on the hull with its surface's sound and gone at rest or at 1.2 s. It shows no flash and no tracer,
+and no smoke: its smoke source is switched off in the retail data. Where the round lands, the surface's own impact
+plays out of the map's `MZANIM.ZAR`: sparks off metal, dust and chunks off stone, a puff off sand, a splash off water.
+The surface's own mark comes from `decals.rdr`, the metal's, the stone's, the sand's or the wood's, and none where the
+game has none. `window.__viewer.effects()` reports what played; `playEffect(name)` plays any of the map's effects.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
