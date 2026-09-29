@@ -7,7 +7,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
 import {
-  groundGrid, groundPolygons, packGround, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
+  groundGrid, groundPolygons, landingClass, packGround, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
   ACTION_SECONDS, BODY_RADIUS, CARRY_DECAY, EYE_HEIGHT, JUMP_DELAY, JUMP_LOCK, RUNNING_JUMP_SPEED, STANCES, TICK,
   type GroundData, type Stance, type WalkInput,
 } from '../src/walk';
@@ -255,17 +255,20 @@ describe('the fall and the step (W2.2b): dynamics.rdr\'s gravity, touch distance
     expect(w.landing?.clip).toBe('landHard');
     expect(w.landing!.speed).toBeGreaterThan(115);
     expect(w.action?.name).toBe('landHard');
+    // ... until its NoInterrupt 0.35 of the phase (FUN_00587c20: 0.35 x 1 x 19/20 = 0.3325 s), the held stick then
+    // cutting it and the run going on
     const x = w.state.x;
-    for (let i = 0; i < 30; i++) w.tick(FORWARD);
-    let glide = 0;
-    for (let v = 65 - CARRY_DECAY * TICK; v > 0; v -= CARRY_DECAY * TICK) glide += v * TICK;
-    expect(w.state.x - x).toBeCloseTo(glide, 6);                // 13.5 at 60 Hz (65^2 / 300 = 14.1 in closed form)
-    // ... and once the clip is done (0.90 s) the stick runs it on at 65 at once.
-    for (let i = 0; i < Math.ceil(ACTION_SECONDS.landHard / TICK); i++) w.tick(FORWARD);
+    const held = Math.ceil((0.35 * ACTION_CLIPS.landHard.playback * 0.95) / TICK) - 1;
+    for (let i = 0; i < held; i++) w.tick(FORWARD);
+    expect(w.action?.name).toBe('landHard');
+    let glide = 0, v = 65;
+    for (let i = 0; i < held; i++) { v = Math.max(0, v - CARRY_DECAY * TICK); glide += v * TICK; }
+    expect(w.state.x - x).toBeCloseTo(glide, 6);
+    for (let i = 0; i < 3; i++) w.tick(FORWARD);
     expect(w.action).toBeNull();
     const x2 = w.state.x;
     for (let i = 0; i < 30; i++) w.tick(FORWARD);
-    expect(w.state.x - x2).toBeGreaterThan(30);
+    expect(w.state.x - x2).toBeGreaterThan(25);
     expect(w.state.y).toBe(0);
   });
 
@@ -797,7 +800,7 @@ describe('the jump, as the decompilation has it (research 80)', () => {
     w.changeStance('crouch');
     expect(w.action).toMatchObject({ name: 'standToCrouch', reversed: false });
     for (let i = 0; i < 20; i++) w.tick(FORWARD);
-    expect(w.state.x).toBe(0);                                     // held
+    expect(Math.hypot(w.state.x, w.state.z)).toBeLessThan(1.8);    // held: only the clip's own 1.7-unit shuffle
     for (let i = 0; i < 30; i++) w.tick(STILL);
     expect(w.action).toBeNull();
     w.changeStance('stand');
@@ -816,5 +819,89 @@ describe('the jump, as the decompilation has it (research 80)', () => {
     w.changeStance('crouch');
     expect(w.action).toBeNull();                                   // FUN_005817d0: speed^2 > 100, no transition
     expect(w.stance).toBe('crouch');
+  });
+});
+
+describe('NoInterrupt and the heavy falls (FUN_00587c20, FUN_005af590, FUN_005ac1f0)', () => {
+  const plain = world([floor(-200, -200, 200, 200, 0)]);
+  const at = (): Walker => {
+    const w = new Walker(plain);
+    w.place(0, 0, 0);
+    w.state.yaw = facing(0, 0, 1, 0);
+    return w;
+  };
+  const drop = (height: number, random = 0.9): Walker => {
+    const tower = world([floor(-200, -200, 200, 200, 0), floor(-20, -20, 20, 20, height)]);
+    const w = new Walker(tower);
+    w.random = () => random;
+    w.place(0, height + 5, 0);
+    w.state.yaw = facing(0, 0, 1, 0);
+    for (let i = 0; i < 30; i++) w.tick(FORWARD);
+    for (let i = 0; i < 400 && (w.airborne || w.state.y > 0); i++) w.tick(STILL);
+    return w;
+  };
+  const phaseTicks = (name: keyof typeof ACTION_CLIPS): number => {
+    const c = ACTION_CLIPS[name];
+    return Math.floor((c.noInterrupt * c.playback * ((c.frames - 1) / c.frames)) / TICK);
+  };
+
+  it('the soft landing gives way to the stick at once (no NoInterrupt); a stick under 0.1 does not cut it', () => {
+    const w = at();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    w.jump();
+    while (w.airborne) w.tick(STILL);
+    expect(w.action?.name).toBe('land');
+    w.tick({ forward: 0.09, right: 0, boost: false });
+    expect(w.action?.name).toBe('land');
+    w.tick({ forward: 0.2, right: 0, boost: false });
+    expect(w.action).toBeNull();
+  });
+
+  it('the standing jump gives way to the stick past 0.7 of its phase (0.73 s), not before', () => {
+    const w = at();
+    w.jump();
+    for (let i = 0; i < phaseTicks('jump'); i++) w.tick(FORWARD);
+    expect(w.action?.name).toBe('jump');
+    for (let i = 0; i < 2; i++) w.tick(FORWARD);
+    expect(w.action).toBeNull();
+  });
+
+  it('a transition is never cut by the stick: the player cannot interrupt Stand -> Crouch', () => {
+    const w = at();
+    w.changeStance('crouch');
+    for (let i = 0; i < Math.floor(ACTION_SECONDS.standToCrouch / TICK) - 1; i++) w.tick(FORWARD);
+    expect(w.action?.name).toBe('standToCrouch');
+  });
+
+  it('landingClass: sqrt(2 g h) of FALLING_DAMAGE_LIGHT/HEAVY/DEATH -- 170.7, 206.8, 237.5', () => {
+    expect(landingClass(170)).toBe(0);
+    expect(landingClass(171)).toBe(1);
+    expect(landingClass(207)).toBe(2);
+    expect(landingClass(Math.sqrt(2 * 235 * 120))).toBe(3);
+  });
+
+  it('a fall past heavy plays a hit, one of two by the draw; past death Land forward, then (the viewer) gets up', () => {
+    const a = drop(100, 0.9);                                       // 216.8: heavy
+    expect(a.landing).toMatchObject({ clip: 'hit', cls: 2 });
+    expect(a.action?.name).toBe('hit');
+    expect(drop(100, 0.2).landing?.clip).toBe('hitStomach');
+    const b = drop(70);                                             // 181.4: light -- the hard landing
+    expect(b.landing).toMatchObject({ clip: 'landHard', cls: 1 });
+    const d = drop(130);                                            // 247.2: death
+    expect(d.landing).toMatchObject({ clip: 'landDeath', cls: 3 });
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.landDeath / TICK) + 1; i++) d.tick(STILL);
+    expect(d.action?.name).toBe('getUp');
+  });
+
+  it('a hit carries the mover by the clip\'s own root travel, and gives way to the stick past 0.8', () => {
+    const w = drop(100, 0.9);
+    const x = w.state.x, z = w.state.z;
+    for (let i = 0; i < phaseTicks('hit'); i++) w.tick(FORWARD);
+    expect(w.action?.name).toBe('hit');
+    const moved = Math.hypot(w.state.x - x, w.state.z - z);
+    expect(moved).toBeGreaterThan(0.7 * 16.6 * 0.8);
+    expect(moved).toBeLessThan(16.7);
+    for (let i = 0; i < 2; i++) w.tick(FORWARD);
+    expect(w.action).toBeNull();
   });
 });

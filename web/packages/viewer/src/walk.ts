@@ -367,7 +367,9 @@ export interface WalkState {
 export interface Landing {
   kind: LandingKind; speed: number; airTime: number;
   /** The clip the game plays for it (`FUN_005af590`), or null: the run goes on. */
-  clip: 'land' | 'landHard' | null;
+  clip: 'land' | 'landHard' | 'hit' | 'hitStomach' | 'landDeath' | null;
+  /** `FUN_005ac1f0`'s class (`landingClass`): 0 none, 1 light, 2 heavy, 3 death -- the audio's landing sounds. */
+  cls: 0 | 1 | 2 | 3;
 }
 
 /** What the hook reports of the mover: in the air, crouched (the posture), the stance, and the last landing. */
@@ -417,14 +419,42 @@ export function runningJumpSpeed(t: { jump_factor: number; gravity: number } = J
 }
 
 /**
- * The clips the mover waits on -- the standing jump, the two landings and the three stance transitions -- as
- * `motion.rdr`'s `playback` and `MOTION_P.ZAR`'s key count: transcribed (W2.R5), pinned against both files by the
- * fixture test.
+ * The clips the mover waits on -- the standing jump, the landings, the heavy fall's hits, the deadly fall and the
+ * three stance transitions -- as `motion.rdr`'s `playback` and `NoInterrupt` and `MOTION_P.ZAR`'s key count and root
+ * travel (x, z over keys 0 to n - 1): transcribed (W2.R5), pinned against both files by the fixture test.
+ *
+ * `noInterrupt` is the phase past which the stick cuts the clip (`FUN_00587c20`, decomp 445514-445576: an entry's
+ * `NoInterrupt`, 0 when absent and 1 when bare -- never); for the player the three transitions are never cut
+ * whatever their entry says (the same function refuses actions 17, 19 and 25 when the controller's `+0x30` answers).
  */
 export const ACTION_CLIPS = Object.freeze({
-  jump: { playback: 1.1, frames: 20 }, land: { playback: 0.7, frames: 20 }, landHard: { playback: 1, frames: 20 },
-  standToCrouch: { playback: 0.65, frames: 27 }, crouchToProne: { playback: 0.9, frames: 33 }, standToProne: { playback: 1, frames: 36 },
-});
+  jump: { playback: 1.1, frames: 20, noInterrupt: 0.7, travel: [0, 0] },
+  land: { playback: 0.7, frames: 20, noInterrupt: 0, travel: [0.19, -2.09] },
+  landHard: { playback: 1, frames: 20, noInterrupt: 0.35, travel: [0.19, -2.09] },
+  standToCrouch: { playback: 0.65, frames: 27, noInterrupt: 1, travel: [-1.2, 1.27] },
+  crouchToProne: { playback: 0.9, frames: 33, noInterrupt: 1, travel: [0.99, -8.39] },
+  standToProne: { playback: 1, frames: 36, noInterrupt: 1, travel: [-1.59, -3.41] },
+  hit: { playback: 3.7, frames: 22, noInterrupt: 0.8, travel: [0.48, -16.63] },
+  hitStomach: { playback: 2.9, frames: 32, noInterrupt: 0.8, travel: [0.63, 6.79] },
+  landDeath: { playback: 0.4, frames: 11, noInterrupt: 1, travel: [0.05, -0.72] },
+  getUp: { playback: 2, frames: 27, noInterrupt: 0.8, travel: [-1.79, -1.1] },
+} as const);
+
+/** `FUN_00550ef0` (decomp 418180-418190): an interruptible action is cut when a stick axis passes this. */
+export const INTERRUPT_STICK = 0.1;
+
+/**
+ * `FUN_005ac1f0`'s landing classes (decomp 464864-464968): the contact speed against `m_landSpeed[3]` = the table's
+ * gravity x sqrt(2 x `FALLING_DAMAGE_LIGHT/HEAVY/DEATH` / gravity) (`+0x30..0x38`; reCOM `char_dyn.cpp:32-35`):
+ * 170.7, 206.8 and 237.5 at 235 and 62 / 91 / 120 units. 0 none, 1 light (over the first), 2 heavy (over the
+ * second), 3 death (at or over the third).
+ */
+export function landingClass(speed: number, g: number = SEAL_TUNING.gravity, heights: readonly number[] = SEAL_TUNING.fallingDamage): 0 | 1 | 2 | 3 {
+  const [light, heavy, death] = heights.map((h) => g * Math.sqrt((2 * h) / g)) as [number, number, number];
+  if (!(speed > light)) return 0;
+  if (!(speed > heavy)) return 1;
+  return speed >= death ? 3 : 2;
+}
 
 /**
  * How long each holds the mover: the one-shot's run to its last key (`./locomotion` `oneShotSeconds`, `FUN_0028c4f0`):
@@ -440,7 +470,8 @@ export const ACTION_SECONDS: Readonly<Record<keyof typeof ACTION_CLIPS, number>>
  * hard`) and a stance transition (`Stand -> Crouch`, `Crouch -> Prone`, `Stand -> Prone`, played backwards when
  * getting up). `serial` changes with every start, so the animator sees a restart.
  */
-export type MoverActionName = 'jump' | 'launch' | 'fall' | 'land' | 'landHard' | 'standToCrouch' | 'crouchToProne' | 'standToProne';
+export type MoverActionName = 'jump' | 'launch' | 'fall' | 'land' | 'landHard' | 'standToCrouch' | 'crouchToProne' | 'standToProne'
+  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp';
 export interface MoverAction {
   name: MoverActionName;
   serial: number;
@@ -607,6 +638,23 @@ export class Walker {
     this.action_ = { name, serial: ++this.serial, t: 0, seconds, reversed };
   }
 
+  /** The random draw `FUN_005af590` makes between its two hit clips (`FUN_00197740`), [0, 1): `Math.random` unless set. */
+  random: () => number = Math.random;
+
+  /**
+   * `FUN_00587c20` (decomp 445514-445576) with `FUN_00550ef0`'s stick test (418180-418190): whether the action on the
+   * mover gives way to the stick this tick -- its phase (`t / (playback x (n - 1) / n)`) past its `NoInterrupt` and a
+   * move axis past `INTERRUPT_STICK`. The launch and the fall never do: they end on the floor.
+   */
+  private interrupted(forward: number, right: number): boolean {
+    const a = this.action_;
+    if (!a || a.name === 'launch' || a.name === 'fall') return false;
+    const c = ACTION_CLIPS[a.name];
+    const phase = a.t / (c.playback * ((c.frames - 1) / c.frames));
+    if (!(phase > c.noInterrupt)) return false;
+    return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK;
+  }
+
   /** The body in use (`STANCE[posture]` gives its root and column): `stand` while a crouch runs at full stick. */
   get posture(): Stance {
     return this.posture_;
@@ -736,13 +784,35 @@ export class Walker {
     const a = this.action_;
     if (a) {
       a.t += dt;
-      if (a.seconds !== null && a.t >= a.seconds - 1e-9) this.action_ = null;
+      if (a.seconds !== null && a.t >= a.seconds - 1e-9) {
+        // PLACEHOLDER (the viewer has no death): the deadly fall's `Land forward` gets up (`Get up forward`).
+        if (a.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
+        else this.action_ = null;
+      }
     }
     let forward = input.forward, right = input.right;
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
     if (this.inAir) { this.fall(dt, forward, right); return; }
+    if (this.interrupted(forward, right)) {                     // FUN_00587c20: cut; the ground state takes over
+      if (this.action_?.name === 'landDeath') this.start('getUp', ACTION_SECONDS.getUp);
+      else this.action_ = null;
+    }
     const held = this.action_?.name;
+    if (held === 'hit' || held === 'hitStomach' || held === 'landDeath' || held === 'getUp'
+      || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne') {
+      // The clip's own root motion carries the mover (FUN_0028c250): its mean over the clip, along the facing --
+      // backwards for a transition played backwards (getting up). The ground state does not run (FUN_005870e0).
+      s.stickForward = forward; s.stickRight = right;
+      this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
+      const [tx, tz] = ACTION_CLIPS[held].travel;
+      const v = (this.action_!.reversed ? -1 : 1) / ACTION_SECONDS[held];
+      const yaw = (s.yaw * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
+      s.vx = (tx * c + tz * sn) * v;
+      s.vz = (-tx * sn + tz * c) * v;
+      this.move(s.vx * dt, s.vz * dt);
+      return;
+    }
     if (held === 'land' || held === 'landHard') {             // FUN_0054d9a0: the carried velocity, running down
       s.stickForward = forward; s.stickRight = right;          // FUN_0057a330: actor+0x248 = +0x244 each tick
       this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
@@ -750,12 +820,6 @@ export class Walker {
       this.carried = c <= cut ? [0, 0] : [cx - (cx / c) * cut, cz - (cz / c) * cut];
       [s.vx, s.vz] = this.carried;
       this.move(s.vx * dt, s.vz * dt);
-      return;
-    }
-    if (held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne') {
-      s.stickForward = forward; s.stickRight = right;
-      this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-      s.vx = 0; s.vz = 0;
       return;
     }
     const v = held === 'jump' ? this.jumpControl(forward, right, dt) : this.locomote(forward, right, dt);
@@ -913,8 +977,13 @@ export class Walker {
     const s = this.state;
     const speed = Math.max(0, -s.vy);
     const still = idle(forward, right) || Math.hypot(s.vx, s.vy, s.vz) <= LAND_STILL;
-    const clip = speed > JUMP_TABLE.land_hard_fall_rate ? 'landHard' : still ? 'land' : null;
-    this.landing_ = { kind: landingKind(speed, JUMP_TABLE), speed, airTime: this.airTime, clip };
+    let clip: Landing['clip'] = null;
+    if (speed > JUMP_TABLE.land_hard_fall_rate) {
+      // FUN_005af590 by FUN_005ac1f0's class: death `Land forward`, heavy one of the two hits, else `Jump land hard`.
+      const cls = landingClass(speed);
+      clip = cls === 3 ? 'landDeath' : cls === 2 ? (this.random() <= 0.5 ? 'hitStomach' : 'hit') : 'landHard';
+    } else if (still) clip = 'land';
+    this.landing_ = { kind: landingKind(speed, JUMP_TABLE), speed, airTime: this.airTime, clip, cls: landingClass(speed) };
     s.vy = 0;
     this.inAir = false;
     this.jumping = false;

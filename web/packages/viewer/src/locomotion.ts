@@ -51,6 +51,8 @@ export const SEAL_ANIMS = {
   standToCrouch: 'seal_stand2crouch', crouchToProne: 'seal_crouch2prone', standToProne: 'seal_stand2prone',
   jump: 'seal_jump', launch: 'seal_runningjump_launch', inAir: 'seal_runningjump_in_air',
   land: 'seal_land_soft', landHard: 'seal_land_hard',
+  hit: 'guard_hit01', hitStomach: 'guard_hit_stomach01', landDeath: 'seal_landforward01', getUp: 'seal_getupforward01',
+  step: 'seal_step', crouchStep: 'seal_crouch_step',
 } as const;
 
 /**
