@@ -78,27 +78,49 @@ engine does.
 The GS picks a level from the depth: `LOD = (log2(1/|Q|) << L) + K` (`TEX1`, `LCM = 0`), `Q = 1/clip.w` (VU1 `0x08`).
 The corpus's K runs -12 to about -6.5 with L 0, so Vigilance's `rockwall.tif` (K -12) is the base level to 4,096 units,
 where three's derivative LOD had it two levels down at 150. Far wall's mean |Laplacian|: 5.77 -> 10.69, PCSX2's 15.44.
-Open within it: the mip images are three's box filter of the base, not the disc's `_mip1`/`_mip2` records (the same
-downsampling on the one texture compared), and `w`'s scale is read as world units (a perspective `w` is the view depth;
-no dump of the clip matrix was at hand to confirm the constant).
+The `w` units are confirmed (round 2): the VU1 dumps hold the register file, and entry 0's clip matrix at the Seeding
+Chaos spawn (`logs/vu1dump3/vu1_prog_1.bin`, `vf1`-`vf4`) has a w column (-0.0001, -0.1602, 0.9871) of length 1.000 --
+the camera's look at -9.2 degrees -- so `clip.w` is the view depth in world units.
+
+### D3b — The mip levels are the disc's own records, and a detail texture's fade out — **fixed** (`d8816a33`)
+
+Every mipmapped texture's bind packet writes `MIPTBP1_1` (0x34), whose TBP1-3 are the gsaddrs of records the exporter
+wrote beside the base: Vigilance's `rockwall.tif` (gsaddr 6) names `rockwall_mip1.tif` (7) and `rockwall_mip2.tif` (8).
+Most are a plain downsample, but every **detail** texture's level 1 is authored with alpha 0 (Crossroads'
+`detail_brick1` 104 -> 0, `rooftile_d1` 104 -> 0, `cobblestone_rock_d1` 255 -> 0; Vigilance's `cobble_road_det` 136 -> 0),
+so on the console the detail pass fades out as the GS LOD crosses 0..1 -- 90-181 units at Crossroads' K -6.5. The viewer
+now uploads the disc's levels (`LoadedMap.textureMips`, `mipChain`); Crossroads' three street views change in 7,361 /
+9,881 / 36,061 pixels, the far cobbles and walls losing their detail layer. Two maps carry a mip record that is not half
+the level above (Foxhunt's `stone01_mip1`, The Mixer's `mp52_concrete_detail1_mip`): those keep a generated chain, with a
+diagnostic.
 
 ### D4 — The campaign archive drew untextured — **fixed** (`0e561d0d`)
 
 `zdbEntry` threw on `M51_TXR.ZED`, whose name ends `ZM51_TXR.ZED` as well; the exact file name now wins. Not a
 multiplayer bug (no MP archive has such a pair), but it is what lets the one exactly-posed console frame be used at all.
 
-### D5 — The residual on the campaign frame: the stream's water — **open** (campaign)
+### D5 — The environment-map pass: water, glass and ice reflect their sky — **fixed** (`7e12a6f0`)
 
-At two passes the Seeding Chaos frame differs mostly in the stream: the console draws one dark translucent grey surface
-over the bed, the viewer a brown opaque one. That is the `0x34` environment-map water pass (research 26 §3.1,
-`FUN_003b5b90`), which the viewer does not draw. Frostfire's `a_water.tif` ocean is an ordinary FGE-clear packet and
-matches in the near band.
+At two passes the Seeding Chaos frame differed mostly in the stream: the console draws a dark grey translucent sheet over
+the bed, the viewer drew the brown bed alone. That is the `0x34`/`0x36` pass (research 15 §6, research 26 §3.2,
+`FUN_003b5b90`): a visual whose `vparams` byte 7 names a `Material_Palette` entry gets a second pass whose ST is the sphere
+map of the eye ray's reflection off the vertex normal and whose alpha is `(1 + a) * vertex alpha * rim`. The block's
+numbers are the palette entry's: M51's `palEntry_5` is base (33, 33, 33, 65), uv scale 1.5, rim 100 / 0.01, `sky01.tif` --
+the live dump's block word for word. On the multiplayer maps the textured entries are bound to the water (Blood Lake,
+Foxhunt, Fish Hook, Enowapi, Shadow Falls, Bitter Jungle, Abandoned, Night Stalker, Requiem, Sandstorm, The Ruins, The
+Mixer, Chain Reaction), Sujo's glass and car panels, and Guidance's icy terrain. Measured on the campaign frame (the
+stream's mean): console (50,44,37), without the pass (48,35,22), with it (60,53,48) -- the hue now the console's, 20 %
+bright. Open within it: the untextured entries (kind word 2: truck bodies, chrome, lockers) are not drawn -- what the
+engine gives them is not established; Vigilance's `cloud_scroll.tif` entry names a texture no library holds (a
+diagnostic, no pass); and no multiplayer console frame of water exists to check the MP maps against.
 
-### D6 — Multisampling in the PS2 presentation — **open**
+### D6 — Multisampling in the PS2 presentation — **fixed** (`8394f141`)
 
-The renderer is created with `antialias: true`; the console had none (`DTHE = 0`, no AA on the GS). Edges in the PS2
-picture are softer than the console's. MSAA is fixed at context creation under the WebGL2 fallback, so turning it off
-for the PS2 presentation means recreating the renderer on the switch (`renderer.ts`); not done this pass.
+The renderer is created with `antialias: true` for the Modern picture, and under WebGL2 the canvas's multisampling is
+fixed at context creation; the GS had none. The PS2 presentation now renders the world into a 640x448 target with no
+samples and copies it texel for texel onto the canvas, the HUD drawing onto the copy. Checked under WebGPU in the
+Browser pane; headless SwiftShader never multisampled, so its pixels are unchanged (0 of 286,720 at the spawn-A compare).
+The copy to the 4:3 box is still the page's CSS stretch (bilinear), as a television's analogue scale was not nearest.
 
 ### D7 — Vigilance's grass beside spawn A — **unknown**
 
@@ -117,6 +139,10 @@ MP51 has no `CLUTTER.ZAR` instances. Needs an exactly-posed MP frame to settle.
 - **Fog colour.** `FOGCOL = 0x484a4a` in the console's Seeding Chaos GS dump (research 31 §8) is the disc's (74, 74, 72),
   what the viewer uses.
 
+- **The texture scroll rate.** The engine steps a band by `du * param` once a frame (`FUN_003c0120`, called from
+  `FUN_00313c60` with the frame's time), so `du` is per second -- what `SCROLL_TICKS_PER_SECOND = 1` in `world.ts`
+  assumed.
+
 ### The 22-map survey
 
 Every map from each measured spawn at eye height looking toward the other, after D1-D3 (and `tools/map-health.ts`): all
@@ -128,4 +154,14 @@ z-fight in the 44 views. The night maps are as dark as the console draws them no
 - An exactly-posed multiplayer PCSX2 frame: a savestate at a spawn with its RDRAM (the camera at `0x415ff0` -> `cam+0x2c`
   / `+0x38`, research 17), as slot 8 is for the campaign. The owner runs PCSX2; the viewer side is
   `tools/console-compare.ts --map MP<n> --ref <frame> --eye .. --target ..`.
-- A VU1 data dump holding the clip matrix (`vf1`-`vf4` from entry 0) for the `w` scale in D3.
+- A multiplayer water frame from the console (Blood Lake, Fish Hook), for D5's pass on the MP maps.
+- The runtime layout of a `Material_Palette` record (`0x45c380+0x5a4`, stride 0x3c) for the untextured kind-2 entries.
+
+## 4. Round 2 (after the merge of the integration branch)
+
+The 22-map sweep after D3b, D5 and D6: all 22 load with no untextured draw; three maps carry one diagnostic each (the two
+odd mip records above, Vigilance's missing `cloud_scroll.tif`); no console warning beyond "WebGPU is not available" on 17
+maps with a reflection pass. Unit tests 1,073 pass. Of the e2e, 19 pass and 5 fail -- `audio`, `grenade`, `hud`,
+`weapon` and `walk`'s "camera at spawn A in the PS2 presentation" -- all at `setMode('walk')` returning false, and the four
+tried (`hud`, `walk:186`, `grenade`, `weapon`) fail identically on the integration merge `8e1af4c5` without this round's
+commits; walk mode is not this workstream's.

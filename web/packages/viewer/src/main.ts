@@ -22,6 +22,8 @@ import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { Reticle } from './reticle';
 import { Hud, RangeFinder } from './hud';
+import { actionInReach } from './mapActions';
+import { TacMap } from './tacMap';
 import { buildBody, type BodyView } from './bodyView';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
@@ -95,6 +97,12 @@ const reticle = new Reticle();
 /** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
 const hud = new Hud();
 const rangeFinder = new RangeFinder();
+/** SOCOM II's tactical map (`./tacMap`, research 87 §9): `M` while walking (SELECT on the console), in the HUD pass. */
+const tacMap = new TacMap(() => walk.mode() === 'walk');
+tacMap.bindKey(globalThis, () => fly.pose().yaw);
+tacMap.onToggle = (open) => hud.setTacMapOpen(open);
+const feetXZ = (): [number, number] | null => { const f = walk.feet(); return f ? [f[0], f[2]] : null; };
+hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes));
 /**
  * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
  * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
@@ -587,6 +595,9 @@ if (PLAY) {
 }
 ui.onPanelToggle();
 ui.onControlsPopover();
+// Round 2: the panel's Sound and Mouse look sections (each is on the page only with `?redotcom`), remembered in this browser.
+ui.onSound({ volume: (v) => audio.setVolume(v), muted: (m) => audio.setMuted(m) });
+ui.onLookControls((opts) => fly.setLookOptions(opts));
 const revision = ui.showRevision();
 
 /**
@@ -743,7 +754,9 @@ async function boot(): Promise<void> {
       reticle.setSize(r.size, r.offset);
       reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
     }
-    reticle.setVisible(walking);
+    if (!walking) tacMap.setOpen(false);
+    tacMap.frame(dt);
+    reticle.setVisible(walking && !tacMap.isOpen());
     reticle.render(created.renderer);
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
@@ -753,6 +766,8 @@ async function boot(): Promise<void> {
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
       yaw: fly.pose().yaw, stance: walk.posture(), climb: traversal.hudClimb(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
+      nearby: walking && actionInReach(loaded?.actions ?? [], walk.feet(), ['DOOR']) ? 'door' : null,
+      position: walking ? feetXZ() : null,
     });
     hud.render(created.renderer);
 
@@ -841,6 +856,8 @@ function show(map: LoadedMap): void {
   }
   reticle.setBitmaps(map.reticle);
   hud.setBitmaps(map.hud);
+  hud.setNavPoints((map.tac?.points ?? []).filter((p) => p.kind === 1));
+  tacMap.setOpen(false);
   fire.reset();                                   // a new map: no marks, full magazines
   effects.setData(null);                          // EFFECTS: the old map's effects go; the new map's follow it
   fire.setMarks(null);
@@ -1061,5 +1078,7 @@ window.__viewer = {
     return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
   },
   pauseEffects: (on) => { effects.paused = on; },
+  tacMap: () => tacMap.state(),
+  setTacMap: (open) => { tacMap.setOpen(open, fly.pose().yaw); return tacMap.state(); },
   revision,
 } satisfies ViewerHook;

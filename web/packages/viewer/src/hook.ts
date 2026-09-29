@@ -202,6 +202,10 @@ export interface ViewerHook {
   playEffect(name: string, at?: [number, number, number], kind?: 'impact' | 'muzzle'): boolean;
   /** EFFECTS: holds every effect where it is (true) or lets them run (false), for a picture of a three-frame flash. */
   pauseEffects(on: boolean): void;
+  /** The tactical map (`./tacMap`, research 87 §9): open or not, its zoom (world units across its box), pan, heading. */
+  tacMap(): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
+  /** Opens or closes it as `M` (SELECT) does, the heading the camera's now. */
+  setTacMap(open: boolean): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

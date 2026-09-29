@@ -9,7 +9,7 @@ const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
 const css = readFileSync(resolve(here, '../src/styles.css'), 'utf-8');
 const ui = readFileSync(resolve(here, '../src/ui.ts'), 'utf-8');
 const doc = new JSDOM(html).window.document;
-const OWN = ['row', 'checks', 'touch-lift', 'ps2-look', 'chrome-hidden', 'touch', 'panel-collapsed'];
+const OWN = ['row', 'checks', 'section', 'touch-lift', 'ps2-look', 'chrome-hidden', 'touch', 'panel-collapsed'];
 
 describe('the viewer chrome uses the design system', () => {
   it('links the vendored system once, before styles.css', () => {

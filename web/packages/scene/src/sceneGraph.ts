@@ -86,6 +86,13 @@ export interface SceneNode {
    * rugs, glow quads -- and set on solid objects. `VISUAL_FLAG_CULL` names it.
    */
   visualParams: number[];
+  /**
+   * Byte 7 of each visual's `vparams`: its entry in the world root's `Material_Palette`, 1-based, 0 for none. The
+   * EE reads it to decide the environment-map pass (`FUN_003b6a00`'s `*(byte *)(visual + 7)`, the table at
+   * `0x45c380+0x5a4`, stride 0x3c) -- set on the water, the glass and the icy terrain, the surfaces whose entry
+   * names a reflection texture (`parseMaterialPalette`).
+   */
+  visualMaterials: number[];
   children: SceneNode[];
   collision: CollisionPoly[];
 }
@@ -171,6 +178,10 @@ function readNode(geo: Zar, key: ZarKey): SceneNode {
     visualParams: (visuals?.children ?? []).map((v) => {
       const vp = geo.child(v, 'vparams');
       return vp && vp.size >= 4 ? new Reader(geo.data(vp)).u32(0) : 0;
+    }),
+    visualMaterials: (visuals?.children ?? []).map((v) => {
+      const vp = geo.child(v, 'vparams');
+      return vp && vp.size >= 8 ? geo.data(vp)[7]! : 0;
     }),
     children: children ? children.children.map((c) => readNode(geo, c)) : [],
     collision: di ? di.children.map((d) => readPoly(geo, d, key.name)) : [],

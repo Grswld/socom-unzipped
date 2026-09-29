@@ -35,7 +35,7 @@ export type FireMode = 'single' | 'burst' | 'auto';
  * `ladder_slide` is flag `0x10000`'s `action_slide.tif`.
  */
 export type ActionPrompt =
-  | 'climb' | 'ladder_slide' | 'pickup' | 'bomb' | 'bomb_drop' | 'c4' | 'button' | 'lever' | 'turret_mount'
+  | 'climb' | 'ladder_slide' | 'door' | 'pickup' | 'bomb' | 'bomb_drop' | 'c4' | 'button' | 'lever' | 'turret_mount'
   | 'turret_dismount' | 'knife' | 'restrain' | 'action';
 /** The traversal workstream's getter (`climbPrompt()`): a ledge in reach, and how high. The icon is the same for all three. */
 export interface ClimbPrompt { visible: boolean; kind: 'low' | 'med' | 'high' }
@@ -43,7 +43,7 @@ export type HudStance = 'stand' | 'crouch' | 'prone';
 
 /** Each prompt's bitmap in `HUD_TXR.ZED` (research 87 §5). `action_x.tif` is also the game's fallback icon. */
 export const ACTION_ICONS: Record<ActionPrompt, string> = {
-  climb: 'action_climb.tif', ladder_slide: 'action_slide.tif', pickup: 'action_pickup_item.tif',
+  climb: 'action_climb.tif', ladder_slide: 'action_slide.tif', door: 'action_door_open.tif', pickup: 'action_pickup_item.tif',
   bomb: 'action_mp_bomb.tif', bomb_drop: 'action_drop_mp_bomb.tif', c4: 'action_place_c4.tif',
   button: 'action_button.tif', lever: 'action_pull_lever.tif', turret_mount: 'action_mount_turret.tif',
   turret_dismount: 'action_dismount_turret.tif', knife: 'action_knife.tif', restrain: 'action_restrain.tif',
@@ -99,7 +99,18 @@ export const HUD_LAYOUT = {
    * line centred on x 320 with its ink at y 81-93.
    */
   message: { panel: { x: 147, y: 0, w: 345, h: 99 }, text: { x: 320, y: 93, scale: 0.9, align: 'centre' } as TextSpot },
+  /**
+   * The event banner's lines (measured on the Vigilance round start, `A_ready022..033`, one frame a second): centred on
+   * x 320, the newest line at the bottom, its baseline at 83.4 + 10.6 x its scale (94 for "STARTING ROUND 1 OF 11" at
+   * 1.0, 91.5 for "ELIMINATE THE TERRORISTS" at 0.765), each older line 15 above the one under it.
+   */
+  banner: { x: 320, base: 83.4, perScale: 10.6, pitch: 15 },
 } as const;
+
+/** One line of the event banner: its text and its scale. */
+export interface BannerLine { text: string; scale: number }
+/** One banner message: its lines, and its alpha now (0..1: the fades are the `Hud`'s). */
+export interface BannerMessage { lines: BannerLine[]; alpha: number }
 
 /** RGBA 0..1. A textured draw is the GS's MODULATE, the vertex colour's 128 being 1; an untextured one is the colour as is. */
 type Rgba4 = [number, number, number, number];
@@ -132,6 +143,67 @@ export const ACTION_PULSE_RATE = 5;
 export const SPAWN_FADE = { hold: 1, ramp: 0.5 } as const;
 /** The stance word: alpha 127 on a change, down 64 a second (`FUN_00221d90`). */
 export const STANCE_FADE = { start: 127 / 128, perSecond: 64 / 128 } as const;
+/**
+ * The round's start as the console plays it (research 87 §8): the picture fades up from black over `fader` seconds
+ * [fitted on the Vigilance frames: `CFader_FadeIn(0.5)`'s argument unresolved]; the ammo box fades in (`SPAWN_FADE`);
+ * the message window (`messages.rdr`, `FUN_002b77a0`) shows "STARTING ROUND 1 OF 11" and 5 s later "OBJECTIVE:" over
+ * the side's objective, pushing the first line up; each line fades in at 280 alpha a second (100 / 280 = 0.357 s),
+ * starts fading out 7 s (`fadetime`) after it was posted, at the same rate; the panel goes with the last line. The
+ * posting times, 0.36 and 5.36 s after the round clock's 06:00, are the Vigilance frames' (A_ready021..034).
+ */
+export const ROUND_START = {
+  fader: 1.5,
+  fadeIn: 100 / 280, fadetime: 7, fadeOut: 100 / 280,
+  messages: [
+    { at: 0.36, lines: (r: RoundInfo): BannerLine[] => [{ text: `STARTING ROUND ${r.round} OF ${r.rounds}`, scale: 1 }] },
+    { at: 5.36, lines: (r: RoundInfo): BannerLine[] => [{ text: 'OBJECTIVE:', scale: 1 }, { text: r.objective, scale: 0.765 }] },
+  ],
+} as const;
+
+/** What the round-start banner says: the round of the game, and the side's objective. */
+export interface RoundInfo { round: number; rounds: number; objective: string }
+/** The console capture's: round 1 of 11, the SEALs' suppression objective. */
+export const DEFAULT_ROUND: RoundInfo = { round: 1, rounds: 11, objective: 'ELIMINATE THE TERRORISTS' };
+
+/** The banner's messages and the fader `t` seconds into the round start. */
+export function roundStartAt(t: number, round: RoundInfo = DEFAULT_ROUND): { banner: BannerMessage[]; fader: number } {
+  const R = ROUND_START, life = R.fadetime + R.fadeOut;
+  const banner: BannerMessage[] = [];
+  for (const m of R.messages) {
+    const age = t - m.at;
+    if (age < 0 || age >= life) continue;
+    const alpha = Math.min(1, age / R.fadeIn, (life - age) / R.fadeOut);
+    banner.push({ lines: m.lines(round), alpha });
+  }
+  return { banner, fader: Math.max(0, 1 - t / R.fader) };
+}
+
+/**
+ * The nav marks' colours: the mark (32, 62, 32) of `FUN_002126f0`'s table (types 14-37), and the pinned mark's
+ * arrow as the Vigilance frame shows it (85, 62, 27) [measured: its peak (170, 124, 53) over a white bitmap].
+ */
+export const NAV_MARK = { rgb: [32, 62, 32] as [number, number, number], arrow: [85, 62, 27] as [number, number, number] };
+
+/**
+ * The compass's nav marks now: each nav point's bitmap (the name's first letter: `ret_nav_01` is C), its bearing from
+ * the view (sin, cos: clockwise from straight ahead) and its distance -- those within 200 units and the nearest.
+ */
+export function compassMarks(model: Pick<HudModel, 'navPoints' | 'position' | 'yaw'>): { bitmap: string; sin: number; cos: number; distance: number }[] {
+  if (!model.position || model.navPoints.length === 0) return [];
+  const yaw = (model.yaw * Math.PI) / 180;
+  const f = [-Math.sin(yaw), -Math.cos(yaw)], r = [Math.cos(yaw), -Math.sin(yaw)];
+  const all = model.navPoints.map((p) => {
+    const dx = p.x - model.position![0], dz = p.z - model.position![1];
+    const distance = Math.hypot(dx, dz) || 1e-9;
+    const c = p.name.toUpperCase().charCodeAt(0);
+    const bitmap = c >= 67 && c <= 90 ? `ret_nav_${String(c - 66).padStart(2, '0')}.tif` : '';
+    return { bitmap, sin: (dx * r[0]! + dz * r[1]!) / distance, cos: (dx * f[0]! + dz * f[1]!) / distance, distance };
+  }).filter((m) => m.bitmap);
+  let nearest = -1;
+  all.forEach((m, i) => { if (nearest < 0 || m.distance < all[nearest]!.distance) nearest = i; });
+  return all.filter((m, i) => m.distance < 200 || i === nearest);
+}
+
 /** The words `PoseBitmap` writes. */
 export const STANCE_WORDS: Record<HudStance, string> = { stand: 'STAND', crouch: 'CROUCH', prone: 'PRONE' };
 /** A plain white texel: the bitmap the untextured draws (the health bar) modulate. */
@@ -139,7 +211,7 @@ export const WHITE = 'white';
 
 export type HudElement =
   | 'panel' | 'rounds' | 'mags' | 'icon' | 'firemode' | 'compass' | 'bar' | 'name' | 'box' | 'timer' | 'range'
-  | 'stance' | 'action' | 'banner' | 'message';
+  | 'stance' | 'action' | 'banner' | 'message' | 'fader' | 'marks' | 'tacmap';
 
 /** One textured quad in frame pixels (y down): its centre, size, turn (radians, clockwise), texels, colour. */
 export interface HudQuad {
@@ -148,7 +220,17 @@ export interface HudQuad {
   x: number; y: number; w: number; h: number; turn: number;
   u0: number; v0: number; u1: number; v1: number;
   rgba: Rgba4;
+  /** The pass layer: 0 the in-round HUD, 1 the tactical map over it (its shapes first, then its bitmaps). */
+  layer?: number;
 }
+
+/** The page's extra layer: asked each frame for its quads and shapes (the tactical map). */
+export type HudOverlay = (
+  frame: { width: number; height: number }, sizes: Record<string, { width: number; height: number }>,
+) => { quads: HudQuad[]; tris: HudTri[] } | null;
+
+/** One untextured triangle in frame pixels (y down), for the tactical map's polygons and lines. */
+export interface HudTri { layer: number; p: [number, number, number, number, number, number]; rgba: Rgba4 }
 
 /** Everything the HUD shows; the page writes it through `Hud`'s setters. */
 export interface HudModel {
@@ -171,13 +253,20 @@ export interface HudModel {
   /** The range readout, metres, or null for none (nothing under the reticle within the weapon's range). */
   range: number | null;
   message: string | null;
+  /** The event banner's messages, oldest first. */
+  banner: BannerMessage[];
+  /** The map's nav points (AIMAPS named points of kind 1, world x, z) and the feet: the compass's marks. */
+  navPoints: { name: string; x: number; z: number }[];
+  position: [number, number] | null;
+  /** The spawn's fade from black, 0..1 (1 is black). */
+  fader: number;
   zoom: number;
 }
 
 export const DEFAULT_MODEL: HudModel = {
   rounds: 30, capacity: 30, spare: 2, reloading: false, fireMode: 'burst', weaponIcon: 'm4carbine_icon.tif',
   yaw: 0, action: null, actionColour: 'blue', stance: 'stand', name: '', health: 1, timer: 6 * 60, range: null,
-  message: null, zoom: 1,
+  message: null, banner: [], fader: 0, navPoints: [], position: null, zoom: 1,
 };
 
 /** The HUD's time-varying alphas, 0..1: the spawn fade, the stance word, the action pulse. */
@@ -213,12 +302,12 @@ export function hudLayout(
   const alpha = (rgba: Rgba4, a: number): Rgba4 => [rgba[0], rgba[1], rgba[2], rgba[3] * a];
   const bitmap = (
     element: HudElement, texture: string, x: number, y: number, w: number, h: number, rgba: Rgba4,
-    turn = 0, src?: [number, number, number, number],
+    turn = 0, src?: [number, number, number, number], layer = 0,
   ): void => {
     const size = sizes[texture];
     if (!size || rgba[3] <= 0) return;
     const [u0, v0, u1, v1] = src ?? [0, 0, size.width, size.height];
-    quads.push({ element, texture, x: x + w / 2, y: y + h / 2, w, h, turn, u0, v0, u1, v1, rgba });
+    quads.push({ element, texture, x: x + w / 2, y: y + h / 2, w, h, turn, u0, v0, u1, v1, rgba, ...(layer ? { layer } : {}) });
   };
   const text = (element: HudElement, line: string, spot: TextSpot, anchor: (x: number) => number, a = 1): void => {
     const font = FONT_TEXT_01.texture;
@@ -256,6 +345,29 @@ export function hudLayout(
   bitmap('compass', 'compass_lo.tif', R(K.cx - K.size / 2), Y(K.cy - K.size / 2), K.size * s, K.size * s,
     [1, 1, 1, K.alpha], (model.yaw * Math.PI) / 180);
 
+  // The compass's nav marks (`FUN_00211510`, research 87 §10): each nav point by its bearing from the view, within
+  // 200 units at 0.005 x 65 pixels a unit and its own size; farther, pinned at radius 64 at 1.2x with `ret_triangle`
+  // at radius 50 at 0.6x pointing to it. Shown: those within 200, and the nearest.
+  for (const m of compassMarks(model)) {
+    const rgbNav: Rgba4 = [NAV_MARK.rgb[0] / 128, NAV_MARK.rgb[1] / 128, NAV_MARK.rgb[2] / 128, 1];
+    const size = sizes[m.bitmap];
+    if (!size) continue;
+    const at = (radius: number): [number, number] => [K.cx + radius * m.sin, K.cy - radius * m.cos];
+    if (m.distance < 200) {
+      const [x, y] = at(m.distance * 0.005 * 65);
+      bitmap('marks', m.bitmap, R(x - size.width / 2), Y(y - size.height / 2), size.width * s, size.height * s, rgbNav);
+    } else {
+      const tri = sizes['ret_triangle.tif'];
+      if (tri) {
+        const [x, y] = at(50), w = tri.width * 0.6, h = tri.height * 0.6;
+        bitmap('marks', 'ret_triangle.tif', R(x - w / 2), Y(y - h / 2), w * s, h * s,
+          [NAV_MARK.arrow[0] / 128, NAV_MARK.arrow[1] / 128, NAV_MARK.arrow[2] / 128, 1], Math.atan2(m.sin, m.cos));
+      }
+      const [x, y] = at(64), w = size.width * 1.2, h = size.height * 1.2;
+      bitmap('marks', m.bitmap, R(x - w / 2), Y(y - h / 2), w * s, h * s, rgbNav);
+    }
+  }
+
   // The info box: the health bar and the name on it, the timer line's box, the timer, the range.
   const I = HUD_LAYOUT.info;
   const health = Math.min(1, Math.max(0, model.health));
@@ -283,12 +395,24 @@ export function hudLayout(
     bitmap('action', name, C(P.cx - P.size / 2), Y(P.y), P.size * s, P.size * s, [...rgb, 1]);
   }
 
-  // The event banner.
-  if (model.message) {
-    const M = HUD_LAYOUT.message;
-    bitmap('banner', 'newweapnbkrnd.tif', C(M.panel.x), Y(M.panel.y), M.panel.w * s, M.panel.h * s, HUD_COLOURS.panel);
-    text('message', model.message, M.text, C);
+  // The event banner: the panel while any message shows, the lines newest at the bottom (`HUD_LAYOUT.banner`).
+  const messages = model.message ? [...model.banner, { lines: [{ text: model.message, scale: 1 }], alpha: 1 }] : model.banner;
+  const shown = messages.filter((m) => m.alpha > 0);
+  if (shown.length > 0) {
+    const M = HUD_LAYOUT.message, B = HUD_LAYOUT.banner;
+    const panelAlpha = Math.max(...shown.map((m) => m.alpha));
+    bitmap('banner', 'newweapnbkrnd.tif', C(M.panel.x), Y(M.panel.y), M.panel.w * s, M.panel.h * s, alpha(HUD_COLOURS.panel, panelAlpha));
+    const lines = shown.flatMap((m) => m.lines.map((l) => ({ ...l, alpha: m.alpha })));
+    let y = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const l = lines[i]!;
+      y = i === lines.length - 1 ? B.base + B.perScale * l.scale : y - B.pitch;
+      text('message', l.text, { x: B.x, y, scale: l.scale, align: 'centre' }, C, l.alpha);
+    }
   }
+
+  // The spawn's fade from black, over everything the pass draws.
+  if (model.fader > 0) bitmap('fader', WHITE, 0, 0, frame.width, frame.height, [0, 0, 0, model.fader], 0, undefined, 1);
 
   const rects: Partial<Record<HudElement, Rect>> = {};
   for (const q of quads) {
@@ -311,7 +435,13 @@ export interface HudSources {
   yaw: number;
   stance?: HudStance;
   climb?: ClimbPrompt | null;
+  /** The feet (x, z), for the compass's nav marks. */
+  position?: [number, number] | null;
+  /** The map's action in reach (`./mapActions`'s `actionInReach`), as a prompt kind. */
+  nearby?: ActionPrompt | null;
   range?: number | null;
+  /** The weapon's fire mode, once the weapon has a switch (the ACCURACY workstream's); absent leaves `setFireMode`'s. */
+  fireMode?: FireMode;
 }
 
 /** The test hook's patch: any of the inputs the walk does not drive yet. */
@@ -319,8 +449,10 @@ export interface HudPatch {
   fireMode?: FireMode; weaponIcon?: string; action?: ActionPrompt | null; climb?: ClimbPrompt | null;
   message?: string | null; zoom?: number; name?: string; health?: number; timer?: number; range?: number | null;
   stance?: HudStance; yaw?: number; rounds?: number; capacity?: number; spare?: number;
-  /** Skip the spawn fade (the tests' still frames). */
+  /** Skip the spawn fade and the round start (the tests' still frames). */
   settled?: boolean;
+  /** Put the round start at this many seconds (the tests' frames of the sequence). */
+  roundTime?: number;
   /** Hold the model as patched: `feed` is ignored until a patch with `frozen: false` (the tests' still frames). */
   frozen?: boolean;
 }
@@ -376,8 +508,12 @@ function makeTexture(rgba: Rgba): DataTexture {
   return t;
 }
 
-/** One batch per bitmap: a dynamic quad list drawn in one call. */
+/** One batch per layer and bitmap: a dynamic quad list drawn in one call. */
 interface Batch { mesh: Mesh; geometry: BufferGeometry; capacity: number; size: { width: number; height: number } }
+/** One layer's untextured triangles. */
+interface Shapes { mesh: Mesh; geometry: BufferGeometry; capacity: number }
+/** The layers the pass draws, in order: the in-round HUD, the tactical map. */
+export const HUD_LAYERS = 2;
 
 /**
  * The HUD pass: an orthographic scene in frame pixels (y down) drawn after the world and the reticle with
@@ -387,6 +523,8 @@ export class Hud {
   private readonly scene = new Scene();
   private readonly camera = new OrthographicCamera(0, 1, 0, 1, -1, 1);
   private batches = new Map<string, Batch>();
+  private shapes: Shapes[] = [];
+  private maps = new Map<string, { texture: DataTexture; size: { width: number; height: number } }>();
   private textures: DataTexture[] = [];
   private materials: MeshBasicNodeMaterial[] = [];
   private model: HudModel = { ...DEFAULT_MODEL };
@@ -402,6 +540,14 @@ export class Hud {
   private messageLeft = 0;
   private frozen = false;
   private last = -1;
+  private manual: ActionPrompt | null = null;
+  private round: RoundInfo = DEFAULT_ROUND;
+  private tacOpen = false;
+  /** When the ammo box's fade last began: the round start, or the tactical map's close. */
+  private fadeFrom = 0;
+  private climbing = false;
+  private nearby: ActionPrompt | null = null;
+  private overlay: HudOverlay | null = null;
 
   /** The bitmaps of the map just loaded (`./hudAssets`), or none: the HUD then draws nothing. */
   setBitmaps(bitmaps: HudBitmaps | null | undefined): void {
@@ -414,14 +560,39 @@ export class Hud {
       ...names.filter((n) => n.startsWith('action_')), FONT_TEXT_01.texture,
     ];
     const all: Record<string, Rgba> = { ...bitmaps, [WHITE]: { width: 1, height: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) } };
-    for (const name of [...new Set([...order, ...names])]) if (all[name]) this.addBatch(name, all[name]!);
+    const drawn = [...new Set([...order, ...names])].filter((n) => all[n]);
+    for (const name of drawn) {
+      const texture = makeTexture(all[name]!);
+      this.textures.push(texture);
+      this.maps.set(name, { texture, size: { width: all[name]!.width, height: all[name]!.height } });
+    }
+    // Each layer: its shapes, then one batch per bitmap in the draw order above.
+    for (let layer = 0; layer < HUD_LAYERS; layer++) {
+      this.addShapes();
+      for (const name of drawn) this.addBatch(layer, name);
+    }
   }
 
-  /** Walking or not. Coming on starts the spawn fade (`SPAWN_FADE`). */
+  /**
+   * Extra quads and shapes drawn with the HUD (the tactical map's layer), asked for each frame with the frame's size
+   * and the bitmaps' sizes; null or a null answer draws none.
+   */
+  setOverlay(overlay: HudOverlay | null): void { this.overlay = overlay; }
+
+  /** Walking or not. Coming on plays the round start: the spawn fade (`SPAWN_FADE`), the fader and the banner. */
   setVisible(on: boolean): void {
-    if (on && !this.on) this.sinceOn = 0;
+    if (on && !this.on) { this.sinceOn = 0; this.fadeFrom = 0; }
     this.on = on;
   }
+  /** The map's nav points (`./tacMap`'s `TacData.points` of kind 1): the compass marks them. */
+  setNavPoints(points: { name: string; x: number; z: number }[]): void { this.model.navPoints = points; }
+  /** The tactical map is open: the HUD and the compass hide (`FUN_001f71c0`); a close brings them back through the fade. */
+  setTacMapOpen(open: boolean): void {
+    if (!open && this.tacOpen) this.fadeFrom = this.sinceOn;
+    this.tacOpen = open;
+  }
+  /** What the round-start banner says (`DEFAULT_ROUND` until set). */
+  setRound(round: RoundInfo): void { this.round = { ...round, objective: round.objective.toUpperCase() }; }
   setAmmo(rounds: number, capacity: number, spare: number, reloading = false): void {
     Object.assign(this.model, { rounds, capacity, spare, reloading });
   }
@@ -432,13 +603,23 @@ export class Hud {
   setHeading(yaw: number): void { this.model.yaw = yaw; }
   /** A context prompt by kind, or none; `allowed` false greys it (`ACTION_COLOURS.grey`). */
   setAction(action: ActionPrompt | null, allowed = true): void {
-    this.model.action = action;
+    this.manual = action;
+    this.model.action = this.prompt();
     this.model.actionColour = allowed ? 'blue' : 'grey';
   }
   /** The traversal's ledge prompt: the game's climb icon while visible, unless another prompt holds the slot. */
   setClimbPrompt(state: ClimbPrompt | null): void {
-    if (state?.visible === true) { if (!this.model.action) this.setAction('climb'); }
-    else if (this.model.action === 'climb') this.model.action = null;
+    this.climbing = state?.visible === true;
+    this.model.action = this.prompt();
+  }
+  /** The map's own action in reach (`./mapActions`: a door's node within its `range`), or none. */
+  setNearbyAction(action: ActionPrompt | null): void {
+    this.nearby = action;
+    this.model.action = this.prompt();
+  }
+  /** The prompt shown: a caller's `setAction` over the traversal's ledge over the map's own action. */
+  private prompt(): ActionPrompt | null {
+    return this.manual ?? (this.climbing ? 'climb' : this.nearby);
   }
   /** The stance: a change shows its word (`STANCE_FADE`). */
   setStance(stance: HudStance): void {
@@ -467,7 +648,10 @@ export class Hud {
     this.setHeading(src.yaw);
     if (src.stance !== undefined) this.setStance(src.stance);
     if (src.climb !== undefined) this.setClimbPrompt(src.climb);
+    if (src.nearby !== undefined) this.setNearbyAction(src.nearby);
+    if (src.position !== undefined) this.model.position = src.position;
     if (src.range !== undefined) this.setRange(src.range);
+    if (src.fireMode !== undefined) this.setFireMode(src.fireMode);
   }
 
   /** Several inputs at once (the test hook's `setHud`). */
@@ -488,12 +672,23 @@ export class Hud {
     if (p.capacity !== undefined) this.model.capacity = p.capacity;
     if (p.spare !== undefined) this.model.spare = p.spare;
     if (p.frozen !== undefined) this.frozen = p.frozen;
-    if (p.settled) { this.sinceOn = SPAWN_FADE.hold + SPAWN_FADE.ramp; this.pulse = 0; }
+    if (p.settled) {
+      // Past the round start: no fader, no banner, the ammo box in.
+      this.sinceOn = 60;
+      this.fadeFrom = 0;
+      this.pulse = 0;
+      this.model.banner = []; this.model.fader = 0;
+    }
+    if (p.roundTime !== undefined) {
+      this.sinceOn = p.roundTime;
+      const start = roundStartAt(this.sinceOn, this.round);
+      this.model.banner = start.banner; this.model.fader = start.fader;
+    }
   }
 
   /** The fades now. */
   timing(): HudTiming {
-    const t = this.sinceOn - SPAWN_FADE.hold;
+    const t = this.sinceOn - this.fadeFrom - SPAWN_FADE.hold;
     return { fade: Math.min(1, Math.max(0, t / SPAWN_FADE.ramp)), stance: this.stanceAlpha, pulse: this.pulse };
   }
 
@@ -508,6 +703,9 @@ export class Hud {
   /** Steps the fades by `dt` seconds (called by `render` from the frame clock). */
   step(dt: number): void {
     if (this.on) this.sinceOn += dt;
+    const start = roundStartAt(this.sinceOn, this.round);
+    this.model.banner = start.banner;
+    this.model.fader = start.fader;
     this.stanceAlpha = Math.max(0, this.stanceAlpha - STANCE_FADE.perSecond * dt);
     if (this.model.action) {
       this.pulse += (this.pulseUp ? 1 : -1) * ACTION_PULSE_RATE * dt;
@@ -532,22 +730,74 @@ export class Hud {
     this.camera.left = 0; this.camera.right = width; this.camera.top = 0; this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
     const { quads } = hudLayout(this.frame, this.model, this.sizes(), this.timing());
-    const byTexture = new Map<string, HudQuad[]>();
-    for (const q of quads) {
-      const list = byTexture.get(q.texture);
-      if (list) list.push(q); else byTexture.set(q.texture, [q]);
+    // The tactical map hides the in-round HUD and the compass (`FUN_001f71c0`); its own layer draws instead.
+    const base = this.tacOpen ? quads.filter((q) => q.element === 'fader') : quads;
+    const extra = this.overlay?.(this.frame, this.sizes()) ?? null;
+    const all = extra ? [...base, ...extra.quads] : base;
+    const byKey = new Map<string, HudQuad[]>();
+    for (const q of all) {
+      const key = `${q.layer ?? 0}:${q.texture}`;
+      const list = byKey.get(key);
+      if (list) list.push(q); else byKey.set(key, [q]);
     }
     const half = GS_SAMPLE_OFFSET * (height / PS2_H);
-    for (const [name, batch] of this.batches) this.fill(batch, byTexture.get(name) ?? [], half);
+    for (const [key, batch] of this.batches) this.fill(batch, byKey.get(key) ?? [], half);
+    const tris = extra?.tris ?? [];
+    this.shapes.forEach((shapes, layer) => this.fillShapes(shapes, tris.filter((t) => t.layer === layer)));
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     try { renderer.render(this.scene, this.camera); } finally { renderer.autoClear = autoClear; }
   }
 
-  private sizes(): Record<string, { width: number; height: number }> {
+  /** Each bitmap's texel size, for the layouts. */
+  sizes(): Record<string, { width: number; height: number }> {
     const out: Record<string, { width: number; height: number }> = {};
-    for (const [name, b] of this.batches) out[name] = b.size;
+    for (const [name, m] of this.maps) out[name] = m.size;
     return out;
+  }
+
+  private fillShapes(shapes: Shapes, tris: HudTri[]): void {
+    if (tris.length > shapes.capacity) {
+      const capacity = Math.max(tris.length, shapes.capacity * 2);
+      const geometry = triGeometry(capacity);
+      shapes.mesh.geometry = geometry;
+      shapes.geometry.dispose();
+      shapes.geometry = geometry;
+      shapes.capacity = capacity;
+    }
+    const pos = shapes.geometry.getAttribute('position') as BufferAttribute;
+    const col = shapes.geometry.getAttribute('color') as BufferAttribute;
+    tris.forEach((t, i) => {
+      for (let k = 0; k < 3; k++) {
+        pos.setXYZ(i * 3 + k, t.p[k * 2]!, t.p[k * 2 + 1]!, 0);
+        col.setXYZW(i * 3 + k, t.rgba[0], t.rgba[1], t.rgba[2], t.rgba[3]);
+      }
+    });
+    pos.needsUpdate = true; col.needsUpdate = true;
+    shapes.geometry.setDrawRange(0, tris.length * 3);
+    shapes.mesh.visible = tris.length > 0;
+  }
+
+  private addShapes(): void {
+    const material = new MeshBasicNodeMaterial();
+    material.name = 'hud shapes';
+    material.vertexColors = false;
+    material.colorNode = vec4(vertexColor()).clamp(0, 1);
+    material.transparent = true;
+    material.depthTest = false;
+    material.depthWrite = false;
+    material.side = DoubleSide;
+    material.fog = false;
+    material.toneMapped = false;
+    this.materials.push(material);
+    const capacity = 64;
+    const geometry = triGeometry(capacity);
+    const mesh = new Mesh(geometry, material);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = this.order++;
+    mesh.visible = false;
+    this.scene.add(mesh);
+    this.shapes.push({ mesh, geometry, capacity });
   }
 
   private fill(batch: Batch, quads: HudQuad[], half: number): void {
@@ -586,11 +836,10 @@ export class Hud {
     batch.capacity = capacity;
   }
 
-  private addBatch(name: string, rgba: Rgba): void {
-    const map = makeTexture(rgba);
-    this.textures.push(map);
+  private addBatch(layer: number, name: string): void {
+    const { texture: map, size } = this.maps.get(name)!;
     const material = new MeshBasicNodeMaterial();
-    material.name = `hud ${name}`;
+    material.name = `hud ${layer} ${name}`;
     material.vertexColors = false;
     // The GS's MODULATE: the texel times the vertex colour, alpha included, blended over the frame. The colour may go
     // over 1 (the action pulse's 140/128), and the GS clamps.
@@ -609,15 +858,25 @@ export class Hud {
     mesh.renderOrder = this.order++;
     mesh.visible = false;
     this.scene.add(mesh);
-    this.batches.set(name, { mesh, geometry, capacity, size: { width: rgba.width, height: rgba.height } });
+    this.batches.set(`${layer}:${name}`, { mesh, geometry, capacity, size });
   }
 
   private clear(): void {
-    for (const b of this.batches.values()) { this.scene.remove(b.mesh); b.geometry.dispose(); }
+    for (const b of [...this.batches.values(), ...this.shapes]) { this.scene.remove(b.mesh); b.geometry.dispose(); }
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
-    this.batches.clear(); this.materials = []; this.textures = []; this.order = 0;
+    this.batches.clear(); this.shapes = []; this.maps.clear();
+    this.materials = []; this.textures = []; this.order = 0;
   }
+}
+
+/** `capacity` triangles' worth of vertices, unindexed. */
+function triGeometry(capacity: number): BufferGeometry {
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(capacity * 9), 3));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(capacity * 12), 4));
+  geometry.setDrawRange(0, 0);
+  return geometry;
 }
 
 /** `capacity` quads' worth of vertices (four each) and indices (two triangles each). */
