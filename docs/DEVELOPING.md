@@ -911,7 +911,7 @@ kill_drivers() { powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kil
 walk() {   # <side> [KNOB=value]
   local out="$A/$1"; shift
   rm -rf "$out"; mkdir -p "$out"; cp -r game/disc/mc0_parity "$out/mc0"; kill_drivers
-  env "$@" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 PS2X_VU_STATS=1 PS2X_GS_STATS=1 \
+  env "$@" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 PS2X_VU_STATS=1 PS2X_GS_STATS=1 PS2X_GS_UPLOAD_TRACE=1 \
       PS2X_RUN_LOG="$out/mission.game.log" \
       python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_probe.txt \
       --out "$out/mission" --seconds 480 --tail 170 > "$out/mission.drive.log" 2>&1
@@ -919,6 +919,10 @@ walk() {   # <side> [KNOB=value]
 walk off; walk on <KNOB>=<attempt value>; kill_drivers
 python -m tools_py.parity.frame_time "$A/off" "$A/on"
 ```
+
+`PS2X_GS_UPLOAD_TRACE=1` is what feeds the `[gs-submit]` line (`gs_gl_backend.cpp`, the upload trace's accumulator);
+`PS2X_GS_STATS=1` alone prints `[gs-gl stats]` and `[vu1-stats]` but no split, and `submit_split` then answers "No
+[gs-submit] line" (the first four walks of 2026-09-29 ran without it: SYNCV decided, the why was not read).
 
 launched as `RUN_MIN_FREE_MEM_GB=4 bash scripts/run_detached.sh --owner <seat> --purpose "launch: <attempt> A/B"
 --wait 60 logs/<seat>/<attempt>_ab.sh logs/<seat>/<attempt>_ab.detached` (a `launch` purpose writes the quiet
@@ -938,7 +942,7 @@ out=logs/parity/prof/<name>; rm -rf "$out"; mkdir -p "$out"; cp -r game/disc/mc0
   cp "$out/hostprof.txt" "$out/hostprof_pre.txt" ) & snap=$!
 PYTHONUNBUFFERED=1 PS2X_HOST_PROF=1 PS2X_HOST_PROF_MAIN=1 PS2X_HOST_PROF_STACKS=1 \
     PS2X_HOST_PROF_OUT="$out/hostprof.txt" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 \
-    PS2X_VU_STATS=1 PS2X_GS_STATS=1 PS2X_RUN_LOG="$out/mission.game.log" \
+    PS2X_VU_STATS=1 PS2X_GS_STATS=1 PS2X_GS_UPLOAD_TRACE=1 PS2X_RUN_LOG="$out/mission.game.log" \
     python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_probe.txt \
     --out "$out/mission" --seconds 480 --tail 170 > "$out/mission.drive.log" 2>&1
 kill "$snap" 2>/dev/null

@@ -148,6 +148,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/2026-09-26-sprint-14-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 17 entries of `docs/superpowers/plans/2026-09-26-sprint-14.md`'s Log, verbatim; the Log points here |
 | `docs/archive/2026-09-27-sprint-16-log-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 13 entries of `docs/superpowers/plans/2026-09-27-sprint-16.md`'s Log, verbatim; the Log points here; from 2026-09-28 also the F2, L1b and R1b state cells as they stood at the close, verbatim (the rows rewritten to their outcomes) |
 | `docs/archive/HUMAN_TASKS-answered-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 when `docs/HUMAN_TASKS.md`'s ceiling fired (check 7): its ten struck rows (O1, O3, O6, O11–O14, O16, O18, O19), verbatim; the live file points here. Reopenable by number |
+| `docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md` | **A** | — | Cut 2026-09-29 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 19 entries of `docs/superpowers/plans/2026-09-27-sprint-17.md`'s Log, verbatim; the Log points here |
 
 ## 4. What is enforced mechanically
 
