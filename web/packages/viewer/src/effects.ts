@@ -1,4 +1,4 @@
-import { Euler, Group, Matrix4, Quaternion, Vector3, type Camera, type Material, type Object3D } from 'three';
+import { Euler, Group, Matrix4, Mesh, PlaneGeometry, Quaternion, Vector3, type Camera, type Material, type Object3D } from 'three';
 import type { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
   launchMotion, NODE_CALLER, NODE_ROOT, segmentHit, stepMotion,
@@ -73,6 +73,44 @@ export function markTable(
   };
 }
 
+/** A running animation the caller keeps (the ripples' endless loops): its place can move, and it can be stopped. */
+export interface EffectHandle {
+  readonly name: string;
+  /** Its place: move `place.node` (a `Matrix4`) in place to carry what follows it. */
+  readonly place: EffectPlace;
+  alive(): boolean;
+  stop(): void;
+}
+
+/** What the SEAL's water does each frame (`FUN_005b52b0`'s inputs): the feet, the water over them, the velocity, the air. */
+export interface WaterState {
+  feet: Vec3;
+  /** The water line over the feet (`actor+0xf88`), 0 out of it. */
+  depth: number;
+  /** The body's height (its model box: `./stature`). */
+  height: number;
+  velocity: Vec3;
+  airborne: boolean;
+}
+
+/** `FUN_0058a820`'s speed class, 0-based: still (|v|² < 0.25), moving, running (|v|² >= 400). */
+export function speedClass(v: readonly number[]): 0 | 1 | 2 {
+  const s = v[0]! * v[0]! + v[1]! * v[1]! + v[2]! * v[2]!;
+  return s < 0.25 ? 0 : s < 400 ? 1 : 2;
+}
+
+/** The wading ripples by speed class (`FUN_005b52b0`, decomp 469808-469920): the body in the water, and under it. */
+export const RIPPLES = {
+  big: ['big_ripple_anim', 'big_ripple_anim_walk', 'big_ripple_anim_run'],
+  small: ['small_ripple_anim', 'small_ripple_anim_walk', 'small_ripple_anim_run'],
+} as const;
+
+/** How far over the body's top the water still ripples (`FUN_005b52b0`: `hi < water < hi + 10`). */
+export const RIPPLE_OVER = 10;
+/** A footprint's side (`FUN_005a3280`'s 3.5, decomp 460186) and the pool it shares with the marks' kind (150). */
+export const FOOTPRINT_SIZE = 3.5;
+export const MAX_FOOTPRINTS = 150;
+
 /** One live instance of an effect model (a casing, a flash), made for a run and dropped with it. */
 interface Instance { object: Object3D; model: string }
 
@@ -96,6 +134,8 @@ export interface EffectStats {
   lastShell: { position: Vec3; velocity: Vec3 } | null;
   /** The `LIGHT` passes live now, begun so far, their overlays, and their ranges now. */
   lights: ReturnType<EffectLights['stats']>;
+  /** The SEAL's splashes, the ripple loops running, the footprints placed. */
+  water: { splashes: number; ripples: string; footprints: number };
   /** The effect models drawn now, by name. */
   shown: string[];
   bounces: number;
@@ -111,6 +151,27 @@ export interface EffectStats {
  * casing lands on metal in silence; the viewer plays the bank's `.BUL_CAS_METAL` (research 89 §11).
  */
 export const SOUND_NAME_FIXES: Readonly<Record<string, string>> = { '.BUL_CASE_METAL': '.BUL_CAS_METAL' };
+
+/**
+ * The casing sounds a map's banks may lack, and what stands in -- **a departure from the retail game** (the feel-QA
+ * playtest, research 90 item 12). The game resolves a sound by its name's CRC among the loaded banks' sounds, a binary
+ * search over one sorted table (`FUN_00344f30` -> `FUN_00344bf0`, decomp 243197): no fallback bank, no other name, so a
+ * name the map's banks lack plays nothing. The shell table sends grass and dirt (materials 4 and 8) to `.BUL_CAS_DIRT`,
+ * which 13 banks hold and Blood Lake's (MP10) does not, beside its own `.BUL_CAS_GRASS`; so on the console its casings
+ * land on the ground in silence. The viewer plays the first of these the map holds.
+ */
+export const SOUND_FALLBACKS: Readonly<Record<string, readonly string[]>> = {
+  '.BUL_CAS_DIRT': ['.BUL_CAS_GROUND', '.BUL_CAS_GRASS', '.BUL_CAS_SAND'],
+  '.BUL_CAS_SAND': ['.BUL_CAS_GROUND', '.BUL_CAS_DIRT'],
+  '.BUL_CAS_METAL': ['.BUL_CAS_GR8ING'],
+};
+
+/** The sound to play for an effect's sound name: the data's slips mended, then a fallback when the banks lack it. */
+export function soundFor(name: string, has: (name: string) => boolean): string {
+  const fixed = SOUND_NAME_FIXES[name] ?? name;
+  if (has(fixed)) return fixed;
+  return SOUND_FALLBACKS[fixed]?.find(has) ?? fixed;
+}
 
 /** The zAnim main gravity (`Anim_Main_Params`, -98 on every archive: 77 §9). */
 export const ZANIM_GRAVITY = -98;
@@ -176,6 +237,38 @@ export class Effects {
     for (const model of data?.models ?? []) this.models.set(model.name, buildEffectModel(model, this.textures, this.materials));
   }
 
+  /**
+   * Everything the map's effects draw with, in one group for the renderer to compile before the first shot (research
+   * 90 item 16: the first explosion's frames up to 417 ms were first use -- programs built, bitmaps uploaded): the
+   * effect models, a particle group per particle texture, the marks' and the footprints' materials, the light pass's two
+   * programs. `warmDone` takes them back. The group sits far under the map, so a frame drawn meanwhile shows nothing.
+   */
+  warmUp(): Group {
+    const g = new Group();
+    g.name = 'effects warm-up';
+    g.position.set(0, -1e6, 0);
+    const d = this.data;
+    if (!d) return g;
+    for (const model of this.models.values()) g.add(model.clone(true));
+    const particleTextures = new Set<string>();
+    for (const p of d.programs) for (const s of p.sequences) for (const o of s.ops) if (o.op === 'particles') for (const t of o.source.textures) particleTextures.add(t.name.toLowerCase());
+    for (const m of this.particles.warm(particleTextures)) { m.visible = true; }
+    const quad = new PlaneGeometry(1, 1);
+    for (const tex of [...d.marks.map((r) => r.texture), ...d.footprints.map(([, t]) => t)]) {
+      const t = this.textures.get(tex.toLowerCase());
+      if (t) g.add(new Mesh(quad, markMaterial(t)));
+    }
+    for (const m of this.lights.warmMeshes()) g.add(m);
+    g.traverse((o) => { o.frustumCulled = false; });
+    this.object.add(g);
+    return g;
+  }
+
+  /** The pre-warm is done: its group goes (the particle groups stay, hidden until they draw). */
+  warmDone(g: Group): void {
+    this.object.remove(g);
+  }
+
   /** The per-material marks for `Fire.setMarks`, or null without the tables. */
   marks(): MarkTable | null {
     const d = this.data;
@@ -195,9 +288,99 @@ export class Effects {
 
   /** Runs the animation `name` of the map's zAnim archives at `place`; false when the map has none of that name. */
   play(name: string, place: EffectPlace): boolean {
+    return this.run(name, place) !== null;
+  }
+
+  /** As `play`, with a handle on the run (to move and stop an endless one); null when the map has none of that name. */
+  run(name: string, place: EffectPlace): EffectHandle | null {
     const program = this.programs.get(name.toLowerCase());
-    if (!program) return false;
-    this.start(program, place);
+    if (!program) return null;
+    const r = this.start(program, place);
+    return { name: program.name, place, alive: () => !r.finished, stop: () => r.stop() };
+  }
+
+  // ---- the SEAL in water (FUN_005b52b0) and on sand and snow (FUN_005a3280) --------------------------------------
+
+  private big: EffectHandle | null = null;
+  private small: EffectHandle | null = null;
+  private readonly rippleNode = new Matrix4();
+  private readonly footprints: Mesh[] = [];
+  private nextFootprint = 0;
+  private readonly footprintGeometry = new PlaneGeometry(1, 1);
+  private water = { splashes: 0, ripples: '' as string, footprints: 0 };
+
+  /**
+   * One frame of the SEAL's water (`FUN_005b52b0`, decomp 469808-469920): with the water line between the feet and the
+   * body's top, the big ripple of the speed class, carried on a node kept at the water under the SEAL; with the water
+   * up to 10 over the top, the small one; a loop, once started, runs until the band changes. Leaving the water stops
+   * both [reading: the game's call comes only from a probe that met water, and its loops ran on where they were].
+   */
+  waterFrame(w: WaterState | null): void {
+    const inBand = (big: boolean): boolean => {
+      if (!w || w.depth <= 0) return false;
+      const wy = w.feet[1] + w.depth, lo = w.feet[1], hi = w.feet[1] + w.height;
+      return big ? lo < wy && wy < hi : hi <= wy && wy < hi + RIPPLE_OVER;
+    };
+    if (w) this.rippleNode.makeTranslation(w.feet[0], w.feet[1] + w.depth, w.feet[2]);
+    const k = w ? speedClass(w.velocity) : 0;
+    const keep = (h: EffectHandle | null, on: boolean, name: string): EffectHandle | null => {
+      if (!on) { h?.stop(); return null; }
+      if (h?.alive()) return h;
+      return this.run(name, { node: this.rippleNode, position: w ? [w.feet[0], w.feet[1] + w.depth, w.feet[2]] : null });
+    };
+    this.big = keep(this.big, inBand(true), RIPPLES.big[k]);
+    this.small = keep(this.small, inBand(false), RIPPLES.small[k]);
+    this.water.ripples = [this.big?.name, this.small?.name].filter(Boolean).join(',');
+  }
+
+  /**
+   * A fall into water (`waterLand`: `FUN_005b52b0`'s first frame in the water in the air): `seal_fall_in_water` at the
+   * water line over the feet -- the splash, the spray and the rings, `.FALL_WATER`.
+   */
+  splash(feet: Vec3, depth: number): boolean {
+    const at: Vec3 = [feet[0], feet[1] + depth, feet[2]];
+    const ok = this.play('seal_fall_in_water', { position: at, normal: [0, 1, 0], velocity: [0, -1, 0] });
+    if (ok) this.water.splashes++;
+    return ok;
+  }
+
+  /**
+   * A footfall (`FUN_005a3570`): the footprint of `decals.rdr`'s `FOOTSTEP_DECALS` for the ground's material -- SAND's
+   * and SNOW's, none on the rest -- `FOOTPRINT_SIZE` across, flat on the ground, its length along the SEAL's forward
+   * (`FUN_005a3280`, decomp 460186-460214). None prone. The game's `seal_footfall_<material>` zAnims are looked up and
+   * exist on no map, so a footfall draws nothing else.
+   */
+  footfall(at: Vec3, material: number, normal: Vec3, forward: Vec3, prone: boolean): boolean {
+    if (prone || !this.data) return false;
+    const name = this.materialName(material);
+    const texture = this.data.footprints.find(([m]) => m === name)?.[1];
+    const t = texture ? this.textures.get(texture) : undefined;
+    if (!t) return false;
+    let mesh = this.footprints.length < MAX_FOOTPRINTS ? undefined : this.footprints[this.nextFootprint];
+    const key = `footprint|${texture}`;
+    let material3 = this.materials.get(key);
+    if (!material3) { material3 = markMaterial(t); this.materials.set(key, material3); }
+    if (!mesh) {
+      mesh = new Mesh(this.footprintGeometry, material3);
+      mesh.renderOrder = 1;
+      this.footprints.push(mesh);
+      this.object.add(mesh);
+    }
+    this.nextFootprint = (this.nextFootprint + 1) % MAX_FOOTPRINTS;
+    mesh.material = material3;
+    const n = new Vector3(...normal).normalize();
+    // Up the print: the SEAL's forward laid on the ground (`cross(cross(orient, n), n)`, the sign a reading).
+    const f = new Vector3(...forward);
+    const up = f.clone().addScaledVector(n, -f.dot(n));
+    if (up.lengthSq() < 1e-9) up.set(1, 0, 0).addScaledVector(n, -n.x);
+    up.normalize();
+    const right = new Vector3().crossVectors(up, n).normalize();
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.makeBasis(right.multiplyScalar(FOOTPRINT_SIZE), up.multiplyScalar(FOOTPRINT_SIZE), n)
+      .setPosition(new Vector3(...at).addScaledVector(n, 0.05));
+    mesh.visible = true;
+    mesh.updateMatrixWorld(true);
+    this.water.footprints++;
     return true;
   }
 
@@ -264,6 +447,11 @@ export class Effects {
     this.valves.clear();
     this.particles.clear();
     this.lights.clear();
+    this.big = null;
+    this.small = null;
+    for (const m of this.footprints) this.object.remove(m);
+    this.footprints.length = 0;
+    this.nextFootprint = 0;
     this.lastShell = null;
   }
 
@@ -274,6 +462,7 @@ export class Effects {
       runs: this.runs.length, played: { ...this.played }, shells: this.shellsLive(), particles: this.particles.count(),
       sources: this.particles.activeSources(), emitted: this.particles.emitted,
       lastShell: this.lastShell, bounces: this.bounces, sounds: this.sounds.slice(-16), lights: this.lights.stats(),
+      water: { ...this.water },
       shown: this.runs.map((r) => (r.context as RunContext).instance).filter((i): i is Instance => !!i && i.model !== '' && i.object.visible).map((i) => i.model),
     };
   }

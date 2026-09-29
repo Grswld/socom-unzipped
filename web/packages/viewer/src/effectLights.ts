@@ -1,5 +1,5 @@
 import {
-  ClampToEdgeWrapping, CustomBlending, DataTexture, Group, InstancedMesh, LessEqualDepth, LinearFilter, Matrix4, Mesh,
+  BufferAttribute, BufferGeometry, ClampToEdgeWrapping, CustomBlending, DataTexture, Group, InstancedMesh, LessEqualDepth, LinearFilter, Matrix4, Mesh,
   NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, Sphere, SrcAlphaFactor, Vector3, ZeroFactor,
   type Object3D,
 } from 'three';
@@ -47,7 +47,9 @@ interface LivePass {
   overlays: Mesh[];
 }
 
-const passUniforms = (at: Vec3) => ({ at: uniform(new Vector3(...at)), rMin: uniform(0), rMax: uniform(1) });
+const passUniforms = (at: Vec3) => ({
+  at: uniform(new Vector3(...at)), rMin: uniform(0), rMax: uniform(1), rgb: uniform(new Vector3(1, 1, 1)), opacity: uniform(0.5),
+});
 type PassUniforms = ReturnType<typeof passUniforms>;
 
 /** A light's reach at its widest over its keys (for choosing what it re-draws). */
@@ -124,6 +126,25 @@ export class EffectLights {
     this.step(pass, 0);
   }
 
+  /**
+   * The two programs a light pass can take (0x48 and 0x44) on a mesh of the world's vertex layout (position, uv, a
+   * four-float colour), for the page to compile at the map's load (`Effects.warmUp`): the first flash then draws at once.
+   */
+  warmMeshes(): Mesh[] {
+    if (!this.map) this.setTexture(null);
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(new Float32Array(9), 3));
+    g.setAttribute('uv', new BufferAttribute(new Float32Array(6), 2));
+    g.setAttribute('color', new BufferAttribute(new Float32Array(12), 4));
+    g.setIndex(new BufferAttribute(new Uint32Array([0, 1, 2]), 1));
+    return [0x48, 0x44].map((blend) => {
+      const light = { flags: 0, node: null, atContext: false, offset: [0, 0, 0], rgb: [255, 255, 255], opacity: 64, blend, ranges: [], duration: 0 } as ZAnimLight;
+      const m = new Mesh(g, passMaterial(this.map!, light, passUniforms([0, 0, 0])));
+      m.frustumCulled = false;
+      return m;
+    });
+  }
+
   update(dt: number): void {
     for (const pass of [...this.live]) {
       if (!pass.alive()) { this.end(pass); continue; }
@@ -186,9 +207,12 @@ function passMaterial(map: DataTexture, light: ZAnimLight, u: LivePass['uniforms
   const B = cross(N, T);
   const uv = vec2(dot(L, T), dot(L, B)).div(max(rMax, 1e-4)).add(0.5);
   const texel = textureNode(map, uv);
-  const rgb = vec3(light.rgb[0] / 255, light.rgb[1] / 255, light.rgb[2] / 255);
+  // Uniforms, not constants: every light of a blend shares one program (the pre-warm compiles the two).
+  u.rgb.value.set(light.rgb[0] / 255, light.rgb[1] / 255, light.rgb[2] / 255);
+  u.opacity.value = light.opacity / 128;
+  const rgb = u.rgb;
   const cs = min(rgb.mul(f).mul(2), 1).mul(effectBrighten);
-  const as = texel.a.mul(light.opacity / 128).mul(f).mul(gate);
+  const as = texel.a.mul(u.opacity).mul(f).mul(gate);
   m.colorNode = vec4(cs, clamp(as, 0, 1));
   m.transparent = true;
   m.depthWrite = false;

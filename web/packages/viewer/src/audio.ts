@@ -282,6 +282,11 @@ export class GameAudio {
     return played[0] ?? null;
   }
 
+  /** Whether the map's loaded banks hold a sound of that name (the effects' casing fallbacks ask it). */
+  has(name: string): boolean {
+    return this.lookup.has(name) || this.lookup.has(name.trim());
+  }
+
   /**
    * Plays a sound by its bank name (`.STEP_STONE`) at `position` (null: without a place). False when it did not
    * sound: locked, muted, out of its range, or a name the map's banks do not hold.
