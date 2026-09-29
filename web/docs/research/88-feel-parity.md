@@ -7,25 +7,26 @@ or emulator was run: the console's side is what the logs, the notes and the cons
 **Summary.**
 
 - **The harness.** `feel-parity.ts` drives the viewer's *whole* walk -- the keys and the pad into the fly camera, the
-  look law, the mover's 60 Hz ticks, the game's camera after each tick, in `main.ts`'s order -- through scripted holds,
-  and prints one row per quantity: console, viewer, error, tolerance, the kind of truth, the owner. Three paths: a
-  synthetic world headless (node or jsdom, 55 rows), the page on Frostfire through `window.__viewer` (`--browser`, 8
-  rows), and research 79's console run replayed hold by hold (`--seal-speed`, both sides through one fitter).
-- **63 rows, 53 within tolerance. Every mover and camera-geometry row now matches** (§2). The spawn camera matches the
-  console's RAM to 0.0003; the run, the back run, the strafes, the ramp's tick 11, the stop, the fall, the orbit and
-  the turn axes match their sources.
-- **One divergence was in this lane and is fixed** (§3): the move stick. The console reads the left stick with a 0.3
-  dead zone per axis, a rescale and the circle's x sqrt 2 (the dump's pad block, `FUN_002da930`), so the run is full
-  from **0.795** of the stick's travel and a keyboard diagonal is (1, 1). The viewer had the pad's radial 0.15 and put
-  the pair in the unit disc: a pad at three quarters ran **45.8 against 59.0**, the run was full only at the rim, and
-  prone W+D crawled **7.8 against 11**.
-- **Ten divergences are reported to their owners** (§4), ranked. The largest for the feel: the **jump** (a 10-unit hop
-  topping at 0.28 s against the clip's 4.6-unit rise topping at 0.66 s), the **full strafe's clip** (the slow strafe at
-  the 3x cap against `seal_run_90r` at 1.18x), and the **camera's root input** (the console's camera dips 1.2 into a
-  run: the live root is `seal_run`'s 10.305, not the standing 11.484). All three are the motion workstream's.
-- **What the console has not recorded** (§5): no timed hold of any kind -- research 79 has not run. Its light-stick
-  groups will not read what §4 of research 79 expects: half a stick runs **26.0, not 32.5**; three quarters **59.0,
-  not 48.75**; and three quarters crouched **stands and runs**, it does not crouch-walk.
+  look law, the mover's 60 Hz ticks, the game's camera after each tick, the body's clips and the posed root they hand
+  the camera, in `main.ts`'s order -- through scripted holds, and prints one row per quantity: console, viewer, error,
+  tolerance, the kind of truth, the owner. Three paths: a synthetic world headless (node or jsdom, 61 rows), the page
+  on Frostfire through `window.__viewer` (`--browser`, 12 rows), and research 79's console run replayed hold by hold
+  (`--seal-speed`, both sides through one fitter).
+- **After the motion merge (section 6): 73 rows, 71 within tolerance.** Every mover, camera, look and motion row
+  matches its source; the two left are the native presentation's horizontal field of view (a proposal, section 6.3)
+  and a single-byte edge of the look's dead zone (noise).
+- **Fixed in this workstream:** the move stick (section 3: the console's per-axis 0.3 dead zone, rescale and x sqrt 2,
+  no unit disc -- a pad at three quarters ran 45.8 against 59.0, prone W+D 7.8 against 11); the right stick's corner
+  (section 6.2: the pad's pair was clamped to the rim before the look law, a full diagonal turned at 0.622 against
+  1.118); the look stepped per display frame (section 6.2: now on the 60 Hz tick, the turn is the same at 30, 60 and
+  144 fps).
+- **Verified after the motion workstream's rewrite** (section 6.1): the standing jump is the clip on the floor (the root
+  tops at 15.06 against the clip's 15.08, at 0.633 s against 0.627), the running jump rises 12.9 after 0.1 s and lands
+  at 0.75 s, a full strafe plays `seal_run_90r` at 1.183x, and the camera stands on the posed root (20.305 in a run,
+  2.168 prone, 25.06 at the jump's top). The first pass's jump, strafe-clip and camera-root divergences are closed.
+- **What the console has not recorded** (section 5): no timed hold of any kind -- research 79 has not run. Its
+  light-stick groups will not read what research 79 section 4 expects: half a stick runs **26.0, not 32.5**; three
+  quarters **59.0, not 48.75**; and three quarters crouched **stands and runs**, it does not crouch-walk.
 
 ## 1. Method
 
@@ -71,7 +72,7 @@ npx tsx tools/feel-parity.ts --json feel.json                 # the rows as JSON
 It exits 1 when a mover or camera row diverges. `feelParity.test.ts` runs the headless table in `npm test`: the mover
 and camera rows must pass, and any other row must pass or be one of §4's.
 
-## 2. The table (2026-09-28, after §3's fix)
+## 2. The table (2026-09-28; the first pass after section 3's fix, the rows section 6 changed marked)
 
 Error is |viewer - console| / |console| where the console's value is not 0 and the tolerance is relative, else the
 absolute difference in the row's unit. Sources are in the tool's own output and `console.ts`; the short form here.
@@ -108,18 +109,27 @@ absolute difference in the row's unit. Sources are in the tool's own output and 
 | right stick at byte 176: turn axis | 0 | **0.005** | 0.005 | **diverges** | recomp | look | research 22 line 126 |
 | right stick full / at 224: turn rate, deg/s | 128.11 / 100.74 | 128.113 / 100.740 | 0 % | ok | recomp | look | research 22 lines 128-129 |
 | arrow held: time to the full turn, s | 0.278 | 0.283 | 0.005 | ok | decomp | look | `FUN_002da930`'s ramp |
-| 1 s of an arrow from rest at 30 / 60 / 144 fps, deg | 111.329 | **112.351** / 111.329 / **110.718** | **0.92** / 0 / **0.55 %** | | decomp | look | the ramp and the gain, 60 frames |
+| 1 s of an arrow from rest at 30 / 60 / 144 fps, deg (section 6.2) | 111.329 | 111.329 (all three; was 112.351 / 111.329 / 110.718) | 0 % | ok | decomp | look | the ramp and the gain, 60 frames |
 | arrow up: pitch rate after the ramp, deg/s | 54.448 | 54.448 | 0 % | ok | decomp | look | `pitch_rate` 0.85 x 1.118 |
-| right stick in its corner (bytes 255, 0): turn axis | 1.118 | **0.622** | 0.496 | **diverges** | decomp | look | `FUN_002da200` on (1, 1) |
-| full run: `seal_run`'s speed factor | 1.1265 | 1.126 | 0 % | ok | recomp | motion | node `+0x24`, research 25 line 372 |
-| standing jump: rise, u | 4.57 | **9.44** | 106 % | **diverges** | asset | motion | `seal_jump`'s root, 10.51 -> 15.08 |
-| standing jump: time to the top, s | 0.66 | **0.283** | 57 % | **diverges** | asset | motion | key 12 of 20 over the 1.1 s playback |
-| full run: look-at target over the feet, u | 20.305 | **21.484** | 1.18 | **diverges** | asset | motion | `seal_run`'s root 10.305 + 10 |
-| prone: the skeleton root the camera stands on, u | 2.168 | **1.8** | 0.37 | **diverges** | asset | motion | `seal_prone`'s root |
-| full right strafe: the clip's speed factor | 1.18 (`seal_run_90r`) | **3.0** (`seal_rstrafe`, capped) | 154 % | **diverges** | decomp | motion | the strafe set's bands at 65 |
+| right stick in its corner (bytes 255, 0): turn axis (section 6.2) | 1.118 | 1.118 (was 0.622) | 0 | ok | decomp | look | `FUN_002da200` on (1, 1) |
+| full run: the clip's keys a second / 30 | 1.1265 | 1.126 (`seal_run`) | 0 % | ok | recomp | motion | node `+0x24`, research 25 line 372 |
+| full right strafe: the clip's keys a second / 30 (section 6.1) | 1.183 (`seal_run_90r`) | 1.183 (`seal_run_90r`; was 3.0, `seal_rstrafe`) | 0 % | ok | decomp | motion | the strafe set's band at 65 (research 80) |
+| standing jump: the feet's rise, u (section 6.1) | 0 | 0 (was 9.44) | 0 | ok | decomp | motion | `FUN_0057e1b0`, research 80 section 0 |
+| standing jump: the posed root's top, u | 15.078 | 15.061 | 0.017 | ok | asset | motion | `seal_jump`'s root at key 12 |
+| standing jump: time to the root's top, s | 0.627 | 0.633 (was 0.283) | 0.006 | ok | decomp | motion | `FUN_0028c4f0`: key 12 at phase 0.6 of 1.1 x 19/20 s |
+| standing jump: how long the action holds, s | 0.993 | 0.983 | 0.009 | ok | decomp | motion | 1.1 x (19/20)^2 |
+| standing jump: the look-at target's top over the feet, u | 25.078 | 25.061 | 0.017 | ok | decomp | motion | `FUN_0029a950` on the posed root |
+| running jump: take-off to the first rise, s | 0.1 | 0.1 | 0 | ok | decomp | motion | `actor+0x1360` |
+| running jump: the feet's top, u | 12.9 | 12.925 | 0.19 % | ok | decomp | motion | 79.9 up, 235 down, 60 Hz |
+| running jump: time in the air on flat ground, s | 0.75 | 0.75 | 0 | ok | decomp | motion | 5 ticks of the wait + 40 of flight (research 80's 0.78 is the closed form) |
+| full run: look-at target over the feet, u (section 6.1) | 20.305 | 20.305 (was 21.484) | 0 | ok | asset | motion | `seal_run`'s root 10.305 + 10 |
+| prone at rest: the root the camera stands on, u (section 6.1) | 2.168 | 2.168 (was 1.8) | 0 | ok | asset | motion | `seal_prone`'s root |
 | Frostfire (page): forward run / t90 / stop / back run | 65 / 0.183 / 0 / 37 | 65 / 0.183 / 0 / 37 | 0 | ok | | mover | as above |
 | Frostfire (page): standing eye over / behind the feet, u | 25.709 / 24.906 | 25.709 / 24.906 | 0.0004 | ok | decomp | camera | W2.1 standing |
 | Frostfire (page): full run, the clip's keys / 30 | 1.1265 | 1.126 (`seal_run`) | 0 % | ok | recomp | motion | research 25 line 372 |
+| Frostfire (page): full run, look-at target over the feet, u | 20.305 | 20.305 | 0.0003 | ok | asset | motion | the posed root |
+| Frostfire (page): full right strafe, the clip's keys / 30 | 1.183 | 1.183 (`seal_run_90r`) | 0.06 % | ok | decomp | motion | research 80 |
+| Frostfire (page): standing jump, the feet's rise / the camera's root at its top, u | 0 / 15.08 | 0 / 15.061 | 0.019 | ok | asset | motion | research 80 |
 | Frostfire (page): off the 142 deck, time in the air, s | 0.598 | 0.600 | 0.002 | ok | decomp | mover | as above |
 
 Two rows are worth a word for what they confirm independently. **The camera on ours' decayed root** (29.73 deg, research
@@ -156,7 +166,7 @@ stick; `Walker.tick` clamps each axis and no longer normalises. Before and after
 the crouch's 0.838). Keyboard play is unchanged except prone diagonals; the touch stick rides the same law (it shares
 `./gamepad`'s shaping). Tests: `test/moveStick.test.ts` (6).
 
-## 4. The divergences left, ranked, with their owners
+## 4. The first pass's divergences, ranked, with their owners (closed or answered in section 6)
 
 1. **The jump (motion).** The viewer's jump is `jumpImpulse`'s placeholder, sqrt(2 g 10): the feet rise 9.44 (10 under
    the game's own semi-implicit step) and top at 0.28 s. The console's jump is `seal_jump`'s root (web spec section 7,
@@ -213,3 +223,70 @@ root of 0, the six turn axes and two rates, the pitch rate, the run clip's facto
 - **A jump, a turn and a camera in motion, timed.** None exists on the console. A PINE poll of the actor's position
   (`*0x408c58+0x1c:3`), `actor+0x48` and `cam+0xd8` through a standing jump, a 1 s right-stick hold and a 2 s run
   would turn §4's items 1, 3 and the look's `decomp` rows into `console` rows; the harness's fitter reads such rows.
+
+## 6. The second pass: after the motion merge (2026-09-28)
+
+`claude/web-viewer-playtest-fixes` at `a4ec6675` merged (the motion rewrite of research 80: the game's two jumps, the
+pick-and-blend locomotion `locomotion.ts`, a new animator on the game's play model, the camera on the posed root
+through `WalkMode.setPosedRoot`; and the look, weapon, audio, HUD and grenade work). The one conflict, `Walker.tick`:
+the motion's action, landing and jump code kept, its unit-disc normalise replaced by section 3's per-axis clamp. The
+harness was ported: the rig now steps `./animator` on a one-part skeleton (`skel_root`) after each frame and hands the
+walk its posed root, as `./play` does, and the motion rows read the new play model; the running-jump rows need no
+fixture.
+
+### 6.1 Verified, not assumed
+
+| first-pass divergence | now | how it was checked |
+|---|---|---|
+| 1. the jump | **closed**: the standing jump is `seal_jump` on the floor (feet 0; the posed root tops at 15.061 against the clip's 15.078 at 0.633 s against the play model's 0.627; the action holds 0.983 s against 0.993), the running jump rises after 0.1 s to 12.925 (12.9) and lands at 0.75 s | headless, and on Frostfire (`page.jumpFeet`, `page.jumpRoot`) |
+| 2. the full strafe's clip | **closed**: `seal_run_90r` at 1.1834x (35.5 keys a second), from the harness's own travel-a-cycle computation of the clip | headless and on Frostfire (`page.strafeClip`) |
+| 3. the camera's root input | **closed**: a full run stands the look-at on 20.305, prone on 2.168, the standing jump's top on 25.061 | headless and on Frostfire (`page.runTarget`) |
+
+Two numbers were corrected on the console side, not the viewer's: the standing jump's top is at **0.627 s** in the
+play model `FUN_0028c4f0` runs (the first pass's 0.66 was key 12 / 20 x 1.1, not the phase law), and the running
+jump's air time at the game's 60 Hz is **0.75 s** (5 ticks of the 0.1 s wait and 40 of flight; research 80 section 0's
+0.78 is the closed form 0.1 + 2 x 79.9 / 235). The sub-tick differences (0.006, 0.010 s) are the 60 Hz sampling.
+
+### 6.2 Fixed here
+
+- **The right stick's corner (first pass #4).** `./gamepad`'s `padInput` put each stick through the touch stick's
+  shaping *with* its clamp to the rim, so a corner reading (1, -1) arrived at the look law as (0.707, 0.707) whatever
+  the undo did. `padStick` keeps the radial dead zone and its rescale but no rim; `padRaw` undoes it exactly (the
+  walk's look and move both read through it). A full diagonal now turns and pitches at 1.118 a side, the console's; the
+  prone diagonal on such a pad crawls 11. Flying, the fly camera holds the look pair to the disc as it always did.
+- **The look against the display rate (first pass #6).** `FlyCamera.walkLook` steps the look law, the pitch and the turn
+  on their own 60 Hz clock (`LOOK_TICK`), the console's frame, as the mover steps its ticks; a second of an arrow from
+  rest is 111.329 deg at 30, 60 and 144 fps (it was 112.351 / 111.329 / 110.718). The shake and the bob stay per
+  frame (their falls are already scaled to 60 Hz). In third person the view is placed from the camera's ticks, drawn
+  between them, so nothing steps on screen; in first person the view turns in 60 Hz steps on a faster screen, as the
+  console's picture does.
+
+### 6.3 The native horizontal field of view (first pass #5): a proposal, not a change
+
+The console projects 70 x 49 degrees (`cam_pcsx2_mission.txt` line 8) into a 640 x 448 frame that the television shows
+at 4:3: the picture is anamorphic, its projection 1.537 wide shown 1.333 wide -- everything on the console's screen is
+13 % narrower than it is. It is neither letterboxed nor pillarboxed: the frame fills the 4:3 screen. The viewer's PS2
+presentation reproduces exactly that (the projection from the map's half-angles, the frame stretched to 4:3). The
+native presentation keeps the vertical 49 and widens the horizontal with the window (Hor+): 70 at 1.54:1, 78 at 16:9,
+93.5 at 21:9, with square pixels.
+
+**Proposal: keep Hor+ as the native default.** The vertical angle is what decides how large the SEAL, a target at a
+given range and the 65-pixel reticle's cross read on screen, and it is the console's to the hundredth; the extra
+4 degrees a side at 16:9 are periphery the console's squeeze hid, not a zoom. The alternatives: *Vert-* (keep 70
+across, crop the height: the vertical becomes 43.0 at 16:9, a 16 % zoom-in against the console, the SEAL larger than it
+ever was on a television) or *pillarbox to 4:3 at 70 x 49* (the console's framing with bars, but its squeeze undone or
+kept -- kept is the PS2 presentation already on the panel). If the owner wants the console's exact horizontal reach in
+the native view, a third option is cheap: a native pillarbox at the projection's own 1.537 aspect (70 x 49, square
+pixels, bars on a 16:9 screen). The row stays reported (`cam.hfov169`) so the choice is visible.
+
+### 6.4 What else the pass found
+
+- **An end-to-end test fails on the integration branch itself**, not here: `e2e/walk.spec.ts` "the game's camera at
+  Frostfire's spawn A" asks for the crouched eye 19.603 over the feet two frames after `setStance('crouch')`, and reads
+  **25.706** on `a4ec6675`'s own sources (checked by swapping them in: 25.63 with this branch's) -- the camera now
+  stands on the posed root, and the body is still getting down (the stance's transition clip). The test wants the
+  settled crouch; the motion workstream's to update (wait for the transition, or read the root once settled).
+- **A keyboard diagonal in the standing jump** runs at both sets' top speeds with no renormalisation (research 80:
+  `FUN_0057a330` drives the jump by the stick, `DAT_0064fc80` is 1 there): with the pad reader's (1, 1) that is 65 x
+  sqrt 2 = 92 across the ground while the clip plays (the harness reads 91.92). That is the reading as written; a console capture of a W+D
+  standing jump would confirm it.
