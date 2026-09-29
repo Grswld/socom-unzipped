@@ -9,7 +9,11 @@
  * clips that snap without a blend, a body running in place or sliding, sounds missing or doubled.
  *
  *   npx vite --config packages/viewer/vite.config.ts --port 5192   # another shell
- *   npx tsx tools/playtest.ts [url] [--maps MP2,MP6,MP72] [--out <dir>]
+ *   npx tsx tools/playtest.ts [url] [--maps MP2,MP6,MP72] [--out <dir>] [--channel chrome]
+ *
+ * `--channel` picks the browser: `chrome` (the default, the installed Chrome) draws with WebGPU; Playwright's own headless
+ * shell (`--channel headless-shell`) offers an adapter but fails the device (`dxil.dll`), so it draws with WebGL2 -- as
+ * every run before round 6 did. The backend each map drew with is printed and kept in `playtest.json`.
  *
  * Screenshots and `playtest.json` go to `web/test-fixtures/screens/playtest/` (git-ignored: evidence, not fixtures).
  */
@@ -23,6 +27,7 @@ const args = process.argv.slice(2);
 const opt = (name: string): string | undefined => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const BASE = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5192/';
 const MAPS = (opt('--maps') ?? 'MP2,MP6,MP72,MP10,MP7,MP61,MP82').split(',');
+const CHANNEL = opt('--channel') ?? 'chrome';
 const OUT = opt('--out') ?? fileURLToPath(new URL('../test-fixtures/screens/playtest', import.meta.url));
 const EYE = 15.4, INIT_PITCH = -9.167, DEG = Math.PI / 180;
 
@@ -584,9 +589,10 @@ async function playFrostfire(s: Session): Promise<void> {
   });
 }
 
-const browser = await chromium.launch({ args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ ...(CHANNEL === 'headless-shell' ? {} : { channel: CHANNEL }), args: ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const all: Scenario[] = [];
 const problems: Record<string, string[]> = {};
+const backends: Record<string, string> = {};
 try {
   for (const map of MAPS) {
     const dir = join(OUT, map);
@@ -594,7 +600,8 @@ try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     const s = new Session(page, map, dir);
     await s.load();
-    console.error(`${map}: spawn ${s.spawnAt().map((v) => v.toFixed(1)).join(', ')}, open heading ${s.openYaw()}`);
+    backends[map] = await page.evaluate(() => window.__viewer.stats().backend);
+    console.error(`${map} (${backends[map]}): spawn ${s.spawnAt().map((v) => v.toFixed(1)).join(', ')}, open heading ${s.openYaw()}`);
     await playMap(s);
     if (map === 'MP2') await playFrostfire(s);
     if (map === 'MP10') await playBloodLake(s);
@@ -607,7 +614,7 @@ try {
 } finally {
   await browser.close();
 }
-writeFileSync(join(OUT, 'playtest.json'), JSON.stringify({ scenarios: all, problems }, null, 2));
+writeFileSync(join(OUT, 'playtest.json'), JSON.stringify({ channel: CHANNEL, backends, scenarios: all, problems }, null, 2));
 for (const sc of all) {
   console.log(`\n## ${sc.map} -- ${sc.name}`);
   console.log(`camera jump at: ${sc.frames.jumpAt}; idle in air ${sc.frames.idleInAir}, idle moving ${sc.frames.idleMoving}`);
