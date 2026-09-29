@@ -9,7 +9,7 @@ import type {} from '../src/hook';
  * what was rendered and started, by name.
  */
 test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps', async ({ page }) => {
-  await page.goto('/?map=MP2');
+  await page.goto('/?map=MP2&redotcom');
   await page.waitForFunction(() => window.__viewer?.stats().map === 'FROSTFIRE' && window.__viewer.audio().banks.length === 3);
   const loaded = await page.evaluate(() => window.__viewer.audio());
   expect(loaded.banks.map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
@@ -25,11 +25,14 @@ test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps
   await page.keyboard.press('KeyR');
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().byName['.M4A1_SIL_RLD'] ?? 0)).toBe(1);
 
+  // A running jump (research 80: from 15 units a second the feet leave the floor; the standing jump's never do, so it
+  // lands nothing): the launch's whoosh, then the landing.
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(700);
   expect(await page.evaluate(() => window.__viewer.jump())).toBe(true);
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().byName['.JUMP_WHOOSH'] ?? 0)).toBe(1);
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().events.land)).toBe(1);
 
-  await page.keyboard.down('KeyW');
   await expect.poll(() => page.evaluate(() => window.__viewer.audio().events.footstep), { timeout: 30_000 }).toBeGreaterThan(1);
   await page.keyboard.up('KeyW');
 

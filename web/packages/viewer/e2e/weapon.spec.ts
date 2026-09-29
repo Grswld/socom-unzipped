@@ -26,7 +26,7 @@ test('the rifle in the hands, raised to fire, from the muzzle, kicked, reloaded;
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
 
-  await page.goto('/');
+  await page.goto('/?redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -60,7 +60,8 @@ test('the rifle in the hands, raised to fire, from the muzzle, kicked, reloaded;
   await page.evaluate(() => window.__viewer.trigger(false));
   const fired = await page.evaluate(() => window.__viewer.fire());
   expect(fired.shots).toBeGreaterThan(0);
-  expect((await page.evaluate(() => window.__viewer.camera()))!.pitch).toBeGreaterThan(pitch0 + 1);
+  // Out of the scope the view does not kick: the recoil is the reticle's knock (research 84, FUN_005c5340).
+  expect((await page.evaluate(() => window.__viewer.camera()))!.pitch).toBeCloseTo(pitch0, 3);
 
   // Still up after the release (the controller's 5 s), and the reload plays its clip.
   await page.keyboard.press('KeyR');

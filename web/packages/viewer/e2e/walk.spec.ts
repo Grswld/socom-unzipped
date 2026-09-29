@@ -176,9 +176,10 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
   expect(fell![1]).toBeCloseTo(100, 3);
 
   // Back to flying leaves the camera where the eye was.
-  const eye = await page.evaluate(() => window.__viewer.pose());
-  expect(await page.evaluate(() => window.__viewer.setMode('fly'))).toBe(true);
-  expect(await page.evaluate(() => window.__viewer.pose())).toEqual(eye);
+  // Read and switched in one task: a frame between the two would move the walk's camera on by a tick.
+  const swap = await page.evaluate(() => { const eye = window.__viewer.pose(); const ok = window.__viewer.setMode('fly'); return { eye, ok, after: window.__viewer.pose() }; });
+  expect(swap.ok).toBe(true);
+  expect(swap.after).toEqual(swap.eye);
 
   expect(problems).toEqual([]);
 });
@@ -204,15 +205,29 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
   // Entering walk sets the spawn pitch, init_aim_pitch -9.167; a pose without a pitch keeps it.
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
   for (const [stance, up, name] of [['crouch', UP_CROUCHED, 'crouched'], ['stand', UP_STANDING, 'standing']] as const) {
-    await page.evaluate((s) => window.__viewer.setStance(s), stance);
+    // Placed first, then the stance: a pose from the hook stands the mover again and would cut the transition short.
     await page.evaluate(([x, y, z, e]) => window.__viewer.setCamera({ x, y: y + e, z, yaw: 180 }), [...SPAWN_A, EYE] as const);
+    await page.evaluate((s) => window.__viewer.setStance(s), stance);
+    // The camera stands on the live posed root (FUN_0029a950, research 80): wait out the stance transition's clip.
+    // Standing, the idle's root is the bind's 11.484; crouched the game draws one of three idles at random (research
+    // 80, CROUCH_IDLES), so the console's 19.603 over the root 5.504 is pinned in `test/playerCamera.test.ts` and here
+    // the crouched eye is held to the crouch idles' band.
+    await expect.poll(() => page.evaluate(() => window.__viewer.stats().anim?.play ?? ''), { timeout: 5_000 }).toMatch(stance === 'crouch' ? /^idle:crouch/ : /^idle:stand/);
     await settle(page);
-    const seen = await page.evaluate(() => ({ camera: window.__viewer.camera(), reticle: window.__viewer.reticle(), body: window.__viewer.stats().body }));
+    const seen = await page.evaluate(() => ({ camera: window.__viewer.camera(), reticle: window.__viewer.reticle(), body: window.__viewer.stats().body, feet: window.__viewer.feet()! }));
+    // The feet where the stance left them: a transition carries the SEAL by its clip's root travel (research 80).
+    const [fx, fy, fz] = seen.feet;
     expect(seen.camera!.mode).toBe('third');
     expect(seen.camera!.pitch).toBeCloseTo(INIT_PITCH, 6);
-    expect(seen.camera!.eye[0]).toBeCloseTo(SPAWN_A[0], 3);
-    expect(seen.camera!.eye[1] - SPAWN_A[1], name).toBeCloseTo(up, 3);
-    expect(SPAWN_A[2] - seen.camera!.eye[2], name).toBeCloseTo(BEHIND_REST, 3);
+    expect(seen.camera!.eye[0]).toBeCloseTo(fx, 3);
+    if (stance === 'crouch') {
+      expect(seen.camera!.eye[1] - fy, name).toBeGreaterThan(up - 1.5);
+      expect(seen.camera!.eye[1] - fy, name).toBeLessThan(up + 1.5);
+      expect(fz - seen.camera!.eye[2], name).toBeCloseTo(BEHIND_REST, 0);
+    } else {
+      expect(seen.camera!.eye[1] - fy, name).toBeCloseTo(up, 1);          // the live idle root breathes by hundredths
+      expect(fz - seen.camera!.eye[2], name).toBeCloseTo(BEHIND_REST, 1);
+    }
     expect(seen.body?.visible).toBe(true);
     // The aim is on the view line: the reticle at the frame's centre, the console's 65 x 65 at (288, 192).
     expect(seen.reticle.visible).toBe(true);

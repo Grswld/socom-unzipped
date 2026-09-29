@@ -131,7 +131,7 @@ test.describe('with ?redotcom', () => {
     // The mode changes under an open popover: the list follows.
     await page.evaluate(() => window.__viewer.setMode('walk'));
     await expect(hint).toContainText('space jump');
-    await expect(hint).toContainText('d-pad Up zoom');
+    await expect(hint).toContainText('d-pad up/down zoom');
     await expect(hint).not.toContainText('double-tap W');
     await page.keyboard.press('Escape');
     await expect(pop).toBeHidden();
