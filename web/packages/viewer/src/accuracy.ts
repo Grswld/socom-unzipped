@@ -319,3 +319,32 @@ export class Accuracy {
     return { stand: r('stand'), crouch: r('crouch'), prone: r('prone') };
   }
 }
+
+// ---- Penetration (research 84 section 10) ----------------------------------------------------------------------------
+
+/** One surface along a round's path: how far from the round's origin, and the surface material's `PENETRATION`. */
+export interface PathSurface { distance: number; penetration: number }
+
+/**
+ * The round's walk through what it meets (`HandleIntersections` 0x3c9b70 and `FUN_003c8920`, decomp 319339-319527):
+ * nearest first, a surface whose `PENETRATION` is exactly 1 is passed over with no mark or impact; a surface past the
+ * remaining range stops the round unmarked (4); every other one is struck -- marked, its impact played -- and the range
+ * becomes `min(range, (range + range x Piercing x 0.1) x PENETRATION)`; the round goes on (2) while the surface lies
+ * within that range, else it stops there. Returns the indices of the surfaces struck, in order; the last is where it
+ * stopped unless `through` (it went through every one it struck and was spent in the air, or met nothing more);
+ * `range` is what was left of the range.
+ */
+export function penetrate(surfaces: readonly PathSurface[], range: number, piercing: number): { struck: number[]; through: boolean; range: number } {
+  const struck: number[] = [];
+  let left = range;
+  for (let i = 0; i < surfaces.length; i++) {
+    const s = surfaces[i]!;
+    if (s.penetration === 1) continue;
+    if (s.distance > left) return { struck, through: true, range: left };   // out of range before it: spent in the air
+    struck.push(i);
+    const next = (left + left * piercing * 0.1) * s.penetration;
+    if (next < left) left = next;
+    if (s.distance > left) return { struck, through: false, range: left };
+  }
+  return { struck, through: true, range: left };
+}

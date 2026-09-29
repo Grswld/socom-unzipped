@@ -4,7 +4,8 @@ import {
 } from 'three';
 import type { Material } from 'three';
 import type { Rgba } from '@s2u/gs';
-import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, segmentHits, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import { penetrate } from './accuracy';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 
 /**
@@ -131,6 +132,8 @@ export type FireEvent =
     type: 'round'; weapon: FireWeapon; from: Vec3; to: Vec3; hit: boolean; rounds: number;
     /** EFFECTS: the hit polygon's normal, facing the shooter, and its `material` byte (the SOILS index); null on a miss. */
     normal?: Vec3 | null; material?: number | null;
+    /** ACCURACY: the surfaces the round went through before `to`, each struck (research 84 section 10). */
+    through?: { point: Vec3; normal: Vec3; material: number | null }[];
   }
   | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
   | { type: 'reloadEnd'; weapon: FireWeapon; completed: boolean };
@@ -152,7 +155,11 @@ export interface MarkTable {
   material?(texture: string): Material | null;
 }
 /** One round: the segment tested and what it met. */
-export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null }
+/**
+ * One round: the segment tested and what it met -- `hit` where it stopped (null: it stopped in the air), `through` the
+ * surfaces it went through on the way (marked and struck, research 84 section 10).
+ */
+export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null; through?: ShotHit[] }
 export interface MagazineState { rounds: number; capacity: number; spare: number; reloading: boolean }
 export interface FireState { shots: number; magazine: MagazineState; lastHit: ShotHit | null; decals: number; kick: KickStats }
 
@@ -235,6 +242,7 @@ export class Fire {
   private readonly listeners = new Set<FireListener>();
   private readonly kick: RifleKick;
   private marks: MarkTable | null = null;
+  private penetrationOf: ((material: number | undefined) => number) | null = null;
   private tracerRule: ((weaponId: number, round: number) => boolean) | null = null;
   /** EFFECTS: one material a mark bitmap, made on first use (the constructor's own is `material`). */
   private readonly markMaterials = new Map<string, Material>();
@@ -289,6 +297,14 @@ export class Fire {
   }
 
   /** EFFECTS: the per-material marks (`MarkTable`), or null for the constructor's one mark on every surface. */
+  /**
+   * ACCURACY (research 84 section 10): a polygon's material byte to its `PENETRATION` (`materials.rdr` SOILS), so the
+   * round passes over the 1.0 materials and goes through the others by the game's rule; null: every surface stops it.
+   */
+  setPenetration(penetrationOf: ((material: number | undefined) => number) | null): void {
+    this.penetrationOf = penetrationOf;
+  }
+
   setMarks(marks: MarkTable | null): void {
     this.marks = marks;
     for (const m of this.markMaterials.values()) { (m as MeshBasicMaterial).map?.dispose(); m.dispose(); }
@@ -466,7 +482,9 @@ export class Fire {
     if (muzzle) {
       // Two legs: the eye's ray finds the point under the reticle, the muzzle's segment what the round meets on the
       // way to it (see the header). The segment runs a hair past the aim point, so rounding cannot stop it short.
-      const seen = segmentHit(grid, aim.eye, eyeEnd);
+      // (The eye's ray, like the round, passes over the PENETRATION 1 materials: the volumes, the action boxes.)
+      const pen = this.penetrationOf;
+      const seen = segmentHit(grid, aim.eye, eyeEnd, pen ? (p) => pen(p.material) !== 1 : undefined);
       const target: Vec3 = seen ? [...seen.point] : eyeEnd;
       const toward = sub(target, muzzle);
       const length = Math.hypot(...toward);
@@ -478,15 +496,27 @@ export class Fire {
         if (!seen) end = target;
       }
     }
-    const h = segmentHit(grid, from, end);
     const span = Math.hypot(...sub(end, from));
-    let hit: ShotHit | null = null;
-    if (h) {
+    const face = (h: { point: readonly number[]; normal: readonly number[]; t: number; poly: { material?: number } }, scale: number): ShotHit => {
       // Newell's normal points either way: the mark faces the shooter.
-      const d = h.normal[0] * dir[0] + h.normal[1] * dir[1] + h.normal[2] * dir[2];
-      const normal: Vec3 = d > 0 ? [-h.normal[0], -h.normal[1], -h.normal[2]] : [...h.normal];
-      hit = { point: [...h.point], normal, distance: h.t * span, material: h.poly.material };
-      this.place(hit, dir);
+      const d = h.normal[0]! * dir[0] + h.normal[1]! * dir[1] + h.normal[2]! * dir[2];
+      const normal: Vec3 = d > 0 ? [-h.normal[0]!, -h.normal[1]!, -h.normal[2]!] : [h.normal[0]!, h.normal[1]!, h.normal[2]!];
+      return { point: [h.point[0]!, h.point[1]!, h.point[2]!], normal, distance: h.t * scale, material: h.poly.material };
+    };
+    let hit: ShotHit | null = null;
+    const through: ShotHit[] = [];
+    if (this.penetrationOf) {
+      // Research 84 section 10: the round's own path from where it leaves, its whole range, every surface in order.
+      const far: Vec3 = [from[0] + dir[0] * reach, from[1] + dir[1] * reach, from[2] + dir[2] * reach];
+      const hits = segmentHits(grid, from, far);
+      const path = penetrate(hits.map((h) => ({ distance: h.t * reach, penetration: this.penetrationOf!(h.poly.material) })), reach, this.rifle.piercing ?? 0);
+      const struck = path.struck.map((i) => face(hits[i]!, reach));
+      for (const s of struck) this.place(s, dir);
+      if (path.through) { through.push(...struck); end = [from[0] + dir[0] * path.range, from[1] + dir[1] * path.range, from[2] + dir[2] * path.range]; }
+      else { hit = struck.pop() ?? null; through.push(...struck); }
+    } else {
+      const h = segmentHit(grid, from, end);
+      if (h) { hit = face(h, span); this.place(hit, dir); }
     }
     this.rounds--;
     this.shots++;
@@ -494,12 +524,13 @@ export class Fire {
     this.lastHit = hit;
     // EFFECTS: the game's rule, when one is set (`setTracerRule`): the M4A1 SD draws none (research 89 §6).
     if (!this.tracerRule || this.tracerRule(this.rifle.id, this.shots)) this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
-    const shot: Shot = { from, to: hit ? [...hit.point] : end, hit };
+    const shot: Shot = { from, to: hit ? [...hit.point] : end, hit, ...(through.length ? { through } : {}) };
     const aimNow = this.source.look?.() ?? null;
     if (aimNow && (!this.gun?.kickStarts || this.gun.kickStarts())) this.kick.round(aimNow.pitch, aimNow.stance);
     this.emit({
       type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds,
       normal: hit ? [...hit.normal] : null, material: hit?.material ?? null,
+      ...(through.length ? { through: through.map((t) => ({ point: [...t.point] as Vec3, normal: [...t.normal] as Vec3, material: t.material ?? null })) } : {}),
     });
     return shot;
   }
