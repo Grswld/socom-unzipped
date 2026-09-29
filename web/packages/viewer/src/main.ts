@@ -1309,9 +1309,11 @@ function show(map: LoadedMap): void {
           if (stale()) return;
           warmedAt['props'] = performance.now();
           const g = effects.stats().loaded ? effects.warmUp() : null;
+          const blast = grenade.warmUp();              // research 90 #23: the scorch a blast lays, compiled now
           const warming = warmScene?.(built0.warmExtras());
           if (g) effects.warmStarted(g);
-          try { await warming; } finally { if (g) effects.warmDone(g); }
+          grenade.warmStarted(blast);
+          try { await warming; } finally { if (g) effects.warmDone(g); grenade.warmDone(blast); }
           if (!stale()) { worldWarmed = built0; warmedAt['world'] = performance.now(); }
         });
       });

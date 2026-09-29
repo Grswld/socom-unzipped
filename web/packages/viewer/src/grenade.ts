@@ -1080,6 +1080,36 @@ export class GrenadeThrower {
   }
 
   /**
+   * What a blast first draws, for the page to compile with the map (research 90 §9, #23: a WebGL2 frame of 92-217 ms
+   * 0.1-0.26 s after a blast was the scorch's program linked there -- its material is made at the first blast, its
+   * quad carries a `color` lane no warmed draw had). A scorch with the material the blasts will use, far below the map,
+   * in this object for the compile call; `warmStarted` takes it out once the call has its list, `warmDone` frees it
+   * once the compile is over.
+   */
+  warmUp(): Group {
+    const g = new Group();
+    g.name = 'grenade warm-up';
+    g.position.set(0, -1e6, 0);
+    const mark = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
+    mark.name = 'scorch (warm-up)';
+    g.add(mark);
+    g.traverse((o) => { o.frustumCulled = false; });
+    this.object.add(g);
+    return g;
+  }
+
+  /** The compile call has its list (synchronously): the warm-up leaves the drawn scene. */
+  warmStarted(g: Group): void {
+    this.object.remove(g);
+  }
+
+  /** The compile is over: the warm-up's own quad goes (the material stays: the blasts draw with it). */
+  warmDone(g: Group): void {
+    this.object.remove(g);
+    for (const o of g.children) if (o instanceof Mesh) o.geometry.dispose();
+  }
+
+  /**
    * The scorches' material: `grenade_mark.tif` in the marks' GS arithmetic (`markMaterial`: texel x the vertex colour,
    * clamped, brightened with the frame; source alpha over, no depth write), pulled a step nearer than a bullet mark;
    * without the bitmap a dark stand-in, modulated all the same.
