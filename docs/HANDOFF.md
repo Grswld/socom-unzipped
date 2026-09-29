@@ -11,7 +11,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 2. Where it stands
 
 - **Where the loop is now (2026-09-29 15:53Z, LATEST) -- Sprint 17, `sprint-17` at e89901d8: batch 4 PROVED; Q2 DONE but for the chain; F3 DONE (the game thread's own work is the frame limit, `[gs-loop]` work 862 / bp 2 ms/s; the lever is native VU1 coverage; F4 not triggered); the lobby music loops (#94); the persona proof passed (#111); #112 boots. Unproved by a chain: the loop fix, F3, the persona check, Q2 Step 5. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
-  Now: C1's one build (`agent/s17-vu1-c1`); #110 parked under O27 (the host fails its mutex test either way); tomorrow the chain, then C1's walk in the next window.
+  Now: C1 merged behind its knob (rung one 6.3 %); its rung-two pair reruns after the web window (19:00-20:15Z); #110 parked under O27; tomorrow the chain.
 - **Next free ruling number: R337** (R322-R336 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
