@@ -1143,8 +1143,10 @@ export class Walker {
    * One airborne tick. A running jump waits out `JUMP_DELAY` with the feet held on the floor [reading: the landing is
    * off while `actor+0x1360` runs, so the collision is what holds them], then takes `runningJumpSpeed` up
    * (`FUN_005af930`: `actor+0x133c = +0x1364`); from then on, as a walk-off, `FUN_0059b440`: gravity on `vy`, the
-   * height by `vy`, the carried velocity across the ground and the walls, and the landing on the highest floor at or
-   * under the feet as they were -- classed and given its clip by `land`. The stick reads 0 in the air (`FUN_005af930`
+   * height by `vy`, the carried velocity across the ground and the walls, and the floor as the ground takes it
+   * (`selectFloor`): feet under it are put on it -- a rise goes on, a fall is the landing, classed and given its clip
+   * by `land` (web research 86 section 6.3: before 2026-09-29 only a floor under the feet as they were was looked at,
+   * so a slope rising over a jump's feet was never met and the SEAL fell through it). The stick reads 0 in the air (`FUN_005af930`
    * zeroes `actor+0x240..0x244`).
    */
   private fall(dt: number, forward: number, right: number): void {
@@ -1174,12 +1176,16 @@ export class Walker {
     const from = s.y;
     s.y += s.vy * dt;
     if (windUp) return;
-    let floor: Hit | null = null;
-    for (const h of probeGround(this.grid, s.x, s.z)) if (h.y <= from + 1e-9 && (floor === null || h.y > floor.y)) floor = h;
-    if (floor && s.vy <= 0 && s.y <= floor.y) {
+    // The floor is FUN_005b5d40's pick, as on the ground: the highest at or under the probe's origin + 1 (the feet as
+    // they were + 6), else the lowest while within 20 over the feet -- so a slope that rose over the feet is still
+    // theirs. FUN_0059ad30 (456313-456322) puts the feet on it whenever they are under it, rising or not, and
+    // FUN_0059b440's walk-off branch (456502-456512) zeroes the fall speed only when it is a fall: rising into the
+    // ground the feet ride it and the rise goes on; falling, it is the landing (web research 86 section 6.3).
+    const floor = selectFloor(probeGround(this.grid, s.x, s.z), from + PROBE_LIFT, s.y);
+    if (floor && s.y <= floor.y) {
       s.y = floor.y;
       this.floorNormalY = floor.normal[1];
-      this.land(forward, right);
+      if (s.vy <= 0) this.land(forward, right);
     }
   }
 
@@ -1215,11 +1221,15 @@ export class Walker {
     }
   }
 
-  /** An airborne sub-step: the walls push, and a column with no floor under the feet at all is not entered. */
+  /**
+   * An airborne sub-step: the walls push, and a column with no floor within `step_height` over the feet is not
+   * entered -- the step's own allowance, so a flight up a slope goes on over ground rising under it (the tick's
+   * floor then lifts the feet onto it, `fall`), and the wind-up's sunk feet still move.
+   */
   private airStep(dx: number, dz: number): void {
     const s = this.state;
     const [x, z] = this.slide(s.x + dx, s.z + dz, s.x, s.z);
-    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + (this.jumpDelay > 0 ? SEAL_TUNING.stepHeight : 0) + 1e-9)) return;   // the wind-up's feet sit under the floor
+    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + SEAL_TUNING.stepHeight + 1e-9)) return;
     s.x = x; s.z = z;
   }
 
