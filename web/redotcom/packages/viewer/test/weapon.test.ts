@@ -249,6 +249,16 @@ describe('the reload\'s one table, the page\'s and the room\'s (MJ-1; FUN_005a82
     expect(reloadMoving(0, -21, 0)).toBe(true);                                // vy is in the game's sum
   });
 
+  it('one moving decision: the page\'s body (play.ts) asks reloadMoving, as the room does, and keeps no copy of the test', () => {
+    // Release review B10 carry-over: play.ts:224 (the reload's length) and :327 (the pose's moving flag) computed the
+    // FUN_005a82e0 sum inline; both now call reloadClip.ts's reloadMoving, so page and room cannot diverge.
+    const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../src/play.ts'), 'utf8');
+    expect(src.match(/\breloadMoving\(/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(src).toMatch(/import \{[^}]*\breloadMoving\b[^}]*\} from '\.\/reloadClip'/);
+    expect(src).not.toMatch(/RELOAD_STILL_SPEED/);
+    expect(src).not.toMatch(/\.vy \* [\w.]*\.vy/);                         // no inline speed-squared sum
+  });
+
   it('with no clips, or the clip missing, the lock is RELOAD_SECONDS_PLACEHOLDER (2 s)', () => {
     expect(RELOAD_SECONDS_PLACEHOLDER).toBe(2);
     expect(reloadLockSeconds(null, table, 'stand', false)).toBe(2);
