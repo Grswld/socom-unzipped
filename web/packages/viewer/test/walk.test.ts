@@ -747,13 +747,18 @@ describe('the jump, as the decompilation has it (research 80)', () => {
       top = Math.max(top, w.state.y);
     }
     expect(firstRise).toBe(Math.round(JUMP_DELAY / TICK));         // the impulse on the tick the 0.1 s runs out
-    // FUN_0059b440 adds g dt to the fall speed before it moves the height: at 60 Hz the top is 12.9 (13.58 in closed form)
-    let apex = 0, h = 0;
+    // Through the wind-up the fall runs from 0 with the landing off: the feet sink 0.98 in five ticks (FUN_0059b440,
+    // FUN_0059ad30). Then FUN_0059b440 adds g dt to the fall speed before it moves the height: the rise tops out
+    // 12.92 over where it began (13.58 in closed form), 11.95 over the floor.
+    let sink = 0, fall = 0;
+    for (let i = 0; i < Math.round(JUMP_DELAY / TICK) - 1; i++) { fall += 235 * TICK; sink += fall * TICK; }
+    expect(sink).toBeCloseTo(0.98, 2);
+    let apex = -sink, h = -sink;
     for (let v = runningJumpSpeed() - 235 * TICK; v > 0; v -= 235 * TICK) { h += v * TICK; apex = h; }
     expect(top).toBeCloseTo(apex, 6);
-    expect(apex).toBeCloseTo(12.9, 1);
+    expect(apex).toBeCloseTo(11.95, 1);
     const air = ticks * TICK;
-    expect(air).toBeGreaterThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 - 2 * TICK);   // 0.78 s
+    expect(air).toBeGreaterThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 - 2 * TICK);   // 0.75 s from the sunk feet
     expect(air).toBeLessThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 + 2 * TICK);
     expect(w.state.x - x0).toBeCloseTo(v0 * air, 0);               // the take-off's 65, straight on
     expect(w.state.z).toBeCloseTo(0, 9);
@@ -903,5 +908,112 @@ describe('NoInterrupt and the heavy falls (FUN_00587c20, FUN_005af590, FUN_005ac
     expect(moved).toBeLessThan(16.7);
     for (let i = 0; i < 2; i++) w.tick(FORWARD);
     expect(w.action).toBeNull();
+  });
+});
+
+describe('round 3: the turn axis cuts, the actions move by their root key by key (FUN_00550ef0, FUN_0028c250)', () => {
+  const plain = world([floor(-200, -200, 200, 200, 0)]);
+  const at = (): Walker => {
+    const w = new Walker(plain);
+    w.place(0, 0, 0);
+    w.state.yaw = 0;                                                // facing -z
+    return w;
+  };
+
+  it('the turn axis past 0.1 (the turn over turn_maxrate) cuts an interruptible action as the stick does', () => {
+    const w = at();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    w.jump();
+    while (w.airborne) w.tick(STILL);
+    expect(w.action?.name).toBe('land');
+    w.turn = 0.1 * SEAL_TUNING.turnMaxRate;                          // exactly 0.1: not past it
+    w.tick(STILL);
+    expect(w.action?.name).toBe('land');
+    w.turn = 0.3;
+    w.tick(STILL);
+    expect(w.action).toBeNull();
+  });
+
+  it('a transition carries the mover by the root key it is on, not the clip\'s mean', () => {
+    const w = at();
+    const n = ACTION_CLIPS.standToCrouch.frames;
+    // made-up root keys: still for the first half of the keys, then 1 a key along -z (ahead)
+    const keys = new Float32Array(2 * n);
+    for (let i = 0; i < n; i++) keys[2 * i + 1] = -Math.max(0, i - Math.floor(n / 2));
+    w.actionRoots = new Map([['seal_stand2crouch', keys]]);
+    w.changeStance('crouch');
+    const early = w.actionVelocity('standToCrouch', 0.05, false);
+    expect(early).toEqual([0, 0]);
+    const late = w.actionVelocity('standToCrouch', ACTION_SECONDS.standToCrouch * 0.9, false);
+    expect(late[1]).toBeCloseTo(-n / ACTION_CLIPS.standToCrouch.playback, 6);   // 1 a key x keys / playback
+    // backwards (getting up) the phase runs from the end and the motion turns round
+    expect(w.actionVelocity('standToCrouch', 0.05, true)[1]).toBeCloseTo(n / ACTION_CLIPS.standToCrouch.playback, 6);
+    let z = w.state.z;
+    for (let i = 0; i < 10; i++) w.tick(STILL);
+    expect(w.state.z).toBeCloseTo(z, 9);                            // the still half: no carry
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.standToCrouch / TICK) - 12; i++) w.tick(STILL);
+    expect(w.state.z).toBeLessThan(z - 5);                          // then carried ahead
+    z = w.state.z;
+  });
+
+  it('with no root keys, each clip\'s mean travel stands in', () => {
+    const w = at();
+    const [x, z] = w.actionVelocity('crouchToProne', 0.2, false);
+    const c = ACTION_CLIPS.crouchToProne;
+    expect(x).toBeCloseTo(c.travel[0] / ACTION_SECONDS.crouchToProne, 9);
+    expect(z).toBeCloseTo(c.travel[1] / ACTION_SECONDS.crouchToProne, 9);
+  });
+});
+
+describe("the running jump's clips: the launch over the flight, the fall only past it, no stand at the landing (FUN_005af930)", () => {
+  const plain = world([floor(-400, -400, 400, 400, 0)]);
+  const at = (y = 0): Walker => {
+    const w = new Walker(y === 0 ? plain : world([floor(-400, -400, 400, 400, y)]));
+    w.place(0, y, 0);
+    w.state.yaw = 0;                                                // facing -z
+    return w;
+  };
+  /** The action or, with none, the ground state each tick: what the animator is handed. */
+  const shown = (w: Walker): string => w.action?.name ?? `ground:${w.ground.state}`;
+
+  it('a flat running jump holds Jump launch the whole flight and lands straight into the run', () => {
+    const w = at();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    expect(w.ground.state).toBe('stand');
+    expect(w.jump()).toBe(true);
+    const seq: string[] = [];
+    while (w.airborne) { w.tick(FORWARD); seq.push(shown(w)); }
+    for (let i = 0; i < 5; i++) { w.tick(FORWARD); seq.push(shown(w)); }
+    const runs = seq.filter((x, i) => i === 0 || x !== seq[i - 1]);
+    // the launch (2.21 s) outlasts the 0.75 s flight: no Jump fall; the landing tick poses the run it left in
+    expect(runs).toEqual(['launch', 'ground:stand']);
+    expect(ACTION_SECONDS.launch).toBeCloseTo(2.4 * (24 / 25) ** 2, 9);
+    expect(w.landing?.clip).toBeNull();
+  });
+
+  it('a flight outlasting the launch gives way to Jump fall (FUN_0057e130 -> FUN_0057e050), then lands', () => {
+    // a running jump off a 700-unit drop: the floor is only far under the take-off's edge
+    const w = new Walker(world([floor(-400, -400, 400, -20, 0), floor(-400, -20, 400, 400, 700)]));
+    w.place(0, 700, 60);
+    w.state.yaw = 0;
+    for (let i = 0; i < 60 && w.state.z > 0; i++) w.tick(FORWARD);
+    expect(w.airborne).toBe(false);
+    expect(w.jump()).toBe(true);
+    const seq: string[] = [];
+    let ticks = 0;
+    while (w.airborne && ticks < 2000) { w.tick(FORWARD); seq.push(shown(w)); ticks++; }
+    const runs = seq.filter((x, i) => i === 0 || x !== seq[i - 1]);
+    expect(runs.slice(0, 2)).toEqual(['launch', 'fall']);
+    expect(seq.indexOf('fall')).toBe(Math.ceil(ACTION_SECONDS.launch / TICK - 1e-6) - 1);
+  });
+
+  it('a walk-off still falls in Jump fall, and lands on the run with the stick held', () => {
+    const w = new Walker(world([floor(-400, -400, 400, -20, 0), floor(-400, -20, 400, 400, 20)]));
+    w.place(0, 20, 60);
+    w.state.yaw = 0;
+    const seq: string[] = [];
+    for (let i = 0; i < 200; i++) { w.tick(FORWARD); seq.push(shown(w)); }
+    const runs = seq.filter((x, i) => i === 0 || x !== seq[i - 1]);
+    expect(runs).toEqual(['ground:stand', 'fall', 'ground:stand']);
   });
 });

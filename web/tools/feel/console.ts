@@ -114,9 +114,9 @@ export const CONSOLE = {
   /** The play model (`FUN_0028c4f0`): a one-shot's phase at 1 / (playback x (n-1)/n); key 12 is phase 0.6. */
   standJumpTopSeconds: c(0.6 * 1.1 * 19 / 20, 'decomp', 'FUN_0028c4f0 / FUN_0028ada0: key 12 of seal_jump at phase 0.6, 1.1 x 19/20 s a pass (web research 80 section 3)'),
   standJumpSeconds: c(1.1 * (19 / 20) ** 2, 'decomp', 'seal_jump plays its keys 0-19 in 1.1 x (19/20)^2 = 0.993 s (web research 80 section 0)'),
-  /** The running jump: 79.9 up 0.1 s after the take-off, 2.4 g; 12.9 high at 60 Hz, 0.78 s in the air. */
+  /** The running jump: 79.9 up 0.1 s after the take-off, 2.4 g; 11.95 high at 60 Hz (the wind-up sinks 0.98 first), 0.75 s in the air. */
   runJumpDelay: c(0.1, 'decomp', 'actor+0x1360 = 0.1 (FUN_0057e1b0), web research 80 section 0'),
-  runJumpTop: c(12.9, 'decomp', 'jump_factor 0.85 x gravity 235 x 0.4 = 79.9 u/s, the 60 Hz fall step (web research 80 section 0)'),
+  runJumpTop: c(11.95, 'decomp', 'jump_factor 0.85 x gravity 235 x 0.4 = 79.9 u/s, the 60 Hz fall step, from a wind-up sunk 0.98 (web research 80 sections 0, 6)'),
   runJumpAir: c(45 / 60, 'decomp', 'take-off to landing on flat ground at 60 Hz: 5 ticks of the 0.1 s wait, 40 of flight (web research 80 section 0 quotes 0.78, the closed form 0.1 + 2 x 79.9 / 235)'),
   runRootY: c(10.305, 'asset', 'MOTION_P.ZAR seal_run skel_root y; FUN_0029a950 reads the live root (research 17 section 3)'),
   proneRootY: c(2.168, 'asset', 'MOTION_P.ZAR seal_prone skel_root y (the camera ramp\'s floor is 2.169155)'),

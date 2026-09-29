@@ -5,7 +5,7 @@ import {
 } from '@s2u/scene';
 import type { GroundWish, Pose } from './camera';
 import { firstPersonHeight, firstPersonPeekShift, pitchLimits, PlayerCamera, INIT_AIM_PITCH, type Vec3 } from './playerCamera';
-import { airBands, oneShotSeconds } from './locomotion';
+import { airBands, oneShotSeconds, SEAL_ANIMS } from './locomotion';
 import { landingKind, sealTuning, type LandingKind } from './physics';
 import type { TraversalPose } from './animator';
 
@@ -478,6 +478,7 @@ export function runningJumpSpeed(t: { jump_factor: number; gravity: number } = J
  */
 export const ACTION_CLIPS = Object.freeze({
   jump: { playback: 1.1, frames: 20, noInterrupt: 0.7, travel: [0, 0] },
+  launch: { playback: 2.4, frames: 25, noInterrupt: 1, travel: [0, 0] },
   land: { playback: 0.7, frames: 20, noInterrupt: 0, travel: [0.19, -2.09] },
   landHard: { playback: 1, frames: 20, noInterrupt: 0.35, travel: [0.19, -2.09] },
   standToCrouch: { playback: 0.65, frames: 27, noInterrupt: 1, travel: [-1.2, 1.27] },
@@ -526,7 +527,7 @@ export interface MoverAction {
   serial: number;
   /** Seconds since it started. */
   t: number;
-  /** How long it holds the mover, or null (the launch and the fall hold until the landing). */
+  /** How long it holds the mover, or null (the fall holds until the landing; the launch its clip's run, or the landing). */
   seconds: number | null;
   /** A transition played backwards: getting up. */
   reversed: boolean;
@@ -639,6 +640,8 @@ export class Walker {
   private floorNormalY = 1;
   /** The ground state as it last ran (`GroundMotion`). */
   private ground_: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
+  /** The ground state the feet left the floor in: the play the launch or the fall was pushed over (`land`). */
+  private groundBefore: GroundMotion = { state: 'idle', forward: 0, right: 0, cls: -1 };
 
   /** The stance (`actor+0x174`): which ground state runs and which bands it reads (`STANCE`). */
   get stance(): Stance {
@@ -701,7 +704,45 @@ export class Walker {
     const c = ACTION_CLIPS[a.name];
     const phase = a.t / (c.playback * ((c.frames - 1) / c.frames));
     if (!(phase > c.noInterrupt)) return false;
-    return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK;
+    // FUN_00550ef0 418183-418186: the move axes (actor+0x240, +0x244) and the turn axis (actor+0x23c, the turn over
+    // turn_maxrate), any past 0.1.
+    return Math.abs(forward) > INTERRUPT_STICK || Math.abs(right) > INTERRUPT_STICK
+      || Math.abs(this.turn / SEAL_TUNING.turnMaxRate) > INTERRUPT_STICK;
+  }
+
+  /**
+   * The actor's turn, radians a second, left positive (`actor+0x48`; `WalkMode` sets it from the look each frame): the
+   * turn axis `actor+0x23c` is this over `turn_maxrate`, and past 0.1 it cuts an interruptible action as the move
+   * stick does (`FUN_00550ef0`).
+   */
+  turn = 0;
+
+  /**
+   * The action clips' root travel per key, x and z in the model's frame, by clip name (`WalkMode.setActionRoots`, from
+   * the pack the page loads): what `FUN_0028c250` reads the velocity off. Without them each clip's mean
+   * (`ACTION_CLIPS[..].travel`) stands in.
+   */
+  actionRoots: ReadonlyMap<string, Float32Array> | null = null;
+
+  /**
+   * `FUN_0028c250` through `FUN_00289bb0` (decomp 134145-134183, 132691-132756) for an action on the mover: the root's
+   * change from the key the phase is on to the next (the last key paired with the one before), times the keys over
+   * `playback` -- units a second in the model's frame, (x right, z behind) -- backwards for a transition played
+   * backwards. The phase is the one-shot's `t / (playback (n - 1) / n)`, from its end when backwards.
+   */
+  actionVelocity(name: keyof typeof ACTION_CLIPS, t: number, reversed: boolean): [number, number] {
+    const c = ACTION_CLIPS[name], n = c.frames, end = (n - 1) / n;
+    const keys = this.actionRoots?.get(SEAL_ANIMS[name]);
+    if (!keys || keys.length < 2 * n) {
+      const v = (reversed ? -1 : 1) / ACTION_SECONDS[name];
+      return [c.travel[0] * v, c.travel[1] * v];
+    }
+    const run = t / (c.playback * end);
+    const phase = Math.min(end, Math.max(0, reversed ? end - run : run));
+    let a = Math.min(n - 1, Math.floor(phase * n + 1e-9)), b = a + 1;
+    if (b >= n) { b = n - 1; a = Math.max(0, n - 2); }
+    const k = ((reversed ? -1 : 1) * n) / c.playback;
+    return [(keys[2 * b]! - keys[2 * a]!) * k, (keys[2 * b + 1]! - keys[2 * a + 1]!) * k];
   }
 
   /** The body in use (`STANCE[posture]` gives its root and column): `stand` while a crouch runs at full stick. */
@@ -798,7 +839,7 @@ export class Walker {
       this.jumping = true;
       this.jumpDelay = JUMP_DELAY;
       this.jumpLock = JUMP_LOCK;
-      this.start('launch', null);
+      this.start('launch', ACTION_SECONDS.launch);             // its clip's 2.21 s, or the landing: whichever first
     } else {
       this.start('jump', ACTION_SECONDS.jump);
     }
@@ -807,6 +848,7 @@ export class Walker {
 
   /** Leaves the floor: the velocity across it carried (`actor+0x1350 = +0x38`), the fall from 0. */
   private takeOff(): void {
+    this.groundBefore = this.ground_;
     this.inAir = true;
     this.landing_ = null;
     this.airTime = 0;
@@ -885,15 +927,14 @@ export class Walker {
     const held = this.action_?.name;
     if (held === 'hit' || held === 'hitStomach' || held === 'landDeath' || held === 'getUp'
       || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne') {
-      // The clip's own root motion carries the mover (FUN_0028c250): its mean over the clip, along the facing --
-      // backwards for a transition played backwards (getting up). The ground state does not run (FUN_005870e0).
+      // The clip's own root motion carries the mover (FUN_0028c250), key by key, along the facing -- backwards for a
+      // transition played backwards (getting up). The ground state does not run (FUN_005870e0).
       s.stickForward = forward; s.stickRight = right;
       this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-      const [tx, tz] = ACTION_CLIPS[held].travel;
-      const v = (this.action_!.reversed ? -1 : 1) / ACTION_SECONDS[held];
+      const [tx, tz] = this.actionVelocity(held, this.action_!.t, this.action_!.reversed);
       const yaw = (s.yaw * Math.PI) / 180, c = Math.cos(yaw), sn = Math.sin(yaw);
-      s.vx = (tx * c + tz * sn) * v;
-      s.vz = (-tx * sn + tz * c) * v;
+      s.vx = tx * c + tz * sn;
+      s.vz = -tx * sn + tz * c;
       this.move(s.vx * dt, s.vz * dt);
       return;
     }
@@ -1029,19 +1070,29 @@ export class Walker {
     const s = this.state;
     s.stickForward = 0; s.stickRight = 0;
     this.ground_ = { state: 'idle', forward: 0, right: 0, cls: -1 };
-    if (!this.jumping && this.action_?.name !== 'fall') this.start('fall', null);        // FUN_0057e050: `Jump fall`
+    // FUN_005af930 (466729-467019), the airborne branch: with neither action 8 (`Jump launch`) nor 9 (`Jump fall`)
+    // current, FUN_0057e130 -> FUN_0057e050 pushes `Jump fall`. The launch is `NoInterrupt ()` and ends only with its
+    // play (FUN_00582540 on FUN_0028c6e0's end, 2.21 s) or the landing's pop, so a flat running jump (0.75 s) lands in
+    // the launch -- about its key 8 -- and `seal_runningjump_in_air` plays only on a walk-off or a flight outlasting
+    // the launch [reading: the game pushes the fall the tick after the launch's pop; here the same tick].
+    const held = this.action_?.name;
+    if (held !== 'fall' && held !== 'launch') this.start('fall', null);                  // FUN_0057e050: `Jump fall`
     [s.vx, s.vz] = this.carried;
     this.airTime += dt;
     this.move(s.vx * dt, s.vz * dt);
+    let windUp = false;
     if (this.jumpDelay > 0) {
+      // FUN_005af930 then FUN_0059b440: through the wind-up the fall runs from 0 with the landing off (FUN_0059ad30
+      // wants actor+0x1360 <= 0) -- the feet sink 0.98 in five ticks -- and on the tick the delay runs out the fall
+      // speed becomes the impulse before this tick's step: 79.9 - g dt up, back over the floor at once.
       this.jumpDelay -= dt;
-      if (this.jumpDelay > 1e-9) { s.vy = 0; return; }
-      this.jumpDelay = 0;
-      s.vy = runningJumpSpeed();
+      if (this.jumpDelay > 1e-9) windUp = true;
+      else { this.jumpDelay = 0; s.vy = runningJumpSpeed(); }
     }
     s.vy -= SEAL_TUNING.gravity * dt;
     const from = s.y;
     s.y += s.vy * dt;
+    if (windUp) return;
     let floor: Hit | null = null;
     for (const h of probeGround(this.grid, s.x, s.z)) if (h.y <= from + 1e-9 && (floor === null || h.y > floor.y)) floor = h;
     if (floor && s.vy <= 0 && s.y <= floor.y) {
@@ -1074,7 +1125,11 @@ export class Walker {
     this.jumpLock = JUMP_LOCK;
     if (clip) this.start(clip, ACTION_SECONDS[clip]);
     else {
+      // FUN_00589aa0 pops the launch or the fall, and FUN_0028da00 hands back the play it was pushed over -- the run
+      // the SEAL left the floor in -- so the landing tick poses the locomotion, never a frame of the stand; the next
+      // tick's ground state takes the stick on (FUN_005af930's no-clip branch, 0x248 = 0x244).
       this.action_ = null;
+      this.ground_ = this.groundBefore;
       s.stickForward = forward; s.stickRight = right;
     }
   }
@@ -1083,7 +1138,7 @@ export class Walker {
   private airStep(dx: number, dz: number): void {
     const s = this.state;
     const [x, z] = this.slide(s.x + dx, s.z + dz, s.x, s.z);
-    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + 1e-9)) return;
+    if (!probeGround(this.grid, x, z).some((h) => h.y <= s.y + (this.jumpDelay > 0 ? SEAL_TUNING.stepHeight : 0) + 1e-9)) return;   // the wind-up's feet sit under the floor
     s.x = x; s.z = z;
   }
 
@@ -1399,6 +1454,13 @@ export class WalkMode {
     };
   }
 
+  /** The action clips' root keys, by clip name (`./play` hands them over from the pack): `Walker.actionRoots`. */
+  setActionRoots(roots: ReadonlyMap<string, Float32Array> | null): void {
+    this.actionRoots = roots;
+    if (this.walker) this.walker.actionRoots = roots;
+  }
+  private actionRoots: ReadonlyMap<string, Float32Array> | null = null;
+
   /**
    * The body's posed skeleton root over the feet (`./play`, after each animator step), or null to fall back on the
    * stance's measured root (`rootY`): what the camera stands its target on from the next tick.
@@ -1431,6 +1493,7 @@ export class WalkMode {
       this.turnRate = (turn * Math.PI) / 180 / dt;
     }
     this.lastYaw = yaw;
+    w.turn = this.turnRate;
     w.advance(dt, this.camera.groundWish(), () => this.cameraTick());
     this.stance_ = w.stance;                                     // TRAVERSAL SEAM: a move or the water may stand the SEAL up
     this.follow();
@@ -1549,6 +1612,7 @@ export class WalkMode {
   private stand(): boolean {
     if (!this.walker && this.ground) {
       this.walker = new Walker(groundGrid(this.ground));
+      this.walker.actionRoots = this.actionRoots;
       this.player = new PlayerCamera(this.walker.grid);
       this.attachMoves(this.walker);                              // TRAVERSAL SEAM
     }

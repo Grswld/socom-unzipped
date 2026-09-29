@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { parseRdr, rdrGet, Zar, type RdrNode } from '@s2u/archive';
 import type { MotionClip, MotionPart } from '@s2u/scene';
 import {
-  AXIS_DEAD, BLEND_TIME_DEFAULT, CROUCH_IDLES, MOTION_CLIPS, SEAL_ANIMS, SEAL_SETS, airBands, bandPick, crouchPlay, cycleTravel,
+  AXIS_DEAD, BLEND_TIME_DEFAULT, CROUCH_IDLES, MOTION_CLIPS, PISTOL_ANIMS, SEAL_ANIMS, SEAL_SETS, airBands, bandPick, crouchPlay, cycleTravel,
   entryOf, motionOf, nodeSpeed, oneShotSeconds, phaseRate, pronePlay, standPlay, stickSplit, type Motion, type MotionSets,
   type SetName,
 } from '../src/locomotion';
@@ -233,6 +233,20 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
     }
   });
 
+  it("PISTOL_ANIMS: each action's `Pistol <action>` in the Seal anim set (FUN_005e1a50's table), where there is one", () => {
+    const seal = animSet('Seal anim set');
+    const rifleOf = new Map<string, string>();                     // the rifle clip -> its action's name
+    for (const [type, clips] of seal) if (!type.startsWith('Pistol ') && !type.startsWith('Fire ')) rifleOf.set(clips[0]!, type);
+    const want: Record<string, string> = {};
+    for (const clip of MOTION_CLIPS) {
+      const type = rifleOf.get(clip);
+      if (!type) continue;
+      const pistol = seal.get(`Pistol ${type[0]!.toLowerCase()}${type.slice(1)}`);
+      if (pistol) want[clip] = pistol[0]!;
+    }
+    expect({ ...PISTOL_ANIMS }).toEqual(want);
+  });
+
   it('the crouch idles\' chances are the file\'s (0.3, 0.3, 0.4)', () => {
     const zar = readerc();
     const text = JSON.stringify(parseRdr(zar.data(zar.find('animset.rdr')!)));
@@ -242,7 +256,7 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
   it("ACTION_CLIPS are motion.rdr's playback and NoInterrupt, and MOTION_P.ZAR's key counts and root travel", () => {
     const table = motionTableFromArchive(new Uint8Array(readFileSync(READERC)))!;
     const names: Record<keyof typeof ACTION_CLIPS, string> = {
-      jump: SEAL_ANIMS.jump, land: SEAL_ANIMS.land, landHard: SEAL_ANIMS.landHard,
+      jump: SEAL_ANIMS.jump, launch: SEAL_ANIMS.launch, land: SEAL_ANIMS.land, landHard: SEAL_ANIMS.landHard,
       standToCrouch: SEAL_ANIMS.standToCrouch, crouchToProne: SEAL_ANIMS.crouchToProne, standToProne: SEAL_ANIMS.standToProne,
       hit: SEAL_ANIMS.hit, hitStomach: SEAL_ANIMS.hitStomach, landDeath: SEAL_ANIMS.landDeath, getUp: SEAL_ANIMS.getUp,
     };
@@ -262,6 +276,22 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
         expect(root[last]! - root[0]!, n).toBeCloseTo(c.travel[0], 1);
         expect(root[last + 2]! - root[2]!, n).toBeCloseTo(c.travel[1], 1);
       }
+    }
+  });
+
+  it("the within-stride shape: every locomotion clip's root moves the same each key -- the game's per-key velocity is the mover's", () => {
+    // FUN_0028c250 moves the SEAL by the root's change between the two keys the phase is on (FUN_00289bb0); on every
+    // set's clip and the crawl that change is the same to 1.5 % across the cycle, so the per-key velocity is the
+    // constant target speed the mover runs at (walk.ts `locomotion`).
+    const names = [...Object.values(SEAL_SETS).flat(), SEAL_ANIMS.proneCrawl];
+    const clips = clipsFromPack(new Uint8Array(readFileSync(PACK)), names);
+    expect(clips.length).toBe(names.length);
+    for (const c of clips) {
+      const t = c.parts.find((p) => p.name === 'skel_root')!.translations;
+      const d: number[] = [];
+      for (let i = 0; i + 1 < c.frameCount; i++) d.push(Math.hypot(t[3 * i + 3]! - t[3 * i]!, t[3 * i + 5]! - t[3 * i + 2]!));
+      const mean = d.reduce((a, b) => a + b, 0) / d.length;
+      for (const x of d) expect(Math.abs(x - mean) / mean, c.name).toBeLessThan(0.015);
     }
   });
 
