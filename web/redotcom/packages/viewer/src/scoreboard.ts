@@ -14,6 +14,16 @@ import type { HudQuad, HudTri } from './hud';
 
 /** The panel's top: the message window's bottom (91) + its YMargin (8) + 5 (`0x436aa8`/`0x436ae8`). */
 export const SCORE_TOP = 104;
+/**
+ * The Modern presentation's lift, in the 640x448 frame's pixels (owner ruling 2026-09-29: "try to bump up the location
+ * of the scoreboard a bit when in modern mode"): the whole scoreboard -- the panel, the team bars, the rows, GAME
+ * DETAILS and SPECTATORS -- drawn this much higher. 4 is what the gap to what sits above it allows: the message window
+ * (`HUD_LAYOUT.message`: its panel y 0..99, its newest line's glyph cells, drop shadow included, down to ~99.9 at scale
+ * 1), centre-anchored and height-scaled like the board, so the gap is the same at every aspect; the board's top at 100
+ * stays clear of both. The compass above the right end is hidden while the board is up. The PS2 presentation keeps
+ * the game's 104 (lift 0).
+ */
+export const MODERN_SCOREBOARD_LIFT = 4;
 export const SCORE_LAYOUT = {
   /** The team tables' nine-slice over x 153..630, y 104..430 (`FUN_0022ae90` L79223), alpha 100. */
   panel: { x0: 153, x1: 630, y0: SCORE_TOP, y1: 430, corner: 20, alpha: 100 / 128 },
@@ -92,14 +102,16 @@ type Rgba4 = [number, number, number, number];
 
 /**
  * The scoreboard's quads (layer 1 of the HUD pass) on a frame: pure. `sizes` are the HUD's bitmaps; `white` the
- * untextured rects' bitmap. Centred on the frame, scaled by height / 448 like the HUD.
+ * untextured rects' bitmap. Centred on the frame, scaled by height / 448 like the HUD. `lift` raises all of it by that
+ * many frame pixels: the Modern presentation's `MODERN_SCOREBOARD_LIFT`, 0 (the game's place) for the PS2 one.
  */
 export function scoreboardLayout(
   frame: { width: number; height: number }, info: ScoreboardInfo, sizes: Record<string, { width: number; height: number }>,
+  lift = 0,
 ): { quads: HudQuad[]; tris: HudTri[] } {
   const s = frame.height / 448;
   const tris: HudTri[] = [];
-  const X = (x: number): number => frame.width / 2 + (x - 320) * s, Y = (y: number): number => y * s;
+  const X = (x: number): number => frame.width / 2 + (x - 320) * s, Y = (y: number): number => (y - lift) * s;
   const quads: HudQuad[] = [];
   const L = SCORE_LAYOUT;
   const panel = sizes['newweapnbkrnd.tif'];

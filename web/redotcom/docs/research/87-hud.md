@@ -266,6 +266,7 @@ action prompts, the reticle and the timer every frame.
 | satchel | `hud_satchel.tif` on the row of the carrier of item 0x9a | x 200..216, baseline - 12 .. + 4 | -- |
 | GAME DETAILS | a (64, 128, 64) `newweapnbkrnd` strip y 104..129 over its body y 129..229; "GAME DETAILS" (0x3e57c0) at (20, 124), scale 1, alpha 90; three lines at x 24, y 145 / 165 / 185, scale 0.8, (115, 115, 115) alpha 110, cut with "-" to 118: online the lobby, the game's name and its type (1 BREACH, 2 DEMOLITION, 3 ESCORT, 4 EXTRACT, 5 SUPPRESSION); LAN "LAN game", the name, the type (`FUN_0022ac30` L79186) | x 10..152 | strip alpha 80 |
 | SPECTATORS | the same strip y 229..254, "SPECTATORS" (0x3e57b0) at (20, 249); up to 8 names at (24, 270 + 16.8 i), scale 0.8 | x 10..152, body to 430 | -- |
+| Modern place (owner ruling 2026-09-29: "try to bump up the location of the scoreboard a bit when in modern mode") | the whole board -- panel, bars, rows, GAME DETAILS, SPECTATORS -- raised by `MODERN_SCOREBOARD_LIFT` 4 in the Modern presentation only (`scoreboard.ts`); the PS2 presentation keeps the game's place | top 100: clear of the message window above (panel to 99, its newest line's glyph cells to ~99.9), the same at every aspect (both centre-anchored, height-scaled) | -- |
 
 The draw order: the team bars, the panel, the details' body and header, "GAME DETAILS", the stripes, the teams'
 strings, the detail lines, the spectators' panels and names, the satchel last.
