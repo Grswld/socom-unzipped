@@ -11,6 +11,7 @@
 	}
 	respond @metrics_public "forbidden" 403
 
-	# /health, /ws and the rest: WebSocket upgrades pass through reverse_proxy on their own.
+	# Public (owner ruling 2026-09-29): /health, /rooms (anonymous per-room counts, CORS *) and /ws; WebSocket
+	# upgrades pass through reverse_proxy on their own. Caddy sets X-Forwarded-For to the client (TRUST_PROXY).
 	reverse_proxy mp:8787
 }

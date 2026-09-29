@@ -13,6 +13,8 @@ import { MatchServer } from './server';
  *   ROUND_SECONDS  W3.R11's round (the create-game default 360)                                360
  *   MAX_ROUNDS     mp_max_rounds: classic's match (first to (n + 1) >> 1) and the banner's count      11
  *   RULES          the rules of a hello that names none: respawn (W3.R11) or classic (respawn off)    respawn
+ *   TRUST_PROXY    1: behind a proxy that appends X-Forwarded-For (Caddy, cloudflared); the client's
+ *                  address (the vote ban's key) is its last entry. Unset: the header is never read   unset
  */
 
 const env = process.env;
@@ -33,6 +35,7 @@ const server = new MatchServer({
   maps: (env['MAPS'] ?? '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean),
   room: { idleKickMs: num('IDLE_KICK_MS', 240_000), roundSeconds: num('ROUND_SECONDS', 360), maxRounds: num('MAX_ROUNDS', 11) },
   rules: parseRules(env['RULES']) ?? 'respawn',
+  trustProxy: env['TRUST_PROXY'] === '1',
   log: (entry) => console.log(JSON.stringify({ t: new Date().toISOString(), ...entry })),
 });
 
