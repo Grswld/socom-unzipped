@@ -1,7 +1,7 @@
 import {
   AdditiveBlending, DataTexture, DoubleSide, Group, LinearFilter, Mesh, MeshBasicMaterial, NormalBlending, PlaneGeometry,
   RGBAFormat, Sprite, SpriteMaterial, UnsignedByteType, BufferGeometry, Float32BufferAttribute, Line,
-  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Material, type Texture,
+  LineBasicMaterial, LineSegments, Points, PointsMaterial, type Material, type Object3D, type Texture,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
@@ -398,6 +398,8 @@ export class GrenadeThrower {
     this.scorchBitmap = assets?.bitmaps?.[GRENADE_BITMAPS.scorch] ?? null;
     if (this.scorchMaterial) { (this.scorchMaterial as MeshBasicMaterial).map?.dispose(); this.scorchMaterial.dispose(); }
     this.scorchMaterial = null;
+    this.scorchWarm?.geometry.dispose();                // the warm-up's scorch was the old material's
+    this.scorchWarm = null;
     this.defaultMaterial = assets?.defaultMaterial ?? '';
     this.cast = null;
     this.castGrid = null;
@@ -1080,34 +1082,22 @@ export class GrenadeThrower {
   }
 
   /**
-   * What a blast first draws, for the page to compile with the map (research 90 §9, #23: a WebGL2 frame of 92-217 ms
-   * 0.1-0.26 s after a blast was the scorch's program linked there -- its material is made at the first blast, its
-   * quad carries a `color` lane no warmed draw had). A scorch with the material the blasts will use, far below the map,
-   * in this object for the compile call; `warmStarted` takes it out once the call has its list, `warmDone` frees it
-   * once the compile is over.
+   * What a throw and its blast first draw, for the page to compile with the SEAL (`ViewerRenderer.prepare`, research 90
+   * §9, #23): the arc's strip (hidden until R1 is held; the scene-wide warm-up reaches it last, after the throw on a
+   * quick one -- it linked at the hold) and a scorch with the material every blast will use (made at the first blast
+   * before, on a quad with a `color` lane no warmed draw had). The scorch is not in the scene: `prepare` parks it for
+   * the call, so no frame draws it.
    */
-  warmUp(): Group {
-    const g = new Group();
-    g.name = 'grenade warm-up';
-    g.position.set(0, -1e6, 0);
-    const mark = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
-    mark.name = 'scorch (warm-up)';
-    g.add(mark);
-    g.traverse((o) => { o.frustumCulled = false; });
-    this.object.add(g);
-    return g;
+  warmObjects(): Object3D[] {
+    if (!this.scorchWarm) {
+      this.scorchWarm = new Mesh(markGeometry(this.scorchGeometry), this.scorchMaterialOf());
+      this.scorchWarm.name = 'scorch (warm-up)';
+      this.scorchWarm.frustumCulled = false;
+    }
+    return [this.arcLine, this.scorchWarm];
   }
 
-  /** The compile call has its list (synchronously): the warm-up leaves the drawn scene. */
-  warmStarted(g: Group): void {
-    this.object.remove(g);
-  }
-
-  /** The compile is over: the warm-up's own quad goes (the material stays: the blasts draw with it). */
-  warmDone(g: Group): void {
-    this.object.remove(g);
-    for (const o of g.children) if (o instanceof Mesh) o.geometry.dispose();
-  }
+  private scorchWarm: Mesh | null = null;
 
   /**
    * The scorches' material: `grenade_mark.tif` in the marks' GS arithmetic (`markMaterial`: texel x the vertex colour,

@@ -65,12 +65,13 @@ describe('#23: the grenade\'s warm-up holds what its blast draws', () => {
     const rgba = { width: 2, height: 2, data: new Uint8ClampedArray(16).fill(128) };
     g.setMap(null, { models: [], bitmaps: { [GRENADE_BITMAPS.scorch]: rgba }, defaultMaterial: '' });
     g.setEffectPlayer(() => true);                     // the map's zAnim draws the explosion (`./effects`, warmed there)
-    // The page's warm-up, after the map: the group rides in the grenades' object for the compile call, then goes.
-    const warm = g.warmUp();
-    expect(g.object.children).toContain(warm);
-    g.warmStarted(warm);
-    expect(g.object.children).not.toContain(warm);
-    g.warmDone(warm);
+    // The page's warm-up, with the SEAL's (`warmWalk`): the scorch is not in the scene (the renderer parks it for the
+    // compile call), the arc's strip is, hidden until a throw is held.
+    const warm = g.warmObjects();
+    const inScene = drawsUnder([g.object]);
+    expect(warm.filter((o) => inScene.includes(o)).map((o) => o.name)).toEqual(['throwArc']);
+    expect(warm.some((o) => o.name === 'scorch (warm-up)' && o.parent === null)).toBe(true);
+    expect(g.warmObjects()).toEqual(warm);             // one set a map
     const before = new Set(drawsUnder([g.object]));
     g.select('Claymore');
     g.pull();
@@ -80,7 +81,7 @@ describe('#23: the grenade\'s warm-up holds what its blast draws', () => {
     const added = drawsUnder([g.object]).filter((o) => !before.has(o));
     expect(g.scorchMeshes()).toHaveLength(1);
     expect(added).toContain(g.scorchMeshes()[0]);
-    expect(unwarmed(added, [warm]).map((o) => o.name || o.type)).toEqual([]);
+    expect(unwarmed(added, warm).map((o) => o.name || o.type)).toEqual([]);
   });
 });
 

@@ -934,6 +934,8 @@ async function boot(): Promise<void> {
       b ? created.prepare([b.group], scene, fly.camera, { stale }) : null,
       b && map ? created.prepare([b.group], scene, map.camera, { stale, target: map.target, override: map.override }) : null,
       ...overlays.map((o) => created.prepare([o.scene], o.scene, o.camera, { screen: true })),
+      // Research 90 #23: the throw's arc and a blast's scorch, ahead of the scene-wide warm-up (which reaches them last).
+      created.prepare(grenade.warmObjects(), scene, fly.camera, { stale }),
     ]);
   };
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
@@ -1309,11 +1311,9 @@ function show(map: LoadedMap): void {
           if (stale()) return;
           warmedAt['props'] = performance.now();
           const g = effects.stats().loaded ? effects.warmUp() : null;
-          const blast = grenade.warmUp();              // research 90 #23: the scorch a blast lays, compiled now
           const warming = warmScene?.(built0.warmExtras());
           if (g) effects.warmStarted(g);
-          grenade.warmStarted(blast);
-          try { await warming; } finally { if (g) effects.warmDone(g); grenade.warmDone(blast); }
+          try { await warming; } finally { if (g) effects.warmDone(g); }
           if (!stale()) { worldWarmed = built0; warmedAt['world'] = performance.now(); }
         });
       });
