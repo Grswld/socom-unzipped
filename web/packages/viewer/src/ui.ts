@@ -4,6 +4,7 @@ import { viewerRevision, viewerRevisionBadge } from './revision';
 import { chooseTab, CONTROLS_TAB_KEY, controlGroups, padControlGroups, type ControlGroup, type ControlsTab, type FaceGlyph } from './controlsList';
 import type { LookOptions } from './look';
 import type { OnlineChoice } from './online';
+import { parseRules, type Rules } from './net/protocol';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -217,6 +218,25 @@ export class Ui {
   setOnline(choice: OnlineChoice | 'url'): void {
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#online button[data-online]'))) {
       b.setAttribute('aria-pressed', b.dataset['online'] === choice ? 'true' : 'false');
+    }
+  }
+
+  /** The Rules under Online (web sprint 3, classic mode; `./rules`): Respawn or Classic, the markup `#rules`. */
+  onRules(handler: (rules: Rules) => void): void {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#rules button[data-rules]'))) {
+      b.addEventListener('click', () => {
+        const rules = parseRules(b.dataset['rules']);
+        if (!rules || b.getAttribute('aria-pressed') === 'true') return;
+        this.setRules(rules);
+        handler(rules);
+      });
+    }
+  }
+
+  /** Puts the Rules switch on a choice. */
+  setRules(rules: Rules): void {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#rules button[data-rules]'))) {
+      b.setAttribute('aria-pressed', b.dataset['rules'] === rules ? 'true' : 'false');
     }
   }
 

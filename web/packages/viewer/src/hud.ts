@@ -11,6 +11,7 @@ import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
 import { DEFAULT_PLAYER, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
 import { roundScreenLayout, type RoundScreen } from './roundScreens';
+import { roundBanner } from './net/rules';
 
 /**
  * The in-game HUD (web/docs/research/87-hud.md): SOCOM II's own multiplayer HUD drawn over the world in walk mode --
@@ -182,7 +183,8 @@ export const ROUND_START = {
   fader: 1.5,
   fadeIn: 100 / 280, fadetime: 7, fadeOut: 100 / 280,
   messages: [
-    { at: 0.36, lines: (r: RoundInfo): BannerLine[] => [{ text: `STARTING ROUND ${r.round} OF ${r.rounds}`, scale: 1 }] },
+    // `FUN_001fb420` L57633-57648: "STARTING ROUND %d OF %d", or "PLAYING TIEBREAKER ROUND" past the round count.
+    { at: 0.36, lines: (r: RoundInfo): BannerLine[] => [{ text: roundBanner(r.round, r.rounds), scale: 1 }] },
     { at: 5.36, lines: (r: RoundInfo): BannerLine[] => [{ text: 'OBJECTIVE:', scale: 1 }, { text: r.objective, scale: 0.765 }] },
   ],
 } as const;
@@ -690,6 +692,17 @@ export class Hud {
   }
   /** What the round-start banner says (`DEFAULT_ROUND` until set). */
   setRound(round: RoundInfo): void { this.round = { ...round, objective: round.objective.toUpperCase() }; }
+  /**
+   * A round begins online (the server's `roundStart`, or a join): the round start plays again from its beginning --
+   * the fader, the ammo box's fade, "STARTING ROUND r OF n" and the objective -- and the message window's earlier
+   * lines go, as the MP exit state clears the three windows between rounds (`FUN_00223970` L76084-76086).
+   */
+  startRound(round: RoundInfo): void {
+    this.setRound(round);
+    this.sinceOn = 0;
+    this.fadeFrom = 0;
+    this.posts = [];
+  }
   setAmmo(rounds: number, capacity: number, spare: number, reloading = false): void {
     Object.assign(this.model, { rounds, capacity, spare, reloading });
   }

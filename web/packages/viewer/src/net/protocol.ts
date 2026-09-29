@@ -19,8 +19,10 @@ import { HOLD_CODES, type HoldClip } from '../mover';
  * Bumped on any change to the frames below; a client and server that disagree refuse each other at the hello.
  * 2 (2026-09-29): the snapshot carries the doors (`Snapshot.doors`), and a client asks for one with a `door` event.
  * 3 (2026-09-29): a command carries the scope's slowed stick (`Button.Scope`) and the kit's hold (`HOLD_SHIFT`).
+ * 4 (2026-09-29): the rules -- the hello asks for `respawn` or `classic` (rooms are keyed by map and rules), the welcome
+ * and the round start name the rules, the round and the game's round count, and classic's `eliminated` event.
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 /** The game's tick (`CGame::Tick`): the mover's `TICK`, the server's loop. */
 export const TICK_HZ = 60;
@@ -214,6 +216,19 @@ export interface DoorWire { valve: number; phase: number }
 export type Team = 'seal' | 'terrorist';
 export type Role = 'player' | 'spectator';
 
+/**
+ * A room's rules (`./rules`). `respawn`: SUPPRESSION with RESPAWN on, one timed round that is the match (W3.R11).
+ * `classic`: respawn off, the create-game default ("Respawn is disabled.", UIMnLOC 249-250; research 91 section 9):
+ * 11 rounds, first to 6, a round ended by elimination or by the clock (a draw), the dead spectating their living
+ * teammates until the next round.
+ */
+export type Rules = 'respawn' | 'classic';
+export const RULES_CHOICES: readonly Rules[] = ['respawn', 'classic'];
+/** A value off the wire or the address as rules, or null. */
+export function parseRules(value: unknown): Rules | null {
+  return value === 'respawn' || value === 'classic' ? value : null;
+}
+
 /** Client -> server, text frames. */
 export type ClientEvent =
   /**
@@ -221,7 +236,11 @@ export type ClientEvent =
    * place -- not queued, never promoted. Optional, so a page that leaves it out (and a server that does not know it) is
    * as before.
    */
-  | { type: 'hello'; version: number; name: string; map: string; watch?: boolean }
+  | {
+    type: 'hello'; version: number; name: string; map: string; watch?: boolean;
+    /** Protocol 4: the rules of the room to join (the server's default when absent). */
+    rules?: Rules;
+  }
   | { type: 'name'; name: string }
   | { type: 'ping'; t: number }
   /**
@@ -250,6 +269,12 @@ export type ServerEvent =
   | {
     type: 'welcome'; id: number; version: number; map: string; tick: number; role: Role; team: Team | null;
     queue: number; name: string; players: { id: number; name: string; team: Team }[];
+    /**
+     * Protocol 4: the room's rules, the round in play (`mp_round_count` + 1) and the game's round count (`mp_max_rounds`,
+     * the create-game default 11: the round-start banner's second number, `FUN_001fb420`); `ghost` for a player who
+     * joined a classic round in play and plays from the next ("You are a ghost.", research 91 section 12).
+     */
+    rules: Rules; round: number; rounds: number; ghost: boolean;
   }
   | { type: 'refused'; reason: string }
   | { type: 'pong'; t: number; tick: number }
@@ -293,8 +318,13 @@ export type ServerEvent =
     type: 'roundOver'; round: number; winner: Team | null; wins: { seal: number; terrorist: number }; matchOver: boolean;
     screens: { screen: 'roundComplete' | 'finalRound' | 'gameComplete'; seconds: number }[];
   }
-  /** W3.R11: a round begins (its number, its length in seconds, the match's wins so far). */
-  | { type: 'roundStart'; round: number; seconds: number; wins: { seal: number; terrorist: number } };
+  /** W3.R11: a round begins (its number, its length in seconds, the match's wins so far, the game's round count). */
+  | { type: 'roundStart'; round: number; seconds: number; wins: { seal: number; terrorist: number }; rounds: number }
+  /**
+   * Classic: a side has no living player (the maps' `objectives` script, sequence `start`): the winner, whose lines the
+   * page posts (`./rules` `eliminationLines`); the round's result follows 23 s later.
+   */
+  | { type: 'eliminated'; winner: Team };
 
 /** Which of the game's kill lines (research 91b section 3). */
 export type KillHow = 'weapon' | 'grenade' | 'suicide' | 'fall' | 'teamkill';

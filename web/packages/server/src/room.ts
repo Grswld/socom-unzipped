@@ -6,6 +6,7 @@ import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
   DoorSet, doorInReach, MoverSim, overall, ringFor, roundPath, Traversal, Walker, type MagazineRing,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
+  ELIMINATED_HOLD_S, eliminationWinner, isMatchOver, MAX_ROUNDS, ROUND_WATCH_S, type Rules,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
 } from '../../viewer/src/sim';
@@ -29,12 +30,18 @@ export interface RoomOptions {
   idleKickMs: number;
   /** W3.R11: the round and the match (the create-game defaults: 6 minutes, 11 rounds). */
   roundSeconds: number;
+  /**
+   * `mp_max_rounds` (the create-game default 11, `../../viewer/src/net/rules` `MAX_ROUNDS`): classic's match, and the
+   * round-start banner's count under both rules (a respawn match is one round whatever it says: `isMatchOver`).
+   */
   maxRounds: number;
+  /** The room's rules: `respawn` (W3.R11) or `classic` (respawn off, the create-game default). */
+  rules: Rules;
 }
 
 export const DEFAULT_OPTIONS: RoomOptions = {
-  // W3.R11: with RESPAWN on the original's match is one round (research 91 section 18); 11 is the game's with it off.
-  now: () => Date.now(), random: Math.random, idleKickMs: 4 * 60_000, roundSeconds: 6 * 60, maxRounds: 1,
+  // W3.R11: with RESPAWN on the original's match is one round (research 91 section 18), whatever `mp_max_rounds` says.
+  now: () => Date.now(), random: Math.random, idleKickMs: 4 * 60_000, roundSeconds: 6 * 60, maxRounds: MAX_ROUNDS, rules: 'respawn',
 };
 
 /** W3.R13: the idle kick's bounds (the owner's "3-5 minute kick timer"). */
@@ -129,9 +136,17 @@ class Player {
 }
 
 type RoundState =
-  | { phase: 'play'; endsAt: number }
+  /**
+   * Classic, before the match: a side has no player. The original launches only with players on both teams ("There must
+   * be players on both teams to launch", `FUN_002c3cf0` L165325-165352, UIMnLOC 350/356); a dedicated room has no lobby,
+   * so its players walk and respawn as in a respawn room until both sides are seated (CLASSIC_WAITING_PLACEHOLDER).
+   */
+  | { phase: 'waiting' }
+  | { phase: 'play'; startedAt: number; endsAt: number }
   /** "TIME EXPIRED": the world plays on until `resultAt`. */
   | { phase: 'expired'; resultAt: number }
+  /** Classic: a side eliminated; the world plays on until `resultAt` (`ELIMINATED_HOLD_S`), the clock still running. */
+  | { phase: 'decided'; resultAt: number; winner: Team; endsAt: number }
   | { phase: 'over'; nextAt: number; matchOver: boolean };
 
 export class Room {
@@ -166,7 +181,18 @@ export class Room {
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
     this.opts.idleKickMs = Math.min(IDLE_KICK_MAX_MS, Math.max(IDLE_KICK_MIN_MS, this.opts.idleKickMs));
     this.polys = groundPolygons(map.ground);
-    this.state = { phase: 'play', endsAt: this.opts.roundSeconds * TICK_HZ };
+    this.state = this.opts.rules === 'classic' ? { phase: 'waiting' } : { phase: 'play', startedAt: 0, endsAt: this.opts.roundSeconds * TICK_HZ };
+  }
+
+  get rules(): Rules { return this.opts.rules; }
+
+  /**
+   * Classic: a player seated while a round is in play is a ghost until the next ("You are a ghost.  You will play the
+   * next round as a real player.", 0x3e31c0/0x3e31f0, `FUN_001f97b0` L57047-57097; UIMnLOC 352-353: late joiners
+   * "appear as a ghost ... wait until the next round"): not alive, not placed, not counted a living player.
+   */
+  private seatsGhosts(): boolean {
+    return this.opts.rules === 'classic' && this.state.phase !== 'waiting';
   }
 
   // ---- the sessions ----
@@ -184,6 +210,7 @@ export class Room {
       type: 'welcome', id, version: PROTOCOL_VERSION, map: this.map.stem, tick: this.tick, role: m.role, team: m.team,
       queue: this.lobby.queuePosition(id), name: m.name,
       players: this.lobby.players().filter((p) => p.id !== id).map((p) => ({ id: p.id, name: p.name, team: p.team! })),
+      rules: this.opts.rules, round: this.round, rounds: this.opts.maxRounds, ghost: m.role === 'player' && this.seatsGhosts(),
     });
     if (m.role === 'player') this.addPlayer(id, m.team!);
     this.broadcastChanges(joined.changes, id);
@@ -210,6 +237,7 @@ export class Room {
   private addPlayer(id: number, team: Team): void {
     const p = new Player(id, team, this.newSim(), this.opts.now());
     this.players.set(id, p);
+    if (this.seatsGhosts()) { this.scoreDirty = true; return; }   // a ghost until the next round
     this.spawn(p, 'start');
   }
 
@@ -348,6 +376,14 @@ export class Room {
     const pool = (kind === 'respawn' ? this.map.respawns : this.map.slots).filter((s) => s.side === side);
     const list = pool.length ? pool : this.map.slots.filter((s) => s.side === side);
     if (!list.length) return null;
+    if (kind === 'start' && this.opts.rules === 'classic' && this.state.phase !== 'waiting') {
+      // A non-respawn game's round start takes the player slot's own record (`+0xfc8`, L158760-158787), not one at
+      // random. START_SLOT_LINK_PLACEHOLDER: the player slot's link to the lobby is not traced (research 91 section
+      // 4.2), so the player's place among its side's players (by id) stands in for it.
+      const k = [...this.players.values()].filter((q) => q.team === p.team).map((q) => q.id).sort((a, b) => a - b).indexOf(p.id);
+      const ordered = [...list].sort((a, b) => a.index - b.index);
+      return ordered.find((s) => s.index === k) ?? ordered[Math.max(0, k) % ordered.length]!;
+    }
     const enemies = [...this.players.values()].filter((q) => q !== p && q.alive && q.team !== p.team);
     if (kind === 'start' || !enemies.length) return list[Math.floor(this.opts.random() * list.length)]!;
     let best = list[0]!, bestD = -1;
@@ -375,6 +411,9 @@ export class Room {
     p.sim = sim;
     p.alive = true;
     p.health = freshHealth();
+    // A full kit at every spawn, a round's start included: `FUN_00598b90(p, 0)` (the round's reload, `FUN_00223680`
+    // L75931) rebuilds the actor through `FUN_00599b60` (L455158), whose `FUN_00599f00` (L455674) gives the type's
+    // `default_weapons` at `Ammo_Capacity` x `NumMags` (research 91 section 4.3). KIT_PLACEHOLDER: the kit itself.
     p.mags[0].fill(); p.mags[1].fill();
     p.lastLanding = null;
     p.grenades = freshGrenades();
@@ -384,6 +423,9 @@ export class Room {
   }
 
   private respawnReady(p: Player): boolean {
+    // Classic: no respawn -- the respawn option is off (`FUN_002a7560` L149405-149431); the dead spectate until the next
+    // round (`FUN_005979a0` L454484-454489). Only the waiting room (CLASSIC_WAITING_PLACEHOLDER) lets one up.
+    if (this.opts.rules === 'classic' && this.state.phase !== 'waiting') return false;
     return this.state.phase !== 'over' && p.diedAt >= 0 && (this.tick - p.diedAt) / TICK_HZ >= Math.max(RESPAWN_PRESS_S, RESPAWN_FADE_S);
   }
 
@@ -553,41 +595,98 @@ export class Room {
     this.broadcast(this.scoreEvent());                         // the rows change: the scoreboard follows (research 91 §11)
   }
 
-  // ---- the clock (W3.R11) ----
+  // ---- the clock (W3.R11; classic: the maps' `objectives` script, research 91 section 18) ----
 
   private clock(): void {
     const st = this.state;
-    if (st.phase === 'play') {
-      if (this.tick < st.endsAt) return;
-      this.state = { phase: 'expired', resultAt: this.tick + (EXPIRED_PLAY_S + RESULT_S) * TICK_HZ };
-      this.broadcast({ type: 'timeExpired' });
+    const classic = this.opts.rules === 'classic';
+    if (st.phase === 'waiting') {
+      if (this.sidesSeated()) this.startRound(true);
+    } else if (st.phase === 'play') {
+      if (!classic) {
+        if (this.tick < st.endsAt) return;
+        this.state = { phase: 'expired', resultAt: this.tick + (EXPIRED_PLAY_S + RESULT_S) * TICK_HZ };
+        this.broadcast({ type: 'timeExpired' });
+        return;
+      }
+      // `start` (WAIT 5, WAIT 10) and `mission_timer` (WAIT 15) watch nothing in the round's first 15 s.
+      if (this.tick < st.startedAt + ROUND_WATCH_S * TICK_HZ) return;
+      const winner = eliminationWinner(this.living());
+      if (winner) {
+        // `mp_score00` / `mp_score08` += 1 and `mp_winner` at once, `mission_timer` stopped, the two lines posted.
+        this.wins[winner]++;
+        this.state = { phase: 'decided', resultAt: this.tick + ELIMINATED_HOLD_S * TICK_HZ, winner, endsAt: st.endsAt };
+        this.broadcast({ type: 'eliminated', winner });
+        return;
+      }
+      // `mission_timer` at 00:00 calls `abort`: `round_count` += 1, `mp_winner` = 99 -- a draw, no message, no hold.
+      if (this.tick >= st.endsAt) this.endRound(null);
     } else if (st.phase === 'expired') {
       if (this.tick >= st.resultAt) this.endRound();
+    } else if (st.phase === 'decided') {
+      if (this.tick >= st.resultAt) this.endRound(st.winner);
     } else if (this.tick >= st.nextAt) {
-      if (st.matchOver) { this.round = 0; this.wins.seal = 0; this.wins.terrorist = 0; for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.score = 0; } }
-      this.round++;
-      this.state = { phase: 'play', endsAt: this.tick + this.opts.roundSeconds * TICK_HZ };
-      for (const p of this.players.values()) { p.roundScore = 0; p.diedAt = -1; this.spawn(p, 'start'); }
-      this.broadcast({ type: 'roundStart', round: this.round, seconds: this.opts.roundSeconds, wins: { ...this.wins } });
-      this.broadcast(this.scoreEvent());
+      if (classic && !this.sidesSeated()) {
+        // A side emptied: the original abandons the game (`FUN_002bc530` L161130-161140, `dlgNetAbandoned`); the room
+        // waits for both sides again (CLASSIC_WAITING_PLACEHOLDER).
+        this.resetMatch();
+        this.state = { phase: 'waiting' };
+        for (const p of this.players.values()) { p.diedAt = -1; this.spawn(p, 'start'); }
+        this.broadcast(this.scoreEvent());
+        return;
+      }
+      this.startRound(st.matchOver);
     }
   }
 
-  private endRound(): void {
+  /** Both sides have a player (dead or alive, ghosts included). */
+  private sidesSeated(): boolean {
+    let seal = 0, terrorist = 0;
+    for (const p of this.players.values()) { if (p.team === 'seal') seal++; else terrorist++; }
+    return seal > 0 && terrorist > 0;
+  }
+
+  /** `aiteam_00` / `aiteam_08`: each side's living players. */
+  private living(): { seal: number; terrorist: number } {
+    const n = { seal: 0, terrorist: 0 };
+    for (const p of this.players.values()) if (p.alive) n[p.team]++;
+    return n;
+  }
+
+  private resetMatch(): void {
+    this.round = 0; this.wins.seal = 0; this.wins.terrorist = 0;
+    for (const p of this.players.values()) { p.kills = 0; p.deaths = 0; p.score = 0; }
+  }
+
+  /** A round begins: the next, or a new match's first; everyone (the ghosts too) at a round-start slot with a full kit. */
+  private startRound(newMatch: boolean): void {
+    if (newMatch) this.resetMatch();
+    this.round++;
+    this.state = { phase: 'play', startedAt: this.tick, endsAt: this.tick + this.opts.roundSeconds * TICK_HZ };
+    for (const p of this.players.values()) { p.roundScore = 0; p.diedAt = -1; this.spawn(p, 'start'); }
+    this.broadcast({ type: 'roundStart', round: this.round, seconds: this.opts.roundSeconds, wins: { ...this.wins }, rounds: this.opts.maxRounds });
+    this.broadcast(this.scoreEvent());
+  }
+
+  /**
+   * A round's result. Respawn (`decided` absent): the side with more round points wins, level is a draw (`success2`).
+   * Classic: the elimination's winner (its round win already counted), or null for the clock's draw. Then the bonuses
+   * of the MP exit state, the same under both rules (`FUN_00223970` L76146-76165 tests no respawn flag): +5 to each
+   * player of `mp_winner`'s side (none on a draw), +1 to each living player.
+   */
+  private endRound(decided?: Team | null): void {
     const side = { seal: 0, terrorist: 0 };
     for (const p of this.players.values()) {
       if (p.alive) { p.score += 1; p.roundScore += 1; }         // +1 alive at the round's end
       side[p.team] += p.roundScore;
     }
-    const winner: Team | null = side.seal > side.terrorist ? 'seal' : side.terrorist > side.seal ? 'terrorist' : null;
-    if (winner) {
-      this.wins[winner]++;
-      for (const p of this.players.values()) if (p.team === winner) p.score += 5;   // +5 each on the winning side
-    }
-    const half = (this.opts.maxRounds + 1) >> 1;
-    // With RESPAWN on (one round) the map script sets `mp_game_over` unconditionally, a draw included (`success2`).
-    const matchOver = this.opts.maxRounds <= 1 || this.wins.seal >= half || this.wins.terrorist >= half
-      || (this.round >= this.opts.maxRounds && this.wins.seal !== this.wins.terrorist);
+    let winner: Team | null;
+    if (decided === undefined) {
+      winner = side.seal > side.terrorist ? 'seal' : side.terrorist > side.seal ? 'terrorist' : null;
+      if (winner) this.wins[winner]++;
+    } else winner = decided;
+    if (winner) for (const p of this.players.values()) if (p.team === winner) p.score += 5;   // +5 each on the winning side
+    const matchOver = isMatchOver(this.opts.rules, this.round, this.opts.maxRounds, this.wins);
     const screens = matchOver
       ? [{ screen: 'finalRound' as const, seconds: FINAL_ROUND_S }, { screen: 'gameComplete' as const, seconds: GAME_COMPLETE_S }]
       : [{ screen: 'roundComplete' as const, seconds: ROUND_COMPLETE_S }];
@@ -648,9 +747,10 @@ export class Room {
     void matchOver;
   }
 
-  /** Seconds left in the round, or null between rounds. */
+  /** Seconds left in the round, or null between rounds (and in a classic room waiting for its match). */
   timeLeft(): number | null {
-    return this.state.phase === 'play' ? Math.max(0, (this.state.endsAt - this.tick) / TICK_HZ) : null;
+    const st = this.state;
+    return st.phase === 'play' || st.phase === 'decided' ? Math.max(0, (st.endsAt - this.tick) / TICK_HZ) : null;
   }
 
   scoreEvent(): ServerEvent {
@@ -667,6 +767,8 @@ export class Room {
 
   private idle(now: number): void {
     for (const p of [...this.players.values()]) {
+      // Classic: the dead and the ghosts can only watch until the next round, so their idle clock waits.
+      if (!p.alive && this.seatsGhosts()) { p.lastActive = now; continue; }
       if (now - p.lastActive < this.opts.idleKickMs) continue;
       const changes = this.lobby.demote(p.id);
       if (changes) { this.players.delete(p.id); this.broadcastChanges(changes); continue; }
@@ -709,8 +811,8 @@ export class Room {
   }
 
   /** For `/metrics`. */
-  stats(): { players: number; spectators: number; tick: number; round: number } {
-    return { players: this.players.size, spectators: this.lobby.spectators().length, tick: this.tick, round: this.round };
+  stats(): { players: number; spectators: number; tick: number; round: number; rules: Rules } {
+    return { players: this.players.size, spectators: this.lobby.spectators().length, tick: this.tick, round: this.round, rules: this.opts.rules };
   }
 
   /** For the tests: a player's mover and state. */

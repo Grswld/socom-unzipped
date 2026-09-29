@@ -658,13 +658,17 @@ code and documentation only, never the game or its data. CI for this directory i
 
 ## Multiplayer server (web sprint 3)
 
-`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): one timed respawn match per map, HTTP
-`/health` and `/metrics` and a WebSocket on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
+`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a match per map and rules (a
+timed respawn match, or classic), HTTP `/health`, `/metrics` and `/rooms` (each room's map, rules, players and round)
+and a WebSocket on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 `READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
 
 ```
-SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS
+SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS, RULES
 ```
+
+`RULES` (respawn by default) is the rules of a join that names none; `MAX_ROUNDS` is the game's `mp_max_rounds` (11,
+the create-game default): classic's match length and the count the round-start banner shows under both rules.
 
 Join from the viewer with Settings > Online > **Local** (this server on its default port), or with
 `?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
@@ -688,9 +692,23 @@ page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the map you want:
 | Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
 | K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
 | Space / V | spectating: the next living player / the free camera |
+| Space (classic, dead) | the next living teammate to watch until the next round |
 | Settings > Online > name | your name, 30 characters at most; blank is the game's `Player####` |
 
 A match is the original's SUPPRESSION with RESPAWN on: one 6-minute round, "TIME EXPIRED" and 15 s more, the side with
-more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. `?lag=100&loss=2` runs the page's latency and
+more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. Its banner reads "STARTING ROUND 1 OF 11", as
+the original's does for its one respawn round.
+
+**Classic** (respawn off, the game's create-game default) is picked with Settings > Online > Rules > **Classic**, or
+with `&rules=classic` in the link (the page writes it back into the address and remembers the choice). Each map has a
+classic room beside its respawn room. The match starts once both sides have a player: 11 rounds, first to 6. A round
+ends when a side has no living player (tested from 15 s in; "ALL TERRORISTS ELIMINATED" / "SEALS VICTORIOUS!", 23 s
+more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died." and watch their
+living teammates (Space) until the next round. A player who joins mid-round is a ghost until then. Level after round
+11 plays a tiebreaker ("PLAYING TIEBREAKER ROUND"), and another while it is drawn. Every round starts everyone at the
+side's start slots with a full kit. Scoring is the respawn match's: +2 a kill, +1 alive at the end, +5 each on the
+winning side. The rules and their sources are in research 91 section 19.
+
+`?lag=100&loss=2` runs the page's latency and
 loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a
 server under 16 bots and 8 spectators.
