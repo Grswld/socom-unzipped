@@ -289,4 +289,18 @@ describe('the probe on the fixture maps', () => {
       expect(probeFloor(grid, x, 142, z)!.y, `(${x}, ${z})`).toBeCloseTo(142, 3);
     }
   });
+
+  it.skipIf(!MP2)('the 142 deck\'s east corner (x 674-680, z 720-726) is the engine\'s hole: pipeworks\' box top at 112 is its first hit', () => {
+    // Research 90 #2. The deck (pipeworks' di #14, y 142) and a 6x6 box top under its corner (#4, y 112) are one node's
+    // polygons, and FUN_002d3030 stops at a model's first hit in surface order. SOCOM II's AddDI appends
+    // (FUN_00313d60: the insert at `+0x7c + count * 4`, the vector's end), so the surface order is the file's and #4
+    // comes first -- where reCOM's SOCOM I transcription prepends (`node_main.cpp:153`, `m_di.insert(m_di.begin(), di)`)
+    // and would have found the deck. So from the deck the probe picks 112 at the corner, on the console as here.
+    const { grid } = open('MP2');
+    for (const [x, z] of [[674.5, 720.5], [677, 723], [679.5, 725.5]] as const) {
+      expect(ys(probeGround(grid, x, z)).map(Math.round).sort(), `(${x}, ${z})`).toEqual([100, 112]);
+      expect(probeFloor(grid, x, 142, z)!.y, `(${x}, ${z})`).toBeCloseTo(112, 3);
+    }
+    expect(probeFloor(grid, 668, 142, 722)!.y).toBeCloseTo(142, 3);      // beside the box, the deck
+  });
 });
