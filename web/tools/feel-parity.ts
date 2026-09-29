@@ -37,7 +37,7 @@ if (seal >= 0) {
 const page = flag('--browser');
 if (page >= 0) {
   const next = args[page + 1];
-  rows.push(...await browserRows(next && !next.startsWith('--') ? next : 'http://localhost:5192/?redotcom&fly'));
+  rows.push(...await browserRows(next && !next.startsWith('--') ? next : 'http://localhost:5192/?redotcom&fly&devmode'));
 }
 
 console.log(formatTable(rows));

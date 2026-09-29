@@ -17,7 +17,7 @@ const PORTRAIT = { width: 375, height: 812 };
 
 async function phone(page: Page, size: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(size);
-  await page.goto('/?redotcom&fly');
+  await page.goto('/?redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 }
@@ -259,7 +259,7 @@ test.describe('without ?redotcom&fly', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: LANDSCAPE });
 
   test('the phone has no walk layout, no hint, and the fly touch UI as it was', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?devmode');
     await expect(page.locator('#status')).toContainText(/triangles|tris/);
     for (const id of ['touch-walk', 'rotate-hint', 'tw-fire', 'tw-jump']) await expect(page.locator(`#${id}`)).toHaveCount(0);
     await expect(page.locator('#touch-lift')).toBeVisible();

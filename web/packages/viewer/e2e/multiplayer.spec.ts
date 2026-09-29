@@ -56,7 +56,7 @@ async function joinPage(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 960, height: 600 } });
   await context.addInitScript((n) => { localStorage.setItem('s2u.viewer.panelOpen', '1'); localStorage.setItem('s2u.mp.name', n); }, name);
   const page = await context.newPage();
-  await page.goto(`/?redotcom&fly&mp&server=ws://127.0.0.1:${MP_PORT}/ws&map=MP2`);
+  await page.goto(`/?redotcom&fly&mp&server=ws://127.0.0.1:${MP_PORT}/ws&map=MP2&devmode`);
   await expect.poll(() => page.evaluate(() => window.__viewer?.net?.()?.feet ?? null), { timeout: 120_000 }).not.toBeNull();
   return page;
 }

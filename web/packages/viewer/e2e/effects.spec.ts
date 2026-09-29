@@ -27,7 +27,7 @@ test('Frostfire: the M4A1 SD throws its casings and marks the container by its m
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
 
-  await page.goto('/?map=MP2&redotcom&fly');
+  await page.goto('/?map=MP2&redotcom&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
@@ -82,7 +82,7 @@ test('Desert Glory: stone and sand take their own marks and impacts; the M4A1 fl
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
-  await page.goto('/?map=MP6&redotcom&fly');
+  await page.goto('/?map=MP6&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -132,7 +132,7 @@ test('Desert Glory: stone and sand take their own marks and impacts; the M4A1 fl
 /** The frag's flash (`light_flash_large`: the game's light pass over the ground), held for its picture on Frostfire. */
 test('Frostfire: the frag grenade explosion lights the deck around it', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
-  await page.goto('/?map=MP2&redotcom&fly');
+  await page.goto('/?map=MP2&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -161,7 +161,7 @@ test('Frostfire: the frag grenade explosion lights the deck around it', async ({
 /** Enowapi's river (MP62, water at y -14): wading ripples, a fall into it splashes; Desert Glory's sand takes footprints. */
 test('water and footprints: the splash and the ripples on Enowapi, the prints on Desert Glory sand', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
-  await page.goto('/?map=MP62&redotcom&fly');
+  await page.goto('/?map=MP62&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -181,7 +181,7 @@ test('water and footprints: the splash and the ripples on Enowapi, the prints on
   await page.evaluate(() => window.__viewer.pauseEffects(false));
   expect((await page.evaluate(() => window.__viewer.effects())).played['seal_fall_in_water']).toBe(2);
 
-  await page.goto('/?map=MP6&redotcom&fly');
+  await page.goto('/?map=MP6&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('DESERT GLORY');
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -205,7 +205,7 @@ test('water and footprints: the splash and the ripples on Enowapi, the prints on
 test('the smoke screen reads as a screen; the mission ambient effects burn', async ({ page }) => {
   test.setTimeout(170_000);
   mkdirSync(SCREENS, { recursive: true });
-  await page.goto('/?map=MP6&redotcom&fly');
+  await page.goto('/?map=MP6&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -223,7 +223,7 @@ test('the smoke screen reads as a screen; the mission ambient effects burn', asy
   await page.waitForTimeout(300);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-smoke-inside.png') });
 
-  await page.goto('/?map=MP2&redotcom&fly');
+  await page.goto('/?map=MP2&redotcom&fly&devmode');
   await expect(page.locator('#status')).toContainText('triangles');
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   await page.evaluate(() => window.__viewer.setCamera({ x: 1055, y: 250, z: 1530, yaw: 0, pitch: -6 }));
@@ -249,7 +249,7 @@ test('the marks take the colour of the wall they are on: metal and stone', async
     { map: 'MP6', slug: 'desert-glory-stone', yaw: 40, pitch: -5, material: 7, shade: [0.126, 0.123, 0.11] },
   ];
   for (const c of cases) {
-    await page.goto(`/?map=${c.map}&redotcom&fly`);
+    await page.goto(`/?map=${c.map}&redotcom&fly&devmode`);
     await expect(page.locator('#status')).toContainText('triangles');
     await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
     expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);

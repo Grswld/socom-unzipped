@@ -79,7 +79,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
     });
   }, PAD_ID);
 
-  await page.goto('/?redotcom&fly');
+  await page.goto('/?redotcom&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

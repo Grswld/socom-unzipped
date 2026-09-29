@@ -14,7 +14,7 @@ import { chromium } from '@playwright/test';
 
 const MAP = process.argv[2] ?? 'FROSTFIRE';
 const OUT = fileURLToPath(new URL('../test-fixtures/screens', import.meta.url));
-const URL_BASE = process.env.VIEWER_URL ?? 'http://localhost:5173/';
+const URL_BASE = process.env.VIEWER_URL ?? 'http://localhost:5173/?devmode';
 
 mkdirSync(OUT, { recursive: true });
 
