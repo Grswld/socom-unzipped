@@ -151,7 +151,7 @@ export class WalkMode {
     }
     this.stance_ = stance;
     if (this.walker) {
-      if (this.walking) this.walker.changeStance(stance);
+      if (this.walking) { this.walker.changeStance(stance); this.stance_ = this.walker.stance; }   // deep water: the game's fallback (#22)
       else this.walker.stance = stance;
     }
     return true;

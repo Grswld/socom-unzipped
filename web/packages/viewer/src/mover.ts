@@ -424,6 +424,11 @@ export interface TickDriver {
    * the water's; unchanged when absent.
    */
   stickScale?(walker: Walker, forward: number, right: number): [number, number];
+  /**
+   * The stance a press for `stance` actually goes to (web research 86 section 5.4: the water's `FUN_00581660` /
+   * `FUN_00581990` -- prone over 2 deep crouches, crouch over 8.5 deep stands), `stance` when absent.
+   */
+  stanceFor?(walker: Walker, stance: Stance): Stance;
 }
 
 /**
@@ -691,9 +696,12 @@ export class Walker {
    * The game's stance change (`FUN_005817d0` to crouch, `FUN_00581c10` to stand, `FUN_00581540` to prone; decomp
    * 442170-442660): the stance is the new one at once, and on the floor a transition clip holds the mover while it
    * plays -- unless the SEAL is moving over `STANCE_MOVING` between stand and crouch, which runs straight on. In the air
-   * the stance simply changes.
+   * the stance simply changes. The press is first taken as the game's would be (`TickDriver.stanceFor`: in deep water
+   * the stance falls back before any clip starts, so no prone clip plays, and none of its root motion, for a SEAL that
+   * cannot lie there -- issue #22).
    */
   changeStance(stance: Stance): void {
+    stance = this.driver?.stanceFor?.(this, stance) ?? stance;
     const from = this.stance_;
     if (stance === from) return;
     this.stance = stance;

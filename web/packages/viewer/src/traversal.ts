@@ -581,6 +581,23 @@ export class Traversal implements TraversalHooks {
   }
 
   /**
+   * The stance press in water (`FUN_00552d60` hands a request to `FUN_00581660` for prone, `FUN_00581990` for crouch;
+   * decomp 418866-418900, 442436-442600): in the water (`actor+0x105e` bit 7) over 2 deep (`actor+0xf88`) the prone
+   * request is rewritten to crouch (`actor+0x374 = 1`) and `FUN_00581990` runs instead, which over 8.5 deep rewrites
+   * it to stand (`+0x374 = 0`) and runs `FUN_00581c10`. So the game substitutes: no prone clip starts, and a SEAL
+   * already crouched in 2-8.5 of water does nothing. No slope is read (issue #22's spawns are under water, not steep).
+   * The depth is the water over the feet where they stand now.
+   */
+  stanceFor(w: Walker, stance: Stance): Stance {
+    const s = w.state;
+    const line = probeWater(this.grid, s.x, s.z).find((y) => y >= s.y) ?? null;
+    const depth = line === null ? 0 : line - s.y;
+    if (stance === 'prone' && depth > WATER_PRONE) stance = 'crouch';
+    if (stance === 'crouch' && depth > WATER_CROUCH) stance = 'stand';
+    return stance;
+  }
+
+  /**
    * `FUN_005b56c0` (469966-469975): the stick's factor in water, `clamp(1 - depth x water_factor_slope,
    * min_water_factor, 1)` -- `dynamics.rdr`'s 0.05 and 0.75, so 0.75 from 5 deep -- standing and crouched; prone, the
    * crawl moves only to 1.5 deep (`FUN_00583500`, 443387). The walk's seam (`Walker.driver.stickFactor`).
