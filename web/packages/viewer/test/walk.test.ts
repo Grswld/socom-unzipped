@@ -7,8 +7,9 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
 import {
-  groundGrid, groundPolygons, packGround, rootY, stanceBody, throttleStep, Walker, WalkMode, BODY_RADIUS, EYE_HEIGHT,
-  STANCES, TICK, type GroundData, type Stance, type WalkInput,
+  groundGrid, groundPolygons, packGround, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
+  ACTION_SECONDS, BODY_RADIUS, CARRY_DECAY, EYE_HEIGHT, JUMP_DELAY, JUMP_LOCK, RUNNING_JUMP_SPEED, STANCES, TICK,
+  type GroundData, type Stance, type WalkInput,
 } from '../src/walk';
 
 /**
@@ -229,16 +230,17 @@ describe('the stances (W2.2b): C cycles stand, crouch, prone', () => {
 });
 
 describe('the fall and the step (W2.2b): dynamics.rdr\'s gravity, touch distance, step height and slope', () => {
-  it('stepping off a 42-unit deck falls under 235 a second squared, lands after ~0.60 s, and runs on', () => {
+  it('stepping off a 42-unit deck falls under 235 a second squared, lands hard after ~0.60 s, and runs on after the clip', () => {
     const deck = world([floor(-200, -200, 200, 200, 0), floor(-100, -100, 30, 100, 42), wallX(30, -100, 100, 0, 42)]);
     const w = new Walker(deck);
     expect(w.place(0, 60, 0)).toBe(true);
     expect(w.state.y).toBe(42);
     w.state.yaw = facing(0, 0, 1, 0);
-    let off = -1, landed = -1;
+    let off = -1, landed = -1, inAir = '';
     for (let i = 0; i < 240 && landed < 0; i++) {
       w.tick(FORWARD);
       if (off < 0 && w.airborne) off = i;
+      if (w.airborne) inAir = w.action?.name ?? '';
       if (off >= 0 && !w.airborne) landed = i;
     }
     expect(off).toBeGreaterThan(0);
@@ -247,9 +249,23 @@ describe('the fall and the step (W2.2b): dynamics.rdr\'s gravity, touch distance
     expect(SEAL_TUNING.gravity).toBe(235);
     expect(Math.abs((landed - off) * TICK - Math.sqrt(2 * 42 / 235))).toBeLessThanOrEqual(2 * TICK);
     expect(w.state.x).toBeGreaterThan(30 + 0.5 * 65);          // the run's 65 carried through the air
+    expect(inAir).toBe('fall');                                 // FUN_0057e050: the in-air clip on the way down
+    // The contact at sqrt(2 x 235 x 42) = 140 is over land_hard_fall_rate 115 (FUN_005af590): the hard landing, which
+    // holds the mover while the carried 65 runs down at 150 a second squared (FUN_0054d9a0) ...
+    expect(w.landing?.clip).toBe('landHard');
+    expect(w.landing!.speed).toBeGreaterThan(115);
+    expect(w.action?.name).toBe('landHard');
     const x = w.state.x;
     for (let i = 0; i < 30; i++) w.tick(FORWARD);
-    expect(w.state.x - x).toBeCloseTo(32.5, 0);                 // and on at 65 after the landing
+    let glide = 0;
+    for (let v = 65 - CARRY_DECAY * TICK; v > 0; v -= CARRY_DECAY * TICK) glide += v * TICK;
+    expect(w.state.x - x).toBeCloseTo(glide, 6);                // 13.5 at 60 Hz (65^2 / 300 = 14.1 in closed form)
+    // ... and once the clip is done (0.90 s) the stick runs it on at 65 at once.
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.landHard / TICK); i++) w.tick(FORWARD);
+    expect(w.action).toBeNull();
+    const x2 = w.state.x;
+    for (let i = 0; i < 30; i++) w.tick(FORWARD);
+    expect(w.state.x - x2).toBeGreaterThan(30);
     expect(w.state.y).toBe(0);
   });
 
@@ -539,8 +555,10 @@ describe('walk mode (W1.4 step 5)', () => {
     const at = mode.feet()!;
     mode.walkFor(10, { forward: 0.5, right: 0, boost: false });
     const after = mode.feet()!;
-    expect(at[2] - after[2]).toBeGreaterThan(14 * 10 - 3);          // the crouch walk, 14.0 a second
-    expect(at[2] - after[2]).toBeLessThan(14 * 10);
+    // Stand -> Crouch holds the mover 0.60 s (FUN_005817d0), then the crouch walk, 14.0 a second
+    const walked = 14 * (10 - ACTION_SECONDS.standToCrouch);
+    expect(at[2] - after[2]).toBeGreaterThan(walked - 3);
+    expect(at[2] - after[2]).toBeLessThan(walked + 0.5);
   });
 
   it('Ctrl+C is left to the browser in fly and walk mode; a bare C while walking is the stance\'s', () => {
@@ -656,5 +674,147 @@ describe('walk mode (W1.4 step 5)', () => {
     expect(mode.feet()).toEqual([0, 42, 0]);
     mode.setGround(undefined, null);                                 // a map with no hull: back to fly
     expect(mode.mode()).toBe('fly');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The jump (web/docs/research/80-the-jump.md): FUN_0057e1b0's two jumps, FUN_005af930's impulse, FUN_005af590's landing.
+
+describe('the jump, as the decompilation has it (research 80)', () => {
+  const plain = world([floor(-200, -200, 200, 200, 0)]);
+  const standing = (): Walker => {
+    const w = new Walker(plain);
+    w.place(0, 0, 0);
+    w.state.yaw = facing(0, 0, 1, 0);
+    return w;
+  };
+
+  it('under 15 a second is the standing jump: the Jump action on the floor, 0.99 s, the feet never leave it', () => {
+    const w = standing();
+    expect(RUNNING_JUMP_SPEED).toBe(15);                           // FUN_0057e1b0: 225 <= |v|^2
+    expect(w.jump()).toBe(true);
+    expect(w.action?.name).toBe('jump');
+    expect(ACTION_SECONDS.jump).toBeCloseTo(1.1 * (19 / 20) ** 2, 9);   // seal_jump: playback 1.1, 20 keys
+    let lowest = 0, highest = 0;
+    for (let i = 0; i < 50; i++) {
+      w.tick(STILL);
+      expect(w.airborne).toBe(false);
+      lowest = Math.min(lowest, w.state.y); highest = Math.max(highest, w.state.y);
+    }
+    expect([lowest, highest]).toEqual([0, 0]);                     // FUN_0059afd0: not UseVelY, the height is the actor's
+    expect(w.jump()).toBe(false);                                  // the Jump action holds: no second jump inside it
+    for (let i = 0; i < 20; i++) w.tick(STILL);
+    expect(w.action).toBeNull();
+    expect(w.jump()).toBe(true);                                   // and again once it is done
+  });
+
+  it('the standing jump\'s stick drives it at the sets\' top speeds: 65 ahead, 37 back, 65 aside, 20 crouched', () => {
+    const speed = (input: WalkInput, stance: Stance = 'stand'): number => {
+      const w = standing();
+      w.stance = stance;
+      w.jump();
+      for (let i = 0; i < 30; i++) w.tick(input);
+      return Math.hypot(w.state.vx, w.state.vz);
+    };
+    expect(speed(FORWARD)).toBeCloseTo(65, 6);
+    expect(speed({ forward: -1, right: 0, boost: false })).toBeCloseTo(37, 6);
+    expect(speed({ forward: 0, right: 1, boost: false })).toBeCloseTo(65, 6);
+    expect(speed({ forward: 0, right: -1, boost: false })).toBeCloseTo(65, 6);
+    expect(speed(FORWARD, 'crouch')).toBeCloseTo(20, 6);
+    // no renormalisation (DAT_0064fc80 is 1 in the Jump state): a diagonal stick is the axes' own
+    expect(speed({ forward: Math.SQRT1_2, right: Math.SQRT1_2, boost: false })).toBeCloseTo(65, 6);
+    expect(speed(STILL)).toBe(0);                                  // at rest, seal_jump's root does not travel
+  });
+
+  it('from 15 a second the running jump: the launch, 79.9 up 0.1 s after take-off, 13.6 high, carried, no stick', () => {
+    const w = standing();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);                  // running at 65
+    const v0 = Math.hypot(w.state.vx, w.state.vz);
+    expect(v0).toBeCloseTo(65, 6);
+    const x0 = w.state.x;
+    expect(w.jump()).toBe(true);
+    expect(w.action?.name).toBe('launch');
+    expect(w.airborne).toBe(true);
+    expect(runningJumpSpeed()).toBeCloseTo(0.85 * 235 * 0.4, 9);  // jump_factor x gravity x 0.4 = 79.9
+    let top = 0, ticks = 0, firstRise = -1;
+    while (w.airborne && ticks < 200) {
+      w.tick({ forward: 0, right: 1, boost: false });              // the stick does nothing in the air
+      ticks++;
+      if (firstRise < 0 && w.state.y > 0) firstRise = ticks;
+      top = Math.max(top, w.state.y);
+    }
+    expect(firstRise).toBe(Math.round(JUMP_DELAY / TICK));         // the impulse on the tick the 0.1 s runs out
+    // FUN_0059b440 adds g dt to the fall speed before it moves the height: at 60 Hz the top is 12.9 (13.58 in closed form)
+    let apex = 0, h = 0;
+    for (let v = runningJumpSpeed() - 235 * TICK; v > 0; v -= 235 * TICK) { h += v * TICK; apex = h; }
+    expect(top).toBeCloseTo(apex, 6);
+    expect(apex).toBeCloseTo(12.9, 1);
+    const air = ticks * TICK;
+    expect(air).toBeGreaterThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 - 2 * TICK);   // 0.78 s
+    expect(air).toBeLessThan(JUMP_DELAY + (2 * runningJumpSpeed()) / 235 + 2 * TICK);
+    expect(w.state.x - x0).toBeCloseTo(v0 * air, 0);               // the take-off's 65, straight on
+    expect(w.state.z).toBeCloseTo(0, 9);
+    // landing at 79.9 with the stick off rest: no landing clip, the run goes on (FUN_005af590)
+    expect(w.landing?.clip).toBeNull();
+    expect(w.action).toBeNull();
+    expect(w.jump()).toBe(false);                                  // JUMP_LOCK 0.4 s after a landing
+    for (let i = 0; i < Math.ceil(JUMP_LOCK / TICK); i++) w.tick(FORWARD);
+    expect(w.jump()).toBe(true);
+  });
+
+  it('a running jump landed with the stick at rest plays Jump land, gliding the carried speed down to a stop', () => {
+    const w = standing();
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);
+    w.jump();
+    while (w.airborne) w.tick(STILL);
+    expect(w.landing?.clip).toBe('land');
+    expect(w.landing!.speed).toBeLessThan(115);
+    expect(w.action?.name).toBe('land');
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.land / TICK); i++) w.tick(STILL);
+    expect(w.action).toBeNull();
+    expect(Math.hypot(w.state.vx, w.state.vz)).toBe(0);
+  });
+
+  it('prone cannot jump (FUN_005b4340 refuses stance 2); crouched it can, and stays crouched', () => {
+    const w = standing();
+    w.stance = 'prone';
+    expect(w.jump()).toBe(false);
+    w.stance = 'crouch';
+    expect(w.jump()).toBe(true);
+    expect(w.action?.name).toBe('jump');
+    for (let i = 0; i < 70; i++) w.tick(STILL);
+    expect(w.stance).toBe('crouch');
+  });
+
+  it('the one-shots the mover waits on are motion.rdr\'s playback over their keys (FUN_0028c4f0)', () => {
+    for (const [name, c] of Object.entries(ACTION_CLIPS)) {
+      expect(ACTION_SECONDS[name as keyof typeof ACTION_CLIPS]).toBeCloseTo(c.playback * ((c.frames - 1) / c.frames) ** 2, 9);
+    }
+  });
+
+  it('a stance change on the floor plays its transition, holding the mover; moving over 10 it runs straight on', () => {
+    const w = standing();
+    w.changeStance('crouch');
+    expect(w.action).toMatchObject({ name: 'standToCrouch', reversed: false });
+    for (let i = 0; i < 20; i++) w.tick(FORWARD);
+    expect(w.state.x).toBe(0);                                     // held
+    for (let i = 0; i < 30; i++) w.tick(STILL);
+    expect(w.action).toBeNull();
+    w.changeStance('stand');
+    expect(w.action).toMatchObject({ name: 'standToCrouch', reversed: true });
+    for (let i = 0; i < 40; i++) w.tick(STILL);
+    w.changeStance('prone');
+    expect(w.action).toMatchObject({ name: 'standToProne', reversed: false });
+    for (let i = 0; i < 60; i++) w.tick(STILL);
+    w.changeStance('crouch');
+    expect(w.action).toMatchObject({ name: 'crouchToProne', reversed: true });
+    for (let i = 0; i < 60; i++) w.tick(STILL);
+    w.changeStance('stand');
+    expect(w.action?.reversed).toBe(true);
+    for (let i = 0; i < 60; i++) w.tick(STILL);
+    for (let i = 0; i < 60; i++) w.tick(FORWARD);                  // running at 65
+    w.changeStance('crouch');
+    expect(w.action).toBeNull();                                   // FUN_005817d0: speed^2 > 100, no transition
+    expect(w.stance).toBe('crouch');
   });
 });

@@ -40,7 +40,7 @@ body.ps2-look #view {
 
 /* The backtick hides the chrome for a clean look at the map. `#site-links` (and the cog in it) and
    `#loading` are not chrome. */
-body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen, body.chrome-hidden #ammo { display: none; }
+body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen { display: none; }
 
 /*
  * Site navigation: the system's bar is a full-width top strip; here it floats as a pill in the
@@ -54,27 +54,89 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 /* The overlay's overflow: hidden clips a ring drawn outside a control; drawn inside, it is whole. */
 #panel :focus-visible { outline-offset: -2px; }
 #panel-kicker { margin: 0; }
-/* The GitHub mark (W2.0): a filled shape, where the system's icon rule strokes. */
-#source { display: inline-flex; align-items: center; }
-#source svg { flex: none; width: 16px; height: 16px; fill: currentColor; margin-right: 6px; }
+/*
+ * The panel's rhythm: the body's 10px grid gap between sections, 8px inside one, the section label the system's field
+ * label. The status under the map picker is one dim two-line readout (its whole text is its tooltip, `Ui.setStatus`); an
+ * error shows in full. The switches under Advanced sit two to a row.
+ */
+#status { margin: 0; font: var(--s2u-type-readout-caption); color: var(--s2u-text-dim); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#status.is-bad { display: block; font: var(--s2u-type-readout); color: var(--s2u-warn); }
+#view-label { margin: 0; }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2u-space-2) var(--s2u-space-3); margin: var(--s2u-space-2) 0; }
+.checks .s2u-check { min-width: 0; }
+.s2u-overlay .s2u-notice--warn { font: var(--s2u-type-readout-caption); }
+.s2u-overlay .s2u-disclosure { margin: 0; }
+.s2u-overlay .s2u-disclosure .s2u-disclosure { margin-left: 0; margin-top: var(--s2u-space-2); }
+.s2u-overlay .s2u-range { margin-top: var(--s2u-space-1); }
+/*
+ * The bar's three tabs (Controls, the settings cog, GitHub) are one class of system tab and here one size: the same
+ * height and horizontal padding, an icon and its word on one centre line with one gap, one gap between tabs (the
+ * bar's end group), the brand on the same centre line as they are. Open, a tab is lit (`is-on`, the system's own state).
+ */
+.s2u-bar__end .s2u-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 30px; padding: 0 12px; line-height: 16px; }
+.s2u-bar__end .s2u-tab svg { flex: none; width: 16px; height: 16px; }
+/* The GitHub mark: a filled shape, where the other two icons stroke. */
+#source svg { fill: currentColor; }
+
+/*
+ * The Controls popover: the system's overlay, hung under the bar's Controls tab (`./ui.ts`, `onControlsPopover`, which
+ * sets `left` to the tab's on a wide screen). It draws over the panel, so it is the later of the two overlays in the page.
+ */
+#controls { top: 56px; left: 12px; width: min(380px, calc(100vw - 24px)); }
+#controls .s2u-overlay__body { max-height: calc(100dvh - 80px); }
+#controls .s2u-fine { margin: 0; }
+#controls #pad-box { margin-top: var(--s2u-space-1); }
+
+/*
+ * One segmented toggle for the panel's two-way choices (Modern / PS2, Fly / Walk): a dark track, the chosen segment
+ * filled and lifted, the other flat and dim, a hover fill on the unchosen one, the focus ring inside. The system's
+ * tabs are the segments; only their arrangement is the viewer's.
+ */
+.s2u-overlay .s2u-tabs[role="radiogroup"] {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; padding: 3px;
+  background: var(--s2u-ground-deep); box-shadow: inset 0 0 0 1px var(--s2u-panel); border-radius: var(--s2u-radius-viewer);
+}
+.s2u-overlay .s2u-tabs[role="radiogroup"] .s2u-tab {
+  align-content: center; justify-items: center; text-align: center; padding: 8px 10px;
+  background: transparent; box-shadow: none; color: var(--s2u-text-dim); border-radius: calc(var(--s2u-radius-viewer) - 2px);
+}
+.s2u-overlay .s2u-tabs[role="radiogroup"] .s2u-tab:hover { background: var(--s2u-tab); color: var(--s2u-text-strong); }
+.s2u-overlay .s2u-tabs[role="radiogroup"] .s2u-tab[aria-pressed="true"] {
+  background: var(--s2u-highlight); color: var(--s2u-gold-display);
+  box-shadow: inset 0 0 0 1px var(--s2u-glyph-cross), 0 2px 0 var(--s2u-ground);
+}
+.s2u-overlay .s2u-tabs[role="radiogroup"] .s2u-tab .s2u-tab__what { color: var(--s2u-text-dim); }
+.s2u-overlay .s2u-tabs[role="radiogroup"] .s2u-tab[aria-pressed="true"] .s2u-tab__what { color: var(--s2u-text-strong); }
+.s2u-overlay .s2u-tabs[role="radiogroup"] .s2u-tab:active { background: var(--s2u-highlight-pressed); }
+
+/*
+ * The panel's checkboxes as toggle switches, the same language as the segmented toggle: a dark track, a knob that
+ * slides to the right and lights when on, a hover edge, the focus ring. Still a checkbox to the keyboard, a screen
+ * reader and every test; only the box is redrawn. The hidden state checkboxes are untouched (`hidden`).
+ */
+.s2u-overlay .s2u-check input {
+  position: relative; display: block; width: 30px; height: 16px; border-radius: var(--s2u-radius-pill);
+  background: var(--s2u-ground-deep); box-shadow: inset 0 0 0 1px var(--s2u-text-dim);
+  transition: background-color var(--s2u-dur-fast), box-shadow var(--s2u-dur-fast);
+}
+.s2u-overlay .s2u-check input::before {
+  content: ''; position: absolute; left: 3px; top: 3px; width: 10px; height: 10px; border-radius: 50%; clip-path: none;
+  background: var(--s2u-text-dim); transition: transform var(--s2u-dur-fast), background-color var(--s2u-dur-fast);
+}
+.s2u-overlay .s2u-check input:checked { background: var(--s2u-highlight); box-shadow: inset 0 0 0 1px var(--s2u-glyph-cross); }
+.s2u-overlay .s2u-check input:checked::before { width: 10px; height: 10px; clip-path: none; background: var(--s2u-gold-display); transform: translateX(14px); }
+.s2u-overlay .s2u-check:hover input { box-shadow: inset 0 0 0 1px var(--s2u-gold); }
+.s2u-overlay .s2u-check input:focus-visible { outline: 2px solid var(--s2u-focus); outline-offset: 2px; }
 
 /* A readout, not a control: a drag that starts on it must reach the canvas underneath. */
 #fps { top: 12px; right: 12px; pointer-events: none; }
 
 #fullscreen { position: fixed; right: 24px; bottom: 24px; z-index: 5; }
 
-/*
- * The ammo box (W2.5): the fps pill's system class, moved to the bottom-left corner where the console frame keeps it.
- * A readout, so a drag starting on it reaches the canvas; `hidden` (not walking) wins over the pill's display.
- */
-#ammo { top: auto; right: auto; left: 12px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
-#ammo[hidden] { display: none; }
-
 /* The loading overlay, centred as the system does. */
 #loading { pointer-events: none; }
 
 .row { display: flex; gap: var(--s2u-space-2); align-items: center; flex-wrap: wrap; }
-#panel details > details { margin-left: 10px; }
 #diagnostics { max-height: 30vh; }
 
 /*
@@ -150,20 +212,21 @@ body.touch #touch { display: block; }
 @media (max-width: 480px), (pointer: coarse) {
   #site-links { top: 8px; left: 8px; }
   #panel { top: 60px; left: var(--s2u-space-4); width: calc(100vw - 2 * var(--s2u-space-4)); }
+  #controls { top: 60px; }
   #fps { top: 8px; right: 8px; }
   /* Above the two 56px touch-lift buttons (10px apart), which the fullscreen fab's default
      right/bottom 24px placement would otherwise sit on top of on a coarse pointer. */
   #fullscreen { right: 12px; bottom: calc(16px + 2 * 66px + env(safe-area-inset-bottom, 0px)); }
 }
 
-/* Under 480px the GitHub tab is its mark alone; `aria-label` and `title` still name it. */
+/* Under 480px the bar's tabs are their marks alone, and the frame counter keeps its number alone, so the two clear each
+   other on a phone; `aria-label` and `title` still name every tab. The popover fills the width as the panel does. */
 @media (max-width: 480px) {
-  #source-word { display: none; }
-  #source svg { margin-right: 0; }
+  #source-word, #settings-word, #controls-word { display: none; }
+  .s2u-bar__end .s2u-tab { padding: 0 10px; }
+  #controls { left: var(--s2u-space-4); width: calc(100vw - 2 * var(--s2u-space-4)); }
 }
-
-/* At 360px the fps pill keeps the number alone, so it clears the site bar's GitHub tab. */
-@media (max-width: 360px) {
+@media (max-width: 480px) {
   #fps-rest { display: none; }
 }
 

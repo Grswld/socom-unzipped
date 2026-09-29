@@ -4,12 +4,15 @@ import type { Input } from './gamepad';
 import type { Backend } from './renderer';
 import type { FireState, Shot } from './fire';
 import type { Rect } from './reticle';
+import type { HudPatch, HudView } from './hud';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
 import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
 import type { AnimStats } from './animator';
-import type { ViewStats } from './play';
+import type { LookOptions, LookState } from './look';
+import type { ViewStats, WeaponStats } from './play';
+import type { AudioStats } from './audio';
 import type { TraversalStats } from './traversalPage';
 
 /**
@@ -84,6 +87,14 @@ export interface ViewerHook {
   crouch(on?: boolean): boolean;
   /** The aim view (first person while held: L1, the right mouse button), on or off; the view after. */
   setAim(on: boolean): WalkView;
+  /** The walk's look (web research 83): the body's yaw and the look's, the turn, the axes, the screen offset. */
+  look(): LookState;
+  /** The look's options (the mouse's mapping, the pitch ratio, the invert, the throttle); returns them all. */
+  setLook(opts: Partial<LookOptions>): LookOptions;
+  /** The scope's magnification for the look (1 unscoped). */
+  setZoom(magnification: number, mode4?: boolean): void;
+  /** An explosion this far from the player: the game's shake preset for it, if any (true when one started). */
+  shake(distance: number): boolean;
   /** W2.4: the reticle -- drawn or not, and its rectangle in the drawing buffer's pixels (y down) on `frame`. */
   reticle(): { visible: boolean; rect: Rect | null; frame: { width: number; height: number } };
   /** The walk's stance (W2.2b, `./walk`): what `C` and the touch stance button cycle. */
@@ -113,6 +124,29 @@ export interface ViewerHook {
   action(): boolean;
   /** The peek held, as the d-pad (Q / E) would hold it: -1 left, 1 right, 0 off. */
   setLean(side: -1 | 0 | 1): void;
+  /**
+   * The sound (web/docs/research/81, `./audio`): unlocked or not, the banks loaded, the samples decoded, the sounds
+   * played by name, the events sent, the plays dropped and why, the last few plays.
+   */
+  audio(): AudioStats;
+  /** The sound's volume (1 the default level) and mute; the stats after. The UI's panel calls `GameAudio` itself. */
+  setAudio(settings: { volume?: number; muted?: boolean }): AudioStats;
+  /**
+   * WEAPON (`./play`, `./weaponRaise`, `./weaponPose`, `./heldItem`): whether the rifle is in the SEAL's hands, its
+   * raise (the Fire set's weight, up or down, the countdown), the layers' clips and weights, and the muzzle in the world.
+   */
+  weapon(): WeaponStats;
+  /** WEAPON: the trigger held (true) or let go (false), as the mouse button and R1 hold it. */
+  trigger(down: boolean): void;
+  /** WEAPON: shows or hides a piece of the SEAL's gear by its `character.rdr` name (`Satchel`: the bomb carrier's). */
+  setGear(name: string, on: boolean): boolean;
+  /**
+   * The in-game HUD (`./hud`, web/docs/research/87-hud.md): drawn or not, what it shows, and each element's rectangle in
+   * the drawing buffer's pixels (y down) on `frame`.
+   */
+  hud(): HudView;
+  /** The HUD's inputs the walk does not drive yet (a prompt, a message, the fire mode, the team list), for the tests. */
+  setHud(patch: HudPatch): HudView;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

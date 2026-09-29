@@ -4,7 +4,8 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
 import type { AssetSource, RdrNode } from '@s2u/archive';
-import { PLAY_CLIPS, SEAL_CLIPS } from '../src/animator';
+import { PLAY_CLIPS } from '../src/animator';
+import { SEAL_ANIMS } from '../src/locomotion';
 import {
   clipsFromPack, motionTableFromArchive, playFromDisc, readMotionTable, MOTION_PACK_PATH, MOTION_TABLE_PATH,
 } from '../src/motionTable';
@@ -29,13 +30,20 @@ describe('reading motion.rdr by name (W2.R6)', () => {
     expect([...table.keys()]).toEqual(['clip_a', 'clip_b', 'clip_c']);
     expect(table.get('clip_a')).toEqual({
       looped: true, playback: 7, maxVelocity: -3, blendTime: 0.25, transitionA: 0, transitionB: 0.5, noInterrupt: null,
+      callbacks: [{ name: 'whoosh', time: 0.2 }],
     });
     expect(table.get('clip_b')).toEqual({
       looped: false, playback: 1, maxVelocity: 9, blendTime: null, transitionA: null, transitionB: null, noInterrupt: 0.4,
+      callbacks: [],
     });
     expect(table.get('clip_c')).toEqual({
       looped: null, playback: null, maxVelocity: null, blendTime: null, transitionA: null, transitionB: null, noInterrupt: null,
+      callbacks: [],
     });
+    // every zanim_callback of a record, in order (the loader walks the key's first and next)
+    const two = readMotionTable(['animations', [['anim_name', ['d'], 'zanim_callback', ['name', ['a'], 'time', ['0.1']],
+      'zanim_callback', ['name', ['b'], 'time', ['1.5']], 'zanim_callback', ['name', ['no time']]], ['anim_name', ['e']]]]);
+    expect(two.get('d')!.callbacks).toEqual([{ name: 'a', time: 0.1 }, { name: 'b', time: 1.5 }]);
     expect(readMotionTable([]).size).toBe(0);
     expect(readMotionTable(['animations', 'not a list']).size).toBe(0);
   });
@@ -74,7 +82,7 @@ describe.skipIf(noTable)(`motion.rdr on the disc${noTable ? ' (READERC.ZAR absen
 
   it('names every clip the play mode picks, each consistent: a playback, a locomotion band that runs upward', () => {
     const t = table();
-    for (const name of Object.values(SEAL_CLIPS)) {
+    for (const name of Object.values(SEAL_ANIMS)) {
       const e = t.get(name);
       expect(e, name).toBeTruthy();
       expect(e!.looped, name).not.toBeNull();
@@ -91,18 +99,18 @@ describe.skipIf(noPack || noTable)(`the play data from the served tree${noPack ?
     const data = (await playFromDisc(new FsAssetSource(SERVED), PLAY_CLIPS))!;
     expect(data).not.toBeNull();
     const frames = new Map(data.clips.map((c) => [c.name, c.frameCount]));
-    const { seal_crouchwalk_bw: back, ...printed } = Object.fromEntries(Object.values(SEAL_CLIPS).map((n) => [n, frames.get(n)]));
-    expect(printed).toEqual({
-      seal_stand: 16, seal_walk: 25, seal_jog: 22, seal_run: 19, seal_walk_bw: 16, seal_run_bw: 18, seal_lstrafe: 22,
-      seal_rstrafe: 23, seal_crouch: 21, seal_crouchwalk: 28, seal_jump: 20,
+    // research 77 §12's frame counts where it prints them; every clip the plays name is in the pack
+    expect(Object.fromEntries(['seal_stand', 'seal_run', 'seal_crouch', 'seal_crouchwalk', 'seal_jump', 'seal_runningjump_launch',
+      'seal_runningjump_in_air', 'seal_land_soft', 'seal_land_hard'].map((n) => [n, frames.get(n)]))).toEqual({
+      seal_stand: 16, seal_run: 19, seal_crouch: 21, seal_crouchwalk: 28, seal_jump: 20,
       seal_runningjump_launch: 25, seal_runningjump_in_air: 14, seal_land_soft: 20, seal_land_hard: 20,
     });
-    expect(back! > 0).toBe(true);                     // research 77 §12 does not print its count
+    for (const n of Object.values(SEAL_ANIMS)) expect(frames.get(n), n).toBeGreaterThan(0);
     // only what was asked for, each once; the table only for those
     expect(data.clips.every((c) => PLAY_CLIPS.includes(c.name))).toBe(true);
     expect(new Set(data.clips.map((c) => c.name)).size).toBe(data.clips.length);
     expect(data.table!.every(([n]) => PLAY_CLIPS.includes(n))).toBe(true);
-    expect(data.table!.map(([n]) => n)).toEqual(expect.arrayContaining(Object.values(SEAL_CLIPS)));
+    expect(data.table!.map(([n]) => n)).toEqual(expect.arrayContaining(Object.values(SEAL_ANIMS)));
     // a name the pack does not carry is left out, not an error
     expect(clipsFromPack(new Uint8Array(readFileSync(resolve(SERVED, MOTION_PACK_PATH))), ['seal_walk', 'no_such_clip']).map((c) => c.name))
       .toEqual(['seal_walk']);

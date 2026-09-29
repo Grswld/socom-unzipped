@@ -1,4 +1,5 @@
 import type { MotionClip } from '@s2u/scene';
+import { oneShotSeconds } from './locomotion';
 import type { MotionEntry } from './motionTable';
 
 /**
@@ -20,9 +21,10 @@ export interface ClipShape {
   /** Keys, the closing key (key n, which is key 0: research 77 section 5) not counted. */
   keys: number;
   /**
-   * The clip's length in seconds as `FUN_00287620` (decomp 131281-131320) sets the loaded clip's `+0x10`: a one-shot's,
-   * and a loop's with a negative `max_velocity`, is `motion.rdr`'s `playback`; a loop with a positive one (a locomotion
-   * cycle, the ladder's climb) is its own duration divided by `playback` (`seal_climbladder`: 0.533 / 3 = 0.178 s).
+   * The clip's length in seconds as `FUN_00287620` (decomp 131281-131320) sets the loaded clip's `+0x10`: a loop's with
+   * a negative `max_velocity` is `motion.rdr`'s `playback`; a loop with a positive one (a locomotion cycle, the ladder's
+   * climb) is its own duration divided by `playback` (`seal_climbladder`: 0.533 / 3 = 0.178 s). A one-shot runs from key
+   * 0 to its last key n - 1 in `playback x ((n - 1) / n)^2` (`FUN_0028c4f0`, `./locomotion` `oneShotSeconds`).
    */
   seconds: number;
   /** The root's xyz per key, model space (x right, y up, z behind). */
@@ -47,8 +49,8 @@ export function clipShape(clip: MotionClip, entry?: MotionEntry | null): ClipSha
   }
   const playback = entry?.playback;
   if (playback === null || playback === undefined || !(playback > 0)) return { name: clip.name, keys, seconds: clip.duration, root };
-  const moving = entry?.looped === true && (entry.maxVelocity ?? -1) >= 0;
-  return { name: clip.name, keys, seconds: moving ? clip.duration / playback : playback, root };
+  if (entry?.looped === true) return { name: clip.name, keys, seconds: (entry.maxVelocity ?? -1) >= 0 ? clip.duration / playback : playback, root };
+  return { name: clip.name, keys, seconds: oneShotSeconds(playback, keys), root };
 }
 
 /**
@@ -121,7 +123,7 @@ export class ClipPath {
 
   at(seconds: number): PathPoint {
     const shape = this.shape;
-    const key = Math.max(0, Math.min(shape.keys - 1, (seconds / shape.seconds) * shape.keys));
+    const key = Math.max(0, Math.min(shape.keys - 1, (seconds / shape.seconds) * (shape.keys - 1)));
     // The running furthest rise (or drop) and travel (ahead or back) up to this key, each as a fraction of the whole.
     const sy = Math.sign(this.rise) || 1, sz = Math.sign(this.ahead) || 1;
     let up = 0, on = 0;

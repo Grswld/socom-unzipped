@@ -6,4 +6,5 @@ export * from './mapIndex';
 export * from './rdr';
 export * from './texManifest';
 export * from './zar';
+export * from './zarMembers';
 export * from './zdb';

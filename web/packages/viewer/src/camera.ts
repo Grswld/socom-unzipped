@@ -1,5 +1,9 @@
 import { MathUtils, PerspectiveCamera, Vector3 } from 'three';
-import { SEAL_TUNING } from '@s2u/scene';
+import { PAD_DEAD_ZONE } from './gamepad';
+import {
+  FirstPersonBob, LookLaw, nudgePitch, ScreenShake, SCREEN, stepPitch, viewOffset,
+  type LookOptions, type LookState, type Shake,
+} from './look';
 
 /** A camera pose in the game's world frame: position in game units, yaw and pitch in degrees. */
 export interface Pose { x: number; y: number; z: number; yaw: number; pitch: number }
@@ -16,13 +20,13 @@ const TOUCH_LOOK = 2;
 const ARROW_LOOK = 1.6;
 /** Straight up and straight down are singular for a yaw/pitch camera, so stop just short. */
 const PITCH_LIMIT = MathUtils.degToRad(89.9);
-/**
- * Walking (W2.1), the mouse's y moves the camera's pitch at the pad's ratio of the two rates: `pitch_rate` 0.85 over
- * `turn_maxrate` 2 (`dynamics.rdr`; `FUN_00594600` moves the pitch at 0.85 rad/s x axis, research 22 the yaw at
- * 2 x axis). A mouse is not a stick -- its x keeps `LOOK` radians a pixel, the fly camera's feel -- so the pad's law
- * reaches the mouse as this ratio, and the arrow keys (a full axis) as the two rates themselves.
+/*
+ * Walking, the look is the game's (`./look`, web research 83): the pad's right stick and the arrow keys (a full push)
+ * through the pad reader's dead zone, curve and ramp, at `turn_maxrate` / `pitch_rate` x 1.118 at full push, and the
+ * mouse by the viewer's own mapping (`LookOptions`: raw by default, one inch at 800 DPI = one second of full stick, the
+ * pitch at the game's 0.425 of the turn). The pitch stops at the stance's aim limits and comes back to them at
+ * 0.5 rad/s after a stance change (`FUN_00594600`).
  */
-const WALK_PITCH_PER_YAW = SEAL_TUNING.pitchRate / SEAL_TUNING.turnMaxRate;
 
 /**
  * How fast velocity chases the stick, per second, as the exponent of an exponential approach.
@@ -47,7 +51,8 @@ export function glide(v0: number, target: number, rate: number, dt: number): { m
 
 /**
  * What the keys and the touch stick ask the walk for (`./walk`): forward and right on the ground plane, -1..1. The
- * boost is the fly camera's gesture; the walk does not read it (W2.R2).
+ * boost is the fly camera's gesture and is always false here: the walk has no sprint (W2.R2; the owner, 2026-09-28).
+ * The field stays so the walk's input type is unchanged.
  */
 export interface GroundWish { forward: number; right: number; boost: boolean }
 
@@ -121,6 +126,7 @@ export interface FlyCameraOptions {
  * - **Space** up, **Shift** down, both in world space. **Double-tap W and hold** to boost, which widens
  *   the view to match -- Minecraft's own sprint gesture, and the only one that is safe here: Ctrl+W
  *   closes the tab and no page can prevent it, so nothing is bound to Ctrl.
+ *   The boost is the fly camera's alone: in walk mode nothing boosts (owner, 2026-09-28).
  *   **Q/E** stay bound to down/up as they were, for anyone with the old keys in their fingers.
  * - **Wheel** trims the speed between a tenth and sixteen times, because a map is 100 m across but a
  *   prop is 30 cm.
@@ -170,6 +176,15 @@ export class FlyCamera {
   private walkPitch: [number, number] = [-PITCH_LIMIT, PITCH_LIMIT];
   /** The left button pressed while locked and not yet let go (`onFire`). */
   private triggerHeld = false;
+  /** Walking: the game's look law (`./look`), the screen shake, the first-person bob and what they last gave. */
+  private readonly law = new LookLaw();
+  private readonly shake = new ScreenShake();
+  private readonly bob = new FirstPersonBob();
+  private firstPerson = false;
+  private prone = false;
+  private scoped = false;
+  private turnRate = 0;
+  private screen: [number, number] = [0, 0];
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -263,6 +278,15 @@ export class FlyCamera {
     this.apply();
   }
 
+  /**
+   * WEAPON: turns the look's pitch by `radians` (up positive), clamped to the pitch limits, the rest of the pose kept:
+   * the rifle's kick (`./rifleKick`, through `Fire`).
+   */
+  addPitch(radians: number): void {
+    const pitch = this.clampPitch(this.pitch + radians);
+    if (pitch !== this.pitch) { this.pitch = pitch; this.apply(); }
+  }
+
   pose(): Pose {
     const p = this.camera.position;
     return { x: p.x, y: p.y, z: p.z, yaw: MathUtils.radToDeg(this.yaw), pitch: MathUtils.radToDeg(this.pitch) };
@@ -272,26 +296,84 @@ export class FlyCamera {
    * Walk mode on or off. On, `update` still turns the view (the mouse, the arrow keys) and eases the boost's FOV,
    * but no longer moves the camera: the keys and the stick are read by the walk through `groundWish`, and the walk
    * places the view with `placeView` (the mouse's y then moves the pitch at the pad's ratio, clamped to
-   * `setPitchLimits`). Either way the glide is dropped.
+   * `setPitchLimits`). Either way the glide is dropped, and so is any boost armed: a W double-tapped or a stick held at
+   * its rim must not carry across the switch (the walk has none, and flying starts unboosted).
    */
   setWalking(on: boolean): void {
     this.walking = on;
     this.velocity.set(0, 0, 0);
+    this.sprinting_ = false;
+    this.lastForwardTap = 0;
+    this.stickBoost = false;
+    this.law.reset();
+    this.turnRate = 0;
     if (!on) {
+      this.setScreenOffset(0, 0);
       this.walkPitch = [-PITCH_LIMIT, PITCH_LIMIT];
       this.apply();                                  // a third-person view leaves the look where yaw and pitch put it
     }
   }
 
   /**
-   * Walking, the camera's pitch limits in degrees (`playerCamera.ts`'s `pitchLimits`: -70..60, prone -20..25); the
-   * pitch is clamped into them at once. Flying they are the fly camera's own, just short of straight up and down.
+   * Walking, the camera's pitch limits in degrees (`playerCamera.ts`'s `pitchLimits`: -70..60, prone -20..25). A pitch
+   * outside new limits (a stance change) is not clamped: `update` brings it back at the game's 0.5 rad/s
+   * (`FUN_00594600`). Flying they are the fly camera's own, just short of straight up and down.
    */
   setPitchLimits(minDegrees: number, maxDegrees: number): void {
     if (!this.walking) return;
     this.walkPitch = [MathUtils.degToRad(minDegrees), MathUtils.degToRad(maxDegrees)];
-    const pitch = this.clampPitch(this.pitch);
-    if (pitch !== this.pitch) { this.pitch = pitch; this.apply(); }
+  }
+
+  // ---- The look law's controls (web research 83; `./look`) ---------------------------------------------------------
+
+  /** The mouse's mapping and the look's options (`LookOptions`); they act while walking. */
+  setLookOptions(opts: Partial<LookOptions>): void {
+    this.law.setOptions(opts);
+  }
+
+  lookOptions(): LookOptions {
+    return this.law.options();
+  }
+
+  /**
+   * The scope's magnification (the weapon's `ZoomModeN`, 1 unscoped; `mode4` the 9x view): the look divides by it, and
+   * the bob's phase slows by 0.2 (`FUN_005966a0`). The first-person aim view is not a scope: 1.
+   */
+  setZoom(magnification: number, mode4 = false): void {
+    this.law.setZoom(magnification, mode4);
+    this.scoped = magnification > 1.01 || mode4;
+  }
+
+  /** The body the look rides (the bob's inputs): first person or not, prone or not. `main.ts` sets it each frame. */
+  setBody(firstPerson: boolean, prone: boolean): void {
+    this.firstPerson = firstPerson;
+    this.prone = prone;
+  }
+
+  /** A screen shake (`./look`: `explosionShake`, `MACHINE_GUN_SHAKE`, a weapon's `ScreenShake`); walking only. */
+  shakeScreen(shake: Shake): void {
+    if (this.walking) this.shake.start(shake);
+  }
+
+  /**
+   * The walk's look for the body (`LookState`, `./look`): the look's yaw and the body's -- the same in SOCOM II --
+   * the pitch, the turn rate and the axes, and the screen offset drawn.
+   */
+  lookState(): LookState {
+    const yaw = MathUtils.radToDeg(this.yaw);
+    return {
+      lookYaw: yaw, bodyYaw: yaw, pitch: MathUtils.radToDeg(this.pitch), turnRate: this.turnRate,
+      axis: this.law.axis(), turning: this.turnRate !== 0, screen: [...this.screen],
+    };
+  }
+
+  /**
+   * How far the screen offset moved the picture, as fractions of the frame (x right, y down): the reticle, a HUD
+   * element, stays where it was while the world shifts under it (`main.ts` takes this off the projected aim point).
+   */
+  screenShift(): [number, number] {
+    const [ox, oy] = viewOffset(this.screen[0], this.screen[1]);
+    return [-ox / (this.camera.aspect * SCREEN.height), -oy / SCREEN.height];
   }
 
   /**
@@ -312,17 +394,15 @@ export class FlyCamera {
 
   /**
    * The ground-plane half of what `update` would steer by: W/S and the stick's y forward, D/A and the stick's x to
-   * the right, clamped into the unit disc as `update` clamps, and whether the boost is on (a double-tapped W held,
-   * or the stick held at its rim). Space and shift have no meaning on the ground.
+   * the right, clamped into the unit disc as `update` clamps. The boost (a double-tapped W held, or the stick held at
+   * its rim) is the fly camera's: on the ground it is never on. Space and shift have no meaning on the ground.
    */
   groundWish(): GroundWish {
     let forward = this.stickY + (this.keys.has('keyw') ? 1 : 0) - (this.keys.has('keys') ? 1 : 0);
     let right = this.stickX + (this.keys.has('keyd') ? 1 : 0) - (this.keys.has('keya') ? 1 : 0);
     const length = Math.hypot(forward, right);
     if (length > 1) { forward /= length; right /= length; }
-    const moving = length > 0;
-    const boost = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
-    return { forward, right, boost };
+    return { forward, right, boost: false };
   }
 
   /**
@@ -338,12 +418,15 @@ export class FlyCamera {
     // Walking, they are the pad's full axis: `turn_maxrate` and `pitch_rate` radians a second (W2.1).
     const arrowTurn = (this.keys.has('arrowleft') ? 1 : 0) - (this.keys.has('arrowright') ? 1 : 0);
     const arrowTilt = (this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('arrowdown') ? 1 : 0);
-    const turn = Math.abs(this.lookX) > Math.abs(arrowTurn) ? -this.lookX : arrowTurn;
-    const tilt = Math.abs(this.lookY) > Math.abs(arrowTilt) ? this.lookY : arrowTilt;
-    if (turn !== 0 || tilt !== 0) {
-      this.yaw += turn * (this.walking ? SEAL_TUNING.turnMaxRate : ARROW_LOOK) * dt;
-      this.pitch = this.clampPitch(this.pitch + tilt * (this.walking ? SEAL_TUNING.pitchRate : ARROW_LOOK) * dt);
-      this.apply();
+    if (this.walking) this.walkLook(dt, arrowTurn, arrowTilt);
+    else {
+      const turn = Math.abs(this.lookX) > Math.abs(arrowTurn) ? -this.lookX : arrowTurn;
+      const tilt = Math.abs(this.lookY) > Math.abs(arrowTilt) ? this.lookY : arrowTilt;
+      if (turn !== 0 || tilt !== 0) {
+        this.yaw += turn * ARROW_LOOK * dt;
+        this.pitch = this.clampPitch(this.pitch + tilt * ARROW_LOOK * dt);
+        this.apply();
+      }
     }
 
     // Forward carries the pitch; right is taken from the yaw alone so strafing stays level.
@@ -417,7 +500,7 @@ export class FlyCamera {
 
   /** The stick held at its rim: boosts while the stick is pushed, the way a double-tapped W does. */
   setStickBoost(on: boolean): void {
-    this.stickBoost = on;
+    this.stickBoost = on && !this.walking;      // no sprint on foot
   }
 
   /**
@@ -427,6 +510,44 @@ export class FlyCamera {
   setLook(x: number, y: number): void {
     this.lookX = x;
     this.lookY = y;
+  }
+
+  /**
+   * Walking, one frame of the game's look: the right stick -- the push as the pad itself gave it, `./gamepad`'s radial
+   * 0.15 dead zone and rescale undone so the game's own 0.3 per axis is the only one -- or the arrow keys, a full
+   * push, the larger on each axis; the look law's rates; the pitch stepped (`stepPitch`); then the screen shake and
+   * the first-person bob, as a view offset.
+   */
+  private walkLook(dt: number, arrowTurn: number, arrowTilt: number): void {
+    const push = Math.hypot(this.lookX, this.lookY);
+    const raw = push > 0 ? (PAD_DEAD_ZONE + (1 - PAD_DEAD_ZONE) * Math.min(1, push)) / push : 0;
+    const padX = this.lookX * raw, padY = this.lookY * raw;
+    const x = Math.abs(padX) > Math.abs(arrowTurn) ? padX : -arrowTurn;
+    const y = Math.abs(padY) > Math.abs(arrowTilt) ? padY : arrowTilt;
+    const rates = this.law.frame(dt, x, y);
+    this.turnRate = rates.yaw;
+    const pitch = stepPitch(this.pitch, rates.pitch, dt, this.walkPitch[0], this.walkPitch[1]);
+    if (rates.yaw !== 0 || pitch !== this.pitch) {
+      this.yaw += rates.yaw * dt;
+      this.pitch = pitch;
+      this.apply();
+    }
+    const [sx, sy] = this.shake.step(dt);
+    const wish = this.groundWish(), slow = this.scoped ? 0.2 : 1;
+    const bob = this.firstPerson ? this.bob.step(dt, wish.right * slow, wish.forward * slow, this.prone) : 0;
+    this.setScreenOffset(sx, sy + bob);
+  }
+
+  /** The PS2 screen offset (`./look`, `viewOffset`) on the camera, or none. */
+  private setScreenOffset(x: number, y: number): void {
+    this.screen = [x, y];
+    if (x === 0 && y === 0) {
+      if (this.camera.view?.enabled) this.camera.clearViewOffset();
+      return;
+    }
+    const [ox, oy] = viewOffset(x, y);
+    const w = this.camera.aspect * SCREEN.height;
+    this.camera.setViewOffset(w, SCREEN.height, ox, oy, w, SCREEN.height);
   }
 
   /** Double-tapped forward, still held. Released, the sprint ends. */
@@ -443,8 +564,17 @@ export class FlyCamera {
   }
 
   private look(dx: number, dy: number): void {
+    if (this.walking) {
+      // The viewer's mouse mapping (`LookLaw.mouse`): raw angles now, or counts kept for the stick law's frame.
+      const [yaw, pitch] = this.law.mouse(dx, dy);
+      if (yaw === 0 && pitch === 0) return;
+      this.yaw += yaw;
+      this.pitch = nudgePitch(this.pitch, pitch, this.walkPitch[0], this.walkPitch[1]);
+      this.apply();
+      return;
+    }
     this.yaw -= dx * LOOK;
-    this.pitch = this.clampPitch(this.pitch - dy * LOOK * (this.walking ? WALK_PITCH_PER_YAW : 1));
+    this.pitch = this.clampPitch(this.pitch - dy * LOOK);
     this.apply();
   }
 
@@ -543,7 +673,7 @@ export class FlyCamera {
     const code = e.code.toLowerCase();
     if (OWNED.has(code)) e.preventDefault();
 
-    if (code === 'keyw' && !this.keys.has('keyw')) {          // the press, not the auto-repeat
+    if (code === 'keyw' && !this.keys.has('keyw') && !this.walking) {   // the press, not the auto-repeat; no sprint on foot
       const now = performance.now();
       this.sprinting_ = now - this.lastForwardTap < DOUBLE_TAP_MS;
       this.lastForwardTap = now;

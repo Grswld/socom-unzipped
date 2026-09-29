@@ -23,7 +23,7 @@ test('the ladder, the climb and the peek on Frostfire (web research 86)', async 
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
-  await page.goto('/?map=MP2');
+  await page.goto('/?map=MP2&redotcom');
   const status = page.locator('#status');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
@@ -46,6 +46,7 @@ test('the ladder, the climb and the peek on Frostfire (web research 86)', async 
   expect(onLadder.feet![1]).toBeGreaterThan(110);
   expect(onLadder.t?.events.filter((e) => e.type === 'ladderRung').length).toBeGreaterThan(3);
   await settle(page);
+  expect((await page.evaluate(() => window.__viewer.hud())).model.action).toBe('ladder_slide');
   await page.screenshot({ path: join(SCREENS, 'e2e-ladder-mid.png') });
   await page.evaluate(() => window.__viewer.walkFor(5, { forward: 1 }));
   await page.evaluate(() => window.__viewer.walkFor(1, { forward: 0 }));
@@ -58,7 +59,7 @@ test('the ladder, the climb and the peek on Frostfire (web research 86)', async 
   await page.evaluate(() => window.__viewer.walkFor(0.6, { forward: 1 }));
   expect(await page.evaluate(() => window.__viewer.traversal()?.prompt)).toEqual({ visible: true, kind: 'low', automatic: false });
   await settle(page);
-  await expect(page.locator('canvas.action-icon')).toBeVisible();
+  expect((await page.evaluate(() => window.__viewer.hud())).model.action).toBe('climb');   // the HUD's action_climb.tif
   await page.keyboard.press('KeyX');
   await settle(page, 2);
   await page.evaluate(() => window.__viewer.walkFor(0.45, { forward: 0 }));
@@ -68,6 +69,9 @@ test('the ladder, the climb and the peek on Frostfire (web research 86)', async 
   await page.screenshot({ path: join(SCREENS, 'e2e-climb-mid.png') });
   await page.evaluate(() => window.__viewer.walkFor(2, { forward: 0 }));
   expect((await page.evaluate(() => window.__viewer.feet()))![1]).toBeCloseTo(111.85, 2);
+  // The walk's own jump still works after a climb: the standing jump (research 80) on the crate's top.
+  expect(await page.evaluate(() => window.__viewer.jump())).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.traversal()?.kind)).toBe('none');
 
   // The peek: E held on the open floor at spawn A; the camera's target shifts 2.8 to the right.
   await page.evaluate(() => window.__viewer.setCamera({ x: 796, y: 115.4, z: 614, yaw: 180, pitch: -5 }));

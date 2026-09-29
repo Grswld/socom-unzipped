@@ -78,23 +78,26 @@ Run from `web/`:
 
 | command | what it does |
 |---|---|
-| `npm install` | workspace install (five packages plus `tools`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the two shared archives `READERC.ZAR` and `ZWEAPON.ZAR` beside them, `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `npm install` | workspace install (six packages plus `tools`) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR` and `SOUNDS/BNKSTORE.ZAR`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
-| `npm run typecheck` | `tsc` over the five packages, the viewer and `tools` |
+| `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `VIEWER_BASE=/map-viewer/ npm run build` | the same, to be served under a path prefix |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
+| `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §8) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
 
 ### Deploying
 
 `dist/viewer/` is a static site: a web server, and beside it a `maps/` directory holding what `extract-maps`
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
-`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table). The archives are the game's and are never
-part of the build.
+`maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
+`maps/RUN/SOUNDS/BNKSTORE.ZAR`). The archives are the game's and are never part of the build. The sound banks are read
+**by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
+(nginx and Vite do); one that does not still works, fetching the whole store.
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -109,6 +112,7 @@ Everything below is relative to `web/`.
 | `packages/archive` | ZDB table of contents, ZAR/ZED v2, compiled `.rdr`, and the `AssetSource` the rest read through (`/node` for the file system, `http` for the browser) |
 | `packages/gs` | GS texture and palette decode, and the GS state block (`ALPHA`, `TEX1`, `TEST`, `CLAMP`) per texture |
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
+| `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
@@ -117,8 +121,20 @@ Everything below is relative to `web/`.
 
 ## Controls
 
-The camera flies like a creative-mode build camera: momentum, not teleporting. `G` puts the SEAL on the ground
-instead, seen through the game's own camera; the last rows of the table are the walk's.
+The camera flies like a creative-mode build camera: momentum, not teleporting. The page lists only the controls of the
+mode you are in, in the **Controls** popover in the top bar (hover it, focus it, or click or tap it; **Esc** closes it),
+and, once a pad is connected, the pad's layout for that mode under them.
+
+**Playing as a SEAL is behind a URL parameter.** Add `?redotcom` (its presence is enough: `?redotcom`, or
+`?map=MP2&redotcom`) and the page also has walk mode, the SEAL's body, the rifle, the ammo box and the touch stance and
+fire buttons. Without it none of that is rendered, bound or answered: no `G`, no Start, no Fly / Walk switch, no walk in
+the Controls popover, and the debug hook's `setMode('walk')` returns false. (`viewer/src/features.ts`, `playEnabled`.)
+
+The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
+**Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
+the choice is remembered. A failed load unfolds the panel so the error is seen.
+
+### Flying (always)
 
 | input | what it does |
 |---|---|
@@ -127,30 +143,71 @@ instead, seen through the game's own camera; the last rows of the table are the 
 | `W`/`S` | fly along the look direction — nose down and `W` descends |
 | `A`/`D` | strafe, always level with the horizon whatever the pitch |
 | `Space` / `Shift` | up and down in world space |
-| double-tap `W`, held | boost, with the field of view widening to match -- in flight only: the walk has no boost, the game's run being its fastest. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
-| wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
+| double-tap `W`, held | boost, with the field of view widening to match. **Flying only**: there is no sprint in walk mode from any input (double-tap `W`, the pad's R3, the touch stick's rim-hold). Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
+| wheel | trims the fly speed between 0.1x and 16x; the Controls popover shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
 | `F` | fullscreen, and back (also the button under the frame counter) |
-| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar and its cog stay |
-| the cog beside **Unzipped** | folds the settings panel away entirely, and back; the choice is remembered |
-| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **walk** switch mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
-| `W`/`S`, `A`/`D` (walking) | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
-| mouse (walking, captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
-| `V` (walking) | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
-| `C` (walking) | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
-| left click (walking, captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
-| `R` (walking) | reloads; an empty magazine waits for it |
-| walking into a ladder (walking) | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
-| `X` (walking) | the action, the pad's Cross in the game: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
-| `Q` / `E` held (walking) | peeks left / right, standing still, as the game's d-pad does |
+| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map; the site bar stays |
+
+### Walking (`?redotcom`)
+
+| input | what it does |
+|---|---|
+| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **Fly / Walk** switch (the Modern / PS2 switch's own markup) mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `W`/`S`, `A`/`D` | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
+| mouse (captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
+| `Space` | jump |
+| `V` | third person, the default, and first person (the eye at the head, the body hidden); `Ctrl+V` stays the browser's |
+| `C` | cycles the stance: stand → crouch → prone → stand; on a touch screen, the **C** button beside the lift buttons |
+| right button (held) | the aim view, first person from the SEAL's eyes |
+| left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
+| `R` | reloads; an empty magazine waits for it |
+| walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
+| `X` | the action, the pad's Cross: climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
+| `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
+
+### The controller
+
+The Gamepad API's standard mapping, read as the PS2 pad by position. The left stick moves and the right looks, flying and
+walking alike. The layout is the owner's word of 2026-09-28 where it says so; a row marked *assumed* in the page is one
+neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LAYOUT`).
+
+| button | walking (`?redotcom`) | flying |
+|---|---|---|
+| left stick / right stick | move / look | fly along the look / look |
+| Square | jump | up |
+| Cross | action: the climb the icon offers, the ladder's slide ([research 86](docs/research/86-traversal.md)) | — |
+| d-pad Left / Right (held) | peek left / right, standing still | — |
+| R1 | fire (held fires at the rifle's rate; let go stops) | — |
+| Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
+| L1 (held) | aim view (first person) | — |
+| d-pad Up | zoom (scope): the lane is read, the zoom itself is a stub until the accuracy work merges | — |
+| Start | fly (as `G`) | walk (as `G`) |
+| L3 | crouch toggle on release (the launcher's crouch shortcut) | down |
+| R3 | — | boost |
+
+Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/play.ts`): the game reads the button's
+pressure, which a browser pad does not give.
 
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
 [What the picture is made of](#what-the-picture-is-made-of), "The player". In short: 65 units a second running, 37
-backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` does
-not jump: the game's jump is an animation's root motion, not yet read. The ammo box at the bottom left shows the
-magazine while walking.
+backing up, 14 crouched, 11 prone; a step up to 6.5 units is climbed, a drop of more than 8 is a fall. `Space` jumps
+as the game does ([research 80](docs/research/80-the-jump.md)): under 15 units a second the standing jump, a clip on the
+floor (`seal_jump`, 0.99 s, the body's root and the camera rising 3.6); from 15 the running jump, 79.9 up 0.1 s after
+the take-off under the 235 fall -- 12.9 units (1.3 m) high, 0.78 s in the air, the take-off's speed carried; prone cannot. The
+clips are the game's pick and blend: the stick's speed picks each set's clip by its transition band, the forward and
+strafe sets share the stick's angle, every clip plays at the rate its root needs. While walking, the game's own HUD is drawn
+over the picture (`viewer/src/hud.ts`, [`docs/research/87-hud.md`](docs/research/87-hud.md)): the ammo box, the
+compass turned by the heading, the info box (health, a static round timer, the range), the stance word on a change and
+the context prompt (the climb icon); hidden in flight.
+
+**The walk sounds** with the game's own sounds, decoded from the map's banks (`docs/research/81-sounds.md`): a
+footstep per foot of every run or walk cycle, in the sound of the surface underfoot (the collision polygon's material:
+metal on Frostfire's rig, sand in Desert Glory), the stealth step at a light stick and the crawl prone; the jump's
+whoosh and the landing (the surface's, or a bone's crack from a deadly height); the M4A1 SD's suppressed round and its
+reload. The browser starts sound on the first click or key press; `window.__viewer.audio()` reports what played.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
 acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
@@ -175,17 +232,16 @@ that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, an
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
 and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
 has a phone's width to work with; the stick held at its rim for 400 ms is the flight's boost, the one gesture a
-thumb can make without leaving the stick (walking, it is simply a full stick); and a round fullscreen button sits above the lift buttons,
+thumb can make without leaving the stick (on foot, with `?redotcom`, it is simply a full stick: the walk has no boost); and a round fullscreen button sits above the lift buttons,
 which on a phone also asks for a landscape lock. The canvas is `100dvh`, so the picture's centre is the
 screen's whether or not the browser bar is showing, and the pixel ratio starts at 1.5 on a coarse
 pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
 step it back up.
 
-Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link,
-the settings cog beside it, the GitHub mark, whose word drops under 480px), then the panel beneath it.
-The panel opens folded on a coarse pointer, leaving only the cog (a remembered choice still wins), its
-body scrolls inside itself, and the status line drops the draw and collision counts and
-abbreviates the rest so it fits on one row at 360px. The lift buttons clear the browser's own bottom
+Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Controls,
+Settings and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
+panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself, and
+the status line is two dim lines whose whole text is its tooltip. The lift buttons clear the browser's own bottom
 bar with `env(safe-area-inset-bottom)`.
 
 ## Loading a map without freezing the page
@@ -350,16 +406,39 @@ rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAG
 every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
 `EFFE_TXR.ZED`, 1 to 1.8 units wide.
 
+**The rifle is in the SEAL's hands, raised to fire as the game raises it** (the sprint 2 player spec's §6, "The rifle
+in the hands, the Fire set, the kick and the satchel"). The body makes a `rifle` node under `rhand` with the rifle in
+hand (`FUN_00553290`); the clips' `rifle` track (`weapon` in the few SOCOM 1-named ones) poses it and the M4A1 SD
+hangs on it at its grip (`viewer/src/heldItem.ts`). The trigger raises the rifle over 0.1 s and it stays up 5 s after
+the last round, then falls over 0.5 s (`FUN_005dfe30`, `FUN_005dfc80`, the controller's 5.0 s at `FUN_00598280`;
+`viewer/src/weaponRaise.ts`); while up, each clip's **Fire** version (`seal_fp_stand`, `seal_fp_walk`,
+`seal_fp_crouch` ... twelve pairs, `FUN_005e0690`) blends in at that weight (`viewer/src/weaponPose.ts`, a pose layer
+over the clips). A round leaves the posed weapon's `firepoint` toward the point under the reticle; each kicks the
+aim's pitch by the stance's `FireRifleKick*` (`FUN_005b91c0`/`FUN_005b9280`, on in the image;
+`viewer/src/rifleKick.ts`), and `R` plays the stance's reload clip for its `motion.rdr` playback (1.6 s standing).
+The satchel is hung but hidden, as the game hides it until the SEAL picks up the bomb (`FUN_0059df60`). `Fire`'s
+`subscribe` is the audio's hook: a `round` event (the weapon's name, id, muzzle animation and sound names, the fire
+point in the world, the end, the hit, the rounds left), `reloadStart` (its seconds) and `reloadEnd`.
+
+**The HUD is the game's** ([`docs/research/87-hud.md`](docs/research/87-hud.md)): `CHUD`'s own rectangles read out
+of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, the weapon icon at (20, 389), "30/30" and
+"2 MAGS" at scale 0.9 on the baseline 382, the fire-mode rounds at x 10, 51, 87, the compass ring `compass_lo.tif` at
+96x96 on (565, 90) turned by the heading, the info box's health bar at (488, 396) -- drawn from `HUD_TXR`, `HUD2_TXR`,
+`HUDW_TXR` and `FONT_TXR` (the font a PSMT4 texture `@s2u/gs` now reads, every HUD bitmap stored bottom row first) with
+`fonts.rdr`'s `font_text_01` glyphs; each element's pixels within a pixel of the console frame's (`e2e/hud.spec.ts`).
+
 ## Known gaps
 
 - **The SEAL is a stand-in.** The body is a mannequin at the measured size whose legs swing by a stride model;
   the real model (`CLIB_GEO.ZED`'s skinned `CMesh` chain, the `0x70` unpack no decoder here reads), its 32-node
   skeleton and its animations (`MPZANIM.ZAR`, unopened) are web sprint 3's first candidate. With them would come
   the jump (a clip's root motion), the clips' 0.2 s blend-in, and the rifle's `firepoint`.
-- **The shot leaves the camera's eye, not the rifle.** The game fires from the weapon model's `firepoint` toward the
-  aim point; with no weapon model the eye stands in, so the round lands under the reticle but from the wrong
-  place. An empty magazine does not reload by itself (`R` does), the 2 s reload and the reticle's kick per round
-  are estimates, and no bullet surface class was found, so every polygon stops a round.
+- **The shot's effects are not drawn.** The round leaves the rifle's `firepoint` (above), but the muzzle's CZANIM
+  animation (`muzzle_m4`: the shell, the flash hider's flash, the smoke; the M4A1 SD's `muzzle_m4SD` has no flash)
+  is not played -- the zAnim command payloads are not decoded (research 77 §10). The rifle fired is the kit's M4A1
+  (`FireWait` 0.12) while the model in the hands is W2.R4's M4A1 SD; an empty magazine does not reload by itself
+  (`R` does), the reticle's knock mapping is an estimate, and no bullet surface class was found, so every polygon
+  stops a round.
 - **Materials are not modelled.** The stone row's bullet mark is drawn on every surface, the mark is unlit, and
   the material half of the camera's surface test is left out.
 - **The walk is the decompilation's reading, not yet measured on the console.** The speeds, the ramp and the fall

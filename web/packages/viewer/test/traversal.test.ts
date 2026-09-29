@@ -236,7 +236,7 @@ describe('the climb on a synthetic box (research 86 section 3)', () => {
     w.tick(STILL);
     expect(events[0]).toEqual({ type: 'climbStart', kind: 'low' });
     const ticks = run(w, STILL, () => t.state().kind === 'none', 400);
-    expect(ticks * TICK).toBeGreaterThan(1.25);                      // the clip's playback, after the steering
+    expect(ticks * TICK).toBeGreaterThan(1.25 * (29 / 30) ** 2);   // the clip's run to its last key (FUN_0028c4f0), after the steering
     expect(events.map((e) => e.type)).toEqual(['climbStart', 'climbUp', 'climbEnd']);
     expect(w.state.y).toBeCloseTo(12, 6);
     expect(w.state.z).toBeLessThan(0);                                // on the top, past the edge
@@ -309,6 +309,26 @@ describe('the climb on a synthetic box (research 86 section 3)', () => {
     run(w, FORWARD, () => t.state().kind === 'none', 800);
     expect(events[0]).toEqual({ type: 'climbStart', kind: 'high' });
     expect(w.state.y).toBeCloseTo(36, 6);
+  });
+
+  it('the jump-grab off the walk own running jump (79.9 up, research 80): a 36 ledge climbed from the air', () => {
+    const { grid, polys } = climbWorld(36, 1);
+    const { w, t, events } = climber(polys, grid, 40);
+    run(w, FORWARD, () => Math.hypot(w.state.vx, w.state.vz) > 60, 60);
+    run(w, FORWARD, () => w.state.z < 16, 60);
+    expect(w.jump()).toBe(true);
+    expect(w.action?.name).toBe('launch');
+    run(w, FORWARD, () => t.climbPrompt() !== null && w.airborne, 90);
+    expect(w.airborne).toBe(true);
+    expect(t.climbPrompt()?.kind).toBe('high');                      // 36 less the rise: within the table's 32
+    t.action();
+    w.tick(FORWARD);
+    expect(events[0]).toEqual({ type: 'climbStart', kind: 'high' });
+    expect(w.airborne).toBe(false);                                   // the climb holds it: the jump and its fall are over
+    expect(w.action).toBeNull();
+    run(w, FORWARD, () => t.state().kind === 'none', 800);
+    expect(w.state.y).toBeCloseTo(36, 6);
+    expect(w.action).toBeNull();
   });
 
   it('does not climb prone, or facing away', () => {

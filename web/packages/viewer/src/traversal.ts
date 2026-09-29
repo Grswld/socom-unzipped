@@ -3,6 +3,7 @@ import {
   type Grid, type Ladder, type MotionClip, type WorldPoly,
 } from '@s2u/scene';
 import type { TraversalPose } from './animator';
+import { oneShotSeconds } from './locomotion';
 import { ClipPath, clipShape, reverseShape, rootAt, shapeTravel, straightShape, type ClipShape } from './clipPath';
 import { contactHolds, floorUnder, planClimb, topFloor, touchClimbable, type ClimbClass, type ClimbContact, type ClimbPlan } from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
@@ -94,7 +95,8 @@ export class TraversalShapes {
     if (own) return own;
     const f = FALLBACK[name];
     if (!f) return straightShape(name, 0.5, 11.484, 0, 0, 2);
-    return straightShape(name, f[0], f[1], f[2], f[3], f[4]);
+    const looped = name === TRAVERSAL_CLIP.ladder || name === TRAVERSAL_CLIP.slide || name === TRAVERSAL_CLIP.hang;
+    return straightShape(name, looped ? f[0] : oneShotSeconds(f[0], f[4]), f[1], f[2], f[3], f[4]);
   }
 
   /** Whether the clip's own shape is in hand. */
@@ -159,7 +161,7 @@ export type TraversalEvent =
   | { type: 'ladderRung'; y: number }
   | { type: 'ladderDismount'; at: 'top' | 'bottom' }
   | { type: 'ladderSlide'; on: boolean }
-  | { type: 'ladderSlideLand' }
+  | { type: 'ladderSlideLand'; speed: number }
   | { type: 'climbStart'; kind: ClimbClass }
   | { type: 'climbUp' }
   | { type: 'pullUp' }
@@ -286,6 +288,11 @@ export class Traversal implements TraversalHooks {
     return this.kind_ !== 'none';
   }
 
+  /** `TraversalHooks.busy`: a move holds the mover (no jump, no stance change). */
+  busy(): boolean {
+    return this.active;
+  }
+
   state(): TraversalState {
     const r = this.running;
     return { kind: this.kind_, ladder: this.ladder?.path ?? null, clip: r?.clip ?? (this.kind_ === 'ladder' ? TRAVERSAL_CLIP.ladder : null), key: r ? this.key(r) : this.phase };
@@ -313,7 +320,7 @@ export class Traversal implements TraversalHooks {
     const lean = this.leanOn;
     if (lean) {
       const clip = leanClip(lean.stance, lean.side), shape = this.shapes.get(clip);
-      return { clip, frame: Math.min(shape.keys - 1, (this.leanTime / shape.seconds) * shape.keys), loop: false, rootY: null };
+      return { clip, frame: Math.min(shape.keys - 1, (this.leanTime / shape.seconds) * (shape.keys - 1)), loop: false, rootY: null };
     }
     return null;
   }
@@ -382,7 +389,7 @@ export class Traversal implements TraversalHooks {
 
   private key(r: Running): number {
     const shape = r.path.shape;
-    const k = Math.min(shape.keys - 1, (r.time / shape.seconds) * shape.keys);
+    const k = Math.min(shape.keys - 1, (r.time / shape.seconds) * (shape.keys - 1));
     return r.reverse ? shape.keys - 1 - k : k;
   }
 
@@ -492,6 +499,7 @@ export class Traversal implements TraversalHooks {
     const start: [number, number, number] = [plan.target[0] + c.nx * back, s.y, plan.target[2] + c.nz * back];
     if (Math.hypot(start[0] - s.x, start[2] - s.z) > ALIGN_ABORT) return;
     w.stance = 'stand';
+    w.setAirborne(false);                                        // a jump-grab: the jump and its fall end here
     this.climbing = { plan, start, ticks: 0 };
     this.plan = null;
     this.kind_ = 'climbAlign';
@@ -650,6 +658,7 @@ export class Traversal implements TraversalHooks {
   private mountBottom(w: Walker, l: Ladder): void {
     const s = w.state;
     w.stance = 'stand';
+    w.setAirborne(false);                                        // a landing or a stance change ends here
     this.ladder = l;
     this.lock = yawFacing(l.nx, l.nz);
     s.yaw = this.lock;
@@ -667,6 +676,7 @@ export class Traversal implements TraversalHooks {
   private mountTop(w: Walker, l: Ladder, _facing: boolean): void {
     const s = w.state;
     w.stance = 'stand';
+    w.setAirborne(false);                                        // a landing or a stance change ends here
     this.ladder = l;
     this.lock = yawFacing(l.nx, l.nz);
     s.yaw = this.lock;
@@ -797,7 +807,7 @@ export class Traversal implements TraversalHooks {
   private land(w: Walker): void {
     const l = this.ladder!, s = w.state;
     this.emit({ type: 'ladderSlide', on: false });
-    this.emit({ type: 'ladderSlideLand' });
+    this.emit({ type: 'ladderSlideLand', speed: Math.max(0, -this.slideVy) });
     const shape = this.shapes.get(TRAVERSAL_CLIP.slideLand);
     const back = Math.max(0, -shapeTravel(shape).ahead);
     const to: [number, number, number] = [s.x + l.nx * back, s.y, s.z + l.nz * back];

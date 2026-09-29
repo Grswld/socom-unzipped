@@ -96,9 +96,9 @@ describe('the served index', () => {
   const MAPS = [{ archive: 'MP2', path: 'RUN/MP2.ZDB', name: 'FROSTFIRE' }];
 
   it('is the maps and the common archives, READERC, ZWEAPON and the motion packs beside the map archives', () => {
-    expect(COMMON_ARCHIVES).toEqual(['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR']);
+    expect(COMMON_ARCHIVES).toEqual(['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR', 'RUN/SOUNDRDR.ZAR', 'RUN/SOUNDS/BNKSTORE.ZAR']);
     const index = servedIndex(MAPS);
-    expect(index).toEqual({ maps: MAPS, common: ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR'] });
+    expect(index).toEqual({ maps: MAPS, common: ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR', 'RUN/SOUNDRDR.ZAR', 'RUN/SOUNDS/BNKSTORE.ZAR'] });
     // What the extractor writes is what the reader reads back.
     expect(parseServedIndex(JSON.parse(JSON.stringify(index)))).toEqual(index);
   });
@@ -127,7 +127,7 @@ describe('readServedIndex', () => {
     try {
       const maps = [{ archive: 'MP2', path: 'RUN/MP2.ZDB', name: 'FROSTFIRE' }];
       writeFileSync(join(tmp, 'index.json'), JSON.stringify(servedIndex(maps)));
-      expect(readServedIndex(tmp)).toEqual({ maps, common: ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR'] });
+      expect(readServedIndex(tmp)).toEqual({ maps, common: ['RUN/READERC.ZAR', 'RUN/ZWEAPON.ZAR', 'RUN/MOTION_P.ZAR', 'RUN/MPZANIM.ZAR', 'RUN/SOUNDRDR.ZAR', 'RUN/SOUNDS/BNKSTORE.ZAR'] });
       writeFileSync(join(tmp, 'index.json'), JSON.stringify(maps));
       expect(readServedIndex(tmp).maps).toEqual(maps);
     } finally {
