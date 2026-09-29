@@ -78,14 +78,14 @@ python_suite_skip() {
   gdir="$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
   gcommon="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   if [ -n "$gdir" ] && [ -n "$gcommon" ] && [ "$gdir" != "$gcommon" ]; then
-    echo "tests: python suite skipped (linked worktree; the merged chain runs it -- --full-suite to force)"
+    echo "tests: Python suite skipped (linked worktree; the merged chain runs it -- --full-suite to force)"
     return 0
   fi
   if [ -f "$ROOT/scripts/loop_lock.sh" ]; then
     # a STALE ticket is a dead waiter's, dropped at the next grant: it does not count
     queued="$(bash "$ROOT/scripts/loop_lock.sh" check 2>/dev/null | grep '^QUEUED:' | grep -vc '^QUEUED: STALE' || true)"
     if [ "${queued:-0}" -gt 0 ] 2>/dev/null; then
-      echo "tests: python suite skipped ($queued waiter(s) queued on the loop lock; the merged chain runs it -- --full-suite to force)"
+      echo "tests: Python suite skipped ($queued waiter(s) queued on the loop lock; the merged chain runs it -- --full-suite to force)"
     fi
   fi
 }

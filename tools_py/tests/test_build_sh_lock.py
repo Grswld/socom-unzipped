@@ -135,8 +135,8 @@ class TestBuildShLockConsult(unittest.TestCase):
         self.assertLess(text.index('if [ "$DRY_RUN" = 1 ]'), text.index("no toolchain under tools/"))
 
 
-SKIP_LINKED = "tests: python suite skipped (linked worktree; the merged chain runs it -- --full-suite to force)"
-SKIP_PREFIX = "tests: python suite skipped ("
+SKIP_LINKED = "tests: Python suite skipped (linked worktree; the merged chain runs it -- --full-suite to force)"
+SKIP_PREFIX = "tests: Python suite skipped ("
 PLANTED = "test_the_planted_suite_ran"          # the planted suite's one test, as `unittest -v` names it
 CXX_RAN = "STUB ps2x_tests ran"
 # The copies build.sh's test step needs in a tree; each tree gets its own (untracked) copy, so ROOT is that tree.
@@ -227,6 +227,8 @@ class TestBuildShSuiteGuard(unittest.TestCase):
             rt = os.path.join(tree, "third_party", "ps2recomp", "build-clang")
             _write(os.path.join(rt, "ps2xTest", "ps2x_tests.exe"), STUB_PS2X)
             _write(os.path.join(rt, "ps2xRuntime", "vu1_replay.exe"), STUB_VU1)
+            # build.sh's test step copies the bench exe to dist/ beside vu1_replay (Sprint 17 F, the replay bench)
+            _write(os.path.join(rt, "ps2xRuntime", "gs_replay_bench.exe"), STUB_VU1)
         cls.stubbin = os.path.join(cls.trees, "stubbin")
         for tool in ("clang", "clang++", "cmake", "ninja"):
             _write(os.path.join(cls.stubbin, tool), STUB_TOOL)
