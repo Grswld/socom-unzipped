@@ -173,6 +173,20 @@ export class CharacterShadow {
     scene.background = previousBackground;
   }
 
+  /**
+   * What compiles the map's programs ahead of the first frame that draws it (research 90 item 17: the silhouette of
+   * the SEAL's gear linked 100 ms of programs on entering the walk), for `ViewerRenderer.prepare`: the actor put on
+   * the map's layer, the camera fitted to it, the map as the target and the silhouette as the override.
+   */
+  warmSetup(actor: Object3D): { camera: OrthographicCamera; target: RenderTarget; override: MeshBasicNodeMaterial } {
+    actor.updateMatrixWorld(true);
+    actor.traverse((o) => o.layers.enable(SHADOW_LAYER));
+    this.box.setFromObject(actor, true);
+    if (this.box.isEmpty()) this.box.setFromCenterAndSize(actor.getWorldPosition(new Vector3()), new Vector3(1, 1, 1));
+    fitShadowCamera(this.camera, this.box, this.direction);
+    return { camera: this.camera, target: this.target, override: this.silhouette };
+  }
+
   dispose(): void {
     this.silhouette.dispose();
   }

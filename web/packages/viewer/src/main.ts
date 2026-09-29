@@ -337,6 +337,12 @@ const fog: FogSettings = {
 let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
 /** The renderer's warm-up (`ViewerRenderer.warm`), once `boot` has one: every program compiled after a map's reveal. */
 let warmScene: ((extras: Object3D[]) => Promise<void>) | null = null;
+/** How many of the world's programs link at once before its first paint (`ViewerRenderer.prepare`'s `lanes`). */
+const WORLD_LANES = 8;
+/** A reveal's programs compiled before it (`ViewerRenderer.prepare`), once `boot` has a renderer. */
+let prepareObjects: ((objects: Object3D[], stale: () => boolean, lanes?: number) => Promise<void>) | null = null;
+/** What entering the walk first draws -- the SEAL and its rifle, their shadow's silhouette, the HUD and the reticle -- compiled with the map. */
+let warmWalk: (() => Promise<void>) | null = null;
 
 /**
  * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
@@ -828,6 +834,17 @@ async function boot(): Promise<void> {
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
   warmScene = (extras) => created.warm(scene, fly.camera, extras);
+  prepareObjects = (objects, stale, lanes) => created.prepare(objects, scene, fly.camera, { stale, lanes });
+  warmWalk = async () => {
+    const b = body, stale = (): boolean => body !== b;
+    const overlays = [hud.warmTarget(), reticle.warmTarget()];
+    const map = b ? charShadow.warmSetup(b.group) : null;
+    await Promise.all([
+      b ? created.prepare([b.group], scene, fly.camera, { stale }) : null,
+      b && map ? created.prepare([b.group], scene, map.camera, { stale, target: map.target, override: map.override }) : null,
+      ...overlays.map((o) => created.prepare([o.scene], o.scene, o.camera, { screen: true })),
+    ]);
+  };
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();
   backend = chosen;
@@ -1062,6 +1079,7 @@ function show(map: LoadedMap): void {
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
   play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
+  void warmWalk?.().catch(() => {});                          // what entering the walk draws first, compiled now
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
@@ -1136,22 +1154,34 @@ function show(map: LoadedMap): void {
     previous.dispose();
     previous = null;
   };
-  revealing = spreadAcrossFrames(built.revealWorld, {
-    onProgress: (done, total) => {
+  // Each reveal waits for its objects' programs, linked off the draw (research 90 item 17: a draw that meets a new
+  // program links it there and then -- 3.6 s of stalls through Guidance's first seconds).
+  const stale = (): boolean => view !== built0;
+  const prepared = (objects: Object3D[], lanes?: number): Promise<void> => (prepareObjects?.(objects, stale, lanes) ?? Promise.resolve()).catch(() => {});
+  ui.setLoading(true, 'building the scene', 0);
+  // The world's with more links in flight: nothing is drawn yet that a backed-up driver could hold.
+  void prepared(built.worldObjects, WORLD_LANES).then(() => {
+    if (stale()) return;
+    revealing = spreadAcrossFrames(built0.revealWorld, {
+      onProgress: (done, total) => {
+        retire();
+        ui.setLoading(true, 'building the scene', total > 0 ? done / total : 1);
+      },
+    });
+    void revealing.done.then(() => {
+      if (stale()) return;                          // another map was picked while this one was revealing
       retire();
-      ui.setLoading(true, 'building the scene', total > 0 ? done / total : 1);
-    },
-  });
-  void revealing.done.then(() => {
-    if (view !== built0) return;                  // another map was picked while this one was revealing
-    retire();
-    ui.setLoading(false);
-    say(` · ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
-    // The props follow, over further frames. The map is already drawn and flyable while they arrive,
-    // and the flares among them are turned by the render loop on the frame after they land.
-    revealing = spreadAcrossFrames(built0.revealProps);
-    // Then every program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
-    void revealing.done.then(() => { if (view === built0) void warmScene?.(built0.warmExtras()); });
+      ui.setLoading(false);
+      say(` · ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
+      // The props follow, over further frames. The map is already drawn and flyable while they arrive,
+      // and the flares among them are turned by the render loop on the frame after they land. Then every
+      // program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
+      void prepared(built0.propObjects).then(() => {
+        if (stale()) return;
+        revealing = spreadAcrossFrames(built0.revealProps);
+        void revealing.done.then(() => { if (!stale()) void warmScene?.(built0.warmExtras()); });
+      });
+    });
   });
 }
 

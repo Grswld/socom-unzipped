@@ -355,6 +355,9 @@ export class Reticle {
     return { visible, rect, frame: { ...this.frame }, mode: this.mode, size: this.drawSize, offset: [...this.offset], colour: this.colour };
   }
 
+  /** The pass's scene and camera, for the page's warm-up (`ViewerRenderer.prepare`): its programs linked before the walk. */
+  warmTarget(): { scene: Scene; camera: OrthographicCamera } { return { scene: this.scene, camera: this.camera }; }
+
   /** Draws the HUD over whatever the renderer last drew: nothing is cleared. */
   render(renderer: HudRenderer): void {
     renderer.getDrawingBufferSize(this.size);

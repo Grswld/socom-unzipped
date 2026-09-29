@@ -41,6 +41,12 @@ export interface WorldView {
   revealWorld: (() => void)[];
   /** The props, the flares and the line strips. These arrive behind the world, over further frames. */
   revealProps: (() => void)[];
+  /**
+   * The objects `revealWorld` and `revealProps` add, in their order: what the page compiles off-screen before each
+   * reveal (`ViewerRenderer.prepare`), so no program is linked by the draw that first meets it.
+   */
+  worldObjects: Object3D[];
+  propObjects: Object3D[];
   triangles: number;
   /** The extent of everything queued, accumulated as it was built rather than read off the group. */
   box: Box3;
@@ -612,6 +618,8 @@ export function buildWorld(map: LoadedMap): WorldView {
    */
   const revealWorld: (() => void)[] = [];
   const revealProps: (() => void)[] = [];
+  const propObjects: Object3D[] = [];
+  const worldObjects: Object3D[] = [];
   const box = new Box3();
   /**
    * Queues an object with its place in the scene walk and its grid cells, and grows the map's extent by it.
@@ -630,6 +638,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     object.visible = (!alternate || alternateOn) && (!shadow || shadowsOn) && (!line || (lineStripsOn && !wireframeOn))
       && (lod === null || lod.visible);
     queue.push(() => group.add(object));
+    (queue === revealProps ? propObjects : worldObjects).push(object);
   };
 
   for (const part of map.world) {
@@ -815,6 +824,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     warmExtras,
     revealWorld,
     revealProps,
+    worldObjects,
+    propObjects,
     triangles,
     box,
     untextured: untexturedDraws,
