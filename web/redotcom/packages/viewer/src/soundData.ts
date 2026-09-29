@@ -1,9 +1,9 @@
 import { parseRdr, rdrGet, readZarMembers, readZdbMember, Zar, type AssetSource, type RdrNode } from '@s2u/archive';
-import { flattenScene, parseAnimSets, parseSceneGraph, parseWorldRoot, spawnsFor, worldCollision, type SceneNode } from '@s2u/scene';
+import { flattenScene, parseAnimSets, parseSceneGraph, parseWorldRoot, spawnsFor, UNITS_PER_METRE, worldCollision, type SceneNode } from '@s2u/scene';
 import {
-  callbackSounds, findReverbPresets, fixSoundName, globalRegister2, parseBankFile, parseSoils, parseSoundScript, renderLoopAtLeastOneVoice,
-  reverbImpulse, SampleCache, SOUND_FALLBACKS, type ReverbImpulse,
-  SOCOM_REVERB_MODE, soundHash, soundParams, weaponSounds, zanimEmitters, zanimSounds, type Material, type RenderedSound,
+  ambienceLayers, callbackPlays, findReverbPresets, fixSoundName, globalRegister2, parseBankFile, parseSoils, parseSoundScript,
+  renderLoopAtLeastOneVoice, reverbImpulse, SampleCache, SOUND_FALLBACKS, type AmbienceLayers, type ReverbImpulse, type SoundBank,
+  SOCOM_REVERB_MODE, soundHash, soundParams, weaponGlobals, weaponSounds, zanimEmitters, zanimSounds, type Material, type RenderedSound,
   type SoundParams, type SoundSet, type WeaponSounds, type ZAnimPayload,
 } from '@s2u/sound';
 
@@ -12,17 +12,20 @@ import {
  * into the source) for one map:
  *
  * - **the banks**: the map's `<map>_am.bnk` (the steps, the landings, the jump, the world's impacts), `_fx.bnk` (the
- *   weapons) and `_vc.bnk` (the voices), out of `RUN/SOUNDS/BNKSTORE.ZAR` by range -- 1.1 to 1.4 MB of its 67 --
- *   and `HUDUI.bnk` (the interface's, the night vision's goggles among them), which the game loads with every map
- *   (`SOUND_GLOBAL_BANKS`), sent as their bytes; the page parses and decodes them (`./audio`);
+ *   weapons) and `_vc.bnk` (the voices), and `HUDUI.bnk` (the interface's, the night vision's goggles among them), which
+ *   the game loads with every map (`SOUND_GLOBAL_BANKS`), out of `RUN/SOUNDS/BNKSTORE.ZAR` by range -- about 1.9 MB of
+ *   its 67 for Frostfire (research 81 s1: 986,408 + 687,344 + 176,088 B and HUDUI's), plus the one or two banks lent
+ *   for names the map's lack (`borrowMissing`) -- sent as their bytes; the page parses and decodes them (`./audio`);
  * - **the script**: `RUN/SOUNDRDR.ZAR/sounds.rdr`, each of those banks' sounds' `RANGE` and flags, by name;
  * - **the materials**: `READERC.ZAR/materials.rdr`, the step, stealth, crawl and landing sound of every surface;
- * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s fire and reload sounds for `SOUND_WEAPONS`;
+ * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s fire and reload sounds for `SOUND_WEAPONS`, and its `WEAPON_GLOBAL`
+ *   distances that pick a remote round's close, medium or far sound (`fireDistances`);
  * - **the callbacks**: the map's own `CZANIM.ZAR` and `MZANIM.ZAR`, which zAnim a `zanim_callback` name plays which
  *   sounds, through the animations it starts;
- * - **the ambience** (research 81 §10): the mission's beds (`outside_noise`/`inside_noise`: `~OUTDOOR_AMB`,
- *   `~INDOOR_AMB`) and its emitters -- the self-starting zAnims that loop a `~` sound at a scene node, placed at the
- *   node's world position out of the map's `_GEO.ZED`;
+ * - **the ambience** (research 81 §10): the layers the mission's camera-state scripts start on each side
+ *   (`ambienceLayers`: the beds `~OUTDOOR_AMB` / `~INDOOR_AMB` of `outside_noise` / `inside_noise`, Frostfire's wind
+ *   gusts), each at its command's volume, and its emitters -- the self-starting zAnims that loop a `~` sound at a scene
+ *   node, placed at the node's world position out of the map's `_GEO.ZED`;
  * - **the reverb** (§9): libsd's preset for the game's mode out of `RUN/IRX/LIBSD.IRX`, and the mission's
  *   `IndoorReverb`/`OutdoorReverb` depths (`READERM.ZAR/mission.rdr`);
  * - **the map's `DefaultMaterial`** (its world root, `<map>.ZED`), what a polygon's material byte 0 is
@@ -68,12 +71,24 @@ export interface SoundData {
   weapons: WeaponSounds[];
   /** zAnim callback name to the sounds it plays. */
   callbacks: [string, string[]][];
+  /** Each callback's sounds' command volumes, in the same order (1 unless the command's flag 0x10 gives its own). */
+  callbackVolumes?: [string, number[]][];
+  /**
+   * `WEAPON_GLOBAL`'s `SoundDistanceClose/Med/Far` in units (metres x `UNITS_PER_METRE`): a remote round past `med`
+   * plays its weapon's `FireSoundMed`, past `far` its `FireSoundFar` (`fireVariant`); null without `zweapon.rdr`.
+   */
+  fireDistances?: { close: number; med: number; far: number } | null;
   /** The SOILS index a material byte 0 stands for: the map's `DefaultMaterial` (0 when it names none). */
   defaultMaterial: number;
-  /** The beds: what `outside_noise` and `inside_noise` loop (`~OUTDOOR_AMB`, `~INDOOR_AMB`), empty where a map has none. */
+  /** The beds: the `loop` layers' sounds per side (`~OUTDOOR_AMB`, `~INDOOR_AMB`), empty where a map has none. */
   beds: { outside: string[]; inside: string[] };
-  /** The emitters: a looping sound at a world position. */
-  emitters: { anim: string; sound: string; node: string; position: [number, number, number] }[];
+  /**
+   * The camera-state scripts' layers per side (`ambienceLayers`): the beds with their volumes, and the one-shots a
+   * script replays (Frostfire's wind gusts). Absent in data made before them: the beds alone, at 1.0.
+   */
+  layers?: AmbienceLayers;
+  /** The emitters: a looping sound at a world position, at its command's volume (absent: 1.0). */
+  emitters: { anim: string; sound: string; node: string; position: [number, number, number]; volume?: number }[];
   /**
    * The reverb: the preset's 32 registers (null without `LIBSD.IRX`), the depth zones (depth 0..1, ramp seconds), and
    * the preset's response, computed in the worker (`renderReverb`) so the page's unlock does no arithmetic.
@@ -126,6 +141,7 @@ function silent(archive: string, missing: string[]): SoundData {
   return {
     archive, banks: [], materials: [], params: [], weapons: [], callbacks: [], defaultMaterial: 0,
     beds: { outside: [], inside: [] }, emitters: [], reverb: { preset: null, indoor: [], outdoor: [] }, damageVoice: null, missing,
+    fireDistances: null,
   };
 }
 
@@ -168,11 +184,15 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
   if (mats) { try { materials = parseSoils(parseRdr(mats)); } catch (e) { missing.push(`materials.rdr: ${why(e)}`); } }
 
   const weapons: WeaponSounds[] = [];
+  let fireDistances: SoundData['fireDistances'] = null;
   const zweapon = await one(SOUND_WEAPONS_PATH, 'zweapon.rdr');
   if (zweapon) {
     try {
       const table = parseRdr(zweapon);
       for (const name of SOUND_WEAPONS) { const w = weaponSounds(table, name); if (w) weapons.push(w); }
+      // `FUN_003cd810`: metres x `DAT_003dfe10` (1 / MetersPerUnit, 10 on every map: `UNITS_PER_METRE`).
+      const g = weaponGlobals(table);
+      fireDistances = { close: g.soundDistanceClose * UNITS_PER_METRE, med: g.soundDistanceMed * UNITS_PER_METRE, far: g.soundDistanceFar * UNITS_PER_METRE };
     } catch (e) { missing.push(`zweapon.rdr: ${why(e)}`); }
   }
 
@@ -183,7 +203,9 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
 
   // The zAnims: the common set and the mission's, a command's bytes out of its animation's Seq_Data.
   let callbacks: [string, string[]][] = [];
+  let callbackVolumes: [string, number[]][] = [];
   const beds = { outside: [] as string[], inside: [] as string[] };
+  let layers: AmbienceLayers = { outside: [], inside: [] };
   let emitters: SoundData['emitters'] = [];
   const casingSounds = new Set<string>();
   try {
@@ -197,14 +219,18 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
       }
       return null;
     };
-    callbacks = [...callbackSounds(archives, payload)];
+    const plays = [...callbackPlays(archives, payload)];
+    callbacks = plays.map(([name, p]) => [name, p.map((x) => x.sound)]);
+    callbackVolumes = plays.map(([name, p]) => [name, p.map((x) => x.volume)]);
     const infos = zanimSounds(archives, payload);
     // The casings' sounds are named in the shell_eject zAnims' name tables, played from inside their particle command.
     for (const a of archives) for (const set of a.sets) for (const anim of set.anims) {
       if (/^shell_eject/.test(anim.name)) for (const n of anim.names) if (/^[.~!][A-Z0-9_]/.test(n)) casingSounds.add(n);
     }
-    for (const [bed, anim] of [['outside', 'outside_noise'], ['inside', 'inside_noise']] as const) {
-      for (const snd of infos.get(anim)?.sounds ?? []) if (!beds[bed].includes(snd.sound)) beds[bed].push(snd.sound);
+    // The camera-state scripts' start/stop walk (research 81 §10): the beds and the replayed one-shots of each side.
+    layers = ambienceLayers(archives, payload);
+    for (const side of ['outside', 'inside'] as const) {
+      for (const l of layers[side]) if (l.kind === 'loop' && !beds[side].includes(l.sound)) beds[side].push(l.sound);
     }
     const wanted = zanimEmitters(infos);
     if (wanted.length > 0 && models) {
@@ -215,7 +241,7 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
       emitters = wanted.flatMap((e) => {
         const position = emitterPosition(at.get(e.node) ?? null, e.offset);
         if (!position) { missing.push(`emitter ${e.anim}: no node ${e.node}`); return []; }
-        return [{ anim: e.anim, sound: e.sound, node: e.node, position }];
+        return [{ anim: e.anim, sound: e.sound, node: e.node, position, ...(e.volume !== undefined ? { volume: e.volume } : {}) }];
       });
     }
   } catch (e) { missing.push(`${mapPath} zAnims: ${why(e)}`); }
@@ -282,10 +308,13 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
       }
     }
     for (const n of casingSounds) wanted.add(fixSoundName(n));   // `.BUL_CASE_METAL` lent as the banks spell it
+    for (const l of [...layers.outside, ...layers.inside]) if (l.kind !== 'loop') wanted.add(l.sound);   // the gusts
     if (damageVoice) wanted.add(damageVoice);
     try { await borrowMissing(source, banks, sets, wanted, archive, missing); } catch (e) { missing.push(`borrowing: ${why(e)}`); }
-    for (const { bytes } of banks) {
-      const bank = parseBankFile(bytes);
+    // Bank by bank: one that will not parse is named in `missing`, and the others' entries still come.
+    for (const { file, bytes } of banks) {
+      let bank: SoundBank;
+      try { bank = parseBankFile(bytes); } catch (e) { missing.push(`${file}: ${why(e)}`); continue; }
       for (const name of bank.names.keys()) {
         const p = soundParams(sets, [bank.name], name);
         if (p) params.push([name, p]);
@@ -294,8 +323,8 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
   }
 
   return {
-    archive, banks, materials, params, weapons, callbacks, defaultMaterial, beds, emitters, reverb, damageVoice, missing,
-    elevation, standHeight,
+    archive, banks, materials, params, weapons, callbacks, callbackVolumes, fireDistances, defaultMaterial, beds, layers, emitters,
+    reverb, damageVoice, missing, elevation, standHeight,
   };
 }
 
@@ -313,7 +342,11 @@ export async function borrowMissing(
   archive: string, missing: string[],
 ): Promise<void> {
   const have = new Set<string>();
-  for (const b of banks) for (const n of parseBankFile(b.bytes).names.keys()) { have.add(n); have.add(n.trim()); }
+  for (const b of banks) {
+    let names: Iterable<string>;
+    try { names = parseBankFile(b.bytes).names.keys(); } catch { continue; }   // named in `missing` by the params loop
+    for (const n of names) { have.add(n); have.add(n.trim()); }
+  }
   let need = [...wanted].filter((n) => !have.has(n) && !have.has(n.trim()));
   if (need.length === 0) return;
   const own = new Set(banks.map((b) => b.file.toUpperCase()));
@@ -386,26 +419,50 @@ export function soundTransferables(data: SoundData): Transferable[] {
 }
 
 /**
- * The map's beds and emitters rendered as loops (`renderLoop`), one per sound, in the worker: `seconds` long with a
- * `fade` folded in. A sound the banks lack is left out; so is one whose grains start no voice (the crickets' conductors
- * wait on a global register the game sets and the viewer does not).
+ * The name a loop is rendered and played under: the sound's name at the game's 1.0, else the name and the command's
+ * volume -- Desert Glory loops `~OUTDOOR_AMB` at 1.0 outdoors and at 0.6 indoors (its mission `inside_noise`), two
+ * renders, since 989snd applies a play's volume inside the voice (`(app x orig) >> 10`, clamped at 127) and not as a
+ * gain after it.
+ */
+export function loopKey(name: string, volume = 1): string {
+  return volume === 1 ? name : `${name}@${volume}`;
+}
+
+/** The loops the ambience plays: each bed layer's and each emitter's sound at its volume, once each. */
+export function ambienceLoops(data: SoundData): { key: string; name: string; volume: number }[] {
+  const out: { key: string; name: string; volume: number }[] = [];
+  const add = (name: string, volume: number): void => {
+    const key = loopKey(name, volume);
+    if (!out.some((l) => l.key === key)) out.push({ key, name, volume });
+  };
+  if (data.layers) { for (const l of [...data.layers.outside, ...data.layers.inside]) if (l.kind === 'loop') add(l.sound, l.volume); }
+  else for (const n of [...data.beds.outside, ...data.beds.inside]) add(n, 1);
+  for (const e of data.emitters) add(e.sound, e.volume ?? 1);
+  return out;
+}
+
+/**
+ * The map's beds and emitters rendered as loops (`renderLoop`), one per sound and volume (`loopKey`), in the worker:
+ * `seconds` long with a `fade` folded in, at the play volume 0x400 x the command's volume (`FUN_002659c0`). A sound the
+ * banks lack is left out; so is one whose grains start no voice (the crickets' conductors wait on a global register the
+ * game sets and the viewer does not); so is a bank that will not parse (`soundFromDisc` names it in `missing`).
  */
 export function renderAmbienceLoops(data: SoundData, seconds: number, fade: number, longSeconds = seconds): { name: string; sound: RenderedSound }[] {
-  const banks = data.banks.map(({ bytes }) => parseBankFile(bytes));
+  const banks: SoundBank[] = [];
+  for (const { bytes } of data.banks) { try { banks.push(parseBankFile(bytes)); } catch { /* named in `missing` */ } }
   const caches = banks.map((b) => new SampleCache(b.vag));
-  const names = [...new Set([...data.beds.outside, ...data.beds.inside, ...data.emitters.map((e) => e.sound)])];
   const out: { name: string; sound: RenderedSound }[] = [];
   const state = new Map<string, number>();
   // Global register 2 at the stand's height (the beds that test it take their layers from it once, not per frame).
   const globals = data.elevation && data.standHeight !== null && data.standHeight !== undefined
     ? [0, globalRegister2(data.standHeight, data.elevation)] : [];
-  for (const name of names) {
+  for (const { key, name, volume } of ambienceLoops(data)) {
     const at = banks.findIndex((b) => b.names.has(name) || b.names.has(`${name} `));
     if (at < 0) continue;
     const bank = banks[at]!;
     const sound = renderLoopAtLeastOneVoice(bank, bank.names.get(name) ?? bank.names.get(`${name} `)!, caches[at]!, seconds, fade,
-      longSeconds, { state, globals });
-    if (sound.voices > 0) out.push({ name, sound });
+      longSeconds, { state, globals, vol: Math.round(0x400 * volume) });
+    if (sound.voices > 0) out.push({ name: key, sound });
   }
   return out;
 }

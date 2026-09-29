@@ -103,9 +103,11 @@ export function landingClass(speed: number, speeds: readonly [number, number, nu
 }
 
 /**
- * `FUN_005ac1f0`'s sounds: the material's `LANDSOUND` for a soft landing and a light one (the light one also a
- * grunt, `FUN_00578150(0.33)`, the damage voice -- not modelled); `.BONE_BRK_1` alone for a heavy one; both for a
- * deadly one. Stances 8 and 10 (not the walk's) always land soft.
+ * `FUN_005ac1f0`'s sounds (decomp 464913-464920): the material's `LANDSOUND` for a soft landing and a light one;
+ * `.BONE_BRK_1` alone for a heavy one; both for a deadly one. Stances 8 and 10 (not the walk's) always land soft. The
+ * `FUN_00578150(0.33 / 0.66)` call for classes 1 / 2 (464934-464940) raises the exertion meter at body `+0xeb0`
+ * (`accuracy.ts`, research 84 s8) -- it is not a sound; the hurt voice a damaging landing adds is `landingHurts`
+ * (`CHRSND_DAMAGE`, `GameAudio.onLand`).
  */
 export function landingSounds(material: Material | undefined, cls: LandingClass): string[] {
   const land = material?.land ?? null;
@@ -153,4 +155,20 @@ export function passingSound(actor: readonly number[], from: readonly number[], 
  */
 export function landingHurts(cls: LandingClass): boolean {
   return cls >= 1;
+}
+
+/** The fire sound's slot a remote round plays: 0 `FireSoundClose`, 1 `FireSoundMed`, 2 `FireSoundFar`. */
+export type FireSlot = 0 | 1 | 2;
+
+/**
+ * `FUN_003d2c50` (decomp 325494-325540, from the fire path at 479450): the round's position against the listener
+ * (`DAT_0048db48 + 0x30`, the camera), its squared length; over the far threshold the weapon's `+0xe8` handle (the
+ * far sound), else over the medium one `+0xe4`, else `+0xe0` (close). The thresholds are `WEAPON_GLOBAL`'s
+ * `SoundDistanceMed`/`Far` in units, squared (`FUN_003cd810`, `FUN_003d0100`; `weaponGlobals`): 90 and 500 units
+ * for the retail 9 and 50 metres. A null handle plays nothing -- no fall back to the close sound.
+ */
+export function fireVariant(distanceSq: number, medSq: number, farSq: number): FireSlot {
+  if (distanceSq > farSq) return 2;
+  if (distanceSq > medSq) return 1;
+  return 0;
 }
