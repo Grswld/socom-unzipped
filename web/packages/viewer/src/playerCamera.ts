@@ -95,8 +95,11 @@ import type { Stance } from './walk';
  * 15.1) and sinks through a crouch's transition clip; a running jump lifts the feet themselves. With no clips the
  * stance's measured root stands in, eased over 0.2 s [estimate].
  *
- * **Not modelled:** the peek (`DAT_004161c0`, `cam_peek_decay_rate`), the skeleton root's own x and z (0 here), the
- * two camera modes above, and the material half of the camera's surface test.
+ * **The peek** (`DAT_004161c0`, eased by `./traversal` at `cam_peek_decay_rate`) shifts `v` and the target across
+ * (`peekShift`), so the eye goes about twice the shift out; the aim stays the pitched straight ahead (`ahead`).
+ *
+ * **Not modelled:** the skeleton root's own x and z (0 here, as in the game: `FUN_0057a330` zeroes them after each
+ * update, decomp 439147-439148), the two camera modes above, and the material half of the camera's surface test.
  */
 
 export type Vec3 = [number, number, number];
@@ -154,6 +157,11 @@ export interface LocalCamera {
   dist: number;
   /** `n`: the unit vector from the target toward the eye. */
   back: Vec3;
+  /**
+   * The look: `rotate(actor+0x1070, (0, 0, -1))`, the pitched straight ahead `FUN_00297410` aims 1000 along from the
+   * target. Not `-back`: the peek's shift is in `v`, and so in `back`, but never in the aim (decomp 140987-140996).
+   */
+  ahead: Vec3;
   /** Whether the lead is under -5: the target's probe ahead runs (`FUN_0029cbb0`). */
   probe: boolean;
 }
@@ -196,7 +204,7 @@ export function localCamera(rootY: number, pitchDegrees: number, peek = 0): Loca
   const dist = flat + Math.abs(ny) * (CAM_CLOSE - flat);
   const target: Vec3 = [shift, lookHeight(rootY), lead + 0];
   return {
-    target, dist, back, probe: ny >= 0 && lead < LEAD_PROBE,
+    target, dist, back, probe: ny >= 0 && lead < LEAD_PROBE, ahead: [0, Math.sin(p), -Math.cos(p)],
     eye: [target[0] + back[0] * dist, target[1] + back[1] * dist, target[2] + back[2] * dist],
   };
 }
@@ -320,7 +328,10 @@ export class PlayerCamera {
     this.leadFrom = lead;
     const targetL: Vec3 = [local.target[0], local.target[1], lead];
     const eyeL = add(targetL, scale(local.back, local.dist));
-    const far = world(add(targetL, scale(local.back, -CAM_FAR)));
+    // FUN_00297410 (decomp 140987-141028): far = targetL + rotate(actor+0x1070, (0, 0, -1000)) -- the look quaternion
+    // turns a straight-ahead vector, so the peek's shift moves the eye and the target across and leaves the aim parallel
+    // to the body's facing. (Along `-back` the aim swung ~5.7 degrees back toward the body at a held right peek.)
+    const far = world(add(targetL, scale(local.ahead, CAM_FAR)));
     const eye0 = world(eyeL);
     // FUN_00296f10: the target on the line from the eye to the aim, `dist` from the eye.
     const target = add(eye0, scale(unit(sub(far, eye0)), local.dist));

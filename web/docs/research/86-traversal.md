@@ -308,6 +308,21 @@ on the top edge kept 3 from its ends, or the edge's midpoint, `FUN_005b3a60`): a
 4.712 radians a second of turn, stopping at facing > 0.993 and inside 1, or after 46 ticks, abandoning past 30. Extra
 offsets: "Stand -> Hang" (0, 11.78, -2.42), "Climb over" (0, -0.29, -2.42), "Step up" `refPt.y` + 1.
 
+**Round 4 (2026-09-29, the owner's "reached far above the ledge"): the steer is vertical too** [read]. `FUN_005b2d20`
+(decomp 468517-468748, called from `FUN_0057a330` while the steer record lives, i.e. as the clip plays) sets a velocity
+on **all three** axes, each clamped to +-30 a second: the target (`+0x8c`, whose y `FUN_005b1a10` copies from the
+contact polygon's top point, 467887) less the actor's position, its root (`vtbl+0x88`) and the turned `refPt`. Under a
+`UseVelY` clip `FUN_0059afd0` holds the root at most 11.487 over the actor (456455-456460), so the body is lifted or
+lowered by `top - (feet + 11.487 + refPt.y)` -- the clip's hands meet the ledge whatever the height, the clip is never
+stretched to it. The viewer had only the horizontal steer and spread the height mismatch over the rise, so at the pull
+the hands were +2.2 over a 10.5 ledge, -2.4 under Frostfire's 18.96 crates, -6.7 under a 27.5 ledge, and **+5.9 over
+Frostfire's 30 containers while hanging** (the hang drawn on "Hang -> Climb"'s 18.14 root, not the held one). Now
+`ClipPath`'s `lift` applies that shift from the clip's start at 30 a second and the hang holds the body where "Stand ->
+Hang" left it: at the pull 0 to -0.1 for the crate, to -1.7 for the medium (the clips' own grab), -0.88 hanging at
+28.5-31.5 (`test/traversalBody.test.ts`). A crate under 13 lowers the body: at 10.5 the soles go ~1 under the floor for
+the steer's first ticks (gravity is suspended through these clips, `FUN_005af930` 466760; whether the game's collider
+stops the actor there is not read).
+
 ### 3.6 Climbables for the tests [data]
 
 `appflags` 4 is on 20 maps (MP2 359 polygons, MP12 151, MP6 89, MP1 68, MP81 62, MP61 57 ...), 5 on MP1 (100), MP6
@@ -356,6 +371,15 @@ left and `peek x 2.8` right, before the look quaternion (`FUN_0029a660`'s far ca
 not bit 19). The `cam_peekl/peekr` side, height and dist go into a throwaway local in the loader `FUN_0059ba80`
 (456637); the aim triples into a vector indexed by `cam+0xe4`, whose view-cycle `FUN_0029b0c0` (142653-142657) skips
 indices 1-4: dead data. `camera_roll` has no reader.
+
+**Round 4 (2026-09-29, the owner's "not enough peek, it recentres"): the aim does not take the shift** [read].
+`FUN_00297410` (decomp 140987-141028) makes the far point `targetL + rotate(actor+0x1070, (0, 0, -1000))`: the look
+quaternion turns a straight-ahead vector, not `v`, so the peek moves the eye (about 2 x the shift out: 5.6 right, 5.0
+left at a level pitch) and the target across and leaves the aim parallel to the facing (0.16 degrees in). The viewer
+aimed along `-n`, which carries the shift, so the view swung 5.8 degrees back toward the body as the peek eased to its
+hold -- the recentre -- and the rounds went there too; fixed in `playerCamera.ts` (`LocalCamera.ahead`). The lean clips
+hold their last key with no return (head 4.0 across standing right, 2.6 left); the skeleton root's x and z are 0 in the
+game as in the viewer (`FUN_0057a330` zeroes them, 439147-439148), so nothing else shifts the camera.
 
 ### 4.3 The body [read]
 

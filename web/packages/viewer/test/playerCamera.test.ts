@@ -440,3 +440,42 @@ describe.skipIf(!MP2)(`the camera at Frostfire's spawn A${MP2 ? '' : ` (${FIXTUR
     expect(segmentHit(grid, v.target, v.eye)).toBeNull();
   });
 });
+
+describe('the peek on the camera (web research 86 section 4.2; FUN_0029a950, FUN_00297410)', () => {
+  const open = world([floor(0)]);
+  /** The horizontal angle, degrees, between the aim (eye to far) and the facing -z at yaw 0; + to the right. */
+  const aimYaw = (v: { eye: Vec3; far: Vec3 }): number => (Math.atan2(v.far[0] - v.eye[0], -(v.far[2] - v.eye[2])) * 180) / Math.PI;
+
+  it('a held right peek aims straight ahead: far = targetL + rotate(pitch, (0, 0, -1000)), the shift 2.8 across', () => {
+    const cam = new PlayerCamera(open);
+    cam.peek = 1;
+    settle(cam, ORIGIN, 0, 0, STAND, 3);
+    const v = cam.view(1);
+    close(v.far, [2.8, 21.484, -1000]);                                      // not along -n: the shift is not in the aim
+    expect(Math.abs(aimYaw(v))).toBeLessThan(0.2);                            // the game's 0.16 inward, from the eye 5.6 out
+    expect(v.eye[0]).toBeCloseTo(5.6, 1);                                     // targetL.x 2.8 + n.x x dist 2.8
+  });
+
+  it('a held left peek likewise at the rest pitch: the shift 2.5, the eye 4.8 out (the pitch shortens it), the aim parallel', () => {
+    const cam = new PlayerCamera(open);
+    cam.peek = -1;
+    settle(cam, ORIGIN, 0, INIT_AIM_PITCH, STAND, 3);
+    const v = cam.view(1);
+    expect(Math.abs(aimYaw(v))).toBeLessThan(0.2);
+    expect(v.eye[0]).toBeCloseTo(localCamera(STAND, INIT_AIM_PITCH, -1).eye[0], 1);   // -2.5 - 2.5 x 25.8 / 28.1
+    expect(v.far[0]).toBeCloseTo(-2.5, 3);
+  });
+
+  it('easing in, the eye only goes out and the aim never swings back toward the body', () => {
+    const cam = new PlayerCamera(open);
+    let lastEye = 0;
+    for (let i = 0; i <= 60; i++) {
+      cam.peek = 1 - Math.exp(-6 * i * TICK);                                // FUN_002998f0's ease at cam_peek_decay_rate 6
+      cam.tick(ORIGIN, 0, INIT_AIM_PITCH, STAND);
+      const v = cam.view(1);
+      expect(v.eye[0]).toBeGreaterThanOrEqual(lastEye - 1e-9);
+      expect(Math.abs(aimYaw(v))).toBeLessThan(0.2);
+      lastEye = v.eye[0];
+    }
+  });
+});

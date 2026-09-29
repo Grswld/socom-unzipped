@@ -114,6 +114,9 @@ export function shapeTravel(shape: ClipShape): { rise: number; ahead: number } {
   return { rise: b[1] - a[1], ahead: a[2] - b[2] };
 }
 
+/** `FUN_005b2d20`: the steer's most, units a second on each axis (the velocity it sets is clamped to +-30). */
+export const STEER_RATE = 30;
+
 /** Where a path is at one moment: the feet, the root's height over them, the key, and whether it has ended. */
 export interface PathPoint {
   feet: [number, number, number];
@@ -127,6 +130,12 @@ export interface PathPoint {
  * over them. The feet rise with the clip's running highest root (so they never sink under a floor they have left),
  * and go ahead with its running furthest travel, each normalised to the whole; the drawn root is the clip's own, plus
  * the part of the obstacle-to-clip mismatch the move has covered, so that the root ends `endRootY` over `to`.
+ *
+ * `lift` is the climb's vertical steer (`FUN_005b2d20`, decomp 468517-468748; web research 86 section 3.5): the game
+ * drives the actor at up to `STEER_RATE` a second on each axis -- y too -- until the root plus the clip's `refPt` is on
+ * the ledge's edge point, whose y is the contact polygon's top (`FUN_005b1a10`, 467887), so the clip's hands meet the
+ * ledge at every height the table climbs. The drawn body takes that shift from the clip's start at the steer's rate,
+ * the rest of the mismatch spread over the rise as before; the feet (the mover, the server's) are unchanged.
  */
 export class ClipPath {
   readonly rise: number;
@@ -134,7 +143,7 @@ export class ClipPath {
   private readonly start: [number, number, number];
 
   constructor(readonly shape: ClipShape, readonly from: readonly [number, number, number], readonly to: readonly [number, number, number],
-              readonly startRootY: number, readonly endRootY: number) {
+              readonly startRootY: number, readonly endRootY: number, readonly lift = 0) {
     const t = shapeTravel(shape);
     this.rise = t.rise;
     this.ahead = t.ahead;
@@ -166,8 +175,10 @@ export class ClipPath {
     const w = Math.abs(this.ahead) > 1e-6 ? Math.min(1, on / Math.abs(this.ahead)) : time;
     const [fx, fy, fz] = this.from, [tx, ty, tz] = this.to;
     const feet: [number, number, number] = [fx + (tx - fx) * w, fy + (ty - fy) * u, fz + (tz - fz) * w];
-    // The drawn root: the clip's own over the start, the mismatch spread over the rise.
-    const drawn = fy + this.startRootY + (r[1] - this.start[1]) + ((ty + this.endRootY) - (fy + this.startRootY + this.rise)) * u;
+    // The drawn root: the clip's own over the start, the steer's lift at its rate, the rest of the mismatch over the rise.
+    const lifted = Math.sign(this.lift) * Math.min(Math.abs(this.lift), STEER_RATE * seconds);
+    const rest = (ty + this.endRootY) - (fy + this.startRootY + this.rise) - this.lift;
+    const drawn = fy + this.startRootY + (r[1] - this.start[1]) + lifted + rest * u;
     return { feet, rootY: drawn - feet[1], key, done: seconds >= shape.seconds };
   }
 }
