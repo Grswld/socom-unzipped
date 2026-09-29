@@ -9,6 +9,8 @@ import { MAX_PLAYERS, MAX_SPECTATORS, type Role, type Team } from './protocol';
  *   chosen side is full (`assignTeam`). The game has no in-round auto-balance: each joiner is placed once.
  * - The queue (W3.R11, the owner's 16 players; the queue is the server's guard, not the game's): a join past the
  *   players' room waits in a FIFO of spectators, and a freed player slot promotes the head, placed by the same team rule.
+ * - Watchers (the map viewer's Online setting, 2026-09-29): a join asking to watch is a spectator outside the queue --
+ *   never promoted, never counted as waiting -- held to the same `maxSpectators` room as the queue, the two together.
  * - Names (research 91 section 13, W3.R12): at most 30 printable ASCII characters; a blank name is the game's
  *   `"Player%d"` with a random four-digit number; a duplicate takes the lowest free `(2)`, `(3)` suffix within the 30.
  *
@@ -92,6 +94,8 @@ export class Lobby {
   private readonly byId = new Map<number, Member>();
   /** Ids of the queued spectators, head first. */
   private queue: number[] = [];
+  /** Ids of the watchers (spectators by choice, outside the queue), in join order. */
+  private readonly watchers = new Set<number>();
   private counter = 0;
 
   constructor(opts: { maxPlayers?: number; maxSpectators?: number; teamSize?: number } = {}) {
@@ -104,16 +108,17 @@ export class Lobby {
    * Adds a client; null when full (players and queue) or when `id` is already in the room. Players first while
    * there is room, else the FIFO queue.
    */
-  join(id: number, wantedName: string, random: () => number = Math.random): { member: Member; changes: LobbyChange[] } | null {
+  join(id: number, wantedName: string, random: () => number = Math.random, watch = false): { member: Member; changes: LobbyChange[] } | null {
     if (this.byId.has(id)) return null;
     const counts = this.teamCounts();
-    const team = counts.seal + counts.terrorist < this.maxPlayers ? assignTeam(counts.seal, counts.terrorist, this.teamSize) : null;
-    if (team === null && this.queue.length >= this.maxSpectators) return null;
+    const team = watch ? null : counts.seal + counts.terrorist < this.maxPlayers ? assignTeam(counts.seal, counts.terrorist, this.teamSize) : null;
+    if (team === null && this.queue.length + this.watchers.size >= this.maxSpectators) return null;
     const clean = sanitizeName(wantedName);
     const name = uniqueName(clean === '' ? guestName(random) : clean, this.namesExcept(-1));
     const member: Member = { id, name, role: team === null ? 'spectator' : 'player', team, joinedAt: this.counter++ };
     this.byId.set(id, member);
-    if (team === null) this.queue.push(id);
+    if (watch) this.watchers.add(id);
+    else if (team === null) this.queue.push(id);
     return { member: { ...member }, changes: [{ kind: 'joined', id, role: member.role, team }] };
   }
 
@@ -123,6 +128,7 @@ export class Lobby {
     if (!m) return [];
     this.byId.delete(id);
     const changes: LobbyChange[] = [{ kind: 'left', id }];
+    if (this.watchers.delete(id)) return changes;
     if (m.role === 'spectator') {
       const at = this.queue.indexOf(id);
       this.queue.splice(at, 1);
@@ -190,17 +196,22 @@ export class Lobby {
     return [...this.byId.values()].filter((m) => m.role === 'player').sort((a, b) => a.joinedAt - b.joinedAt).map((m) => ({ ...m }));
   }
 
-  /** The spectators, in queue order (head first). */
+  /** The spectators: the queue in its order (head first), then the watchers in join order. */
   spectators(): Member[] {
     const out: Member[] = [];
-    for (const id of this.queue) {
+    for (const id of [...this.queue, ...this.watchers]) {
       const m = this.byId.get(id);
       if (m) out.push({ ...m });
     }
     return out;
   }
 
-  /** A spectator's 1-based place in the queue; 0 when not queued. */
+  /** Whether a member is a watcher (a spectator by choice, never queued). */
+  watching(id: number): boolean {
+    return this.watchers.has(id);
+  }
+
+  /** A spectator's 1-based place in the queue; 0 when not queued (a player, or a watcher). */
   queuePosition(id: number): number {
     return this.queue.indexOf(id) + 1;
   }

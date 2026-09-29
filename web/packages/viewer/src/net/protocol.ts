@@ -178,7 +178,12 @@ export type Role = 'player' | 'spectator';
 
 /** Client -> server, text frames. */
 export type ClientEvent =
-  | { type: 'hello'; version: number; name: string; map: string }
+  /**
+   * `watch` (the map viewer's Online setting, 2026-09-29): join as a spectator that watches and never takes a player's
+   * place -- not queued, never promoted. Optional, so a page that leaves it out (and a server that does not know it) is
+   * as before.
+   */
+  | { type: 'hello'; version: number; name: string; map: string; watch?: boolean }
   | { type: 'name'; name: string }
   | { type: 'ping'; t: number }
   /**

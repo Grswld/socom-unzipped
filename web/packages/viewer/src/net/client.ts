@@ -32,6 +32,8 @@ export interface NetOptions {
   map: string;
   name: string;
   simulate?: Simulate;
+  /** Join as a watcher (the map viewer's Online setting): a spectator that never plays, so the walk is not driven. */
+  watch?: boolean;
   random?: () => number;
   /** A socket for the tests (a `WebSocket`-alike); the page's own by default. */
   socket?: (url: string) => WebSocketLike;
@@ -93,13 +95,18 @@ export class NetClient {
     this.socket.binaryType = 'arraybuffer';
     this.socket.onopen = () => {
       this.state = 'open';
-      this.out(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name: opts.name, map: opts.map } satisfies ClientEvent), true);
+      this.out(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name: opts.name, map: opts.map, ...(opts.watch ? { watch: true } : {}) } satisfies ClientEvent), true);
     };
-    this.socket.onclose = () => { if (this.state !== 'refused') this.state = 'closed'; this.walk.setNetTap(null); this.walk.setLocked(false); };
+    this.socket.onclose = () => {
+      if (this.state !== 'refused') this.state = 'closed';
+      if (!opts.watch) { this.walk.setNetTap(null); this.walk.setLocked(false); }
+    };
     this.socket.onerror = () => undefined;
     this.socket.onmessage = (ev) => this.delayed(() => this.receive(ev.data), false);
-    walk.setNetTap((cmd, feet) => this.tick(cmd, feet));
-    walk.setLocked(true);                                      // until the server stands the mover somewhere
+    if (!opts.watch) {
+      walk.setNetTap((cmd, feet) => this.tick(cmd, feet));
+      walk.setLocked(true);                                    // until the server stands the mover somewhere
+    }
   }
 
   /** Listens for the server's events (the HUD, the kill lines, the scoreboard); returns the unsubscribe. */
@@ -113,7 +120,7 @@ export class NetClient {
   }
 
   close(): void {
-    this.walk.setNetTap(null);
+    if (!this.opts.watch) { this.walk.setNetTap(null); this.walk.setLocked(false); }
     this.socket.close(1000, 'left');
   }
 

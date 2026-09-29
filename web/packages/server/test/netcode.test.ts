@@ -196,3 +196,43 @@ describe('a new match stands everyone at the start (M6, W3.R11)', () => {
     ca.close();
   });
 });
+
+describe('a watcher (the map viewer Online setting, 2026-09-29)', () => {
+  it('joins as a spectator outside the queue, drives no walk, sees the players, and is never promoted', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
+    const m = map();
+    const room = new Room(m, null, { now: () => Date.now() });
+    const a = new PageWalk(m.grid), w = new PageWalk(m.grid);
+    w.locked = false;
+    const hellos: unknown[] = [];
+    const watchSocket = (url: string): WebSocketLike => {
+      const s = pair(room, 2)(url);
+      const send = s.send.bind(s);
+      s.send = (data) => { if (typeof data === 'string') hellos.push(JSON.parse(data)); send(data); };
+      return s;
+    };
+    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1) }, a);
+    const cw = new NetClient({ url: 'mem', map: 'MP99', name: 'W', socket: watchSocket, watch: true }, w);
+    expect(w.tap).toBeNull();                                        // the walk is not driven
+    expect(w.locked).toBe(false);
+    for (let t = 0; t < 120; t++) {
+      a.play({ forward: t > 30 ? 1 : 0, right: 0, yaw: 270, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
+      room.step();
+      vi.advanceTimersByTime(1000 / 60);
+    }
+    expect(hellos[0]).toMatchObject({ type: 'hello', watch: true });
+    expect(cw.role).toBe('spectator');
+    expect(cw.queue).toBe(0);
+    expect(ca.role).toBe('player');
+    expect(cw.bodies().map((b) => b.id)).toEqual([1]);              // it sees the player
+    expect(room.lobby.watching(2)).toBe(true);
+    expect(room.lobby.spectators().map((s) => s.id)).toEqual([2]);
+    ca.close();                                                     // the only player leaves: the watcher stays one
+    room.step();
+    expect(room.lobby.member(2)?.role).toBe('spectator');
+    expect(room.lobby.players()).toEqual([]);
+    cw.close();
+    expect(w.tap).toBeNull();
+    expect(w.locked).toBe(false);
+  });
+});
