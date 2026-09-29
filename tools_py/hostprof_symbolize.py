@@ -51,6 +51,34 @@ def demangle(names):
         return {}
 
 
+Histogram = collections.namedtuple("Histogram", "header samples threads stack_lines")
+
+
+def read_histogram(path):
+    """The one parser of a PS2X_HOST_PROF histogram, shared with tools_py/hostprof_diff.py (issue #116).
+    samples: (rva, count, module) per flat line, module None for the exe, else the "ext" line's module name
+    ("?" when absent); threads: (count, tid, description); stack_lines: how many "stack ..." lines were skipped
+    (their counts repeat the flat samples; tools_py/hostprof_stacks.py folds them)."""
+    samples, threads, stack_lines = [], [], 0
+    with open(path) as f:
+        header = f.readline().strip()
+        for line in f:
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            if parts[0] == "thread":
+                threads.append((int(parts[2]), parts[1], " ".join(parts[3:])))
+                continue
+            if parts[0] == "stack":
+                stack_lines += 1
+                continue
+            module = None
+            if len(parts) > 2 and parts[2] == "ext":
+                module = parts[3].split("+")[0] if len(parts) > 3 else "?"
+            samples.append((int(parts[0], 16), int(parts[1]), module))
+    return Histogram(header, samples, threads, stack_lines)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("hist", nargs="?", default=os.path.join("logs", "hostprof.txt"))
@@ -63,31 +91,17 @@ def main():
     per_fn = collections.Counter()
     total = 0
     ext = 0
-    stack_lines = 0
-    with open(a.hist) as f:
-        header = f.readline().strip()
-        threads = []
-        for line in f:
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            if parts[0] == "thread":
-                threads.append((int(parts[2]), parts[1], " ".join(parts[3:])))
-                continue
-            if parts[0] == "stack":
-                stack_lines += 1
-                continue
-            rva = int(parts[0], 16)
-            n = int(parts[1])
-            total += n
-            if len(parts) > 2 and parts[2] == "ext":
-                ext += n
-                per_fn["<ext> " + (parts[3].split("+")[0] if len(parts) > 3 else "?")] += n
-                continue
-            va = base + rva
-            i = bisect.bisect_right(addrs, va) - 1
-            name = syms[i][1] if i >= 0 else f"<{rva:#x}>"
-            per_fn[name] += n
+    hist = read_histogram(a.hist)
+    header, threads, stack_lines = hist.header, hist.threads, hist.stack_lines
+    for rva, n, module in hist.samples:
+        total += n
+        if module is not None:
+            ext += n
+            per_fn["<ext> " + module] += n
+            continue
+        i = bisect.bisect_right(addrs, base + rva) - 1
+        name = syms[i][1] if i >= 0 else f"<{rva:#x}>"
+        per_fn[name] += n
     names = [k for k, _ in per_fn.most_common(a.top)]
     dm = demangle(names)
     skipped = f", stack lines skipped {stack_lines} (fold them with tools_py/hostprof_stacks.py)" if stack_lines else ""
