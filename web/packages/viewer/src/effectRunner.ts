@@ -38,12 +38,20 @@ interface SeqState {
   loopTime: number;
 }
 
-/** Where the ops of one sequence jump: an IF/ELSEIF/ELSE's next branch, and every branch opener's ENDIF. */
+/**
+ * Where the ops of one sequence jump: an IF/ELSEIF/ELSE's next branch, every branch opener's ENDIF, and a WHILE's
+ * END_WHILE (`end`) and back (`next` of the END_WHILE).
+ */
 function branchTable(ops: readonly EffectOp[]): { next: Int32Array; end: Int32Array } {
   const next = new Int32Array(ops.length).fill(-1), end = new Int32Array(ops.length).fill(-1);
   const stack: number[][] = [];
+  const loops: number[] = [];
   ops.forEach((o, i) => {
-    if (o.op === 'if') stack.push([i]);
+    if (o.op === 'while') loops.push(i);
+    else if (o.op === 'endWhile') {
+      const w = loops.pop();
+      if (w !== undefined) { end[w] = i; next[i] = w; }
+    } else if (o.op === 'if') stack.push([i]);
     else if (o.op === 'elseif' || o.op === 'else') {
       const top = stack[stack.length - 1];
       if (!top) return;
@@ -145,6 +153,17 @@ export class EffectRun {
           return;                                   // once a tick: the sequence runs again from its start next tick
         }
         case 'stopSequence': this.stopSequence(op.sequence); s.pc++; continue;
+        case 'while': {
+          // Only the endless form is on the effects' path (the ripples); a conditional one is taken as false.
+          s.pc = op.forever || table.end[s.pc]! < 0 ? s.pc + 1 : table.end[s.pc]! + 1;
+          continue;
+        }
+        case 'endWhile': {
+          const back = table.next[s.pc]!;
+          if (back < 0) { s.pc++; continue; }
+          s.pc = back;
+          return;                                   // once a tick
+        }
         case 'fail': this.stop(); return;
         default: {
           const tick = this.host.begin(op, this);

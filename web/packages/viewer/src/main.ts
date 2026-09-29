@@ -2,7 +2,7 @@
 import { Matrix4, Scene, Timer, Vector3 } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
-import { HELD_RIFLE, materialTable, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
+import { HELD_RIFLE, materialTable, polygonNormal, probeFloor, SEAL_TUNING, spawnsFor, tracerRound, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
@@ -35,9 +35,11 @@ import { Play, playActions, StanceButton } from './play';
 import { playEnabled, removePlayUi } from './features';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
-import { TraversalPage } from './traversalPage';
+import { TRAVERSAL_EVENT, TraversalPage } from './traversalPage';
+import type { TraversalEvent } from './traversal';
+import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import { gameAudio } from './audio';
-import { Effects } from './effects';
+import { Effects, soundFor } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
@@ -152,7 +154,20 @@ grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
 grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
 grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
-grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
+/**
+ * EFFECTS (web/docs/research/89): a grenade's bounce runs the game's own `grenade_hit_<material>` through
+ * `effects.play` (its sound, and snow's and water's spurts), at the point as if the grenade's node were there (the
+ * sparks' `OBJECT_TRANSLATE_STATE` takes the caller's place); the explosion goes through the grenade's own door
+ * (`setEffectPlayer`). The audio's zAnim map is the fallback before the effect data is in.
+ */
+const grenadePlace = (pos: readonly number[]) => ({
+  node: new Matrix4().makeTranslation(pos[0]!, pos[1]!, pos[2]!), position: [pos[0]!, pos[1]!, pos[2]!] as [number, number, number],
+  normal: [0, 1, 0] as [number, number, number], velocity: [0, 0, 0] as [number, number, number],
+});
+grenade.on('bounce', (info) => {                                                          // grenade_hit_<material>
+  if (!info.sound) return;
+  if (!effects.play(info.anim, grenadePlace(info.pos))) audio.onAnimCallback(info.anim, info.pos);
+});
 /** The flashbang's white-out (`./flash`): `blindplayer0<level>` by the game's rule of distance and facing (0x597c00). */
 const whiteOut = new WhiteOut(canvas?.parentElement ?? null);
 grenade.on('explode', (info) => {
@@ -256,14 +271,29 @@ const walkSounds = new WalkSounds(audio, {
  * off), the casings bouncing on the hull with their material's sound, the marks per surface (`Fire.setMarks`).
  * `effects.play(name, place)` is the grenades' door to their impacts and explosions.
  */
-const effects = new Effects(Math.random, (name, at) => { audio.play(name, at); });
+// The effects' sounds through the map's banks: the data's slips mended and a stand-in for a casing sound a map lacks
+// (`soundFor`, research 90 items 4 and 12).
+const effects = new Effects(Math.random, (name, at) => { audio.play(soundFor(name, (n) => audio.has(n)), at); });
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
 effects.setWorld(() => walk.grid());
 // The grenades' explosions through the effects' door: the game's own zAnim (`frag_grenade_stone`, `smoke_grenade`,
 // `flashcrash_grenade` ...) where the map has it; the grenade's placeholders only where it does not.
-grenade.setEffectPlayer((anim, at) => effects.play(anim, { position: at.position, normal: at.normal ?? null, velocity: at.velocity ?? null }));
-traversal.setEffects(effects);    // research 86: the water's ripples and a fall's splash
+grenade.setEffectPlayer((anim, at) => effects.play(anim, { ...grenadePlace(at.position), normal: at.normal ?? [0, 1, 0], velocity: at.velocity ?? [0, 0, 0] }));   // the node: the sparks launch from it
+// The water's ripples and a fall's splash are the effects' own (`effects.waterFrame`, `effects.splash` below): the
+// traversal's ripple keeper (research 86 section 5.4) is not wired, so they do not play twice.
+/**
+ * The effects' pre-warm (research 90 item 16): their programs compiled and their bitmaps uploaded when the map's effect
+ * data arrives, not in the frame of the first explosion. Set once the renderer is up.
+ */
+let compileEffects: ((g: ReturnType<typeof effects.warmUp>) => Promise<void>) | null = null;
+function warmEffects(): void {
+  if (!compileEffects || !effects.stats().loaded) return;
+  const g = effects.warmUp();
+  void compileEffects(g).catch(() => {}).finally(() => effects.warmDone(g));
+}
+// The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
+effects.setLightReceivers(() => [view?.group, view?.weapon].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -396,6 +426,23 @@ play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip ca
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
 // to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
 play.onEvent((e) => { if (e.kind === 'land' && e.cls === 3) hud.postMessage(`${hud.state().model.name || DEFAULT_PLAYER} falls to their death`); });
+play.onEvent((e) => {                             // EFFECTS: the footprint on sand and snow (`FUN_005a3280`)
+  if (e.kind !== 'footfall' || walk.mode() !== 'walk') return;
+  const snap = walk.snapshot(), grid = walk.grid();
+  const at = e.position ?? snap?.feet ?? null;
+  if (!snap || !grid || !at) return;
+  const floor = probeFloor(grid, at[0], at[1], at[2]);
+  if (!floor) return;
+  const n = polygonNormal(floor.poly.points) ?? [0, 1, 0];
+  const up: [number, number, number] = n[1] < 0 ? [-n[0], -n[1], -n[2]] : n;
+  const yaw = (snap.yaw * Math.PI) / 180;
+  effects.footfall([at[0], floor.y, at[2]], floor.poly.material, up, [-Math.sin(yaw), 0, -Math.cos(yaw)], snap.stance === 'prone');
+});
+// EFFECTS: a fall into water (`s2u:traversal`'s `waterLand`): `seal_fall_in_water` at the water line over the feet.
+globalThis.addEventListener?.(TRAVERSAL_EVENT, ((e: CustomEvent<TraversalEvent>) => {
+  const feet = walk.drawnFeet();
+  if (e.detail?.type === 'waterLand' && feet) effects.splash(feet, e.detail.depth);
+}) as EventListener);
 // EFFECTS: the muzzle animation and the impact, per round; the `_zoom` variant in first person (the aim view).
 fire.subscribe((e) => {
   if (e.type !== 'round') return;
@@ -575,6 +622,7 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   if (message.kind === 'effects') {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
+    warmEffects();                                   // research 90 item 16: compile the effects before the first shot
     fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
     // ACCURACY (research 84 section 13): the round goes through what the game lets it -- the material byte's name
     // (the effects' table: built-ins, then SOILS; 0 the map's DefaultMaterial) to its PENETRATION.
@@ -770,6 +818,8 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
+  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.renderer.compileAsync(effects.object, fly.camera, scene); };
+  warmEffects();
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
@@ -832,6 +882,13 @@ async function boot(): Promise<void> {
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     effects.setBrighten(brightenOf(lighting));
+    // EFFECTS: the wading ripples (`FUN_005b52b0`) at the water under the SEAL, then the effect runs and the particles.
+    {
+      const snap = walking ? walk.snapshot() : null, feet = walking ? walk.drawnFeet() : null;
+      const depth = traversal.stats()?.depth ?? 0;
+      const height = snap?.stance === 'prone' ? PRONE_HEIGHT : snap?.stance === 'crouch' ? CROUCH_HEIGHT : STANDING_HEIGHT;
+      effects.waterFrame(snap && feet ? { feet, depth, height, velocity: [snap.vx, snap.vy, snap.vz], airborne: snap.airborne } : null);
+    }
     effects.update(dt, fly.camera); // EFFECTS: the zAnim effect runs, the casings, the particles
     fly.camera.updateMatrixWorld();
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
@@ -1190,5 +1247,6 @@ window.__viewer = {
   pauseEffects: (on) => { effects.paused = on; },
   tacMap: () => tacMap.state(),
   setTacMap: (open) => { tacMap.setOpen(open, fly.pose().yaw); return tacMap.state(); },
+  clearEffects: () => effects.reset(),
   revision,
 } satisfies ViewerHook;

@@ -121,6 +121,12 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   expect(boom.explosions[1]!.material).toBe('METAL_THICK');         // Frostfire's DefaultMaterial, byte 0
   expect(boom.explosions[1]!.anim).toBe('frag_grenade_metal_thick');
   expect(boom.explosions[1]!.byEffects).toBe(true);                  // the game's own zAnim, through the effects
+  // EFFECTS: the game's own explosion -- frag_grenade_metal_thick, then the frag_grenade it calls and its parts.
+  const played = (await page.evaluate(() => window.__viewer.effects())).played;
+  expect(played['frag_grenade_metal_thick']).toBe(1);
+  expect(played['frag_grenade']).toBeGreaterThanOrEqual(1);
+  expect(played['FRAG_sparks']).toBeGreaterThanOrEqual(1);
+  expect((await page.evaluate(() => window.__viewer.effects())).particles).toBeGreaterThan(20);
   await page.waitForTimeout(500);
   await settle(page);
   await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-explosion-smoke.png') });
@@ -194,7 +200,9 @@ test('walk mode on Frostfire: a held throw arcs, bounces, rests and explodes at 
   expect(await page.evaluate(() => window.__viewer.selectItem('M67'))).toBe(true);
 
   // A light press aimed low: the underhand toss.
-  // Its clip on the body, the camera pitched down over the SEAL to see it.
+  // Its clip on the body, the camera pitched down over the SEAL to see it. The explosions' ten-second smoke is cleared
+  // first: software-rendered in the headless browser it drops the frame rate below what the clip's timing assumes.
+  await page.evaluate(() => window.__viewer.clearEffects());
   await stand(210, -35);
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__viewer.throwGrenade(0.1, false))).toBeNull();

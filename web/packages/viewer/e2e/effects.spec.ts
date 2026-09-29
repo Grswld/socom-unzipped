@@ -34,6 +34,8 @@ test('Frostfire: the M4A1 SD throws its casings and marks the container by its m
   await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
   const loaded = await page.evaluate(() => window.__viewer.effects());
   expect(loaded.missing).toEqual([]);
+  await page.keyboard.press('Shift');                                  // the gesture that unlocks the sound
+  await expect.poll(() => page.evaluate(() => window.__viewer.audio().unlocked)).toBe(true);
   expect(loaded.models).toContain('bullet_shell_9m');
 
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
@@ -64,6 +66,9 @@ test('Frostfire: the M4A1 SD throws its casings and marks the container by its m
   const after = await page.evaluate(() => window.__viewer.effects());
   expect(after.shells).toBe(0);
   expect(after.bounces).toBeGreaterThan(0);
+  // The casings land on the deck (METAL_THICK) with the bank's `.BUL_CAS_METAL` (the data's `.BUL_CASE_METAL`).
+  expect(after.sounds).toContain('.BUL_CAS_METAL');
+  expect((await page.evaluate(() => window.__viewer.audio())).byName['.BUL_CAS_METAL'] ?? 0).toBeGreaterThan(0);
   // The container's marks, a few degrees off the reticle.
   await page.evaluate((pitch) => window.__viewer.setCamera({ yaw: 88, pitch }), REST_PITCH);
   await settle(page);
@@ -121,4 +126,72 @@ test('Desert Glory: stone and sand take their own marks and impacts; the M4A1 fl
   await page.evaluate(() => window.__viewer.pauseEffects(false));
   expect((await page.evaluate(() => window.__viewer.effects())).played['flash_fire_hider']).toBe(1);
   expect(problems).toEqual([]);
+});
+
+/** The frag's flash (`light_flash_large`: the game's light pass over the ground), held for its picture on Frostfire. */
+test('Frostfire: the frag grenade explosion lights the deck around it', async ({ page }) => {
+  mkdirSync(SCREENS, { recursive: true });
+  await page.goto('/?map=MP2&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(([x, y, z, eye, pitch]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 90, pitch }), [...SPAWN_A, EYE, REST_PITCH] as const);
+  await page.evaluate(() => window.__viewer.walkFor(0.5, { forward: 0 }));
+  await page.waitForTimeout(2500);
+  await settle(page);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-frag-before.png') });
+  expect(await page.evaluate(() => window.__viewer.playEffect('frag_grenade_metal_thick', [790, 101, 614]))).toBe(true);
+  // The metal's own puff, 0.05 s, then frag_grenade's parts: held once the light is up.
+  await expect.poll(() => page.evaluate(() => {
+    const on = window.__viewer.effects().lights.live > 0;
+    if (on) window.__viewer.pauseEffects(true);
+    return on;
+  }), { timeout: 3_000, intervals: [10] }).toBe(true);
+  const lit = (await page.evaluate(() => window.__viewer.effects())).lights;
+  expect(lit.live).toBe(1);
+  expect(lit.overlays).toBeGreaterThan(0);
+  expect(lit.ranges[0]![1]).toBeGreaterThan(100);                    // 190 shrinking to nothing by 0.5 s
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'frostfire-frag-flash.png') });
+  await page.evaluate(() => window.__viewer.pauseEffects(false));
+  await page.waitForTimeout(1500);
+  expect((await page.evaluate(() => window.__viewer.effects())).lights.live).toBe(0);
+});
+
+/** Enowapi's river (MP62, water at y -14): wading ripples, a fall into it splashes; Desert Glory's sand takes footprints. */
+test('water and footprints: the splash and the ripples on Enowapi, the prints on Desert Glory sand', async ({ page }) => {
+  mkdirSync(SCREENS, { recursive: true });
+  await page.goto('/?map=MP62&redotcom');
+  await expect(page.locator('#status')).toContainText('triangles');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  // Standing in the shallows (1.6 over the feet): the big ripple.
+  await page.evaluate(() => window.__viewer.setCamera({ x: 1791, y: 40, z: 804, yaw: 0, pitch: -20 }));
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().water.ripples)).toMatch(/big_ripple_anim/);
+  await page.waitForTimeout(500);
+  // A fall into the water is the traversal's `waterLand` on `s2u:traversal` (its detection is the traversal's, tested
+  // there): sent here as it sends it, standing where the SEAL stands in the river.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('s2u:traversal', { detail: { type: 'waterLand', depth: 1.6 } })));
+  expect((await page.evaluate(() => window.__viewer.effects())).water.splashes).toBe(1);
+  // At the feet it is under the body from the game's camera; the same splash 25 ahead on the river is the picture.
+  expect(await page.evaluate(() => window.__viewer.playEffect('seal_fall_in_water', [1791, -14, 779]))).toBe(true);
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.__viewer.pauseEffects(true));
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'enowapi-splash.png') });
+  await page.evaluate(() => window.__viewer.pauseEffects(false));
+  expect((await page.evaluate(() => window.__viewer.effects())).played['seal_fall_in_water']).toBe(2);
+
+  await page.goto('/?map=MP6&redotcom');
+  await expect(page.locator('#status')).toContainText('DESERT GLORY');
+  await expect.poll(() => page.evaluate(() => window.__viewer.effects().loaded), { timeout: 60_000 }).toBe(true);
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(() => window.__viewer.walkFor(0.4, { forward: 0 }));
+  await page.evaluate(() => window.__viewer.setCamera({ yaw: 200, pitch: -10 }));
+  // The footfalls come off the run clip's phase, so the walk is the keyboard's, frame by frame.
+  await page.keyboard.down('KeyW');
+  await page.waitForTimeout(2500);
+  await page.keyboard.up('KeyW');
+  await page.evaluate(() => window.__viewer.setCamera({ yaw: 20, pitch: -40 }));
+  await page.waitForTimeout(500);
+  expect((await page.evaluate(() => window.__viewer.effects())).water.footprints).toBeGreaterThan(2);
+  await page.locator('#view').screenshot({ path: join(SCREENS, 'desert-glory-footprints.png') });
 });

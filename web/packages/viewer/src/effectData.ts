@@ -54,6 +54,8 @@ export interface EffectData {
   defaultMaterial: number;
   /** `decals.rdr`'s `MARK_SET` rows. */
   marks: DecalEntry[];
+  /** `decals.rdr`'s `FOOTSTEP_DECALS`: the footprint's bitmap by material name (SAND, SNOW). */
+  footprints: [string, string][];
   /** `zweapon.rdr`'s `HitAnimName` by weapon (`InternalName`). */
   hitAnims: [string, string][];
   missing: string[];
@@ -110,13 +112,24 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
 
   const materials: string[] = [];
   const marks: DecalEntry[] = [];
+  const footprints: [string, string][] = [];
   try {
     const got = await readZarMembers(source, 'RUN/READERC.ZAR', ['materials.rdr', 'decals.rdr']);
     const mats = got.get('materials.rdr'), decals = got.get('decals.rdr');
     if (mats) materials.push(...parseSoils(parseRdr(mats)).map((m) => m.name)); else missing.push('READERC.ZAR: no materials.rdr');
-    if (decals) marks.push(...decalSetRows(parseRdr(decals), MARK_SET)); else missing.push('READERC.ZAR: no decals.rdr');
+    if (decals) {
+      const root = parseRdr(decals);
+      marks.push(...decalSetRows(root, MARK_SET));
+      const list = rdrGet(root, 'FOOTSTEP_DECALS');
+      for (const row of Array.isArray(list) ? list : []) {
+        const m = rdrGet(row, 'MATERIALNAME'), t = rdrGet(row, 'TEXTURENAME');
+        if (typeof m === 'string' && typeof t === 'string') footprints.push([m, t.toLowerCase()]);
+      }
+    } else missing.push('READERC.ZAR: no decals.rdr');
   } catch (e) { missing.push(`READERC.ZAR: ${why(e)}`); }
   for (const m of marks) textureNames.add(m.texture.toLowerCase());
+  for (const [, t] of footprints) textureNames.add(t);
+  textureNames.add('light_map.tif');                  // the `LIGHT` pass's spot (`FUN_00315110`'s default)
 
   let defaultMaterial = 0;
   const readerm = await member('READERM.ZAR');
@@ -174,7 +187,7 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
   // A texture neither library holds (`fire_very_large`'s `fire101.tif`, a mission's): its particles draw untextured.
   const absent = [...left];
 
-  return { archive, programs, models, textures, absent, materials, defaultMaterial, marks, hitAnims, missing };
+  return { archive, programs, models, textures, absent, materials, defaultMaterial, marks, footprints, hitAnims, missing };
 }
 
 /** The buffers the data can hand over rather than copy. */

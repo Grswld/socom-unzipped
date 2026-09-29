@@ -31,7 +31,10 @@ export function effectMaterial(texture: EffectTexture | null, options: { cull?: 
     options.fog ?? true, true, options.cull ?? false,
   );
   if (texture) m.map = makeTexture(texture.rgba, spec);
-  m.colorNode = texture ? SHADED : vec4(vec4(vertexColor()).clamp(0, 1).rgb.mul(effectBrighten), 1);
+  // The destination brighten (`(Cd - 0) As + Cd`: `gen_water_rings.tif`) reads only the source's alpha, which the
+  // shader hands on in every channel for the `Cs Cd + Cd` blend (as the world's carrier does, `./world`).
+  m.colorNode = !texture ? vec4(vec4(vertexColor()).clamp(0, 1).rgb.mul(effectBrighten), 1)
+    : spec.blend === 'destination' ? vec4(MODULATED.a, MODULATED.a, MODULATED.a, MODULATED.a) : SHADED;
   m.vertexColors = false;
   const state = drawState(spec, false);
   m.transparent = state.transparent;

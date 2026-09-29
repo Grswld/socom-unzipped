@@ -3,7 +3,7 @@ import type { ActionPrompt, ClimbPrompt as HudClimbPrompt } from './hud';
 import type { Input } from './gamepad';
 import type { MotionEntry } from './motionTable';
 import { rippleAnimation, Traversal, type ClimbPrompt, type Ripple, type TraversalEvent, type TraversalKind } from './traversal';
-import type { EffectHandle, EffectPlace } from './effects';
+import type { EffectPlace } from './effects';
 import { groundPolygons, type WalkMode } from './walk';
 
 /**
@@ -58,7 +58,7 @@ export interface ActionSlot { setAction(action: ActionPrompt | null, allowed?: b
 
 /** The part of `Effects` the water's ripples and splash need. */
 export interface TraversalEffects {
-  spawn(name: string, place: EffectPlace): EffectHandle | null;
+  spawn(name: string, place: EffectPlace): { readonly finished: boolean; stop(): void } | null;
   play(name: string, place: EffectPlace): boolean;
 }
 
@@ -83,7 +83,7 @@ export class TraversalPage {
   private slideShown = false;
   /** The effects the water plays through, and the ripple now running per size (`+0x1370` big, `+0x136c` small). */
   private effects: TraversalEffects | null = null;
-  private readonly ripples: Record<Ripple['size'], { handle: EffectHandle; name: string; place: EffectPlace } | null> = { big: null, small: null };
+  private readonly ripples: Record<Ripple['size'], { handle: { readonly finished: boolean; stop(): void }; name: string; place: EffectPlace } | null> = { big: null, small: null };
 
   constructor(private readonly walk: WalkMode, private readonly sounds: TraversalSounds | null = null) {
     walk.useTraversal((walker, ground) => {

@@ -211,6 +211,8 @@ export interface ViewerHook {
   tacMap(): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
   /** Opens or closes it as `M` (SELECT) does, the heading the camera's now. */
   setTacMap(open: boolean): { open: boolean; zoom: number; pan: [number, number] | null; yaw: number; age: number };
+  /** EFFECTS: stops every effect and drops its particles (a test's clean slate: headless drawing is slow under smoke). */
+  clearEffects(): void;
   /** The build's label as the panel shows it: `rev <hash>[-dirty] · built <UTC minute> UTC`. */
   revision: string;
 }

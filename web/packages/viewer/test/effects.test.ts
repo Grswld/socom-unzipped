@@ -6,7 +6,8 @@ import { FsAssetSource } from '@s2u/archive/node';
 import { buildGrid, type CollisionOwner, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { effectsFromDisc, type EffectData } from '../src/effectData';
-import { Effects, impactAnimation, markTable, muzzleAnimation, valveApply, valveTest } from '../src/effects';
+import { Effects, impactAnimation, markTable, muzzleAnimation, RIPPLES, soundFor, speedClass, valveApply, valveTest } from '../src/effects';
+import { flatCorners, rotatedCorners } from '../src/particles';
 
 /**
  * The gunplay's effects (web/docs/research/89): the names a round plays, the valves, the mark table, and -- on the
@@ -36,6 +37,15 @@ describe('what a round plays', () => {
     expect(valveTest(5, 2, 5)).toBe(true);           // the NVG gate: lensfx == 5
   });
 
+  it('the sound a name stands for: the data slip mended, a missing casing sound stood in for', () => {
+    const banks = new Set(['.BUL_CAS_METAL', '.BUL_CAS_GRASS', '.BUL_CAS_STONE']);
+    const has = (n: string) => banks.has(n);
+    expect(soundFor('.BUL_CASE_METAL', has)).toBe('.BUL_CAS_METAL');
+    expect(soundFor('.BUL_CAS_DIRT', has)).toBe('.BUL_CAS_GRASS');     // Blood Lake's banks
+    expect(soundFor('.BUL_CAS_STONE', has)).toBe('.BUL_CAS_STONE');
+    expect(soundFor('.BUL_CAS_WOOD', has)).toBe('.BUL_CAS_WOOD');      // none held, none stood in: silence as the game
+  });
+
   it('the mark table: the polygon byte to its SOILS name to its row, byte 0 the map\'s DefaultMaterial, no row no mark', () => {
     const materials = ['UNKNOWN', 'PARTICLE_SYSTEM', 'ACTION', 'INVISIBLE_DI', 'GRASS', 'SAND', 'MUD', 'STONE'];
     const rows = [
@@ -47,6 +57,29 @@ describe('what a round plays', () => {
     expect(t.row(0)?.texture).toBe('bullet_mark_sand.tif');
     expect(t.row(6)).toBeNull();                      // MUD has no BULLET_MARK_SMALL row
     expect(t.row(99)).toBeNull();
+  });
+});
+
+describe('the particle types (FUN_00325580, FUN_00325cc0)', () => {
+  it('a rotated particle: a square turned by its angle, its half-diagonal the size', () => {
+    const right = new Vector3(1, 0, 0), up = new Vector3(0, 1, 0);
+    const c = rotatedCorners([0, 0, 0], 2, 0, right, up);
+    expect(c.map(([x, y]) => [+x.toFixed(6) + 0, +y.toFixed(6) + 0])).toEqual([[2, 0], [0, -2], [-2, 0], [0, 2]]);   // a diamond at 0
+    expect(c.map(([, , , u, v]) => [u, v])).toEqual([[0, 0], [0, 1], [1, 1], [1, 0]]);
+    const turned = rotatedCorners([0, 0, 0], 2, Math.PI / 4, right, up);
+    expect(Math.hypot(turned[0]![0], turned[0]![1])).toBeCloseTo(2, 9);
+  });
+  it('a flat particle: 2 size across in the world XZ plane at its height, u along +z, v along +x', () => {
+    expect(flatCorners([10, 5, 20], 3)).toEqual([[7, 5, 17, 0, 0], [13, 5, 17, 0, 1], [13, 5, 23, 1, 1], [7, 5, 23, 1, 0]]);
+  });
+});
+
+describe('the SEAL in water', () => {
+  it('the ripple of the speed class: still, moving, running at |v|^2 0.25 and 400', () => {
+    expect(speedClass([0, 0, 0.4])).toBe(0);
+    expect(speedClass([10, 0, 0])).toBe(1);
+    expect(speedClass([65, 0, 0])).toBe(2);
+    expect(RIPPLES.big[2]).toBe('big_ripple_anim_run');
   });
 });
 
@@ -105,7 +138,7 @@ describe.skipIf(!MP2)(`the M4A1 SD's round on the game's data${MP2 ? '' : ` (${F
     while (fx.stats().shells > 0 && t < 2) { fx.update(1 / 60, camera); t += 1 / 60; }
     expect(t).toBeLessThanOrEqual(1.2 + 1e-6);                          // gone at rest or at its lifetime
     expect(fx.stats().bounces).toBeGreaterThan(0);
-    expect(sounds).toContain('.BUL_CASE_METAL');
+    expect(sounds).toContain('.BUL_CAS_METAL');          // the bank's name for the data's .BUL_CASE_METAL
     // The smoke source is switched off in the data: nothing was emitted.
     expect(fx.stats().emitted).toBe(0);
   });
@@ -124,6 +157,57 @@ describe.skipIf(!MP2)(`the M4A1 SD's round on the game's data${MP2 ? '' : ` (${F
     expect(box.max.x - box.min.x).toBeGreaterThan(2);                   // ...and reaches along the barrel
     for (let i = 0; i < 10; i++) fx.update(1 / 60, camera);
     expect(fx.stats().shown).not.toContain('muzzle_flash_hider');
+  });
+
+  it('runs a frag grenade explosion: the material puff, then frag_grenade sparks on a thrown node, smoke, dust', async () => {
+    const d = await load();
+    const sounds: string[] = [];
+    let r = 0.3;
+    const fx = new Effects(() => ((r = (r * 7 + 0.13) % 1)), (name) => sounds.push(name));
+    fx.setData(d);
+    const at: [number, number, number] = [10, 0, 10];
+    const place = { node: new Matrix4().makeTranslation(...at), position: at, normal: [0, 1, 0] as [number, number, number], velocity: [0, 0, 0] as [number, number, number] };
+    expect(fx.play('frag_grenade_stone', place)).toBe(true);
+    const camera = new PerspectiveCamera();
+    camera.position.set(10, 20, 80);
+    camera.updateMatrixWorld();
+    for (let i = 0; i < 30; i++) fx.update(1 / 60, camera);
+    const s = fx.stats();
+    expect(s.played['frag_grenade']).toBe(1);                       // after the stone's own 0.05 s puff
+    for (const part of ['FRAG_sparks', 'dust_explode_long', 'light_flash_large', 'bsmoke_explode_large', 'dust_ground_roll']) expect(s.played[part]).toBe(1);
+    expect(sounds).toContain('.GREN_MED');
+    expect(s.particles).toBeGreaterThan(20);
+    expect(s.emitted).toBeGreaterThan(40);
+  });
+
+  it('wades: the big ripple while the water crosses the body, the small one over its top, none out of it; a fall splashes', async () => {
+    const d = await load();
+    const fx = new Effects(() => 0.5);
+    fx.setData(d);
+    const camera = new PerspectiveCamera();
+    const at = (depth: number, v: [number, number, number] = [15, 0, 0]) => ({ feet: [0, 0, 0] as [number, number, number], depth, height: 19.6, velocity: v, airborne: false });
+    fx.waterFrame(at(5));
+    expect(fx.stats().water.ripples).toBe('big_ripple_anim_walk');
+    for (let i = 0; i < 90; i++) { fx.waterFrame(at(5)); fx.update(1 / 60, camera); }
+    expect(fx.stats().particles).toBeGreaterThan(0);                   // its rings on the water
+    fx.waterFrame(at(25));
+    expect(fx.stats().water.ripples).toBe('small_ripple_anim_walk');
+    fx.waterFrame(at(0));
+    expect(fx.stats().water.ripples).toBe('');
+    expect(fx.splash([0, 0, 0], 4)).toBe(true);
+    expect(fx.stats().played['seal_fall_in_water']).toBe(1);
+  });
+
+  it('prints a footprint on sand (decals.rdr FOOTSTEP_DECALS), not on metal, not prone', async () => {
+    const d = await load();
+    const fx = new Effects(() => 0.5);
+    fx.setData(d);
+    const sand = d.materials.indexOf('SAND'), metal = d.materials.indexOf('METAL_THICK');
+    expect(d.footprints).toEqual(expect.arrayContaining([['SAND', 'stamp_footprint01.tif'], ['SNOW', 'stamp_footprint_snow.tif']]));
+    expect(fx.footfall([0, 0, 0], sand, [0, 1, 0], [0, 0, -1], false)).toBe(true);
+    expect(fx.footfall([0, 0, 0], sand, [0, 1, 0], [0, 0, -1], true)).toBe(false);
+    expect(fx.footfall([0, 0, 0], metal, [0, 1, 0], [0, 0, -1], false)).toBe(false);
+    expect(fx.stats().water.footprints).toBe(1);
   });
 
   it('plays the surface\'s impact at the hit: sparks off METAL_THICK, the stone\'s dust and chunks off STONE', async () => {
