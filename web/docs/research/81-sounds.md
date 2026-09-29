@@ -55,6 +55,14 @@ A map's banks sit together: Frostfire's `MP2_am.bnk` at 29,667,072 (986,408 B), 
 `MP2_vc.bnk` 31,340,928 (176,088). The game loads them by disc location (`snd_BankLoadByLoc`, research/40 §9) from
 `RUN\SOUNDS\BNKSTORE.ZAR;1` (ELF string 0x3f76a0).
 
+**Which banks a map loads** (`FUN_00344450`, decomp 242785, from the map's load at 152105): `HUDUI`, `SMUS` and
+`TCM_ECHO` (strings 0x3f7860-0x3f7870), then `<map>_vc`, `_fx`, `_am`, `_svo`, `_smu` (`%s_vc` ... at 0x3f7880-0x3f78a0),
+then `MULTI` and `HOSTAGE` on a multiplayer map or a mission's cast (`BRAVO_SEAL`, `RUSSIAN` ...). The disc holds only
+`HUDUI` and the maps' three: the rest fail to load and nothing asks for them in the walk. **`HUDUI.bnk`** (24 sounds:
+`.NV_GOGGLES_ON`/`_OFF`, the countdowns, the menus' and keyboard's) is loaded with every map, and it is where the night
+vision's sounds are (`DAT_0044ce30/38 = FUN_00344f30(0x65f568/0x65f580)`, decomp 461033; played without a place,
+`vtable+0xc`, at decomp 410944/410948 as the view state enters or leaves 3). None of its names is in any map's bank.
+
 ## 2. A bank
 
 `FileAttributes` (989snd): `u32 type` 3, `u32 chunks` 2, then `(offset, size)` per chunk -- `MP2_fx.bnk`:
@@ -199,8 +207,11 @@ penetration's exit, a ricochet -- are excluded with it: the viewer's own rounds 
 `FUN_002dc1d0` (decomp 181xxx, the accessor every material read goes through) returns the polygon's material byte
 (surface word bits 10-17) -- or, for 0, `DAT_0044f310`: the map's `DefaultMaterial`, the SOILS name on its world root
 (`<map>.ZED`; `mp8.rdr` repeats it: `DefaultMaterial (DIRT)`). Byte 0 is common: Crossroads' streets (810 of its floor
-polygons), Frostfire's rig (197). Two maps name a default no SOILS entry is spelt as: MP11 `none` (read as none), MP64
-`stone` (read as `STONE`).
+polygons), Frostfire's rig (197). Two maps name a default no SOILS entry is spelt as: MP11 `none`, MP64
+`stone` (read as `STONE`). The map's load (decomp 152109) sets the default to `FUN_002de9e0` of the name, a lookup in
+the SOILS names' table that answers **0** -- `UNKNOWN`, no sounds -- for a name it lacks, so Death Trap's default is
+`UNKNOWN`; no floor of Death Trap has byte 0 (0 of 2,252), so nothing is silenced by it. The viewer does the same
+(`defaultMaterialIndex`) and no longer lists it as missing (research 90 item 26).
 
 **What each map's banks lack.** A map's `_am` bank holds the material sounds its designers expected; the floors ask for
 more. Across the 22 maps the gaps are Rat's Nest's `DIRT` (its `DefaultMaterial`, 85% of its floors; `MP8_am` has no
@@ -229,11 +240,12 @@ sounds: 200 of 200 over the 22 maps.
   `footstepSound`, `landingClass`/`landingSounds`, `rangeGain`, `panDegrees`). A transliteration of the repository's
   mixer: LFO, XREF and plugin grains are not modelled (none of the walk's sounds carries one) and the global
   registers read 0.
-- **The page**: the worker reads the map's three banks from `BNKSTORE.ZAR` by range (the head, 3,268 B of key tree,
+- **The page**: the worker reads the map's three banks and `HUDUI.bnk` (§1, `SOUND_GLOBAL_BANKS`) from `BNKSTORE.ZAR` by range (the head, 3,268 B of key tree,
   the three members: Frostfire's 1.85 MB, beside the 1.9 MB script) -- the served tree over HTTP `Range`, or the player's ISO
   (MP6: 21 reads, 4.1 MB, 66 ms) -- and `GameAudio` renders a sound when it starts, with the play volume and pan
   `FUN_00342670` would give it from the camera, into a stereo buffer for one `AudioBufferSourceNode`. No
-  `PannerNode`: its equal-power law and roll-off are not 989snd's. The first click or key makes the `AudioContext`.
+  `PannerNode`: its equal-power law and roll-off are not 989snd's. The `AudioContext` is made suspended at page start
+  and the first click or key resumes it.
 - **The events** (`GameAudio`): `onFootstep(material, position, {stance, stick})`, `onFire(weapon, position)`,
   `onReload(weapon, position)`, `onJump(position)` (the `jump_whoosh` callback now), `onLand(speed | class,
   material, position)`, `onAnimCallback(name, position)`, `play(name, position)`; `setVolume`, `setMuted`; `stats()`
@@ -255,7 +267,10 @@ sounds: 200 of 200 over the 22 maps.
   is made suspended when the map's sound data arrives, the response is computed in the worker, and the convolver
   (~11 ms, the browser's partitioning) and the loops' buffers (a channel a job, shared by a sound's emitters) are built
   from a queue run 4 ms a frame (`PUMP_BUDGET_MS`) before any gesture; the key press only resumes the context: 0.4-0.7 ms
-  for the whole event, 0.1 ms in the handler (`stats().timing`).
+  for the whole event, 0.1 ms in the handler (`stats().timing`). The release sweep (research 90 item 27) then saw
+  9-69 ms (887 ms once) on a click that landed before the map's sound data, which made the context itself: the context
+  is now made on the task after the page wires `unlockOn` (a `setTimeout 0`, whether or not a map comes), so every
+  click only resumes it. Re-measuring is `tools/audio-unlock.ts` (owed: the host's lock).
 - **The stats** (`window.__viewer.audio()`): the banks (the borrowed marked), the map's `defaultMaterial`, the reverb
   (loaded, inside, zone, depth), the ambience (the beds, which is up, the emitters and their gains), the dropped plays
   by reason (locked, range, unknown, muted, silent -- a surface or zAnim that names no sound) and `unknownNames`;
@@ -297,7 +312,15 @@ The mission script plays it (`MZANIM.ZAR`, `mission` set; the common set carries
   Desert Glory's insects at its lights and fires in a barrel and the rubble, the waterfalls and rivers of Abandoned,
   Foxhunt and Shadow Falls, dogs, chimes, lapping water, radios, humming equipment, the helicopters (their SoftImage
   path not followed: heard at the node's rest), crickets (whose conductors wait on a global register the game sets, so
-  no voice starts in the first seconds). 0 to 18 a map; one node (`pipe` on Vigilance) is not in the realised scene.
+  no voice starts in the first seconds). 0 to 18 a map.
+- **An emitter's place** (the SOUND command's tick, `FUN_002659c0`, decomp 112317): the place starts at 0, flag 4 adds
+  the command's f32 triple at +0x14 (`FUN_00309240`), and flag 2 carries it through the node's matrices to the world
+  (`FUN_00310980`) only when the node resolves (`FUN_0026f4e0`, by exact name over the world and the objects,
+  `FUN_00269230`); with no node and no offset the sound plays without a place. Three emitters carry an offset: Foxhunt's
+  `waterfall1_sprays` (0, at `spray4`), Crossroads' `water_drain` ((0, -60, 30) below `waterpipe`) and Vigilance's
+  `water_drain`, a copy of Crossroads' naming a node `pipe` that no model of Vigilance has (no ZED or rdr of MP51 names
+  it). The game therefore sounds Vigilance's `~WATER_LEAK` at the bare world point (0, -60, 30), 586 units from the
+  nearest floor, past its `RANGE`: inaudible there, and the viewer places it the same (`emitterPosition`).
 - **The crickets** set no game register: their conductor counts its burst of chirps in a local register (`SET_REGISTER
   _RAND 0..40`, `INC_REGISTER`, `TEST_REGISTER < 90`) and waits `RAND_DELAY` up to 4000 ticks (16.7 s) between bursts --
   longer than the 12 s loop, so it rendered silent. A loop with no voice in 12 s is rendered over 40 s at 24 kHz

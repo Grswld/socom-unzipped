@@ -134,6 +134,22 @@ describe('the rules (81 §4-§6)', () => {
     // Without the bytes: the first sigiled name, no calls.
     expect(callbackSounds(common).get('frag_grenade_stone')).toBeUndefined();
   });
+  it('reads a play-sound command\'s offset (flag 4, the f32 triple at +0x14) and keeps it on the emitter (90 item 26)', () => {
+    // Vigilance's water_drain: `30 0 0x82 0 | 0x86 0 | 5 0 | ... | node 1 at +16 | (0, -60, 30) at +0x14` -- a copy of
+    // Crossroads' (whose node is `waterpipe`) naming a node `pipe` the map has not.
+    const d = new Uint8Array(32);
+    [30, 0, 0x82, 0, 0x86, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1].forEach((v, i) => { d[i] = v; });
+    const f = new DataView(d.buffer);
+    f.setFloat32(0x14, 0, true); f.setFloat32(0x18, -60, true); f.setFloat32(0x1c, 30, true);
+    const mission = { sets: [{ name: 'mission', anims: [
+      { name: 'water_drain', names: ['NA', 'pipe', 'water_drain', '~WATER_LEAK'], params: { flags: 33, rootNodeIndex: 2 },
+        nodeRefs: [{ name: 'NA' }, { name: 'pipe' }], sequences: [{ commands: [{ offset: 8, set: 0, cmd: 30 }] }] },
+    ] }] };
+    const payload = (_s: string, _a: string, offset: number, length: number): Uint8Array | null => (offset === 8 ? d.subarray(0, length) : null);
+    const infos = zanimSounds([mission], payload);
+    expect(infos.get('water_drain')!.sounds).toEqual([{ sound: '~WATER_LEAK', flags: 0x86, node: 'pipe', offset: [0, -60, 30] }]);
+    expect(zanimEmitters(infos)).toEqual([{ anim: 'water_drain', sound: '~WATER_LEAK', node: 'pipe', flags: 0x86, offset: [0, -60, 30] }]);
+  });
   it('hears another shooter round passing within 20 units, never the player own', () => {
     expect(passingSound([0, 0, 0], [-50, 10, 0], [50, 10, 0])).toEqual({ sound: '.BUL_PASSING', at: [0, 10, 0] });
     expect(passingSound([0, 0, 0], [-50, 25, 0], [50, 25, 0])).toBeNull();

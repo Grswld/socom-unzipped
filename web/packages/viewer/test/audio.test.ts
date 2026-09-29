@@ -8,7 +8,7 @@ import { parseZdb, Zar, zdbMember } from '@s2u/archive';
 import { parseSceneGraph, worldCollision } from '@s2u/scene';
 import type { RenderedSound, ReverbImpulse } from '@s2u/sound';
 import { GameAudio, LISTENING_GAIN_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER, panGains, type AudioOut, type LoopHandle } from '../src/audio';
-import { soundFromDisc, type SoundData } from '../src/soundData';
+import { emitterPosition, soundFromDisc, type SoundData } from '../src/soundData';
 import { WalkSounds, type WalkSignals } from '../src/walkSounds';
 import type { AnimStats } from '../src/animator';
 
@@ -65,6 +65,19 @@ describe('a tree with no sound archives', () => {
   });
 });
 
+describe('where an emitter sounds (SOUND, FUN_002659c0; research 90 item 26)', () => {
+  it('takes its offset through its node, or, when the scene has no such node, as a world position', () => {
+    // A node turned a quarter about y (column-major, as flattenScene gives it) at (100, 5, -40).
+    const world = [0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 100, 5, -40, 1];
+    expect(emitterPosition(world, [0, -60, 30])).toEqual([130, -55, -40]);
+    expect(emitterPosition(world, undefined)).toEqual([100, 5, -40]);
+    // Vigilance's `pipe`: no node -- the game's flag 4 offset is the place (0, -60, 30).
+    expect(emitterPosition(null, [0, -60, 30])).toEqual([0, -60, 30]);
+    // No node and no offset: the game plays it without a place, which the emitters do not model.
+    expect(emitterPosition(null, undefined)).toBeNull();
+  });
+});
+
 describe('the output controls', () => {
   it('sets the gain from the volume and the mute', () => {
     const out = new Recorder(), audio = new GameAudio(out);
@@ -83,12 +96,33 @@ describe('the output controls', () => {
     target.dispatchEvent(new Event('keydown'));
     expect(audio.stats().unlocked).toBe(true);
   });
+  it('makes the output at page start, off the gesture, so a click before the banks only resumes it (90 item 27)', () => {
+    vi.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      const out = new (class extends Recorder {
+        ready = false;
+        prepare(): void { calls.push('prepare'); this.ready = true; }
+        override unlock(): void { calls.push(this.ready ? 'resume' : 'make'); super.unlock(); }
+      })();
+      const audio = new GameAudio(out), target = new EventTarget();
+      audio.unlockOn(target);
+      expect(calls).toEqual([]);                          // not inside the page's first synchronous work
+      vi.runAllTimers();
+      expect(calls).toEqual(['prepare']);                 // before any map's banks (no setData yet)
+      target.dispatchEvent(new Event('pointerdown'));
+      expect(calls).toEqual(['prepare', 'resume']);
+      expect(audio.stats().unlocked).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
 });
 
 describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
   it('reads the three banks, the script, the materials, the weapons and the callbacks', async () => {
     const d = await mp2();
-    expect(d.banks.filter((b) => !b.only).map((b) => b.file)).toEqual(['MP2_am.bnk', 'MP2_fx.bnk', 'MP2_vc.bnk']);
+    // The map's three and HUDUI, which the game loads with every map (FUN_00344450: HUDUI, SMUS, TCM_ECHO, then the
+    // map's; only HUDUI is on the disc): the night vision's `.NV_GOGGLES_ON/_OFF` are its (research 90 item 24).
+    expect(d.banks.filter((b) => !b.only).map((b) => b.file)).toEqual(['MP2_am.bnk', 'MP2_fx.bnk', 'MP2_vc.bnk', 'HUDUI.bnk']);
     // Borrowed (PLACEHOLDER): the tin steps Frostfire's METAL_THIN floors ask for, the metal bounce of a grenade.
     expect(d.banks.find((b) => b.only?.includes('.STEP_TIN'))).toBeDefined();
     expect(d.banks.some((b) => b.only?.includes('.GREN_METAL'))).toBe(true);
@@ -127,12 +161,15 @@ describe.skipIf(!haveSound)('Frostfire from the fixtures (81)', () => {
     expect(audio.onAnimCallback('shotgun_pump')).toBe('.SHOTGUN_COCK');
     const s = audio.stats();
     expect(s.map).toBe('MP2');
-    expect(s.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC']);
+    expect(s.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC', 'HUDUI']);
     expect(s.played).toBe(out.played.length);
     expect(s.byName['.STEP_STONE']).toBe(1);
     expect(s.dropped.range).toBe(1);
     expect(s.decoded).toBeGreaterThan(5);
     expect(out.played.every((r) => r.left.length > 0 && r.peak > 0)).toBe(true);
+    // The goggles, played without a place as the game does (vtable+0xc, decomp 410944/410948).
+    expect(audio.play('.NV_GOGGLES_ON')).toBe(true);
+    expect(audio.play('.NV_GOGGLES_OFF')).toBe(true);
   });
 
   it('pans a source by its azimuth and fades it over its RANGE', async () => {
@@ -300,5 +337,10 @@ describe.skipIf(!haveSound)('every map steps on every floor', () => {
     expect([...silent.keys()]).toEqual([]);
     // No casing name is missing: the data's slip is mended and a shell no bank reached stands in (research 90 item 18).
     expect(d.missing.filter((x) => /no bank holds/.test(x))).toEqual([]);
+    // Nothing is missing at all (research 90 item 26): an emitter whose node the scene lacks plays where the game plays
+    // it, and a DefaultMaterial no SOILS entry spells is the game's UNKNOWN (FUN_002de9e0 answers 0), not an error.
+    expect(d.missing).toEqual([]);
+    // The goggles' sounds are HUDUI's, a bank the game loads with every map (FUN_00344450; research 90 item 24).
+    expect(audio.has('.NV_GOGGLES_ON') && audio.has('.NV_GOGGLES_OFF')).toBe(true);
   }, 60_000);
 });
