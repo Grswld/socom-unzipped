@@ -1,4 +1,5 @@
-import { HttpAssetSource, IsoAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
+import { HttpAssetSource, IsoAssetSource, type AssetSource, type MapInfo } from '@s2u/archive';
+import { listDiscMaps, type IndexProblem } from './discIndex';
 import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 import { playFromDisc, playTransferables, type PlayData } from './motionTable';
 import {
@@ -45,7 +46,8 @@ export type ViewerRequest =
  * moved on from, exactly as it drops a stale map.
  */
 export type ViewerResponse =
-  | { kind: 'index'; id: number; maps: MapInfo[] }
+  /** `problems`: the archives a disc image holds that would not name themselves, and why (`./discIndex`). */
+  | { kind: 'index'; id: number; maps: MapInfo[]; problems: IndexProblem[] }
   | { kind: 'map'; id: number; map: LoadedMap }
   | { kind: 'progress'; id: number; stage: LoadStage; done: number; total: number }
   /** The clips and their table entries, or null when the source has no `MOTION_P.ZAR` (the body keeps its bind pose). */
@@ -93,10 +95,11 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         // The served index already carries every map's name (`extract-maps.ts` read each `mission.rdr`
         // once), so filling the picker costs one small fetch. A disc image has no such index, so
         // `listMaps` names its maps -- by range, each archive's table of contents and `READERM.ZAR`, tens
-        // of kilobytes apiece rather than the 224 MB of all 22.
+        // of kilobytes apiece rather than the 224 MB of all 22 -- and says which archive would not name itself, and why.
         const source = sourceFor(request.source);
-        const maps = source instanceof HttpAssetSource ? await source.maps() : await listMaps(source);
-        ctx.postMessage({ kind: 'index', id: request.id, maps });
+        const { maps, problems } = source instanceof HttpAssetSource ? { maps: await source.maps(), problems: [] }
+          : await listDiscMaps(source);
+        ctx.postMessage({ kind: 'index', id: request.id, maps, problems });
       } else if (request.kind === 'sound') {
         // Never an error either: without the banks the walk is silent.
         const data = await soundFromDisc(sourceFor(request.source), request.path, request.archive);
