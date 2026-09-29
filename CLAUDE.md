@@ -19,24 +19,24 @@ This file is a map, not the state: nothing here changes weekly; each line points
 Bash/PowerShell rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/hooks/pretool.py`, test
 `tools_py/tests/test_hooks.py`; every hook is wired in `.claude/settings.json`.
 - Bulk staging: a bare `git add`, `-A`/`--all`, `-u`/`--update`, a whole-tree pathspec (`.`, `-- .`), `git commit -a`
-  (`-A`/`-u` limited by `-- <paths>` pass) -- enforced by: the Bash hook; home `docs/GIT_STRATEGY.md` section 3.
+  (`-A`/`-u` limited by `-- <paths>` pass) -- enforced by: Bash hook; home `docs/GIT_STRATEGY.md` section 3.
 - A commit without `-- <paths>` (allowed mid-merge) -- enforced by: Bash hook; home `docs/HANDOFF.md` section 4 rule 1.
-- `--no-verify` and its abbreviations from `--no-v` up, commit `-n`, `-c core.hooksPath=` -- enforced by: the Bash
+- `--no-verify` and its abbreviations from `--no-v` up, commit `-n`, `-c core.hooksPath=` -- enforced by: Bash
   hook; home `docs/GIT_STRATEGY.md` section 3.
 - A push from a linked worktree; a force push, `+refspec` or delete aimed at `main` or `sprint-*`; `--mirror` --
-  enforced by: the Bash hook; home `docs/GIT_STRATEGY.md` sections 2 and 3.
+  enforced by: Bash hook; home `docs/GIT_STRATEGY.md` sections 2 and 3.
 - `loop_lock.sh take`/`release` by hand; `git worktree add/remove/prune` (use `scripts/agent_worktree.sh`); in a
-  worktree, a writing `git config` unless `--worktree`, `--global`, `--system` or `--file` -- enforced by: the Bash
+  worktree, a writing `git config` unless `--worktree`, `--global`, `--system` or `--file` -- enforced by: Bash
   hook; home `scripts/loop_lock.sh`, `scripts/agent_worktree.sh`.
 - Edit/Write of an existing `logs/**/*.sh` while the lock is HELD (home `docs/HAZARDS.md` lock); of
   `scripts/loop_lock.sh` when a QUEUED waiter's blob equals this copy's, or the lock is HELD and this is the main
-  tree's copy -- enforced by: the hook's Edit/Write entry; home the `scripts/loop_lock.sh` header. Bash edits unseen.
-- A commit naming `loop_lock.sh` without a slow-suite marker newer than the script -- enforced by: the Bash entry
+  tree's copy -- enforced by: the Edit/Write entry; home the `scripts/loop_lock.sh` header. Bash edits unseen.
+- A commit naming `loop_lock.sh` without a slow-suite marker newer than the script -- enforced by: Bash entry
   (`rule_lock_script_commit`); home the `scripts/loop_lock.sh` header.
-- `gh pr merge --delete-branch` (and `-d`) -- enforced by: the Bash hook; home `docs/HAZARDS.md` git.
+- `gh pr merge --delete-branch` (and `-d`) -- enforced by: Bash hook; home `docs/HAZARDS.md` git.
 - Orphaned watchers (`tail`, `grep`, `sleep`) killed at every Stop and SessionEnd -- enforced by: the reaper
-  `tools_py/hooks/reap.py`, test `tools_py/tests/test_reap.py`; home DEVELOPING "Guards", the Sprint 14 plan's G3.
-- `build.sh` exits 3 while another holds the lock, unless run as its child (`tools` exempt) -- test `tools_py/tests/test_build_sh_lock.py`.
+  `tools_py/hooks/reap.py`, test `tools_py/tests/test_reap.py`; home DEVELOPING "Guards".
+- `build.sh` exits 3 while another holds the lock, unless its child (`tools` exempt); `test` skips the Python suite in a worktree or behind a queue (`--full-suite`) -- test `tools_py/tests/test_build_sh_lock.py`.
 - A commit or a tracked-file Edit/Write in a tree a live merged chain pins (`logs/.merged_chain.running`) -- enforced by: `tools_py/hooks/precommit.py`, the Edit/Write entry; home DEVELOPING "Guards".
 
 ## Procedures, by name

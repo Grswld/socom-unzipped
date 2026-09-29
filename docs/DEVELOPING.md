@@ -433,7 +433,8 @@ by design:
                        # their goldens, native path on and off, plus a --vram-diff equivalence check
                        # (checked=15 skipped=0; a [vu1_replay] WARNING about a texture inside the
                        # replay's blanked framebuffer/z region fails the suite). PS2X_TEST_REPEAT=N runs
-                       # the C++ unit suite N times (determinism check).
+                       # the C++ unit suite N times (determinism check). In a linked worktree or
+                       # behind a queue it skips the Python suite (--full-suite forces it; Guards).
 python -m tools_py.parity.gate   # in-game gate: title / transition / mission, PASS or FAIL.
                        # Run `./build.sh runtime` first -- the gate launches dist/socom2.exe and
                        # `./build.sh test` does NOT rebuild it.
@@ -1191,6 +1192,8 @@ created after the marker, or one we may not open, is not the chain), and every r
 to delete it if no chain runs (`bash scripts/loop_lock.sh check` FREE); an
 edit through Bash or PowerShell (`sed -i`, `Set-Content`) is not seen; a chain in a third tree is judged only when the
 call reaches Python for another reason.
+
+The Python suite's place (Sprint 17, the owner's rule of 2026-09-28): `./build.sh test` skips the full Python suite (`unittest discover`) with one line, `tests: python suite skipped (...; the merged chain runs it -- --full-suite to force)`, in a linked worktree (`--git-dir` differs from `--git-common-dir`) or while `loop_lock.sh check` shows a live `QUEUED` waiter, and still runs the C++ tests, whose exit code is the step's; `--full-suite` forces it, and so does the merged chain (its `logs/.merged_chain.running` in the tree names `held=$LOOP_LOCK_HELD`); the full suite is the chain's bar and CI's, a branch's is the C++ tests plus the modules its change touched -- two starved worktree suites held the lock 60-110 minutes on 2026-09-28, and the chain's own suite starves the same way beside queued waiters and any other test process, so nothing runs a suite (`unittest`, `build.sh test`) while `loop_lock.sh check` shows a chain HELD; home `build.sh`'s test step (`python_suite_skip`); test `TestBuildShSuiteGuard` in `tools_py/tests/test_build_sh_lock.py`.
 
 The PowerShell tool (Sprint 17 G1): the PreToolUse matcher is `Bash|PowerShell`, and a PowerShell `command` is judged by
 every Bash rule above (`Set-Location`/`sl`/`chdir`, `Push-Location`, `Pop-Location` followed as `cd`/`pushd`/`popd`);

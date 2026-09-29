@@ -8,7 +8,7 @@ without building anything: `--dry-run` prints the plan and exits before the tool
 Never the real lock: LOOP_LOCK_PATH points at a temp dir and LOOP_LOCK_PS_CMD at a fake process list, as in
 test_loop_lock.py; a lock taken here is released in tearDown.
 
-Sprint 17 (the owner's rule of 2026-09-28, R334): `build.sh test` runs the full Python suite only where it is the
+Sprint 17 (the owner's rule of 2026-09-28): `build.sh test` runs the full Python suite only where it is the
 bar -- the main tree with nobody queued on the lock, or the merged chain (whose `logs/.merged_chain.running` names
 this holding); a linked worktree, or a holder with waiters QUEUED behind it, runs the C++ tests and skips the
 discover with one line (`--full-suite` forces it). TestBuildShSuiteGuard drives the real test step end to end in a
