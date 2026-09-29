@@ -22,7 +22,7 @@ import type {} from '../packages/viewer/src/hook';
 const args = process.argv.slice(2);
 const opt = (name: string): string | undefined => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const BASE = args[0] && !args[0].startsWith('--') ? args[0] : 'http://localhost:5192/';
-const MAPS = (opt('--maps') ?? 'MP2,MP6,MP72').split(',');
+const MAPS = (opt('--maps') ?? 'MP2,MP6,MP72,MP10,MP7').split(',');
 const OUT = opt('--out') ?? fileURLToPath(new URL('../test-fixtures/screens/playtest', import.meta.url));
 const EYE = 15.4, INIT_PITCH = -9.167, DEG = Math.PI / 180;
 
@@ -403,6 +403,35 @@ async function playMap(s: Session): Promise<void> {
   });
 }
 
+/**
+ * Blood Lake's water: the lake's surface is one liquid polygon at y 12, its bed 7-10 a few units under it west of
+ * x 700 at z 1100, the shore rising to 23 at x 660 -- walked in from the shore, then out into the lake and back.
+ */
+async function playBloodLake(s: Session): Promise<void> {
+  const p = s.p;
+  await s.scenario('wade into the lake from the west shore', async (x, n, f, shots) => {
+    await x.place([640, 31, 1100], -90);
+    await p.waitForTimeout(600);
+    await p.keyboard.down('KeyW');
+    const track: { t: number; x: number; y: number; depth: number; speed: number; clip: string | null }[] = [];
+    let last: number[] | null = null;
+    for (let i = 0; i < 30; i++) {
+      await p.waitForTimeout(100);
+      const r = await read(p, () => ({ feet: window.__viewer.feet()!, depth: window.__viewer.traversal()?.depth ?? 0, clip: window.__viewer.stats().anim?.clip ?? null }));
+      track.push({ t: i / 10, x: +r.feet[0].toFixed(1), y: +r.feet[1].toFixed(2), depth: +r.depth.toFixed(2), speed: last ? +(Math.hypot(r.feet[0] - last[0]!, r.feet[2] - last[2]!) * 10).toFixed(1) : 0, clip: r.clip });
+      last = r.feet;
+      if (i === 15) shots.push(await x.shot('MP10-wading'));
+    }
+    await p.keyboard.up('KeyW');
+    n['track'] = track.filter((_, i) => i % 3 === 0);
+    const wet = track.filter((r) => r.depth > 0);
+    n['maxDepth'] = Math.max(0, ...track.map((r) => r.depth));
+    n['speedDry'] = track.find((r) => r.depth === 0 && r.speed > 0)?.speed ?? null;
+    n['speedWet'] = wet.length ? wet[wet.length - 1]!.speed : null;
+    if (!wet.length) f.push('walked 3 s into the lake and the traversal never read a depth');
+  });
+}
+
 async function playFrostfire(s: Session): Promise<void> {
   const p = s.p;
   await s.scenario('walk off the 142 deck', async (x, n, f, shots) => {
@@ -512,6 +541,7 @@ try {
     console.error(`${map}: spawn ${s.spawnAt().map((v) => v.toFixed(1)).join(', ')}, open heading ${s.openYaw()}`);
     await playMap(s);
     if (map === 'MP2') await playFrostfire(s);
+    if (map === 'MP10') await playBloodLake(s);
     all.push(...s.scenarios);
     problems[map] = s.problems;
     await page.close();
