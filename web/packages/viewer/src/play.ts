@@ -19,18 +19,18 @@ import { WeaponRaise, type RaiseStats } from './weaponRaise';
  * switch, the pad's Start) shows the map's SEAL at the mover's feet, facing the body's yaw, running the game's clips
  * (`./animator`). The frame is drawn from the walk's own camera -- the game's third-person camera
  * (`./playerCamera`, `FUN_0029a950`; it replaced the cloud sprint's measured shoulder rig at the merge of the two
- * sprint 2s) -- and aiming (`L1`, the right mouse button) holds its first-person view. Leaving hides the body. The
+ * sprint 2s) -- or, zoomed (the right mouse button, d-pad Up), the scope's view from the head. There is no first
+ * person (the owner, 2026-09-29: the views are third person and scoped, as SOCOM II's). Leaving hides the body. The
  * W2.1 body switch is **"show the body in fly mode"**: with it on, the body stays in view where the play left it --
  * or at slot A in its bind pose, W2.1's picture, until played.
  */
 
-/** Which view draws the frame: the game's third-person camera in play, the aim (first person), or the fly camera. */
-export type ViewKind = 'third' | 'aim' | 'fly';
+/** Which view draws the frame: the game's third-person camera in play, the scope (from the head), or the fly camera. */
+export type ViewKind = 'third' | 'scope' | 'fly';
 
 /**
- * Whether the body is drawn: always over the shoulder, never in the aim view -- a first-person view from the body's
- * own eyes, where the head would fill the screen; the first-person arms (`seal_fp_*`, 77 §12) are not drawn, a carry --
- * and in the fly camera only when the panel's switch asks.
+ * Whether the body is drawn: always over the shoulder, never in the scope -- a view from the body's own eyes, where
+ * the head would fill the screen -- and in the fly camera only when the panel's switch asks.
  */
 export function bodyVisible(kind: ViewKind, flyToggle: boolean): boolean {
   return kind === 'third' || (kind === 'fly' && flyToggle);
@@ -39,56 +39,15 @@ export function bodyVisible(kind: ViewKind, flyToggle: boolean): boolean {
 /**
  * The pad's lanes as the play mode acts on them (W2.R5; `./gamepad`'s `Input`, the pad and the touch buttons merged):
  * the jump on the press, the crouch on the release -- the game toggles the stance when the button comes up
- * (docs/PLAYTEST.md step 8, `host_crouch_shortcut.h:5-6`) -- and the aim view while the aim lane is held. The fire lane
- * is the trigger's (`main.ts`), and the stance lane's tap and hold are `StanceButton`'s.
+ * (docs/PLAYTEST.md step 8, `host_crouch_shortcut.h:5-6`). The fire lane is the trigger's (`main.ts`), and the stance
+ * lane's tap and hold are `StanceButton`'s (`./stanceButton`).
  */
-export function playActions(before: Input, after: Input): { jump: boolean; crouch: boolean; aim: boolean } {
-  return { jump: pressedSince(before, after).includes('jump'), crouch: releasedSince(before, after).includes('crouch'), aim: after.aim };
+export function playActions(before: Input, after: Input): { jump: boolean; crouch: boolean } {
+  return { jump: pressedSince(before, after).includes('jump'), crouch: releasedSince(before, after).includes('crouch') };
 }
 
-/**
- * How long Triangle is held before it means prone, seconds. A guess: the game does not time the button, it reads its
- * pressure (a light press toggles crouch at release, a full press goes prone at once; `host_crouch_shortcut.h:4-7`,
- * docs/KNOWN.md R139), and a browser pad's button is only on or off, so the owner's rule (2026-09-28: tap crouches,
- * hold goes prone) needs a length, and none is in the repository. 0.4 s is a comfortable tap's ceiling.
- */
-export const STANCE_HOLD_S_PLACEHOLDER = 0.4;
-
-/** What a tap on the stance button does: stand and crouch toggle, and from prone it stands up. */
-export function stanceOnTap(stance: Stance): Stance {
-  return stance === 'stand' ? 'crouch' : 'stand';
-}
-
-/** What a hold does: prone, or from prone up on its feet (the game's full press stands a prone SEAL). */
-export function stanceOnHold(stance: Stance): Stance {
-  return stance === 'prone' ? 'stand' : 'prone';
-}
-
-/**
- * The stance button as a state machine, one `update` a frame: a press let go inside `STANCE_HOLD_S_PLACEHOLDER` is a
- * tap and acts at the release, as the game's light press does; a press held that long acts at that moment (the game's
- * full press acts at once) and its release then does nothing. Returns the stance to go to, or null.
- */
-export class StanceButton {
-  private held = 0;
-  private was = false;
-  private acted = false;
-
-  constructor(private readonly holdSeconds = STANCE_HOLD_S_PLACEHOLDER) {}
-
-  update(down: boolean, dt: number, stance: Stance): Stance | null {
-    let go: Stance | null = null;
-    if (down) {
-      if (!this.was) { this.held = 0; this.acted = false; }
-      this.held += dt;
-      if (!this.acted && this.held >= this.holdSeconds) { this.acted = true; go = stanceOnHold(stance); }
-    } else if (this.was && !this.acted) {
-      go = stanceOnTap(stance);
-    }
-    this.was = down;
-    return go;
-  }
-}
+// The stance button's machine and rules live in `./stanceButton` (the pad's Triangle here, the PC's `C` in `./walk`).
+export { StanceButton, STANCE_HOLD_S_PLACEHOLDER, stanceOnHold, stanceOnTap } from './stanceButton';
 
 /**
  * The scene skeleton of a decoded body (`@s2u/scene`'s `Skeleton`: the animator writes it, `setLocal` per part), from
@@ -120,7 +79,7 @@ export function eyePoint(body: LoadedBody, palette: readonly Float32Array[]): [n
 /** The clips and the table as the worker read them (`./motionTable`, `PlayData`). */
 export interface PlayClips { clips: MotionClip[]; table: [string, MotionEntry][] | null }
 
-/** What the weapon's trigger and aim are this frame (the page's: `Fire.triggerHeld`, the aim lane). */
+/** What the weapon's trigger and aim are this frame (the page's: `Fire.triggerHeld`, and `aiming` while in the scope). */
 export interface WeaponInput { trigger: boolean; aiming: boolean }
 
 /** What `weapon()` on the hook reports: the raise, the layers, whether the rifle is in hand, and the muzzle. */
@@ -169,7 +128,7 @@ function poseOf(camera: PerspectiveCamera): Pose {
 /**
  * The play mode's state on the page: the body, its skeleton, the clips and the animator over them, and the panel's
  * body switch. `frame` runs once a frame after the walk's own; the view itself is the walk's (`./walk`, the game's
- * camera, `./playerCamera`), and the aim lanes hold its first-person view (`WalkMode.setAiming`).
+ * camera, `./playerCamera`), and the zoom puts it in the scope, at the head (`WalkMode.setScoped`).
  */
 export class Play {
   private body: BodyView | null = null;
@@ -344,13 +303,13 @@ export class Play {
 
   /**
    * One frame: in walk mode the body at the mover's drawn feet, facing the body's yaw, its clip advanced by `dt` and
-   * its pose on the bones -- shown in third person, hidden in first; in fly mode, once played, the body left standing
+   * its pose on the bones -- shown in third person, hidden in the scope; in fly mode, once played, the body left standing
    * where the mover was. `camera` is the one the frame is drawn with, for `viewStats`.
    */
   frame(dt: number, walk: Pick<WalkMode, 'snapshot' | 'view'> & Partial<Pick<WalkMode, 'setPosedRoot' | 'mover' | 'setActionRoots'>>, camera: PerspectiveCamera): void {
     if (!this.rootsSent && walk.setActionRoots) { walk.setActionRoots(this.roots); this.rootsSent = true; }
     const snap = walk.snapshot();
-    this.kind = snap === null ? 'fly' : walk.view() === 'first' ? 'aim' : 'third';
+    this.kind = snap === null ? 'fly' : walk.view() === 'scope' ? 'scope' : 'third';
     // WEAPON: the rifle's raise from the trigger and the aim while walking. In fly mode the body left standing keeps
     // the rifle where the play left it (the raise does not tick) and a reload stops.
     if (snap) {

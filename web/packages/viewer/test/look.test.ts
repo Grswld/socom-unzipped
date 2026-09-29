@@ -3,7 +3,7 @@ import { SEAL_TUNING } from '@s2u/scene';
 import { FlyCamera } from '../src/camera';
 import { PAD_DEAD_ZONE } from '../src/gamepad';
 import {
-  aimTwist, circle, deadZone, EXPLOSION_SHAKES, explosionShake, FirstPersonBob, FULL_AXIS, LOOK_GAIN, LookLaw,
+  aimTwist, circle, deadZone, EXPLOSION_SHAKES, explosionShake, ViewBob, FULL_AXIS, LOOK_GAIN, LookLaw,
   MAX_PITCH_RATE, MAX_YAW_RATE, MOUSE_RADIANS_PER_COUNT, nudgePitch, PITCH_PER_YAW, RAMP_PER_SECOND, ramp, rampStep,
   runningLean, ScreenShake, stepPitch, stickCurve, throttle, viewOffset, zoomScale,
 } from '../src/look';
@@ -161,9 +161,9 @@ describe('the screen shake (FUN_002994e0, FUN_00299c40)', () => {
   });
 });
 
-describe('the first-person bob (BOBBING_FIRSTPERSON)', () => {
+describe('the view bob (BOBBING_FIRSTPERSON), in the views from the eye', () => {
   it('moving, 6 x cos(phase) pixels, the phase at 15 rad/s x the push; still, 0; prone, 4 at 8', () => {
-    const bob = new FirstPersonBob();
+    const bob = new ViewBob();
     expect(bob.step(TICK, 0, 1, false)).toBeCloseTo(SEAL_TUNING.bobbing.walkAmplitude, 9);
     expect(bob.step(TICK, 0, 1, false)).toBeCloseTo(6 * Math.cos(15 * TICK), 9);
     expect(bob.step(TICK, 0, 0, false)).toBe(0);
@@ -227,10 +227,10 @@ describe('FlyCamera, walking: the look law', () => {
     expect(fly.pose().yaw).toBe(yaw);                                 // let go: at once
   });
 
-  it('first person and moving, the bob shifts the view; the shake too, and neither in fly mode', () => {
+  it('scoped and moving, the bob shifts the view; the shake too, and neither in fly mode', () => {
     const fly = walking();
     fly.setAspect(4 / 3);
-    fly.setBody(true, false);
+    fly.setBody(true, false);                                         // the eye's view (the night vision: no slow)
     globalThis.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
     fly.update(TICK);
     expect(fly.lookState().screen[1]).toBeCloseTo(6, 9);

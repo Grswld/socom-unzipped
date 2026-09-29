@@ -10,10 +10,11 @@ import { MOUSE_RADIANS_PER_COUNT, PITCH_PER_YAW } from '../src/look';
 import { loadMap } from '../src/loadMap';
 import { HEAD_HEIGHT } from '../src/stature';
 import {
-  aimPoint, firstPersonHeight, localCamera, lookHeight, pitchLimits, ramp, PlayerCamera,
+  aimPoint, localCamera, scopeEyeHeight, lookHeight, pitchLimits, ramp, PlayerCamera,
   CAM_BACK, CAM_MARGIN, INIT_AIM_PITCH, type Vec3,
 } from '../src/playerCamera';
 import { groundGrid, packGround, rootY, WalkMode, EYE_HEIGHT, TICK } from '../src/walk';
+import { STANCE_HOLD_S_PLACEHOLDER } from '../src/stanceButton';
 
 /**
  * The game's third-person camera (web sprint 2, W2.1): `FUN_0029a950`'s target and eye, `FUN_00296f10`'s look line,
@@ -229,22 +230,23 @@ describe('the pass against the hull (FUN_0029bf70)', () => {
   });
 });
 
-describe('the look limits and first person', () => {
+describe('the look limits and the eye of the scope', () => {
   it('the pitch is the aim pitch: min/max_aim_pitch -70..60, prone -20..25 (FUN_00594600)', () => {
     expect(pitchLimits('stand')).toEqual([-70, 60]);
     expect(pitchLimits('crouch')).toEqual([-70, 60]);
     expect(pitchLimits('prone')).toEqual([-20, 25]);
   });
 
-  it('first person puts the eye at the head: HEAD_HEIGHT standing, the crown less the same 1.3 in the other stances', () => {
-    expect(firstPersonHeight('stand')).toBe(HEAD_HEIGHT);
-    expect(firstPersonHeight('crouch')).toBeCloseTo(12.4 - 1.3, 9);
-    expect(firstPersonHeight('prone')).toBeCloseTo(3 - 1.3, 9);
+  it('the scope puts the eye at the head: HEAD_HEIGHT standing, the crown less the same 1.3 in the other stances', () => {
+    expect(scopeEyeHeight('stand')).toBe(HEAD_HEIGHT);
+    expect(scopeEyeHeight('crouch')).toBeCloseTo(12.4 - 1.3, 9);
+    expect(scopeEyeHeight('prone')).toBeCloseTo(3 - 1.3, 9);
   });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// The mode: third person by default, V for first person, the mouse on the body's yaw and the camera's pitch.
+// The mode: third person, or the scope's view from the head (no first person: the owner, 2026-09-29), the mouse on
+// the body's yaw and the camera's pitch, and C's stance (a tap toggles crouch, a hold goes prone).
 
 const canvas = (): HTMLCanvasElement => {
   const c = document.createElement('canvas');
@@ -287,27 +289,65 @@ describe('walk mode\'s camera (W2.1)', () => {
     expect(fly.pose().pitch).toBeCloseTo(INIT_AIM_PITCH, 9);
   });
 
-  it('V toggles first person (the eye at the head, looking along yaw and pitch) and back; Ctrl+V is left to the browser', () => {
+  it('has no first person: V is not bound, and the only other view is the scope, from the head', () => {
     const { fly, mode } = setUp();
     fly.setPose({ x: 0, y: 30, z: 0, yaw: 0, pitch: 0 });
     mode.setMode('walk');
-    const press = (init: KeyboardEventInit): boolean => {
-      const e = new KeyboardEvent('keydown', { code: 'KeyV', cancelable: true, ...init });
-      globalThis.dispatchEvent(e);
-      return e.defaultPrevented;
-    };
-    expect(press({ ctrlKey: true })).toBe(false);
-    expect(press({ metaKey: true })).toBe(false);
+    const e = new KeyboardEvent('keydown', { code: 'KeyV', cancelable: true });
+    globalThis.dispatchEvent(e);
+    expect(e.defaultPrevented).toBe(false);
     expect(mode.cameraState()!.mode).toBe('third');
-    expect(press({})).toBe(true);
-    expect(mode.cameraState()!.mode).toBe('first');
+    expect((mode as unknown as Record<string, unknown>).setView).toBeUndefined();
+    mode.setScoped(true);
+    expect(mode.view()).toBe('scope');
+    expect(mode.cameraState()!.mode).toBe('scope');
     close([fly.camera.position.x, fly.camera.position.y, fly.camera.position.z], [0, HEAD_HEIGHT, 0]);
     expect(fly.camera.rotation.y).toBeCloseTo(0, 9);
     expect(fly.camera.rotation.x).toBeCloseTo((INIT_AIM_PITCH * Math.PI) / 180, 9);
-    expect(mode.setView('third')).toBe(true);
+    mode.setScoped(false);
     expect(mode.cameraState()!.mode).toBe('third');
+  });
+
+  it('C: a tap toggles stand and crouch, from prone a tap crouches, a hold of 0.4 s goes prone (owner, 2026-09-29)', () => {
+    const { fly, mode } = setUp();
+    fly.setPose({ x: 0, y: 30, z: 0, yaw: 0, pitch: 0 });
+    mode.setMode('walk');
+    const key = (type: 'keydown' | 'keyup', init: KeyboardEventInit = {}): boolean => {
+      const e = new KeyboardEvent(type, { code: 'KeyC', cancelable: true, ...init });
+      globalThis.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    const frames = (seconds: number): void => { for (let t = 0; t < seconds - 1e-9; t += TICK) mode.frame(TICK); };
+    // A quick tap, down and up between two frames, still counts: the press is latched for the next frame.
+    expect(key('keydown')).toBe(true);
+    key('keyup');
+    frames(2 * TICK);
+    expect(mode.stance()).toBe('crouch');
+    key('keydown'); frames(0.1); key('keyup'); frames(TICK);
+    expect(mode.stance()).toBe('stand');
+    // The hold acts at the threshold, still down, and its release does nothing more; the key's auto-repeat is ignored.
+    key('keydown');
+    frames(STANCE_HOLD_S_PLACEHOLDER - 3 * TICK);
+    key('keydown', { repeat: true });
+    expect(mode.stance()).toBe('stand');
+    frames(4 * TICK);
+    expect(mode.stance()).toBe('prone');
+    key('keyup'); frames(TICK);
+    expect(mode.stance()).toBe('prone');
+    // From prone: a tap crouches, a hold stays prone.
+    key('keydown'); frames(0.6); key('keyup'); frames(TICK);
+    expect(mode.stance()).toBe('prone');
+    key('keydown'); frames(TICK); key('keyup'); frames(TICK);
+    expect(mode.stance()).toBe('crouch');
+    // A hold from crouched goes prone too.
+    key('keydown'); frames(0.5); key('keyup'); frames(TICK);
+    expect(mode.stance()).toBe('prone');
+    // Ctrl+C is the browser's copy; in the fly camera C is nobody's.
+    expect(key('keydown', { ctrlKey: true })).toBe(false);
+    key('keyup', { ctrlKey: true });
     mode.setMode('fly');
-    expect(press({})).toBe(false);                                           // fly mode: V is nobody's
+    expect(key('keydown')).toBe(false);
+    key('keyup');
   });
 
   it('the mouse turns the body\'s yaw (research 83\'s raw mapping) and the pitch at pitch_rate / turn_maxrate of it, held', () => {

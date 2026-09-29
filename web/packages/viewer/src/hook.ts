@@ -11,7 +11,7 @@ import type { ZoomView } from './zoom';
 import type { Stand } from './stand';
 import type { BodyView } from './bodyView';
 import type { SliderName, ToggleName } from './ui';
-import type { MoverState, Stance, WalkCameraState, WalkView } from './walk';
+import type { MoverState, Stance, WalkCameraState } from './walk';
 import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
 import type { ViewStats, WeaponStats } from './play';
@@ -59,8 +59,8 @@ export interface ViewerHook {
      */
     anim: AnimStats | null;
     /**
-     * The view the frame is drawn with (`./play`): `third` (the game's camera) in play, `aim` while the aim is held
-     * (first person), `fly` otherwise, and the drawn camera's pose. The walk's camera in detail is `camera()`.
+     * The view the frame is drawn with (`./play`): `third` (the game's camera) in play, `scope` while zoomed (the
+     * view from the head), `fly` otherwise, and the drawn camera's pose. The walk's camera in detail is `camera()`.
      */
     view: ViewStats;
     /**
@@ -97,8 +97,6 @@ export interface ViewerHook {
   jump(): boolean;
   /** Walk mode: crouch (true), stand (false) or toggle stand and crouch; crouched after, false when flying. */
   crouch(on?: boolean): boolean;
-  /** The aim view (first person while held: L1, the right mouse button), on or off; the view after. */
-  setAim(on: boolean): WalkView;
   /** The walk's look (web research 83): the body's yaw and the look's, the turn, the axes, the screen offset. */
   look(): LookState;
   /** The look's options (the mouse's mapping, the pitch ratio, the invert, the throttle); returns them all. */
@@ -115,7 +113,7 @@ export interface ViewerHook {
     type: number; pip: { alpha: number; offset: [number, number] | null };
   };
   /**
-   * Research 84 (`./zoom`): the view state (`body+0x200`: 0 third person, 1 first, 4 the 9x view, 5+ the scope), its
+   * Research 84 (`./zoom`): the view state (`body+0x200`: 0 third person, 3 night vision, 4 the 9x view, 5+ the scope), its
    * name, the magnification on screen, the vertical FOV it gives, and the look's scale.
    */
   zoom(): { state: number; view: ZoomView; magnification: number; fov: number; lookScale: number };
@@ -133,12 +131,10 @@ export interface ViewerHook {
   /** Sets the stance, walking or not; false for a name that is not a stance. */
   setStance(stance: Stance): boolean;
   /**
-   * W2.1: the walk's camera as last drawn -- third or first person, the eye and the look-at target (world), the root
+   * W2.1: the walk's camera as last drawn -- third person or the scope, the eye and the look-at target (world), the root
    * height the target stands on, the camera's pitch in degrees -- or null in fly mode.
    */
   camera(): WalkCameraState | null;
-  /** W2.1: third person (the game's camera, the default) or first person (`V`); false for a name that is not one. */
-  setView(view: WalkView): boolean;
   /**
    * W2.5 (`./fire`): the shots fired, the magazine, where the last round landed (null for a miss or before one), and
    * the marks on the walls.

@@ -75,31 +75,30 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   expect(burst.r.offset[1]).toBeLessThan(-10);                       // up the screen
 
 
-  // The zoom: first person (the arms drawn at full size), then the SD's 3x scope.
-  expect(await page.evaluate(() => window.__viewer.cycleZoom())).toBe(1);
-  await settle(page, 20);
-  expect((await page.evaluate(() => window.__viewer.camera()))!.mode).toBeDefined();
-  await page.screenshot({ path: join(SCREENS, '4-first-person.png') });
+  // The zoom: straight into the SD's 3x scope -- no first-person step (owner, 2026-09-29), drawn from the head.
   expect(await page.evaluate(() => window.__viewer.cycleZoom())).toBe(5);
   await settle(page, 30);
+  expect((await page.evaluate(() => window.__viewer.camera()))!.mode).toBe('scope');
   const scoped = await page.evaluate(() => ({ z: window.__viewer.zoom(), r: window.__viewer.reticle() }));
   expect(scoped.z.magnification).toBe(3);
   expect(scoped.z.fov).toBeLessThan(20);
   expect(scoped.r.mode).toBe('scope');
   await page.screenshot({ path: join(SCREENS, '5-scope.png') });
-  // A two-round pull scoped drops the scope back to first person (FUN_005c5340).
+  // A two-round pull scoped drops the scope (FUN_005c5340: to the game's first person, here third person).
   expect(await page.evaluate(() => window.__viewer.fireMode())).toBe('AUTO');
   expect(await page.evaluate(() => window.__viewer.switchFireMode())).toBe('AUTO');   // no switch while scoped
   await page.evaluate(() => window.__viewer.trigger(true));
   await page.waitForTimeout(400);
   await page.evaluate(() => window.__viewer.trigger(false));
-  expect((await page.evaluate(() => window.__viewer.zoom())).state).toBe(1);
+  expect((await page.evaluate(() => window.__viewer.zoom())).state).toBe(0);
+  await settle(page, 5);
+  expect((await page.evaluate(() => window.__viewer.camera()))!.mode).toBe('third');
   expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(0);
   expect(await page.evaluate(() => window.__viewer.switchFireMode())).toBe('SEMI');
   expect(problems).toEqual([]);
 });
 
-test('a night map: the zoom steps first person -> night vision -> scope, the goggles and the lens colour on the lit colours', async ({ page }) => {
+test('a night map: the zoom steps third person -> night vision -> scope, the goggles and the lens colour on the lit colours', async ({ page }) => {
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
@@ -115,7 +114,6 @@ test('a night map: the zoom steps first person -> night vision -> scope, the gog
   });
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
   await settle(page, 20);
-  expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(1);
   expect(await page.evaluate(() => window.__viewer.zoomIn())).toBe(3);
   await settle(page, 10);
   const night = await page.evaluate(() => ({ z: window.__viewer.zoom(), row: window.__viewer.stats().nightVision }));
@@ -129,5 +127,6 @@ test('a night map: the zoom steps first person -> night vision -> scope, the gog
   await settle(page, 20);
   expect(await page.evaluate(() => window.__viewer.stats().nightVision)).toBeNull();
   expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(3);   // out of the scope, back to the night vision
+  expect(await page.evaluate(() => window.__viewer.zoomOut())).toBe(0);   // and out to third person
   expect(problems).toEqual([]);
 });

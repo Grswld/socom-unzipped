@@ -167,10 +167,11 @@ export function peekShift(peek: number): number {
 }
 
 /**
- * TRAVERSAL SEAM: the first-person eye's shift across for the peek value (`FUN_0029ae50`, decomp 142613-142617):
+ * TRAVERSAL SEAM: the scope's eye's shift across for the peek value (`FUN_0029ae50`, the game's eye camera, decomp
+ * 142613-142617):
  * `peek x 3.3` to the left, `peek x 4.35` to the right.
  */
-export function firstPersonPeekShift(peek: number): number {
+export function scopePeekShift(peek: number): number {
   return peek < 0 ? peek * 3.3 : peek * 4.35;
 }
 
@@ -367,10 +368,11 @@ export function pitchLimits(stance: Stance): [number, number] {
 }
 
 /**
- * The first-person eye over the feet (`V`; W2.R1): `HEAD_HEIGHT` 18.3 standing (W2.3's estimate), and in the other
- * stances the body's top less the same 1.3 -- 11.1 crouched, 1.7 prone [estimates, as W2.3's heights are].
+ * The scope's eye over the feet (the zoom's view from the head; W2.R1): `HEAD_HEIGHT` 18.3 standing (W2.3's
+ * estimate), and in the other stances the body's top less the same 1.3 -- 11.1 crouched, 1.7 prone [estimates, as
+ * W2.3's heights are].
  */
-export function firstPersonHeight(stance: Stance): number {
+export function scopeEyeHeight(stance: Stance): number {
   if (stance === 'stand') return HEAD_HEIGHT;
   return (stance === 'crouch' ? CROUCH_HEIGHT : PRONE_HEIGHT) - (STANDING_HEIGHT - HEAD_HEIGHT);
 }

@@ -23,7 +23,7 @@ export type { WeaponPoint } from '@s2u/scene';
  * - **`HOLD_PLACEHOLDER`**: the body's ten offsets are data the handoff does not carry (research 79 §3), so every
  *   slot takes one offset -- the M4A1 SD held with its sight point `relief` ahead of the eye, `right` to its right
  *   and `down` under it, the muzzle where the weapon's own nodes then put it. Until W2.1's skeleton puts the weapon
- *   in the hand, this is also where it is drawn: in front of the camera in first person, lower right.
+ *   in the hand, this is also where it is drawn: at the fire point, lower right of the eye.
  * - **`VIEWER_ACTOR_PLACEHOLDER`**: the actor fields the body reads that the mover does not have. `actorState` 1 is
  *   what the actor reads walking and standing (research 25, research 21); the stance list, `m_item` and the byte at
  *   `+0x375` are placeholders until the body's model (W2.1) and the crouch (W2.3a) give them values.
@@ -205,14 +205,14 @@ export class Shooter {
   }
 
   /** W2.6: the drawn camera's kind this frame -- the held weapon is hidden in the shoulder view (`third`). */
-  private viewKind: 'third' | 'aim' | 'fly' = 'fly';
+  private viewKind: 'third' | 'scope' | 'fly' = 'fly';
 
   /**
    * What the frame is drawn with (W2.6, `./play`): in the shoulder view the body carries no weapon yet (the hand is
-   * the carry), so the held weapon -- placed at the fire point for the first-person hold -- would float at the
-   * SEAL's head; it is hidden there and shown again in the aim view and the walk's own view.
+   * the carry), so the held weapon -- placed at the fire point for the eye's hold -- would float at the
+   * SEAL's head; it is hidden there and shown again in the scope and the walk's own view.
    */
-  follow(_camera: unknown, kind: 'third' | 'aim' | 'fly'): void {
+  follow(_camera: unknown, kind: 'third' | 'scope' | 'fly'): void {
     this.viewKind = kind;
   }
 
