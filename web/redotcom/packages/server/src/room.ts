@@ -13,6 +13,7 @@ import {
 } from '../../viewer/src/sim';
 import { bodyVolumes, rayBody, stanceVolumes, BODY_REACH, BODY_TOP, type StanceVolumes, type V3 } from '../../viewer/src/net/hitVolumes';
 import { deathClip } from '../../viewer/src/net/deaths';
+import { applyKnock, BLAST_RING_SECONDS, BLAST_RING_VOLUME, resolveBlast } from '../../viewer/src/net/blast';
 
 /**
  * One map's match (web sprint 3, M3/M6; rulings W3.R8-R13): the lobby, every player's mover run from its command
@@ -38,6 +39,13 @@ export interface RoomOptions {
   maxRounds: number;
   /** The room's rules: `respawn` (W3.R11) or `classic` (respawn off, the create-game default). */
   rules: Rules;
+  /**
+   * The page's single-player match (`../../viewer/src/net/loopback`, offline): the one player is the host, a SEAL
+   * (`FUN_002c5450` L166238-166262); no idle kick; classic's round starts with one side seated and runs to its clock,
+   * a side with nobody on it never eliminated (SOLO_ROUND_PLACEHOLDER: the game launches only with both sides seated,
+   * `FUN_002c3cf0` L165325-165352, so it has no one-player round of its own).
+   */
+  solo?: boolean;
 }
 
 export const DEFAULT_OPTIONS: RoomOptions = {
@@ -234,7 +242,7 @@ export class Room {
   hello(id: number, conn: Conn, ev: Extract<ClientEvent, { type: 'hello' }>, address = ''): boolean {
     if (address && (this.banned.get(address) ?? -Infinity) > this.opts.now()) { this.refuse(conn, 'You have been banned from that game. Please choose another.'); return false; }
     if (ev.version !== PROTOCOL_VERSION) { this.refuse(conn, `protocol ${ev.version}, this server speaks ${PROTOCOL_VERSION}`); return false; }
-    const joined = this.lobby.join(id, ev.name, this.opts.random, ev.watch === true);
+    const joined = this.lobby.join(id, ev.name, this.opts.random, ev.watch === true, this.opts.solo ? 'seal' : undefined);
     if (!joined) { this.refuse(conn, 'The game is full.'); return false; }
     this.conns.set(id, conn);
     if (address) this.addresses.set(id, address);
@@ -405,7 +413,7 @@ export class Room {
     this.doors.step(1 / TICK_HZ);
     this.flyGrenades();
     this.clock();
-    this.idle(now);
+    if (!this.opts.solo) this.idle(now);
     if (this.scoreDirty) { this.scoreDirty = false; this.broadcast(this.scoreEvent()); }
     if (this.tick % Math.round(TICK_HZ / SNAPSHOT_HZ) === 0) this.snapshots();
   }
@@ -667,31 +675,32 @@ export class Room {
   }
 
   /**
-   * A blast (`FUN_005a18b0`, `FUN_005a0e70`; research 91 section 5): each living SEAL the blast sees the head of takes
-   * `fragmentCount` fragments by its distance and posture, each `fragmentDamage` on a random part at the round's
-   * piercing; friendly fire off spares the thrower's team but not the thrower.
+   * A blast (`../../viewer/src/net/blast` `resolveBlast`; research 85 section 7, 91 section 5): each living SEAL it
+   * reaches -- the thrower too; friendly fire off spares the thrower's team -- rings, takes its fragments, and is knocked
+   * (its mover here, and the page's prediction by the `blast` event). A SEAL killed by it is not thrown
+   * (CORPSE_KNOCK_PLACEHOLDER: the game pushes the dead too, L440988, in state 8).
    */
   private blast(f: Flying, at: readonly number[]): void {
     const t = THROWN[f.kind];
-    if (!t?.fragments) return;
+    if (!t) return;
     const thrower = this.players.get(f.owner) ?? null;
     const point: V3 = [at[0]!, at[1]!, at[2]!];
+    const kind = { record: t.record, piercing: t.piercing, fragments: t.fragments, flash: t.record === MARK141 };
     for (const q of [...this.players.values()]) {
       if (!q.alive) continue;
       if (thrower && q !== thrower && q.team === thrower.team) continue;
       const s = q.sim.walker.state, posture = q.sim.walker.posture;
       const head: V3 = [s.x, s.y + HEAD_OVER[posture], s.z];
-      const d = Math.hypot(s.x - point[0], s.y - point[1], s.z - point[2]);
-      if (d >= t.record.explosionRadius) continue;
-      if (segmentHit(this.map.grid, point, head)) continue;       // no line to the head
-      const n = fragmentCount(d, posture, this.opts.random);
-      let died = false, part = 3;
-      for (let i = 0; i < n && !died; i++) {
-        part = fragmentPart(this.opts.random);
-        died = applyHit(q.health, part, fragmentDamage(t.record.explosionDamage, t.record.explosionRadius, d), t.piercing);
-      }
-      if (n > 0) this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: point, part });
-      if (died) this.kill(q, thrower, t.record.name, q === thrower ? 'suicide' : 'weapon', null);
+      const seen = !segmentHit(this.map.grid, point, head);        // the line to the head (FUN_005ac070)
+      const out = resolveBlast(q.health, { feet: [s.x, s.y, s.z], posture, yaw: s.yaw }, point, kind, this.opts.random, seen);
+      if (!out) continue;
+      const k = out.knock && !out.died && applyKnock(q.sim.walker, q.sim.moves, out.knock) ? out.knock : null;
+      this.send(q.id, {
+        type: 'blast', ring: out.ring ? { seconds: BLAST_RING_SECONDS, volume: BLAST_RING_VOLUME } : null,
+        knock: k ? { velocity: [k.velocity[0], k.velocity[1], k.velocity[2]], fall: k.fall } : null, after: q.sim.seq,
+      });
+      if (out.fragments > 0) this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: point, part: out.part });
+      if (out.died) this.kill(q, thrower, t.record.name, q === thrower ? 'suicide' : 'weapon', null);
     }
   }
 
@@ -763,7 +772,7 @@ export class Room {
       }
       // `start` (WAIT 5, WAIT 10) and `mission_timer` (WAIT 15) watch nothing in the round's first 15 s.
       if (this.tick < st.startedAt + ROUND_WATCH_S * TICK_HZ) return;
-      const winner = eliminationWinner(this.living());
+      const winner = eliminationWinner(this.living(), this.opts.solo ? this.seated() : undefined);
       if (winner) {
         // `mp_score00` / `mp_score08` += 1 and `mp_winner` at once, `mission_timer` stopped, the two lines posted.
         this.wins[winner]++;
@@ -793,9 +802,17 @@ export class Room {
 
   /** Both sides have a player (dead or alive, ghosts included). */
   private sidesSeated(): boolean {
+    if (this.opts.solo) return this.players.size > 0;
     let seal = 0, terrorist = 0;
     for (const p of this.players.values()) { if (p.team === 'seal') seal++; else terrorist++; }
     return seal > 0 && terrorist > 0;
+  }
+
+  /** Each side's players, dead or alive (the solo match's elimination test). */
+  private seated(): { seal: number; terrorist: number } {
+    const n = { seal: 0, terrorist: 0 };
+    for (const p of this.players.values()) n[p.team]++;
+    return n;
   }
 
   /** `aiteam_00` / `aiteam_08`: each side's living players. */

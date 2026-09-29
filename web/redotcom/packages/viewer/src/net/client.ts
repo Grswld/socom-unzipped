@@ -1,5 +1,6 @@
 import { decodeSnapshot, encodeCommands, frameKind } from './codec';
 import { shortTurn, wrapYaw } from '../yaw';
+import type { Knock } from './blast';
 import {
   COMMAND_REDUNDANCY, Frame, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   type BodyState, type ClientEvent, type Command, type DoorWire, type Role, type Rules, type ServerEvent, type Snapshot, type Team,
@@ -19,6 +20,8 @@ export interface NetWalk {
   respawn(at: readonly [number, number, number], yaw: number, replay?: readonly Command[]): boolean;
   nudge(dx: number, dy: number, dz: number): void;
   setLocked(on: boolean): void;
+  /** A blast's knock on the prediction (`./blast` `applyKnock`), as the server laid it on its mover. */
+  knock?(knock: Knock): boolean;
   /** Dead as the server has it (`kill`) until the next `spawn`: the mover's death landing stays down. */
   setDead?(on: boolean): void;
 }
@@ -213,6 +216,9 @@ export class NetClient {
         if (ev.victim === this.id) { this.alive = false; this.walk.setLocked(true); this.walk.setDead?.(true); }
         break;
       case 'kicked': this.walk.setLocked(true); break;
+      // The server laid a knock on its mover after command `ev.after`; the page lays it now -- the few ticks between are
+      // a correction the reconciliation takes (KNOCK_REPLAY_PLACEHOLDER: the page keeps no mover states to replay from).
+      case 'blast': if (ev.knock && this.alive) this.walk.knock?.(ev.knock); break;
       default: break;
     }
     for (const l of this.listeners) l(ev);

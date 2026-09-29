@@ -261,7 +261,7 @@ describe('PL-8: the client of an idler moved out (protocol 5 `demoted`)', () => 
       },
     }, walk);
     page!.onopen?.({});
-    page!.onmessage?.({ data: JSON.stringify({ type: 'welcome', id: 1, version: 5, map: 'MP99', tick: 0, role: 'player', team: 'seal', queue: 0, name: 'Idle', players: [], rules: 'respawn', round: 1, rounds: 11, ghost: false }) });
+    page!.onmessage?.({ data: JSON.stringify({ type: 'welcome', id: 1, version: 6, map: 'MP99', tick: 0, role: 'player', team: 'seal', queue: 0, name: 'Idle', players: [], rules: 'respawn', round: 1, rounds: 11, ghost: false }) });
     page!.onmessage?.({ data: JSON.stringify({ type: 'spawn', id: 1, at: [0, 0, 0], yaw: 0, after: 0 }) });
     walk.play({ forward: 1, right: 0, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
     expect(sent.some((d) => typeof d !== 'string')).toBe(true);

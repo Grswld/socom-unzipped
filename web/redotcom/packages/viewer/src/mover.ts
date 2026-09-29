@@ -391,7 +391,7 @@ export interface WalkState {
 export interface Landing {
   kind: LandingKind; speed: number; airTime: number;
   /** The clip the game plays for it (`FUN_005af590`), or null: the run goes on. */
-  clip: 'land' | 'landHard' | 'hit' | 'hitStomach' | 'landDeath' | null;
+  clip: 'land' | 'landHard' | 'hit' | 'hitStomach' | 'landDeath' | 'landBackwards' | null;
   /** `FUN_005ac1f0`'s class (`landingClass`): 0 none, 1 light, 2 heavy, 3 death -- the audio's landing sounds. */
   cls: 0 | 1 | 2 | 3;
 }
@@ -522,6 +522,12 @@ export const ACTION_CLIPS = Object.freeze({
   swapStand: { playback: 1.32, frames: 32, noInterrupt: 1, travel: [0, 0] },
   swapCrouch: { playback: 1, frames: 23, noInterrupt: 1, travel: [0, 0] },
   swapProne: { playback: 1.8, frames: 38, noInterrupt: 1, travel: [0, 0] },
+  // BLAST KNOCK (`./net/blast`): `Fall forward` / `Fall backwards` in the air, `Land backwards`, `Get up backwards`
+  // (`motion.rdr` playback and NoInterrupt, `MOTION_P.ZAR` keys and root travel; `Land forward` is `landDeath`).
+  fallForward: { playback: 2, frames: 15, noInterrupt: 1, travel: [0, 0] },
+  fallBackwards: { playback: 2, frames: 16, noInterrupt: 1, travel: [0, 0] },
+  landBackwards: { playback: 0.4, frames: 12, noInterrupt: 1, travel: [-0.24, 4.58] },
+  getUpBackwards: { playback: 2, frames: 13, noInterrupt: 0.8, travel: [1.21, -6.95] },
 } as const);
 
 /**
@@ -664,7 +670,8 @@ export const DEATH_LANDING_GETUP_PLACEHOLDER = true;
  * getting up). `serial` changes with every start, so the animator sees a restart.
  */
 export type MoverActionName = 'jump' | 'launch' | 'fall' | 'land' | 'landHard' | 'standToCrouch' | 'crouchToProne' | 'standToProne'
-  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp' | 'swapStand' | 'swapCrouch' | 'swapProne';
+  | 'hit' | 'hitStomach' | 'landDeath' | 'getUp' | 'swapStand' | 'swapCrouch' | 'swapProne'
+  | 'fallForward' | 'fallBackwards' | 'landBackwards' | 'getUpBackwards';
 export interface MoverAction {
   name: MoverActionName;
   serial: number;
@@ -798,6 +805,8 @@ export class Walker {
   private hold_: MoverHold | null = null;
   /** Dead (online: the server's `kill`): a death landing stays down (`DEATH_LANDING_GETUP_PLACEHOLDER`). */
   private dead_ = false;
+  /** The last landing was a blast's knock-down (`knock`): its `Land forward` gets up, the game's own get-up. */
+  private knockLanding_ = false;
 
   /**
    * Dead, as the match server has it (the net client's `kill`; a respawn makes a new mover): `Land forward` holds its
@@ -811,12 +820,16 @@ export class Walker {
   set dead(on: boolean) {
     this.dead_ = on;
     if (on && this.action_?.name === 'getUp') this.holdDeathLanding();
+    else if (on && this.action_?.name === 'getUpBackwards') this.holdDeathLanding('landBackwards');   // BLAST KNOCK
   }
 
-  /** `Land forward` at its last key, held: the dead SEAL's pose (the clip ends; the body stays down). */
-  private holdDeathLanding(): void {
-    const seconds = ACTION_SECONDS.landDeath;
-    this.action_ = { name: 'landDeath', serial: ++this.serial, t: seconds, seconds, reversed: false };
+  /**
+   * `Land forward` (or a blast's `Land backwards`) at its last key, held: the dead SEAL's pose (the clip ends; the body
+   * stays down).
+   */
+  private holdDeathLanding(name: 'landDeath' | 'landBackwards' = 'landDeath'): void {
+    const seconds = ACTION_SECONDS[name];
+    this.action_ = { name, serial: ++this.serial, t: seconds, seconds, reversed: false };
   }
 
   /**
@@ -1114,6 +1127,25 @@ export class Walker {
   }
 
   /**
+   * BLAST KNOCK (`./net/blast` `applyKnock`; `FUN_0057e770` L441044-441075, `FUN_005807d0`): off the ground at
+   * `velocity` (units a second) in `fall` (`Fall forward` / `Fall backwards`), whatever plays -- the game pops the
+   * action stack first (`FUN_005807d0`: `FUN_0057ee00`, `FUN_005a5da0`) -- the landing then its get-up (`land`).
+   */
+  knock(velocity: readonly number[], fall: 'fallForward' | 'fallBackwards'): boolean {
+    const s = this.state;
+    this.hold_ = null;
+    this.overlay_ = null;
+    this.jumpDelay = 0;
+    this.jumping = false;
+    this.inAir = true;
+    this.airTime = 0;
+    s.vx = velocity[0]!; s.vy = velocity[1]!; s.vz = velocity[2]!;
+    this.carried = [s.vx, s.vz];
+    this.start(fall, null);
+    return true;
+  }
+
+  /**
    * The jump (`FUN_0057e1b0`, decomp 440776-440867, the header): refused in the air (`actor+0x105e` bit 5), within
    * `JUMP_LOCK` of a take-off or a landing (`actor+0x135c`), off walkable ground (`actor+0x1348` under cos
    * `max_slope`), prone (`FUN_005b4340(actor, 0xb)`: stance 2 -- its other refusals, the knock-downs `Fall forward` /
@@ -1217,10 +1249,14 @@ export class Walker {
       a.t += dt;
       if (a.seconds !== null && a.t >= a.seconds - 1e-9) {
         // DEATH_LANDING_GETUP_PLACEHOLDER: offline the deadly fall's `Land forward` gets up (`Get up forward`); dead
-        // (online, the server's fall death) it holds its last key, as the game's SEAL dies in it (FUN_005af590).
+        // (online, the server's fall death) it holds its last key, as the game's SEAL dies in it (FUN_005af590). A blast's
+        // knock-down landing (BLAST KNOCK, `knockLanding_`) gets up as the game's own (L446653-446700) unless dead.
         if (a.name === 'landDeath') {
-          if (this.dead_ || !DEATH_LANDING_GETUP_PLACEHOLDER) a.t = a.seconds;
+          if (this.dead_ || (!DEATH_LANDING_GETUP_PLACEHOLDER && !this.knockLanding_)) a.t = a.seconds;
           else this.start('getUp', ACTION_SECONDS.getUp);
+        } else if (a.name === 'landBackwards') {                  // BLAST KNOCK
+          if (this.dead_) a.t = a.seconds;
+          else this.start('getUpBackwards', ACTION_SECONDS.getUpBackwards);
         } else this.action_ = null;
       }
     }
@@ -1234,8 +1270,11 @@ export class Walker {
     if (this.interrupted(forward, right)) {                     // FUN_00587c20: cut; the ground state takes over
       const cut = this.action_!;
       if (cut.name === 'landDeath') {
-        if (this.dead_ || !DEATH_LANDING_GETUP_PLACEHOLDER) this.holdDeathLanding();   // dead: stays down
+        if (this.dead_ || (!DEATH_LANDING_GETUP_PLACEHOLDER && !this.knockLanding_)) this.holdDeathLanding();   // dead: stays down
         else this.start('getUp', ACTION_SECONDS.getUp);
+      } else if (cut.name === 'landBackwards') {                  // BLAST KNOCK
+        if (this.dead_) this.holdDeathLanding('landBackwards');
+        else this.start('getUpBackwards', ACTION_SECONDS.getUpBackwards);
       } else if (cut.name === 'swapStand') {
         // FUN_00550ef0 418226-418245: the standing swap cut by the stick goes on as `Moving rifle -> Pistol` over the
         // locomotion, at the phase it had reached.
@@ -1263,6 +1302,7 @@ export class Walker {
     }
     const held = this.action_?.name;
     if (held === 'hit' || held === 'hitStomach' || held === 'landDeath' || held === 'getUp'
+      || held === 'landBackwards' || held === 'getUpBackwards'
       || held === 'standToCrouch' || held === 'crouchToProne' || held === 'standToProne'
       || held === 'swapStand' || held === 'swapCrouch' || held === 'swapProne') {
       // The clip's own root motion carries the mover (FUN_0028c250), key by key, along the facing -- backwards for a
@@ -1416,7 +1456,7 @@ export class Walker {
     // the launch -- about its key 8 -- and `seal_runningjump_in_air` plays only on a walk-off or a flight outlasting
     // the launch [reading: the game pushes the fall the tick after the launch's pop; here the same tick].
     const held = this.action_?.name;
-    if (held !== 'fall' && held !== 'launch') this.start('fall', null);                  // FUN_0057e050: `Jump fall`
+    if (held !== 'fall' && held !== 'launch' && held !== 'fallForward' && held !== 'fallBackwards') this.start('fall', null);   // FUN_0057e050: `Jump fall`
     [s.vx, s.vz] = this.carried;
     this.airTime += dt;
     this.move(s.vx * dt, s.vz * dt);
@@ -1457,7 +1497,13 @@ export class Walker {
     const speed = Math.max(0, -s.vy);
     const still = idle(forward, right) || Math.hypot(s.vx, s.vy, s.vz) <= LAND_STILL;
     let clip: Landing['clip'] = null;
-    if (speed > JUMP_TABLE.land_hard_fall_rate) {
+    const knocked = this.action_?.name;
+    this.knockLanding_ = knocked === 'fallForward' || knocked === 'fallBackwards';
+    if (knocked === 'fallForward' || knocked === 'fallBackwards') {
+      // BLAST KNOCK: on the ground in `Fall forward` / `Fall backwards`, `FUN_005805b0` (via L441960-441985) pushes
+      // `Land forward` / `Land backwards`; its end pushes the get-up (L446653-446700).
+      clip = knocked === 'fallForward' ? 'landDeath' : 'landBackwards';
+    } else if (speed > JUMP_TABLE.land_hard_fall_rate) {
       // FUN_005af590 by FUN_005ac1f0's class: death `Land forward`, heavy one of the two hits, else `Jump land hard`.
       const cls = landingClass(speed);
       clip = cls === 3 ? 'landDeath' : cls === 2 ? (this.random() <= 0.5 ? 'hitStomach' : 'hit') : 'landHard';

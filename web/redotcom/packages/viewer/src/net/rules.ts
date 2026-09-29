@@ -59,9 +59,10 @@ export const ELIMINATED_HOLD_S = 2 + 20 + 1;
  * Terrorists) is tested first, so the SEALs win it -- also when both sides fell together; then `aiteam_00` == 0 (no
  * living SEALs): the Terrorists. Null while both have a living player.
  */
-export function eliminationWinner(living: { seal: number; terrorist: number }): Team | null {
-  if (living.terrorist === 0) return 'seal';
-  if (living.seal === 0) return 'terrorist';
+export function eliminationWinner(living: { seal: number; terrorist: number }, seated?: { seal: number; terrorist: number }): Team | null {
+  // `seated` (the room's single-player match, SOLO_ROUND_PLACEHOLDER): a side with nobody on it is never eliminated.
+  if (living.terrorist === 0 && (!seated || seated.terrorist > 0)) return 'seal';
+  if (living.seal === 0 && (!seated || seated.seal > 0)) return 'terrorist';
   return null;
 }
 

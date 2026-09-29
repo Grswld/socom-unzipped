@@ -48,8 +48,12 @@ export interface NetPageDeps {
   respawned(): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
   weapons: readonly [WeaponRecord, WeaponRecord];
-  /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default. */
+  /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default -- or the single-player room's. */
   socket?: (url: string) => WebSocketLike;
+  /** The single-player match (`./net/loopback`): the panel reads "single player", no reconnecting. */
+  solo?: boolean;
+  /** A blast's ringing ears (`./net/blast`, `FUN_005a0e70` L459221-459227): every channel at `volume` for `seconds`. */
+  ring?(seconds: number, volume: number): void;
 }
 
 /**
@@ -247,6 +251,7 @@ export class NetPage {
   status(): OnlineStatus {
     const c = this.client;
     const base = { players: this.rows.length, retryIn: 0, watching: this.watch };
+    if (this.deps.solo) return { ...base, state: 'off' };
     if (c.state === 'refused' || (this.reconnect.stopped && c.state === 'closed')) return { ...base, state: 'refused', reason: this.refusal ?? 'closed by the server' };
     if (c.state === 'open' && c.id !== 0) return { ...base, state: 'online' };
     if (c.state === 'closed') {
@@ -437,6 +442,7 @@ export class NetPage {
         }
         break;
       case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
+      case 'blast': if (ev.ring) this.deps.ring?.(ev.ring.seconds, ev.ring.volume); break;   // the knock: `NetClient`
       case 'shot': {
         const w = this.deps.weapons[ev.weapon ? 1 : 0];
         this.deps.roundEffects({

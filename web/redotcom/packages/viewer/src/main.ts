@@ -25,7 +25,9 @@ import { WalkMode } from './walk';
 import { shortTurn } from './yaw';
 import { RemotePlayers } from './remotePlayers';
 import type { PlayClips } from './play';
-import { NetPage } from './netPage';
+import { NetPage, type NetPageDeps } from './netPage';
+import { LoopbackMatch, simClipsOfPlay, simMapOfLoaded } from './net/loopback';
+import { RingingEars } from './ringingEars';
 import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
 import { explosionShake, MAX_PITCH_RATE } from './look';
@@ -604,6 +606,14 @@ let NET: OnlineTarget = resolveOnline(SEARCH, SHARE.online ?? readOnline(), PAGE
 /** The match's rules under Online (`./rules`): the link's `rules=` over the remembered choice; Respawn by default. */
 let RULES: Rules = resolveRules(SEARCH, readRules()).rules;
 let net: NetPage | null = null;
+/**
+ * Offline, reCOM mode plays the match on its own (`./net/loopback`): the server's room in the page, joined as a match is.
+ * `&nomatch` keeps the free walk of before (and `&fly`, the tests' and the tools' opening in the fly camera, does too).
+ */
+const SOLO_MATCH = !new URLSearchParams(SEARCH).has('nomatch') && !new URLSearchParams(SEARCH).has('fly');
+let solo: LoopbackMatch | null = null;
+/** A blast's ringing ears (`./ringingEars`): the mix held at 0.35 for 5 s. */
+const ears = new RingingEars(audio);
 /** The clips the worker sent (the death clips among them, for the page's own death). */
 let playClips: PlayClips | null = null;
 /** The name the player set (`s2u.mp.name`), or '' for the server's guest name (W3.R12). */
@@ -813,7 +823,10 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     return;
   }
   if (message.kind === 'play') {
-    if (message.id === wantedPlay) { play.setClips(message.data); traversal.setClips(message.data); remote.setClips(message.data); playClips = message.data; }
+    if (message.id === wantedPlay) {
+      play.setClips(message.data); traversal.setClips(message.data); remote.setClips(message.data); playClips = message.data;
+      if (solo && !solo.clips && loaded) connectNet(loaded);    // the single-player room made again with the clips
+    }
     return;
   }
   if (message.kind === 'sound') {
@@ -1021,7 +1034,7 @@ ui.onRules((rules: Rules) => {
   RULES = rules;
   writeRules(rules);
   updateAddress({ rules });
-  if (loaded && NET.url) connectNet(loaded);
+  if (loaded && (NET.url || solo)) connectNet(loaded);   // the single-player match too
 });
 /** The connection's line under the setting, and a toast when it comes up or goes unreachable (not at every retry). */
 let onlineShown = '';
@@ -1339,22 +1352,32 @@ function showMaps(maps: MapInfo[]): void {
 function connectNet(map: LoadedMap): void {
   net?.close();
   net = null;
+  solo?.stop();
+  solo = null;
+  ears.stop();
+  const deps: NetPageDeps = {
+    walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+    spectate: (pose) => { if (pose) fly.setPose(pose); },
+    remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
+    roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
+    ring: (seconds, volume) => ears.start(seconds, volume),
+    // The server's fresh kit at this spawn (room.ts, FUN_00599f00): the rifle in the hand, every magazine full, the
+    // pouch too -- the page's spent rings and a pistol in the hand do not outlive a death or a round.
+    respawned: () => { kit.reset(); fire.refill(); grenade.refill(); showFireMode(); },
+  };
+  const stem = map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase();
   if (NET.url) {
     try {
-      net = new NetPage({
-        walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
-        spectate: (pose) => { if (pose) fly.setPose(pose); },
-        remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
-        roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
-        // The server's fresh kit at this spawn (room.ts, FUN_00599f00): the rifle in the hand, every magazine full, the
-        // pouch too -- the page's spent rings and a pistol in the hand do not outlive a death or a round.
-        respawned: () => { kit.reset(); fire.refill(); grenade.refill(); showFireMode(); },
-      }, NET.url, map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase(), playerName(), NET.simulate, !playOn, RULES);
+      net = new NetPage(deps, NET.url, stem, playerName(), NET.simulate, !playOn, RULES);
     } catch (e) {
       // A socket the browser refuses outright (a `server=` it will not open) must not stop `show` half-way: no match.
       net = null;
       ui.setStatus(`the match could not be joined: ${e instanceof Error ? e.message : String(e)}`, 'error');
     }
+  } else if (playOn && SOLO_MATCH && map.ground) {
+    // Offline in reCOM mode: the match server's own room, in the page (`./net/loopback`; owner, 2026-09-29).
+    solo = new LoopbackMatch(simMapOfLoaded(map), simClipsOfPlay(playClips), { rules: RULES });
+    net = new NetPage({ ...deps, socket: solo.socket, solo: true }, 'loopback:', stem, playerName(), undefined, false, RULES);
   }
   showOnline();
 }

@@ -24,8 +24,10 @@ import { HOLD_CODES, type HoldClip } from '../mover';
  * 5 (2026-09-29, the launch review): a `fire` names the eye its aim left from and that aim (`eye`, `aim`: the server's
  * accuracy cone, OWNER-3, `./shotCone`); `promoted` says whether the seat is a ghost's; an idle player moved out gets
  * `demoted` (its role is a spectator's from then).
+ * 6 (2026-09-29, grenade harm): the snapshot's action codes take the blast's knock (`fallForward`, `fallBackwards`,
+ * `landBackwards`, `getUpBackwards`, `./blast`), and the server sends a `blast` event (the ringing ears and the knock).
  */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 /** The game's tick (`CGame::Tick`): the mover's `TICK`, the server's loop. */
 export const TICK_HZ = 60;
@@ -191,6 +193,7 @@ export const LANDING_CODES = ['soft', 'hard', 'harder'] as const;
 export const ACTION_CODES = [
   'jump', 'launch', 'fall', 'land', 'landHard', 'standToCrouch', 'crouchToProne', 'standToProne',
   'hit', 'hitStomach', 'landDeath', 'getUp', 'swapStand', 'swapCrouch', 'swapProne',
+  'fallForward', 'fallBackwards', 'landBackwards', 'getUpBackwards',               // the blast's knock (`./blast`)
 ] as const;
 
 /** One snapshot, for one recipient. */
@@ -313,6 +316,11 @@ export type ServerEvent =
   | { type: 'shot'; id: number; weapon: number; from: [number, number, number]; to: [number, number, number]; normal: [number, number, number] | null; material: number | null }
   /** The recipient was hit: health left per part, and where from (research 91a section 7). */
   | { type: 'hurt'; health: number[]; from: [number, number, number]; part: number }
+  /**
+   * A blast reached the recipient (`./blast`, `FUN_005a0e70`): the ringing ears (`ring`: seconds at `volume`), and the
+   * knock laid on its mover after command `after` -- the page lays the same on its prediction -- or null.
+   */
+  | { type: 'blast'; ring: { seconds: number; volume: number } | null; knock: { velocity: [number, number, number]; fall: 'fallForward' | 'fallBackwards' } | null; after: number }
   /** A kill, for the message window (research 87 section 14, 91): `how` names the game's line. */
   | {
     type: 'kill'; killer: number | null; victim: number; weapon: string | null; how: KillHow;

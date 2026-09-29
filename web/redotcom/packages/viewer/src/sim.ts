@@ -41,6 +41,7 @@ export * from './net/damage';
 export * from './net/lobby';
 export * from './net/deaths';
 export * from './net/rules';
+export * from './net/blast';
 export * from './reloadClip';
 export { CAM_FAR, localCamera, lookHeight, scopeEyeHeight, toWorld } from './cameraRig';
 export * from './net/shotCone';
