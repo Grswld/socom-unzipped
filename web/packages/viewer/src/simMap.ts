@@ -4,7 +4,7 @@ import {
   placeSpawnSlots, readSkeleton, spawnsFor, teamCharacter, worldCollision,
   type Grid, type MotionClip, type Skeleton, type SpawnSlot, type Spawns,
 } from '@s2u/scene';
-import { actionRoots, ACTION_CLIPS, groundGrid, packGround, type GroundData, type Stance } from './mover';
+import { actionRoots, ACTION_CLIPS, groundGrid, HOLD_CODES, packGround, type GroundData, type Stance } from './mover';
 import { SEAL_ANIMS } from './locomotion';
 import { clipsFromPack, motionTableFromArchive, MOTION_PACK_PATH, type MotionEntry } from './motionTable';
 import { TRAVERSAL_CLIPS } from './traversal';
@@ -100,7 +100,7 @@ export interface SimClips {
 
 /** Every clip name the sim asks the pack for. */
 export const SIM_CLIPS: readonly string[] = [
-  ...new Set([...Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]), ...TRAVERSAL_CLIPS]),
+  ...new Set([...Object.keys(ACTION_CLIPS).map((k) => SEAL_ANIMS[k as keyof typeof ACTION_CLIPS]), ...HOLD_CODES, ...TRAVERSAL_CLIPS]),
 ];
 
 /** `MOTION_P.ZAR`'s sim clips and `READERC.ZAR`'s `motion.rdr` (null when it will not read). */

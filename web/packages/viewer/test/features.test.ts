@@ -77,7 +77,7 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
       expect(keys).not.toMatch(/walk|jump|stance|fire|reload|peek|grenade|zoom/i);
       ui.showPadLayout(PAD_LAYOUT);
       const rows = [...document.querySelectorAll('#pad-layout tbody tr:not(.pad-group)')].map((r) => r.querySelector('td')!.textContent);
-      expect(rows).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'R3']);
+      expect(rows).toEqual(['L-stick', 'R-stick', 'Square', 'Triangle', 'Circle']);
       for (const id of ['sound-section', 'look-section', 'mute', 'volume', 'mouselaw', 'sensitivity']) expect(document.getElementById(id), id).toBeNull();
     });
   });

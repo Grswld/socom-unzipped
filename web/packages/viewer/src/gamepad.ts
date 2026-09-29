@@ -43,8 +43,8 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory' | 'scoreboard';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory', 'scoreboard'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'zoom' | 'zoomOut' | 'fireMode' | 'action' | 'leanLeft' | 'leanRight' | 'mode' | 'swap1' | 'swap2' | 'inventory' | 'scoreboard' | 'reload';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'zoom', 'zoomOut', 'fireMode', 'action', 'leanLeft', 'leanRight', 'mode', 'swap1', 'swap2', 'inventory', 'scoreboard', 'reload'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
@@ -69,6 +69,8 @@ export interface Input {
   swap1: boolean; swap2: boolean; inventory: boolean;
   /** The multiplayer round's SELECT, held: the scoreboard (web/docs/research/87-hud.md §12), walking only. */
   scoreboard: boolean;
+  /** The game's `Reload` (R3; `R` on the keys), walking only: a press asks for a reload (`./fire` `Fire.reload`). */
+  reload: boolean;
 }
 
 /** The input at rest: every axis 0, every action off. */
@@ -77,7 +79,7 @@ export function noInput(): Input {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
     jump: false, crouch: false, stance: false, boost: false, fire: false, zoom: false, zoomOut: false,
     fireMode: false, action: false, leanLeft: false, leanRight: false, mode: false, swap1: false, swap2: false, inventory: false,
-    scoreboard: false,
+    scoreboard: false, reload: false,
   };
 }
 
@@ -108,7 +110,8 @@ export const OWNER = 'owner, 2026-09-28';
  * is the walk/fly switch, d-pad Up zooms, the left stick moves and the right looks), with what the repository documents beside it
  * where it does, and the viewer's own bindings marked `assumed`. Cross is the action and the d-pad's left and right the
  * peek (web research 86, from the game's own `controller.rdr` and pad read); research 84 adds the d-pad's Down (zoom
- * out) and L3 (the fire mode); research 87 SELECT (held, the multiplayer scoreboard). Circle is left free.
+ * out) and L3 (the fire mode); research 87 SELECT (held, the multiplayer scoreboard); R3 the reload (the owner, 2026-09-29,
+ * and the game's own controller.rdr). Circle holds the fly camera's boost, which R3 held before.
  */
 export const PAD_LAYOUT: readonly PadRow[] = [
   {
@@ -196,9 +199,17 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'on the release: FUN_0022be20). The viewer\'s tactical map stays on M',
   },
   {
-    control: 'R3', action: 'boost', documented: 'assumed',
-    note: 'the fly camera\'s boost, as a double-tapped W or the touch stick held at its rim, not a game control; what '
-      + 'R3 does in SOCOM II the repository does not say. There is no sprint on foot (the owner, 2026-09-28)',
+    control: 'R3', action: 'reload', documented: `${CONTROLLER_RDR}; ${GRENADES}.1`,
+    note: 'the reload on foot, as R is (the owner\'s ruling, 2026-09-29), and the game\'s own: controller.rdr\'s Default '
+      + 'binds R3 to Reload, the pad result the player update reads with FUN_002c64e0(6) to arm the kit\'s reload timer '
+      + '(FUN_005c32b0; FUN_00594cf0, decomp 453459-453463; research 84 section 18). It held the fly boost before, which '
+      + 'moved to Circle',
+  },
+  {
+    control: 'Circle', action: 'boost', documented: 'assumed',
+    note: 'the fly camera\'s boost, as a double-tapped W or the touch stick held at its rim, not a game control (the '
+      + 'game\'s Circle is TeamCommand, controller.rdr\'s Default, which the viewer does not have). On R3 until R3 became '
+      + 'the reload (2026-09-29). There is no sprint on foot (the owner, 2026-09-28)',
   },
 ];
 
@@ -226,6 +237,7 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   swap2: { walk: 'weapon swap 2: the Mark 23 (2)', fly: null },
   inventory: { walk: 'inventory: next item (1 rifle, 2 Mark 23, 4 M67, 5 HE)', fly: null },
   scoreboard: { walk: 'scoreboard (held)', fly: null },
+  reload: { walk: 'reload', fly: null },
 };
 
 /**
@@ -236,7 +248,7 @@ export function padGroup(action: PadAction, mode: 'walk' | 'fly'): string {
   if (action === 'mode' || action === 'boost' || action === 'scoreboard') return GROUP_GENERAL;
   if (mode === 'fly') return GROUP_MOVE;
   switch (action) {
-    case 'fire': case 'zoom': case 'zoomOut': case 'fireMode': return GROUP_COMBAT;
+    case 'fire': case 'zoom': case 'zoomOut': case 'fireMode': case 'reload': return GROUP_COMBAT;
     case 'stance': case 'crouch': case 'action': case 'leanLeft': case 'leanRight': return GROUP_STANCE;
     case 'swap1': case 'swap2': case 'inventory': return GROUP_WEAPONS;
     default: return GROUP_MOVE;

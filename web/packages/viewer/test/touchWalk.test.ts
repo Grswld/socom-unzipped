@@ -38,8 +38,9 @@ describe('the layout in the page', () => {
   it('covers every walking action of the pad layout but the ones a phone has by other means', () => {
     const lanes = new Set([...document.querySelectorAll<HTMLElement>('#touch-walk button[data-lane]')].map((b) => b.dataset['lane']));
     const skipped = PAD_LAYOUT.filter((r) => r.action !== 'move' && r.action !== 'look' && !lanes.has(r.action)).map((r) => r.action);
-    // The stick and the drag move and look; the mode is the panel's switch; the boost is the fly camera's alone.
-    expect(skipped.sort()).toEqual(['boost', 'mode']);
+    // The stick and the drag move and look; the mode is the panel's switch; the boost is the fly camera's alone; the
+    // reload (the pad's R3) is the touch's own `data-do="reload"` button, not a lane.
+    expect(skipped.sort()).toEqual(['boost', 'mode', 'reload']);
   });
 
   it('every button is named, and the face buttons wear the pad\'s glyphs', () => {

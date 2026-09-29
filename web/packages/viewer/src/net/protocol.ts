@@ -1,3 +1,5 @@
+import { HOLD_CODES, type HoldClip } from '../mover';
+
 /**
  * The multiplayer wire protocol (web sprint 3, M3/M4; spec W3.R2-R4, rulings W3.R8-R10 in the sprint spec's section 7).
  *
@@ -16,8 +18,9 @@
 /**
  * Bumped on any change to the frames below; a client and server that disagree refuse each other at the hello.
  * 2 (2026-09-29): the snapshot carries the doors (`Snapshot.doors`), and a client asks for one with a `door` event.
+ * 3 (2026-09-29): a command carries the scope's slowed stick (`Button.Scope`) and the kit's hold (`HOLD_SHIFT`).
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** The game's tick (`CGame::Tick`): the mover's `TICK`, the server's loop. */
 export const TICK_HZ = 60;
@@ -62,8 +65,29 @@ export const Button = {
   Aim: 1 << 8,
   /** The trigger held this tick (the body's fire pose; the rounds themselves are `fire` events). */
   Trigger: 1 << 9,
+  /**
+   * The 9x view or a scope (`./zoom` state 4 and up): the mover's stick x 0.2 (`Walker.scoped`, `FUN_005966a0`). Not
+   * `Aim`, which the night vision sets too and which does not slow the stick.
+   */
+  Scope: 1 << 10,
 } as const;
 export type Button = (typeof Button)[keyof typeof Button];
+
+/**
+ * The kit's hold started this tick (`Walker.hold`: a throw's clip, the claymore's placing, a still reload), in the
+ * command's buttons from this bit: four bits, the clip's index in `HOLD_CODES` plus 1; 0 none.
+ */
+export const HOLD_SHIFT = 12;
+
+/** A hold's bits for `Command.buttons` (`HOLD_SHIFT`). */
+export function holdBits(clip: HoldClip): number {
+  return (HOLD_CODES.indexOf(clip) + 1) << HOLD_SHIFT;
+}
+
+/** The hold a command's buttons carry, or null. */
+export function holdOf(buttons: number): HoldClip | null {
+  return HOLD_CODES[((buttons >> HOLD_SHIFT) & 0xf) - 1] ?? null;
+}
 
 /** The stance codes on the wire. */
 export const STANCE_CODES = ['stand', 'crouch', 'prone'] as const;

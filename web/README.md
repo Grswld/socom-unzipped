@@ -211,7 +211,7 @@ away. `&mp` and `&server=` in the address still override it (`viewer/src/online.
 | `W`/`S` | fly along the look direction — nose down and `W` descends |
 | `A`/`D` | strafe, always level with the horizon whatever the pitch |
 | `Space` / `Shift` | up and down in world space |
-| double-tap `W`, held | boost, with the field of view widening to match. **Flying only**: there is no sprint in walk mode from any input (double-tap `W`, the pad's R3, the touch stick's rim-hold). Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
+| double-tap `W`, held | boost, with the field of view widening to match. **Flying only**: there is no sprint in walk mode from any input (double-tap `W`, the pad's Circle, the touch stick's rim-hold). Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
 | wheel | trims the fly speed between 0.1x and 16x; the Controls popover shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
 | arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
@@ -229,7 +229,7 @@ away. `&mp` and `&server=` in the address still override it (`viewer/src/online.
 | `C` | the stance: a tap toggles stand and crouch (from prone, a tap crouches); held 0.4 s, prone (`STANCE_HOLD_S_PLACEHOLDER`, the pad's Triangle's too); `Ctrl+C` stays the browser's. On a touch screen, the **C** button beside the lift buttons is `C`: tap and hold alike, its release the tap, a cancelled touch nothing (the walk's touch layout hides it and puts Triangle, the pad's rule, in its place, so today it shows only in the fly camera, where it does nothing) |
 | right button | steps the zoom: third person → the scope (drawn from the SEAL's eyes, the body hidden) → third person. There is no first person: the views are third person and scoped, as SOCOM II's (the owner, 2026-09-29). The Mark 23 has no scope: with it the zoom does nothing (the owner's ruling, 2026-09-29). On a wide screen the scope's black fills the frame beside it |
 | left click (captured) | fires the rifle; held, it fires at the rifle's rate. The click that captures the mouse does not fire. On a touch screen, the round **fire** button |
-| `R` | reloads; an empty magazine waits for it |
+| `R` | reloads (the pad's R3); an empty magazine waits for it |
 | walking into a ladder | climbs it, as the game does with no button: the stick climbs and descends at the game's 7.59 a second, the head and the foot step off ([research 86](docs/research/86-traversal.md)) |
 | `X` | the action, the pad's Cross: opens or shuts the door under the reticle (the door icon shows it; [research 92](docs/research/92-doors.md)), climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
@@ -256,11 +256,19 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | d-pad Up | zoom (scope): the lane is read, the zoom itself is a stub until the accuracy work merges | — |
 | Start | fly (as `G`) | walk (as `G`) |
 | L3 | crouch toggle on release (the launcher's crouch shortcut) | down |
-| R3 | — | boost |
+| R3 | reload, as `R` (the owner's ruling, 2026-09-29, and the game's own: `controller.rdr`'s Default binds R3 to Reload) | — |
+| Circle | — (the game's TeamCommand, which the viewer does not have) | boost (on R3 until R3 became the reload) |
 
 Triangle's hold length is a guess, `STANCE_HOLD_S_PLACEHOLDER` (0.4 s, `viewer/src/stanceButton.ts`, `C`'s too): the game
 reads the button's pressure, which a browser pad does not give. Triangle keeps the game's own rule, where a tap from prone
 stands up; `C` and the touch **C** button take the owner's PC rule (2026-09-29), where a tap from prone crouches.
+
+**The movement locks** (the owner, 2026-09-29; `viewer/src/mover.ts` `HOLD_CLIPS`): as in SOCOM II, a throw (from the
+release of the button: the hold that builds the power leaves the SEAL free), the claymore's placing, and a reload started
+still crouched or prone stop the SEAL where it stands -- the turn stays free -- until the clip passes its `motion.rdr`
+`NoInterrupt` (the standing throw 0.49 of its phase, 0.76 s; the claymore 0.9, 2.4 s; the crouched reload 0.35), when
+the stick takes over again. A standing reload, the Detonator and a door lock nothing. In the scope or the 9x view the
+move stick is x 0.2 (`FUN_005966a0`), in the mover the server runs too.
 
 **Walking is the game's player** (web sprint 2): the camera behind and over the SEAL's shoulder, the game's speeds
 and fall, a stand-in body, the game's reticle and rifle. The numbers and where each came from are under
