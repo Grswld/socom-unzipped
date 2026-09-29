@@ -1,8 +1,8 @@
 import {
   fixSoundName, footstepSound, landingClass, landingHurts, landingSounds, landSpeeds, makeVolume, panDegrees, parseBankFile,
-  passingSound, PAN_RESET, rangeGain, renderLoop, renderSound, reverbImpulse, SampleCache, voiceLevel, type LandingClass,
-  type Material, type RenderedSound, type ReverbImpulse, type SoundBank, type SoundParams, type StanceCode,
-  type WeaponSounds,
+  passingSound, PAN_RESET, rangeGain, renderLoop, renderSound, reverbImpulse, SampleCache, soundFor, voiceLevel,
+  type LandingClass, type Material, type RenderedSound, type ReverbImpulse, type SoundBank, type SoundParams,
+  type StanceCode, type WeaponSounds,
 } from '@s2u/sound';
 import type { SoundData } from './soundData';
 import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
@@ -718,7 +718,8 @@ export class GameAudio {
   private callback(name: string, position: Vec3 | null): string | null {
     const sounds = this.callbacks.get(name);
     if (!sounds) { this.dropped.silent++; return null; }                // a zAnim that plays no sound, or no such zAnim
-    const played = sounds.filter((sound) => this.play(sound, position, 'callback'));
+    // Through the one name table (`@s2u/sound`'s `soundFor`): a casing's `.BUL_CASE_METAL` is the banks' `.BUL_CAS_METAL`.
+    const played = sounds.map((sound) => soundFor(sound, (n) => this.has(n))).filter((sound) => this.play(sound, position, 'callback'));
     return played[0] ?? null;
   }
 

@@ -42,7 +42,8 @@ import { TRAVERSAL_EVENT, TraversalPage } from './traversalPage';
 import type { TraversalEvent } from './traversal';
 import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
 import { gameAudio } from './audio';
-import { Effects, soundFor } from './effects';
+import { soundFor } from '@s2u/sound';
+import { Effects } from './effects';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
@@ -337,7 +338,7 @@ const walkSounds = new WalkSounds(audio, {
  * `effects.play(name, place)` is the grenades' door to their impacts and explosions.
  */
 // The effects' sounds through the map's banks: the data's slips mended and a stand-in for a casing sound a map lacks
-// (`soundFor`, research 90 items 4 and 12).
+// (`@s2u/sound`'s `soundFor`, the one name table: research 90 items 4 and 12).
 const effects = new Effects(Math.random, (name, at) => { audio.play(soundFor(name, (n) => audio.has(n)), at); });
 fire.setTracerRule(tracerRound);                  // EFFECTS: every fourth round of a tracer weapon; never the M4A1 SD's
 scene.add(effects.object);
@@ -352,13 +353,19 @@ grenade.setEffectPlayer((anim, at) => effects.play(anim, { ...grenadePlace(at.po
  * data arrives, not in the frame of the first explosion. Set once the renderer is up.
  */
 let compileEffects: ((g: ReturnType<typeof effects.warmUp>) => Promise<void>) | null = null;
+/** The world whose warm-up (`warmScene`, after its props) has run. */
+let worldWarmed: WorldView | null = null;
 function warmEffects(): void {
-  if (!compileEffects || !effects.stats().loaded) return;
+  // Before the world's own warm-up the effects ride in it (`show`: one pass over the scene, not two).
+  if (!compileEffects || !effects.stats().loaded || !view || worldWarmed !== view) return;
   const g = effects.warmUp();
-  void compileEffects(g).catch(() => {}).finally(() => effects.warmDone(g));
+  const compiling = compileEffects(g);
+  effects.warmStarted(g);                           // the list is taken: the frames meanwhile do not draw the warm-up
+  void compiling.catch(() => {}).finally(() => effects.warmDone(g));
 }
-// The `LIGHT` passes re-draw the lit world and the held weapon (`./effectLights`: the game's second pass, research 89 §10).
-effects.setLightReceivers(() => [view?.group, view?.weapon, view?.sidearm].filter((o): o is NonNullable<typeof o> => !!o));
+// The `LIGHT` passes re-draw the lit world, the held weapons and the SEAL's body (`./effectLights`: the game's second
+// pass, research 89 §10).
+effects.setLightReceivers(() => [view?.group, view?.weapon, view?.sidearm, body?.group].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
@@ -866,7 +873,9 @@ boot().catch((e: unknown) => {
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
-  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.renderer.compileAsync(effects.object, fly.camera, scene); };
+  // The effects with the scene they light, the way the world is warmed (the PS2 frame's target, the hidden through
+  // stand-ins): research 90 item 19, a light pass compiled for the canvas alone still stalled the first blast.
+  compileEffects = async () => { fly.camera.updateMatrixWorld(); await created.warm(scene, fly.camera); };
   warmEffects();
   const { render, resize, backend: chosen } = created;
   setClearColor = created.setClearColor;
@@ -1226,10 +1235,19 @@ function show(map: LoadedMap): void {
       // The props follow, over further frames. The map is already drawn and flyable while they arrive,
       // and the flares among them are turned by the render loop on the frame after they land. Then every
       // program and texture the map, its LOD copies and the SEAL can need, before the first turn needs it.
+      // The effects' warm-up rides along when their data is in (one pass: their models, particles and marks, and the
+      // light passes' overlays over every prop -- research 90 item 19); data coming later warms by itself.
       void prepared(built0.propObjects).then(() => {
         if (stale()) return;
         revealing = spreadAcrossFrames(built0.revealProps);
-        void revealing.done.then(() => { if (!stale()) void warmScene?.(built0.warmExtras()); });
+        void revealing.done.then(async () => {
+          if (stale()) return;
+          const g = effects.stats().loaded ? effects.warmUp() : null;
+          const warming = warmScene?.(built0.warmExtras());
+          if (g) effects.warmStarted(g);
+          try { await warming; } finally { if (g) effects.warmDone(g); }
+          if (!stale()) worldWarmed = built0;
+        });
       });
     });
   });
@@ -1336,7 +1354,8 @@ window.__viewer = {
       const node = new Matrix4().makeBasis(x, y, z).setPosition(where);
       return effects.play(name, { node, position: [0, 0, 0], velocity: forward.toArray() as [number, number, number] });
     }
-    return effects.play(name, { position: where.toArray() as [number, number, number], velocity: forward.toArray() as [number, number, number], normal: [0, 1, 0] });
+    // As a grenade's (`grenadePlace`): a node at the point too, for the sources that follow their caller's node.
+    return effects.play(name, { ...grenadePlace(where.toArray()), velocity: forward.toArray() as [number, number, number] });
   },
   pauseEffects: (on) => { effects.paused = on; },
   tacMap: () => tacMap.state(),

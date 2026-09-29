@@ -126,8 +126,10 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
   expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
   // The console frame's heading: it looks down +z (research 17), the viewer's yaw 180; its N at the ring's foot.
   await page.evaluate(([x, y, z, eye]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 180, pitch: -9.167 }), [...SPAWN_A, EYE] as const);
-  // The HUD fades in over 1.5 s after a spawn (DAT_003dc380).
+  // The HUD fades in over 1.5 s after a spawn (DAT_003dc380) -- of frame time: each frame steps it at most 0.1 s, so
+  // under SwiftShader's slow frames it takes longer by the wall clock; waited for, not timed.
   await page.waitForTimeout(1700);
+  await expect.poll(() => page.evaluate(() => window.__viewer.hud().timing.fade), { timeout: 15_000 }).toBe(1);
   const live = await page.evaluate(() => window.__viewer.hud());
   expect(live.visible).toBe(true);
   expect(live.timing.fade).toBe(1);

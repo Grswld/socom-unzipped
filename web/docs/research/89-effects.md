@@ -439,8 +439,8 @@ visual in reach**, world, characters and weapons alike:
 - None of the grenade or muzzle animations uses `BLUR3D`, `IRIS_EFFECT` or `TRUE_COLOR_SCALE`. The flashbang's
   blinding is code (`FUN_00597c00`).
 
-**The viewer** (`effectLights.ts`) draws the pass as overlays sharing the world's and the held weapon's geometry, per
-fragment, with the face's normal.
+**The viewer** (`effectLights.ts`) draws the pass as overlays sharing the world's, the held weapon's and the SEAL's
+geometry (the body on its own skeleton), per fragment, with the face's normal. The overlays are pooled (§12).
 
 ## 11. Particle types, water, footprints, sounds, the pre-warm
 
@@ -474,7 +474,8 @@ fragment, with the face's normal.
 
 **Sounds.** The game resolves a sound by its name's CRC among the loaded banks' sounds: a binary search over one sorted
 table (`FUN_00344f30` -> `FUN_00344bf0`), with no fallback bank and no alias. So two effect sounds are silent on the
-console. The viewer departs from it deliberately (`SOUND_NAME_FIXES`, `SOUND_FALLBACKS`, `soundFor` in `effects.ts`):
+console. The viewer departs from it deliberately (`SOUND_NAME_FIXES`, `SOUND_FALLBACKS`, `soundFor` in
+`@s2u/sound`'s `catalog.ts`, for every path: §12):
 - The casings' metal bounce is named `.BUL_CASE_METAL` in `shell_eject`, `shell_eject_60` and
   `shell_eject_first_person`. No bank and no `sounds.rdr` entry carries it, while `.BUL_CAS_METAL` sits in 16 banks,
   Frostfire's among them. The viewer plays the latter.
@@ -487,3 +488,76 @@ its bitmaps uploaded (`Effects.warmUp`, `renderer.compileAsync`): the models, a 
 and footprints' materials, and the light pass's two programs (its colour and opacity are uniforms). A software-rendered
 headless browser measured the first frag's first frame at 127 ms warmed against 400 ms cold on Desert Glory. The
 blast's overdraw, not its first use, is the rest there.
+
+## 12. Round three: the smoke screen, the characters lit, the ambient effects, the light pool, the casing names
+
+**The smoke grenade.** `smoke_grenade` runs `smoke_stream` on the canister's node: two sources, 2.5 puffs a second
+each, a puff living 5-7 s and growing about tenfold, for 20 s of emission. Played through `effects.play` with the
+grenade's node (`grenadePlace`), it stands as a grey wall: dense at 6 and 12 s, thinning from about 22 s
+(`e2e/effects.spec.ts`: `desert-glory-smoke-screen.png`, `desert-glory-smoke-inside.png`). The game's Timer2 is 40 s.
+Whether that re-runs the zAnim was not traced. The grenade workstream's `SMOKE_ALWAYS_PLACEHOLDER` can go.
+
+**The characters take the lights.** The receivers are the world, the held weapon and the SEAL's body. A skinned mesh
+is re-drawn as a `SkinnedMesh` bound to the body's own skeleton, beside it, so the pass bends with the pose. The body
+has no bounds that follow the pose, so every light reaches it.
+
+**The `_zoom` muzzles.** Every `muzzle_*_zoom` (the turrets, the LAW and the M203 aside) calls only
+`shell_smoke_med`, `zoom_fire_silent` or `zoom_flash_fire`. The aim view shows no flash model: it shows a light
+(`zoom_flash_fire`, 0x44) and a hidden casing. The M4A1's zoomed round starts one light and shows nothing
+(`test/effects.test.ts`).
+
+**Commands 46, 47, 50.**
+- `STOP_ANIMATION` (46) and `PAUSE_ANIMATION` (47) name an animation at +4, a name index. Index 0 (`NA`) is the
+  running animation itself.
+- A paused animation stays alive: its sources keep emitting and its nodes stay. The torches' `loop_torch*` pause
+  themselves once lit.
+- `CALL_SEQUENCE` (50) restarts the animation's own sequence named at +4.
+- **The activation rule** [reading]: a sequence of activation 2 waits when its own animation's `CALL_SEQUENCE` names
+  it. Frostfire's `firey_flames` switches its vent lights on and off that way. A sequence of activation 2 that no
+  call names runs from the start, as the activation gate does (`shell_eject`'s range test).
+
+**The ambient effects.**
+- The mission's ambient effects are the `MZANIM` animations that start themselves (`params.flags & 3 == 1`) and
+  draw something: a particle source or a light, directly or through a call.
+- They start with the map (`EffectData.ambient`). Their nodes are the scene graph's (`<ARCHIVE>_GEO.ZED`,
+  `flattenScene`: `EffectData.sceneNodes`). The node `camera` is the camera: the snow and the rain fall around it.
+- Their looping (`~`) sounds are left to the audio's emitters.
+- The textures come from the effect libraries, the map's own, `CLIB` and `FLIB`: the snow and the butterflies live in
+  the map's.
+- A source that follows its node keeps its offset and its box in the node's local space.
+- Seen: Frostfire's tower flames (`firey_flames` at `r_tower_flames`: `frostfire-tower-flames.png`), Blizzard's snow,
+  Shadow Falls' 30 (torches, bugs, drips) and The Ruins' 9 (rain; the streaks are faint by the data).
+
+**The light pool** (research 90 item 19: a 500-850 ms frame about 0.6 s after every blast, on every map).
+- **The cause, measured.** Every `LIGHT` made a new material and an overlay for every receiver mesh in reach (about
+  170 on Frostfire), and the light's end disposed them. The frame that first drew them built their programs in the
+  frame. Headless Chromium (ANGLE D3D11, WebGL2) measured a 285-300 ms `render` on every blast, not only the first.
+- **Now.** Six fixed light slots of shared-group uniforms feed two materials a map: the additive pass (0x48) and the
+  lerped one (0x44).
+  - Each pass sums its blend's slots in one draw. The additive pass is `C = Σ Cs As`, `A = min(Σ As, 1)`.
+  - The lerped pass folds its slots in turn: `C = C (1 − As) + Cs As`, `keep = keep (1 − As)`, `A = 1 − keep`.
+  - Both output `C / A` at alpha `A` under `SrcAlpha`, so one light is the single pass of §10 exactly.
+- **Overlays.** A receiver mesh gets its two overlays once and keeps them. A light only sets its slot's uniforms and
+  shows the overlays in its reach.
+- **The pre-warm.** The map's effects pre-warm rides the world's own warm-up after the props are in
+  (`ViewerRenderer.warm`: the PS2 frame's target, stand-ins for the hidden meshes). It makes the overlays and shows
+  them for the compile call's synchronous projection.
+- **Taken out of the scene at once.** The overlays and the warm-up group then leave the scene: a frame drawn while
+  the programs built would otherwise build them itself, synchronously. On Desert Glory that was a 2.2 s frame, because
+  three keys an instanced mesh's program by its uuid (about 45 receivers there).
+- **Measured after** (a headless blast probe, 4 blasts a map, and `tools/playtest.ts`'s grenade scenario): no frame
+  over 45 ms at any blast on Frostfire, Desert Glory or Sujo. Desert Glory's six ambient lights were live throughout.
+  The load then shows no frame over 125 ms after the reveal on Desert Glory and Frostfire.
+
+**The casing names everywhere** (research 90 item 18).
+- The audio's list of wanted names took `shell_eject`'s names raw, so `.BUL_CASE_METAL` was asked for and reported
+  missing on every map.
+- One table (`@s2u/sound`'s `catalog.ts`: `SOUND_NAME_FIXES`, `SOUND_FALLBACKS`, `soundFor`) now serves the effects'
+  plays, the audio's callback plays and the wanted list:
+  `.BUL_CASE_METAL` is `.BUL_CAS_METAL`.
+- `.SG_SHELL_TIN` is in MP8's and MP61's banks only. On Frostfire the borrowing's six-bank limit does not reach it, so
+  it stands in as the map's `.SG_SHELL_METAL`.
+- `.SG_SHELL_SAND` (MP6, MP7, MP73) stands in as `.BUL_CAS_SAND`, else `.SG_SHELL_STONE`, which every `_am` bank
+  holds.
+- A name whose stand-in the map holds is not reported missing. Frostfire, Desert Glory and every map in the audio
+  sweep now miss none.

@@ -309,3 +309,18 @@ describe.skipIf(!libsd)('the SPU2 reverb (81 §9)', () => {
     expect(findReverbPresets(new Uint8Array(4096))).toBeNull();
   });
 });
+
+describe('the one sound-name table (research 89 §11, 90 items 12 and 18)', () => {
+  it('mends the data\'s slips and stands in for the casing names a map lacks', async () => {
+    const { fixSoundName, soundFor, SOUND_FALLBACKS } = await import('../src/index');
+    expect(fixSoundName('.BUL_CASE_METAL')).toBe('.BUL_CAS_METAL');
+    expect(fixSoundName('.GREN_ASPHALT')).toBe('.GREN_STONE');
+    const blood = (n: string): boolean => ['.BUL_CAS_GRASS', '.BUL_CAS_STONE', '.BUL_CAS_METAL'].includes(n);
+    expect(soundFor('.BUL_CASE_METAL', blood)).toBe('.BUL_CAS_METAL');
+    expect(soundFor('.BUL_CAS_DIRT', blood)).toBe('.BUL_CAS_GRASS');
+    expect(soundFor('.BUL_CAS_WOOD', blood)).toBe('.BUL_CAS_WOOD');       // none held, none stood in
+    expect(soundFor('.GREN_ASPHALT', (n) => n === '.GREN_STONE')).toBe('.GREN_STONE');
+    expect(SOUND_FALLBACKS['.SG_SHELL_TIN']).toEqual(['.SG_SHELL_METAL']);
+    expect(SOUND_FALLBACKS['.SG_SHELL_SAND']).toEqual(['.BUL_CAS_SAND', '.SG_SHELL_STONE']);
+  });
+});

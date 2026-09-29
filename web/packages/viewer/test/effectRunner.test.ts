@@ -114,6 +114,27 @@ describe('the effect sequencer', () => {
     expect(run.finished).toBe(true);
   });
 
+  it('a called sequence of activation 2 waits for its CALL_SEQUENCE; a self-pause keeps the run alive', () => {
+    const h = host();
+    const p: EffectProgram = {
+      name: 'fire', root: 0, flags: 0, nodes: ['NA'],
+      sequences: [
+        { name: 'control', activation: 1, ops: [{ op: 'wait', seconds: 1, range: 0, frames: null }, { op: 'callSequence', sequence: 'lights' }] },
+        { name: 'lights', activation: 2, ops: [mark(1)] },
+        { name: 'gate', activation: 2, ops: [mark(2)] },
+        { name: 'hold', activation: 1, ops: [{ op: 'pauseAnimation', anim: 'NA' }] },
+      ],
+    };
+    const run = new EffectRun(p, h);
+    run.update(0);
+    expect(h.log).toEqual(['m2']);                     // the uncalled activation-2 sequence runs at once
+    expect(run.paused).toBe(true);
+    expect(run.finished).toBe(false);                  // paused: alive
+    run.paused = false;
+    run.update(1.1);
+    expect(h.log).toEqual(['m2', 'm1']);
+  });
+
   it('FAIL stops the whole animation', () => {
     const h = host();
     const run = new EffectRun(program({ ops: [{ op: 'fail' }, mark(1)] }, { ops: [{ op: 'wait', seconds: 1, range: 0, frames: null }, mark(2)] }), h);

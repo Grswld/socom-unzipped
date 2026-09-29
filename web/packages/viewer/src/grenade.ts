@@ -100,10 +100,11 @@ export const isPlaced = (r: ThrowableRecord): boolean => r.muzzleVelocity === 0;
  */
 export const SMOKE_PLACEHOLDER = { every: 0.2, rise: [0, 17] as const, spread: 20, size: [30, 45] as const, grow: 1.6, life: [5, 7] as const, grey: [0.6, 0.4] as const };
 /**
- * PLACEHOLDER (named): the smoke screen is drawn here even when the effects ran `smoke_grenade`, whose `large_smoke`
- * puffs do not yet read as a screen in the effects' particles; false once they do (the EFFECTS workstream's call).
+ * PLACEHOLDER (named): whether the smoke screen is drawn here even when the effects ran `smoke_grenade`. False since the
+ * effects' `large_smoke` puffs read as a wall (effects round 3, research 89 §12); this screen is the stand-in only on a
+ * map whose archives lack `smoke_grenade`.
  */
-export const SMOKE_ALWAYS_PLACEHOLDER = true;
+export const SMOKE_ALWAYS_PLACEHOLDER = false;
 
 /** What a throwable does when it goes off: the frag's blast, the smoke's screen, the flash's white-out. */
 export type Detonation = 'blast' | 'smoke' | 'flash';
