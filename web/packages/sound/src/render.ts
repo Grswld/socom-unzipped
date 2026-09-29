@@ -61,6 +61,12 @@ export interface RenderOptions {
    * loop (`./audio`'s ambience) -- a one-shot's voices are released at `maxSeconds` and their release rendered.
    */
   loop?: boolean;
+  /**
+   * `snd_SetSFXGlobalReg`'s 32 global registers (1-based in the game's call; `globals[0]` is global 1): a grain names
+   * global N as register -N, a tone's volume or pan sentinel -6 on as global 1 on. SOCOM sets global 2 every frame from
+   * the camera's height (`FUN_00341a60`, `globalRegister2`); the rest read 0.
+   */
+  globals?: readonly number[];
 }
 
 export interface RenderedSound {
@@ -288,7 +294,9 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
   const appPan = options.pan === undefined || options.pan === PAN_RESET ? sound.pan : normPan(options.pan);
   handlers.push(makeHandler(index, sound, appVol, sound.vol, normPan(appPan), null));
 
-  const readReg = (h: Handler, reg: number): number => (reg < 0 ? 0 : reg < 4 ? h.regs[reg]! : 0);
+  const globals = options.globals ?? [];
+  const globalReg = (i: number): number => globals[i] ?? 0;   // 0-based: global 1 is [0]
+  const readReg = (h: Handler, reg: number): number => (reg < 0 ? globalReg(-reg - 1) : reg < 4 ? h.regs[reg]! : 0);
   const writeReg = (h: Handler, reg: number, value: number): void => {
     if (reg >= 0 && reg < 4) h.regs[reg] = Math.max(-128, Math.min(127, value));
   };
@@ -296,12 +304,12 @@ export function renderSound(bank: SoundBank, index: number, samples: SampleCache
     if (vol >= 0) return vol;
     if (vol >= -4) return Math.max(0, h.regs[-vol - 1]!);
     if (vol === -5) return rand() % 0x7f;
-    return 0;
+    return Math.max(0, globalReg(-vol - 6));
   };
   const resolvePan = (h: Handler, pan: number): number => {
     if (pan < 0) {
       if (pan === -5) return rand() % 360;
-      pan = pan >= -4 ? idiv(360 * h.regs[-pan - 1]!, 127) : 0;
+      pan = idiv(360 * (pan >= -4 ? h.regs[-pan - 1]! : globalReg(-pan - 6)), 127);
     }
     return normPan(pan);
   };
@@ -523,4 +531,34 @@ export function renderLoop(bank: SoundBank, index: number, samples: SampleCache,
     return y;
   };
   return { ...r, left: fold(r.left)!, right: fold(r.right)!, sendLeft: fold(r.sendLeft), sendRight: fold(r.sendRight) };
+}
+
+/**
+ * A loop whose first voice comes late -- the crickets' conductor waits `RAND_DELAY` up to 4000 ticks (16.7 s) before a
+ * burst of chirps (a local register counts the burst: not a game register) -- rendered over `longSeconds` and halved to
+ * 24 kHz so the buffer stays small; its reverb send is dropped. A loop that starts a voice in `seconds` is as `renderLoop`.
+ */
+export function renderLoopAtLeastOneVoice(bank: SoundBank, index: number, samples: SampleCache, seconds: number, fade: number,
+  longSeconds: number, options: RenderOptions = {}): RenderedSound {
+  const r = renderLoop(bank, index, samples, seconds, fade, options);
+  if (r.voices > 0 || longSeconds <= seconds) return r;
+  const long = renderLoop(bank, index, samples, longSeconds, fade, options);
+  const half = (x: Float32Array): Float32Array => {
+    const y = new Float32Array(Math.floor(x.length / 2));
+    for (let i = 0; i < y.length; i++) y[i] = (x[2 * i]! + x[2 * i + 1]!) / 2;
+    return y;
+  };
+  return { ...long, left: half(long.left), right: half(long.right), sendLeft: null, sendRight: null, sampleRate: OUTPUT_RATE / 2 };
+}
+
+/**
+ * `FUN_00341a60`'s global register 2 (decomp 241580-241600): the camera's height through the mission's `elevation`
+ * (`FUN_002aca30`: 0 under the lower, 1 over the higher, linear between; the two swapped into order), times 255,
+ * minus 128, clamped to a signed byte -- `snd_SetSFXGlobalReg(2, x)`, 989snd call 0x67, each frame. The outdoor beds of
+ * Foxhunt, Enowapi, Fish Hook, The Mixer and Requiem test it (their wind at height).
+ */
+export function globalRegister2(height: number, elevation: readonly [number, number]): number {
+  const hi = Math.max(elevation[0], elevation[1]), lo = Math.min(elevation[0], elevation[1]);
+  const f = height > hi ? 1 : height < lo ? 0 : hi - lo !== 0 ? (height - lo) / (hi - lo) : 0.5;
+  return Math.max(-128, Math.min(127, Math.trunc(f * 255 - 128)));
 }
