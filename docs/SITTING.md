@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 7 open O rows (0 answered or struck); 39 active rulings since 2026-09-27 (38 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-09-29, for the sitting after the one of 2026-09-27: 7 open O rows (0 answered or struck); 41 active rulings since 2026-09-27 (40 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
@@ -26,7 +26,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-39 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 38 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+41 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 40 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
 - **R299** (2026-09-27) the loop builds and gates the release archives and writes the exact `gh release upload` and verify-half commands into the Log and O2, and stops short of the up… -- overturn by number
@@ -67,6 +67,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R334** (2026-09-28) the owner's word after the controller's estimate of five to six more loop days: "proceed with your suggestions and make these options known to future testers a… -- overturn by number
 - **R335** (2026-09-29) the owner's word, "You have the next 10ish hours, a web agent is working but should never collide with you", names a third window: builds and game runs may run… -- overturn by number
 - **R336** (2026-09-29) the owner's words of 15:53Z ("lock is still yours") and 17:10Z ("The web agent needs the lock after this run for one task before you can take ownership back")… -- overturn by number
+- **R337** (2026-09-29) a candidate that reduces work on the GAME thread is picked on `[gs-loop] ee: work=` over the walk window, lower with the knob on in both orders inside one hold… -- overturn by number
+- **R338** (2026-09-29) Sprint 17 has no close date: the owner is in no rush and keeps it open to pursue the performance threads (C1, C2, C3, the native VU1 coverage) and to find new… -- overturn by number
 
 ## 3. The issues carried twice
 

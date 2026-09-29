@@ -12,7 +12,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 - **Where the loop is now (2026-09-29 15:53Z, LATEST) -- Sprint 17, `sprint-17` at e89901d8: batch 4 PROVED; Q2 DONE but for the chain; F3 DONE (the game thread's own work is the frame limit, `[gs-loop]` work 862 / bp 2 ms/s; the lever is native VU1 coverage; F4 not triggered); the lobby music loops (#94); the persona proof passed (#111); #112 boots. Unproved by a chain: the loop fix, F3, the persona check, Q2 Step 5. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
   Now: C1 PICKED under R337 (work lower in both orders, SYNCV unmoved); its default flip and C2 with Opus agents; #110 parked (O27); the chain next.
-- **Next free ruling number: R338** (R322-R337 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
+- **Next free ruling number: R339** (R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
