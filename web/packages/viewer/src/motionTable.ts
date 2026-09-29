@@ -38,8 +38,15 @@ export interface MotionEntry {
   /** `transition_speed_A` and `_B`, metres a second: the speeds this cycle covers. */
   transitionA: number | null;
   transitionB: number | null;
-  /** `NoInterrupt`: the fraction of the clip that plays before it can be cut (null when absent or bare). */
+  /**
+   * `NoInterrupt`: the phase past which the stick may cut the clip (`FUN_00587c20`); null when absent (the loader's 0:
+   * at once), 1 when bare (`NoInterrupt ()`, the loader's 1.0: never).
+   */
   noInterrupt: number | null;
+  /** The `Lateral` flag (`+0x4a` bit 0): a strafe; `FUN_00577000` blends the lateral clips' rotations together first. */
+  lateral?: boolean;
+  /** The `NoPitchtwist` flag (`+0x4a` bit 3 clear): the upper body does not take the aim's pitch on this clip. */
+  noPitchtwist?: boolean;
   /**
    * `zanim_callback`s, in the file's order: the zAnim animation the motion fires (`name`, e.g. `seal_jump`'s
    * `jump_whoosh`) and when (`time`, as the file has it). The loader `FUN_00287620` (decomp 131191-131653) reads every
@@ -51,6 +58,12 @@ export interface MotionEntry {
 
 /** The table, by clip name. */
 export type MotionTable = ReadonlyMap<string, MotionEntry>;
+
+/** Whether a record carries a key at all, a bare flag included (`FUN_0032f0d0` finds it). */
+function has(record: RdrNode[], key: string): boolean {
+  for (let i = 0; i < record.length; i += 1) if (record[i] === key) return true;
+  return false;
+}
 
 /** A field's one number, or null (absent, an empty flag list, or not a number). */
 function numberOf(record: RdrNode, key: string): number | null {
@@ -95,7 +108,9 @@ export function readMotionTable(rdr: RdrNode): Map<string, MotionEntry> {
       blendTime: numberOf(record, 'BlendTime'),
       transitionA: numberOf(record, 'transition_speed_A'),
       transitionB: numberOf(record, 'transition_speed_B'),
-      noInterrupt: numberOf(record, 'NoInterrupt'),
+      noInterrupt: numberOf(record, 'NoInterrupt') ?? (has(record, 'NoInterrupt') ? 1 : null),
+      lateral: has(record, 'Lateral'),
+      noPitchtwist: has(record, 'NoPitchtwist'),
       callbacks: callbacksOf(record),
     });
   }

@@ -30,15 +30,15 @@ describe('reading motion.rdr by name (W2.R6)', () => {
     expect([...table.keys()]).toEqual(['clip_a', 'clip_b', 'clip_c']);
     expect(table.get('clip_a')).toEqual({
       looped: true, playback: 7, maxVelocity: -3, blendTime: 0.25, transitionA: 0, transitionB: 0.5, noInterrupt: null,
-      callbacks: [{ name: 'whoosh', time: 0.2 }],
+      lateral: false, noPitchtwist: false, callbacks: [{ name: 'whoosh', time: 0.2 }],
     });
     expect(table.get('clip_b')).toEqual({
       looped: false, playback: 1, maxVelocity: 9, blendTime: null, transitionA: null, transitionB: null, noInterrupt: 0.4,
-      callbacks: [],
+      lateral: true, noPitchtwist: false, callbacks: [],
     });
     expect(table.get('clip_c')).toEqual({
-      looped: null, playback: null, maxVelocity: null, blendTime: null, transitionA: null, transitionB: null, noInterrupt: null,
-      callbacks: [],
+      looped: null, playback: null, maxVelocity: null, blendTime: null, transitionA: null, transitionB: null, noInterrupt: 1,
+      lateral: false, noPitchtwist: false, callbacks: [],
     });
     // every zanim_callback of a record, in order (the loader walks the key's first and next)
     const two = readMotionTable(['animations', [['anim_name', ['d'], 'zanim_callback', ['name', ['a'], 'time', ['0.1']],

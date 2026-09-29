@@ -219,6 +219,8 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
       proneTurn: one('Prone turn'),
       standToCrouch: one('Stand -> Crouch'), crouchToProne: one('Crouch -> Prone'), standToProne: one('Stand -> Prone'),
       jump: one('Jump'), launch: one('Jump launch'), inAir: one('Jump fall'), land: one('Jump land'), landHard: one('Jump land hard'),
+      hit: one('Hit01'), hitStomach: one('Hit stomach01'), landDeath: one('Land forward'), getUp: one('Get up forward'),
+      step: one('Step'), crouchStep: one('Crouch step'),
     }).toEqual({ ...SEAL_ANIMS });
     expect(seal.get('Crouch')).toEqual(CROUCH_IDLES.map((c) => c.clip));
     // the sets' order is motion.rdr's: the transitions as the builder files them, ascending in every set
@@ -237,18 +239,29 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
     expect(text).toContain(JSON.stringify(['default', ['seal_crouch', '0.3'], ['seal_crouch_alert01', '0.3'], ['seal_crouch_alert02', '0.4']]));
   });
 
-  it('ACTION_CLIPS are motion.rdr\'s playback and MOTION_P.ZAR\'s key counts', () => {
+  it("ACTION_CLIPS are motion.rdr's playback and NoInterrupt, and MOTION_P.ZAR's key counts and root travel", () => {
     const table = motionTableFromArchive(new Uint8Array(readFileSync(READERC)))!;
     const names: Record<keyof typeof ACTION_CLIPS, string> = {
       jump: SEAL_ANIMS.jump, land: SEAL_ANIMS.land, landHard: SEAL_ANIMS.landHard,
       standToCrouch: SEAL_ANIMS.standToCrouch, crouchToProne: SEAL_ANIMS.crouchToProne, standToProne: SEAL_ANIMS.standToProne,
+      hit: SEAL_ANIMS.hit, hitStomach: SEAL_ANIMS.hitStomach, landDeath: SEAL_ANIMS.landDeath, getUp: SEAL_ANIMS.getUp,
     };
     const clips = new Map(clipsFromPack(new Uint8Array(readFileSync(PACK)), Object.values(names)).map((c) => [c.name, c]));
+    const transitions = new Set(['standToCrouch', 'crouchToProne', 'standToProne']);
     for (const [k, n] of Object.entries(names)) {
       const c = ACTION_CLIPS[k as keyof typeof ACTION_CLIPS];
-      expect(table.get(n)!.playback, n).toBeCloseTo(c.playback, 6);
-      expect(table.get(n)!.looped, n).toBe(false);
-      expect(clips.get(n)!.frameCount, n).toBe(c.frames);
+      const e = table.get(n)!, clip = clips.get(n)!;
+      expect(e.playback, n).toBeCloseTo(c.playback, 6);
+      expect(e.looped, n).toBe(false);
+      expect(clip.frameCount, n).toBe(c.frames);
+      // the transitions are never the player's to cut (FUN_00587c20), whatever their entries say
+      if (!transitions.has(k)) expect(e.noInterrupt ?? 0, n).toBeCloseTo(c.noInterrupt, 6);
+      const root = clip.parts.find((p) => p.name === 'skel_root')!.translations;
+      const last = 3 * (clip.frameCount - 1);
+      if (root.length > 3) {
+        expect(root[last]! - root[0]!, n).toBeCloseTo(c.travel[0], 1);
+        expect(root[last + 2]! - root[2]!, n).toBeCloseTo(c.travel[1], 1);
+      }
     }
   });
 

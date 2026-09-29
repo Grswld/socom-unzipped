@@ -151,7 +151,7 @@ export type PlayEvent =
   | (Extract<AnimEvent, { kind: 'footfall' }> & { position: [number, number, number] | null })
   | Exclude<AnimEvent, { kind: 'footfall' }>
   | { kind: 'takeoff'; running: boolean }
-  | { kind: 'land'; speed: number; clip: 'land' | 'landHard' | null };
+  | { kind: 'land'; speed: number; clip: 'land' | 'landHard' | 'hit' | 'hitStomach' | 'landDeath' | null; cls?: 0 | 1 | 2 | 3 };
 
 /** A camera's pose in the fly camera's convention (yaw 0 looks down -z; degrees). */
 function poseOf(camera: PerspectiveCamera): Pose {
@@ -323,7 +323,7 @@ export class Play {
     }
     if (this.wasAirborne && !snap.airborne) {
       const landing = mover?.landing ?? null;
-      this.emit({ kind: 'land', speed: landing?.speed ?? 0, clip: landing?.clip ?? null });
+      this.emit({ kind: 'land', speed: landing?.speed ?? 0, clip: landing?.clip ?? null, cls: landing?.cls ?? 0 });
     }
     this.seenAction = a && { name: a.name, serial: a.serial };
     this.wasAirborne = snap.airborne;
