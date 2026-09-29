@@ -15,7 +15,8 @@ where the decompilation lost an argument), and the disc's `RUN/READERC.ZAR` (`mo
 - **The running jump's rise is an impulse, not a clip**: `actor+0x1364 = jump_factor x gravity x -0.4` (0.85 x 235 x
   0.4 = **79.9 units a second up**), written into the fall speed **0.1 s after the take-off** (`actor+0x1360`), then
   `dynamics.rdr`'s 235 a second squared. The top is **13.58 units (1.36 m)** in closed form, **12.9 at the game's 60
-  Hz** (the fall speed takes `g dt` before it moves the height); **0.78 s** from take-off to landing on flat ground.
+  Hz** (the fall speed takes `g dt` before it moves the height) over where the rise began -- which is **0.98 under the
+  floor**, the wind-up's sink (§6b), so **11.95 over the floor**; **0.75 s** from take-off to landing on flat ground.
   The take-off's velocity is carried through the air with **no stick** (`FUN_0054d9a0`).
 - **The standing jump's rise is the clip's skeleton root only**: `seal_jump` (20 keys, `playback` 1.1) lifts the
   root from 10.51 to **15.08** at key 12; the actor's height comes from a clip only for `UseVelY` motions
@@ -220,23 +221,22 @@ slid. The game plays `seal_run_90r/l` at full stick (1.18x), `seal_rstrafe_fast`
   never. When the controller's `+0x30` answers (read as the player's), actions 100, 99, 25 (Stand -> Prone), 19
   (Crouch -> Prone), 17 (Stand -> Crouch) and `Pistol stand -> Prone` are never cut. A transition played backwards
   (getting up) has its node's bit 1 cleared (`FUN_00580b70`, `FUN_00581c10`): never cut either. The third axis the
-  test reads (`actor+0x23c`, the turn) is not applied: the viewer cuts on the move axes.
+  test reads (`actor+0x23c`, the turn): applied in the third round (§6b).
 - **The heavy falls** (`FUN_005af590` with `FUN_005ac1f0`): over `land_hard_fall_rate` the class decides -- 3 (at or
   over `m_landSpeed[2]` 237.5, a 120-unit fall) `Land forward` (`seal_landforward01`) and the actor's death, 2 (over
   206.8, 91 units) `Hit01` (`guard_hit01`, 3.7 s) or `Hit stomach01` (`guard_hit_stomach01`, 2.9 s) by a draw
   (`FUN_00197740 x 4.656613e-10 <= 0.5` the stomach), 0 or 1 `Jump land hard`. `m_landSpeed[i] = g sqrt(2 h_i / g)`
   (reCOM `char_dyn.cpp:32-35`). The viewer has no death: after `Land forward` it plays `Get up forward`
   (`seal_getupforward01`, named). The hits, the death landing and the transitions move the actor by their clips' root
-  motion (the velocity is `FUN_0028c250`'s for every action but the jumps and the landings); the viewer takes each
-  clip's mean.
+  motion (the velocity is `FUN_0028c250`'s for every action but the jumps and the landings); key by key since the
+  third round (§6b).
 - **`actor+0x1044`** is the actor's health: `FUN_005477a0` (412819-412844) writes it and calls the death when it reaches 0.
   `FUN_005af930`'s in-air clip starts only for a living SEAL -- always, in the walk.
 - **`FUN_0058a820`** (446874-446894) is the speed class: 1 under 0.5 a second (`|v|^2 < 0.25`), 2 under 20, 3 from 20. The
   standing footfall wants a class over 1: moving at 0.5 or more, as the animator had it.
 - **The engine's node blend** (`FUN_00577ea0` 437415-437474 samples each node with `FUN_005777d0`, 437177-437297; `FUN_00577000`
   436853-437136 merges them): the translations a weighted sum (six parts only take the clip's: the root, `hips`, the
-  biceps and the shoulder weights -- the rest keep the skeleton's own; not applied, the clips' constants match the
-  bind within a step, research 77); the rotations two at a time -- first the `Lateral` motions among themselves, then the
+  biceps and the shoulder weights -- the rest keep the skeleton's own; applied in the third round, §6b); the rotations two at a time -- first the `Lateral` motions among themselves, then the
   others, then what is left -- each pair by `FUN_00576e30`: the engine's slerp at `wb / (wa + wb)`, the weights summed.
   `FUN_00306ae0`, the slerp, takes a normalised lerp over a dot of 0.95. And the player's own actor (the LOD bit 3 of
   `actor+0xe0`, set for it) samples between keys with `FUN_00289570` (slerp) and `FUN_002898a0`: the blend-or-hold
@@ -263,21 +263,51 @@ slid. The game plays `seal_run_90r/l` at full stick (1.18x), `seal_rstrafe_fast`
   the node. For a pitch p the two turn by 0.2 sin p and 0.8 sin p: about the whole pitch. The envelope is the weapon's
   raise (`FUN_005dfc80` over `actor+0xf74`); the walk's rifle being up, the viewer takes it at 1 (named).
 
+## 6b. The third round: the feel's last readings closed (2026-09-29)
+
+- **The turn axis cuts too** (`FUN_00550ef0` 418180-418190): the interrupt test reads `actor+0x23c` beside the two move
+  axes -- the turn over `turn_maxrate` -- with the same 0.1. Turning the view past a tenth of the full rate cuts an
+  interruptible landing, hit or get-up as the stick does. Applied (`Walker.turn`, set from the look each frame).
+- **The actions move by their root key by key** (`FUN_0057a330` about 438957: the velocity is `FUN_0028c250`'s, which
+  `FUN_00289bb0` reads as the root's change between the key the phase is on and the next -- the last key paired with
+  the one before -- times keys over the play's length): the hits, the death landing, the get-up and the transitions
+  carry the mover by that, so the SEAL stands still where the clip's root does and slides only while it moves; played
+  backwards (getting up), the phase runs from the end and the motion turns round. Applied (`Walker.actionVelocity`,
+  fed the pack's root keys through `WalkMode.setActionRoots`; the clip's mean stands in when the pack has none). **The
+  landings' drift is not applied by the game**: `FUN_0054d9a0` (416501-416555) sets actions 10 and 11's velocity to
+  the carried take-off velocity running down by `dt x 150`, so the soft landing's 3.3-unit root drift never moves the
+  SEAL -- the viewer already did so.
+- **The within-stride shape does not exist on the disc**: the same per-key velocity drives the ground locomotion, but
+  every locomotion clip in the sets and the crawl moves its root the same distance each key (to 1.5 %, a fixture
+  test): the per-key velocity is the constant target speed the mover already runs at. The weight is the clips' and
+  the speed rules' (§4), not a surge within the stride.
+- **The translations the engine takes** (`FUN_005777d0`, 437177-437297): only `skel_root`, `hips`, `lbicep`, `rbicep`,
+  `lshoulder_wgt` and `rshoulder_wgt` take the clip's translation; the other 20 body parts keep the skeleton's own.
+  A part outside the body (the rifle node, the props) keeps the clip's. After the update the root's x and z are zeroed
+  (`FUN_0057a330` 439110-439130): the root's travel is the mover's, never the pose's. Applied (`BODY_PARTS`,
+  `SAMPLED_TRANSLATIONS`), in the pose layers too.
+- **The wind-up sinks** (`FUN_005af930` 466729-467019, `FUN_0059b440` 456467-456570, `FUN_0059ad30` 456261-456327):
+  through the 0.1 s the fall integrates from rest and the landing is gated off by `0x1360 > 0`, so the feet sink
+  0.98 in the five ticks; on the sixth the fall speed becomes -79.9 before the step, so the rise starts from -0.98
+  (+0.287 after that tick). The top is 11.95 over the floor, the flight 0.75 s. Applied; the floor test lets the
+  sunk feet move on through the wind-up.
+- **The player plays the default mode**: the anim mode `actor+0x1336` is written only by `FUN_0057d710`, which only
+  the AI and script paths reach (`FUN_005604c0`, `FUN_0056fd00` through `FUN_0058c5d0`); the player's actor is set up
+  in mode 0 (`FUN_00553ea0`, 419517) and nothing on its path changes it. `ready`'s alert clips are the bots'.
+- **The pistol's action set** (`FUN_0058c9e0` / `FUN_0058c820`, 448153-448283): with the item byte `actor+0xf79` at 2
+  each node's action maps through the anim set's table (`+0x5c`, `FUN_005e1a50`) to its `Pistol ...` action where
+  there is one, a sub-node at weight 1 that `FUN_00576bb0` lays over the parts it carries before the nodes are merged
+  (`FUN_00577ea0`). Applied per node (`PISTOL_ANIMS`, pinned against `animset.rdr` by the `Pistol <action>` name
+  rule); `Animator.setWeapon` switches with a cross-fade over the playing motion's `BlendTime` [reading].
+
 ## 7. Readings and placeholders (named in the code)
 
-- **The 0.1 s wind-up** holds the feet on the floor: the decompilation's fall integrator runs through it (a sink of
-  1.4 at most) with the landing gated off; that the collision holds them is the reading.
 - **The jump's gate while an action plays**: refused in any action but the fall.
-- **The interrupt's axes**: the move stick only (the turn axis is also read by the game).
 - **Death**: the viewer gets up after `Land forward`; no damage is kept.
-- **Root motion of the hits, the death landing and the transitions**: the clip's mean, not its per-key shape.
-- **The node translations**: every part's from the clip (the game keeps the skeleton's for all but six).
 - **The aim weight**: 1 (the weapon's raise envelope not run).
-- **Modes**: only the default mode is played (`ready`'s `seal_stand_alert01/02`, `seal_walk_alert02`, `seal_alert_step`
-  are not).
-- **The pistol** plays its `seal_p_*` version or layer (the game's `Pistol ...` actions are a set of their own).
-- **Not applied**: the velocity's shape within a stride (the mover moves at the target speed); the head's look
-  (`FUN_005ad400`, cosmetic).
+- **The weapon switch's blend**: the playing motion's `BlendTime` (the swap clips, `seal_rifle2pistol`..., are the
+  weapon's to play).
+- **Not applied**: the head's look (`FUN_005ad400`, cosmetic); the bots' modes (§6b).
 
 ## 8. The numbers the tests pin
 
@@ -289,9 +319,12 @@ crouch right strafe half a cycle on; the crawl backwards; the one-shots' `playba
 0.418 s; the footfalls alternating; the transitions by stance and speed. The second round: the soft landing cut at
 once, the hard at 0.35 and the jump at 0.7 of their phases, a transition never; 170.7 / 206.8 / 237.5; a 100-unit fall a
 hit by the draw, 130 the death landing and the get-up; the hit's root travel; the lateral-first merge; the step at
-0.6 / 0.3 / 0.35 and backwards to the left; the twist 0.2 sin p + 0.8 sin p; the bank 3.1 degrees.
+0.6 / 0.3 / 0.35 and backwards to the left; the twist 0.2 sin p + 0.8 sin p; the bank 3.1 degrees. The third round:
+the turn axis's cut at 0.1; a transition carried key by key, backwards when getting up, the mean without keys; the
+six translated parts and the zeroed root; the locomotion roots flat to 1.5 %; the 0.98 sink and the 11.95 top; the
+pistol table and its per-node overlay.
 
 ## 9. What a console run would settle
 
-The flight time and top of a flat running jump (0.78 s, 12.9); that the feet do not sink in the wind-up; the standing
+The flight time and top of a flat running jump (0.75 s, 11.95 over the floor); the wind-up's 0.98 sink; the standing
 jump's 0.99 s; the landing clip choice with the stick held; the transitions' holds; the crouch idle's draw.
