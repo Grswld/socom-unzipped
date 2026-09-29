@@ -2,13 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
-import { buildGrid, probeGround, SEAL_LOCOMOTION, SEAL_TUNING, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
+import { buildGrid, probeGround, PROBE_LIFT, SEAL_LOCOMOTION, SEAL_TUNING, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
 import {
-  groundGrid, groundPolygons, landingClass, packGround, PROBE_LIFT, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
-  ACTION_SECONDS, BODY_RADIUS, CARRY_DECAY, EYE_HEIGHT, JUMP_DELAY, JUMP_LOCK, RUNNING_JUMP_SPEED, STANCES, TICK,
+  groundGrid, groundPolygons, landingClass, packGround, rootY, runningJumpSpeed, stanceBody, throttleStep, Walker, WalkMode, ACTION_CLIPS,
+  ACTION_SECONDS, BODY_RADIUS, CARRY_DECAY, DEATH_LANDING_GETUP_PLACEHOLDER, EYE_HEIGHT, JUMP_DELAY, JUMP_LOCK, RUNNING_JUMP_SPEED, STANCES, TICK,
   type GroundData, type Stance, type WalkInput,
 } from '../src/walk';
 import { Traversal } from '../src/traversal';
@@ -955,6 +955,28 @@ describe('NoInterrupt and the heavy falls (FUN_00587c20, FUN_005af590, FUN_005ac
     expect(d.action?.name).toBe('getUp');
   });
 
+  it('dead (online: the server killed the fall), Land forward holds its last key -- no get-up, the feet stay (FUN_005af590)', () => {
+    expect(DEATH_LANDING_GETUP_PLACEHOLDER).toBe(true);                // the offline get-up stays a named placeholder
+    const d = drop(130);
+    expect(d.action?.name).toBe('landDeath');
+    d.dead = true;
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.landDeath / TICK) + 1; i++) d.tick(STILL);
+    expect(d.action?.name).toBe('landDeath');
+    const feet = [d.state.x, d.state.y, d.state.z];
+    for (let i = 0; i < 120; i++) d.tick(FORWARD);                    // the stick never cuts it, nothing moves the body
+    expect(d.action?.name).toBe('landDeath');
+    expect([d.state.x, d.state.y, d.state.z]).toEqual(feet);
+    // The kill heard after the get-up began (latency over the 0.4 s clip): back to the landing's last key.
+    const late = drop(130);
+    for (let i = 0; i < Math.ceil(ACTION_SECONDS.landDeath / TICK) + 3; i++) late.tick(STILL);
+    expect(late.action?.name).toBe('getUp');
+    late.dead = true;
+    expect(late.action?.name).toBe('landDeath');
+    late.tick(STILL);
+    expect(late.action?.name).toBe('landDeath');
+    expect(new Walker(plain).dead).toBe(false);
+  });
+
   it('a hit carries the mover by the clip\'s own root travel, and gives way to the stick past 0.8', () => {
     const w = drop(100, 0.9);
     const x = w.state.x, z = w.state.z;
@@ -1333,5 +1355,50 @@ describe('an airborne column is entered on the ground\'s own pick (OWNER-5; FUN_
     expect(r.z).toBeLessThanOrEqual(-20);
     expect(r.airborne).toBe(false);
     expect(r.y).toBe(0);
+  });
+});
+
+describe('a spawn stands on the tick\'s pick: from the feet + PROBE_LIFT, not the eye (PL-2; FUN_002b8100 158793, FUN_005b5d40)', () => {
+  /** The ground at 0 everywhere and a crate 12 high over x, z -50..50: two floors over the spawn. */
+  const CRATE: GroundData = packGround(
+    { atomCount: 8192, posts: 16, cellDim: 100, cellsX: 4, cellsZ: 4, originX: -200, originZ: -200 },
+    [floor(-200, -200, 200, 200, 0), floor(-50, -50, 50, 50, 12)],
+    [{ modelName: 'worldmodel', path: 'worldmodel/ground', first: 0, count: 1 }, { modelName: 'worldmodel', path: 'worldmodel/crate', first: 1, count: 1 }],
+  );
+  const made: WalkMode[] = [];
+  afterEach(() => { for (const m of made.splice(0)) m.unbindKey(); });
+  const mode = (spawn: [number, number, number] | null): { fly: FlyCamera; mode: WalkMode } => {
+    const fly = new FlyCamera(canvas());
+    fly.setScale(0.1);
+    const m = new WalkMode(fly, () => undefined);
+    m.setGround(CRATE, spawn);
+    made.push(m);
+    return { fly, mode: m };
+  };
+
+  it('the server\'s respawn at feet 0 under the crate stands on the ground, not on the crate 12 over it', () => {
+    const { mode: m } = mode(null);
+    expect(m.respawn([0, 0, 0], 0)).toBe(true);
+    expect(m.snapshot()).not.toBeNull();
+    expect(m['walker']!.state.y).toBe(0);
+  });
+
+  it('the spawn fallback (no floor under the camera) does the same', () => {
+    const { fly, mode: m } = mode([0, 0, 0]);
+    fly.setPose({ x: 900, y: 80, z: 900, yaw: 0, pitch: 0 });           // off the grid: no floor under the camera
+    expect(m.setMode('walk')).toBe(true);
+    expect(m['walker']!.state.y).toBe(0);
+  });
+
+  it('online, setDead reaches the mover; a respawn brings a live one', () => {
+    const { mode: m } = mode(null);
+    expect(m.respawn([0, 0, 0], 0)).toBe(true);
+    m.setDead(true);
+    expect(m['walker']!.dead).toBe(true);
+    expect(m.respawn([0, 0, 0], 0)).toBe(true);
+    expect(m['walker']!.dead).toBe(false);
+    m.setDead(true);
+    m.setDead(false);
+    expect(m['walker']!.dead).toBe(false);
   });
 });

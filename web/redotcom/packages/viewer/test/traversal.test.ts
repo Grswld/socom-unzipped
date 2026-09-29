@@ -3,11 +3,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { FsAssetSource } from '@s2u/archive/node';
-import { buildGrid, findLadders, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
+import { buildGrid, findLadders, PROBE_LIFT, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { loadMap } from '../src/loadMap';
 import { clipsFromPack, motionTableFromArchive } from '../src/motionTable';
-import { groundGrid, groundPolygons, TICK, Walker, type WalkInput } from '../src/walk';
+import { EYE_HEIGHT, groundGrid, groundPolygons, TICK, Walker, type WalkInput } from '../src/walk';
 import { simClipsFromBytes } from '../src/simMap';
 import { LADDER_STANDOFF, rippleAnimation, Traversal, TRAVERSAL_CLIPS, type TraversalEvent } from '../src/traversal';
 
@@ -736,5 +736,16 @@ describe('the ground and the water on the stick, and the ripples (research 86 se
     expect(at(35)).toBeNull();                                      // 10 or more over it: nothing
     expect(rippleAnimation({ size: 'big', pace: 'walk' })).toBe('big_ripple_anim_walk');
     expect(rippleAnimation({ size: 'small', pace: 'anim' })).toBe('small_ripple_anim');
+  });
+});
+
+describe('place() from the feet + PROBE_LIFT is the tick\'s own pick (PL-2; FUN_005b5d40 470230-470240, research 86 s6.3)', () => {
+  it('over two floors 12 apart, a record lifted a unit (FUN_002b8100 158793) stands on the lower; from the eye it stood on the object', () => {
+    const grid = world([floor(-200, -200, 200, 200, 0), floor(-20, -20, 20, 20, 12)]);
+    const w = new Walker(grid);
+    expect(w.place(0, 1 + PROBE_LIFT, 0)).toBe(true);
+    expect(w.state.y).toBe(0);                                             // the tick's window ends at feet + 6
+    expect(w.place(0, 1 + EYE_HEIGHT, 0)).toBe(true);
+    expect(w.state.y).toBe(12);                                            // the old origin (feet + 16.4) took the crate
   });
 });
