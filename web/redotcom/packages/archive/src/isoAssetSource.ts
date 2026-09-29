@@ -108,20 +108,27 @@ export class IsoAssetSource implements RangedAssetSource {
   private async file(path: string): Promise<IsoRecord> {
     const parts = normalise(path);
     if (parts.length === 0) throw new Error(`ISO: no file at ${JSON.stringify(path)}`);
-    const found = (await this.fileIn(await this.root(), parts))
-      ?? await this.secondVolume().then((second) => (second ? this.fileIn(second.root, parts) : null));
-    if (!found) throw new Error(`ISO: no ${parts.join('/')} on the disc image`);
-    return found;
+    const first = await this.fileIn(await this.root(), parts);
+    if (!('miss' in first)) return first;
+    const second = await this.secondVolume();
+    const other = second ? await this.fileIn(second.root, parts) : { miss: '' };
+    if (!('miss' in other)) return other;
+    // Why the path is not there, when a volume says more than "absent": the file standing in its way.
+    const why = first.miss || other.miss;
+    throw new Error(`ISO: no ${parts.join('/')} on the disc image${why ? ` (${why})` : ''}`);
   }
 
-  /** The file's record under one volume's root, or null when the path is not in that volume. */
-  private async fileIn(root: Directory, parts: string[]): Promise<IsoRecord | null> {
+  /**
+   * The file's record under one volume's root, or a miss when the path is not in that volume: `miss` is
+   * empty for a part that is absent, and names the part when a file stands where the path wants a directory.
+   */
+  private async fileIn(root: Directory, parts: string[]): Promise<IsoRecord | { miss: string }> {
     let dir: Directory = root;
     for (let i = 0; i < parts.length; i++) {
       const record = (await this.entries(dir)).get(parts[i]!);
-      if (!record) return null;
+      if (!record) return { miss: '' };
       if (i < parts.length - 1) {
-        if (!record.directory) return null;   // a file stands where the path wants a directory
+        if (!record.directory) return { miss: `${parts[i]} is a file` };
         dir = record;
         continue;
       }
@@ -134,7 +141,7 @@ export class IsoAssetSource implements RangedAssetSource {
       if (record.interleaved) throw new Error(`ISO: ${parts.join('/')} is interleaved, which this reader does not follow`);
       return record;
     }
-    return null;
+    return { miss: '' };
   }
 
   /**

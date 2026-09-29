@@ -130,7 +130,7 @@ describe('parseRdr', () => {
   });
 
   it('allows the shared subtrees retail files carry, up to the measured factor', () => {
-    // The 734 .rdr files on the US disc (measured 2026-09-29) visit at most 8.08 times their node count
+    // The 736 .rdr scripts on the US disc (measured 2026-09-29) visit at most 8.08 times their node count
     // (RUN/UI/READERC.ZAR UiParams.rdr, 22,554 of 2,791); the budget is twice that.
     expect(RDR_VISIT_FACTOR).toBe(16);
     expect(parseRdr(sharedSubtreeRdr())).toEqual([['a'], ['a']]);

@@ -14,7 +14,10 @@ child array, so two lists may share one (the `isclone` bit). The depth cap (64) 
 wide shared tree: 6 levels of 64-wide lists all aimed at the next level ran Node out of heap from a 3 KB file.
 
 `parseRdr` now counts the nodes it visits and throws past `RDR_VISIT_FACTOR` x the node array's size. Measured
-2026-09-29 over every `.rdr` on the US disc (736 scripts, every ZAR/ZED/ZDB under `RUN/` but `RUN/SOUNDS/`):
+2026-09-29 over every `.rdr` on the US disc (736 scripts, every ZAR/ZED/ZDB under `RUN/` but `RUN/SOUNDS/`;
+recounted 2026-09-29 for wave 2, which retired an earlier "734" in the code comments. A script is a key named
+`*.rdr` that holds bytes; the 672 zero-size `*.rdr` keys, all in the ZANIM archives, are not scripts. Pin: the
+gated retail test in `isoAssetSource.test.ts` counts them and parses each):
 
 | script | visits / nodes | ratio |
 |---|---|---|

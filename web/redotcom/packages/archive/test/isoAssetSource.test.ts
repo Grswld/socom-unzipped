@@ -79,6 +79,14 @@ describe('IsoAssetSource over a synthetic ISO9660 image', () => {
     await expect(source.read('RUN')).rejects.toThrow(/directory/);
   });
 
+  it('says which part of a path is a file when the path wants a directory there', async () => {
+    const source = new IsoAssetSource(image());
+    await expect(source.read('SYSTEM.CNF/MP2.ZDB')).rejects.toThrow('ISO: no SYSTEM.CNF/MP2.ZDB on the disc image (SYSTEM.CNF is a file)');
+    await expect(source.read('RUN/MP2.ZDB/X')).rejects.toThrow('ISO: no RUN/MP2.ZDB/X on the disc image (MP2.ZDB is a file)');
+    // A part that is simply missing keeps the plain message.
+    await expect(source.read('NOPE/MP2.ZDB')).rejects.toThrow(/^ISO: no NOPE\/MP2\.ZDB on the disc image$/);
+  });
+
   it('gives the extent a file sits at, sector-aligned, as the engine reads it by LBN', async () => {
     const iso = buildIso(MEMBERS);
     const extent = await new IsoAssetSource(new Blob([iso])).extent('RUN/MP6.ZDB');
@@ -239,6 +247,14 @@ describe('IsoAssetSource over a synthetic dual-layer image', () => {
     await expect(source.read('RUN/MP7.ZDB')).rejects.toThrow('ISO: no RUN/MP7.ZDB on the disc image');
   });
 
+  it('keeps the file-in-the-way detail whichever volume the path stops in', async () => {
+    const source = new IsoAssetSource(new Blob([buildDualLayerIso(LAYER0, LAYER1).iso]));
+    // Stopped in layer 0 (SYSTEM.CNF is a file there) and absent from layer 1.
+    await expect(source.read('SYSTEM.CNF/X')).rejects.toThrow('ISO: no SYSTEM.CNF/X on the disc image (SYSTEM.CNF is a file)');
+    // Absent from layer 0, stopped in layer 1 (DEEP.BIN is a file there).
+    await expect(source.read('LAYER1/DEEP.BIN/X')).rejects.toThrow('ISO: no LAYER1/DEEP.BIN/X on the disc image (DEEP.BIN is a file)');
+  });
+
   it('lists both volumes, a path both hold once', async () => {
     const source = new IsoAssetSource(new Blob([buildDualLayerIso(LAYER0, LAYER1).iso]));
     expect(await source.list()).toEqual(['BOTH.BIN', 'LAYER1/DEEP.BIN', 'RUN/MP2.ZDB', 'RUN/MP9.ZDB', 'SYSTEM.CNF']);
@@ -363,4 +379,39 @@ describe.skipIf(!RETAIL || !existsSync(RETAIL))('IsoAssetSource over the retail 
       (blob as unknown as { close(): void }).close();
     }
   }, 120_000);
+
+  it('holds 736 .rdr scripts under RUN/ but RUN/SOUNDS/, and every one parses inside the visit budget', async () => {
+    // Research 93 section 1's count, the one rdr.ts's RDR_VISIT_FACTOR comment cites. A script is a ZAR/ZED
+    // key named *.rdr that holds bytes, in a loose RUN/ archive or a member archive of a RUN/*.ZDB; the 672
+    // zero-size keys named *.rdr, all in the ZANIM archives (UIZANIM.ZAR's Anim_Sets and its Name_Table
+    // keys, EXTZANIM, MPZANIM, each ZDB's LDZANIM/CZANIM), hold no bytes and are not scripts.
+    const blob = fsBlob(RETAIL!);
+    try {
+      const source = new IsoAssetSource(blob);
+      const scripts: string[] = [];
+      const failed: string[] = [];
+      const scan = (where: string, bytes: Uint8Array) => {
+        const zar = Zar.parse(bytes);
+        zar.walk((key) => {
+          if (!/\.rdr$/i.test(key.name) || key.size === 0) return;
+          scripts.push(`${where}/${key.name}`);
+          try { parseRdr(zar.data(key)); } catch (e) { failed.push(`${where}/${key.name}: ${String(e)}`); }
+        });
+      };
+      for (const path of await source.list()) {
+        if (!path.startsWith('RUN/') || path.startsWith('RUN/SOUNDS/')) continue;
+        if (/\.(zar|zed)$/i.test(path)) scan(path, await source.read(path));
+        else if (/\.zdb$/i.test(path)) {
+          const bytes = await source.read(path);
+          for (const e of parseZdb(bytes)) {
+            if (/\.(zar|zed)$/i.test(e.name)) scan(`${path}:${e.name}`, bytes.subarray(e.offset, e.offset + e.size));
+          }
+        }
+      }
+      expect(failed).toEqual([]);
+      expect(scripts.length).toBe(736);
+    } finally {
+      (blob as unknown as { close(): void }).close();
+    }
+  }, 600_000);
 });

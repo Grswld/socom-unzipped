@@ -70,6 +70,7 @@ import { GrenadeThrower, type GrenadeItem } from './grenade';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
 import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
+import { indexVerdict } from './discIndex';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
 // The maps directory sits beside the page: `/maps` in dev, `/map-viewer/maps` when served under a prefix.
@@ -578,6 +579,9 @@ let shownFrom: SourceRequest['kind'] = 'http';
 /** The source the wanted map is being read from, whole: the map's sound is asked of it too. */
 let mapSource: SourceRequest = NO_SOURCE;
 
+/** The open source's archives that would not name themselves (`./discIndex`), kept in each map's diagnostics list. */
+let indexDiagnostics: string[] = [];
+
 /** Asks `from` for its map list; the answer switches the picker, and the source, over to it. */
 function askIndex(from: SourceRequest): void {
   wantedIndexFrom = from;
@@ -791,7 +795,17 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   }
   if (message.kind === 'index') {
     if (message.id !== wantedIndex) return;
+    // An archive that would not name itself is said on the disc page's line (`./discIndex`, PL-11); when not one did,
+    // the disc stays unopened, as a disc that will not open at all does.
+    const verdict = indexVerdict(message.maps, message.problems);
+    if (verdict.note) ui.setDiscState(verdict.note, 'error');
+    if (verdict.note && !verdict.open) {
+      wantedIndexFrom = source;
+      reportDecodeFailure(ui, verdict.note);
+      return;
+    }
     source = wantedIndexFrom;
+    indexDiagnostics = verdict.diagnostics;
     if (message.maps.length > 0) ui.hideDiscPage();             // a disc (or the served tree) is open: the map comes
     else ui.setDiscState('the disc image holds no RUN/MP*.ZDB archives: is it SOCOM II?', 'error');
     showMaps(message.maps);
@@ -1481,7 +1495,7 @@ function show(map: LoadedMap): void {
 
   ui.select(map.path);
   ui.setPanelTitle(`${map.name} (${map.archive})`);   // the folded cog's tooltip
-  ui.setDiagnostics(map.diagnostics);
+  ui.setDiagnostics([...indexDiagnostics, ...map.diagnostics]);   // the disc's unreadable archives stay listed
 
   // The status line is written **when the world is on screen**, not when the map is decoded. Everything
   // that waits for a map -- the e2e, the screenshot tools -- waits on this line, and a line that
