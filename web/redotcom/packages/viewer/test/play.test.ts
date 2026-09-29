@@ -12,6 +12,7 @@ import { loadMap, type LoadedMap } from '../src/loadMap';
 import { packGround, WalkMode, EYE_HEIGHT, type GroundData, type Stance } from '../src/walk';
 import { bodySkeleton, bodyVisible, eyePoint, Play, playActions, StanceButton, STANCE_HOLD_S_PLACEHOLDER, stanceOnHold, stanceOnTap, type PlayEvent } from '../src/play';
 import { noInput } from '../src/gamepad';
+import { wrapYawRad } from '../src/yaw';
 import { existsSync } from 'node:fs';
 
 /**
@@ -239,7 +240,7 @@ describe.skipIf(MP2 === null)('the SEAL on the mover (Frostfire\'s fixture)', ()
     play.frame(1 / 60, walk, fly.camera);
     expect(view.group.visible).toBe(true);
     expect(view.group.position.toArray()).toEqual([5, 0, 6]);
-    expect(view.group.rotation.y).toBeCloseTo(-Math.PI / 4, 9);
+    expect(view.group.rotation.y).toBeCloseTo(wrapYawRad(-Math.PI / 4), 9);   // the yaw -45 is stored as 315 (yaw.ts)
     expect(play.animStats()).toMatchObject({ clip: 'seal_stand' });
     play.setFlyToggle(false);
     walk.setMode('fly');

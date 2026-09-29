@@ -22,6 +22,7 @@ import {
   type Command, type ServerEvent, type SimClips, type SimMap, type Role,
 } from '../packages/viewer/src/sim';
 import { NetClient, type NetWalk, type WebSocketLike } from '../packages/viewer/src/net/client';
+import { wrapYaw } from '../packages/viewer/src/yaw';
 import { MatchServer } from '../packages/server/src/server';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -167,7 +168,7 @@ class Bot {
       this.right = r() < 0.6 ? 0 : (r() * 2 - 1) * 0.7;
       this.turn = r() < 0.3 ? 0 : (r() * 2 - 1) * 1.2;             // radians a second, left positive
     }
-    this.yaw = (((this.yaw + (this.turn * 180 / Math.PI) / TICK_HZ) % 360) + 360) % 360;
+    this.yaw = wrapYaw(this.yaw + (this.turn * 180 / Math.PI) / TICK_HZ);
     let buttons = 0;
     let stance = this.stance;
     if (this.dead) buttons |= Button.Action;

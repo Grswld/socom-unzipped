@@ -439,7 +439,7 @@ describe('FlyCamera', () => {
     expect(fly.pose().pitch).toBeCloseTo(0, 4);
 
     fly.lookFrom([0, 0, 0], [100, 0, 0]);
-    expect(fly.pose().yaw).toBeCloseTo(-90, 4);
+    expect(fly.pose().yaw).toBeCloseTo(270, 4);                 // -90, stored canonical in [0, 360) (yaw.ts)
   });
 });
 

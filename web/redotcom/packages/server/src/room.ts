@@ -4,7 +4,7 @@ import {
 } from '@s2u/scene';
 import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
-  DoorSet, doorInReach, MoverSim, overall, ringFor, roundPath, Traversal, Walker, type MagazineRing,
+  DoorSet, doorInReach, MoverSim, overall, ringFor, roundPath, shortTurn, Traversal, Walker, wrapYaw, type MagazineRing,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   ELIMINATED_HOLD_S, eliminationWinner, isMatchOver, MAX_ROUNDS, ROUND_WATCH_S, type Rules,
   EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, ShotCone, targetHeight,
@@ -422,7 +422,7 @@ export class Room {
       p.credit--;
       p.ran++;
       const active = Math.abs(cmd.forward) > ACTIVE_STICK || Math.abs(cmd.right) > ACTIVE_STICK || (cmd.buttons & ~Button.Boost) !== 0
-        || Math.abs(cmd.yaw - p.lastYaw) > 0.5 || Math.abs(cmd.pitch - p.lastPitch) > 0.5;
+        || Math.abs(shortTurn(p.lastYaw, cmd.yaw)) > 0.5 || Math.abs(cmd.pitch - p.lastPitch) > 0.5;
       if (active) p.lastActive = now;
       p.lastYaw = cmd.yaw; p.lastPitch = cmd.pitch;
       if (!p.alive) {
@@ -516,7 +516,7 @@ export class Room {
     sim.seq = after;
     const at: V3 = slot ? [slot.position[0], slot.position[1] + SPAWN_LIFT, slot.position[2]] : [0, 0, 0];
     // The facing: step k points along (sin 45k, -cos 45k); `Pose.yaw` faces (-sin yaw, -cos yaw).
-    const yaw = slot ? ((-slot.step * 45) % 360 + 360) % 360 : 0;
+    const yaw = slot ? wrapYaw(-slot.step * 45) : 0;
     // PL-2: the floor is picked as the walking tick picks it -- the probe from the feet + `PROBE_LIFT` (`FUN_005b0420` ->
     // `FUN_005b5d40` L470230-470240: the highest hit at or under origin + 1; research 86 s6.3) -- on the record lifted a
     // unit (`FUN_002b8100` L158793). From the eye (feet + 16.4) it stood four Frostfire records on an object 12 up.

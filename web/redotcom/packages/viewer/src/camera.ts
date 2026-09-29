@@ -6,6 +6,7 @@ import {
   LookLaw, nudgePitch, ScreenShake, SCREEN, stepPitch, viewOffset, ViewBob,
   type LookOptions, type LookState, type Shake,
 } from './look';
+import { wrapYaw, wrapYawRad } from './yaw';
 
 /** A camera pose in the game's world frame: position in game units, yaw and pitch in degrees. */
 export interface Pose { x: number; y: number; z: number; yaw: number; pitch: number }
@@ -143,6 +144,11 @@ export interface FlyCameraOptions {
  */
 export class FlyCamera {
   readonly camera: PerspectiveCamera;
+  /**
+   * Radians, canonical in [0, 2 pi) (`wrapYawRad`, web research 86 section 3.8): every turn is folded in where it is
+   * stored, so the mover, the body, the climb's steer and the command never see a yaw wound round (SOCOM II's facing is a
+   * rotation and has no winding).
+   */
   private yaw = 0;
   private pitch = 0;
   /** The touch stick's axes, -1..1: x strafes right, y moves along the look direction. */
@@ -274,7 +280,7 @@ export class FlyCamera {
   setPose(pose: Partial<Pose>): void {
     const now = this.pose();
     this.camera.position.set(pose.x ?? now.x, pose.y ?? now.y, pose.z ?? now.z);
-    this.yaw = MathUtils.degToRad(pose.yaw ?? now.yaw);
+    this.yaw = wrapYawRad(MathUtils.degToRad(pose.yaw ?? now.yaw));
     this.pitch = this.clampPitch(MathUtils.degToRad(pose.pitch ?? now.pitch));
     this.velocity.set(0, 0, 0);
     this.fov = this.restFov;
@@ -294,7 +300,7 @@ export class FlyCamera {
 
   pose(): Pose {
     const p = this.camera.position;
-    return { x: p.x, y: p.y, z: p.z, yaw: MathUtils.radToDeg(this.yaw), pitch: MathUtils.radToDeg(this.pitch) };
+    return { x: p.x, y: p.y, z: p.z, yaw: wrapYaw(MathUtils.radToDeg(this.yaw)), pitch: MathUtils.radToDeg(this.pitch) };
   }
 
   /**
@@ -366,7 +372,7 @@ export class FlyCamera {
    * the pitch, the turn rate and the axes, and the screen offset drawn.
    */
   lookState(): LookState {
-    const yaw = MathUtils.radToDeg(this.yaw);
+    const yaw = wrapYaw(MathUtils.radToDeg(this.yaw));
     return {
       lookYaw: yaw, bodyYaw: yaw, pitch: MathUtils.radToDeg(this.pitch), turnRate: this.turnRate,
       axis: this.law.axis(), turning: this.turnRate !== 0, screen: [...this.screen],
@@ -435,7 +441,7 @@ export class FlyCamera {
       const turn = Math.abs(lookX) > Math.abs(arrowTurn) ? -lookX : arrowTurn;
       const tilt = Math.abs(lookY) > Math.abs(arrowTilt) ? lookY : arrowTilt;
       if (turn !== 0 || tilt !== 0) {
-        this.yaw += turn * ARROW_LOOK * dt;
+        this.yaw = wrapYawRad(this.yaw + turn * ARROW_LOOK * dt);
         this.pitch = this.clampPitch(this.pitch + tilt * ARROW_LOOK * dt);
         this.apply();
       }
@@ -544,7 +550,7 @@ export class FlyCamera {
       this.turnRate = rates.yaw;
       const pitch = stepPitch(this.pitch, rates.pitch, LOOK_TICK, this.walkPitch[0], this.walkPitch[1]);
       if (rates.yaw !== 0 || pitch !== this.pitch) {
-        this.yaw += rates.yaw * LOOK_TICK;
+        this.yaw = wrapYawRad(this.yaw + rates.yaw * LOOK_TICK);
         this.pitch = pitch;
         turned = true;
       }
@@ -586,12 +592,12 @@ export class FlyCamera {
       // The viewer's mouse mapping (`LookLaw.mouse`): raw angles now, or counts kept for the stick law's frame.
       const [yaw, pitch] = this.law.mouse(dx, dy);
       if (yaw === 0 && pitch === 0) return;
-      this.yaw += yaw;
+      this.yaw = wrapYawRad(this.yaw + yaw);
       this.pitch = nudgePitch(this.pitch, pitch, this.walkPitch[0], this.walkPitch[1]);
       this.apply();
       return;
     }
-    this.yaw -= dx * LOOK;
+    this.yaw = wrapYawRad(this.yaw - dx * LOOK);
     this.pitch = this.clampPitch(this.pitch - dy * LOOK);
     this.apply();
   }

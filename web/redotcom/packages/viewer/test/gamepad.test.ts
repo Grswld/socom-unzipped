@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { FlyCamera } from '../src/camera';
+import { shortTurn } from '../src/yaw';
 import {
   ACTION_WORDS, mergeInput, noInput, OWNER, PAD_BUTTON, PAD_DEAD_ZONE, PAD_FLAGS, PAD_LAYOUT, PAD_STICK, padInput, padRaw,
   PadWatch, pressedSince, releasedSince, shortSource,
@@ -334,7 +335,7 @@ describe('the right stick on the fly camera: the arrows\' rate, scaled by the pu
     run(fly, SECONDS);
     after(fly);
     const p = fly.pose();
-    return { yaw: p.yaw, pitch: p.pitch };
+    return { yaw: shortTurn(0, p.yaw), pitch: p.pitch };                      // the turn from 0, signed (the yaw is stored in [0, 360))
   };
 
   it('pushed full right turns as far as the right arrow held as long', () => {

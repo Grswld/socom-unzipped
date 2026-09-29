@@ -6,8 +6,9 @@ import { buildGrid, type CollisionOwner, type Grid, type GridParams, type WorldP
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { loadMap } from '../src/loadMap';
 import { simClipsFromBytes } from '../src/simMap';
-import { shortTurn, Traversal } from '../src/traversal';
+import { Traversal } from '../src/traversal';
 import { groundGrid, groundPolygons, Walker, type WalkInput } from '../src/walk';
+import { shortTurn } from '../src/yaw';
 
 /**
  * The climb's facing (web research 86 section 3.8; the owner, 2026-09-29: "when I climbed a box my character model

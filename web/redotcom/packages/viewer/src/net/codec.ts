@@ -1,4 +1,5 @@
 import { Frame, type BodyState, type Command, type CommandBatch, type DoorWire, type OwnState, type Snapshot } from './protocol';
+import { wrapYaw } from '../yaw';
 
 /**
  * The binary frames (web sprint 3, M3): the commands up and the snapshots down, little-endian, quantised where the
@@ -59,7 +60,7 @@ const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > 
 export const qStick = (v: number): number => Math.round(clamp(v, -1, 1) * 127) || 0;
 export const dqStick = (q: number): number => q / 127;
 /** A yaw, degrees, to 1/182 (0..65535 for a turn); read back in 0..360. */
-export const qYaw = (deg: number): number => Math.round((((deg % 360) + 360) % 360) * (65536 / 360)) & 0xffff;
+export const qYaw = (deg: number): number => Math.round(wrapYaw(deg) * (65536 / 360)) & 0xffff;
 export const dqYaw = (q: number): number => (q * 360) / 65536;
 /** A pitch, degrees, -90..90 to 1/100. */
 export const qPitch = (deg: number): number => Math.round(clamp(deg, -90, 90) * 100) || 0;

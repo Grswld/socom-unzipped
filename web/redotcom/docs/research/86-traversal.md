@@ -378,6 +378,16 @@ where the head-on climb's do, and the ladder head at any winding mounts straight
 arithmetic on the same yaw; the server's is the quantised command's). Pinned in `test/climbFacing.test.ts` (Frostfire,
 and a synthetic box and ladder that run without the disc).
 
+**The yaw's one arithmetic** (round 6, `yaw.ts`) [read, viewer]. The game's facing is the actor's rotation (the
+quaternion `piVar10[0x14..0x17]`, 468642-468645), so it has no winding; the viewer's degrees are kept equivalent by two
+functions and nothing else: `shortTurn` (above, moved from `traversal.ts`) for every difference of two yaws -- the look
+rate (`main.ts` `gunFrame`, the server's `ShotCone`), the turn rate (`walk.ts`), the snapshot interpolation
+(`net/client.ts`), the room's idle test (`room.ts`, which read 0.1 -> 359.9 as a 359.8 turn) -- and `wrapYaw`, the
+canonical [0, 360) the wire already reads a yaw back in (`net/codec` u16 a turn), for every stored yaw: the page camera
+(`camera.ts`, radians [0, 2 pi) at each write), the mover's look (`walk.ts`), the play snapshot (`moverSnapshot`), the
+spawn's facing and the bots. Spun two turns either way the walk gives the same look, aim, round, command bytes and climb
+as never turned (`test/yawWinding.test.ts`).
+
 ## 4. The peek
 
 ### 4.1 Input and conditions [read]

@@ -10,6 +10,7 @@ import {
 } from './climb';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { CROUCH_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './stature';
+import { shortTurn } from './yaw';
 import { BODY_RADIUS, rootY as stanceRootY, TICK, type Stance, type TraversalHooks, type Walker, type WalkInput } from './mover';
 
 /**
@@ -260,20 +261,6 @@ export function leanClip(stance: Stance, side: -1 | 1): string {
 /** The facing that looks at a ladder (-normal), as `Pose.yaw` degrees: forward is (-sin, -cos). */
 function yawFacing(nx: number, nz: number): number {
   return (Math.atan2(nx, nz) * 180) / Math.PI;
-}
-
-/**
- * The signed short turn from yaw `from` to yaw `to`, degrees in [-180, 180), whatever either's winding (the page's
- * camera yaw is never wrapped). The game turns by vectors -- `FUN_005b2d20` (decomp 468637-468680) takes the angle as
- * `acos` of the facing's dot with the facing to reach and its side from their cross product's y -- so its turn is always
- * the short one. The old `((to - from + 540) % 360) - 180` came out at -180 or under for `from` more than 540 over `to`
- * (JavaScript's `%` keeps the sign), so a SEAL whose look had gone twice round to the left spun the long way to the ledge,
- * `FUN_005b2d20`'s 46 ticks ran out mid-spin and the clip played with the body up to 153 degrees off it (research 86
- * section 3.8).
- */
-export function shortTurn(from: number, to: number): number {
-  const d = ((((to - from) % 360) + 360) % 360);
-  return d >= 180 ? d - 360 : d;
 }
 
 /** The mover's forward and right on the ground at a yaw (`walk.ts`'s convention). */

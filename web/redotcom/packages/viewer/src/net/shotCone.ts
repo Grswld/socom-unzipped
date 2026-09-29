@@ -4,6 +4,7 @@ import { CAM_BACK, CAM_FAR, CAM_MARGIN, localCamera, lookHeight, scopeEyeHeight,
 import { MAX_PITCH_RATE } from '../look';
 import { rootY, SCOPED_STICK, type Stance } from '../mover';
 import { Button, type Command } from './protocol';
+import { shortTurn, wrapYaw } from '../yaw';
 
 /**
  * The accuracy cone on the match server (OWNER-3 of the launch review, 2026-09-29: "port the server-side accuracy cone
@@ -218,7 +219,7 @@ export class ShotCone {
     }
     let yawRate = 0, pitchRate = 0;
     if (this.last) {
-      const dy = ((cmd.yaw - this.last.yaw + 540) % 360) - 180, dp = cmd.pitch - this.last.pitch;
+      const dy = shortTurn(this.last.yaw, cmd.yaw), dp = cmd.pitch - this.last.pitch;
       if (Math.abs(dy) < LOOK_JUMP && Math.abs(dp) < LOOK_JUMP) { yawRate = (dy * DEG) / TICK; pitchRate = (dp * DEG) / TICK; }
     }
     this.last = { yaw: cmd.yaw, pitch: cmd.pitch };
@@ -372,7 +373,7 @@ export function cameraLook(b: CameraBody): { eye: V3; look: V3 } {
 /** The yaw and pitch (degrees) whose `cameraLook` passes through `point`: a body turned to look at it. */
 export function faceToward(b: Omit<CameraBody, 'yaw' | 'pitch'>, point: readonly number[]): { yaw: number; pitch: number } {
   const dx = point[0]! - b.feet[0]!, dz = point[2]! - b.feet[2]!;
-  const yaw = ((Math.atan2(-dx, -dz) / DEG) % 360 + 360) % 360;
+  const yaw = wrapYaw(Math.atan2(-dx, -dz) / DEG);
   // Looking up lowers the eye and raises the look: the gap between the look and the line to the point falls with the
   // pitch, so halve the range on its sign.
   let lo = -89, hi = 89;
