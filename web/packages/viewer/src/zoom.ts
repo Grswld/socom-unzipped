@@ -11,7 +11,8 @@ import type { WeaponRecord } from '@s2u/scene';
  *   divisor in state 4 (`FUN_005be660`).
  * - **Zoom in** (d-pad Up, `FUN_005445b0`, jump table 0x65c360): 0 -> 1; 1 -> 5 when the weapon has two or more
  *   zoom modes, else 4 (night maps: 1 -> 3 first); 3 or 4 -> 5 (two or more modes); s >= 5 -> s + 1 while
- *   `s - 3 < NumZoomModes`. No wrap: the last level stays.
+ *   `s - 3 < NumZoomModes`. No wrap: the last level stays. A sidearm stops at first person (`zoomsPastFirst`, the
+ *   owner's ruling of 2026-09-29).
  * - **Zoom out** (d-pad Down, `FUN_00544400`, jump table 0x65c320): 1, 2 -> 0; 3, 4 -> 1; 5 -> 1 (3 at night); s > 5
  *   -> s - 1.
  * - **What drops it**: a second round of a pull while scoped (`FUN_005c5340`: state 1); a weapon switch from the night
@@ -26,6 +27,18 @@ import type { WeaponRecord } from '@s2u/scene';
  */
 
 export type ZoomView = 'third' | 'first' | 'nightvision' | 'binoculars' | 'scope';
+
+/**
+ * Whether a weapon zooms past first person: not a sidearm (`ID` 4-30, the reticle set 0 of `FUN_005be300` -- the Mark
+ * 23). The owner's ruling (2026-09-29): the Mark 23 has no scope and no magnified view. [reading: `FUN_005445b0`'s case
+ * 1 sends a weapon of fewer than two `ZoomMode`s to the 9x view (state 4), which the page drew with `ret_binocs` at 9x;
+ * the owner's play of the console has none for the pistol, and his word wins.] Its zoom stops at first person (and the
+ * night vision on a night map, which is the goggles, not a scope).
+ */
+export function zoomsPastFirst(weapon: WeaponRecord): boolean {
+  const id = weapon.id & 0xff;
+  return !(id >= 4 && id <= 0x1e);
+}
 
 /** `FUN_005448a0`'s magnifications: third person, the first-person views, the 9x view. */
 export const ZOOM_THIRD = 1.0;
@@ -46,6 +59,7 @@ export class Zoom {
   setWeapon(weapon: WeaponRecord): void {
     this.weapon = weapon;
     if (this.s === 3) this.set(1);                // FUN_005c4b10 478813-478833: a switch drops the night vision only
+    if (this.s >= 4 && !zoomsPastFirst(weapon)) this.set(1);   // the owner's ruling: no scope on the sidearm
   }
 
   /** Night maps: first person zooms into the night vision first (`DAT_0045c380 + 0x5dc`). */
@@ -90,6 +104,7 @@ export class Zoom {
     else if (s === 1) next = this.night ? 3 : n >= 2 ? 5 : 4;
     else if (s === 3 || s === 4) next = n >= 2 ? 5 : s;
     else if (s >= 5 && s <= 11 && s - 3 < n) next = s + 1;
+    if (next >= 4 && !zoomsPastFirst(this.weapon)) next = s;   // the sidearm: first person is as far as it goes
     this.set(next);
     return this.s;
   }

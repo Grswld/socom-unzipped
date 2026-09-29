@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RIFLE, HELD_RIFLE } from '@s2u/scene';
-import { Zoom, ZOOM_FIRST } from '../src/zoom';
+import { DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM } from '@s2u/scene';
+import { Zoom, ZOOM_FIRST, zoomsPastFirst } from '../src/zoom';
 
 /** The view states and the zoom (research 84 §7): `FUN_005445b0` in, `FUN_00544400` out, `FUN_005448a0` the set. */
 
-const pistol = { ...DEFAULT_RIFLE, zoomModes: [1.5] };               // every sidearm: NumZoomModes 1
+const oneMode = { ...DEFAULT_RIFLE, zoomModes: [1.5] };              // a rifle-class weapon of NumZoomModes 1
 const sniper = { ...DEFAULT_RIFLE, zoomModes: [1.5, 6, 12] };        // the M40A1
 
 describe('the zoom steps', () => {
@@ -27,18 +27,40 @@ describe('the zoom steps', () => {
     expect(z.target()).toBe(2.5);
   });
 
-  it('a sniper steps 6 then 12; a pistol, with one zoom mode, goes to the 9x view', () => {
+  it('a sniper steps 6 then 12; a rifle-class weapon with one zoom mode goes to the 9x view', () => {
     const s = new Zoom(sniper);
     s.zoomIn(); s.zoomIn();
     expect(s.target()).toBe(6);
     expect(s.zoomIn()).toBe(6);
     expect(s.target()).toBe(12);
     expect(s.zoomOut()).toBe(5);
-    const p = new Zoom(pistol);
+    const p = new Zoom(oneMode);
     p.zoomIn();
     expect(p.zoomIn()).toBe(4);
     expect([p.view(), p.target()]).toEqual(['binoculars', 9]);
     expect(p.lookScale()).toBeCloseTo((1 / 1.5) * 0.2, 12);        // ZoomMode0, x 0.2 in state 4
+  });
+
+  it('the Mark 23 has no scope (the owner, 2026-09-29): its zoom stops at first person, the mouse toggles first and third', () => {
+    expect(zoomsPastFirst(HELD_SIDEARM)).toBe(false);
+    expect(zoomsPastFirst(HELD_RIFLE)).toBe(true);
+    expect(zoomsPastFirst(oneMode)).toBe(true);
+    const p = new Zoom(HELD_SIDEARM);
+    expect(p.zoomIn()).toBe(1);
+    expect(p.zoomIn()).toBe(1);                                      // not the 9x view, not a scope
+    expect([p.view(), p.target(), p.scoped()]).toEqual(['first', ZOOM_FIRST, false]);
+    expect(p.zoomOut()).toBe(0);
+    expect([p.cycle(), p.cycle(), p.cycle()]).toEqual([1, 0, 1]);
+    const night = new Zoom(HELD_SIDEARM, true);                      // the goggles are not a scope: still there
+    night.zoomIn();
+    expect(night.zoomIn()).toBe(3);
+    expect(night.zoomIn()).toBe(3);
+    // Scoped with the rifle, the pistol taken up: out of the scope (the kit's swap drops it too, `FUN_005c4b10`).
+    const z = new Zoom(HELD_RIFLE);
+    z.zoomIn(); z.zoomIn();
+    expect(z.state()).toBe(5);
+    z.setWeapon(HELD_SIDEARM);
+    expect(z.state()).toBe(1);
   });
 
   it('night maps: first person zooms into the night vision, then the scope', () => {
