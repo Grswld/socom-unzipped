@@ -188,7 +188,9 @@ export type ClientEvent =
   /** A throw (research 85): the grenade's kind, launch point and velocity as the client's `launchGrenade` made them. */
   | { type: 'throw'; seq: number; kind: string; from: [number, number, number]; velocity: [number, number, number] }
   /** The scoreboard asked for (Select/Tab): the server answers with `score`. */
-  | { type: 'score' };
+  | { type: 'score' }
+  /** W3.R13, research 91 section 17: "VOTE RETAIN:REMOVE" on a teammate, toggled; `remove` false retains. */
+  | { type: 'vote'; target: number; remove: boolean };
 
 /** A row of the scoreboard (research 87 section 12, 91). */
 export interface ScoreRow { id: number; name: string; team: Team; kills: number; deaths: number; score: number; alive: boolean; ping: number }
@@ -220,7 +222,15 @@ export type ServerEvent =
   /** A kill, for the message window (research 87 section 14, 91): `how` names the game's line. */
   | { type: 'kill'; killer: number | null; victim: number; weapon: string | null; how: KillHow }
   | { type: 'score'; rows: ScoreRow[]; timeLeft: number | null }
-  | { type: 'chat'; text: string };
+  | { type: 'chat'; text: string }
+  /** W3.R13: the votes against the recipient (" Voting: You have %d votes against you.", 0x3f26c0). */
+  | { type: 'votes'; count: number }
+  /** W3.R13: removed by its team's vote (UIMnLOC 539) or idle; the socket closes after. */
+  | { type: 'kicked'; reason: 'vote' | 'idle' }
+  /** W3.R11: a round's end, and the match's when `matchOver` (research 91d for the screens). */
+  | { type: 'roundOver'; round: number; winner: Team | null; wins: { seal: number; terrorist: number }; matchOver: boolean }
+  /** W3.R11: a round begins (its number, its length in seconds, the match's wins so far). */
+  | { type: 'roundStart'; round: number; seconds: number; wins: { seal: number; terrorist: number } };
 
 /** Which of the game's kill lines (research 91b section 3). */
 export type KillHow = 'weapon' | 'grenade' | 'suicide' | 'fall' | 'teamkill';

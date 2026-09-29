@@ -543,3 +543,85 @@ Neither note could read `.data` (no ELF). Deduplicated from both notes.
 | `SUPPRESSION_ROUND_END_PLACEHOLDER` (91b) | what ends a SUPPRESSION round (elimination, clock) and which side wins on time; `mp_45_sec_clock`, `mp_x_sec_clock` created only (L149578-149586) | open |
 | `AUTOCOMM_TEXT_PLACEHOLDER` (91b) | text of comms 0x27/0x28/0x44; searched `FUN_005e7f20`; HudCLOC 60555-60561 candidates | open |
 | `GHOST_ROW_PLACEHOLDER` (91b) | that `+0xfd1` (rows hidden from the scoreboard) is the ghost flag; `FUN_0022de60` L80608; `FUN_00223970` L76148 copies `+0xfd1` to `+0xfd2` | open (91a's `+0xd2` bit 0x10000 ghost test is a related but different field) |
+
+## 17. The kicks: the vote to remove, and no idle kick (research 91c, 2026-09-29)
+
+
+Written 2026-09-29. Read-only research for the owner's request "a full team vote to kick option pairing the original". Sources: `analysis/socom2_game.elf.decomp.c` (cited `FUN_x Lnnn`, `Lnnn` = its line; strings by address, e.g. `0x3f26c0`), `.strings.txt`, the disc's `RUN/READERC.ZAR` (`UIMnLOC`/`HudCLOC` entries cited by their `_NNN_` index, as research 91 does), reCOM (`recom/`, SOCOM 1 code and SOCOM 1 disc data) where the decompilation is silent, and the console frames `parity/s4_pcsx2/`. Paths are relative to the handoff root ``.
+
+Vocabulary. **Lobby record** = one of the 24 per-slot records at `DAT_004414c4[slot*2]` (slot = `+0xfc8`); `+0x0` team word (`0x40000001` / `0x80000100`, which is SEALs depends on `DAT_004412d8`; spectators have bit `0x10000`), `+0x4` account id, `+0x48` "this slot voted to remove ME", `+0x49` "I voted to remove this slot", `+0x4a` "this slot voted to eject the spectators". `DAT_00441448`/`DAT_00441450` = the two team head counts, recomputed by `FUN_002c4500` L165605. Host = `DAT_0045a0c0`, online = `DAT_0045a0c1`. **TCM** = the in-game tactical command (radio) menu, `TCM.tif` (research 87).
+
+### Verdict in one paragraph
+
+SOCOM II has a **per-player, team-only, strict-majority vote to remove** ("VOTE RETAIN:REMOVE") and a separate **vote to eject all spectators** ("VOTE ALL", > 60% of players). Neither is a "full team" (unanimous) vote. Any living team member opens the in-game TCM, TEAMMATES > PLAYER n > toggles his vote on one teammate; the vote is a standing toggle (no timer, no cooldown, no "vote started" prompt, no yes/no poll). Each vote is sent only to the target's console, which keeps the tally itself, prints "Voting: You have %d votes against you." and tests `votes > teamSize/2`. The removal itself ("YOU HAVE BEEN KICKED FROM THIS GAME", then back to SOCOM II Online) and the rejoin ban ("You have been banned from that game") are in the disc's data and the Medius error path, but the round-end step that applies the kick is script-side and only visible in SOCOM 1's copy of the same script (believed, not shown for SOCOM II). No host-only kick was found. No idle/AFK kick exists.
+
+### 1. Vote-kick (players voting a player out)
+
+| rule | value | citation |
+|---|---|---|
+| exists | yes, in-game only (TCM), online player mode | `FUN_00232bc0` L83283 (mode 1 menu, L83575-83640); mode chosen at L57441-57448 (0 SP, 1 online player, 2 online spectator = RADIO only) |
+| who may vote | any online player who is not a spectator (spectator TCM has only RADIO; mode 2 L83641-83644) | L57441-57446 (`FUN_002c2fa0` = local is spectator -> mode 2) |
+| who can be voted on | only **teammates**: PLAYER 1..8 enumerates other actors of type 2 whose team flags `+200` overlap the voter's, not flag `0x20000`, not spectators | `FUN_0022f5b0` L81442-81473; label = teammate name `+0x14`, `FUN_0022f6e0` L81475-81509 |
+| how a vote is cast | toggle: local `+0x49` flipped, "Voter" packet (slot, 1 byte on/off) sent **only to the target's console** | `FUN_0022f3c0` L81354-81373; `FUN_002ba140` L159785-159800 (msg `DAT_00440e80`, name "Voter" `0x3f2420`, registered L159131) |
+| toggle label | "VOTE REMOVE" (`0x3e5ce0`) when not yet voted, "VOTE RETAIN" (`0x3e5cd0`) when voted | `FUN_0022f440` L81375-81396 |
+| menu entry text | "VOTE RETAIN:REMOVE" `0x3e6370`, help "Vote to Retain or Remove the selected player" `0x3e6390`; sibling "MUTE ON:OFF" `0x3e63c0` | L83616-83631; handlers L83803 |
+| TCM category (data) | "Vote" / "Vote people on and off your team"; command "OFF/Back ON" `CMD_MP_VOTE_OFF` "Vote a player out of the game" (MP_ONLY) | `READERC.ZAR` command table; SOCOM 1 same in `recom/data/s1/common/zrdr/orders.rdr` L40, L225-227; id 0x25 `FUN_0058ed60` L449779-449788 |
+| HUD texts for it | HudCLOC 60536 "ON", 60537 "OFF", 60538 "RESCIND VOTE AGAINST THIS PLAYER", 60539 "VOTE THIS PLAYER OUT" | `READERC.ZAR` HudCLOC (no decomp reference found) |
+| who counts | the **target's** console: sets `record[voter].+0x48`, counts all set flags | `FUN_002ba040` L159747-159781 (`FUN_002c3a20` L165161, `FUN_002c3920` L165087) |
+| message to the target | " Voting: You have %d votes against you." `0x3f26c0`, in the message window | L159765-159766 |
+| threshold | **strict majority of the target's own team, target included**: `votes > sameTeamCount / 2.0` (8-man team: 5; 6: 4; 4: 3; 3: 2; 2: never, since the one teammate is 1 vote, not > 1) | `FUN_002c3550` L164913-165085 (both team branches identical) |
+| "full team" / unanimous | **no** -- strict majority only | same |
+| after each vote | target broadcasts "Alert" {1, votesBefore, votesAfter}; receivers, when before == after, store the target's account id + code 2 in `DAT_0044fb48`/`DAT_0044fb50` (the stats-report block, cleared by `FUN_002fab80` L198556) -- purpose not proven | L159770-159780 (`DAT_00440eb8`); `FUN_002b98b0` L159438; `FUN_002f9690` L197811 |
+| duration / expiry | none: the vote is a standing flag until the voter toggles it or leaves (a joining slot's `+0x48`/`+0x49` are cleared) | `FUN_002c5830` L166356-166377 |
+| cooldown | none found | -- |
+| "a vote has started" prompt, yes/no poll | none: no broadcast of a vote to the team, only the target is told | strings search (§4) |
+| when the kick applies | **believed**: at the round-end screen, script `HaveBeenBannedFromGame` -> `BanSelfFromGame` -> `dlgNetBanned.rdr` (the victim removes himself); the pass test `FUN_002c3550` is the only no-argument bool of this shape. Its one visible call (L159767) discards the result, so the script table (in `.data`) is the likely caller | reCOM (SOCOM 1 disc data) `recom/data/s1/common/dialog/dlgMultiplayerRound.rdr` L2209-2250 (`ExitOnStart`), `dlgMultiplayerFinalReally.rdr` L3036-3043; strings "HaveBeenBannedFromGame" `0x3edcf0`, "BanSelfFromGame" `0x3edd50` |
+| kicked player's screen | UIMnLOC 539 "YOU HAVE BEEN KICKED FROM THIS GAME", 541 "ABORTING MISSION", 540 "RETURNING TO SOCOM II ONLINE..."; disconnects, waits 4 s, back to the lobby (TRIANGLE skips) | `READERC.ZAR` UIMnLOC; layout and script: SOCOM 1 `recom/data/s1/common/dialog/dlgNetBanned.rdr` (DisconnectFromGameServer, WAIT 4, SWITCHMENU dlgWorldOfSOCOM) |
+| rejoin | refused by the server: JoinGame error -972 (`MediusPlayerBanned`) -> event "MP_BANNED_FROM_GAME" -> UIMnLOC 443 "You have been banned from that game. Please choose another. CONTINUE." (444 "BANNED") | `FUN_002edba0` L190405-190433; error names L194432-194433 (`0x3f5320`); `0x3f4880`, `0x3e2410` dialog events L50400, L54576 |
+| other teams see | nothing specific (no kill-feed style line found for a kick) | -- |
+| host direct kick | **none found**: no kick/remove entry in the game lobby (host frame shows ARMORY / SWITCH TEAMS / READY only), no host-only UI, no kick string | frames `A_54_gamelobby2.png` (host), `B_44_joined.png`; strings search |
+
+### 1.1 Spectator eject vote ("VOTE ALL")
+
+| rule | value | citation |
+|---|---|---|
+| menu | TCM SPECTATORS (`0x3e63e0` "Spectator controls") > "VOTE ALL ON:OFF" `0x3e6410` "Vote to Retain or Remove all players"; shown only while a spectator is present; labels "VOTE ALL REMOVE" `0x3e5cc0` / "VOTE ALL RETAIN" `0x3e5cb0` | L83632-83633; `FUN_0022f210` L81282-81310; handlers L83805 |
+| cast | toggle `DAT_00412ff8`; "Spec Vote" (`0x3f2428`, `DAT_00440e88`) broadcast to all and applied locally | `FUN_0022f0f0` L81252-81280; `FUN_002b9b60` L159557-159570; registered L159135 |
+| texts | " %s voting against spectators: %d votes against." `0x3f25e0`; " %s voting for spectators: %d votes against." `0x3f2620` | `FUN_002b9bd0` L159575-159596 |
+| threshold (host decides) | votes > 0.6 x (SEALs + Terrorists) | `FUN_002c2e30` L164516-164544 |
+| effect | host broadcasts "Reject" (`0x3f23b8`, `DAT_00440e90`); all print "Spectators EJECTED from this game." `0x3f2650`; `MaxSpectatorsValve` (`0x3f2680`) set to 0 (no new spectators; join then fails "Too many spectators" `0x3f24b0`); each spectator gets `dlgNetBanned.rdr` (`0x3f26a0`) | L159598-159612; `FUN_002b9d80` L159617-159635 |
+
+### 2. Idle / inactivity kick
+
+| item | value | citation |
+|---|---|---|
+| AFK / no-input kick | **none found** | strings and READERC search (§4) |
+| "CHRSND_PLAYER_IDLE" `0x65bd20` | an idle chatter sound id, not a timer | strings |
+| "inactive" `0x65f9f0` | animation/object flag name, `FUN_0032f0d0` lookup L485174 | -- |
+| lobby ready auto-start | when >= 80% of players are ready (both teams non-empty) "MP_EIGHTY_READY" `0x3f2a40` fires; valves `mp_45_sec_clock` `0x3f1110` / `mp_x_sec_clock` `0x3f1120` (game `+0x30`/`+0x34`, L149578-149586); frame: "The READY button will be available in 30 seconds" | `FUN_002c40c0` L165503-165507; frame `A_53_gamelobby.png` |
+| abandoned game | a player leaving with < 3 left, or host with only spectators left: `dlgNetAbandoned.rdr` ("ABANDONED") | `FUN_002bc530` L161130-161140; `FUN_002c4500` L165673-165677 |
+| between-round screen timeout | SOCOM 1: 90 s on the round/final screen -> `dlgNetError.rdr` (network stall guard, not idle) | reCOM `dlgMultiplayerRound.rdr` L2277-2285 |
+| network timeouts | UIMnLOC 440 "Timeout Failure"; DNAS -617; "MediusErrorSessionInactive" `0x668268` (server session) | READERC; strings |
+
+### 3. The UI
+
+| item | value | citation |
+|---|---|---|
+| where | in-game TCM (tactical command / radio menu), not the pause menu or the game lobby | `FUN_00232bc0` L83575-83644; builder `FUN_002344e0` L83717-83806 |
+| online-player TCM tree | TACTICAL ORDERS, TAUNTS, RADIO (ACTIVE CHANNEL, RADIO ONOFF), **TEAMMATES** (Teammate controls) > PLAYER 1..8 (named) > VOTE RETAIN:REMOVE, MUTE ON:OFF; **SPECTATORS** > VOTE ALL ON:OFF; MESSAGES (CUSTOM MSG 1-5) | strings `0x3e5dd0`-`0x3e6550`; L83575-83639 |
+| spectator TCM | RADIO only | L83641-83644 |
+| gate | TCM items need the player alive (`+0xe1` bit 4) and not a spectator | `FUN_0022f810` L81511-81526 |
+| feedback | right-side value text of the entry ("VOTE REMOVE"/"VOTE RETAIN"), target's message-window line | L81375-81396; L159765 |
+
+### 4. Placeholders (not found)
+
+- **The SOCOM II round-end kick script.** The SOCOM II dialog `.rdr` scripts are not in the handoff (only `READERC.ZAR`); the kick-at-round-end flow is from SOCOM 1's `dlgMultiplayerRound.rdr`. The UI command table that binds "HaveBeenBannedFromGame"/"BanSelfFromGame" to code is in `.data` (no ELF); grep of `0x3edcf0`/`0x3edd50` in the decomp: no hits.
+- **What `BanSelfFromGame` sends** (a Medius ban-list call is implied by error -972 on rejoin; the request itself not found). Whether the ban lasts for the game's life: assumed.
+- **Purpose of the "Alert" {1, before, after} broadcast** and `DAT_0044fb48/50` (account id, code 2): not traced.
+- **HudCLOC 60536-60539** users: no decomp reference (`0xec78`-`0xec7b` grep empty); likely the SOCOM 1-style TCM command text.
+- **Threshold when a team shrinks mid-vote**: recomputed from the live team count each vote (`FUN_002c3550`), not re-checked on leave.
+- Searched: strings `kick`, `vote`, `Vote`, `VOTE`, `boot`, `ban`, `banned`, `remove`, `eject`, `expel`, `reject`, `majority`, `idle`, `inactive`, `timeout`, `timed`, `afk`, `away`, `heartbeat`, `abandon`, `seconds`, `ready` in `.strings.txt` and `READERC.ZAR`; decomp references of every hit; reCOM `src/` (`zseal.h` L672-675 has `m_vote_tally`, `m_voted_against`, `m_local_voted_against`, unused) and `data/s1`; frames A_44-A_55, B_41-B_44 (no pause-menu frame exists in `s4_pcsx2`).
+
+### 5. For the recreation (owner's "full team vote")
+
+The original is a strict team majority, target included, with no poll and no timer. "Full team" would be a deviation: unanimous = every other teammate (`votes == sameTeamCount - 1`). Pairing the original means: teammates-only, standing toggle per voter, tally shown to the target, pass at `votes > teamSize/2`, applied at round end, kicked player sees UIMnLOC 539/541/540 and is refused on rejoin with UIMnLOC 443. The spectator eject (> 60% of players, MaxSpectators -> 0) is a separate feature.

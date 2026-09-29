@@ -184,10 +184,16 @@ W3.R1-R7 above. New rulings are `W3.R8` onward, dated, with the reason; the owne
   a guest is the game's own `"Player%d"` default, with a random four-digit number in place of the network index; a
   duplicate takes the lowest free `(2)`, `(3)` suffix within the 30 (the game's server refused duplicates; a refusal
   would strand a guest, so the spec's deterministic resolution wins).
-- **W3.R13 (2026-09-29, the owner) — the kicks.** An **idle kick**: a player who sends no input for the room's kick
-  time (a server setting held to 3-5 minutes, default 4; the owner's "3-5 minute kick timer") is moved out -- to the
-  back of the spectators' queue when anyone is waiting, else disconnected -- so an idle player never holds a slot
-  from the queue. A **team vote to kick**, "pairing the original": the game's own vote rules (research 91c) where
-  they exist, each value cited; where the game has none, a named placeholder -- a teammate starts it against a
-  teammate, it passes only when every other player on that team votes yes (the owner's "full team vote"), and it
-  lapses after 30 s (`VOTE_KICK_*_PLACEHOLDER`).
+- **W3.R13 (2026-09-29, the owner) — the kicks.** An **idle kick** (the owner's addition: the original has none,
+  research 91c section 9): a player who sends no input for the room's kick time (a server setting held to 3-5
+  minutes, default 4; the owner's "3-5 minute kick timer") is moved out -- to the back of the spectators' queue when
+  anyone is waiting, else disconnected -- so an idle player never holds a slot from the queue. A **team vote to kick,
+  as the original's** (research 91c; the owner's "full team vote to kick option pairing the original"): any living
+  player toggles "VOTE RETAIN:REMOVE" on a teammate from the radio menu's TEAMMATES page (`FUN_0022f3c0` L81354); the
+  vote stands until switched back or the voter leaves; the target sees " Voting: You have %d votes against you."
+  (0x3f26c0, `FUN_002ba040` L159747); it passes on **more votes than half the target's team, the target counted**
+  (`FUN_002c3550` L164913: 5 of 8, 3 of 4, never in a team of 2) and takes effect at the round's end [inferred from
+  SOCOM 1's round-end script]; the kicked player sees UIMnLOC 539 "YOU HAVE BEEN KICKED FROM THIS GAME" and is refused a
+  rejoin to that match with UIMnLOC 443 "You have been banned from that game. Please choose another." (by address,
+  until the match ends: `VOTE_BAN_SCOPE_PLACEHOLDER`). A unanimous vote was the first reading of "full team"; the
+  original's majority is what "pairing the original" asks, and the owner can overturn this by number.
