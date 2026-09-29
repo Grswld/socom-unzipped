@@ -3,11 +3,11 @@ import {
   type RdrNode, type TexDetail, type TexEntry,
   type AssetSource, type ZarKey, type ZdbEntry,
 } from '@s2u/archive';
-import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
+import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba, type TextureRecord } from '@s2u/gs';
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
   buildGrid, collisionLines, DEFAULT_GRID_PARAMS, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter,
-  parseGlobalLighting, parseGridParams, parseSceneGraph, parseWorldRoot, placeClutter, type LodBand,
+  parseGlobalLighting, parseGridParams, parseMaterialPalette, parseSceneGraph, parseWorldRoot, placeClutter, type EnvMaterial, type LodBand,
   placeInstances, placementCells, resolveChunk, transformPoint, worldCollision,
   type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
   type PlacedModel, type SceneNode,
@@ -63,6 +63,11 @@ export type LoadedMesh = MeshData & {
    */
   scroll: [number, number] | null;
   /**
+   * The environment-map pass over this draw (`EnvMaterial.index + 1`, the visual's `vparams` byte 7), or 0/absent for
+   * none: the water, glass and icy terrain whose `Material_Palette` entry names a reflection texture.
+   */
+  reflect?: number;
+  /**
    * A world part's grid cells (`x + z * cellsX` of `LoadedMap.grid`): every cell the placements merged into
    * it are filed in, as the engine's grid files them (`placementCells`) -- the engine order draws it at the
    * first ring that holds one (`./engineOrder`). The union of the placements' own cells, not the cells of
@@ -98,6 +103,18 @@ export interface LoadedMap {
     cells?: number[][];
   }[];
   textures: Record<string, Rgba>;
+  /**
+   * A mipmapped texture's own mip levels, 1 to `MXL`, by texture name: the records its `MIPTBP1` names by `gsaddr`
+   * in the same library (`rockwall_mip1.tif`, `mipdetail.tif`), decoded as the base is. The GS samples level n from
+   * them; a generated chain would differ -- a detail texture's levels are authored transparent, the pass's fade.
+   * Absent for a texture whose levels did not all resolve (it falls back to a generated chain).
+   */
+  textureMips?: Record<string, Rgba[]>;
+  /**
+   * The world root's reflection materials (`parseMaterialPalette`): what the environment-map pass of a draw whose
+   * `reflect` names one draws with. Only those whose texture decoded; empty on most maps.
+   */
+  envMaterials?: EnvMaterial[];
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
    * GS state the record's bind packet sets -- blend equation, alpha test, filtering, wrap. See
@@ -268,7 +285,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const cells = placement.cells(p);
     meshes.forEach((mesh, i) => {
       const order = orderOf(p, i);
-      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit || mesh.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll, cells });
+      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit || mesh.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll, cells, reflect: mesh.reflect });
     });
     for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0), cells);
   }
@@ -288,7 +305,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const alternate = placement.alternate(first);
     const geometry: LoadedMesh[] = decoded.meshes.map((mesh, i) => ({
       ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit || mesh.lit,
-      order: orderOf(first, i), orderEnd: orderOf(first, i), cull: mesh.cull, alternate, scroll: placement.scroll(first),
+      order: orderOf(first, i), orderEnd: orderOf(first, i), cull: mesh.cull, alternate, scroll: placement.scroll(first), reflect: mesh.reflect,
     }));
     if (geometry.length === 0) continue;
     const matrices = new Float32Array(group.length * 16);
@@ -311,6 +328,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
+  const textureMips: Record<string, Rgba[]> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
   const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...grenade.models.flatMap((m) => m.parts)]
@@ -318,10 +336,13 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     .concat(body ? bodyTextureNames(body) : []);
   // W1.6: the detail pass each drawn texture binds, and its texture decoded with the rest.
   const detail = detailBindings(texManifest(bytes, toc, notes), drawn.filter((n): n is string => n !== null));
+  // The reflection materials some draw names (the env pass), their textures decoded with the rest.
+  const envNamed = new Set([...parts, ...props.flatMap((p) => p.parts)].map((m) => m.reflect ?? 0).filter((e) => e > 0));
+  const usedEnv = envPalette(bytes, toc, stem, notes).filter((e) => envNamed.has(e.index + 1));
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name)];
+    const wanted = [...drawn, ...Object.values(detail).map((d) => d.name), ...usedEnv.map((e) => e.texture)];
     let decoded = 0;
     for (const name of wanted) {
       step('textures', decoded++, wanted.length);
@@ -342,6 +363,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
         const decoded = decodeTexture(record, palettes);
         for (const d of decoded.diagnostics) notes.add(`texture ${name}: ${d}`);
         textures[name] = decoded.rgba;
+        const mips = mipLevels(txr, record, palettes, (line) => notes.add(`texture ${name}: ${line}`));
+        if (mips) textureMips[name] = mips;
         textureFlags[name] = {
           bilinear: record.bilinear, transparent: record.transparent, graded: isGraded(decoded.rgba),
           opaque: isOpaque(decoded.rgba), gs: record.gs,
@@ -374,7 +397,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     // A lit part (`PlacedModel.lit`) keeps its own draw as well: the rig is applied per vertex, and a
     // merge cannot be half lit.
     const scroll = part.scroll ? `|s${part.scroll[0]},${part.scroll[1]}` : '';
-    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${part.cull ? 'C' : ''}${part.alternate ? 'A' : ''}${scroll}|${blended ? `b${part.order}` : `r${run}`}`;
+    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${part.cull ? 'C' : ''}${part.alternate ? 'A' : ''}${scroll}|e${part.reflect ?? 0}|${blended ? `b${part.order}` : `r${run}`}`;
     if (blended) run++;
     const list = byGroup.get(group);
     if (list) list.push(part);
@@ -390,6 +413,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     cull: list[0]!.cull,
     alternate: list[0]!.alternate,
     scroll: list[0]!.scroll,
+    reflect: list[0]!.reflect ?? 0,
     cells: unionCells(list.map((part) => part.cells ?? [])),
   })).sort((a, b) => a.order - b.order);
 
@@ -418,6 +442,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     world,
     props,
     textures,
+    textureMips,
+    envMaterials: usedEnv.filter((e) => e.texture in textures),
     textureFlags,
     detail,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
@@ -455,6 +481,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   if (map.ground) out.push(map.ground.points.buffer, map.ground.fields.buffer);
   for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
+  for (const levels of Object.values(map.textureMips ?? {})) for (const rgba of levels) out.push(rgba.data.buffer);
   if (map.body) out.push(...bodyTransferables(map.body));
   for (const rgba of [map.reticle?.fixed, map.reticle?.floating, map.reticle?.accuracy, map.bulletMark]) if (rgba) out.push(rgba.data.buffer);
   for (const rgba of Object.values(map.hud ?? {})) out.push(rgba.data.buffer);
@@ -874,6 +901,16 @@ function lods(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, Lod
   }
 }
 
+/** The world root's reflection materials (`parseMaterialPalette`), or none. */
+function envPalette(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): EnvMaterial[] {
+  try {
+    return parseMaterialPalette(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+  } catch (e) {
+    notes.add(`material palette: ${say(e)}`);
+    return [];
+  }
+}
+
 /** The scrolling textures of the world root, by node name, or none. */
 function textureScroll(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Map<string, [number, number]> {
   try {
@@ -1022,6 +1059,43 @@ export interface LoadedLineGroup {
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
+/** Per library: its texture records by `gsaddr`, the space `TEX0.TBP0` and `MIPTBP1` both name them in. */
+const recordsByAddr = new WeakMap<Zar, Map<number, ZarKey>>();
+
+/**
+ * A mipmapped texture's own levels (`LoadedMap.textureMips`): `MIPTBP1`'s pointers resolved to the records beside it,
+ * each decoded and required to be exactly half the level above. Null when the texture asks for none, or when a level
+ * is missing or the wrong size -- the caller then lets the renderer generate the chain, with a diagnostic.
+ */
+function mipLevels(txr: Zar, record: TextureRecord, palettes: PaletteTable, note: (line: string) => void): Rgba[] | null {
+  const tbps = record.gs?.mipmaps ? record.gs.mipTbp : undefined;
+  if (!tbps || tbps.length === 0) return null;
+  let byAddr = recordsByAddr.get(txr);
+  if (!byAddr) {
+    byAddr = new Map();
+    for (const key of txr.find('textures')?.children ?? []) {
+      const texdat = txr.child(key, 'texdat');
+      if (!texdat) continue;
+      const data = txr.data(texdat);
+      if (data.length >= 12) byAddr.set(new DataView(data.buffer, data.byteOffset).getUint32(8, true), key);   // 36 §5: gsaddr
+    }
+    recordsByAddr.set(txr, byAddr);
+  }
+  const levels: Rgba[] = [];
+  for (const [i, tbp] of tbps.entries()) {
+    const key = byAddr.get(tbp);
+    const texdat = key ? txr.child(key, 'texdat') : undefined;
+    if (!key || !texdat) { note(`mip level ${i + 1} at gsaddr ${tbp} is not in its library; the chain is generated`); return null; }
+    const level = decodeTexture(parseTextureRecord(key.name, txr.data(texdat)), palettes).rgba;
+    if (level.width !== record.width >> (i + 1) || level.height !== record.height >> (i + 1)) {
+      note(`mip level ${i + 1} (${key.name}) is ${level.width}x${level.height}, not half the level above; the chain is generated`);
+      return null;
+    }
+    levels.push(level);
+  }
+  return levels;
+}
+
 type Decoded = ReturnType<ReturnType<typeof decoder>>;
 
 /**
@@ -1064,14 +1138,14 @@ function shadeKey(d: Decoded): string {
   return `${h.toString(16)}:${parts.join(',')}`;
 }
 
-function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: (MeshData & { cull: boolean; lit: boolean })[]; lines: LineStrip[] } {
+function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: (MeshData & { cull: boolean; lit: boolean; reflect: number })[]; lines: LineStrip[] } {
   return (p) => {
     const entry = library.get(p.modelName);
     if (!entry) {
       notes.add(`model ${p.modelName}: in the scene graph but not in any MDL archive`);
       return { meshes: [], lines: [] };
     }
-    const meshes: (MeshData & { cull: boolean; lit: boolean })[] = [];
+    const meshes: (MeshData & { cull: boolean; lit: boolean; reflect: number })[] = [];
     const lines: LineStrip[] = [];
     for (const [i, chunk] of p.chunks.entries()) {
       const at = resolveChunk(entry, chunk);
@@ -1085,7 +1159,7 @@ function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { mes
         // the `_L` light: a chunk stored as `<key>_L` is a node `hookupVisuals` marks dynamically lit
         // (`vis_main.cpp:100-109`, note 72 line 116), and its node flags do not say so -- none of Night
         // Stalker's eight `_L` chunks is on a `NODE_FLAGS_LIT` node. Every other chunk keeps `p.lit`.
-        meshes.push(...parts.meshes.map((mesh) => ({ ...mesh, cull: p.cull[i] ?? true, lit: at.lit })));
+        meshes.push(...parts.meshes.map((mesh) => ({ ...mesh, cull: p.cull[i] ?? true, lit: at.lit, reflect: p.material?.[i] ?? 0 })));
         lines.push(...parts.lines);
       } catch (e) {
         notes.add(`chunk ${p.modelName}/${chunk}: ${say(e)}`);

@@ -1,5 +1,5 @@
 import type { TexDetail } from '@s2u/archive';
-import type { GsState } from '@s2u/gs';
+import type { GsState, Rgba } from '@s2u/gs';
 
 /**
  * What the viewer knows about one texture: the two record flags it always read, the two facts it reads
@@ -257,4 +257,60 @@ export function gsMipLod(gs: GsState | null | undefined): GsMipLod | null {
 /** The level `gsMipLod` gives at a depth (the clip `w`, in world units): what the shader computes per fragment. */
 export function gsMipLevel(lod: GsMipLod, depth: number): number {
   return Math.min(lod.max, Math.max(0, Math.log2(depth) * lod.scale + lod.k));
+}
+
+/**
+ * The full mip chain a renderer needs, to 1x1: the base, the disc's own levels (`LoadedMap.textureMips`, what the GS
+ * samples up to `MXL`), then a 2x2 box filter of the last disc level for the rest. The GS never samples past `MXL`
+ * (`gsMipLevel` clamps there); the tail exists only because a WebGL texture with an incomplete chain samples black.
+ */
+export function mipChain(base: Rgba, disc: readonly Rgba[]): Rgba[] {
+  const chain = [base, ...disc];
+  let last = chain[chain.length - 1]!;
+  while (last.width > 1 || last.height > 1) {
+    const w = Math.max(1, last.width >> 1), h = Math.max(1, last.height >> 1);
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) {
+      let sum = 0, n = 0;
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const sx = Math.min(last.width - 1, x * 2 + dx), sy = Math.min(last.height - 1, y * 2 + dy);
+        sum += last.data[(sy * last.width + sx) * 4 + c]!; n++;
+      }
+      data[(y * w + x) * 4 + c] = Math.round(sum / n);
+    }
+    last = { width: w, height: h, data };
+    chain.push(last);
+  }
+  return chain;
+}
+
+/**
+ * The environment-map pass VU1 command `0x34`/`0x36` computes per vertex (research 15 §6.2), on the CPU, as the
+ * shader does it (`world.ts`, `envPass`): `V` the vertex from the eye, `N` its normal, `R = V - 2 (V.N) N` the
+ * reflection, turned into the block's basis -- rows (0,1,0), (0,0,1), (1,0,0) on the one live block, so
+ * `R' = (R.z, R.x, R.y)` -- and
+ *
+ * - `R'.z >= 0` (the reflection rises): `st = R'.xy / |V| * uvScale + 0.5`, the rim 1;
+ * - `R'.z < 0`: the rim `max((R'.z + rimOffset) * rimSlope, 0)`, `R'.z` clamped to 0 and `R'` renormalised for `st`.
+ *
+ * The pass's colour is the material's own (`EnvMaterial.rgba`, 128 unity, modulating the texel), its alpha
+ * `(1 + a) * vertexAlpha * rim` in the GS's 0..128 -- `vertexAlpha` the vertex colour's `w` over 128, as the VU's
+ * `* 1/128` has it. Returned here with the alpha over 128, 1 opaque.
+ */
+export function envVertex(
+  v: readonly [number, number, number], n: readonly [number, number, number], vertexAlpha: number,
+  m: { rgba: readonly [number, number, number, number]; uvScale: number; rimOffset: number; rimSlope: number },
+): { st: [number, number]; alpha: number } {
+  const d = v[0] * n[0] + v[1] * n[1] + v[2] * n[2];
+  const r = [v[0] - 2 * d * n[0], v[1] - 2 * d * n[1], v[2] - 2 * d * n[2]];
+  let x = r[2]!, y = r[0]!, z = r[1]!;
+  let rim = 1;
+  let inv = 1 / Math.hypot(v[0], v[1], v[2]);
+  if (z < 0) {
+    rim = Math.max((z + m.rimOffset) * m.rimSlope, 0);
+    z = 0;
+    inv = 1 / Math.hypot(x, y, z);
+  }
+  x *= inv; y *= inv;
+  return { st: [x * m.uvScale + 0.5, y * m.uvScale + 0.5], alpha: ((1 + m.rgba[3]) * vertexAlpha * rim) / 128 };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeAlpha, decodeClamp, decodeTest, decodeTex1, parseTextureRecord } from '../src';
+import { decodeAlpha, decodeClamp, decodeMiptbp1, decodeTest, decodeTex1, parseTextureRecord } from '../src';
 import { parseZdb, zdbMember, Zar } from '@s2u/archive';
 import { fixture } from '../../archive/test/fixtures';
 
@@ -56,6 +56,16 @@ describe('TEX1', () => {
   it('reads L and a positive K', () => {
     const word = BigInt((5 << 6) | (2 << 19)) | (40n << 32n);
     expect(decodeTex1(word)).toMatchObject({ lodK: 2.5, lodL: 2 });
+  });
+});
+
+describe('MIPTBP1', () => {
+  it('reads TBP1-3 at bits 0, 20 and 40, as many as MXL asks for', () => {
+    // Vigilance's rockwall.tif: TBP1 7 (TBW 2), TBP2 8 (TBW 1) -- its _mip1 and _mip2 records.
+    const word = 7n | (2n << 14n) | (8n << 20n) | (1n << 34n);
+    expect(decodeMiptbp1(word, 2)).toEqual([7, 8]);
+    expect(decodeMiptbp1(word, 1)).toEqual([7]);
+    expect(decodeMiptbp1(word, 0)).toEqual([]);
   });
 });
 
