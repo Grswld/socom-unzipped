@@ -37,6 +37,25 @@ export function weaponScriptFromArchive(bytes: Uint8Array): RdrNode {
   return parseRdr(zar.data(key));
 }
 
+/**
+ * The game data's sound names no bank holds, and the name they meant -- **a deliberate departure from the retail game**
+ * (the owner's playtest, 2026-09-29; research 81 §7, 89 §11). The casings' `shell_eject` zAnims name the metal bounce
+ * `.BUL_CASE_METAL`; no bank of the 115 and no `sounds.rdr` entry carries it, `.BUL_CAS_METAL` is in 16 banks beside
+ * `.BUL_CAS_STONE`, `_DIRT`, `_SAND` and `_WOOD`. The console looks the misspelt name up and plays nothing.
+ */
+export const SOUND_NAME_FIXES: Readonly<Record<string, string>> = {
+  '.BUL_CASE_METAL': '.BUL_CAS_METAL',
+  // Not a misspelling but a sound the disc does not have: `grenade_hit_asphalt` calls `.GREN_ASPHALT`, which no bank and
+  // no zAnim of the 22 maps holds (research 81 §7) -- silent on the console. ASPHALT's own SOILS entry steps, crawls
+  // and lands with the stone's sounds, so the viewer bounces it with the stone's.
+  '.GREN_ASPHALT': '.GREN_STONE',
+};
+
+/** A sound name as the viewer resolves it: the data's slips mended (`SOUND_NAME_FIXES`). */
+export function fixSoundName(name: string): string {
+  return SOUND_NAME_FIXES[name] ?? SOUND_NAME_FIXES[name.trim()] ?? name;
+}
+
 /** The zAnim command that plays a sound: set 0, command 30 (`_zanim_cmd_hdr`'s type 0x1e). */
 export const ZANIM_PLAY_SOUND = 30;
 /** The zAnim command that starts another animation by name: set 0, command 45 (0x2d). */
@@ -110,7 +129,11 @@ export function zanimSounds(archives: readonly ZAnimSetsLike[], payload?: ZAnimP
               const b = payload?.(set.name, anim.name, c.offset, 8) ?? null;
               if (!b || b.length < 8) continue;
               const target = anim.names[c.cmd === ZANIM_START_ANIM ? b[7]! : b[4]!];
-              if (target && target !== 'NA') (c.cmd === ZANIM_START_ANIM ? info.calls : info.stops).push(target);
+              if (!target || target === 'NA') continue;
+              // CALL_ANIMATION (45, `FUN_0025d550`: the name at +7) naming a sound rather than an animation --
+              // `grenade_hit_asphalt` calls `.GREN_ASPHALT` -- is taken as that sound.
+              if (c.cmd === ZANIM_START_ANIM && SIGIL.test(target)) info.sounds.push({ sound: target, flags: 0, node: null });
+              else (c.cmd === ZANIM_START_ANIM ? info.calls : info.stops).push(target);
             }
           }
         }

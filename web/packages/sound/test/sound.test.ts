@@ -3,7 +3,7 @@ import { readZarMembers, Zar } from '@s2u/archive';
 import { fixture } from '../../archive/test/fixtures';
 import {
   bankTone, callbackSounds, closestOnSegment, decodeVag, findReverbPresets, landingHurts, passingSound, reverbImpulse,
-  SOCOM_REVERB_MODE, zanimEmitters, zanimSounds, FootfallClock, footfallMoving, footstepSound, GRAIN, HARD_LANDING_SOUND,
+  SOCOM_REVERB_MODE, zanimEmitters, zanimSounds, renderLoop, renderLoopAtLeastOneVoice, globalRegister2, FootfallClock, footfallMoving, footstepSound, GRAIN, HARD_LANDING_SOUND,
   landingClass, landingSounds, landSpeeds, makeVolume, materialsFromArchive, note2Pitch, panDegrees, parseBankFile,
   parseSoils, rangeGain, renderSound, SampleCache, sdNote2Pitch, soundHash, soundNameHash, soundParams,
   soundScriptFromArchive, voiceLevel, weaponScriptFromArchive, weaponSounds, type Material, type SoundBank,
@@ -226,6 +226,23 @@ describe.skipIf(!store)('BNKSTORE.ZAR (81 §1)', () => {
     const fx = bank('MP2_fx.bnk');
     const dry = renderSound(fx, fx.names.get('.M4A1')!, new SampleCache(fx.vag), { random: seeded(2) });
     expect(dry.sendLeft).not.toBeNull();
+  });
+  it('renders the crickets over a long loop: their first chirp can wait 16.7 s (a local register counts the burst)', () => {
+    const am = bank('MP73_am.bnk');
+    const i = am.names.get('~CRICKET_1') ?? am.names.get('~CRICKET_1 ')!;
+    const short = renderLoop(am, i, new SampleCache(am.vag), 12, 1, { random: () => 3900 / 32768 });
+    expect(short.voices).toBe(0);
+    const long = renderLoopAtLeastOneVoice(am, i, new SampleCache(am.vag), 12, 1, 40, { random: () => 3900 / 32768 });
+    expect(long.voices).toBeGreaterThan(0);
+    expect(long.sampleRate).toBe(24_000);
+    expect(long.left.length).toBe(40 * 24_000);
+    expect(long.sendLeft).toBeNull();
+  });
+  it('maps the camera height through the mission elevation into global register 2', () => {
+    expect(globalRegister2(100, [100, 142])).toBe(-128);
+    expect(globalRegister2(142, [100, 142])).toBe(127);
+    expect(globalRegister2(130, [142, 100])).toBe(54);
+    expect(globalRegister2(0, [50, 50])).toBe(-128);
   });
   it('reads a bank out of the store by range', async () => {
     const source = {
