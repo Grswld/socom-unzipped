@@ -44,8 +44,8 @@ export const PAD_DEAD_ZONE = 0.15;
 export const PAD_PRESS = 0.5;
 
 /** The actions that are on or off: each is one or more buttons. */
-export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'leanLeft' | 'leanRight' | 'mode';
-export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'leanLeft', 'leanRight', 'mode'];
+export type PadFlag = 'jump' | 'crouch' | 'stance' | 'boost' | 'fire' | 'aim' | 'zoom' | 'leanLeft' | 'leanRight' | 'mode' | 'swap2' | 'inventory';
+export const PAD_FLAGS: readonly PadFlag[] = ['jump', 'crouch', 'stance', 'boost', 'fire', 'aim', 'zoom', 'leanLeft', 'leanRight', 'mode', 'swap2', 'inventory'];
 export type PadAction = 'move' | 'look' | PadFlag;
 
 /**
@@ -62,6 +62,8 @@ export interface Input {
   lookX: number; lookY: number;
   jump: boolean; crouch: boolean; stance: boolean; boost: boolean; fire: boolean; aim: boolean; zoom: boolean;
   leanLeft: boolean; leanRight: boolean; mode: boolean;
+  /** The game's `SwapWeapon2` (L2) and `Inventory` (R2): the kit's slots, walking only (`./grenade`). */
+  swap2: boolean; inventory: boolean;
 }
 
 /** The input at rest: every axis 0, every action off. */
@@ -69,6 +71,7 @@ export function noInput(): Input {
   return {
     moveX: 0, moveY: 0, lookX: 0, lookY: 0,
     jump: false, crouch: false, stance: false, boost: false, fire: false, aim: false, zoom: false, leanLeft: false, leanRight: false, mode: false,
+    swap2: false, inventory: false,
   };
 }
 
@@ -87,6 +90,10 @@ const HOST_INPUT = 'third_party/ps2recomp/ps2xRuntime/src/lib/socom2_host_input.
 const CROUCH_H = 'third_party/ps2recomp/ps2xRuntime/include/runtime/host_crouch_shortcut.h';
 const LAUNCHER = 'third_party/ps2recomp/ps2xShared/src/launcher_config.cpp';
 const STICKS = `${MAPPING_H}:25-27; ${HOST_INPUT}:297, :336`;
+/** The grenades workstream's note on the kit's slots and the controls that select them. */
+const GRENADES = 'web/docs/research/85-grenades.md §9';
+/** The disc's control map: `READERC.ZAR/controller.rdr`, `ControllerConfigs` `Default`. */
+const CONTROLLER_RDR = 'READERC.ZAR controller.rdr (Default)';
 /** A binding the owner stated in words (the play-test of walk mode), not one the repository documents on its own. */
 export const OWNER = 'owner, 2026-09-28';
 
@@ -145,15 +152,24 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'never prone. Down in the fly camera',
   },
   {
-    control: 'L2', action: 'leanLeft', documented: 'assumed',
-    note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"); the repository names the game\'s L2 the '
-      + 'second-weapon swap (launcher_config.cpp:572, host_crouch_shortcut.h:13-14). No lean in the viewer yet, so the '
-      + 'panel lists it in neither mode',
+    control: 'L2', action: 'swap2', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
+    note: 'the game\'s L2: SwapWeapon2, the second-weapon swap (controller.rdr\'s Default; launcher_config.cpp:572, '
+      + 'host_crouch_shortcut.h:13-14) -- a press takes up the kit slot assigned to L2 (FUN_00594cf0 0x5957d8). The '
+      + 'viewer assigns it the M67 (the game\'s default slot is the sidearm it does not carry); again, the rifle',
   },
   {
-    control: 'R2', action: 'leanRight', documented: 'assumed',
-    note: 'W2.R5\'s reading of socom2_host_input.cpp:297 ("L2/R2 ... lean"). No lean in the viewer yet, so the panel '
-      + 'lists it in neither mode',
+    control: 'R2', action: 'inventory', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
+    note: 'the game\'s R2: Inventory (controller.rdr\'s Default), the menu of the kit\'s slots (FUN_0021bda0). The viewer '
+      + 'steps to the next item it carries -- rifle, M67, HE -- one press each, in place of the menu',
+  },
+  {
+    control: 'Left', action: 'leanLeft', documented: 'assumed',
+    note: 'the traversal workstream\'s peek (the coordinator, 2026-09-28: d-pad Left and Right peek); W2.R5 had read '
+      + 'socom2_host_input.cpp:297 ("L2/R2 ... lean"), but the game\'s L2 and R2 are the weapon swap and the inventory',
+  },
+  {
+    control: 'Right', action: 'leanRight', documented: 'assumed',
+    note: 'the traversal workstream\'s peek to the right (the coordinator, 2026-09-28), as d-pad Left is the left',
   },
   {
     control: 'R3', action: 'boost', documented: 'assumed',
@@ -180,6 +196,8 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   leanLeft: { walk: null, fly: null },
   leanRight: { walk: null, fly: null },
   mode: { walk: 'fly (as G)', fly: 'walk (as G)' },
+  swap2: { walk: 'weapon swap 2: the M67 (4)', fly: null },
+  inventory: { walk: 'inventory: next item (1 rifle, 4 M67, 5 HE)', fly: null },
 };
 
 /** A citation with each path cut to its file's name, for the panel: `docs/INSTALL.md §6` is `INSTALL.md §6`. */
