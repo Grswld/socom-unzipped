@@ -22,7 +22,7 @@ import type { PlayClips } from './play';
 import { NetPage, netSettings } from './netPage';
 import { DEATH_CLIPS } from './net/deaths';
 import { aimPoint } from './playerCamera';
-import { explosionShake } from './look';
+import { explosionShake, MAX_PITCH_RATE } from './look';
 import { mergeInput, noInput, PAD_LAYOUT, PadWatch, padInput, pressedSince, type Input, type PadFlag } from './gamepad';
 import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
@@ -263,6 +263,7 @@ function setZoom(state: number): void {
   const before = zoom.state();
   zoom.set(state);
   if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
+  accuracy.enterView(before, zoom.state());                   // FUN_005b9180: the scope's +0.5 exertion
 }
 /**
  * The zoom's steps, walking and with the rifle up: `in` d-pad Up (`FUN_005445b0`), `out` d-pad Down (`FUN_00544400`),
@@ -273,6 +274,7 @@ function stepZoom(how: 'in' | 'out' | 'cycle'): number {
   const before = zoom.state();
   if (how === 'in') zoom.zoomIn(); else if (how === 'out') zoom.zoomOut(); else zoom.cycle();
   if (before >= 4 && zoom.state() < 4) accuracy.leaveScope();
+  accuracy.enterView(before, zoom.state());
   return zoom.state();
 }
 /**
@@ -687,9 +689,18 @@ function gunFrame(dt: number, walking: boolean): void {
       }
     }
     lastLook = { yaw: pose.yaw, pitch: pose.pitch };
+    // The exertion's throttles (research 84 section 17): the move stick after the scope's x 0.2 (+0x240/+0x244), the
+    // turn axis from the turn rate (turn_maxrate x +0x23c, research 83), the raw pitch stick from the pitch rate
+    // (a reading: the game's is the pad's axis before the 1.72 and the zoom; the mouse has none).
+    const wish = fly.groundWish(), slow = zoom.moveScale();
+    const sticks = {
+      forward: wish.forward * slow, right: wish.right * slow,
+      turn: yawRate / SEAL_TUNING.turnMaxRate,
+      pitch: Math.min(1, (Math.abs(pitchRate) * zoom.magnification()) / MAX_PITCH_RATE),
+    };
     accuracy.update(dt, {
       stance: snap.stance, velocity: [snap.vx, snap.vy, snap.vz], airborne: snap.airborne,
-      yawRate, pitchRate, zoomState: zoom.state(),
+      yawRate, pitchRate, zoomState: zoom.state(), sticks,
     });
   }
   zoom.update(dt);

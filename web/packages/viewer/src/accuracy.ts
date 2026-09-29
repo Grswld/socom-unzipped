@@ -63,6 +63,40 @@ export interface AccuracyInput {
   pitchRate: number;
   /** The view state (`body+0x200`; `./zoom`). */
   zoomState: number;
+  /**
+   * The controller's throttles this tick, as the exertion reads them (absent: all 0, the sticks at rest): the move
+   * stick `forward` (`+0x240`, `MoveLong`) and `right` (`+0x244`, `Strafe`) after the scope's x 0.2, the turn
+   * (`+0x23c`: the turn rate is `turn_maxrate` 2 x it, research 83) and the raw pitch stick (`controller+0x138`).
+   */
+  sticks?: Sticks;
+}
+
+/** The throttles `FUN_005966a0` leaves on the controller (`[2]`, `[3]`, `[4]`, `+0x138`), copied to the body at 418613. */
+export interface Sticks { forward: number; right: number; turn: number; pitch: number }
+
+/** `FUN_00550ef0` 418358-418365: the exertion's raise a tick, `|+0x240| + 0.1 |+0x23c| + |+0x244| + 0.05 |pitch|`. */
+export function exertionRaise(s: Sticks | undefined): number {
+  if (!s) return 0;
+  return Math.abs(s.forward) + 0.1 * Math.abs(s.turn) + Math.abs(s.right) + 0.05 * Math.abs(s.pitch);
+}
+
+/**
+ * `FUN_0058a820`: the body's motion class for the exertion's pull -- 1 still (|v|^2 < 0.25), 2 moving, 3 running
+ * (|v|^2 >= 400, 20 units a second). Stances 0-2 only; any other body state is 1.
+ */
+export function motionClass(velocity: Vec3): 1 | 2 | 3 {
+  const v2 = velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2];
+  return v2 < 0.25 ? 1 : v2 < 400 ? 2 : 3;
+}
+
+/**
+ * `FUN_005448a0` 410960-411012: entering the 9x view (4) or a scope (5-12) calls `FUN_005b9180`, which adds 0.5 to the
+ * exertion -- except a scope entered from state 6.
+ */
+export function enterRaises(before: number, after: number): boolean {
+  if (after === before) return false;
+  if (after === 4) return true;
+  return after >= 5 && after <= 12 && before !== 6;
 }
 
 /** A round's aim error, tangents (`body+0x5d4/+0x5d8/+0x5dc`): the offset of the reticle and the cone's half side. */
@@ -182,6 +216,8 @@ export interface AccuracyState {
   sway: [number, number];
   /** Rounds fired in the current pull (`kit+0x818`). */
   burst: number;
+  /** The exertion (`*body+0xeb0`, 0..1): 1 at spawn, raised by the sticks, a round and the scope, decaying still. */
+  exertion: number;
 }
 
 export class Accuracy {
@@ -196,6 +232,8 @@ export class Accuracy {
   private burst = 0;
   private stance: WeaponStanceName = 'stand';
   private carry = 0;
+  /** `*body+0xeb0`: `{cur 1.0, target 0, mode 0}` at the body's creation (decomp 419589-419598). */
+  private exertion = 1;
 
   constructor(private weapon: WeaponRecord, private fov: Fov = MAP_FOV) {
     this.swayRate = this.rates();
@@ -217,6 +255,7 @@ export class Accuracy {
     this.offX = this.offY = this.swayX = this.swayY = 0;
     this.burst = 0;
     this.carry = 0;
+    this.exertion = 1;
   }
 
   /** The trigger pressed or let go: the pull's round count starts again (`FUN_005c0ae0`: trigger up or rising). */
@@ -248,11 +287,46 @@ export class Accuracy {
     if (this.size < this.target) this.size = Math.min(this.size + s.dilateMove, this.target);
     else if (this.size > this.target) this.size = Math.max(this.size - s.constrict * dt, this.target);
     // FUN_005b9280: only while scoped (`FUN_005b9990` || `FUN_005b90f0`: view state >= 4).
-    if (kickTicks(input.zoomState)) this.sway(dt, s, input);
+    // FUN_00550ef0 418340-418390, before the sway: the exertion's raise, then its pull toward 0.
+    this.exert(dt, s, input);
+    if (kickTicks(input.zoomState)) this.sway(dt, input);
   }
 
-  private sway(dt: number, s: WeaponStance, input: AccuracyInput): void {
-    // The sway (DAT_00650940 = 1), at full steadiness (`body+0xeb0` = 1: the limit is the whole SniperDistLimit).
+  /** `FUN_00578150`: `cur + x`, clamped to 1; nothing when `cur` is already 1. */
+  private raise(x: number): void {
+    if (this.exertion !== 1) this.exertion = this.exertion + x <= 1 ? this.exertion + x : 1;
+  }
+
+  private exert(dt: number, s: WeaponStance, input: AccuracyInput): void {
+    this.raise(exertionRaise(input.sticks));
+    // The pull (the mode 0 branch, 418375-418388): `cur += -rate x dt x (0 - cur)`, rate `SniperDecayRate` (negative:
+    // a decay), or `1 - |+0x240|` while running (FUN_0058a820 class 3: a climb); within the step (or 0.005) of 0, 0.
+    if (this.exertion === 0) return;
+    const rate = motionClass(input.velocity) === 3 ? 1 - Math.abs(input.sticks?.forward ?? 0) : s.sniperDecay;
+    const step = -rate * dt;
+    this.exertion += step * (0 - this.exertion);
+    if (Math.abs(this.exertion) <= (step > 0.005 ? step : 0.005)) this.exertion = 0;
+  }
+
+  /** A view change (`FUN_005448a0`): the 9x view or a scope entered adds 0.5 to the exertion (`FUN_005b9180`). */
+  enterView(before: number, after: number): void {
+    if (enterRaises(before, after)) this.raise(0.5);
+  }
+
+  /**
+   * The sway's limits now, pixels: `SniperDistLimit x (0.8 cur + 0.2)` (`FUN_005b9280` 472137, 472158). The game's y
+   * limit is also 0 below 0.1, but only inside the `cur > 0.2` branch: dead, not ported.
+   */
+  swayLimit(stance: WeaponStanceName): [number, number] {
+    const s = this.weapon.stances[stance], k = 0.8 * this.exertion + 0.2;
+    return [s.swayLimitX * k, s.swayLimitY * k];
+  }
+
+  private sway(dt: number, input: AccuracyInput): void {
+    // The sway (DAT_00650940 = 1): its limits narrowed by the exertion (`*body+0xeb0`, `swayLimit`).
+    // Only while the exertion is over 0.2 and the x limit is not 0 (472138); below it the sway stops where it is.
+    const [limitX, limitY] = this.swayLimit(input.stance);
+    if (!(this.exertion > 0.2) || limitX === 0) return;
     const rate = this.swayRate[input.stance];
     const step = (pos: number, limit: number, axis: 0 | 1): number => {
       if (limit === 0) return pos;
@@ -261,8 +335,8 @@ export class Accuracy {
       if (p > limit) { rate[axis] = -pp; p = limit; } else if (p < -limit) { rate[axis] = -pp; p = -limit; }
       return p;
     };
-    this.swayX = step(this.swayX, s.swayLimitX, 0);
-    this.swayY = step(this.swayY, s.swayLimitY, 1);
+    this.swayX = step(this.swayX, limitX, 0);
+    this.swayY = step(this.swayY, limitY, 1);
   }
 
   /**
@@ -273,6 +347,7 @@ export class Accuracy {
   round(zoomState: number, stance: WeaponStanceName): RoundOutcome {
     const s = this.weapon.stances[stance];
     this.burst++;
+    this.raise(0.35);                                        // FUN_005c5340 479407: every round
     const kick = kickStarts(zoomState, this.burst);
     const dropZoom = zoomState > 4 && !kick;                 // FUN_005448a0(body, 1)
     if (zoomState < 5 && zoomState !== 4) {
@@ -320,7 +395,7 @@ export class Accuracy {
   state(): AccuracyState {
     return {
       size: this.size, target: this.target, offset: [this.offX, this.offY], sway: [this.swayX, this.swayY],
-      burst: this.burst,
+      burst: this.burst, exertion: this.exertion,
     };
   }
 
