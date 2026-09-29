@@ -22,6 +22,7 @@ import type { GrenadeStats, KitItem, ThrowInfo } from './grenade';
 import type { ThrowPoseStats } from './throwPose';
 import type { WhiteOutState } from './flash';
 import type { TraversalStats } from './traversalPage';
+import type { DoorPage } from './doorPage';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -166,8 +167,12 @@ export interface ViewerHook {
    * prompt, the peek value, the water's depth, the map's ladder count and the last events; null in fly mode.
    */
   traversal(): TraversalStats | null;
-  /** The action button (Cross; X on the keyboard): the climb offered, the ladder's slide. False in fly mode. */
+  /** The action button (Cross; X on the keyboard): a door under the reticle, the climb offered, the ladder's slide. False in fly mode. */
   action(): boolean;
+  /** DOORS (`./doorPage`): each door's node and state, the door under the reticle, the last action on one. */
+  doors(): ReturnType<DoorPage['stats']>;
+  /** DOORS: the action on door `i` from the feet, the reticle aside; false when refused (mid-swing, locked, none). */
+  useDoor(i: number): boolean;
   /** The peek held, as the d-pad (Q / E) would hold it: -1 left, 1 right, 0 off. */
   setLean(side: -1 | 0 | 1): void;
   /**

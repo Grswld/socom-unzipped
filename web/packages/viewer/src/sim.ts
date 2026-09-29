@@ -23,6 +23,7 @@ export { oneShotSeconds, airBands, SEAL_ANIMS } from './locomotion';
 export { RifleKick } from './rifleKick';
 export { openingStand } from './stand';
 export * from './simMap';
+export { DoorSet, doorInReach, pickDoor, readDoors, PHASE_REST, VALVE_LOCKED, type DoorHooks, type DoorSpec } from './doors';
 export * from './net/protocol';
 export * from './net/codec';
 export * from './net/body';

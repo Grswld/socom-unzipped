@@ -42,6 +42,8 @@ export const ZCMD = {
 } as const;
 
 export type Vec3 = [number, number, number];
+/** A quaternion as the engine stores one: x, y, z, then w. */
+export type Quat4 = [number, number, number, number];
 
 /** A little-endian view over one command's bytes; reads past the end answer 0. */
 export class CmdBytes {
@@ -59,6 +61,7 @@ export class CmdBytes {
   i32(o: number): number { return this.has(o, 4) ? this.view.getInt32(o, true) : 0; }
   f32(o: number): number { return this.has(o, 4) ? this.view.getFloat32(o, true) : 0; }
   vec3(o: number): Vec3 { return [this.f32(o), this.f32(o + 4), this.f32(o + 8)]; }
+  quat(o: number): Quat4 { return [this.f32(o), this.f32(o + 4), this.f32(o + 8), this.f32(o + 12)]; }
 }
 
 /**
@@ -139,8 +142,11 @@ export type EffectCondition =
    * the comparison.
    */
   | { kind: 'range'; flags: number; node: number; other: number; rangeSquared: number }
-  /** `VALVE` (61) as a test: the valve against the operand (`operation` 1 !=, 2 ==, 3 >, 4 <, 5 >=, 6 <=). */
-  | { kind: 'valve'; valve: string; operation: number; operand: number }
+  /**
+   * `VALVE` (61) as a test: the valve against the operand (`operation` 1 !=, 2 ==, 3 >, 4 <, 5 >=, 6 <=); `context`, the
+   * animation's own valve (flag bit 0: a door's, research 92) rather than the one named.
+   */
+  | { kind: 'valve'; valve: string; operation: number; operand: number; context?: true }
   | { kind: 'other'; cmd: number };
 
 /** The node numbers the engine resolves itself (`FUN_0026f4e0`, decomp 118145): the animation's instance, the caller's node. */
@@ -162,8 +168,14 @@ export type EffectOp =
    * sets the euler angles / offset at +8, flag 2 adds them, flag 4 keeps the node's own.
    */
   | { op: 'rotate' | 'translate'; node: number; ref: number; flags: number; xyz: Vec3 }
-  /** `OBJECT_MOTION_FROM_TO` (22) as the flashes use it: a node's scale from `from` to `to` over `seconds` (research 89 §4). */
-  | { op: 'fromTo'; node: number; flags: number; seconds: number; from: Vec3; to: Vec3 }
+  /**
+   * `OBJECT_MOTION_FROM_TO` (22) as the flashes use it: a node's scale from `from` to `to` over `seconds` (research 89
+   * §4). DOORS (web/docs/research/92-doors.md): with flag 0x40 the node's rotation, the quaternions (x, y, z, w) at +0x10
+   * and +0x20 -- begin `FUN_0025fe70` (decomp 109034) takes the node's own rotation as the start unless flag 0x20 sets
+   * +0x10; flag 1 makes +0x20 a turn after the start (`FUN_003070c0`); tick `FUN_0025f9b0` (108850) slerps by the time
+   * over +0x34 (`FUN_00306ae0`) and sets the end when it is up.
+   */
+  | { op: 'fromTo'; node: number; flags: number; seconds: number; from: Vec3; to: Vec3; rotation?: { from: Quat4; to: Quat4 } }
   | { op: 'motion'; motion: ObjectMotion }
   | { op: 'particles'; source: ParticleSource }
   /** `SOUND` (30): the sound name (u16 +6, through the name table) at the node +16 (research 81 §6). */
@@ -192,7 +204,7 @@ export type EffectOp =
   | { op: 'pauseAnimation'; anim: string }
   | { op: 'endWhile' }
   /** `VALVE` (61; `FUN_00353fd0`, decomp 252128): the valve (a name index when flag 2) and an operation on it: 0x0b set, 0x0c add, 0x0d subtract; 1-6 the tests. */
-  | { op: 'valve'; valve: string; operation: number; operand: number }
+  | { op: 'valve'; valve: string; operation: number; operand: number; context?: true }
   | { op: 'other'; cmd: number; name: string };
 
 export interface EffectSequence {
@@ -221,9 +233,12 @@ const NAME = (names: readonly string[], i: number): string => names[i] ?? `#${i}
  * `FUN_00353fd0`, decomp 252128, on the payload): the valve reference (+4; flag bit 1: a name index -- `shell_eject`'s
  * is `bullet_ejecting`), the operand (+8), the operation (+12) and the flags (+13).
  */
-function valveOf(c: CmdBytes, names: readonly string[]): { valve: string; operation: number; operand: number } {
+function valveOf(c: CmdBytes, names: readonly string[]): { valve: string; operation: number; operand: number; context?: true } {
   const ref = c.u32(4), flags = c.u8(13);
-  return { valve: (flags & 2) !== 0 ? NAME(names, ref) : `#${ref}`, operation: c.u8(12), operand: c.i32(8) };
+  // DOORS (web/docs/research/92-doors.md): flag bit 0 takes the valve from the animation's context
+  // (`FUN_002721c0(context, ref)`, decomp 252144-252150) -- the door's own, handed in by `FUN_002b44e0`.
+  const context = (flags & 1) !== 0 ? { context: true as const } : {};
+  return { valve: (flags & 2) !== 0 ? NAME(names, ref) : `#${ref}`, operation: c.u8(12), operand: c.i32(8), ...context };
 }
 
 function condition(c: CmdBytes, names: readonly string[]): EffectCondition {
@@ -271,7 +286,10 @@ export function decodeEffectOp(cmd: Pick<ZAnimCommand, 'set' | 'cmd' | 'bytes'>,
     case ZCMD.OBJECT_MOTION_FROM_TO:
       // The flashes' form (flags 0x300): +0x34 the time, +0x38 from, +0x44 to, +0x50 the rate -- which is (to - from) /
       // time on every one of them (research 89 §4), the check that the reading is right.
-      return { op: 'fromTo', node: c.i8(6), flags: c.u16(4), seconds: c.f32(0x34), from: c.vec3(0x38), to: c.vec3(0x44) };
+      return {
+        op: 'fromTo', node: c.i8(6), flags: c.u16(4), seconds: c.f32(0x34), from: c.vec3(0x38), to: c.vec3(0x44),
+        ...((c.u16(4) & 0x40) !== 0 ? { rotation: { from: c.quat(0x10), to: c.quat(0x20) } } : {}),
+      };
     case ZCMD.OBJECT_MOTION: return { op: 'motion', motion: decodeObjectMotion(c, names) };
     case ZCMD.PARTICLE_SOURCE: return { op: 'particles', source: decodeParticleSource(c, names) };
     case ZCMD.SOUND: return { op: 'sound', sound: NAME(names, c.u16(6)), node: c.i8(16) };

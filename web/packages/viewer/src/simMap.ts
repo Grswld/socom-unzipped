@@ -8,6 +8,7 @@ import { actionRoots, ACTION_CLIPS, groundGrid, packGround, type GroundData, typ
 import { SEAL_ANIMS } from './locomotion';
 import { clipsFromPack, motionTableFromArchive, MOTION_PACK_PATH, type MotionEntry } from './motionTable';
 import { TRAVERSAL_CLIPS } from './traversal';
+import { readDoors, type DoorSpec } from './doors';
 
 /**
  * A map as the shared sim needs it (web sprint 3, M2; spec W3.R6: the server loads only the hulls, the tuning and the
@@ -28,6 +29,11 @@ export interface SimMap {
   slots: SpawnSlot[];
   /** Its twin records: where a SEAL respawns (research 91 section 4, `FUN_002b7ee0`), placed the same way. */
   respawns: SpawnSlot[];
+  /**
+   * DOORS (`./doors`, web/docs/research/92-doors.md): the map's doors, their polygons marked in `ground.owners`
+   * (`sweep`) so the server's movers read them as they swing. Absent on a map built by hand without them.
+   */
+  doors?: DoorSpec[];
   /** What went wrong on the way (a missing member costs a line, never the load, except the hull's). */
   notes: string[];
 }
@@ -49,7 +55,10 @@ export function simMapFromBytes(bytes: Uint8Array, path: string): SimMap {
   } catch (e) {
     notes.push(`grid_params: ${say(e)} -- the engine's default grid`);
   }
-  const ground = packGround(params, polys, collisionOwners(models, WORLD_MODEL));
+  const owners = collisionOwners(models, WORLD_MODEL);
+  const { doors, diagnostics } = readDoors(bytes, toc, models, owners, polys);   // marks the doors' owners: before the pack
+  notes.push(...diagnostics);
+  const ground = packGround(params, polys, owners);
   const grid = groundGrid(ground);
   const name = missionName(bytes, toc, notes) ?? stem;
   const spawns = spawnsFor(name) ?? null;
@@ -61,7 +70,7 @@ export function simMapFromBytes(bytes: Uint8Array, path: string): SimMap {
   } catch (e) {
     notes.push(`spawn slots: ${say(e)}`);
   }
-  return { stem, name, ground, grid, spawns, slots, respawns, notes };
+  return { stem, name, ground, grid, spawns, slots, respawns, doors, notes };
 }
 
 export async function loadSimMap(source: AssetSource, path: string): Promise<SimMap> {

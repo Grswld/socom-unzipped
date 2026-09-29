@@ -117,8 +117,19 @@ export class WalkMode {
     return this.moves;
   }
 
+  /**
+   * DOORS (`./doorPage`): the map's own action, asked first -- a door under the reticle takes the press, as the game's
+   * action button takes a `CZAction` in reach before anything else (`FUN_00592d50`, decomp 452002-452022); true when
+   * it did. The press then goes neither to the moves nor on the command (the door rides its own event).
+   */
+  private actionFilter: (() => boolean) | null = null;
+  setActionFilter(filter: (() => boolean) | null): void {
+    this.actionFilter = filter;
+  }
+
   /** TRAVERSAL SEAM: the action button (the ladder's slide, the climb): false when not walking. */
   action(): boolean {
+    if (this.walking && !this.locked && this.actionFilter?.()) return true;
     if (this.walking) this.pressed |= Button.Action;              // MULTIPLAYER: also the respawn's press (research 91 §4.1)
     if (this.locked || !this.walking || !this.moves) return false;
     this.moves.action();

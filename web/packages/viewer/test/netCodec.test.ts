@@ -3,7 +3,7 @@ import {
   decodeCommands, decodeSnapshot, encodeCommands, encodeSnapshot, frameKind, quantiseCommand,
 } from '../src/net/codec';
 import { bodyOf, snapshotOf } from '../src/net/body';
-import { ACTION_CODES, Button, Frame, type BodyState, type Command } from '../src/net/protocol';
+import { ACTION_CODES, Button, Frame, PROTOCOL_VERSION, type BodyState, type Command } from '../src/net/protocol';
 import { ACTION_CLIPS, moverSnapshot, Walker, type MoverActionName } from '../src/mover';
 import { buildGrid, type CollisionOwner, type GridParams, type WorldPoly } from '@s2u/scene';
 import { TRAVERSAL_CLIPS } from '../src/traversal';
@@ -70,7 +70,7 @@ describe('the snapshot frame (M3)', () => {
       const bodies = Array.from({ length: 15 }, (_, i) => body(i + 1));
       const own = { ack: trial * 7, x: between(-4000, 4000), y: between(0, 500), z: between(-4000, 4000), vx: 1.5, vy: -3.25, vz: 0 };
       const bytes = encodeSnapshot({ tick: 1000 + trial, own, bodies });
-      expect(bytes.byteLength).toBe(1 + 4 + 1 + 28 + 1 + 55 * 15);
+      expect(bytes.byteLength).toBe(1 + 4 + 1 + 28 + 1 + 55 * 15 + 1);   // protocol 2: the door count, 0 here
       const back = decodeSnapshot(bytes);
       expect(back.tick).toBe(1000 + trial);
       expect(back.own!.ack).toBe(own.ack);
@@ -92,6 +92,18 @@ describe('the snapshot frame (M3)', () => {
   it('a spectator\'s snapshot has no own state', () => {
     const back = decodeSnapshot(encodeSnapshot({ tick: 5, own: null, bodies: [] }));
     expect(back).toEqual({ tick: 5, own: null, bodies: [] });
+  });
+
+  it('carries the doors, two bytes each, after the bodies (protocol 2)', () => {
+    expect(PROTOCOL_VERSION).toBe(2);
+    const doors = [{ valve: 0, phase: 255 }, { valve: 1, phase: 17 }, { valve: 1, phase: 255 }];
+    const plain = encodeSnapshot({ tick: 5, own: null, bodies: [body(1)] });
+    const bytes = encodeSnapshot({ tick: 5, own: null, bodies: [body(1)], doors });
+    expect(bytes.length - plain.length).toBe(6);
+    expect(decodeSnapshot(bytes).doors).toEqual(doors);
+    // Out of range values are clamped to the byte, not wrapped.
+    expect(decodeSnapshot(encodeSnapshot({ tick: 5, own: null, bodies: [], doors: [{ valve: 300, phase: -4 }] })).doors).toEqual([{ valve: 255, phase: 0 }]);
+    expect(() => decodeSnapshot(bytes.subarray(0, bytes.length - 1))).toThrow();
   });
 
   it('refuses a truncated frame', () => {

@@ -1,12 +1,13 @@
-import { Frame, type BodyState, type Command, type CommandBatch, type OwnState, type Snapshot } from './protocol';
+import { Frame, type BodyState, type Command, type CommandBatch, type DoorWire, type OwnState, type Snapshot } from './protocol';
 
 /**
  * The binary frames (web sprint 3, M3): the commands up and the snapshots down, little-endian, quantised where the
  * game's own precision allows (`./protocol` names the steps). Positions stay float32: a map is a few thousand units
  * across, so float32 keeps a thousandth of a unit, and the mover's own state is float64 only in the sim.
  *
- * Sizes: a command is 15 bytes, a batch of 3 is 51; a body is 55 bytes, so a snapshot of 15 bodies and one's own is
- * 860 bytes -- 26 KB/s at 30 Hz per client, before the WebSocket's framing.
+ * Sizes: a command is 15 bytes, a batch of 3 is 51; a body is 55 bytes and a door 2, so a snapshot of 15 bodies and one's
+ * own is 861 bytes on a map without doors and 867 on Frostfire (three) -- 26 KB/s at 30 Hz per client, before the
+ * WebSocket's framing.
  */
 
 class Writer {
@@ -156,8 +157,9 @@ function readBody(r: Reader): BodyState {
 }
 
 /**
- * `Frame.Snapshot`: u8 kind, u32 tick, u8 has-own, [u32 ack, f32 x y z, f32 vx vy vz], u8 count, bodies. The own
- * state is float32 whole: it is what prediction is compared with, to the thousandth.
+ * `Frame.Snapshot`: u8 kind, u32 tick, u8 has-own, [u32 ack, f32 x y z, f32 vx vy vz], u8 count, bodies, then (protocol
+ * 2) u8 door count and two bytes a door (`DoorWire`: its valve, its swing's phase). The own state is float32 whole: it
+ * is what prediction is compared with, to the thousandth.
  */
 export function encodeSnapshot(s: Snapshot): Uint8Array {
   const w = new Writer();
@@ -172,6 +174,9 @@ export function encodeSnapshot(s: Snapshot): Uint8Array {
   }
   w.u8(s.bodies.length);
   for (const b of s.bodies) writeBody(w, b);
+  const doors = (s.doors ?? []).slice(0, 255);
+  w.u8(doors.length);
+  for (const d of doors) { w.u8(clamp(Math.round(d.valve), 0, 255)); w.u8(clamp(Math.round(d.phase), 0, 255)); }
   return w.bytes();
 }
 
@@ -184,8 +189,11 @@ export function decodeSnapshot(bytes: Uint8Array): Snapshot {
   const n = r.u8();
   const bodies: BodyState[] = [];
   for (let i = 0; i < n; i++) bodies.push(readBody(r));
+  const doors: DoorWire[] = [];
+  const d = r.u8();
+  for (let i = 0; i < d; i++) doors.push({ valve: r.u8(), phase: r.u8() });
   if (r.left !== 0) throw new Error(`snapshot has ${r.left} trailing bytes`);
-  return { tick, own, bodies };
+  return doors.length ? { tick, own, bodies, doors } : { tick, own, bodies };
 }
 
 /** The first byte of a binary frame: its `Frame` kind, or null for an empty frame. */

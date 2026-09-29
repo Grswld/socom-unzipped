@@ -1,7 +1,7 @@
 import { decodeSnapshot, encodeCommands, frameKind } from './codec';
 import {
   COMMAND_REDUNDANCY, Frame, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
-  type BodyState, type ClientEvent, type Command, type Role, type ServerEvent, type Snapshot, type Team,
+  type BodyState, type ClientEvent, type Command, type DoorWire, type Role, type ServerEvent, type Snapshot, type Team,
 } from './protocol';
 
 /**
@@ -273,6 +273,11 @@ export class NetClient {
         yaw: o.yaw + turn * f, pitch: o.pitch + (x.pitch - o.pitch) * f,
       };
     });
+  }
+
+  /** DOORS: the doors as the newest snapshot has them (`Snapshot.doors`), or undefined before one or on a map without. */
+  doors(): DoorWire[] | undefined {
+    return this.snaps[this.snaps.length - 1]?.snap.doors;
   }
 
   /** The snapshot rate seen over the kept snapshots, a second's worth (the metrics' check on W3.R10). */

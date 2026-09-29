@@ -28,7 +28,7 @@ import type { TouchTarget } from './touch';
 import { openingStand } from './stand';
 import { Reticle, reticleType } from './reticle';
 import { Hud, RangeFinder } from './hud';
-import { actionInReach } from './mapActions';
+import { DoorPage } from './doorPage';
 import { TacMap } from './tacMap';
 import { ScoreboardKeys } from './scoreboardKeys';
 import { DEFAULT_PLAYER } from './scoreboard';
@@ -127,6 +127,19 @@ const traversal = new TraversalPage(walk, {
   land: (speed, at) => { audio.onLand(speed, walkSounds.material(at), at); },
 });
 traversal.bindKeys();
+/**
+ * The map's doors (`./doorPage`, web/docs/research/92-doors.md): the action button on the door under the reticle swings
+ * it -- here, or on the server in a match -- its leaf drawn and its polygons turned with it, its sound played.
+ */
+const doors = new DoorPage({
+  grid: () => walk.grid(),
+  feet: () => walk.feet(),
+  aim: () => walk.fireAim(),
+  sound: (name, at) => { audio.play(name, at); },
+  move: (path, delta) => { view?.moveNode(path, delta); },
+  net: () => (net && net.client.state === 'open' ? net.client : null),
+});
+walk.setActionFilter(() => doors.action());
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
 /** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
@@ -1038,6 +1051,7 @@ async function boot(): Promise<void> {
     play.setMounts(kit.state().mounts);
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in the scope
     net?.frame(dt, fly.camera, fire.triggerHeld());   // MULTIPLAYER: the others at the view tick, the clock
+    doors.frame(dt);                // DOORS: the swings (the server's, in a match)
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
     effects.setBrighten(brightenOf(lighting));
@@ -1100,7 +1114,7 @@ async function boot(): Promise<void> {
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
       yaw: fly.pose().yaw, stance: walk.posture(), climb: traversal.hudClimb(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
-      nearby: walking && actionInReach(loaded?.actions ?? [], walk.feet(), ['DOOR']) ? 'door' : null,
+      nearby: walking && doors.target() !== null ? 'door' : null,   // DOORS: the door under the reticle (FUN_005aa240)
       position: walking ? feetXZ() : null,
     });
     hud.render(created.renderer);
@@ -1292,6 +1306,7 @@ function show(map: LoadedMap): void {
   // The walk's ground: the probe's polygons and grid. A walking mover is stood on the new map under the camera
   // just placed, or at spawn A's (x, z) on the stand's floor (A's recorded y where the probe found none).
   walk.setGround(map.ground, spawn && stand ? [spawn.a[0], stand.floor ?? spawn.a[1], spawn.a[2]] : null);
+  doors.setMap(map.doors, map.ground);             // DOORS: on the hull the walk stands on, shut as the disc has them
 
   ui.select(map.path);
   ui.setPanelTitle(`${map.name} (${map.archive})`);   // the folded cog's tooltip
@@ -1443,6 +1458,8 @@ window.__viewer = {
     corrections: { ...net.client.corrections }, rtt: net.client.rtt, snapshotRate: net.client.snapshotRate(), feet: walk.feet(),
   },
   action: () => traversal.action(),
+  doors: () => doors.stats(),
+  useDoor: (i) => doors.use(i),
   setLean: (side) => { traversal.hookLean = side; },
   audio: () => audio.stats(),
   setAudio: (settings) => {

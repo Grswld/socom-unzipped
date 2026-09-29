@@ -4,7 +4,7 @@ import {
 } from '@s2u/scene';
 import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
-  MoverSim, overall, roundPath, Traversal, Walker,
+  DoorSet, doorInReach, MoverSim, overall, roundPath, Traversal, Walker,
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
@@ -152,9 +152,15 @@ export class Room {
    * skeleton serves both teams (the Terrorist models carry the same bones). Null: the placeholder capsules.
    */
   private readonly volumes: StanceVolumes | null;
+  /**
+   * DOORS (web/docs/research/92-doors.md): the map's doors, run here -- a client's `door` event asks, the reach is
+   * checked, the swing turns the leaf's polygons in the hull every mover reads -- and sent in every snapshot.
+   */
+  readonly doors: DoorSet;
 
   constructor(readonly map: SimMap, readonly clips: SimClips | null, opts: Partial<RoomOptions> = {}, body: SimSkeleton | null = null) {
     this.volumes = body ? stanceVolumes(body) : null;
+    this.doors = new DoorSet(map.doors ?? [], map.ground);
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
     this.opts.idleKickMs = Math.min(IDLE_KICK_MAX_MS, Math.max(IDLE_KICK_MIN_MS, this.opts.idleKickMs));
     this.polys = groundPolygons(map.ground);
@@ -262,6 +268,7 @@ export class Room {
       case 'reload': this.reload(id); return;
       case 'vote': this.vote(id, ev.target, ev.remove); return;
       case 'throw': this.throwGrenade(id, ev); return;
+      case 'door': this.useDoor(id, ev.door); return;
       default: return;
     }
   }
@@ -277,6 +284,7 @@ export class Room {
     this.lastStepAt = now;
     for (const p of this.players.values()) this.run(p, now);
     for (const p of this.players.values()) this.remember(p);
+    this.doors.step(1 / TICK_HZ);
     this.flyGrenades();
     this.clock();
     this.idle(now);
@@ -431,6 +439,21 @@ export class Room {
     this.send(victimId, { type: 'hurt', health: [...victim.health.hp], from: [...from], part });
     if (died) this.kill(victim, p, record.name, 'weapon', deathClip('bullet', part, victim.sim.walker.posture, this.opts.random));
     void overall;
+  }
+
+  // ---- doors (web/docs/research/92-doors.md) ----
+
+  /**
+   * A client's action on the door under its reticle: taken from a living player within the door's reach of its leaf
+   * (the client picked it as the game does, `pickDoor`; the server, which does not see the view, checks the reach);
+   * `DoorSet.use` refuses it mid-swing, as `FUN_002b44e0` does.
+   */
+  private useDoor(id: number, door: number): void {
+    const p = this.players.get(id);
+    if (!p || !p.alive || !Number.isInteger(door) || door < 0 || door >= this.doors.count) return;
+    const s = p.sim.walker.state;
+    if (!doorInReach(this.doors, door, [s.x, s.y, s.z])) return;
+    this.doors.use(door, [s.x, s.y, s.z]);
   }
 
   // ---- grenades (research 85, 91 section 5) ----
@@ -660,13 +683,14 @@ export class Room {
     const bodies = new Map<number, BodyState>();
     for (const p of this.players.values()) bodies.set(p.id, this.body(p));
     const list = [...bodies.values()];
+    const doors = this.doors.count ? this.doors.wire() : undefined;
     for (const [id, conn] of this.conns) {
       const p = this.players.get(id);
       const own = p && p.alive ? (() => {
         const s = p.sim.walker.state;
         return { ack: p.sim.seq, x: s.x, y: s.y, z: s.z, vx: s.vx, vy: s.vy, vz: s.vz };
       })() : null;
-      conn.send(encodeSnapshot({ tick: this.tick, own, bodies: p ? list.filter((b) => b.id !== id) : list }));
+      conn.send(encodeSnapshot({ tick: this.tick, own, bodies: p ? list.filter((b) => b.id !== id) : list, doors }));
     }
   }
 

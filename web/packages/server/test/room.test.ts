@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
+import type { CollisionOwner, EffectProgram, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
 import {
-  Button, decodeSnapshot, encodeCommands, groundGrid, MoverSim, packGround, quantiseCommand, TICK_HZ, Walker,
-  type Command, type ServerEvent, type SimMap,
+  Button, decodeSnapshot, encodeCommands, groundGrid, groundPolygons, MoverSim, packGround, PROTOCOL_VERSION, quantiseCommand, TICK_HZ, Walker,
+  type Command, type DoorSpec, type ServerEvent, type SimMap,
 } from '../../viewer/src/sim';
 import { Room, type Conn } from '../src/room';
 
@@ -27,6 +27,47 @@ function flatMap(): SimMap {
   return { stem: 'MP99', name: 'FLAT', ground, grid: groundGrid(ground), spawns: null, slots, respawns, notes: [] };
 }
 
+/**
+ * DOORS: the flat map with one door (web/docs/research/92-doors.md) -- a leaf 12 wide and 24 high along x from its hinge
+ * at the origin, and the game's shape of swing: shut (valve 0), a quarter turn about y over a second and the valve set
+ * to 1; open, back and the valve to 0.
+ */
+function doorMap(): SimMap {
+  const base = flatMap();
+  const floor = groundPolygons(base.ground)[0]!;
+  const leaf: WorldPoly = {
+    modelName: 'worldmodel', path: 'worldmodel/door_1', region: 0, ditype: 2, material: 25, ptcount: 4, cameratype: 0,
+    points: Float32Array.from([0, 0, 0, 12, 0, 0, 12, 24, 0, 0, 24, 0]),
+  };
+  const sweep = { minX: -12, maxX: 12, minZ: -12, maxZ: 12 };
+  const owners: CollisionOwner[] = [
+    { modelName: 'worldmodel', path: 'worldmodel/floor0', first: 0, count: 1 },
+    { modelName: 'worldmodel', path: 'worldmodel/door_1', first: 1, count: 1, sweep },
+  ];
+  const ground = packGround(base.ground.grid, [{ ...floor, points: Float32Array.from(floor.points) }, leaf], owners);
+  const quarter: [number, number, number, number] = [0, Math.SQRT1_2, 0, Math.SQRT1_2];
+  const swing: EffectProgram = {
+    name: 'door_1_swing', root: 0, flags: 0, nodes: ['NA'],
+    sequences: [{
+      name: 'NA', activation: 1, ops: [
+        { op: 'if', conditions: [{ kind: 'valve', valve: 'door_1_valve', operation: 2, operand: 0 }] },
+        { op: 'fromTo', node: -6, flags: 0x40, seconds: 1, from: [1, 1, 1], to: [1, 1, 1], rotation: { from: [0, 0, 0, 1], to: quarter } },
+        { op: 'valve', valve: 'door_1_valve', operation: 0x0b, operand: 1 },
+        { op: 'else' },
+        { op: 'fromTo', node: -6, flags: 0x40, seconds: 1, from: [1, 1, 1], to: [1, 1, 1], rotation: { from: quarter, to: [0, 0, 0, 1] } },
+        { op: 'valve', valve: 'door_1_valve', operation: 0x0b, operand: 0 },
+        { op: 'endif' },
+      ],
+    }],
+  };
+  const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const doors: DoorSpec[] = [{
+    index: 0, node: 'door_1', path: 'worldmodel/door_1', valve: 'door_1_valve', range: 30, elevation: -1,
+    programs: [swing], local: identity, parent: identity, owners: [1], sweep,
+  }];
+  return { ...base, ground, grid: groundGrid(ground), doors };
+}
+
 class Client implements Conn {
   readonly events: ServerEvent[] = [];
   readonly frames: Uint8Array[] = [];
@@ -42,15 +83,15 @@ class Client implements Conn {
   last() { return decodeSnapshot(this.frames[this.frames.length - 1]!); }
 }
 
-function setup(opts: ConstructorParameters<typeof Room>[2] = {}) {
+function setup(opts: ConstructorParameters<typeof Room>[2] = {}, map: SimMap = flatMap()) {
   let now = 0;
   let seed = 1;
-  const room = new Room(flatMap(), null, { now: () => now, random: () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, ...opts });
+  const room = new Room(map, null, { now: () => now, random: () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, ...opts });
   const clients = new Map<number, Client>();
   const join = (id: number, name = ''): Client => {
     const c = new Client();
     clients.set(id, c);
-    room.hello(id, c, { type: 'hello', version: 1, name, map: 'MP99' }, `10.0.0.${id}`);
+    room.hello(id, c, { type: 'hello', version: PROTOCOL_VERSION, name, map: 'MP99' }, `10.0.0.${id}`);
     return c;
   };
   const seqs = new Map<number, number>();
@@ -299,5 +340,36 @@ describe('grenades (research 85, 91 section 5)', () => {
     expect(b.of('grenade')).toHaveLength(0);
     for (let i = 0; i < 20; i++) room.text(1, { type: 'throw', seq: 5 + i, kind: 'HE', from: [0, 15.4, 0], velocity: [10, 5, 0] });
     expect(b.of('grenade').length).toBeLessThan(20);
+  });
+});
+
+describe('doors (web/docs/research/92-doors.md): the server runs them and every client sees them', () => {
+  it('a player at the door opens it with the door event; the snapshots carry it swinging, then open; its leaf moves in the hull', () => {
+    const { room, join } = setup({}, doorMap());
+    const a = join(1), b = join(2);
+    room.step();
+    room.player(1)!.sim.walker.place(6, 20, 15);
+    room.player(2)!.sim.walker.place(400, 20, 0);
+    room.step(); room.step();
+    expect(a.last().doors).toEqual([{ valve: 0, phase: 255 }]);
+    room.text(2, { type: 'door', seq: 3, door: 0 });                  // 400 away: out of its range, refused
+    room.step(); room.step();
+    expect(b.last().doors).toEqual([{ valve: 0, phase: 255 }]);
+    room.text(1, { type: 'door', seq: 4, door: 0 });
+    for (let i = 0; i < 16; i++) room.step();
+    const mid = b.last().doors![0]!;
+    expect(mid.phase).toBeLessThan(255);
+    expect(mid.phase).toBeGreaterThan(0);
+    for (let i = 0; i < 60; i++) room.step();
+    expect(a.last().doors).toEqual([{ valve: 1, phase: 255 }]);
+    expect(b.last().doors).toEqual([{ valve: 1, phase: 255 }]);
+    // The leaf turned a quarter about its hinge: its far edge from (12, y, 0) to (0, y, -12) in the hull.
+    const leaf = groundPolygons(room.map.ground)[1]!;
+    expect(leaf.points[3]).toBeCloseTo(0, 3);
+    expect(leaf.points[5]).toBeCloseTo(-12, 3);
+    room.text(9, { type: 'door', seq: 1, door: 0 });                  // no such player: nothing
+    room.text(1, { type: 'door', seq: 5, door: 7 });                  // no such door: nothing
+    for (let i = 0; i < 4; i++) room.step();
+    expect(a.last().doors).toEqual([{ valve: 1, phase: 255 }]);
   });
 });

@@ -23,6 +23,7 @@ import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps
 import { readHud, type HudBitmaps } from './hudAssets';
 import { grenadeTransferables, loadGrenadeAssets, type GrenadeAssets } from './grenadeAssets';
 import { readMapActions, type MapAction } from './mapActions';
+import { readDoors, type DoorSpec } from './doors';
 import { readTacData, type TacData } from './tacMap';
 
 /**
@@ -101,6 +102,8 @@ export interface LoadedMap {
     lod: LodBand | null;
     /** Per placement, in `matrices` order: the grid cells it is filed in (see `LoadedMesh.cells`). */
     cells?: number[][];
+    /** DOORS: per placement, in `matrices` order, its node's path in the scene walk -- what a door's swing moves (`./doors`). */
+    paths?: string[];
   }[];
   textures: Record<string, Rgba>;
   /**
@@ -192,6 +195,8 @@ export interface LoadedMap {
   grenade?: GrenadeAssets;
   /** The map's own context actions, `READERM.ZAR/actions.rdr` on placed nodes (`./mapActions`, research 87 §5). */
   actions?: MapAction[];
+  /** DOORS: the map's doors (`./doors`, web/docs/research/92-doors.md), their polygons marked in `ground.owners`. */
+  doors?: DoorSpec[];
   /** The tactical map's lines, zones and named points, `AIMAPS.MPS` in world units (`./tacMap`, research 87 §9). */
   tac?: TacData | null;
   diagnostics: string[];
@@ -328,6 +333,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
       modelName: first.modelName, parts: geometry, matrices, order, alternate,
       facade: first.facade, lod: placement.lod.get(first.modelName) ?? null,
       cells: group.map((p) => placement.cells(p)),
+      paths: group.map((p) => p.path),
     });
   }
 
@@ -478,6 +484,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     body: body && placeBody(body, slots),
     terrorist,
     ground: placement.ground,
+    doors: placement.doors ?? [],
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
     ...(weapon ? { weapon } : {}),
     ...(sidearm ? { sidearm } : {}),
@@ -852,6 +859,8 @@ interface Placement {
   collision: CollisionLines;
   /** The same hull as polygons, with its nodes and the grid, for the walk (`LoadedMap.ground`). */
   ground?: GroundData;
+  /** DOORS: the map's doors (`./doors`), their owners marked in `ground`. */
+  doors?: DoorSpec[];
 }
 
 /**
@@ -900,9 +909,9 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       const node = p.path.split('/').pop()?.split('=')[0] ?? '';
       return scrolls.get(node) ?? null;
     };
-    const { collision, ground } = hull(models, bytes, toc, stem, notes);
+    const { collision, ground, doors } = hull(models, bytes, toc, stem, notes);
     return {
-      world, props: [...groups.values()], origin: [0, 0, 0], collision, ground,
+      world, props: [...groups.values()], origin: [0, 0, 0], collision, ground, doors,
       rank: (p) => ranks.get(p) ?? 0,
       alternate,
       lod: lods(bytes, toc, notes),
@@ -976,7 +985,7 @@ function textureScroll(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
  * the chunks, so a hull that does not sit on the floor is a placement bug, not a collision one -- which
  * is most of why the overlay is worth having.
  */
-function hull(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): { collision: CollisionLines; ground?: GroundData } {
+function hull(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): { collision: CollisionLines; ground?: GroundData; doors?: DoorSpec[] } {
   let polys;
   try {
     polys = worldCollision(models, WORLD_MODEL);
@@ -984,7 +993,7 @@ function hull(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: str
     notes.add(`collision: ${say(e)}`);
     return { collision: noCollision() };
   }
-  return { collision: collisionLines(polys), ground: groundOf(polys, models, bytes, toc, stem, notes) };
+  return { collision: collisionLines(polys), ...groundOf(polys, models, bytes, toc, stem, notes) };
 }
 
 /**
@@ -992,14 +1001,19 @@ function hull(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: str
  * the graph as `worldCollision` does, so the owners index the polygons) and the world root's `grid_params`. A
  * root without the key takes the engine's default grid, as `CGrid::Read` does (research 23 section 2.3).
  */
-function groundOf(polys: WorldPoly[], models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): GroundData {
+function groundOf(polys: WorldPoly[], models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): { ground: GroundData; doors: DoorSpec[] } {
   let grid = DEFAULT_GRID_PARAMS;
   try {
     grid = parseGridParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
   } catch (e) {
     notes.add(`grid_params: ${say(e)} -- the walk takes the engine's default grid`);
   }
-  return packGround(grid, polys, collisionOwners(models, WORLD_MODEL));
+  const owners = collisionOwners(models, WORLD_MODEL);
+  // DOORS (`./doors`): the doors mark their polygons' owners (`sweep`) before the pack, so every grid built off this
+  // hull files a leaf under its whole swing and the mover reads it fresh as it turns.
+  const doors = readDoors(bytes, toc, models, owners, polys);
+  for (const line of doors.diagnostics) notes.add(line);
+  return { ground: packGround(grid, polys, owners), doors: doors.doors };
 }
 
 /**

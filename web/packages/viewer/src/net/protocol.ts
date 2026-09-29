@@ -13,8 +13,11 @@
  * mover's state after it; the client compares with its own history at that number.
  */
 
-/** Bumped on any change to the frames below; a client and server that disagree refuse each other at the hello. */
-export const PROTOCOL_VERSION = 1;
+/**
+ * Bumped on any change to the frames below; a client and server that disagree refuse each other at the hello.
+ * 2 (2026-09-29): the snapshot carries the doors (`Snapshot.doors`), and a client asks for one with a `door` event.
+ */
+export const PROTOCOL_VERSION = 2;
 
 /** The game's tick (`CGame::Tick`): the mover's `TICK`, the server's loop. */
 export const TICK_HZ = 60;
@@ -167,7 +170,18 @@ export interface Snapshot {
   own: OwnState | null;
   /** Every body in the round but the recipient's own. */
   bodies: BodyState[];
+  /**
+   * DOORS (`../doors`, web/docs/research/92-doors.md): every door of the map, in `actions.rdr` order -- the server runs
+   * them (`DoorSet`) and the page shows what it sends. Absent (none on the wire) on a map without doors.
+   */
+  doors?: DoorWire[];
 }
+
+/**
+ * One door on the wire, two bytes: its valve (the game's `CValve` value: 0 shut, 1 open, clamped to a byte) and how far
+ * its swing has run, 0..255 of the swing's seconds -- 255 at rest.
+ */
+export interface DoorWire { valve: number; phase: number }
 
 // ---- the JSON events --------------------------------------------------------------------------------------------
 
@@ -190,7 +204,12 @@ export type ClientEvent =
   /** The scoreboard asked for (Select/Tab): the server answers with `score`. */
   | { type: 'score' }
   /** W3.R13, research 91 section 17: "VOTE RETAIN:REMOVE" on a teammate, toggled; `remove` false retains. */
-  | { type: 'vote'; target: number; remove: boolean };
+  | { type: 'vote'; target: number; remove: boolean }
+  /**
+   * DOORS: the action button on the door under the reticle (`FUN_005aa240`'s pick), by its index in `actions.rdr`; the
+   * command number it was pressed on. The server checks the reach and runs it (`DoorSet.use`).
+   */
+  | { type: 'door'; seq: number; door: number };
 
 /** A row of the scoreboard (research 87 section 12, 91). */
 export interface ScoreRow { id: number; name: string; team: Team; kills: number; deaths: number; score: number; alive: boolean; ping: number }
