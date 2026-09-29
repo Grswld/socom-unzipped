@@ -153,6 +153,41 @@ PLANTED_TEST = ("import unittest\n\n\nclass Planted(unittest.TestCase):\n"
                 "    def %s(self):\n        pass\n" % PLANTED)
 
 
+# The queued waiter's owner, unique to this process, so the class can prove at its end that none survived: on
+# 2026-09-28 six `loop_lock.sh wait` fixtures outlived their runs -- Popen.kill() on Windows ends only Git Bash's
+# launcher (bin/bash.exe), and the usr/bin/bash.exe it started kept waiting on a temp lock nobody would release.
+WAITER = "suite-guard-waiter-%d" % os.getpid()
+
+
+def _stop(p):
+    """End a spawned bash and everything it started: the tree on Windows, TERM then KILL elsewhere."""
+    if p.poll() is None:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True, timeout=120)
+        else:
+            p.terminate()
+        try:
+            p.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            p.kill()
+    try:
+        p.communicate(timeout=30)
+    except (subprocess.TimeoutExpired, ValueError):
+        pass
+
+
+def _live_waiters():
+    """Command lines of live `loop_lock.sh wait WAITER` processes (this process's fixtures only)."""
+    if sys.platform == "win32":
+        cmd = ["powershell.exe", "-NoProfile", "-Command",
+               "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*loop_lock.sh*wait*%s*' } | "
+               "ForEach-Object { $_.CommandLine }" % WAITER]
+    else:
+        cmd = ["ps", "-eo", "args"]
+    out = subprocess.run(cmd, capture_output=True, text=True, timeout=300).stdout
+    return [line for line in out.splitlines() if "loop_lock.sh" in line and " wait " in line and WAITER in line]
+
+
 def _write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", newline="\n") as f:
@@ -199,6 +234,14 @@ class TestBuildShSuiteGuard(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.trees, ignore_errors=True)
+        # every waiter this class queued was stopped in tearDown; prove it -- a survivor is a live bash on the host
+        deadline = time.time() + 60
+        live = _live_waiters()
+        while live and time.time() < deadline:
+            time.sleep(2)
+            live = _live_waiters()
+        if live:
+            raise AssertionError("loop_lock.sh wait fixtures survived the class: %s" % live)
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="build_sh_suite_test_")
@@ -211,12 +254,7 @@ class TestBuildShSuiteGuard(unittest.TestCase):
 
     def tearDown(self):
         for p in self.waiters:
-            if p.poll() is None:
-                p.kill()
-            try:
-                p.communicate(timeout=10)
-            except (subprocess.TimeoutExpired, ValueError):
-                pass
+            _stop(p)
         if self.taken:
             subprocess.run([BASH, LOCK_SH, "release", "other-holder"], capture_output=True, text=True,
                            env=self.env(), timeout=120)
@@ -252,14 +290,14 @@ class TestBuildShSuiteGuard(unittest.TestCase):
         return p.stdout.strip()
 
     def queue_a_waiter(self):
-        p = subprocess.Popen([BASH, LOCK_SH, "wait", "queued-one", "30"], stdout=subprocess.PIPE,
+        p = subprocess.Popen([BASH, LOCK_SH, "wait", WAITER, "30"], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, env=self.env(LOOP_LOCK_WAIT_SEC=5))
         self.waiters.append(p)
         deadline = time.time() + 600
         check = ""
         while time.time() < deadline:
             check = self.lock_sh("check").stdout
-            if "QUEUED: queued-one" in check:
+            if "QUEUED: %s" % WAITER in check:
                 return
             if p.poll() is not None:
                 self.fail("the waiter exited before it queued: %s" % p.communicate()[0])
