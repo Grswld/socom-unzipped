@@ -63,8 +63,8 @@ scene nodes (`node`, `valve`, `anim`, `type DOOR`/`MPBOMB`, `range`, `bitmap act
 Frostfire's three doors `bdoor_4`, `wdoor_1`, `wdoor_2` at 30 units, Blizzard's six doors and two bomb sites, Desert
 Glory's one door (§5). No map names `action_defuse.tif` or `action_door_close.tif`. `TCM.tif`/`TCMArrow.tif` are the tactical command (radio) menu's
 (`0x413120`), `hud_check.tif` and `team_background.tif` the objective list's (L63441): none is on the HUD at rest.
-**No zoom readout** was found: the scope's picture (`ret_scope_01/02`, `nvg_*`) is the reticle's (the ACCURACY
-workstream), and `setZoom` only records the factor.
+The scope's picture (`ret_scope_01/02`, `nvg_*`) is the reticle's (the ACCURACY workstream). **Corrected
+2026-09-29:** there is a zoom readout, and a range line in the scope -- §13 (research 84 found them).
 
 ## 2. The bitmaps: four libraries, stored bottom row first, drawn bilinear
 
@@ -246,6 +246,74 @@ console on each edge, the console's SEAL standing where KNOWN §1 puts A to with
 map's kind-1 named points (Frostfire: Charlie, Delta, Echo, Foxtrot; Vigilance: Charlie, Delta, Echo, Foxtrot, Juliet,
 Romeo, Whiskey). The marks' other types (the bomb, extraction, objectives, team mates) wait for data the viewer lacks;
 the multiplayer handlers of types 0-13 (the jump table at `DAT_003e44b0`) were not resolved.
+
+## 12. The round's scoreboard: SELECT held (2026-09-29, third round)
+
+In a multiplayer round SELECT held shows the scoreboard (§9). `FUN_0022be20` (L79675): on the press
+(`FUN_002c64e0(0xc) == 1`) `FUN_0022cc10` (L79974) builds it and sets `DAT_0040f608`; while held `DAT_00412e78`
+accumulates and the layout is rebuilt every 1.0 s (L79866); the release (state 3) calls `FUN_0022bb30` (L79873).
+`FUN_0022a8b0` (L79100) draws it; while it is up L56808-56828 hide the ammo box (`CHUD+0x1a700`), the compass, the
+action prompts, the reticle and the timer every frame.
+
+| part | what | place | colour |
+|---|---|---|---|
+| panel | `newweapnbkrnd.tif` nine-sliced (`FUN_0022ae90` L79223): 20-pixel corners, the corner texels 20/173 by 20/74 (`DAT_003e5718` 0.8844, `DAT_003e5720` 0.2703, L327982), the left corners mirrored | x 153..630, y 104..430 (the message window's bottom 91 + its YMargin 8 + 5) | bitmap white, alpha 100 [the colour is never set] |
+| team bars | untextured, under the panel | x 153..630, y y0..y0 + 25; SEALs y0 104, TERRORISTS (104 + 430) / 2 = 267 (`FUN_00229d00` L78846) | SEALs (32, 32, 64), TERRORISTS (64, 32, 32), alpha 80 |
+| team line | locale 60521 "SEALs" / 60522 "TERRORISTS", " :   " (0x3e5788), "%d" (game +0x120 / +0x124, rounds won [inferred]) | pen (171, y0 + 20), scale 1 | alpha 90 |
+| columns | locale 60523 "KILLS", "DEATH" (0x3e5790), "SCORE" (0x3e5798), centred (C2DString +0x69) | centres 455, 522, 588 (175 and 175/3 from `DAT_003dc8e8`), baseline y0 + 20, scale 1 | alpha 90 |
+| rows | 8 a team, by score (`FUN_0022de60` L80575: same team, not a spectator, named); the clan tag "[clan]" at x 163 in (128, 64, 32), the name at 223, the three numbers centred on the columns (kills +0x550 + 0x598, deaths +0x556 + 0x59e, score +0x580 + 0x5c8) | baseline y0 + 38 + 16.8 i (SEALs 142 .. 259.6, TERRORISTS 305 .. 422.6), scale 0.8 (`FUN_0022a290` L78951) | (115, 115, 115) alpha 110; the local player's blue 12 (yellow) [inferred: controller vtbl+0x2c]; the dead x 0.6 [inferred: +0xe1 bit 4] |
+| stripes | odd rows 1, 3, 5, 7: `newweapnbkrnd`'s centre texel | x 161..624, baseline - 12 .. + 4 (`DAT_003dc990..9b0`) | alpha 60 |
+| satchel | `hud_satchel.tif` on the row of the carrier of item 0x9a | x 200..216, baseline - 12 .. + 4 | -- |
+| GAME DETAILS | a (64, 128, 64) `newweapnbkrnd` strip y 104..129 over its body y 129..229; "GAME DETAILS" (0x3e57c0) at (20, 124), scale 1, alpha 90; three lines at x 24, y 145 / 165 / 185, scale 0.8, (115, 115, 115) alpha 110, cut with "-" to 118: online the lobby, the game's name and its type (1 BREACH, 2 DEMOLITION, 3 ESCORT, 4 EXTRACT, 5 SUPPRESSION); LAN "LAN game", the name, the type (`FUN_0022ac30` L79186) | x 10..152 | strip alpha 80 |
+| SPECTATORS | the same strip y 229..254, "SPECTATORS" (0x3e57b0) at (20, 249); up to 8 names at (24, 270 + 16.8 i), scale 0.8 | x 10..152, body to 430 | -- |
+
+The draw order: the team bars, the panel, the details' body and header, "GAME DETAILS", the stripes, the teams'
+strings, the detail lines, the spectators' panels and names, the satchel last.
+
+**The viewer** (`scoreboard.ts`, `scoreboardLayout`): SELECT on a pad (the `scoreboard` lane, `./gamepad`'s
+`PAD_LAYOUT`, standard button 8) or **Tab** held on the keyboard (`scoreboardKeys.ts`), walking only; the HUD pass's
+layer 1, the bars as its shapes. Filled with the one SEAL -- `hud.setPlayerName`'s name, else "SEAL" -- on the first row
+in the local player's yellow, its three numbers 0; the TERRORISTS empty; the details "LAN game", the map's name and its
+game type (`./mapOrder`'s `mode`); no spectators. No console frame of the held scoreboard is in the captures
+(`A_rend050`'s "ROUND COMPLETE" is the round's end screen, another screen), so it is drawn from the code alone.
+
+## 13. The zoom readout and the scope's range (2026-09-29, third round)
+
+`FUN_001f6ce0` (L56025): the magnification from the view mode (`+0x200`: 4 gives 9.0, 5..12 the weapon's zoom,
+`FUN_005be660`; else 0); over 1.01 **`"ZOOM: %2.1fx"`** (0x3e3098) into `CHUD+0x744` at the pen (20, 420), scale 0.9
+(`CHUD_Init` L57311-57319: the HUD's text colour, alpha 80); hidden otherwise. Re-evaluated on the HUD's scoped and
+normal switches (`FUN_001f7360` L56238, `FUN_001f7560` L56287); in the scoped state the ammo box hides
+(`FUN_00237de0` L56217-56225), so the readout stands where it was. The reticle's range: **`"RANGE(m): %.0f"`**
+(0x3e4850) of the distance to what the reticle is on / 10, `"RANGE(m): ----"` (0x3e4860) with nothing
+(`FUN_00216770` L70446-70463), written into CHUD's own string (scale 0.9, L57320-57326), shown by the reticle's switch
+(`FUN_00213e20` L69258) at (415, 215) with the scope's `ret_scope_02` (`DAT_003dc528/530`, L69508), at (515, 40) with
+the binoculars, (515, 70) with the night vision, hidden otherwise.
+
+**The viewer** draws both while `hud.setZoom` (the ACCURACY workstream's `zoom.magnification()`) is over 1.01: the
+readout at (20, 420), the range at (415, 215) from the range finder's metres (§1.12), and hides the ammo box.
+The binoculars' and night vision's (515, 40/70) are not drawn: the viewer has neither.
+
+## 14. The message window's posts (2026-09-29, third round)
+
+`FUN_002b6530(scale, window, text, colour, centred, fade)` (L157901): a scale of 0 is the window's own, else scale x
+1.1429; `colour & 0xff` indexes (`FUN_002b7530` L158316) 0 (128, 128, 128), 1 (128, 128, 64), 2 (64, 64, 96), 3 (64,
+128, 64), 4 (128, 64, 32), 5 (128, 64, 64), all alpha 100; `fade` 0 is the window's `fadetime`. The windows: the main
+one `0x4366a0` (`messages.rdr`: left 157, bottom 91, scale 0.9, fadetime 7), the small one `0x437060`
+(`small_messages.rdr`: left 12, bottom 91, scale 0.9, fadetime 5, maxlength 120), the subtitles `0x436b80`.
+
+What one SEAL can make the game post: an item's name on a pick-up and "Satchel" (colour 0, the small window,
+`FUN_005bb000` L473374, L473660); "Unable To Deploy: Max Equipment Items Placed (4)" (colour 2, the main window,
+`FUN_005be9a0` L475331); in multiplayer the deaths -- "%s falls to their death" (0x65c440), "%s commits suicide with
+%s" (0x65c460), "%s fragged %s with %s" (0x65c480) (colour 0, `FUN_00547860` L412893, `FUN_00547a90` L412970); the comm
+menu's and the taunts' "%s : %s" (colours 3 and 5, `FUN_005e7960` L498224). **Not posted by anything:** reload, out of
+ammo, low ammo, an empty magazine, the fire mode's name, the stance, the weapon switch, the zoom -- the ELF has no such
+strings ("RELOAD" and "NOAMMO" are `CHRSND_*` sound ids); the fire mode is only `firemode.tif`'s rounds, the stance only
+its word. "%s : FIRE IN THE HOLE!" (locale 60592) is a team mate's grenade, never the local player's.
+
+**The viewer** posts with `hud.postMessage(text | lines, scale = 0.9)` on the main window (0.357 s in, out 7 s after
+posting, the newest 8 lines, a colour per line), and posts the one death it can cause: a landing of the death class
+(`FUN_005ac1f0`'s class 3) is "%s falls to their death" with the player's name -- the viewer's SEAL then walks on. No
+pick-ups, deploys, grenade kills or comms exist in the viewer yet.
 
 ## 11. Estimates and open ends
 
