@@ -233,7 +233,10 @@ async function sweep(browser: Browser, map: string, name: string, look: 'modern'
     const cKey = async (ms: number): Promise<void> => { await p.keyboard.down('KeyC'); await p.waitForTimeout(ms); await p.keyboard.up('KeyC'); await p.waitForTimeout(1300); stances.push(await p.evaluate(() => window.__viewer.stance())); };
     await cKey(80); await cKey(700); await cKey(80); await cKey(80);
     r.smoke['stanceTapHoldTapTap'] = stances;
-    if (stances.join() !== 'crouch,prone,crouch,stand') f.push(`C tap/hold/tap/tap gave ${stances.join(' > ')} (want crouch > prone > crouch > stand)`);
+    // In water over 2 deep the game turns a prone press into a crouch (FUN_00581660; research 86 section 6.4), so a
+    // spawn in the water (MP62, MP64, MP71) reads crouch > crouch > stand > crouch -- the game's rule, not a fault.
+    if (stances.join() === 'crouch,crouch,stand,crouch') r.smoke['stanceWaterRule'] = true;
+    else if (stances.join() !== 'crouch,prone,crouch,stand') f.push(`C tap/hold/tap/tap gave ${stances.join(' > ')} (want crouch > prone > crouch > stand)`);
     await s.shot('03-stance-end');
 
     // The zoom: in three, out three; the views and the states seen.
