@@ -9,9 +9,14 @@
 #include "MiniTest.h"
 #include "ps2x/knobs.h"
 #include "vu/ps2_vu1_ops.h"
+#include "runtime/gs/gs_frontend.h"
+#include "runtime/ps2_memory.h"
+#include "runtime/ps2_vu1.h"
+#include "runtime/vu1_native_refusals.h"   // Sprint 17 F: the native dispatcher's refusal count
 
 #include <cfloat>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <emmintrin.h>
 #include <limits>
@@ -740,6 +745,304 @@ void register_vu1_ops_tests()
                                                          std::to_string(steps) + " steps; first " + first);
             }
             P::setBatch(P::knob());   // back to what run() would set
+        });
+
+        // ---- Sprint 17 F (research/81 §3.4): the native dispatcher's refusals, counted -------------------------
+        // PS2X_VU1_NATIVE_REFUSALS (runtime/vu1_native_refusals.h). A real refusal is driven through
+        // VU1Interpreter::execute with the SOCOM II dispatcher registered at pc 0 of a three-pair image: the
+        // dispatcher refuses the planted list before touching anything, the microcode (the E bit at pair 8) runs
+        // as the fallback, and its cycles are charged to the refusal. The table is process-wide, so every case
+        // reads a before/after delta.
+        struct RefusalRig
+        {
+            PS2Memory mem;
+            GS gs;
+            uint8_t *code = nullptr;
+            uint8_t *data = nullptr;
+
+            bool init()
+            {
+                if (!mem.initialize())
+                    return false;
+                gs.init(mem.getGSVRAM(), static_cast<uint32_t>(PS2_GS_VRAM_SIZE), &mem.gs());
+                code = mem.getVU1Code();
+                data = mem.getVU1Data();
+                if (code == nullptr || data == nullptr)
+                    return false;
+                std::memset(code, 0, PS2_VU1_CODE_SIZE);
+                std::memset(data, 0, PS2_VU1_DATA_SIZE);
+                // NOP / NOP+E / NOP: entered at 0 the microcode ends after the pair at 16.
+                const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
+                const uint32_t pairs[3][2] = {{lowerNop, upperNop}, {lowerNop, upperNop | eBit}, {lowerNop, upperNop}};
+                std::memcpy(code, pairs, sizeof(pairs));
+                mem.markVU1CodeModified();
+                return true;
+            }
+            uint64_t hash() const
+            {
+                uint64_t h = 1469598103934665603ull;
+                for (uint32_t i = 0; i < PS2_VU1_CODE_SIZE; ++i)
+                {
+                    h ^= code[i];
+                    h *= 1099511628211ull;
+                }
+                return h;
+            }
+            // Command list word i (qword 340 + i, x lane) and a header word at TOP (= 0) + qword, lane.
+            void command(uint32_t index, uint32_t word) { std::memcpy(data + (340u + index) * 16u, &word, 4u); }
+            void header(uint32_t qword, uint32_t lane, int32_t value) { std::memcpy(data + qword * 16u + lane * 4u, &value, 4u); }
+            // A code pair written after init(): the image's generation moves so run() rehashes it.
+            void pair(uint32_t pc, uint32_t lower, uint32_t upper)
+            {
+                std::memcpy(code + pc, &lower, 4u);
+                std::memcpy(code + pc + 4u, &upper, 4u);
+                mem.markVU1CodeModified();
+            }
+            static bool dispatcher(VU1Interpreter &vu, uint64_t budgetEnd)
+            {
+                bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t budgetEnd);
+                return vu1native_socom2_dispatch(vu, budgetEnd);
+            }
+            // Runs the image at pc 0 with the native table {hash, nativePc, fn}; dBit sets the D-bit enable, one of
+            // the states run() does not enter a native program in. Returns the VU cycles the whole program took.
+            uint64_t run(uint32_t nativePc, VU1Interpreter::KnownProgramFn fn = &dispatcher, bool dBit = false)
+            {
+                const Vu1NativeProgram table[] = {{hash(), nativePc, fn}};
+                VU1Interpreter vu;
+                vu.setNativeProgramsOverride(table, 1u);
+                vu.state().dBitEnabled = dBit;
+                const uint64_t start = vu.state().cycles;
+                vu.execute(code, PS2_VU1_CODE_SIZE, data, PS2_VU1_DATA_SIZE, gs, &mem, 0u, 0u, 0u, 4096u);
+                vu.setNativeProgramsOverride(nullptr, 0u);
+                return vu.state().cycles - start;
+            }
+            // The running total of one (entry, reason, command) key.
+            static Vu1Refusals::Row row(uint32_t entry, Vu1Refusals::Reason reason, uint32_t command)
+            {
+                for (const Vu1Refusals::Row &r : Vu1Refusals::live().totals())
+                    if (r.entryPc == entry && r.reason == reason && (!Vu1Refusals::hasCommand(reason) || r.command == command))
+                        return r;
+                return Vu1Refusals::Row{};
+            }
+        };
+
+        tc.Run("PS2X_VU1_NATIVE_REFUSALS is a Dev Flag defaulting to 0 (off: nothing counted)", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_NATIVE_REFUSALS");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
+                         std::string(e->dflt) == "0",
+                     "a Dev Flag, default 0 (the refusal count is an instrument, off unless asked for)");
+            if (ps2x::knob("PS2X_VU1_NATIVE_REFUSALS") == nullptr)
+            {
+                Vu1Refusals::enabledState().store(-1);   // forget any earlier decision: read the knob now
+                t.IsTrue(!Vu1Refusals::enabled(), "unset: the instrument is off");
+            }
+        });
+
+        tc.Run("native refusals: knob off, a refused 0x52 list leaves every counter at zero", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x52u);
+            rig.command(1u, 0x42u);
+            Vu1Refusals::setEnabledForTest(false);
+            const uint64_t before = Vu1Refusals::live().totalCount();
+            rig.run(0u);
+            t.Equals(Vu1Refusals::live().totalCount(), before, "off: the refusal is not counted");
+            t.Equals(Vu1Refusals::takeNoted(), -1, "off: no slot is left for run() to charge");
+        });
+
+        tc.Run("native refusals: knob on, a 0x52 list counts unknown_command cmd=0x52 and the fallback's cycles", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x52u);   // `52 42`: 0x52 has no native handler (the skinning accumulator)
+            rig.command(1u, 0x42u);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            const uint64_t otherBefore = Vu1Refusals::live().totalCount() - before.n;
+            rig.run(0u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "one refusal under (entry 0x0, unknown_command, cmd 0x52)");
+            t.Equals(Vu1Refusals::live().totalCount() - after.n, otherBefore, "and under no other key");
+            t.IsTrue(after.cycles > before.cycles, "the microcode that ran instead is charged to it");
+        });
+
+        tc.Run("native refusals: knob on, a 300-vertex header counts header_vertices, not unknown_command", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x68u);   // `68 42`: every command native, the header over kMaxVertices
+            rig.command(1u, 0x42u);
+            rig.header(2u, 2u, 300);  // TOP+2.z
+            Vu1Refusals::setEnabledForTest(true);
+            const uint64_t before = Vu1Refusals::live().countFor(Vu1Refusals::Reason::HeaderVertices);
+            const uint64_t unknownBefore = Vu1Refusals::live().countFor(Vu1Refusals::Reason::UnknownCommand);
+            rig.run(0u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(Vu1Refusals::live().countFor(Vu1Refusals::Reason::HeaderVertices) - before, 1ull, "header_vertices +1");
+            t.Equals(Vu1Refusals::live().countFor(Vu1Refusals::Reason::UnknownCommand), unknownBefore, "unknown_command unmoved");
+        });
+
+        tc.Run("native refusals: knob on, an entry pc the image has no native program at counts no_native_entry", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            rig.run(8u);              // native registered at pc 8 only; the program is entered at 0
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "no_native_entry at entry 0x0 +1");
+            t.IsTrue(after.cycles > before.cycles, "the whole program's cycles are charged to it");
+        });
+
+        tc.Run("native refusals: the line's fields and the per-interval take", [](TestCase &t)
+        {
+            Vu1Refusals::Table table;
+            const int slot = table.note(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            table.note(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            table.note(0x33c8u, Vu1Refusals::Reason::NoNativeEntry, 0x1234u);   // no command: cmd is not keyed
+            table.addCost(slot, 900u, 12000u);
+            std::vector<Vu1Refusals::Row> rows = table.take();
+            t.Equals(rows.size(), size_t{2}, "two keys moved");
+            t.Equals(Vu1Refusals::formatRow("[vu1-refuse]", rows[0], 1002.4),
+                     std::string("[vu1-refuse] elapsed=1002ms entry=0x1b50 reason=unknown_command cmd=0x52 n=2 cycles=900 host_us=12"),
+                     "sorted by n; the per-second line");
+            t.Equals(Vu1Refusals::formatRow("[vu1-refuse-total]", rows[1], -1.0),
+                     std::string("[vu1-refuse-total] entry=0x33c8 reason=no_native_entry cmd=- n=1 cycles=0 host_us=0"),
+                     "vu1_replay's total line");
+            t.Equals(table.take().size(), size_t{0}, "an interval with nothing new prints nothing");
+            table.note(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            rows = table.take();
+            t.IsTrue(rows.size() == 1u && rows[0].n == 1u && rows[0].cycles == 0u, "the next interval is a delta");
+            t.Equals(table.totals()[0].n, 3ull, "totals keep running");
+        });
+
+        tc.Run("native refusals: a full table's overflow is on vu1_replay's total lines", [](TestCase &t)
+        {
+            Vu1Refusals::Table table;
+            for (uint32_t entry = 0; entry <= Vu1Refusals::kSlots; ++entry)   // kSlots + 1 distinct keys
+                table.note(entry * 8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            t.Equals(table.overflow(), 1ull, "the key past the last slot is not counted, only tallied");
+            const std::vector<std::string> lines = Vu1Refusals::formatTotals(table);
+            t.Equals(lines.size(), size_t{Vu1Refusals::kSlots + 1u}, "one line per key, then the overflow line");
+            t.Equals(lines.back(), std::string("[vu1-refuse-total] overflow=1 (keys past 128 slots not counted)"),
+                     "the overflow line, in the form the scorer reads");
+            Vu1Refusals::Table empty;
+            t.Equals(Vu1Refusals::formatTotals(empty).size(), size_t{0}, "no overflow, no line");
+        });
+
+        tc.Run("native refusals: a native program handing back unnamed is charged to unnamed_handback, not a stale key", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            Vu1Refusals::setEnabledForTest(true);
+            // A refusal noted outside any run leaves a slot behind (the stale key).
+            Vu1Refusals::note(0x7770u, Vu1Refusals::Reason::UnknownCommand, 0x99u);
+            const Vu1Refusals::Row staleBefore = RefusalRig::row(0x7770u, Vu1Refusals::Reason::UnknownCommand, 0x99u);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::UnnamedHandBack, 0u);
+            rig.run(0u, +[](VU1Interpreter &, uint64_t) { return false; });   // hands back at pc 0, names nothing
+            const Vu1Refusals::Row staleAfter = RefusalRig::row(0x7770u, Vu1Refusals::Reason::UnknownCommand, 0x99u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::UnnamedHandBack, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            Vu1Refusals::takeNoted();
+            t.Equals(after.n - before.n, 1ull, "unnamed_handback at entry 0x0 +1");
+            t.IsTrue(after.cycles > before.cycles, "the fallback's cycles go to unnamed_handback");
+            t.IsTrue(staleAfter.n == staleBefore.n && staleAfter.cycles == staleBefore.cycles,
+                     "the stale key is neither counted again nor charged");
+        });
+
+        tc.Run("native refusals: knob on, a pending D-bit enable counts state_guard", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x68u);   // a list native would take: only the state keeps it out
+            rig.command(1u, 0x42u);
+            rig.header(2u, 2u, 2);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::StateGuard, 0u);
+            const uint64_t total = Vu1Refusals::live().totalCount();
+            rig.run(0u, &RefusalRig::dispatcher, true);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::StateGuard, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "state_guard at entry 0x0 +1");
+            t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "and nothing else");
+            t.IsTrue(after.cycles > before.cycles, "the microcode's cycles are charged to it");
+        });
+
+        tc.Run("native refusals: a program split by its cycle budget is one refusal charged with every slice", [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            // 64 NOP pairs, the E bit on the 64th: longer than the first slice's 16-cycle budget.
+            const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
+            for (uint32_t k = 0; k < 64u; ++k)
+                rig.pair(k * 8u, lowerNop, k == 63u ? (upperNop | eBit) : upperNop);
+            rig.pair(64u * 8u, lowerNop, upperNop);
+            rig.command(0u, 0x52u);
+            rig.command(1u, 0x42u);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            const uint64_t total = Vu1Refusals::live().totalCount();
+            const Vu1NativeProgram table[] = {{rig.hash(), 0u, &RefusalRig::dispatcher}};
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(table, 1u);
+            const uint64_t start = vu.state().cycles;
+            vu.execute(rig.code, PS2_VU1_CODE_SIZE, rig.data, PS2_VU1_DATA_SIZE, rig.gs, &rig.mem, 0u, 0u, 0u, 16u);
+            const bool pendingAfterFirst = vu.programPending();
+            const uint64_t firstSlice = vu.state().cycles - start;
+            vu.resume(rig.code, PS2_VU1_CODE_SIZE, rig.data, PS2_VU1_DATA_SIZE, rig.gs, &rig.mem, 0u, 0u, 4096u);
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            const uint64_t allSlices = vu.state().cycles - start;
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.IsTrue(pendingAfterFirst, "the first slice stops on its budget, the program pending");
+            t.IsTrue(!vu.programPending(), "the second slice ends it");
+            t.IsTrue(allSlices > firstSlice, "the second slice ran cycles of its own");
+            t.Equals(after.n - before.n, 1ull, "one refusal, counted at the program's start");
+            t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "the continuation is not a second refusal");
+            t.Equals(after.cycles - before.cycles, allSlices, "every slice's cycles are charged to it");
+        });
+
+        tc.Run("native refusals: knob on, a handler's ceiling clamp counts handler_clamp with its command", [](TestCase &t)
+        {
+            // PS2X_VU1_NATIVE_TEST_CEILING lowers the handler-side vertex ceiling only (the pre-scan keeps 256), and
+            // the dispatcher reads it once, at the first handler clamp check in the process. No test before this one
+            // reaches a dispatcher handler (every other case here is refused by the pre-scan or runs a stub, and no
+            // other suite runs the dispatcher), so setting it here, when the environment has not, is in time.
+            if (std::getenv("PS2X_VU1_NATIVE_TEST_CEILING") == nullptr)
+            {
+#ifdef _WIN32
+                _putenv_s("PS2X_VU1_NATIVE_TEST_CEILING", "4");
+#else
+                setenv("PS2X_VU1_NATIVE_TEST_CEILING", "4", 1);
+#endif
+            }
+            const int ceiling = std::atoi(std::getenv("PS2X_VU1_NATIVE_TEST_CEILING"));
+            if (ceiling < 0 || ceiling >= 256)
+            {
+                t.IsTrue(true, "PS2X_VU1_NATIVE_TEST_CEILING is set at or above the real ceiling: no clamp to drive");
+                return;
+            }
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
+            rig.pair(0x1b60u, lowerNop, upperNop | eBit);   // where the microcode resumes the clamped command
+            rig.pair(0x1b68u, lowerNop, upperNop);
+            rig.command(0u, 0x68u);                          // `68 42`, past the pre-scan (vertices <= 256)
+            rig.command(1u, 0x42u);
+            rig.header(2u, 2u, ceiling + 1);                 // ... and over the lowered handler ceiling
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::HandlerClamp, 0x68u);
+            const uint64_t total = Vu1Refusals::live().totalCount();
+            rig.run(0u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::HandlerClamp, 0x68u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "handler_clamp cmd=0x68 at entry 0x0 +1");
+            t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "and nothing else");
+            t.IsTrue(after.cycles > before.cycles, "the microcode that resumed at 0x1b60 is charged to it");
         });
     });
 }

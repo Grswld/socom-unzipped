@@ -122,6 +122,7 @@
 #undef private
 
 #include "runtime/gs/gs_frontend.h"
+#include "runtime/vu1_native_refusals.h"
 #include "ps2x/knobs.h"
 
 #include <atomic>
@@ -778,7 +779,17 @@ namespace
         bool hasFamilyB = false;     // any of 0x02 0x0a 0x12 0x56 0x1a 0x2a 0x4c
         bool hasInlineOverA = false; // 0x30 -- its vertex count is TOP+2.z
         bool hasSphereMap = false;   // 0x34 -- likewise, and its loop also ends on `!= 0`
+        Vu1Refusals::Refusal refusal; // why the answer is "no" (PS2X_VU1_NATIVE_REFUSALS counts it)
     };
+
+    // Every "no" below names its reason on the way out: the stores cost nothing on the accepted path, and
+    // the dispatcher counts them under PS2X_VU1_NATIVE_REFUSALS (runtime/vu1_native_refusals.h).
+    bool refuse(Vu1Refusals::Refusal &out, Vu1Refusals::Reason reason, uint32_t command = 0u)
+    {
+        out.reason = reason;
+        out.command = command;
+        return false;
+    }
 
     // Walks the command list the way the dispatcher and the handlers walk it, and says whether
     // every command it visits is one this file implements.
@@ -822,13 +833,13 @@ namespace
         for (uint32_t step = 0; step < kMaxCommands; ++step)
         {
             if (index >= kMaxListQwords)
-                return false;
+                return refuse(facts.refusal, Vu1Refusals::Reason::ListTooLong);
             const uint32_t command = peekCommand(c, index);
             if (command == kCmdEnd)
                 return true;
             if (!isFamilyACommand(command) && !isFamilyBCommand(command) &&
                 !isFamilyCCommand(command) && !isFamilyDCommand(command))
-                return false;
+                return refuse(facts.refusal, Vu1Refusals::Reason::UnknownCommand, command);
 
             if (isFamilyBCommand(command))
                 facts.hasFamilyB = true;
@@ -837,7 +848,7 @@ namespace
             if ((command == kCmdFlushPacket || command == kCmdLoopBack ||
                  command == kCmdInlineBlockOverB) &&
                 !seenWorldObject)
-                return false;
+                return refuse(facts.refusal, Vu1Refusals::Reason::ClipBeforeWorld, command);
 
             const bool introducesBlocks = command == kCmdInlineBlockOverA ||
                                           command == kCmdInlineBlockOverB ||
@@ -858,7 +869,7 @@ namespace
             // and a vi14 that wraps: not a list this file runs. For 0x30/0x32, N > 1 is accepted
             // and implemented but was never dispatched in the corpus (research/13 8.1).
             if (blockCount < 1)
-                return false;
+                return refuse(facts.refusal, Vu1Refusals::Reason::ZeroBlockCount, command);
             // 0x34 is the exception: it accepts N == 1 and nothing else. Its outer loop does NOT
             // recompute vi5 -- and its inner loop overwrites vi5 with the FMAND mask 32 at pc
             // 0x2848 -- so a second outer iteration would XGKICK data qword 32, a GIFtag that is
@@ -866,27 +877,30 @@ namespace
             // != 1 keeps every kick this file makes one the scan has checked. Corpus maximum is 1
             // (research/15 7); see cmdSphereMapBlock for the same clamp at the handler.
             if (command == kCmdSphereMapBlock && blockCount != 1)
-                return false;
+                return refuse(facts.refusal, Vu1Refusals::Reason::SphereBlockCount, command);
             for (int32_t block = 0; block < blockCount; ++block)
             {
                 if (index + blockQwords > kMaxListQwords)
-                    return false;
+                    return refuse(facts.refusal, Vu1Refusals::Reason::BlockPastList, command);
                 if (!inlineBlockIsOnePacket(c, kCommandListQword + static_cast<int32_t>(index),
                                             blockQwords))
-                    return false;
+                    return refuse(facts.refusal, Vu1Refusals::Reason::BlockNotOnePacket, command);
                 index += blockQwords;
             }
         }
-        return false; // no 0x42 inside the dispatch bound
+        return refuse(facts.refusal, Vu1Refusals::Reason::NoEnd); // no 0x42 inside the dispatch bound
     }
 
     // True when this run is one this file may take over: a list scanCommandList accepts, plus a
     // header whose counts keep the work inside kMaxVertices / kMaxTriangles.
-    bool isNativeRun(Ctx &c, int32_t top)
+    bool isNativeRun(Ctx &c, int32_t top, Vu1Refusals::Refusal &refusal)
     {
         ListFacts facts;
         if (!scanCommandList(c, facts))
+        {
+            refusal = facts.refusal;
             return false;
+        }
 
         // The two header words the handlers read as their loop counts: TOP+2.z is the vertex
         // count (0x68, 0x08, 0x10, 0x54, 0x18, 0x30) and TOP+2.w the primitive count (0x06, 0x28,
@@ -895,8 +909,10 @@ namespace
         // 3 + 6 + 12 + 24 + 48 edge tests -- so bounding the primitive count bounds the list.
         const int32_t vertices = c.loadWord(top + 2, 2);  // TOP+2.z
         const int32_t triangles = c.loadWord(top + 2, 3); // TOP+2.w
-        if (vertices < 0 || vertices > kMaxVertices || triangles < 0 || triangles > kMaxTriangles)
-            return false;
+        if (vertices < 0 || vertices > kMaxVertices)
+            return refuse(refusal, Vu1Refusals::Reason::HeaderVertices);
+        if (triangles < 0 || triangles > kMaxTriangles)
+            return refuse(refusal, Vu1Refusals::Reason::HeaderTriangles);
 
         // A family-B list's primitive counter is vi12, and 0x4c's back edge is a post-decrement
         // `IBNE vi12, vi0`: a header triangle count of 0 decrements to -1 and runs 65536
@@ -905,7 +921,7 @@ namespace
         // accepting 0 -- its loops are `IBGTZ`, which a zero count simply falls out of -- so the
         // family-A baseline does not move. No family-B list in the corpus has a zero header.
         if (facts.hasFamilyB && triangles < 1)
-            return false;
+            return refuse(refusal, Vu1Refusals::Reason::FamilyBZeroPrims);
 
         // 0x30 and 0x32 end their rescale loop on `vi9 != 0`, not `vi9 > 0`, so a zero count walks
         // 65536 staging triples instead of none -- bounded, but not a run to start uninterruptibly.
@@ -914,7 +930,7 @@ namespace
         // above, and 0x02 itself hands back to 0x32 only with vi10 != 0. 0x34's per-vertex loop
         // ends the same way (`IBNE vi9, vi0` at 0x2928) on the same TOP+2.z.
         if ((facts.hasInlineOverA || facts.hasSphereMap) && vertices < 1)
-            return false;
+            return refuse(refusal, Vu1Refusals::Reason::InlineZeroVerts);
         return true;
     }
 
@@ -3451,9 +3467,21 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     // 0x1b50's XTOP result: the VIF double-buffered input base. Needed by the pre-scan (the header
     // counts live at TOP+2) before it is committed to vi1.
     const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
-    if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u || !xgkickIsImmediate() ||
-        !isNativeRun(c, top))
+    // The pc this program was entered at (0x1b50 in the registry), the key PS2X_VU1_NATIVE_REFUSALS counts under.
+    const uint32_t entryPc = vu.m_state.pc;
+    Vu1Refusals::Refusal refusal;
+    if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u)
+        refuse(refusal, Vu1Refusals::Reason::NoDataMemory);
+    else if (!xgkickIsImmediate())
+        refuse(refusal, Vu1Refusals::Reason::XgkickCycleExact);
+    else
+        isNativeRun(c, top, refusal);
+    if (refusal.reason != Vu1Refusals::Reason::None)
+    {
+        if (Vu1Refusals::enabled())
+            Vu1Refusals::note(entryPc, refusal.reason, refusal.command);
         return false; // whole-program hand-back: pc is still 0x1b50 and nothing has been touched
+    }
 
     // 0x1b50: vi1 is the base every handler derives its pointers from.
     // 0x1b58: the command index starts at 0.
@@ -3498,6 +3526,16 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
             // place decides what a hand-back leaves behind. `index` rather than the helper's
             // vi14 - 1, because a handler that got as far as rewriting vi14 (0x30/0x32) can reach
             // here too, and this command's index is what the re-dispatch needs.
+            // PS2X_VU1_NATIVE_REFUSALS: every mid-list hand-back passes here. A command with a handler got
+            // here through that handler's ceiling clamp (or 0x30/0x32's dead JR vi6 guard); one without is
+            // runCommand's default, which the pre-scan makes unreachable.
+            if (Vu1Refusals::enabled())
+                Vu1Refusals::note(entryPc,
+                                  isFamilyACommand(command) || isFamilyBCommand(command) ||
+                                          isFamilyCCommand(command) || isFamilyDCommand(command)
+                                      ? Vu1Refusals::Reason::HandlerClamp
+                                      : Vu1Refusals::Reason::MidUnknownCommand,
+                                  command);
             return handBackAtCommandIndex(c, index);
         }
     }
