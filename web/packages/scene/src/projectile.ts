@@ -140,6 +140,41 @@ export const CLAYMORE: ThrowableRecord = {
   explosionDamage: 16, explosionRadius: 250,
 };
 
+/**
+ * The claymore's own rules (research 85 §9.7.1): it has no trigger of its own -- no tripwire and no proximity (only
+ * `PMN Ammo` carries `ProximityDistance`, the list 0x4b5238 `FUN_00543930` walks) -- and no fuse (`PlacedExplosive`'s
+ * tick 0x3c5310 skips `Timer1` while `+0xc5`, set by `FUN_005bc730` for type 0x99, is up). It is set off by the kit's
+ * **Detonator** (`zweapon.rdr` ID 193, `ModelName detonator`), fired with the fire button:
+ *
+ * - `FUN_005c74e0` adds the Detonator to a kit that carries a claymore; `FUN_005bdc30` lets it be taken up only while
+ *   one of the SEAL's charges is down (`FUN_003cc1f0` over the placed list 0x4b5220 by owner).
+ * - The claymore's fire (`FUN_005be9a0`, type -0x67): refused with `MAX_PLACED_MESSAGE` for 2 s once `MAX_PLACED`
+ *   are down, and while the SEAL moves faster than `PLACE_MAX_SPEED`; else the `Place claymore` action (0x661628,
+ *   `seal_place_claymore`) and the timer `+0x87c` = `PLACE_SECONDS`. At its end (`FUN_005be9a0` at decomp 476883)
+ *   `FUN_005c2430` finds the ground under the right hand (`+0x300`) and, above the feet less `PLACE_DROP`,
+ *   `FUN_005bc730` sets the charge down facing the SEAL's way and selects the Detonator (`FUN_005c8a20(0xc1)`).
+ * - The Detonator's fire (type -0x3f): `CZKit_DetonateRemoteExplosives` (0x5c0130) sets off every claymore of the
+ *   SEAL's within `DETONATE_RANGE` (`FUN_003c71d0` with 0x43fa0000) -- `+0xc4`, the next tick's detonation -- then
+ *   selects the claymore again (`FUN_005c8a20(0x99)`).
+ */
+export const CLAYMORE_RULES = {
+  /** `FUN_003cc1f0(...) < 4` in the claymore's fire. */
+  maxPlaced: 4,
+  /** `DAT_003dfe10` (10) x 0.32: the speed (`+0xf88`) above which the claymore is not set down. */
+  maxSpeed: 3.2,
+  /** 0x3fa66666 into `+0x87c`: the action's time to the charge on the ground. */
+  placeSeconds: 1.3,
+  /** `DAT_003dfe10` x 1.0: how far below the feet (`+0x404`) the ground under the hand may lie. */
+  placeDrop: 10,
+  /** 0x43fa0000: the Detonator's reach, from the SEAL (`+0x1c`) to the charge. */
+  detonateRange: 500,
+  /** 0x65f880, shown for 2 s (`+0x8` = 2.0). */
+  maxPlacedMessage: 'Unable To Deploy: Max Equipment Items Placed (4)',
+  refuseSeconds: 2,
+  /** `zweapon.rdr`'s Detonator: ID 193 (0xc1), `ModelName detonator`, `IconTextureName detonator_icon.tif`. */
+  detonator: { id: 193, model: 'detonator', icon: 'detonator_icon.tif' },
+} as const;
+
 /** The claymore's cone half-angle (`0x3fbc7edd`, the argument `GetDamage` 0x3c7600 hands `FUN_003c7280`), radians. */
 export const CLAYMORE_CONE = 1.47261;
 
@@ -381,6 +416,15 @@ export const THROW_ANIMS = {
   peekRightToss: anim('Peek right toss', 'seal_toss_rlean', 35 / 30, 1.25, 0.55, [7.8, 10.13, -5.31], true),
   peekLeftToss: anim('Peek left toss', 'seal_toss_llean', 28 / 30, 1.2, 0.87, [-8.83, 11.47, -6.48], true),
 } as const satisfies Record<string, ThrowAnim>;
+
+/**
+ * The claymore's placing action (`Place claymore`, 0x661628 via `FUN_005e4f90` into `DAT_003deb48`, played by
+ * `FUN_0057d540`): `seal_place_claymore`, 55 keys, `playback` 2.7 (`NoInterrupt` 0.9). The pistol's
+ * `seal_p_place_claymore` (0x661640) is the same length; the viewer's SEAL holds the rifle. Its "release" is the
+ * charge on the ground at `CLAYMORE_RULES.placeSeconds`, as the phase it falls at.
+ */
+export const PLACE_CLAYMORE_ANIM: ThrowAnim = anim(
+  'Place claymore', 'seal_place_claymore', 55 / 30, 2.7, 1.3 / (2.7 * (54 / 55)), [0, 0, 0], false);
 
 /** `DAT_00650578`: a crouched SEAL moving faster than 15 units a second (225 squared) throws the standing throw. */
 export const CROUCH_MOVING_SPEED_SQ = 225;

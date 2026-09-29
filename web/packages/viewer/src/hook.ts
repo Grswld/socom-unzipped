@@ -16,7 +16,7 @@ import type { AnimStats } from './animator';
 import type { LookOptions, LookState } from './look';
 import type { ViewStats, WeaponStats } from './play';
 import type { AudioStats } from './audio';
-import type { GrenadeItem, GrenadeStats, ThrowInfo } from './grenade';
+import type { GrenadeStats, KitItem, ThrowInfo } from './grenade';
 import type { ThrowPoseStats } from './throwPose';
 import type { WhiteOutState } from './flash';
 import type { TraversalStats } from './traversalPage';
@@ -187,7 +187,7 @@ export interface ViewerHook {
   /** Clears the grenades, the effects and the marks, and refills the pouch. */
   resetGrenades(): void;
   /** Takes up a kit item (`rifle`, `M67`, `HE`), as the keys 1, 4, 5 do; false when it cannot be. */
-  selectItem(item: 'rifle' | GrenadeItem): boolean;
+  selectItem(item: KitItem): boolean;
   /** The throw's clip on the body (`./throwPose`): the clip, its phase, its weight over the locomotion. */
   throwClip(): ThrowPoseStats;
   /** The flashbang's white-out on the screen (`./flash`): its level, time into it, opacity and length. */

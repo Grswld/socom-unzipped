@@ -31,7 +31,7 @@ export const HUD_LIBRARIES = {
     'fov.tif', 'hud_arrow_off2.tif', 'ret_triangle.tif',
     ...Array.from({ length: 24 }, (_, i) => `ret_nav_${String(i + 1).padStart(2, '0')}.tif`),
   ],
-  HUDW: ['m4carbine_icon.tif', 'firemode.tif', 'grenade_frag_icon.tif', 'grenade_he_icon.tif', 'grenade_smoke_icon.tif', 'grenade_flashbang_icon.tif', 'claymore_icon.tif'],
+  HUDW: ['m4carbine_icon.tif', 'firemode.tif', 'grenade_frag_icon.tif', 'grenade_he_icon.tif', 'grenade_smoke_icon.tif', 'grenade_flashbang_icon.tif', 'claymore_icon.tif', 'detonator_icon.tif'],
   FONT: ['font_text_01.tif'],
 } as const;
 

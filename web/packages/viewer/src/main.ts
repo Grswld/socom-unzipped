@@ -152,6 +152,8 @@ grenade.on('equip', (on) => {
 });
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
 grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
+// The claymore refused once four are down: the game's message line (0x65f880) [placeholder: the viewer's toast].
+grenade.on('refuse', (info) => { ui.toast(info.text); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
 grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
 /**
