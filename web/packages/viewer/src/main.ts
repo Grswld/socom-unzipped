@@ -32,6 +32,7 @@ import { gameAudio } from './audio';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower } from './grenade';
+import { THROW_CLIPS, ThrowPose } from './throwPose';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -94,17 +95,28 @@ const fire = new Fire({
 scene.add(fire.object);
 if (PLAY) fire.bindKey();
 /**
- * The frag grenade (`./grenade`, web/docs/research/85): `4` takes it up (`1` the rifle), the trigger throws it --
- * held for power, let go to throw; its flight over the walk's hull, its fuse, its explosion.
+ * The throwables (`./grenade`, web/docs/research/85): `4` the M67, `5` the HE, `1` the rifle -- the pad's L2 (the
+ * game's SwapWeapon2) and R2 (its Inventory) -- and the trigger throws: held for power, let go to throw. The throw's
+ * clip plays on the body (`./throwPose`), the grenade rides the right hand's held node, and leaves the posed hand.
  */
-const grenade = new GrenadeThrower({ grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view() });
+const grenade = new GrenadeThrower({
+  grid: () => walk.grid(), snapshot: () => walk.snapshot(), view: () => walk.view(),
+  handPoint: (part, p) => play.partPoint(part, p), heldNode: () => play.heldNode(),
+});
 scene.add(grenade.object);
 if (PLAY) grenade.bindKey();
-grenade.on('equip', (on) => { fire.release(); play.setRifleStowed(on); });   // a slot change lets a held trigger go; the rifle away while the grenade is up
-grenade.on('throw', () => { audio.play('.THROW_OBJECT', walk.drawnFeet()); });
+/** The throw's clip over the locomotion, a pose layer as the reload is. */
+const throwPose = new ThrowPose(() => play.motionSource());
+/** The HUD's icon for the rifle (the HUD's own default): the grenades put theirs in its place while up. */
+const RIFLE_ICON = 'm4carbine_icon.tif';
+grenade.on('equip', (on) => { fire.release(); play.setRifleStowed(on); if (!on) throwPose.stop(); });   // a slot change lets a held trigger go; the rifle away while a grenade is up
+grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); });
+// The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
+grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); });
 grenade.on('bounce', (info) => { if (info.sound) audio.onAnimCallback(info.anim, info.pos); });   // grenade_hit_<material>
 grenade.on('explode', (info) => {
-  audio.onAnimCallback(info.anim, info.pos);        // frag_grenade: .GREN_MED
+  // The material's variant, else the base (`frag_grenade`: .GREN_MED) -- the variants reach the sound through a call.
+  if (!audio.onAnimCallback(info.anim, info.pos)) audio.onAnimCallback(info.baseAnim, info.pos);
   // The game's screen shake by the distance (research 83, `./look`).
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
 });
@@ -244,6 +256,7 @@ function askIndex(from: SourceRequest): void {
  * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
  */
 const play = new Play();
+play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locomotion (`./throwPose`)
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'first' }));
@@ -258,7 +271,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS] });
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...THROW_CLIPS] });
 }
 
 // ---- W2.6: the aim view and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -401,6 +414,11 @@ function padFrame(dt: number): void {
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
   if (PLAY && pad.fire !== padLast.fire) trigger(pad.fire);
   if (pressedSince(padLast, pad).includes('zoom') && walk.mode() === 'walk') onZoom();
+  // The kit's slots (the game's L2 SwapWeapon2 and R2 Inventory, research 85 §9), walking only.
+  if (PLAY && walk.mode() === 'walk') {
+    if (pressedSince(padLast, pad).includes('swap2')) grenade.swap2();
+    if (pressedSince(padLast, pad).includes('inventory')) grenade.cycleInventory();
+  }
   playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
   padLast = pad;
   padMerged = input;
@@ -543,6 +561,7 @@ async function boot(): Promise<void> {
     fly.update(dt);
     walk.frame(dt);                 // walk mode: the mover's 60 Hz ticks, the game's camera after each, the view placed
     const walking = walk.mode() === 'walk';
+    for (const name of throwPose.step(dt)) audio.onAnimCallback(name, walk.drawnFeet());   // the throw clip's `throw_whoosh`
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in first person
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
@@ -564,6 +583,7 @@ async function boot(): Promise<void> {
     reticle.setVisible(walking);
     reticle.render(created.renderer);
     hud.setVisible(walking);
+    hud.setWeaponIcon(grenade.icon() ?? RIFLE_ICON);   // the throwable's HUDW icon while it is up
     hud.feed({
       // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
@@ -661,7 +681,8 @@ function show(map: LoadedMap): void {
   fire.setBitmap(map.bulletMark);                 // decals.rdr's bullet mark off EFFE_TXR, or the dark disc
   const built = buildWorld(map);
   view = built;
-  grenade.setMap(built.grenade, map.grenade);     // the M67's model, its effect bitmaps, the map's DefaultMaterial
+  grenade.setMap(built.grenades, map.grenade);
+  throwPose.stop();     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
@@ -838,5 +859,7 @@ window.__viewer = {
   equipGrenade: (on) => grenade.equip(on),
   grenadeTrail: (on) => grenade.setTrail(on),
   resetGrenades: () => grenade.reset(),
+  selectItem: (item) => grenade.select(item),
+  throwClip: () => throwPose.stats(),
   revision,
 } satisfies ViewerHook;

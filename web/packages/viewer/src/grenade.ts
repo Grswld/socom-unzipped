@@ -5,8 +5,9 @@ import {
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import {
-  actorToWorldDir, actorToWorldPoint, explosionDamage, GRENADE_BLAST, gridCast, heldPower, launchGrenade, M67,
-  materialAnim, maxThrowDistance, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwVelocity,
+  actorToWorldDir, actorToWorldPoint, explosionDamage, GRENADE_BLAST, gridCast, heldPower, HE, launchGrenade, M67,
+  materialAnim, maxThrowDistance, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
+  throwVelocity,
   type Grenade, type GrenadeEvent, type Grid, type HullCast, type ThrowAnim, type ThrowLaunch, type ThrowStance,
   type ThrowableRecord, type V3,
 } from '@s2u/scene';
@@ -20,18 +21,20 @@ import type { PlaySnapshot, WalkView } from './walk';
  * timing, the grenades in flight over the map's hull, what is drawn, and the events the audio, weapon and UI
  * workstreams hang off.
  *
- * - **The slot.** In SOCOM II the grenade is a weapon slot (the d-pad / Select picks it) thrown with the fire button
- *   (R1). Here: `4` takes the grenade, `1` (or `4` again) the rifle; the fire trigger (the left button, the touch fire
- *   button) throws while the grenade is up (`main.ts` routes it). The pad's binding is the UI workstream's to add.
+ * - **The slots.** In SOCOM II a grenade is a kit slot, taken up from R2's inventory or by L1/L2 (`SwapWeapon1/2`)
+ *   swapping to the slot assigned to them (research 85 §9.1), and thrown with the fire button (R1). Here: `1` the
+ *   rifle, `4` the M67, `5` the HE; the pad's L2 (`swap2`) and R2 (`cycleInventory`); the fire trigger (the left
+ *   button, the touch fire button, R1) throws while one is up (`main.ts` routes it).
  * - **The throw.** Held, the power chases the button's pressure (`stepThrowPower`: a key or a click is pressure 1, so
  *   the power is how long it was held: 0.54 at a quarter second, 0.95 at one); let go, `GetThrowAnim` picks the clip
- *   (a toss under power 0.6 with the aim under sin 0.3), and at its release fraction the grenade leaves the hand at
- *   `throwVelocity`'s velocity from the clip's hand offset, its fuse (`Timer1` 3 s) starting then.
+ *   (a toss under power 0.6 with the aim under sin 0.3), played on the body (`./throwPose`), and at its release phase
+ *   the grenade leaves the posed right hand's (2, 0, 0) (`GrenadeSource.handPoint`) at `throwVelocity`'s velocity, its
+ *   fuse (`Timer1` 3 s) starting then. The HE goes off where it lands (`HandleImpact`).
  * - **The flight.** `stepGrenade` at 60 Hz (`FLIGHT_TICK`), over `gridCast` of the walk's hull with the map's
  *   `DefaultMaterial`: gravity 98, the bounce at each material's ELASTICITY_COEFF, the rest under 5 units/s, the
  *   explosion at 3 s where it lies, the removal at 3.1.
- * - **Drawn.** The `grenade` model (`WEAP_GEO`) in the hand (`HAND_PLACEHOLDER` until the skeleton's `rhand` is offered)
- *   and in flight (tumbling at `SPIN_PLACEHOLDER`); the explosion as the `frag_grenade` zAnim's parts read off their
+ * - **Drawn.** The `grenade` model (`WEAP_GEO`; the HE's `HEgrenade`) on the right hand's held node (`heldNode`;
+ *   `HAND_PLACEHOLDER` without a posed body) and in flight (tumbling at `SPIN_PLACEHOLDER`); the explosion as the `frag_grenade` zAnim's parts read off their
  *   commands (`EXPLOSION_READING`): the flash, a fireball, sparks, smoke, dust and a ground roll, with the bitmaps
  *   `GRENADE_BITMAPS` names; the scorch from `GRENADE_BLAST`. Optionally the flight's trail (a debug line, off).
  */
@@ -66,11 +69,29 @@ export const EXPLOSION_READING = {
 
 export type GrenadePhase = 'holstered' | 'ready' | 'holding' | 'throwing';
 
+/** The throwables the viewer carries: `mp_seal1`'s kit (`character.rdr`: M4A1, Mark 23, M67, HE, Double Ammo Load). */
+export type GrenadeItem = 'M67' | 'HE';
+export const THROWABLES: Readonly<Record<GrenadeItem, ThrowableRecord>> = { M67, HE };
+/** The kit's items in slot order as the viewer holds them (the Mark 23, slot 1, is not in the viewer). */
+export const KIT_ITEMS: readonly ('rifle' | GrenadeItem)[] = ['rifle', 'M67', 'HE'];
+/**
+ * PLACEHOLDER (named): the item L2 swaps to. The game's L2 is `SwapWeapon2` (`controller.rdr`'s Default), which
+ * selects the kit slot held at the controller's `+0x228` -- slot 1, the sidearm, by default (`CSealCtrl`'s constructor
+ * 0x598280), any slot the player assigns in the inventory (`FUN_0021bda0`); the viewer has no sidearm.
+ */
+export const L2_SLOT_PLACEHOLDER: GrenadeItem = 'M67';
+/** The game releases from the hand bone's (2, 0, 0) (`CZKit_TickExplosives`, `FUN_002869d0` with 0x66b6d0). */
+export const RELEASE_POINT: V3 = [2, 0, 0];
+
 /** What the walk offers the grenade: the hull, the mover as the body reads it, the view. */
 export interface GrenadeSource {
   grid(): Grid | null;
   snapshot(): PlaySnapshot | null;
   view(): WalkView;
+  /** A point in a posed part's frame in the world (`Play.partPoint`): the hand the grenade leaves; null before a pose. */
+  handPoint?(part: 'rhand' | 'lhand', p: V3): V3 | null;
+  /** The held item's node under the right hand (`Play.heldNode`): the grenade rides it while it is up. */
+  heldNode?(): Group | null;
 }
 
 /** A throw as it left the hand: for the hook, the audio and the tests. */
@@ -83,8 +104,13 @@ export interface ThrowInfo {
   stance: ThrowStance;
   from: V3;
   velocity: V3;
-  /** The zAnim the game plays at the throw (`FireAnimName` `frag_start` -> `.THROW_OBJECT`). */
+  /** The sound the game's throw zAnim plays (`FireAnimName` `frag_start` -> `.THROW_OBJECT`). */
   sound: string;
+  /** The throw zAnim itself (`frag_start`, `HE_start`), for the audio's zAnim map. */
+  fireAnim: string;
+  /** The throwable, and whether the release came from the posed hand (else the table's point). */
+  item: GrenadeItem;
+  fromHand: boolean;
 }
 
 export interface BounceInfo { material: string; pos: V3; speed: number; sound: boolean; anim: string }
@@ -94,6 +120,11 @@ export interface ExplosionInfo {
   radius: number;
   /** The zAnim (`frag_grenade`; the material's own `frag_grenade_<material>` where the game has one). */
   anim: string;
+  /**
+   * The throwable's own explosion zAnim (`DefaultSpecialAnimName`: `frag_grenade`, `HE_grenade`): the material
+   * variants call it (set 0 command 0x45) rather than play `.GREN_MED` themselves.
+   */
+  baseAnim: string;
   /** The material under it, when it lay on one. */
   material: string | null;
   /** `explosionDamage` at the player's feet, 0 beyond the radius (nothing takes it). */
@@ -104,8 +135,8 @@ export interface ExplosionInfo {
 /** The events other workstreams hang off (`on`). */
 export interface GrenadeEvents {
   /** The slot changed: the weapon workstream hides the rifle while this is true. */
-  equip: (equipped: boolean) => void;
-  /** The throw's clip starts: the motion workstream plays `anim.clip` at `anim.playback`; the hand lets go in `releaseIn` s. */
+  equip: (equipped: boolean, item: GrenadeItem | null) => void;
+  /** The throw's clip starts (`./throwPose` plays `anim.clip`); the hand lets go in `releaseIn` s. */
   throwStart: (info: { anim: ThrowAnim; power: number; releaseIn: number }) => void;
   /** The grenade leaves the hand (audio: `.THROW_OBJECT`). */
   throw: (info: ThrowInfo) => void;
@@ -117,6 +148,13 @@ export interface GrenadeEvents {
 
 export interface GrenadeStats {
   equipped: boolean;
+  /** The throwable up, or the one that would be taken (`KIT_ITEMS`); `leftByItem` its count and the other's. */
+  item: GrenadeItem;
+  leftByItem: Record<GrenadeItem, number>;
+  /** Its HUD icon (`IconTextureName`). */
+  icon: string;
+  /** Whether the grenade rides the posed hand's node (else the placeholder hold). */
+  inHand: boolean;
   phase: GrenadePhase;
   power: number;
   left: number;
@@ -144,9 +182,12 @@ type Listeners = { [K in keyof GrenadeEvents]: GrenadeEvents[K][] };
 export class GrenadeThrower {
   /** Everything drawn: the hand's grenade, the ones in flight, the effects, the scorches. `main.ts` adds it once. */
   readonly object = new Group();
-  private template: Group | null = null;
+  private templates: Partial<Record<GrenadeItem, Group>> = {};
   private readonly hand = new Group();
   private handModel: Group | null = null;
+  /** The clone on the body's held node, and which item it is. */
+  private heldModel: { item: GrenadeItem; object: Group } | null = null;
+  private item_: GrenadeItem = 'M67';
   private textures = new Map<string, Texture>();
   private defaultMaterial = '';
   private cast: HullCast | null = null;
@@ -154,7 +195,7 @@ export class GrenadeThrower {
   private equipped_ = false;
   private phase_: GrenadePhase = 'holstered';
   private power = 0;
-  private left: number;
+  private left: Record<GrenadeItem, number>;
   private thrown = 0;
   private pending: Pending | null = null;
   private recover = 0;
@@ -172,10 +213,10 @@ export class GrenadeThrower {
 
   constructor(
     private readonly source: GrenadeSource,
-    private readonly record: ThrowableRecord = M67,
+    private readonly records: Readonly<Record<GrenadeItem, ThrowableRecord>> = THROWABLES,
     private readonly random: () => number = Math.random,
   ) {
-    this.left = record.capacity;
+    this.left = { M67: records.M67.capacity, HE: records.HE.capacity };
     this.object.add(this.hand);
     this.hand.visible = false;
   }
@@ -190,17 +231,27 @@ export class GrenadeThrower {
     };
   }
 
-  private emit<K extends keyof GrenadeEvents>(kind: K, arg: Parameters<GrenadeEvents[K]>[0]): void {
-    for (const fn of this.listeners[kind] as ((a: typeof arg) => void)[]) fn(arg);
+  private emit<K extends keyof GrenadeEvents>(kind: K, ...args: Parameters<GrenadeEvents[K]>): void {
+    for (const fn of this.listeners[kind] as ((...a: typeof args) => void)[]) fn(...args);
   }
 
-  /** A new map: its grenade model (`WorldView.grenade`) and assets; the pouch refilled, the air and the ground cleared. */
-  setMap(template: Group | null, assets: GrenadeAssets | null | undefined): void {
+  /** The current throwable's record. */
+  private get record(): ThrowableRecord { return this.records[this.item_]; }
+  private get template(): Group | null { return this.templates[this.item_] ?? null; }
+
+  /**
+   * A new map: its throwables' models by model name (`WorldView.grenades`) and assets; the pouch refilled, the air and
+   * the ground cleared.
+   */
+  setMap(templates: Readonly<Record<string, Group>> | null, assets: GrenadeAssets | null | undefined): void {
     this.reset();
-    this.template = template;
-    if (this.handModel) this.hand.remove(this.handModel);
-    this.handModel = template ? template.clone() : null;
-    if (this.handModel) this.hand.add(this.handModel);
+    this.templates = {};
+    for (const item of Object.keys(this.records) as GrenadeItem[]) {
+      const t = templates?.[this.records[item].model];
+      if (t) this.templates[item] = t;
+    }
+    this.refreshHandModel();
+    this.dropHeld();
     for (const t of this.textures.values()) t.dispose();
     this.textures.clear();
     for (const [name, rgba] of Object.entries(assets?.bitmaps ?? {})) this.textures.set(name, textureOf(rgba));
@@ -217,7 +268,7 @@ export class GrenadeThrower {
     this.particles.length = 0;
     for (const s of this.scorches) { this.object.remove(s); (s.material as MeshBasicMaterial).dispose(); }
     this.scorches.length = 0;
-    this.left = this.record.capacity;
+    this.left = { M67: this.records.M67.capacity, HE: this.records.HE.capacity };
     this.thrown = 0;
     this.pending = null;
     this.recover = 0;
@@ -226,22 +277,80 @@ export class GrenadeThrower {
     this.bounceLog.length = 0;
     this.explosionLog.length = 0;
     this.accumulator = 0;
-    if (this.phase_ !== 'holstered') this.phase_ = this.left > 0 ? 'ready' : 'holstered';
+    if (this.phase_ !== 'holstered') this.phase_ = this.left[this.item_] > 0 ? 'ready' : 'holstered';
   }
 
   equipped(): boolean { return this.equipped_; }
   phase(): GrenadePhase { return this.phase_; }
+  /** The throwable up (or next taken). */
+  item(): GrenadeItem { return this.item_; }
+  /** The HUD icon of what is in the hand: the throwable's while it is up, null for the rifle's. */
+  icon(): string | null { return this.equipped_ ? this.record.icon : null; }
 
-  /** Takes the grenade (true), the rifle (false) or toggles; false when there is none left to take. The equip event. */
-  equip(on: boolean = !this.equipped_): boolean {
-    if (on && this.left <= 0 && this.phase_ !== 'throwing') on = false;
-    if (on === this.equipped_) return this.equipped_;
-    if (!on && this.phase_ === 'throwing') return this.equipped_;          // mid-throw the slot stays
+  /**
+   * Takes a throwable up (true; `item`, else the last one), puts it away for the rifle (false) or toggles; false when
+   * there is none of it left. Mid-throw the slot stays. The equip event.
+   */
+  equip(on: boolean = !this.equipped_, item: GrenadeItem = this.item_): boolean {
+    if (this.phase_ === 'throwing' || this.phase_ === 'holding') return this.equipped_;
+    if (on && this.left[item] <= 0) return this.equipped_;
+    if (on === this.equipped_ && (!on || item === this.item_)) return this.equipped_;
     this.equipped_ = on;
+    if (on) { this.item_ = item; this.refreshHandModel(); }
     this.phase_ = on ? 'ready' : 'holstered';
     this.power = 0;
-    this.emit('equip', on);
+    this.emit('equip', on, on ? item : null);
     return on;
+  }
+
+  /** Selects a kit item by name (`1` the rifle, `4` the M67, `5` the HE); false when it cannot be taken up. */
+  select(item: 'rifle' | GrenadeItem): boolean {
+    if (item === 'rifle') return !this.equip(false);
+    return this.equip(true, item) && this.item_ === item;
+  }
+
+  /**
+   * R2, the game's `Inventory` (`controller.rdr`; the menu `FUN_0021bda0` it opens lists the kit's slots): the viewer
+   * steps to the next item of the kit that has any left, as a one-press stand-in for the menu [placeholder].
+   */
+  cycleInventory(): 'rifle' | GrenadeItem {
+    const now = this.equipped_ ? this.item_ : 'rifle';
+    for (let k = 1; k <= KIT_ITEMS.length; k++) {
+      const next = KIT_ITEMS[(KIT_ITEMS.indexOf(now) + k) % KIT_ITEMS.length]!;
+      if (next === 'rifle' || this.left[next] > 0) { this.select(next); break; }
+    }
+    return this.equipped_ ? this.item_ : 'rifle';
+  }
+
+  /**
+   * L2, the game's `SwapWeapon2` (`FUN_00594cf0` at 0x5957d8: a press selects the slot the controller keeps at `+0x228`
+   * through `FUN_005c4b10`, or plays `FUN_003419c0`'s refusal when the slot is empty): `L2_SLOT_PLACEHOLDER` here, and
+   * a second press, already on it, goes back to the rifle [reading].
+   */
+  swap2(): 'rifle' | GrenadeItem {
+    if (this.equipped_ && this.item_ === L2_SLOT_PLACEHOLDER) this.select('rifle');
+    else this.select(L2_SLOT_PLACEHOLDER);
+    return this.equipped_ ? this.item_ : 'rifle';
+  }
+
+  /** The throw's clip done: the next of the same in the hand, or none left and back to the rifle. */
+  private finishThrow(): void {
+    if (this.left[this.item_] > 0) { this.phase_ = 'ready'; return; }
+    this.phase_ = 'holstered';
+    this.equipped_ = false;
+    this.emit('equip', false, null);
+  }
+
+  private refreshHandModel(): void {
+    if (this.handModel) this.hand.remove(this.handModel);
+    const t = this.template;
+    this.handModel = t ? t.clone() : null;
+    if (this.handModel) this.hand.add(this.handModel);
+  }
+
+  private dropHeld(): void {
+    this.heldModel?.object.removeFromParent();
+    this.heldModel = null;
   }
 
   /** The debug trail behind each grenade in flight (off by default: the game draws none). */
@@ -249,7 +358,7 @@ export class GrenadeThrower {
 
   /** The fire button pressed with the grenade up: the throw's hold begins, its power from 0 (`FUN_00594cf0`). */
   pull(): void {
-    if (!this.equipped_ || this.phase_ !== 'ready' || this.left <= 0 || !this.source.snapshot()) return;
+    if (!this.equipped_ || this.phase_ !== 'ready' || this.left[this.item_] <= 0 || !this.source.snapshot()) return;
     this.phase_ = 'holding';
     this.power = 0;
     this.pressure = 1;
@@ -268,8 +377,8 @@ export class GrenadeThrower {
    */
   throwNow(holdSeconds: number, immediate = true): ThrowInfo | null {
     if (!this.source.snapshot()) return null;
+    if (this.phase_ === 'throwing' && !this.pending) this.finishThrow();   // skip the last clip's tail
     if (!this.equipped_ && !this.equip(true)) return null;
-    if (this.phase_ === 'throwing' && !this.pending && this.left > 0) this.phase_ = 'ready';   // skip the last clip's tail
     if (this.phase_ !== 'ready') return null;
     this.power = heldPower(holdSeconds);
     this.startThrow();
@@ -295,10 +404,7 @@ export class GrenadeThrower {
       if (this.pending.left <= 0) this.letGo();
     } else if (this.phase_ === 'throwing') {
       this.recover -= dt;
-      if (this.recover <= 0) {
-        if (this.left > 0) this.phase_ = 'ready';
-        else { this.phase_ = 'holstered'; this.equipped_ = false; this.emit('equip', false); }
-      }
+      if (this.recover <= 0) this.finishThrow();
     }
     this.fly(dt);
     this.effects(dt);
@@ -308,7 +414,9 @@ export class GrenadeThrower {
   stats(): GrenadeStats {
     const r = this.record;
     return {
-      equipped: this.equipped_, phase: this.phase_, power: this.power, left: this.left, thrown: this.thrown,
+      equipped: this.equipped_, item: this.item_, leftByItem: { ...this.left }, icon: r.icon,
+      inHand: this.heldModel !== null && this.heldModel.object.visible,
+      phase: this.phase_, power: this.power, left: this.left[this.item_], thrown: this.thrown,
       record: { name: r.name, fuse: r.fuse, removal: r.removal, gravity: r.gravity, explosionRadius: r.explosionRadius, explosionDamage: r.explosionDamage, capacity: r.capacity, model: r.model },
       live: this.live.map(({ g }) => ({ pos: [...g.pos], vel: [...g.vel], state: g.state, fuse: g.fuse, bounces: g.bounces, age: g.age })),
       lastThrow: this.lastThrow && { ...this.lastThrow },
@@ -321,7 +429,7 @@ export class GrenadeThrower {
     };
   }
 
-  /** `4` takes the grenade (or puts it back), `1` the rifle; while walking, no modifier, not on auto-repeat. */
+  /** `4` takes the M67 (or puts it back), `5` the HE, `1` the rifle; while walking, no modifier, not on auto-repeat. */
   bindKey(target: EventTarget = globalThis): void {
     this.unbindKey();
     target.addEventListener('keydown', this.onKey as EventListener);
@@ -334,10 +442,12 @@ export class GrenadeThrower {
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
-    if ((e.code !== 'Digit4' && e.code !== 'Digit1') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const pick = ({ Digit1: 'rifle', Digit4: 'M67', Digit5: 'HE' } as const)[e.code as 'Digit1' | 'Digit4' | 'Digit5'];
+    if (!pick || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if (e.target instanceof HTMLElement && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
     if (!this.source.snapshot()) return;
-    this.equip(e.code === 'Digit4' ? !this.equipped_ : false);
+    if (pick !== 'rifle' && this.equipped_ && this.item_ === pick) this.select('rifle');
+    else this.select(pick);
   };
 
   // ---- the throw ----------------------------------------------------------------------------------------------
@@ -354,7 +464,7 @@ export class GrenadeThrower {
     const stance = this.stance(snap);
     const anim = throwAnim(this.power, aimSin, stance, snap.vx * snap.vx + snap.vz * snap.vz);
     const releaseIn = releaseSeconds(anim);
-    this.pending = { anim, power: this.power, aimSin, stance, left: releaseIn, total: anim.duration / anim.playback };
+    this.pending = { anim, power: this.power, aimSin, stance, left: releaseIn, total: throwClipSeconds(anim) };
     this.phase_ = 'throwing';
     this.emit('throwStart', { anim, power: this.power, releaseIn });
   }
@@ -364,22 +474,32 @@ export class GrenadeThrower {
     const p = this.pending, snap = this.source.snapshot();
     this.pending = null;
     if (!p || !snap) { this.phase_ = this.equipped_ ? 'ready' : 'holstered'; return null; }
-    const launch = throwVelocity(p.power, p.aimSin, p.anim.offset, maxThrowDistance(p.stance));
-    const from = actorToWorldPoint(snap.feet, snap.yaw, p.anim.offset);
+    // The hand as posed now, the game's release point (the left hand for the left lean's toss); the table's point for
+    // the hand when there is no posed body (`GetThrowAnim`'s, as the game's own arc preview uses).
+    const part = p.anim === THROW_ANIMS.peekLeftToss ? 'lhand' : 'rhand';
+    const hand = this.source.handPoint?.(part, RELEASE_POINT) ?? null;
+    const local = hand ? worldToActor(snap.feet, snap.yaw, hand) : p.anim.offset;
+    const launch = throwVelocity(p.power, p.aimSin, local, maxThrowDistance(p.stance));
+    const from = hand ?? actorToWorldPoint(snap.feet, snap.yaw, p.anim.offset);
     const velocity = actorToWorldDir(snap.yaw, launch.velocity);
-    const g = launchGrenade(from, velocity, this.record);
+    const record = this.record;
+    const g = launchGrenade(from, velocity, record);
     const model = this.template ? this.template.clone() : null;
     if (model) { model.position.set(...from); this.object.add(model); }
     const spin: V3 = [rand(-1, 1, this.random), rand(-1, 1, this.random), rand(-1, 1, this.random)];
     this.live.push({ g, model, spin, trail: [[...from]], line: null, dots: null, rest: null });
-    this.left--;
+    this.left[this.item_]--;
     this.thrown++;
     this.recover = Math.max(0, p.total - releaseSeconds(p.anim));
     this.phase_ = 'throwing';
     this.power = 0;
-    const info: ThrowInfo = { power: p.power, anim: p.anim, launch, aimSin: p.aimSin, stance: p.stance, from, velocity, sound: '.THROW_OBJECT' };
+    const info: ThrowInfo = {
+      power: p.power, anim: p.anim, launch, aimSin: p.aimSin, stance: p.stance, from, velocity, sound: '.THROW_OBJECT',
+      fireAnim: record.fireAnim, item: this.item_, fromHand: hand !== null,
+    };
     this.lastThrow = {
-      power: p.power, aimSin: p.aimSin, stance: p.stance, from, velocity, sound: info.sound, clip: p.anim.clip, toss: p.anim.toss,
+      power: p.power, aimSin: p.aimSin, stance: p.stance, from, velocity, sound: info.sound, fireAnim: info.fireAnim,
+      item: info.item, fromHand: info.fromHand, clip: p.anim.clip, toss: p.anim.toss,
       pitchDeg: (launch.pitch * 180) / Math.PI, speed: launch.speed, maxSpeed: launch.maxSpeed, range: launch.range,
       releaseIn: releaseSeconds(p.anim),
     };
@@ -403,7 +523,7 @@ export class GrenadeThrower {
     while (this.accumulator >= FLIGHT_TICK) {
       this.accumulator -= FLIGHT_TICK;
       for (const l of this.live) {
-        for (const e of stepGrenade(l.g, FLIGHT_TICK, cast, this.record)) this.handle(l, e);
+        for (const e of stepGrenade(l.g, FLIGHT_TICK, cast)) this.handle(l, e);
         if (this.trail && l.g.state === 'flight') l.trail.push([...l.g.pos]);
       }
       for (let i = this.live.length - 1; i >= 0; i--) if (this.live[i]!.g.state === 'removed') { this.dropLive(this.live[i]!); this.live.splice(i, 1); }
@@ -413,14 +533,14 @@ export class GrenadeThrower {
 
   private handle(l: Live, e: GrenadeEvent): void {
     if (e.kind === 'bounce') {
-      const info: BounceInfo = { material: e.material, pos: e.point, speed: e.speed, sound: e.sound, anim: materialAnim(this.record.hitAnim, e.material) };
+      const info: BounceInfo = { material: e.material, pos: e.point, speed: e.speed, sound: e.sound, anim: materialAnim(l.g.record.hitAnim, e.material) };
       this.bounceLog.push(info);
       if (this.bounceLog.length > 64) this.bounceLog.shift();
       this.emit('bounce', info);
     } else if (e.kind === 'rest') {
       l.rest = e.material;
     } else if (e.kind === 'explode') {
-      this.explode(e.point, l.rest);
+      this.explode(e.point, l.rest, l.g.record);
       if (l.model) l.model.visible = false;
     }
   }
@@ -463,14 +583,14 @@ export class GrenadeThrower {
 
   // ---- the explosion ------------------------------------------------------------------------------------------
 
-  private explode(pos: V3, material: string | null): void {
+  private explode(pos: V3, material: string | null, record: ThrowableRecord): void {
     const snap = this.source.snapshot();
     const distance = snap ? Math.hypot(pos[0] - snap.feet[0], pos[1] - snap.feet[1], pos[2] - snap.feet[2]) : null;
     const info: ExplosionInfo = {
-      pos: [...pos], radius: this.record.explosionRadius,
-      anim: material ? materialAnim(this.record.explosionAnim, material) : this.record.explosionAnim,
+      pos: [...pos], radius: record.explosionRadius,
+      anim: material ? materialAnim(record.explosionAnim, material) : record.explosionAnim, baseAnim: record.explosionAnim,
       material, distanceToPlayer: distance,
-      damageToPlayer: distance === null ? 0 : explosionDamage(distance, this.record),
+      damageToPlayer: distance === null ? 0 : explosionDamage(distance, record),
     };
     this.explosionLog.push(info);
     if (this.explosionLog.length > 32) this.explosionLog.shift();
@@ -573,8 +693,23 @@ export class GrenadeThrower {
   // ---- the hand -----------------------------------------------------------------------------------------------
 
   private placeHand(snap: PlaySnapshot | null): void {
-    const show = !!snap && this.equipped_ && this.left > 0 && (this.phase_ === 'ready' || this.phase_ === 'holding' || !!this.pending)
-      && this.source.view() === 'third' && this.handModel !== null;
+    const held = !!snap && this.equipped_ && this.left[this.item_] > 0 && (this.phase_ === 'ready' || this.phase_ === 'holding' || !!this.pending);
+    // On the body's held node (the rifle's `rifle` under `rhand`, which the throw clip moves): the grenade in the hand.
+    const node = this.source.heldNode?.() ?? null;
+    const template = this.template;
+    if (node && template) {
+      if (!this.heldModel || this.heldModel.item !== this.item_ || this.heldModel.object.parent !== node) {
+        this.dropHeld();
+        const object = template.clone();
+        node.add(object);
+        this.heldModel = { item: this.item_, object };
+      }
+      this.heldModel.object.visible = held;
+      this.hand.visible = false;
+      return;
+    }
+    this.dropHeld();
+    const show = held && this.source.view() === 'third' && this.handModel !== null;
     this.hand.visible = show;
     if (!show || !snap) return;
     let offset: V3 = HAND_PLACEHOLDER;
@@ -588,6 +723,13 @@ export class GrenadeThrower {
     this.hand.position.set(...at);
     this.hand.rotation.set(0, (snap.yaw * Math.PI) / 180, 0);
   }
+}
+
+/** A world point into the actor frame at `feet`, turned by `yawDeg` (the inverse of `actorToWorldPoint`). */
+export function worldToActor(feet: readonly number[], yawDeg: number, w: readonly number[]): V3 {
+  const r = (yawDeg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+  const dx = w[0]! - feet[0]!, dz = w[2]! - feet[2]!;
+  return [dx * c - dz * s, w[1]! - feet[1]!, dx * s + dz * c];
 }
 
 function textureOf(rgba: Rgba): DataTexture {

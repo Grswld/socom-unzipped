@@ -1,6 +1,6 @@
 import { Zar, zdbMember, type ZdbEntry } from '@s2u/archive';
 import { PaletteTable, type Rgba } from '@s2u/gs';
-import { M67, parseWorldRoot, WEAPON_MEMBERS, weaponLibrary } from '@s2u/scene';
+import { HE, M67, parseWorldRoot, WEAPON_MEMBERS, weaponLibrary } from '@s2u/scene';
 import { decodeNamedTextures } from './hudBitmaps';
 import type { LoadedMesh } from './loadMap';
 
@@ -26,9 +26,8 @@ export const GRENADE_BITMAPS = {
 } as const;
 
 export interface GrenadeAssets {
-  /** The `grenade` model's packets in its own frame. */
-  name: string;
-  parts: LoadedMesh[];
+  /** The throwables' models (`grenade` for the M67, `HEgrenade` for the HE), each's packets in its own frame. */
+  models: { name: string; parts: LoadedMesh[] }[];
   /** `GRENADE_BITMAPS` by file name; a bitmap that would not decode is absent (and a diagnostic). */
   bitmaps: Record<string, Rgba>;
   /** The map's `DefaultMaterial`, '' when the world root has none. */
@@ -58,17 +57,25 @@ function library(bytes: Uint8Array, toc: ZdbEntry[], txrName: string, palName: s
 export function loadGrenadeAssets(
   bytes: Uint8Array, toc: ZdbEntry[], stem: string, textureKey: (name: string) => string, note: (line: string) => void,
 ): GrenadeAssets {
-  let parts: LoadedMesh[] = [];
+  const models: GrenadeAssets['models'] = [];
   try {
     const lib = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
-    const decoded = lib.decode(M67.model, 'all');
-    for (const d of decoded.diagnostics) note(`grenade ${decoded.name}: ${d}`);
-    parts = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
-      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
-      order: 0, orderEnd: 0, alternate: false, scroll: null,
-    })));
+    for (const name of [M67.model, HE.model]) {
+      try {
+        const decoded = lib.decode(name, 'all');
+        for (const d of decoded.diagnostics) note(`grenade ${decoded.name}: ${d}`);
+        models.push({
+          name, parts: decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
+            ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
+            order: 0, orderEnd: 0, alternate: false, scroll: null,
+          }))),
+        });
+      } catch (e) {
+        note(`grenade ${name}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
   } catch (e) {
-    note(`grenade ${M67.model}: ${e instanceof Error ? e.message : String(e)}`);
+    note(`grenade: ${WEAPON_MEMBERS.geo}: ${e instanceof Error ? e.message : String(e)}`);
   }
   const { scorch, ...alpha } = GRENADE_BITMAPS;
   const bitmaps = {
@@ -81,13 +88,13 @@ export function loadGrenadeAssets(
   } catch (e) {
     note(`grenade: DefaultMaterial: ${e instanceof Error ? e.message : String(e)}`);
   }
-  return { name: M67.model, parts, bitmaps, defaultMaterial };
+  return { models, bitmaps, defaultMaterial };
 }
 
 /** The typed arrays of `GrenadeAssets`, for the worker's transfer list. */
 export function grenadeTransferables(g: GrenadeAssets): Transferable[] {
   const out: Transferable[] = [];
-  for (const mesh of g.parts) {
+  for (const mesh of g.models.flatMap((m) => m.parts)) {
     out.push(mesh.positions.buffer, mesh.uvs.buffer, mesh.colors.buffer, mesh.indices.buffer);
     if (mesh.normals) out.push(mesh.normals.buffer);
     if (mesh.faceNormals) out.push(mesh.faceNormals.buffer);
