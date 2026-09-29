@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-29 14:38Z, LATEST) -- Sprint 17, `sprint-17` at 64f7f264: batch 4 PROVED (`s17_b4d`); Q2 DONE but for the chain's tests; F3's reading -- the game thread's own work limits the frame rate (VU1 first), F4 not triggered; the lobby music's loop fix merged and green, its A/B running; #111's card refused by the game (the icons fallback with an agent); #112 boots. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
-  Then: the A/B's verdict (#94), #110's quiet window, F3's merge and its `[gs-loop]` walk, the persona proof rerun, the bench (`bench_run2.sh`), the day's report; the next chain proves it all.
+- **Where the loop is now (2026-09-29 15:53Z, LATEST) -- Sprint 17, `sprint-17` at e89901d8: batch 4 PROVED; Q2 DONE but for the chain; F3 DONE (the game thread's own work is the frame limit, `[gs-loop]` work 862 / bp 2 ms/s; the lever is native VU1 coverage; F4 not triggered); the lobby music loops (#94); the persona proof passed (#111); #112 boots. Unproved by a chain: the loop fix, F3, the persona check, Q2 Step 5. The owner's window to ~17:30Z (R335). One controller in the main tree (owner).**
+  Now: the headless bench, #110's suite on a quiet host (its red was host load), the day's report; tomorrow the chain, then the VU1 candidate by R334's ladder.
 - **Next free ruling number: R336** (R322-R335 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
