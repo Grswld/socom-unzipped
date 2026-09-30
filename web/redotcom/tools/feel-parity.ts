@@ -7,7 +7,7 @@
  *   npx tsx tools/feel-parity.ts                           # headless: the synthetic world, the fixtures' clips if extracted
  *   npx tsx tools/feel-parity.ts --json feel.json          # the rows as JSON too
  *   npx tsx tools/feel-parity.ts --browser [url]           # also the page on Frostfire through window.__viewer
- *                                                          #   (default http://localhost:5192/?redotcom; start the dev server)
+ *                                                          #   (default http://localhost:5192/?mode=play&fly&devmode; start the dev server)
  *   npx tsx tools/feel-parity.ts --seal-speed <rows.txt> <schedule.json>
  *                                                          # research 79's console run, every hold replayed on the viewer
  *                                                          #   and both fitted by one fitter (tools/feel/fit.ts)
@@ -37,7 +37,7 @@ if (seal >= 0) {
 const page = flag('--browser');
 if (page >= 0) {
   const next = args[page + 1];
-  rows.push(...await browserRows(next && !next.startsWith('--') ? next : 'http://localhost:5192/?redotcom&fly&devmode'));
+  rows.push(...await browserRows(next && !next.startsWith('--') ? next : 'http://localhost:5192/?mode=play&fly&devmode'));
 }
 
 console.log(formatTable(rows));

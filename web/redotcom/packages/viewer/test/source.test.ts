@@ -17,14 +17,14 @@ describe('the asset source by the URL', () => {
   });
 
   it('by default is none: the page waits on the visitor disc (the disc page)', () => {
-    for (const q of ['', '?', '?map=MP2', '?redotcom', '?redotcom&fly', '?map=MP2&redotcom&mp', '?dev', '?devmodes', '?Devmode', '?x=devmode']) {
+    for (const q of ['', '?', '?map=MP2', '?mode=play', '?mode=play&fly', '?map=MP2&mode=play&mp', '?dev', '?devmodes', '?Devmode', '?x=devmode']) {
       expect(devMode(q), q).toBe(false);
       expect(startSource(q, '/maps'), q).toBeNull();
     }
   });
 
   it('with devmode (its presence is enough) is the served tree at the page maps directory', () => {
-    for (const q of ['?devmode', 'devmode', '?devmode=1', '?map=MP2&devmode', '?redotcom&fly&devmode', '?devmode&map=MP6']) {
+    for (const q of ['?devmode', 'devmode', '?devmode=1', '?map=MP2&devmode', '?mode=play&fly&devmode', '?devmode&map=MP6']) {
       expect(devMode(q), q).toBe(true);
       expect(startSource(q, '/map-viewer/maps'), q).toEqual({ kind: 'http', baseUrl: '/map-viewer/maps' });
     }

@@ -2,13 +2,14 @@
  * Shareable links (owner, 2026-09-29): the page's state lives in its address, so copying the address bar gives a friend
  * the same setup.
  *
- * - `mode=play` (reCOM, on foot) or `mode=explore` (the free camera). `?redotcom` is the old spelling of `mode=play`:
- *   read as it, and rewritten to it (`alias`).
+ * - `mode=play` (reCOM, on foot) or `mode=explore` (the free camera). Absent, the remembered choice, else Explore.
  * - `map=MP2` -- the archive's stem.
  * - `view=modern` or `view=ps2` -- the picture switch.
  * - `online=off`, `shared` or `local` -- the Online setting. `&server=` and `&mp` still override it (`./online`).
  *
- * `rules=` (the match's rules, web sprint 3) is retired while classic is the only ruleset (owner ruling, 2026-09-29;
+ * `redotcom` (the old flag that gated the play, owner 2026-09-29: "&redotcom can die now. The mode replaces it") has no
+ * effect and is taken out of the address the next time the page writes it. `rules=` (the match's rules, web sprint 3) is
+ * retired while classic is the only ruleset (owner ruling, 2026-09-29;
  * `./net/protocol` `RESPAWN_RULES_ENABLED`): never read, and taken out of the address the next time it is written.
  *
  * On load the address beats the remembered choice; with a parameter absent the remembered choice applies, and the page
@@ -38,30 +39,26 @@ export interface ShareRead {
   map: string | null;
   view: ShareView | null;
   online: OnlineChoice | null;
-  /** Whether it used `?redotcom`, which the page rewrites to `mode=play`. */
-  alias: boolean;
 }
 
-/** The parameters this module owns, in the order it writes them; `redotcom` is read and dropped. */
+/** The parameters this module owns, in the order it writes them. */
 const KEYS = ['mode', 'map', 'view', 'online'] as const;
-const ALIAS = 'redotcom';
-/** Parameters the page no longer understands, taken out whenever it writes its address: `rules` while respawn is off. */
-const RETIRED: readonly string[] = RESPAWN_RULES_ENABLED ? [] : ['rules'];
+/**
+ * Parameters the page no longer understands, never read and taken out whenever it writes its address: the old
+ * `redotcom` flag, and `rules` while respawn is off.
+ */
+export const RETIRED_PARAMS: readonly string[] = RESPAWN_RULES_ENABLED ? ['redotcom'] : ['redotcom', 'rules'];
 /** A map's archive stem: letters, digits and underscores (`MP2`, `MP71`). */
 const MAP_STEM = /^[A-Za-z0-9_]{1,16}$/;
 
 export function readShare(search: string): ShareRead {
-  const out: ShareRead = { play: null, map: null, view: null, online: null, alias: false };
+  const out: ShareRead = { play: null, map: null, view: null, online: null };
   let q: URLSearchParams;
   try { q = new URLSearchParams(search); } catch { return out; }
   const get = (key: string): string | null => q.get(key)?.toLowerCase() ?? null;
   const mode = get('mode');
   if (mode === 'play') out.play = true;
   else if (mode === 'explore') out.play = false;
-  if (q.has(ALIAS)) {
-    out.alias = true;
-    if (out.play === null) out.play = true;
-  }
   const map = q.get('map');
   if (map && MAP_STEM.test(map)) out.map = map.toUpperCase();
   const view = get('view');
@@ -87,7 +84,7 @@ export function writeShare(search: string, state: ShareState): string {
   const rest: string[] = [];
   for (const part of parts) {
     const key = keyOf(part);
-    if (key === ALIAS || RETIRED.includes(key) || state.drop?.includes(key)) continue;
+    if (RETIRED_PARAMS.includes(key) || state.drop?.includes(key)) continue;
     if ((KEYS as readonly string[]).includes(key)) { if (!had.has(key)) had.set(key, part); continue; }
     rest.push(part);
   }

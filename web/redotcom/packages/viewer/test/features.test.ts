@@ -10,7 +10,7 @@ import { POPOVER_GRACE_MS, Ui } from '../src/ui';
 
 /**
  * The play (walk mode, the SEAL, the rifle) is the settings' Mode switch's Play (owner, 2026-09-29; `mode=play` in the
- * address, `?redotcom` read as it: `./shareUrl`), its markup marked `data-play`; the settings panel starts folded with
+ * address: `./shareUrl`), its markup marked `data-play`; the settings panel starts folded with
  * the Controls popover in the bar.
  */
 const here = dirname(fileURLToPath(import.meta.url));

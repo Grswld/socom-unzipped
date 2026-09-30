@@ -138,7 +138,7 @@ class Session {
   async load(): Promise<void> {
     const p = this.page;
     await p.addInitScript(INIT);
-    await p.goto(`${BASE}?map=${this.map}&redotcom&fly&devmode`);
+    await p.goto(`${BASE}?map=${this.map}&mode=play&fly&devmode`);
     await p.waitForFunction(() => (window.__viewer?.stats().triangles ?? 0) > 0 && (window.__viewer?.stats().collisionPolys ?? 0) > 0, undefined, { timeout: 180_000 });
     await p.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await p.mouse.click(640, 360);                                        // the gesture the audio waits for

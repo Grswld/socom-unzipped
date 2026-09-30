@@ -24,13 +24,13 @@ describe('the Online setting: the servers', () => {
 describe('resolveOnline: the URL first, then the stored choice', () => {
   it('with nothing in the URL takes the stored choice: Off (no server), Shared, Local', () => {
     expect(resolveOnline('', null, HTTP)).toEqual({ choice: 'off', url: null, fromUrl: false });
-    expect(resolveOnline('?map=MP2&redotcom', 'off', HTTP)).toEqual({ choice: 'off', url: null, fromUrl: false });
+    expect(resolveOnline('?map=MP2&mode=play', 'off', HTTP)).toEqual({ choice: 'off', url: null, fromUrl: false });
     expect(resolveOnline('', 'shared', HTTP)).toEqual({ choice: 'shared', url: SHARED_SERVER, fromUrl: false });
     expect(resolveOnline('?map=MP2', 'local', HTTPS)).toEqual({ choice: 'local', url: LOCAL_SERVER, fromUrl: false });
   });
 
   it('&mp overrides it with this page own host, ws or wss by the page protocol', () => {
-    expect(resolveOnline('?redotcom&mp', 'off', HTTP)).toEqual({ choice: 'url', url: 'ws://localhost:5173/ws', fromUrl: true });
+    expect(resolveOnline('?mode=play&mp', 'off', HTTP)).toEqual({ choice: 'url', url: 'ws://localhost:5173/ws', fromUrl: true });
     expect(resolveOnline('?mp', 'local', HTTPS)).toEqual({ choice: 'url', url: 'wss://socomunzipped.com/ws', fromUrl: true });
   });
 

@@ -86,7 +86,7 @@
         the SEAL, the rifle, the HUD, the Sound and Mouse look sections and the touch buttons (every `data-play` element).
         The Modern / PS2 switch's markup. Switched at run time, both ways, without a reload (`PlayUi`): the disc stays
         open. Remembered in this browser (`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that
-        (`./src/shareUrl.ts`; `redotcom` is read as `mode=play`).
+        (`./src/shareUrl.ts`). Always on the page: no flag gates it (the old `redotcom` has no effect).
       -->
       <div class="section" id="recom-section">
         <p class="s2u-field__label" id="recom-label">Mode</p>
@@ -121,8 +121,8 @@
         <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false" title="The 640&times;448 frame the console drew, stretched smooth onto a 4:3 box as a television showed it (owner, 2026-09-29).">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
       </div>
       <!--
-        Walk mode -- the play's, so shown only while the Mode switch above is on Play (`mode=play` in the address,
-        `?redotcom` read as that; remembered under `s2u.viewer.recom`): on Explore, `PlayUi` (`./src/features.ts`) takes this
+        Walk mode -- the play's, so shown only while the Mode switch above is on Play (`mode=play` in the address;
+        remembered under `s2u.viewer.recom`): on Explore, `PlayUi` (`./src/features.ts`) takes this
         switch, the body row, the Sound and Mouse look sections and the touch buttons (each carries `data-play`) out of the
         page after it is wired, and puts the same nodes back when Play is chosen, at run time, without a reload.
         (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on

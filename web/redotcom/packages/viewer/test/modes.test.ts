@@ -9,7 +9,7 @@ import { Ui } from '../src/ui';
 
 /**
  * The owner's 2026-09-29 settings: the Mode switch (Explore / Play, at run time, remembered; the address's `mode=play` /
- * `mode=explore` beats the memory and `?redotcom` is read as `mode=play` -- `./shareUrl`, pinned in shareUrl.test.ts),
+ * `mode=explore` beats the memory -- `./shareUrl`, pinned in shareUrl.test.ts; no flag gates it, "&redotcom can die now"),
  * the Online setting's markup, and the disc page the page opens on without `?devmode`.
  */
 const here = dirname(fileURLToPath(import.meta.url));
@@ -97,6 +97,30 @@ describe('PlayUi: the play markup out and back in, at run time', () => {
 describe('the Mode switch in the panel', () => {
   let ui: Ui;
   beforeEach(() => { load(); ui = new Ui(); });
+
+  it('is always there: no flag gates it (owner, 2026-09-29: "&redotcom can die now. The mode replaces it")', () => {
+    const src = (f: string): string => readFileSync(resolve(here, f), 'utf-8');
+    // The page builds the same markup for every address; nothing reads a feature flag before it.
+    expect(document.getElementById('recom')).not.toBeNull();
+    for (const f of ['../src/main.ts', '../src/features.ts', '../src/ui.ts']) {
+      expect(src(f), f).not.toMatch(/playEnabled|PLAY_PARAM|\.has\(['"]redotcom['"]\)|get\(['"]redotcom['"]\)/);
+    }
+    // With the play's markup out (Explore) the switch stays, and offers Play.
+    new PlayUi().detach();
+    expect(document.querySelector('#recom [data-recom="on"]')).not.toBeNull();
+    expect(document.querySelector('#recom [data-recom="off"]')).not.toBeNull();
+  });
+
+  it('the Play-only settings follow the mode: in on Play, out on Explore, the rest stays', () => {
+    const play = new PlayUi();
+    const PLAY_ONLY = ['sound-section', 'look-section', 'body-row'];
+    const ALWAYS = ['recom', 'look', 'online', 'maps', 'advanced'];
+    play.set(false);
+    for (const id of PLAY_ONLY) expect(document.getElementById(id), id).toBeNull();
+    for (const id of ALWAYS) expect(document.getElementById(id), id).not.toBeNull();
+    play.set(true);
+    for (const id of [...PLAY_ONLY, ...ALWAYS]) expect(document.getElementById(id), id).not.toBeNull();
+  });
 
   it('is the picture switch markup, in the panel, not the play (it is there in both modes)', () => {
     const recom = document.getElementById('recom')!;

@@ -70,7 +70,7 @@ async function run(browser: Browser, map: string, look: 'modern' | 'ps2', backen
   try {
     if (backend === 'webgl2') await p.addInitScript(HIDE_GPU);
     await p.addInitScript(INIT);
-    await p.goto(`${BASE}?map=${map}&redotcom&fly&devmode`);
+    await p.goto(`${BASE}?map=${map}&mode=play&fly&devmode`);
     await p.waitForFunction(() => document.getElementById('loading')?.hidden === true && (window.__viewer?.stats().triangles ?? 0) > 0, undefined, { timeout: 180_000 });
     const drew = await p.evaluate(() => window.__viewer.stats().backend);
     if (drew !== backend) throw new Error(`asked for ${backend}, drew with ${drew}`);

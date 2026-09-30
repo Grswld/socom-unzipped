@@ -24,7 +24,8 @@ An agent working on the recomp can skip this directory entirely.
 - **reCOM mode.** Walk the maps as a SEAL: the game's third-person camera and movement law, the SEAL's own model and
   motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
   accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
-  no first person (the owner's ruling). Today reCOM mode is behind the `?redotcom` URL flag and opens on foot.
+  no first person (the owner's ruling). reCOM mode is the settings' **Mode** switch's **Play**, on every page, and opens
+  on foot.
 - **Multiplayer.** Classic matches (respawn off, the game's create-game default: 11 rounds, first to 6) of up to 16
   players plus spectators on a Node server, one match per map, the round's damage, death, teams, scoring and scoreboard
   read from the game
@@ -131,7 +132,7 @@ Run from `web/redotcom/` (npm finds the workspace root, `web/`, itself; from `we
 the disc page and makes no request under `maps/`. Add `?devmode` (its presence is enough) and it reads the served,
 extracted tree from `public/maps/` as it always did, falling back to the disc page when `maps/index.json` does not
 answer (`packages/viewer/src/source.ts`). The e2e specs and the measuring tools under `tools/` add it to their URLs; do
-the same by hand, e.g. `http://localhost:5173/?map=MP2&redotcom&devmode`. It is not shown anywhere in the page.
+the same by hand, e.g. `http://localhost:5173/?map=MP2&mode=play&devmode`. It is not shown anywhere in the page.
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
 | `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §11) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
@@ -188,8 +189,9 @@ reCOM mode the page also has walk mode, the SEAL's body, the rifle, the HUD, the
 touch stance and fire buttons. In the map viewer none of that is rendered, bound or answered: no `G`, no Start, no Fly /
 Walk switch, no walk in the Controls popover, and the debug hook's `setMode('walk')` returns false. The switch works at
 run time, both ways, without a reload (the disc you opened stays open), and is remembered in this browser
-(`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and the old `?redotcom` is
-read as `mode=play` and rewritten to it (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
+(`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and Explore is the default.
+The switch is on every page load: no flag gates it (owner, 2026-09-29: "&redotcom can die now. The mode replaces it"),
+and an old link's `redotcom` has no effect and is taken out of the address (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
 `viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
 add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
 
@@ -214,7 +216,7 @@ before and pass through untouched (never added); `server=` (or `mp`) beats `onli
 
 | setting | choices | in the address | remembered as |
 |---|---|---|---|
-| **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` (`?redotcom` read as it) | `s2u.viewer.recom` |
+| **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` | `s2u.viewer.recom` |
 | **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
 | **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
 | map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
@@ -687,7 +689,7 @@ behind one switch, `RESPAWN_RULES_ENABLED` in `packages/viewer/src/net/protocol.
 is the game's `mp_max_rounds` (11, the create-game default): the match length and the count the round-start banner shows.
 
 Join from the viewer with Settings > Online > **Local** (this server on its default port), or with
-`?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
+`?mode=play&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
 as a spectator outside the queue: never promoted, sharing the spectators' room with it.
 
 To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim Node 22 image, build context `web/`), a
@@ -697,8 +699,8 @@ time and is never part of an image.
 
 ### Playing a match
 
-Choose Settings > Online (Shared or Local) in reCOM mode, or open the viewer with `?redotcom&mp` (the server at this
-page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
+Choose Settings > Online (Shared, or Local on a local page) in reCOM mode, or open the viewer with `?mode=play&mp` (the
+server at this page's host, `/ws`) or `?mode=play&mp&server=wss://host/ws`, on the map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
 §7); past 16 players it spectates, and is moved in, first come first served, when a place frees up.
 
 | key | in the match |

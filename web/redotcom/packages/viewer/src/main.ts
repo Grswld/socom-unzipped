@@ -104,12 +104,13 @@ const SEARCH = globalThis.location?.search ?? '';
 /**
  * The shareable settings the address carries (owner, 2026-09-29; `./shareUrl`): `mode`, `map`, `view`, `online`. On load
  * they beat the remembered choices; each is written back into the address as it changes, so the address is a link to
- * this setup. `?redotcom` is read as `mode=play` and rewritten to it.
+ * this setup. The retired `redotcom` and `rules` are ignored and rewritten out (`RETIRED_PARAMS`).
  */
 const SHARE = readShare(SEARCH);
 /**
  * Playing as a SEAL (walk mode, the body, the rifle, the HUD) is reCOM mode (`./features`; the owner 2026-09-28 and
- * 2026-09-29): the settings' Mode switch, remembered, and `?redotcom` forces it on. Off, the play's markup is out of the
+ * 2026-09-29): the settings' Mode switch, always on the page ("&redotcom can die now. The mode replaces it"), remembered,
+ * `mode=` in the address over the memory, Explore by default. Off, the play's markup is out of the
  * page (`PlayUi`, put back when it is switched on) and nothing binds `G`, the pad's Start, `R` or the hook's walk: the
  * page is the fly camera alone. Switched at run time, both ways (`setPlayMode`), without a reload -- a reload would lose
  * the visitor's disc image.
@@ -984,7 +985,7 @@ const revision = ui.showRevision();
  * out of the page (`PlayUi`), its keys bound or not, the lists in the Controls popover, the body switch let go, the walk
  * left for the fly camera -- and entered when it comes on, as a reCOM visit opens on foot -- and the match joined again
  * in the new role (a player, or a watcher). `remember` is the visitor's choice (not the page's start): it is stored, and
- * turning the mode off takes `redotcom` out of the address so a reload keeps the choice.
+ * the address says the mode so a reload keeps it.
  */
 function setPlayMode(on: boolean, remember: boolean): void {
   const was = playOn;
@@ -994,7 +995,7 @@ function setPlayMode(on: boolean, remember: boolean): void {
   ui.setRecom(on);
   if (on) { walk.bindKey(); fire.bindKey(); } else { walk.unbindKey(); fire.unbindKey(); }
   if (remember) writePlayChoice(on);
-  updateAddress({ play: on });                  // the link says the mode (and `?redotcom` becomes `mode=play`)
+  updateAddress({ play: on });                  // the link says the mode (and the retired `redotcom` leaves it)
   if (!on) {
     fire.release();
     if (walk.mode() === 'walk') walk.setMode('fly');

@@ -28,7 +28,7 @@ test('X on bdoor_4 opens it, the SEAL walks through, X again shuts it (Frostfire
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto('/?redotcom&fly&devmode');
+  await page.goto('/?mode=play&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
