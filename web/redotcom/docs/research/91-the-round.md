@@ -948,4 +948,9 @@ Resolved (read from `game/disc/socom2_game.elf`, file offset = va - 0x4c5380 + 0
 
 Tests: `test/loopback.test.ts` (the join as the host's SEAL, the commands in the room, a grenade at the feet killing the
 player through the client, the respawn at a respawn record, classic alone, the close), `server/test/roomBlast.test.ts`
-(the solo rules), with research 85 section 12's. E2E owed (no browser this round): `e2e/soloMatch.spec.ts`.
+(the solo rules), with research 85 section 12's; `test/localDeath.test.ts` plays the solo classic round through the
+page's own `NetPage` (the owner's respawn-off ruling of 2026-09-29): the lone SEAL's death at its own grenade, no
+respawn on the press, "ALL SEALS ELIMINATED" / "TERRORISTS WIN!" at 15 s (never a SEAL win for the empty side), the
+result 23 s later (Terrorists 1, the SEAL's row -2: the suicide, no bonus), ROUND COMPLETE with the SEALs LOSER, then
+round 2 ("STARTING ROUND 2 OF 11") standing a fresh SEAL at its start slot; its respawn-ruleset twin forces the switch
+on. E2E owed (no browser this round): `e2e/soloMatch.spec.ts`.
