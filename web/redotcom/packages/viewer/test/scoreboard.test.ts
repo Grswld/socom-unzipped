@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { cutLine, DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, SCORE_LAYOUT, SCORE_TOP, scoreboardLayout } from '../src/scoreboard';
 import { layoutText, textWidth } from '../src/hudFont';
 import type { ScoreRowInfo } from '../src/scoreboard';
-import { AT_REST, DEFAULT_MODEL, Hud, hudLayout, hudPass } from '../src/hud';
+import {
+  AT_REST, DEFAULT_MODEL, Hud, hudLayout, hudPass, MODERN_SCOREBOARD_MARGIN, MODERN_SCOREBOARD_MIN_SCALE, modernScoreboardFit,
+  SCOREBOARD_HIDES, SCOREBOARD_KEEPS_BOTTOM,
+} from '../src/hud';
 
 /** The multiplayer round's scoreboard (web/docs/research/87-hud.md §12): SELECT held, `FUN_0022a8b0`'s layout. */
 
@@ -161,18 +164,88 @@ describe('scoreboardLayout with every player (research 91 §11, §18)', () => {
       expect(MODERN_SCOREBOARD_LIFT).toBeLessThanOrEqual(SCORE_TOP - 99);
     });
 
-    it("raises the panel's top, the bars and every string by the lift in Modern, at every aspect", () => {
+    it("raises the board's top by the lift in Modern and scales it about its top-centre, at every aspect", () => {
       for (const f of frames) {
-        const s = f.height / 448;
+        const s = f.height / 448, fit = modernScoreboardFit(f, SIZES);
         const modern = board(f, 'native'), ps2 = board(f, 'ps2');
         const m = modern.quads.filter((q) => q.element === 'scoreboard'), p = ps2.quads.filter((q) => q.element === 'scoreboard');
         expect(top(m)).toBeCloseTo((SCORE_TOP - MODERN_SCOREBOARD_LIFT) * s, 6);
         expect(top(p)).toBeCloseTo(SCORE_TOP * s, 6);
         expect(m).toHaveLength(p.length);
-        m.forEach((q, i) => { expect(q.x).toBeCloseTo(p[i]!.x, 6); expect(q.y).toBeCloseTo(p[i]!.y - MODERN_SCOREBOARD_LIFT * s, 6); });
+        const k = fit.scale, cx = f.width / 2, ty = (SCORE_TOP - MODERN_SCOREBOARD_LIFT) * s;
+        m.forEach((q, i) => {
+          expect(q.x).toBeCloseTo(cx + (p[i]!.x - cx) * k, 6);
+          expect(q.y).toBeCloseTo(ty + (p[i]!.y - SCORE_TOP * s) * k, 6);
+          expect(q.w).toBeCloseTo(p[i]!.w * k, 6); expect(q.h).toBeCloseTo(p[i]!.h * k, 6);
+        });
         const mt = modern.tris.filter((t) => t.layer === 1), pt = ps2.tris.filter((t) => t.layer === 1);
-        mt.forEach((t, i) => t.p.forEach((v, k) => expect(v).toBeCloseTo(k % 2 ? pt[i]!.p[k]! - MODERN_SCOREBOARD_LIFT * s : pt[i]!.p[k]!, 6)));
+        mt.forEach((t, i) => t.p.forEach((v, j) => expect(v).toBeCloseTo(j % 2 ? ty + (pt[i]!.p[j]! - SCORE_TOP * s) * k : cx + (pt[i]!.p[j]! - cx) * k, 6)));
       }
+    });
+
+    describe('shrinks just enough to clear the bottom HUD (owner ruling 2026-09-29: "a bit smaller")', () => {
+      // 16:9, 21:9, 16:10, 4:3, a phone held sideways and upright.
+      const aspects = [
+        { name: '16:9', f: { width: 1920, height: 1080 }, scale: 0.8957 }, { name: '21:9', f: { width: 2560, height: 1080 }, scale: 1 },
+        { name: '16:10', f: { width: 1920, height: 1200 }, scale: 0.8911 }, { name: '4:3', f: { width: 1024, height: 768 }, scale: 0.8911 },
+        { name: 'phone landscape', f: { width: 812, height: 375 }, scale: 0.9602 }, { name: 'phone portrait', f: { width: 390, height: 844 }, scale: 0.8911 },
+      ];
+      // Every bottom element the board leaves up, at its widest: the name on the bar, a range, the stance word shown, zoomed.
+      const busy = { ...model, range: 999, zoom: 10 };
+      const rect = (qs: { x: number; y: number; w: number; h: number }[]) => ({
+        x0: Math.min(...qs.map((q) => q.x - q.w / 2)), x1: Math.max(...qs.map((q) => q.x + q.w / 2)),
+        y0: Math.min(...qs.map((q) => q.y - q.h / 2)), y1: Math.max(...qs.map((q) => q.y + q.h / 2)),
+      });
+
+      it('names the margin and the minimum', () => {
+        expect(MODERN_SCOREBOARD_MARGIN).toBe(4);
+        expect(MODERN_SCOREBOARD_MIN_SCALE).toBe(0.75);
+        expect(SCOREBOARD_KEEPS_BOTTOM.every((e) => !SCOREBOARD_HIDES.has(e))).toBe(true);
+      });
+
+      for (const a of aspects) {
+        it(`${a.name}: scale ${a.scale}, the board's bottom clear of every bottom element it stands over`, () => {
+          const s = a.f.height / 448, fit = modernScoreboardFit(a.f, SIZES);
+          expect(fit.fits).toBe(true);
+          expect(fit.scale).toBeGreaterThanOrEqual(MODERN_SCOREBOARD_MIN_SCALE);
+          expect(fit.scale).toBeLessThanOrEqual(1);
+          expect(fit.scale).toBeCloseTo(a.scale, 4);
+          for (const stance of ['stand', 'crouch', 'prone'] as const) {
+            const pass = hudPass(a.f, { ...busy, stance }, SIZES, { fade: 1, stance: 1, pulse: 0 }, false, null, 'native');
+            const b = rect(pass.quads.filter((q) => q.element === 'scoreboard'));
+            const kept = SCOREBOARD_KEEPS_BOTTOM.filter((e) => pass.quads.some((q) => q.element === e));
+            expect(kept.length).toBeGreaterThanOrEqual(5);
+            for (const e of kept) {
+              const r = rect(pass.quads.filter((q) => q.element === e)), m = MODERN_SCOREBOARD_MARGIN * s - 1e-6;
+              const beside = r.x0 - b.x1 >= m || b.x0 - r.x1 >= m;
+              if (!beside) expect(r.y0 - b.y1, `${a.name} ${e}`).toBeGreaterThanOrEqual(m);
+            }
+            // Nothing left up but the kept bottom HUD, the message window, the board, and the scope's mid-screen range line.
+            expect([...new Set(pass.quads.map((q) => q.element))].filter((e) =>
+              !['scoreboard', 'banner', 'message', 'scopeRange', ...SCOREBOARD_KEEPS_BOTTOM].includes(e))).toEqual([]);
+          }
+          // The top stays under the message window: the lift's place, whatever the scale.
+          const qs = board(a.f, 'native').quads, above = qs.filter((q) => q.element === 'banner' || q.element === 'message');
+          expect(top(boardQuads(a.f, 'native'))).toBeCloseTo((SCORE_TOP - MODERN_SCOREBOARD_LIFT) * s, 6);
+          expect(top(boardQuads(a.f, 'native'))).toBeGreaterThanOrEqual(Math.max(...above.map((q) => q.y + q.h / 2)) - 1e-9);
+          // The text scale: every glyph cell is the PS2 place's times the scale, never under the minimum.
+          const glyph = (p: 'native' | 'ps2') => boardQuads(a.f, p).filter((q) => q.texture === 'font_text_01.tif');
+          const gm = glyph('native'), gp = glyph('ps2');
+          gm.forEach((q, i) => { expect(q.h / gp[i]!.h).toBeCloseTo(fit.scale, 6); expect(q.h / gp[i]!.h).toBeGreaterThanOrEqual(MODERN_SCOREBOARD_MIN_SCALE); });
+        });
+      }
+
+      it('leaves the message window exactly where it was', () => {
+        for (const a of aspects) {
+          const pick = (p: 'native' | 'ps2') => board(a.f, p).quads.filter((q) => q.element === 'banner' || q.element === 'message');
+          expect(pick('native')).toEqual(pick('ps2'));
+          expect(pick('native')).toEqual(hudLayout(a.f, model, SIZES).quads.filter((q) => q.element === 'banner' || q.element === 'message'));
+        }
+      });
+
+      it('scale 1 is the lift alone, bit for bit', () => {
+        for (const a of aspects) expect(scoreboardLayout(a.f, info, SIZES, MODERN_SCOREBOARD_LIFT, 1)).toEqual(scoreboardLayout(a.f, info, SIZES, MODERN_SCOREBOARD_LIFT));
+      });
     });
 
     it('stays clear of the message window above it at every aspect', () => {
