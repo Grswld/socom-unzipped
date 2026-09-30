@@ -151,7 +151,8 @@ describe('the Mode switch in the panel', () => {
     expect(on.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('the Controls popover follows the mode: G walk listed only with the play on the page', () => {
+  it('the Controls popover follows the mode: G walk listed only with the play on the page (and the developer toggle)', () => {
+    ui.setFlyToggle(true);
     const play = new PlayUi();
     play.detach(); ui.setPlay(false);
     expect(keys()).not.toMatch(/walk/i);

@@ -51,6 +51,7 @@ import { Zoom } from './zoom';
 import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
 import { PlayUi, readPlayChoice, writePlayChoice } from './features';
+import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
@@ -116,8 +117,14 @@ const SHARE = readShare(SEARCH);
  * the visitor's disc image.
  */
 let playOn = SHARE.play ?? readPlayChoice() === '1';
-/** `&fly` keeps the free camera when reCOM mode opens (the tests that measure the fly view ask for it). */
-const FLY_START = new URLSearchParams(SEARCH).has('fly');
+/**
+ * The free camera in Play is the developer's alone (owner, 2026-09-29; `./flyAccess`): without `?devmode` there is no
+ * Fly / Walk switch, `G` and the pad's Start do not toggle, the hook refuses fly, and `&fly` is ignored and taken out of
+ * the address. With it, `&fly` keeps the free camera when reCOM mode opens (the tests that measure the fly view ask).
+ */
+const FLY = flyAccess(SEARCH);
+const FLY_START = FLY.startInFly;
+if (!FLY.toggle) document.getElementById('mode')?.remove();   // before `PlayUi` and `Ui` see the page
 /** reCOM mode opens on foot (owner, 2026-09-29): the map's walk starts once it is ready. Later maps keep the mode. */
 let startedWalk = false;
 function startInWalk(mapName: string): void {
@@ -125,8 +132,11 @@ function startInWalk(mapName: string): void {
   let tries = 0;
   const attempt = (): void => {
     if (startedWalk || loaded?.name !== mapName) return;     // entered already, or another map was picked
+    if (!playOn) return;                                        // Explore was chosen meanwhile
     if (walk.mode() === 'walk' || walk.setMode('walk')) { startedWalk = true; return; }
-    if (++tries < 300) requestAnimationFrame(attempt);        // the body and clips may still be on their way (~5 s)
+    // The body and clips may still be on their way (~5 s); past that, a slower try, since a player in Play has no
+    // other way onto their feet (no G without `?devmode`, `./flyAccess`).
+    if (++tries < 300) requestAnimationFrame(attempt); else setTimeout(attempt, 1000);
   };
   attempt();
 }
@@ -145,6 +155,8 @@ const overlays = new Overlays(scene);
  * follows it (W2.1, `./playerCamera`); the zoom's lens views are drawn from the head. No first person (owner, 2026-09-29).
  */
 const walk = new WalkMode(fly, (on) => ui.setWalk(on));
+walk.modeKey = FLY.toggle;                            // G: the developer's in Play (`./flyAccess`)
+ui.setFlyToggle(FLY.toggle);
 /**
  * Web research 86 (`./traversalPage`): the ladder, the climb, the peek and the water on the walk; X, Q and E, the pad's
  * Cross and d-pad sides. The clips' callbacks sound through `Play.onEvent`; the slide's loop and landing through these.
@@ -614,7 +626,7 @@ let net: NetPage | null = null;
  * Offline, reCOM mode plays the match on its own (`./net/loopback`): the server's room in the page, joined as a match is.
  * `&nomatch` keeps the free walk of before (and `&fly`, the tests' and the tools' opening in the fly camera, does too).
  */
-const SOLO_MATCH = !new URLSearchParams(SEARCH).has('nomatch') && !new URLSearchParams(SEARCH).has('fly');
+const SOLO_MATCH = !new URLSearchParams(SEARCH).has('nomatch') && !FLY_START;
 let solo: LoopbackMatch | null = null;
 /** A blast's ringing ears (`./ringingEars`): the mix held at 0.35 for 5 s. */
 const ears = new RingingEars(audio);
@@ -873,7 +885,7 @@ ui.onMapChange((path) => {
 });
 // Restores the picture -- the address's `view`, else the remembered one -- before the toggles are read; the link follows it.
 ui.onLook(SHARE.view, (view) => updateAddress({ view }));
-updateAddress({ view: ui.toggles().ps2look ? 'ps2' : 'modern' });
+updateAddress({ view: ui.toggles().ps2look ? 'ps2' : 'modern', ...(FLY.dropFly ? { drop: [FLY_PARAM] } : {}) });   // a player's `&fly` leaves
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
@@ -934,7 +946,7 @@ function padFrame(dt: number): void {
   fly.setLift((input.jump ? 1 : 0) - (input.crouch || input.stance ? 1 : 0));
   fly.setStickBoost(input.boost);
   fly.setLook(input.lookX, input.lookY);
-  if (playOn && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
+  if (playOn && FLY.toggle && pressedSince(padLast, pad).includes('mode')) walk.setMode(walk.mode() === 'walk' ? 'fly' : 'walk');
   // R1 is the trigger, as the mouse button is: held it fires at the rifle's rate, let go it stops. Only the pad's own
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
   // The merged lane, so the touch fire button (`touchInput.fire`) is the trigger the same way; a released R1 still never
@@ -1622,7 +1634,7 @@ window.__viewer = {
   lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
   mode: () => walk.mode(),
-  setMode: (mode) => (mode === 'walk' && !playOn ? false : walk.setMode(mode)),
+  setMode: (mode) => (mayEnter(mode, playOn, FLY) ? walk.setMode(mode) : false),
   recom: (on) => { if (on !== undefined) setPlayMode(on, true); return playOn; },
   discPage: () => ui.discPageShown(),
   online: () => ({ ...(net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn }), choice: NET.choice, url: NET.url }),

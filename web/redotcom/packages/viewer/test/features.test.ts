@@ -114,11 +114,13 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
 });
 
 describe('the page with the play on', () => {
-  it('keeps the play markup, and the keys list has G walk', () => {
+  it('keeps the play markup; the keys list has G only with the developer toggle (a player has no fly in Play)', () => {
     load();
     const ui = new Ui();
     const keys = (): string => [...document.querySelectorAll('#keys-list tbody tr')].map((r) => r.textContent).join(' | ');
-    expect(document.getElementById('mode')).not.toBeNull();
+    expect(document.getElementById('mode')).not.toBeNull();       // the markup; main.ts removes it without ?devmode
+    expect(keys()).not.toMatch(/Gwalk/);
+    ui.setFlyToggle(true);
     expect(keys()).toMatch(/Gwalk/);
     ui.setWalk(true);
     expect(keys()).toMatch(/Gfly/);

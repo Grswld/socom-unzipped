@@ -192,8 +192,14 @@ run time, both ways, without a reload (the disc you opened stays open), and is r
 (`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and Explore is the default.
 The switch is on every page load: no flag gates it (owner, 2026-09-29: "&redotcom can die now. The mode replaces it"),
 and an old link's `redotcom` has no effect and is taken out of the address (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
-`viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
-add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
+`viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready.
+
+**The fly camera is Explore's** (owner, 2026-09-29: "Block the fly automatically and disable it while in play mode";
+`viewer/src/flyAccess.ts`). In Play a player cannot reach it: there is no Fly / Walk switch, `G` and the pad's Start do
+not toggle, the Controls lists name no toggle, the debug hook's `setMode('fly')` returns false, and a `fly` in the
+address is ignored and taken out of it. The developer's `?devmode` keeps all of that: `&fly&devmode` opens Play on the
+free camera (the e2e specs and the measuring tools do, and enter the walk themselves), and `G`, Start and the switch
+toggle walk and fly as before.
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
 **Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
@@ -227,7 +233,7 @@ connection is doing -- connecting, online and the number of players, or "server 
 8 ... 60 s to a server never reached; 1, 2, 4 ... 10 s after a drop) -- and a toast says when it comes up or goes
 away. `&mp` and `&server=` in the address still override it (`viewer/src/online.ts`).
 
-### Flying (always)
+### Flying (Explore; in Play only with `?devmode`)
 
 | input | what it does |
 |---|---|
@@ -247,7 +253,7 @@ away. `&mp` and `&server=` in the address still override it (`viewer/src/online.
 
 | input | what it does |
 |---|---|
-| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **Fly / Walk** switch (the Modern / PS2 switch's own markup) mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `G` (`?devmode` only) | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **Fly / Walk** switch (the Modern / PS2 switch's own markup) mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 | `W`/`S`, `A`/`D` | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
 | mouse (captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
 | `Space` | jump |
@@ -279,7 +285,7 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
 | L1 | the rifle (the game's SwapWeapon1); no held aim, no first person | — |
 | d-pad Up / Down | zoom in / out, a step a press (the scope; research 84) | — |
-| Start | fly (as `G`) | walk (as `G`) |
+| Start (`?devmode` only) | fly (as `G`) | walk (as `G`) |
 | L3 | fire mode (research 84 section 6) | — |
 | R3 | reload, as `R` (the owner's ruling, 2026-09-29, and the game's own: `controller.rdr`'s Default binds R3 to Reload) | — |
 | Circle | — (the game's TeamCommand, which the viewer does not have) | boost (on R3 until R3 became the reload) |

@@ -724,11 +724,22 @@ export class Ui {
     this.renderControls();
   }
 
-  /** The two lists (`./controlsList`): grouped, for the mode you are in and no other. */
+  /**
+   * The two lists (`./controlsList`): grouped, for the mode you are in and no other. `G` and Start are listed only where
+   * they toggle: in Play with the developer's `?devmode` (`./flyAccess`).
+   */
   private renderControls(): void {
     const mode = this.walking ? 'walk' : 'fly';
-    fillList('#keys-list tbody', controlGroups(mode, this.play));
-    fillList('#pad-list tbody', padControlGroups(mode, this.play));
+    const toggle = this.play && this.flyToggle;
+    fillList('#keys-list tbody', controlGroups(mode, toggle));
+    fillList('#pad-list tbody', padControlGroups(mode, toggle));
+  }
+
+  /** Whether the walk / fly toggle is offered in Play (`./flyAccess`: the developer's `?devmode` alone). */
+  setFlyToggle(on: boolean): void {
+    if (this.flyToggle === on) return;
+    this.flyToggle = on;
+    this.setCameraHint(...this.hintArgs);
   }
 
   /** One of the popover's two tabs shown, the other hidden; the tab lit and selected. */
@@ -788,6 +799,8 @@ export class Ui {
   private tabChosen = false;
   /** The mode the page shows, which picks the lists' words (`setWalk`). */
   private walking = false;
+  /** Whether `G` and Start toggle walk and fly in Play (`setFlyToggle`); off for a player. */
+  private flyToggle = false;
 
   /**
    * A short line in the frame counter's pill, top centre, for `TOAST_MS`. One at a time: a second replaces the first

@@ -98,7 +98,10 @@ export interface ViewerHook {
   sliders(): Record<SliderName, number>;
   /** Walk or fly (W1.4, `./walk`): what `G` and the panel's switch toggle. */
   mode(): 'walk' | 'fly';
-  /** False when walk was asked for and there is no floor to stand on, under the camera or at spawn A. */
+  /**
+   * False when walk was asked for and there is no floor to stand on, under the camera or at spawn A; when walk was asked
+   * for in Explore; and when fly was asked for in Play without `?devmode` (`./flyAccess`, owner 2026-09-29).
+   */
   setMode(mode: 'walk' | 'fly'): boolean;
   /** reCOM mode (the settings' Mode switch, `./features`): switched when `on` is given (as the visitor would), then read. */
   recom?(on?: boolean): boolean;
