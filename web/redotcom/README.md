@@ -389,8 +389,8 @@ for a landscape lock. The canvas is `100dvh`, so the picture's centre is the scr
 showing, and the pixel ratio starts at 1.5 on a coarse pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it
 down to 0.75, frames under 12 ms step it back up.
 
-Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Controls,
-Settings and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
+Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Settings,
+Controls and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
 panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself;
 on a phone held sideways, open, it docks in the top middle band -- right of the fullscreen button, left of the pill row
 under the compass, above the SHOOT / JUMP cluster -- so no touch button is under it (it lies over the stick zones, open
