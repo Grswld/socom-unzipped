@@ -198,7 +198,7 @@
     X("PS2X_VU1_GEN", Dev, Int, "1", "0 disables the generated VU1 programs.") \
     X("PS2X_VU1_HOST_DRAW", Dev, Int, "0", "1 draws the native dispatcher triangles in host space instead of kicking GIF packets.") \
     X("PS2X_VU1_NATIVE", Dev, Int, "1", "0 reverts the hand-written native VU1 programs to the generated/interpreted path.") \
-    X("PS2X_VU1_NATIVE_33C8", Dev, Flag, "0", "1 runs VU1 entry 0x33c8's last-bone repack and resumed lists of 66 06 08 10 40 54 natively; 0 = generated.") \
+    X("PS2X_VU1_NATIVE_33C8", Dev, Flag, "0", "1 runs VU1 entry 0x33c8 natively: repack, resumed 66 06 08 10 18 28 40 54 and the 0x02 loop; 0 = generated.") \
     X("PS2X_VU1_NATIVE_REFUSALS", Dev, Flag, "0", "1 counts native VU1 dispatcher refusals by reason, entry and command, with the fallback cycles ([vu1-refuse]).") \
     X("PS2X_VU1_NATIVE_TEST_CEILING", Dev, Int, "", "Test hook: lower the native dispatcher vertex and triangle ceilings.") \
     X("PS2X_VU1_NATIVE_TEST_CLIP_CEILING", Dev, Int, "", "Test hook: lower the native dispatcher clipped-vertex ceiling.") \

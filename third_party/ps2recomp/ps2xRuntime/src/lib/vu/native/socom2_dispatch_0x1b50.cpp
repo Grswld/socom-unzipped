@@ -41,6 +41,9 @@
 // here, admitted by that entry's pre-scan only (cmdFaceNormals). Otherwise the microcode branches
 // to 0x3100 for another bone pass, which is refused whole as skin_pass. Behind
 // PS2X_VU1_NATIVE_33C8 (Dev, default 0): off, the registry leaves the entry to the generated code.
+// The resumed list may hold only commands whose stores that entry proves before its first write
+// (proveResumedWrites): the walk's two last-bone shapes, `66 06 08 54 18 28 42` and the 0x02 loop
+// `66 06 02 [0a 56 1a 2a 4c]`, are among them (research/82 section 9.7).
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
 // vi1). Family B is not: vi8 and vi10 (the clipped polygon and its vertex count, set inside
@@ -218,6 +221,19 @@ namespace
     // 0x1a, 0x2a and 0x32 (research/13 6.2).
     constexpr int32_t kMaxClippedVertices = 12;
 
+    // ... but twelve is the convex, exact-arithmetic reading, not a bound on this code (research/82 section 9.7).
+    // The clipper does not stop at its buffers: a stage emits, per edge P->C, P when P is inside and the crossing
+    // when the sides differ. Each vertex's side is taken from the same bits twice -- as C (the sign of 0 + dC,
+    // 0x3b40) and as the next edge's P (the sign of dP, 0x3b58, over an ADDx copy that can only turn -0 lanes to
+    // +0) -- and "outside as C" implies "outside as P" (a strictly negative dot is bit-identical either way). An
+    // edge whose C is inside emits one vertex; one whose C is outside emits two if its P -- the previous edge's C
+    // -- is inside, else none. So a stage over n edges emits at most n + floor(n/2) when the first edge's P is the
+    // last edge's C (the wrap copy), n + ceil(n/2) when it is not (stage 5 from n >= 12: its outputs from q76
+    // overwrite the tail of its input, q40 + 3n + 2 >= 76, before the last edges read it): 3 -> 4 -> 6 -> 9 -> 13
+    // -> 20, stage 5 storing up to q76 + 3 * 21 - 1 = 138. Entry 0x33c8 uses this bound for its vi10 clamps, so
+    // none can fire after its repack; 0x1b50 keeps twelve, where a count over it is a clean hand-back at 0x1b60.
+    constexpr int32_t kClipperOutputBound = 20;
+
     // What running one command left behind. Most handlers only ever reach their own `B 0x1b60`,
     // but command 0x4c ends the program itself -- a family-B list's trailing 0x42 is never
     // dispatched -- so "the command ran" and "the program is over" have to be told apart.
@@ -365,6 +381,10 @@ namespace
         // Entry 0x33c8's run: command 0x66 has a handler (research/82). False at 0x1b50, where a 0x66
         // stays the microcode's.
         bool faceNormals = false;
+        // Entry 0x33c8's run: the vi10 clamps use the clipper's arithmetic bound (kClipperOutputBound), which no
+        // clipper output can exceed, instead of the 0x1b50 ceiling -- so none can fire after the repack has stored
+        // (research/82 section 9.7). False at 0x1b50, whose clamps are unchanged.
+        bool clipBoundProven = false;
 
         int32_t &vi(uint32_t r) { return vu.m_state.vi[r]; }
         // VU1 data memory is 16 KB and every access wraps inside it, exactly like the microcode's
@@ -688,12 +708,13 @@ namespace
         return parsed > fallback ? fallback : parsed;
     }
 
-    // ps2x_tests' hooks over the two process-wide inputs below (vu1native_socom2_force*ForTest, at the end of
+    // ps2x_tests' hooks over the three process-wide inputs below (vu1native_socom2_force*ForTest, at the end of
     // this file). -1, the only value the game ever has, reads the latched knob exactly as before; a test sets a
     // value for one case and puts -1 back, so its result does not hang on the environment or on which case
     // latched the knob first.
     std::atomic<int> s_testXgkickImmediate{-1};
     std::atomic<int32_t> s_testVertexCeiling{-1};
+    std::atomic<int32_t> s_testClipCeiling{-1};
 
     int32_t vertexCeiling()
     {
@@ -714,8 +735,15 @@ namespace
     {
         static const int32_t value =
             envCeiling("PS2X_VU1_NATIVE_TEST_CLIP_CEILING", kMaxClippedVertices);
+        const int32_t forced = s_testClipCeiling.load(std::memory_order_relaxed);
+        if (forced >= 0)
+            return forced > kMaxClippedVertices ? kMaxClippedVertices : forced;   // narrows only, as envCeiling does
         return value;
     }
+
+    // The ceiling a vi10 clamp checks: 0x1b50's (lowered only by the test knob), or at entry 0x33c8 the clipper's
+    // arithmetic bound, which that entry refuses whole instead of lowering (research/82 section 9.7).
+    int32_t clipCeiling(const Ctx &c) { return c.clipBoundProven ? kClipperOutputBound : clippedVertexCeiling(); }
 
     // The single hand-back at 0x1b60, used by the clamps AND by the dispatcher's NotImplemented
     // path, so there is one place that decides what a hand-back leaves behind. vi14 has to name
@@ -1405,7 +1433,7 @@ namespace
         // Clamp: 0x0f38's count is the clipper's vi10, which the pre-scan cannot see. Checked
         // here, ahead of the microcode's own first instruction, because 0x0f10's XGKICK would
         // otherwise have happened twice once the microcode re-ran the command.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
 
         c.vi(4) = 423;                                         // 0x0f08
@@ -1575,7 +1603,7 @@ namespace
     {
         using namespace fade;
         // Clamp: 0x1120's count is vi10.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x1108: vi3 = vi8
         c.vi(kStageCursor) = 150;                                // 0x1110
@@ -1641,7 +1669,7 @@ namespace
         // Clamp: 0x0650's count is vi10. The loop decrements by three and tests `> 0`, so it also
         // overshoots to the next multiple of three -- 150 + 3*12 = 186 is inside the array's
         // headroom only because vi10 is bounded here.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         c.vi(kStageCursor) = 150;                                // 0x0640
         c.vi(kRemaining) = vi16(c.vi(10));                       // 0x0650: the B 0x5e8 delay slot
@@ -1807,7 +1835,7 @@ namespace
     {
         using namespace lighting;
         // Clamp: 0x15d0's count is vi10.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         loadQword<kParams, kXYZW>(c, 27);                        // 0x15b0
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x15b8: vi3 = vi8
@@ -2349,7 +2377,7 @@ namespace
     // 0x32 makes the same check at its own entry and tail-jumps to the unwrapped body.
     bool cmdFlushPacketDispatched(Ctx &c)
     {
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         return cmdFlushPacket(c);
     }
@@ -3134,7 +3162,7 @@ namespace
         // `y` landing on a 0x32 would arrive here with whatever vi10 the last clipper call left --
         // including the zero the "clipped away entirely" path at 0x2080 leaves. So 0x32 requires
         // at least one, here, where the hand-back is still clean.
-        if (!withinBounds(vi16(c.vi(10)), 1, clippedVertexCeiling()))
+        if (!withinBounds(vi16(c.vi(10)), 1, clipCeiling(c)))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = 150;                                  // 0x23b0
         c.vi(kDstCursor) = 150;                                  // 0x23b8
@@ -3578,10 +3606,66 @@ namespace
         return writeRangeClear(top, top + 4, 3 * count);
     }
 
+    // One store to `lanes` (the VU dest bits) of `qword`: writeRangeClear's test, except that at q329 only the lanes
+    // the proof reads -- x and y, 0x28/0x40's packet pointers -- are refused. 0x02 saves its cursor to q329.z.
+    bool laneStoreClear(int32_t top, int32_t qword, uint8_t lanes)
+    {
+        if (qword != kPacketPointerQword)
+            return writeRangeClear(top, qword, 1);
+        return (lanes & kXY) == 0u && top + 2 != qword;
+    }
+
+    // ---- entry 0x33c8's 0x02 loop (research/82 section 9.7, the walk's shape L, `66 06 02 [0a 56 1a 2a 4c]`) ------
+    //
+    // Every store the 0x02 family makes lands at a FIXED address, whatever the primitive count, so their union is
+    // proven once and holds for every pass of the loop; the primitive count (TOP+2.w, 1..triangleCeiling() by the
+    // entry's header checks) bounds only the time. With n = vi10 <= kClipperOutputBound:
+    //   0x02   (0x1f70-0x20b8) ISW.z of the cursor to q329.z on both paths (0x1fe0, the IBEQ's delay slot), ISW.w of
+    //          flag bit 1 to q112 (0x1ff8), then ISW.x and SQ.yz of the GIFtag to q112 (0x20a8, 0x20b0);
+    //   0x3618 the clipper, BAL'd from 0x2070: buffer A from q40 (the triangle and its wrap copy, q40-51), then each
+    //          stage's polygon and wrap copy (SQI from vi6) at q76 / q40 alternately: within q40-138;
+    //   0x0a   (0x0f08) XGKICK q423, then 0x08's kernel from vi4 = 150: [150, 149 + 3 max(n, 1)];
+    //   0x12   (0x1108) 0x10's kernel from 150: the fog lanes of [152, 149 + 3 max(n, 1)];
+    //   0x56   (0x0640) 0x54's kernel from 150: [151, 150 + 9 max(ceil(n/3), 1) - 2], at n = 20 q211, the highest;
+    //   0x1a   (0x15b0) 0x18's kernel from 150: [151, 148 + 6 max(ceil(n/2), 1)];
+    //   0x2a   (0x1a78) the flush tail from vi4 = 113: [113, 112 + 3 max(n, 1)], then XGKICK q423 and q112;
+    //   0x4c   (0x20c8) no store: ILW.z of q329.z, ILW.y of the list, then B 0x1f98 or the E bit's B 0x1b40.
+    // The union is [40, 211] and q329.z. Their loads (the planes q30-36, q27, q28/29, q38, q327, TOP+0, the index
+    // records, the vertex block, the buffers, one staging triple past the end) write nothing, and their XGKICKs
+    // copy under the immediate model the entry requires, as 0x28's do.
+    constexpr int32_t kFamilyBStoreFirst = 40;
+    constexpr int32_t kFamilyBStoreLast = 150 + 9 * ((kClipperOutputBound + 2) / 3) - 2; // 0x56's overshoot
+    static_assert(76 + 3 * (kClipperOutputBound + 1) - 1 <= kFamilyBStoreLast, "the clipper's stage 5");
+    static_assert(112 + 3 * kClipperOutputBound <= kFamilyBStoreLast, "0x2a's flush");
+    static_assert(149 + 3 * kClipperOutputBound <= kFamilyBStoreLast, "0x0a's and 0x12's staging");
+    static_assert(148 + 6 * ((kClipperOutputBound + 1) / 2) <= kFamilyBStoreLast, "0x1a's lit colours");
+    static_assert(kFamilyBStoreLast < kPacketPointerQword, "the union lies below q329 and the list");
+
+    // The loop's shape, fixed by list words the proof keeps unwritten (every family-B store lies below q329). The
+    // dispatcher reaches the body three ways: 0x02's own B 0x1b60 on the first primitive, at vi14 = i02 + 1; 0x4c's
+    // re-entry at 0x1f98 after `ILW.y vi14, 340(vi14)` (0x20e8) with vi14 = b + 1, the qword after the 0x4c; and a
+    // skipped primitive -- culled (0x1fd8) or clipped away (0x2080) -- falling into 0x20c8 undispatched, which
+    // reads the y of whatever vi14 the last dispatch or re-entry left: i02 + 1 on the first primitive, t after a
+    // re-entry. So with t = y(b + 1), requiring i02 < t <= b, y(i02 + 1) = t and y(t) = t lands every path on t or
+    // runs i02 + 1 .. b in order, all of which the walk has proven. Research/13 4.7's uniform y is guest data; this
+    // checks it instead of trusting it (vu1_refused_shapes prints `y=mixed` for the lists it refuses).
+    bool loopShapeHolds(Ctx &c, int32_t worldIndex, int32_t backEdge)
+    {
+        if (backEdge + 1 >= static_cast<int32_t>(kMaxListQwords))
+            return false;
+        auto y = [&](int32_t k) { return c.loadWord(kCommandListQword + k, 1); };
+        const int32_t target = y(backEdge + 1);
+        return target > worldIndex && target <= backEdge && y(worldIndex + 1) == target && y(target) == target;
+    }
+
     // The resumed list's commands, walked from vi14 to its 0x42 as the dispatcher will run them (the pre-scan has
-    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the six commands whose
-    // store ranges are derived here are admitted -- the corpus's three, the walk's 0x06 (research/82 N1b) and the
-    // walk's 0x54 and 0x10 (research/82 section 9.6, N1c's linear half):
+    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the commands whose store
+    // ranges are derived here are admitted -- the corpus's three, the walk's 0x06 (research/82 N1b), the walk's 0x54
+    // and 0x10 (research/82 section 9.6, N1c's linear half), shape A's 0x18 and 0x28 (research/82 section 9.7,
+    // `66 06 08 54 18 28 42`, 816 of the refused capture's 2,000) and shape L's 0x02 loop (section 9.7,
+    // `66 06 02 [0a 56 1a 2a 4c]`, the other 1,184, with 0x12): the 0x02 once, its union proven there (above), the
+    // loop family after it and nothing else, a vi10 reader never before it, and the walk ends at the 0x4c, whose
+    // loop shape loopShapeHolds checks -- the linear ones before the 0x02 as below:
     //   0x66  index record [1] of every triangle, TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1) (the body runs once
     //         before its IBGTZ);
     //   0x06  index record [0] of every triangle, TOP+TOP+2.x+2k for k < max(TOP+2.w, 1): its one store, the
@@ -3597,19 +3681,38 @@ namespace
     //         vi4 = 40, vi4 += 9 in the IBGTZ's delay slot, the body before the test: qwords 41 + 3j for
     //         j < 3 max(ceil(V/3), 1), overshooting to a multiple of three. Proven as
     //         [41, 40 + 9 max(ceil(V/3), 1) - 2];
+    //   0x18  (0x1440-0x15a0) slot +1 of two staging triples a pass, SQ.xyzw at -11(vi4) (vertex a, 0x1580) and
+    //         -8(vi4) (vertex b, 0x1588) after vi4 = 40 (0x1450) += 6 before the loop (0x14b8) and += 6 in it (0x1530),
+    //         IADDI vi9 -2 (0x14e0) with the body before its IBGTZ (0x1590): qwords 41 + 3j for j < 2 max(ceil(V/2), 1),
+    //         an odd count lighting vertex V as well. Proven as [41, 38 + 6 max(ceil(V/2), 1)]; q329 from V = 97, as
+    //         0x08. Its loads (q27, the records from TOP+4 and the staging RGBA, one pair past the end) write nothing;
+    //         it leaves vi3/vi4/vi9, vf13-vf31, ACC and the MAC/STATUS of its last FMAC (0x1578's MADDw; the MAXx
+    //         after it set none), and reads no flag;
+    //   0x28  (0x1780) two loads (vf20 = q38, vf19 = TOP+1) and 0x40's body from 0x1790 unchanged, so 0x40's range;
     //   0x40  (0x28's body from 0x1790) the tag qwords 290 and 300, the packets' nine qwords after each of the
     //         two pointers at q329.x and q329.y, and q329 itself -- rewritten with the same pair, swapped, so the
-    //         proof's reading of it holds for a later 0x40 too.
+    //         proof's reading of it holds for a later 0x28 or 0x40 too. Its XGKICKs (0x1920, one per drawn triangle)
+    //         store nothing: under the immediate model the entry requires, each copies its packet to the GIF at
+    //         kick time, before the next triangle is built over the other buffer.
     // TOP+2 and q329 are proven unwritten, so the counts and pointers read here are the ones the handlers read.
     // Order: every range above is a function of TOP, TOP+2 and q329 alone, never of data another command wrote --
     // 0x10 reads the ST.w 0x08 left and 0x40 the flag words 0x06 left, but as values, not addresses -- so the walk
     // proves them in any order and count. Registers: 0x54 leaves vi4 = 40 + 9n, vi9 = V - 3n and vf28 = q327; 0x10
     // leaves vi3/vi4/vi9, vf14/15, vf17/18, vf20-31, ACC.w, I = 1.0 and the MAC/STATUS of its last FMAC. No admitted
     // command takes any of them as an input it has not rewritten first but through the data path the native handler
-    // reproduces bit for bit. Flags: neither 0x54 (no FMAC) nor 0x10 (MINI/MAX set none; no FMAND/FSAND/FCAND) reads
-    // a flag, and the one flag read among the admitted, 0x06's FMAND at 0x1718, reads its own MADDz.w four pairs
-    // back (research/82 8.2): 0x10's last FMAC (0x10f0, or 0x10b0 on the odd exit) issues 40 or more pairs before
-    // that FMAND and before the MADDz.w, so it has landed and is older, as the repack's ADDy.z is.
+    // reproduces bit for bit (0x40's inherited vf20 included: native keeps it, as the microcode does). Flags: neither
+    // 0x54 (no FMAC) nor 0x10 (MINI/MAX set none; no FMAND/FSAND/FCAND) reads a flag, nor do 0x18 and 0x28 -- the
+    // image's six flag reads are all FMAND, at 0x1718 (0x06), 0x2858 (0x34's sphere map, not 0x28's), 0x2fa8/0x2fd8
+    // and the clipper's 0x3b60/0x3b78 -- and the one among the admitted, 0x06's FMAND at 0x1718, reads its own
+    // MADDz.w four pairs back (research/82 8.2): 0x10's last FMAC (0x10f0, or 0x10b0 on the odd exit), 0x18's
+    // (0x1578) and 0x28's (the RGBAQ MADD of its last drawn triangle, or 0x1798's SUBAw.w) issue 20 or more pairs
+    // before that FMAND and before the MADDz.w -- the dispatcher's eight and 0x06's prologue between -- so they have
+    // landed and are older, as the repack's ADDy.z is. The loop's flag reads are the clipper's two FMANDs, 0x3b60
+    // and 0x3b78 in the edge helper 0x3ad0, which read the MACs of 0x3b40's ADDw.z and 0x3b58's MADDz.w four pairs
+    // back (primSubroutine3618 captures those two): the helper's own FMACs, in straight-line code whose timing
+    // depends only on its own hazards, so what has landed at each FMAND is what it is at 0x1b50 (bit-exact there on
+    // the corpus's 1,224 primitives), whatever ran before -- the repack, 0x66 and 0x06 are dozens of pairs back.
+    // 0x02, the shims, 0x2a and 0x4c read no flag.
     bool proveResumedWrites(Ctx &c, int32_t top, uint32_t startIndex, Vu1Refusals::Refusal &refusal)
     {
         const int32_t indexBase = vi16(top + c.loadWord(top + 2, 0)); // 0x2e38: vi4 = TOP+2.x + vi1
@@ -3618,16 +3721,48 @@ namespace
         const int32_t facePasses = triangles > 1 ? triangles : 1;
         const int32_t stagePasses = vertices > 1 ? vertices : 1;
         const int32_t fillPasses = vertices > 3 ? (vertices + 2) / 3 : 1; // 0x54: three vertices a pass
+        const int32_t lightPasses = vertices > 2 ? (vertices + 1) / 2 : 1; // 0x18: two vertices a pass
         const int32_t packetA = c.loadWord(kPacketPointerQword, 0);
         const int32_t packetB = c.loadWord(kPacketPointerQword, 1);
+        int32_t worldIndex = -1; // the 0x02's list index, once the walk has passed it
         uint32_t index = startIndex;
         for (uint32_t step = 0; step < kMaxCommands && index < kMaxListQwords; ++step, ++index)
         {
             const uint32_t command = peekCommand(c, index);
+            // Past the 0x02 only its loop family runs: the linear commands 0x06 and 0x28/0x40 rewrite vi12, the
+            // primitive counter 0x4c tests, and a 0x42 before any 0x4c would leave skipped primitives looping on
+            // y words no 0x4c fixes.
+            if (worldIndex >= 0 && !isFamilyBCommand(command))
+                return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
             switch (command)
             {
             case kCmdEnd:
                 return true;
+            case kCmdWorldObject:
+                if (worldIndex >= 0)
+                    return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
+                if (!writeRangeClear(top, kFamilyBStoreFirst, kFamilyBStoreLast - kFamilyBStoreFirst + 1) ||
+                    !laneStoreClear(top, kPacketPointerQword, kZ))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                // The vi10 clamps run at kClipperOutputBound here (clipCeiling); the test knob that lowers 0x1b50's
+                // narrows this entry by refusing whole instead, as HeaderVertices does for the vertex ceiling.
+                if (clippedVertexCeiling() < kMaxClippedVertices)
+                    return refuse(refusal, Vu1Refusals::Reason::ClipCeiling);
+                worldIndex = static_cast<int32_t>(index);
+                break;
+            case kCmdClippedTransform:
+            case kCmdClippedFade:
+            case kCmdClippedTemplateFill:
+            case kCmdClippedLight:
+            case kCmdFlushPacket:
+                // vi10 is the clipper's only after the 0x02: before it, it is the live-in, unbounded.
+                if (worldIndex < 0)
+                    return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
+                break; // their stores lie in the union proven at the 0x02
+            case kCmdLoopBack:
+                if (worldIndex < 0 || !loopShapeHolds(c, worldIndex, static_cast<int32_t>(index)))
+                    return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
+                return true; // 0x4c loops back into the proven body or ends the program: nothing past it runs
             case kCmdFaceNormals:
                 if (!writeRangeClear(top, indexBase + 1, 2 * facePasses - 1))
                     return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
@@ -3648,6 +3783,11 @@ namespace
                 if (!writeRangeClear(top, 41, 9 * fillPasses - 2))
                     return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
                 break;
+            case kCmdLight:
+                if (!writeRangeClear(top, 41, 6 * lightPasses - 2))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdBuildPacket:
             case kCmdDrawUntextured:
                 if (!writeRangeClear(top, 290, 1) || !writeRangeClear(top, 300, 1) ||
                     !writeRangeClear(top, packetA + 1, 9) || !writeRangeClear(top, packetB + 1, 9))
@@ -3834,6 +3974,13 @@ void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling)
     s_testVertexCeiling.store(ceiling < 0 ? -1 : ceiling, std::memory_order_relaxed);
 }
 
+// ... and the handler-side clipped-vertex ceiling (-1 = PS2X_VU1_NATIVE_TEST_CLIP_CEILING as latched, else clamped
+// into [0, kMaxClippedVertices]): entry 0x33c8 refuses a loop list whole under a lowered one (research/82 9.7).
+void vu1native_socom2_forceClipCeilingForTest(int32_t ceiling)
+{
+    s_testClipCeiling.store(ceiling < 0 ? -1 : ceiling, std::memory_order_relaxed);
+}
+
 // Sprint 17 F N1 (docs/research/82): registered for (image d418194495c25213, entry pc 0x33c8) behind
 // PS2X_VU1_NATIVE_33C8 (the registry asks this gate after the (hash, pc) match; read once, after developer mode).
 bool vu1native_socom2_entry_0x33c8_enabled()
@@ -3853,6 +4000,7 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
 {
     Ctx c{vu};
     c.faceNormals = true;
+    c.clipBoundProven = true; // the vi10 clamps at kClipperOutputBound: unreachable (research/82 section 9.7)
     const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
     const uint32_t entryPc = vu.m_state.pc;
     // The repack's count (IBNE on a 16-bit register) and the dispatcher's resume index, both live-in.
@@ -3872,9 +4020,12 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     else if (isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex)))
     {
         // No handler clamp may fire after the repack has stored: the handler-side ceilings (lowered only by the
-        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x06, 0x08, 0x10, 0x40
-        // and 0x54 -- all proveResumedWrites admits -- loop on these two counts and nothing else (0x10's and 0x54's
-        // clamps, at 0x0f90 and 0x05e0, are TOP+2.z against vertexCeiling(), as 0x08's).
+        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x06, 0x08, 0x10, 0x18,
+        // 0x28, 0x40 and 0x54 -- all proveResumedWrites admits -- loop on these two counts and nothing else (0x10's,
+        // 0x54's and 0x18's clamps, at 0x0f90, 0x05e0 and 0x1458, are TOP+2.z against vertexCeiling(), as 0x08's;
+        // 0x28's, at 0x17d0, is TOP+2.w against triangleCeiling(), as 0x40's and 0x02's at 0x1f78). The loop
+        // family's vi10 clamps run at kClipperOutputBound here, which the clipper cannot exceed, and a lowered test
+        // clip ceiling is refused whole in proveResumedWrites.
         if (c.loadWord(top + 2, 2) > vertexCeiling())
             refuse(refusal, Vu1Refusals::Reason::HeaderVertices);
         else if (c.loadWord(top + 2, 3) > triangleCeiling())

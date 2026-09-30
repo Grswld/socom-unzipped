@@ -426,6 +426,9 @@ namespace
         }
         uint32_t below(uint32_t n) { return next() % n; }
     };
+
+    // Sprint 17 F N1c, the real shapes: RealDump, and last-bone 0x33c8 entry states from the walk's refused capture.
+#include "vu1_33c8_real_dumps.inc"
 }
 
 void register_vu1_ops_tests()
@@ -773,6 +776,11 @@ void register_vu1_ops_tests()
             {
                 void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling);
                 vu1native_socom2_forceVertexCeilingForTest(ceiling);
+            }
+            static void forceClipCeiling(int32_t ceiling)   // -1 = the knob (PS2X_VU1_NATIVE_TEST_CLIP_CEILING)
+            {
+                void vu1native_socom2_forceClipCeilingForTest(int32_t ceiling);
+                vu1native_socom2_forceClipCeilingForTest(ceiling);
             }
             RefusalRig()
             {
@@ -1132,6 +1140,36 @@ void register_vu1_ops_tests()
                 std::memcpy(vf, blob.data() + 16 + PS2_VU1_CODE_SIZE + PS2_VU1_DATA_SIZE + sizeof(vi), sizeof(vf));
                 return true;
             }
+            // A real refused capture (vu1_33c8_real_dumps.inc): its TOP, register file and the qwords its program
+            // reads, written over the fixture image.
+            bool loadReal(const RealDump &d)
+            {
+                if (!load())
+                    return false;
+                top = d.top;
+                std::memcpy(vi, d.vi, sizeof(vi));
+                std::memcpy(vf, d.vf, sizeof(vf));
+                for (size_t s = 0; s < d.spanCount; ++s)
+                {
+                    const std::string hex = d.spans[s].hex;
+                    for (size_t w = 0; w + 8u <= hex.size(); w += 8u)
+                        setWord(d.spans[s].first + static_cast<uint32_t>(w / 32u), static_cast<uint32_t>((w / 8u) % 4u),
+                                static_cast<int32_t>(std::stoul(hex.substr(w, 8u), nullptr, 16)));
+                }
+                return true;
+            }
+            // The list the dispatcher resumes: the command words from vi14 through the first 0x42.
+            std::vector<uint32_t> resumedList() const
+            {
+                std::vector<uint32_t> list;
+                for (int32_t k = vi[14]; k >= 0 && k < 64; ++k)
+                {
+                    list.push_back(static_cast<uint32_t>(word(340u + static_cast<uint32_t>(k), 0u)) & 0xFFFFu);
+                    if (list.back() == 0x42u)
+                        break;
+                }
+                return list;
+            }
             int32_t word(uint32_t qword, uint32_t lane) const
             {
                 int32_t v;
@@ -1319,6 +1357,18 @@ void register_vu1_ops_tests()
                 return why;
             }
             static bool packetsComparable() { return !ps2x::knobOn("PS2X_VU1_XGKICK_CYCLE_EXACT"); }
+            // The XGKICKs a run's GIF callback saw (each record is a u32 length, then that many bytes).
+            static size_t kicks(const std::vector<uint8_t> &packets)
+            {
+                size_t n = 0u;
+                for (size_t o = 0u; o + 4u <= packets.size(); ++n)
+                {
+                    uint32_t len = 0u;
+                    std::memcpy(&len, packets.data() + o, 4u);
+                    o += 4u + len;
+                }
+                return n;
+            }
         };
 
         tc.Run("PS2X_VU1_NATIVE_33C8 is a Dev Flag defaulting to 0; off, the registry's 0x33c8 entry is as if absent", [](TestCase &t)
@@ -1479,6 +1529,11 @@ void register_vu1_ops_tests()
                 {"54 66 06 08 10 40 42, V = 0 (every body runs once)", {0x54u, 0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 0, true},
                 {"54 66 06 08 40 42, V = 96 (0x54's last store q326: the largest V clear of q329)",
                  {0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 96, false},
+                // N1c, the real shapes: shape A on the fixture's mesh, at the edges of 0x18's range.
+                {"66 06 08 54 18 28 42, V = 41 (odd: 0x18's last pass lights vertex 41 as well)",
+                 {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u}, 41, false},
+                {"66 06 08 54 18 28 42, V = 96 (0x18's last store q326: the largest V clear of q329)",
+                 {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u}, 96, false},
             };
             for (const Shape &shape : linearShapes)
             {
@@ -1527,6 +1582,204 @@ void register_vu1_ops_tests()
                 });
             }
         }
+
+        // ---- Sprint 17 F N1c, the real shapes (docs/research/82 section 9.7): shape A --------------------------------
+        // The walk's refused capture (logs/vu1refused1, 2,000 last-bone lists) holds two shapes. Shape A (816) is
+        // `66 06 08 54 18 28 42` from index 1: the transform, the template fill, then 0x18's lighting (0x1440, SQ.xyzw
+        // at -11(vi4) and -8(vi4): slot +1 of two staging triples a pass from q40, the body before its IBGTZ, so qwords
+        // 41 + 3j for j < 2 max(ceil(V/2), 1), proven as [41, 38 + 6 max(ceil(V/2), 1)]) and 0x28's triangle assembly
+        // (0x1780, 0x40's body from 0x1790 behind two loads: the tags at 290/300, nine packet qwords after each of
+        // q329.x/.y, q329.x/.y rewritten with the same pair, one XGKICK per drawn triangle). Neither reads a flag. Three
+        // real captures, their entry state written over the fixture image, run natively against the interpreter.
+        {
+            struct RealCase
+            {
+                const char *what;
+                const RealDump *dump;
+            };
+            static const RealCase shapeA[] = {
+                {"1 triangle, 3 vertices, TOP 424 (vu1_refused_1078)", &kA1},
+                {"5 triangles, 9 vertices, TOP 724 (vu1_refused_1076)", &kA5},
+                {"19 triangles, 24 vertices, TOP 724 (vu1_refused_104)", &kA19},
+            };
+            for (const RealCase &real : shapeA)
+            {
+                tc.Run(std::string("native 0x33c8: the walk's shape A, 66 06 08 54 18 28 42, ") + real.what +
+                           ": taken natively, bit-exact",
+                       [&real](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*real.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    const std::vector<uint32_t> shape = {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u};
+                    t.IsTrue(rig.resumedList() == shape, "the capture resumes 66 06 08 54 18 28 42 at vi14 = 1");
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file, VU data memory and packets:" + why);
+                    if (Entry33c8Rig::packetsComparable())
+                        t.IsTrue(!native.packets.empty(), "the list drew (0x28 kicks one packet per drawn triangle)");
+                });
+            }
+        }
+
+        // ---- Sprint 17 F N1c, the real shapes: shape L, the 0x02 loop (docs/research/82 section 9.7) -------------------
+        // Shape L (1,184 of the capture) is `66 06 02 [0a 56 1a 2a 4c]` from index 1, the world-object loop. Every store
+        // of the 0x02 family lands at a fixed address -- q329.z and q112 (0x02), the clipper's buffers (q40-138: its
+        // output count is at most 20, kClipperOutputBound), the 150 staging (0x0a, 0x12, 0x56, 0x1a) and q113.. (0x2a)
+        // -- so their union, [40, 211] and q329.z, is proven once at the 0x02 and holds for every primitive, q329 lane
+        // by lane (0x02 stores .z, the proof reads .x/.y). The loop target, the y after the 0x4c, must lie in the body
+        // and be the y a skipped primitive reads (the qword after the 0x02's, and its own). Three real captures and a
+        // fourth whose only primitive is culled -- its program ends through 0x20c8's fall-in, nothing dispatched after
+        // the 0x02 -- run natively against the interpreter, three XGKICKs per drawn primitive (q423 from 0x0a, q423
+        // and q112 from 0x2a).
+        {
+            struct RealCase
+            {
+                const char *what;
+                const RealDump *dump;
+                size_t kicks; // under the immediate model, three per drawn primitive
+            };
+            static const RealCase shapeL[] = {
+                {"1 primitive, drawn, 3 vertices, TOP 424 (vu1_refused_1032)", &kL1, 3u},
+                {"7 primitives, 4 culled, 2 clipped away, 1 drawn, 18 vertices, TOP 424 (vu1_refused_1060)", &kL7, 3u},
+                {"8 primitives, 1 culled, 7 drawn, 15 vertices, TOP 724 (vu1_refused_174)", &kL8, 21u},
+                {"1 primitive, culled: the loop exits through the fall-in (vu1_refused_1064)", &kS1, 0u},
+            };
+            for (const RealCase &real : shapeL)
+            {
+                tc.Run(std::string("native 0x33c8: the walk's shape L, 66 06 02 [0a 56 1a 2a 4c], ") + real.what +
+                           ": taken natively, bit-exact",
+                       [&real](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*real.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    const std::vector<uint32_t> shape = {0x66u, 0x06u, 0x02u, 0x0au, 0x56u, 0x1au, 0x2au, 0x4cu, 0x42u};
+                    t.IsTrue(rig.resumedList() == shape, "the capture resumes 66 06 02 0a 56 1a 2a 4c 42 at vi14 = 1");
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle ended through 0x4c's E bit (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole loop and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file, VU data memory and packets:" + why);
+                    if (Entry33c8Rig::packetsComparable())
+                        t.Equals(Entry33c8Rig::kicks(native.packets), real.kicks,
+                                 "three XGKICKs per drawn primitive, none for a skipped one");
+                });
+            }
+
+            tc.Run("native 0x33c8: shape L with research/13's fade, 66 06 02 [0a 12 56 1a 2a 4c], is taken natively, bit-exact",
+                   [](TestCase &t)
+            {
+                // vu1_refused_174's list with 0x12 (0x10's fade on the 150 base, the fog lanes of [152, 149 + 3n]) inserted
+                // after the 0x0a, every loop word's y still 4: the target, the qword after the 0x02 and the target's own.
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(kL8), "fixture present");
+                if (rig.code.empty())
+                    return;
+                const uint32_t body[6] = {0x12u, 0x56u, 0x1au, 0x2au, 0x4cu, 0x42u};
+                for (uint32_t k = 0; k < 6u; ++k)
+                {
+                    rig.setWord(345u + k, 0u, static_cast<int32_t>(body[k]));
+                    rig.setWord(345u + k, 1u, 4);
+                }
+                const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                t.Equals(oracle.s.pc, 0x1b50u, "the oracle ended through 0x4c's E bit");
+                const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                t.IsTrue(native.nativeRan && native.nativeEnded, "taken natively");
+                const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                t.IsTrue(why.empty(), "native = interpreter:" + why);
+                rig.setWord(345u, 0u, 0x56); // the same list without the 0x12, for the fog lanes it wrote
+                for (uint32_t k = 1; k < 6u; ++k)
+                    rig.setWord(345u + k - 1u, 0u, static_cast<int32_t>(body[k]));
+                const Entry33c8Rig::End plain = rig.run(0x33c8u, 0x33c8u, nullptr);
+                t.IsTrue(std::memcmp(oracle.data.data() + 152u * 16u, plain.data.data() + 152u * 16u, 16u * 60u) != 0,
+                         "0x12 changed the 150 staging");
+            });
+
+            tc.Run("native 0x33c8: a loop the proof cannot follow is refused before anything is touched", [](TestCase &t)
+            {
+                // Each case edits vu1_refused_1060's list (index 3 the 0x02, index 8 the 0x4c, y = 4 from index 4 on) or
+                // its state; each is refused whole, under its reason, with the register file and VU data memory as the
+                // entry found them.
+                using R = Vu1Refusals::Reason;
+                struct Case
+                {
+                    const char *what;
+                    R reason;
+                    uint32_t cmd;
+                    void (*setup)(Entry33c8Rig &);
+                    int32_t clipCeiling;
+                };
+                const Case cases[] = {
+                    {"mixed y: the qword after the 0x02 carries y = 5, where a culled first primitive would resume",
+                     R::LoopShape, 0x4cu, [](Entry33c8Rig &r) { r.setWord(344u, 1u, 5); }, -1},
+                    {"the loop target (the y after the 0x4c) is 2, before the 0x02", R::LoopShape, 0x4cu,
+                     [](Entry33c8Rig &r) { r.setWord(349u, 1u, 2); }, -1},
+                    {"the loop target is 5 and the qword after the 0x02 agrees, but the target's own y is 4",
+                     R::LoopShape, 0x4cu, [](Entry33c8Rig &r) { r.setWord(349u, 1u, 5); r.setWord(344u, 1u, 5); }, -1},
+                    {"the loop target is 5 and its own y agrees, but the qword after the 0x02 says 4",
+                     R::LoopShape, 0x4cu, [](Entry33c8Rig &r) { r.setWord(349u, 1u, 5); r.setWord(345u, 1u, 5); }, -1},
+                    {"a 0x06 in the loop body (it rewrites vi12, the primitive counter)", R::LoopShape, 0x06u,
+                     [](Entry33c8Rig &r) { r.setWord(345u, 0u, 0x06); }, -1},
+                    {"a 0x0a before the 0x02 (its vi10 is the live-in, unbounded)", R::LoopShape, 0x0au,
+                     [](Entry33c8Rig &r) { r.setWord(342u, 0u, 0x0a); }, -1},
+                    {"no 0x4c: the 0x2a is followed by the 0x42", R::LoopShape, 0x42u,
+                     [](Entry33c8Rig &r) { r.setWord(348u, 0u, 0x42); }, -1},
+                    {"a second 0x02 in the body", R::LoopShape, 0x02u, [](Entry33c8Rig &r) { r.setWord(345u, 0u, 0x02); }, -1},
+                    {"TOP 100 (the header copied to q102): the family's stores [40, 211] would overwrite TOP+2",
+                     R::WriteRange, 0x02u,
+                     [](Entry33c8Rig &r) {
+                         for (uint32_t lane = 0; lane < 4u; ++lane)
+                             r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                         r.top = 100u;
+                     }, -1},
+                    {"the test clip ceiling lowered to 8 (PS2X_VU1_NATIVE_TEST_CLIP_CEILING): refused whole, not clamped",
+                     R::ClipCeiling, 0u, [](Entry33c8Rig &) {}, 8},
+                };
+                for (const Case &k : cases)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(kL7), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    k.setup(rig);
+                    if (k.clipCeiling >= 0)
+                        RefusalRig::forceClipCeiling(k.clipCeiling);
+                    Vu1Refusals::setEnabledForTest(true);
+                    const Vu1Refusals::Row before = RefusalRig::row(0x33c8u, k.reason, k.cmd);
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                    const Vu1Refusals::Row after = RefusalRig::row(0x33c8u, k.reason, k.cmd);
+                    Vu1Refusals::setEnabledForTest(false);
+                    RefusalRig::forceClipCeiling(-1);
+                    t.IsTrue(native.nativeRan && !native.nativeEnded, std::string(k.what) + ": handed back");
+                    t.Equals(after.n - before.n, 1ull, std::string(k.what) + ": counted under its reason");
+                    t.IsTrue(native.touchedBeforeHandBack.empty(),
+                             std::string(k.what) + ": nothing touched before the hand-back:" + native.touchedBeforeHandBack);
+                }
+            });
+        }
+
+        tc.Run("native 0x1b50 is unchanged: vu1dump4_prog_134's own 68 06 02 0a 12 56 1a 2a 4c 42 runs natively, bit-exact",
+               [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadFrom(std::string(PS2X_TEST_FIXTURES_DIR) +
+                                  "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_134.bin"),
+                     "the fixture tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_134.bin is present");
+            if (rig.code.empty())
+                return;
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcher);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "the 0x1b50 dispatcher took the list whole");
+            const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
 
         tc.Run("native 0x1b50 is unchanged: vu1dump4_prog_11's own 68 08 10 54 18 28 42 runs natively, bit-exact", [](TestCase &t)
         {
@@ -1591,8 +1844,30 @@ void register_vu1_ops_tests()
                  [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 2u, 101); }, -1},
                 {"q329.x = 335: 0x40's packet would overwrite the list", R::WriteRange, 0x40u,
                  [](Entry33c8Rig &r) { r.setWord(329u, 0u, 335); }, -1},
-                {"a 0x28 in the resumed list (no store range derived for it)", R::ResumeCommand, 0x28u,
-                 [](Entry33c8Rig &r) { r.setResumedList({0x66u, 0x06u, 0x08u, 0x28u, 0x42u}); }, -1},
+                {"a 0x64 in the resumed list (no store range derived for it)", R::ResumeCommand, 0x64u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x66u, 0x06u, 0x08u, 0x64u, 0x42u}); }, -1},
+                // N1c, the real shapes: shape A's 0x18 and 0x28.
+                {"18 66 06 08 40 42, TOP+2.z = 97: 0x18's lit colours [41, 332] would overwrite the packet pointers at q329",
+                 R::WriteRange, 0x18u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x18u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"18 66 06 08 40 42, TOP 100 (the header copied to q102): 0x18's lit colours [41, 164] would overwrite TOP+2",
+                 R::WriteRange, 0x18u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x18u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
+                 }, -1},
+                {"66 06 08 54 18 28 42, q329.x = 335: 0x28's packet would overwrite the list", R::WriteRange, 0x28u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u});
+                     r.setWord(329u, 0u, 335);
+                 }, -1},
+                {"66 06 08 54 18 28 42, q329.y = 1020: 0x28's packet would wrap past the end of VU memory", R::WriteRange, 0x28u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u});
+                     r.setWord(329u, 1u, 1020);
+                 }, -1},
                 {"06 08 40 42, TOP+2.x = -84: 0x06's flag words from q340 would overwrite the list", R::WriteRange, 0x06u,
                  [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, -84); }, -1},
                 {"06 08 40 42, TOP+2.x = -10: 0x06's seventh flag word (q426) would overwrite the header TOP+2", R::WriteRange, 0x06u,
@@ -1728,8 +2003,9 @@ void register_vu1_ops_tests()
                 return lines;
             }
         };
-        // A last-bone entry whose resumed list holds a 0x28 (no store range derived: refused as resume_command 0x28).
-        static const std::vector<uint32_t> kRefusedList = {0x66u, 0x06u, 0x08u, 0x28u, 0x42u};
+        // A last-bone entry whose resumed list holds a 0x64 (no store range derived: refused as resume_command 0x64).
+        // It held a 0x28 until N1c's real shapes admitted that one.
+        static const std::vector<uint32_t> kRefusedList = {0x66u, 0x06u, 0x08u, 0x64u, 0x42u};
 
         tc.Run("PS2X_VU1_DUMP_REFUSED is a Dev Path defaulting to empty (off)", [](TestCase &t)
         {
@@ -1790,12 +2066,12 @@ void register_vu1_ops_tests()
             t.Equals(bins.size(), static_cast<size_t>(1), "one file");
             if (bins.size() != 1u)
                 return;
-            t.IsTrue(bins[0] == "vu1_refused_0_resume_command_0x28.bin", "named by reason and command: " + bins[0]);
+            t.IsTrue(bins[0] == "vu1_refused_0_resume_command_0x64.bin", "named by reason and command: " + bins[0]);
             const std::vector<std::string> lines = dir.indexLines();
             t.Equals(lines.size(), static_cast<size_t>(1), "one index line");
             if (!lines.empty())
-                t.IsTrue(lines[0] == "vu1_refused_0_resume_command_0x28.bin entry=0x33c8 reason=resume_command cmd=0x28 "
-                                     "resume=1 list=66,06,08,28,42",
+                t.IsTrue(lines[0] == "vu1_refused_0_resume_command_0x64.bin entry=0x33c8 reason=resume_command cmd=0x64 "
+                                     "resume=1 list=66,06,08,64,42",
                          "the index line: " + lines[0]);
 
             // The dump reader's layout: the header, then the entry state exactly as the rig handed it to execute().

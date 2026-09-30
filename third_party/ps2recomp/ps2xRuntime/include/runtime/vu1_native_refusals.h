@@ -63,8 +63,13 @@ namespace Vu1Refusals
         SkinPass,          // vi5 bit 2 clear: the microcode's `B 0x3100`, another 0x52 bone pass (no native 0x52)
         RepackRange,       // vi9 outside 1..256, or the repack's records wrap VU memory or overlap the command list
         ResumeIndex,       // the live-in vi14 the dispatcher resumes at is outside the list's 64 qwords
-        WriteRange,        // cmd='s stores would wrap VU memory or land on the list, TOP+2 or q329 (0x66, 0x08, 0x40)
-        ResumeCommand,     // the resumed list holds a command outside 0x66 0x08 0x40 (write ranges unproven): cmd=
+        WriteRange,        // cmd='s stores would wrap VU memory or land on the list, TOP+2 or q329.x/.y
+        ResumeCommand,     // the resumed list holds a command whose write range is not derived (research/82): cmd=
+        // Sprint 17 F N1c, the real shapes (research/82 section 9.7): entry 0x33c8's 0x02 loop, whole-program.
+        LoopShape,         // the 0x02 loop is not one the proof can follow (cmd= where it stopped): a second 0x02, no
+                           // 0x4c after it, a vi10 reader before it or another command in its body, or a loop target
+                           // (y after the 0x4c) outside the body or not the y a skipped primitive reads
+        ClipCeiling,       // PS2X_VU1_NATIVE_TEST_CLIP_CEILING lowered, and the list reads the clipper's vi10
         kCount
     };
 
@@ -97,6 +102,8 @@ namespace Vu1Refusals
         case Reason::ResumeIndex: return "resume_index";
         case Reason::WriteRange: return "write_range";
         case Reason::ResumeCommand: return "resume_command";
+        case Reason::LoopShape: return "loop_shape";
+        case Reason::ClipCeiling: return "clip_ceiling";
         default: return "unknown";
         }
     }
@@ -107,7 +114,7 @@ namespace Vu1Refusals
         return r == Reason::UnknownCommand || r == Reason::ClipBeforeWorld || r == Reason::ZeroBlockCount ||
                r == Reason::SphereBlockCount || r == Reason::BlockPastList || r == Reason::BlockNotOnePacket ||
                r == Reason::HandlerClamp || r == Reason::MidUnknownCommand || r == Reason::WriteRange ||
-               r == Reason::ResumeCommand;
+               r == Reason::ResumeCommand || r == Reason::LoopShape;
     }
 
     // A refusal as a site reports it.
