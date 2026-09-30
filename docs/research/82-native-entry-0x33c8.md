@@ -31,7 +31,7 @@ microcode (`python tools_py/vu1dis.py --start 0x3100 --count 80 logs/vu1dump3/vu
    the generated code's time (§5), so (B) native saves an estimated 30-45 % of (B)'s, **about 23-45 ms/s** of the
    game thread's VU1 time -- if the walk's (B) lists behave like the corpus's three. The walk (rung two) decides.
    **They do not (N1b, §8):** the walk's (B) lists hold the backface cull `0x06`, which N1 refused whole; with
-   `0x06` admitted the stake is about 30-39 ms/s. **[estimate]**
+   `0x06` admitted the stake is about 30-35 ms/s (the review corrected 30-39). **[estimate]**
 
 ## 1. The microcode
 
@@ -256,8 +256,8 @@ the E bit's in-order flush leaves the same flags in both.
   against native, `66 08 40 42` 9.54 against 6.23 µs, `06 08 40 42` 8.05 against 4.75, `66 06 08 40 42` 9.69 against
   5.75. Native is 59-65 % of the generated time. **[measured]** on the loaded host, not rung one.
 
-**The stake, corrected.** The bound is the walk's `0x06` last-bone fallback, 85.5 ms/s. At 35-45 % saved it is
-**about 30-39 ms/s** of game-thread time, if no command beyond these four hides behind the `0x06`. **[estimate]**
+**The stake, corrected.** The bound is the walk's `0x06` last-bone fallback, 85.5 ms/s. At 35-41 % saved (native at 59-65 % of the generated time; the review's repeat 57-65 %) it is
+**about 30-35 ms/s** of game-thread time, if no command beyond these four hides behind the `0x06`. **[estimate]**
 The walk (rung two) decides. `skin_pass` (1,089 ms, 16 ms/s) is (A), still N2's.
 
 ### 8.4 The fence: a real `0x06` last-bone dump (the controller's, a game run under the lock)
@@ -265,10 +265,11 @@ The walk (rung two) decides. `skin_pass` (1,089 ms, 16 ms/s) is (A), still N2's.
 The dumper (`VU1Interpreter::run`, `ps2_vu1_core.cpp`) saves each VU1 program's *entry* state before the native
 lookup. It saves every program, with no filter by start pc, the next `<count>` after it arms
 (`PS2X_VU1_DUMP=<dir>:<count>`, default 150), about 33 KB each. `PS2X_VU1_DUMP_AFTER` counts seconds from the first
-VU1 run, near boot. The walk runs about 87k programs/s, and one in ten is a `0x06` last-bone list. So 4,000 dumps
+VU1 run, near boot. The walk runs about 87k programs/s, and about one in fifteen (4.4-6.8k/s near t=290, the review's count) is a `0x06` last-bone list. So 4,000 dumps
 (about 130 MB, 1.4 frames) inside the sampler window hold a few hundred. Capture on one exe, knob off:
 
 ```
+mkdir -p logs/vu1dump5   # the dumper does not create the directory: without it every fopen fails silently (the review)
 bash scripts/loop_lock.sh run <owner> --purpose n1b-dump -- bash logs/s17_controller/f1_stats_walk_ab.sh vu1dump n1b PS2X_VU1_DUMP=logs/vu1dump5:4000 PS2X_VU1_DUMP_AFTER=290
 ```
 
