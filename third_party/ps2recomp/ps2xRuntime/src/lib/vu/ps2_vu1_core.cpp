@@ -10,6 +10,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/ps2_guest_clock.h"
 #include "runtime/vu1_native_warning.h"
 #include "runtime/vu1_native_refusals.h"
+#include "runtime/vu1_dump_refused.h"
 #include "ps2_vu1_detail.h"
 #include "ps2x/knobs.h"
 
@@ -2439,15 +2440,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             if (s_dumped < s_dumpMax)
             {
                 const std::string path = s_dumpDir + "/vu1_prog_" + std::to_string(s_dumped) + ".bin";
-                if (FILE *fp = std::fopen(path.c_str(), "wb"))
+                // The one writer of the format, shared with PS2X_VU1_DUMP_REFUSED (runtime/vu1_dump_refused.h).
+                const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
+                if (Vu1DumpRefused::writeProgram(path, hdr, vuCode, codeSize, vuData, dataSize, m_state.vi, m_state.vf))
                 {
-                    const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
-                    std::fwrite(hdr, sizeof(hdr), 1, fp);
-                    std::fwrite(vuCode, 1, std::min<uint32_t>(codeSize, 0x4000u), fp);
-                    std::fwrite(vuData, 1, std::min<uint32_t>(dataSize, 0x4000u), fp);
-                    std::fwrite(m_state.vi, sizeof(m_state.vi), 1, fp);
-                    std::fwrite(m_state.vf, sizeof(m_state.vf), 1, fp);
-                    std::fclose(fp);
                     if (s_dumped < 3 || s_dumped + 1 == s_dumpMax)
                         std::fprintf(stderr, "[vu1-dump] #%d pc=0x%x top=0x%x itop=0x%x -> %s\n", s_dumped, m_state.pc, m_state.top, m_state.itop, path.c_str());
                 }
@@ -2659,12 +2655,29 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         // never charged to a stale key.
         if (refusalsOn)
             Vu1Refusals::takeNoted();
+        // PS2X_VU1_DUMP_REFUSED (runtime/vu1_dump_refused.h): one relaxed load when off. On, forget any whole-program
+        // refusal remembered before this call, so the one taken after the hand-back is this program's.
+        const bool dumpRefused = m_unit == Unit::VU1 && Vu1DumpRefused::enabled();
+        if (dumpRefused)
+            Vu1Refusals::takeWhole();
         programEnded = m_nativeFn(*this, budgetEnd);
         if (programEnded)
             g_vu1NativeEnded.fetch_add(1, std::memory_order_relaxed);
         else
         {
             g_vu1NativeHandBacks.fetch_add(1, std::memory_order_relaxed);
+            if (dumpRefused)
+            {
+                // A whole-program refusal leaves pc at the entry and the register file and VU data memory untouched
+                // (the dispatcher's contract), so this is the entry state PS2X_VU1_DUMP would have saved -- written
+                // before the fallback runs, and only for a refusal the capture asks for.
+                const Vu1Refusals::WholeRefusal whole = Vu1Refusals::takeWhole();
+                if (whole.reason != Vu1Refusals::Reason::None && m_state.pc == nativeEntryPc)
+                {
+                    const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
+                    Vu1DumpRefused::live().offer(whole, hdr, vuCode, codeSize, vuData, dataSize, m_state.vi, m_state.vf);
+                }
+            }
             if (refusalsOn)
             {
                 // The native program noted its reason; everything from here on is the fallback's.

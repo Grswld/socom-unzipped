@@ -3781,6 +3781,7 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     {
         if (Vu1Refusals::enabled())
             Vu1Refusals::note(entryPc, refusal.reason, refusal.command);
+        Vu1Refusals::rememberWhole(entryPc, refusal); // PS2X_VU1_DUMP_REFUSED (one relaxed load when off)
         return false; // whole-program hand-back: pc is still 0x1b50 and nothing has been touched
     }
 
@@ -3857,6 +3858,7 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     {
         if (Vu1Refusals::enabled())
             Vu1Refusals::note(entryPc, refusal.reason, refusal.command);
+        Vu1Refusals::rememberWhole(entryPc, refusal); // PS2X_VU1_DUMP_REFUSED: the state is still the entry's
         return false; // whole-program hand-back: pc is still 0x33c8 and nothing has been touched
     }
 

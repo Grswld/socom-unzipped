@@ -202,7 +202,7 @@ namespace Vu1DumpRefused
             const int32_t resume = refusal.entryPc == kResumeEntryPc ? static_cast<int16_t>(vi[14] & 0xFFFF) : 0;
             const std::string line =
                 indexLine(file, refusal.entryPc, refusal.reason, refusal.command, resume, resumedList(data, dataSize, resume));
-            if (FILE *index = std::fopen((m_config.dir + "/refused.txt").c_str(), "a"))
+            if (FILE *index = std::fopen((m_config.dir + "/refused.txt").c_str(), "ab")) // "\n" on every host
             {
                 std::fprintf(index, "%s\n", line.c_str());
                 std::fclose(index);
