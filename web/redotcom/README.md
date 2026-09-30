@@ -25,8 +25,9 @@ An agent working on the recomp can skip this directory entirely.
   motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
   accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
   no first person (the owner's ruling). Today reCOM mode is behind the `?redotcom` URL flag and opens on foot.
-- **Multiplayer.** Respawn and classic matches of up to 16 players plus spectators on a Node server, one match per map
-  and rules, the round's damage, death, respawn, teams, scoring and scoreboard read from the game
+- **Multiplayer.** Classic matches (respawn off, the game's create-game default: 11 rounds, first to 6) of up to 16
+  players plus spectators on a Node server, one match per map, the round's damage, death, teams, scoring and scoreboard
+  read from the game
   ([Multiplayer server](#multiplayer-server-web-sprint-3)).
 - **A worked example of recreating a PS2 game in the browser** from its own data: see
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for which parts are general PS2 and where to start with another game.
@@ -166,7 +167,7 @@ Everything below is relative to `web/redotcom/`.
 | `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`), the zAnim effect commands, the thrown casing's flight, the particle sources and the effect models (`effects.ts`, `effectMotion.ts`, `effectParticles.ts`, `effectModels.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
-| `packages/server` | the multiplayer match server (Node, `ws`): one room per map and rules (respawn, classic; the two share the map's parse) running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
+| `packages/server` | the multiplayer match server (Node, `ws`): one classic room per map (the respawn rooms are switched off, `RESPAWN_RULES_ENABLED`) running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
 | `tools/` | the extractor, the dump/export tools, the comparison instruments, the release sweep, the bot load test, `build-corpus.ts` |
 | `docs/research/`, `docs/corpus/` | the research notes (71-91) and the AI-readable corpus built from them (`llms.txt`, `records.jsonl`, `sections.jsonl`) |
 | `deploy/` | the multiplayer server's Docker image, Compose with Caddy, systemd unit and `deploy.sh` |
@@ -669,8 +670,8 @@ code and documentation only, never the game or its data. CI for this directory i
 
 ## Multiplayer server (web sprint 3)
 
-`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a match per map and rules (a
-timed respawn match, or classic; the two rooms share one parse of the map), HTTP `/health`, `/metrics` (host only) and
+`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a classic match per map, HTTP
+`/health`, `/metrics` (host only) and
 `/rooms` (each room's map, rules, players and round: anonymous counts, public by the owner's ruling) and a WebSocket
 on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 `READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
@@ -679,8 +680,11 @@ on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS, RULES, TRUST_PROXY
 ```
 
-`RULES` (respawn by default) is the rules of a join that names none; `MAX_ROUNDS` is the game's `mp_max_rounds` (11,
-the create-game default): classic's match length and the count the round-start banner shows under both rules.
+**Classic only** (owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode
+selection."). Every room is classic: a join asking for respawn, or naming no rules, joins the map's classic room, and
+`RULES` (classic by default) is served classic even when set to `respawn`. The respawn ruleset's code stays in the tree
+behind one switch, `RESPAWN_RULES_ENABLED` in `packages/viewer/src/net/protocol.ts`; its tests turn it on. `MAX_ROUNDS`
+is the game's `mp_max_rounds` (11, the create-game default): the match length and the count the round-start banner shows.
 
 Join from the viewer with Settings > Online > **Local** (this server on its default port), or with
 `?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
@@ -700,26 +704,20 @@ page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the map you want:
 | key | in the match |
 |---|---|
 | the walk's keys | as in single play: the page predicts its own SEAL and the server agrees (W3.R8) |
-| X | respawn, once "Press the X button to respawn." shows (5 s dead; the press counts once the body has faded, 10 s) |
 | Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
 | K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
 | Space / V | spectating: the next living player / the free camera |
 | Space (classic, dead) | the next living teammate to watch until the next round |
 | Settings > Online > name | your name, 30 characters at most; blank is the game's `Player####` |
 
-A match is the original's SUPPRESSION with RESPAWN on: one 6-minute round, "TIME EXPIRED" and 15 s more, the side with
-more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. Its banner reads "STARTING ROUND 1 OF 11", as
-the original's does for its one respawn round.
-
-**Classic** (respawn off, the game's create-game default) is picked with Settings > Online > Rules > **Classic**, or
-with `&rules=classic` in the link (the page writes it back into the address and remembers the choice). Each map has a
-classic room beside its respawn room. The match starts once both sides have a player: 11 rounds, first to 6. A round
+A match is **classic** (respawn off, the game's create-game default), online and in the offline match alike; there is
+no Rules choice, and an old link's `rules=` is ignored and taken out of the address. The match starts once both sides
+have a player: 11 rounds, first to 6. A round
 ends when a side has no living player (tested from 15 s in; "ALL TERRORISTS ELIMINATED" / "SEALS VICTORIOUS!", 23 s
 more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died." and watch their
 living teammates (Space) until the next round. A player who joins mid-round is a ghost until then. Level after round
 11 plays a tiebreaker ("PLAYING TIEBREAKER ROUND"), and another while it is drawn. Every round starts everyone at the
-side's start slots with a full kit. Scoring is the respawn match's: +2 a kill, +1 alive at the end, +5 each on the
-winning side. The rules and their sources are in research 91 section 19.
+side's start slots with a full kit. Scoring: +2 a kill, +1 alive at the end, +5 each on the winning side. The rules and their sources are in research 91 section 19.
 
 `?lag=100&loss=2` runs the page's latency and
 loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a

@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AssetSource } from '@s2u/archive';
 import {
-  groundGrid, loadSimClips, loadSimMap, loadSimSkeleton, parseRules, TICK_HZ,
+  groundGrid, loadSimClips, loadSimMap, loadSimSkeleton, offeredRules, parseRules, RESPAWN_RULES_ENABLED, TICK_HZ,
   type ClientEvent, type Rules, type SimClips, type SimMap, type SimSkeleton,
 } from '../../viewer/src/sim';
 import { Room, type RoomOptions } from './room';
@@ -12,7 +12,8 @@ import { Room, type RoomOptions } from './room';
  * (`/ws`); one `Room` per map and rules (protocol 4: a hello names `respawn` or `classic`, the server's default when it
  * does not), made when its first client says hello and loaded from the private disc directory (never served) -- a
  * map's two rules rooms share one parse of it (`forkSimMap`); the rooms stepped at the game's 60 Hz by a
- * drift-corrected clock; per-connection rate limits; a WebSocket ping/pong heartbeat; JSON-line logs.
+ * drift-corrected clock; per-connection rate limits; a WebSocket ping/pong heartbeat; JSON-line logs. While the
+ * respawn ruleset is off (owner ruling 2026-09-29, `RESPAWN_RULES_ENABLED`) every room is classic (`respawnRules`).
  *
  * The public surface (owner ruling 2026-09-29, OWNER-4): `/health`, `/rooms` (anonymous per-room counts, CORS `*`)
  * and `/ws`; `/metrics` is for the host only (the Caddyfile's 403, the tunnel's ingress). `deploy/README.md` names
@@ -26,8 +27,14 @@ export interface ServerOptions {
   /** The maps a client may ask for (stems, `MP2`); empty: every `RUN/MP*.ZDB` the source holds. */
   maps: readonly string[];
   room: Partial<RoomOptions>;
-  /** The rules of a hello that names none (`RULES`; respawn by default, W3.R11). */
+  /** The rules of a hello that names none (`RULES`; classic by default: the only ruleset while respawn is off). */
   rules?: Rules;
+  /**
+   * Whether respawn rooms are opened (`RESPAWN_RULES_ENABLED`, off by the owner's ruling of 2026-09-29: "Remove the
+   * respawn option entirely for the time being"). Off, every room is classic: a hello asking for respawn, or naming no
+   * rules, joins the map's classic room, and `/rooms` lists classic rooms only. The respawn room's tests turn it on.
+   */
+  respawnRules?: boolean;
   log: (entry: Record<string, unknown>) => void;
   /**
    * `TRUST_PROXY`: the server sits behind a proxy that writes the client's address into `X-Forwarded-For` (Caddy,
@@ -287,8 +294,9 @@ export class MatchServer {
       // no close ever removes.
       if (session.room || session.joining) { this.strike(session); return; }
       if (typeof ev.map !== 'string' || !this.allowed(ev.map)) { conn.send(JSON.stringify({ type: 'refused', reason: 'no such map' })); socket.close(4004, 'no such map'); return; }
-      const rules = ev.rules === undefined ? (this.opts.rules ?? 'respawn') : parseRules(ev.rules);
-      if (!rules) { conn.send(JSON.stringify({ type: 'refused', reason: 'no such rules' })); socket.close(4004, 'no such rules'); return; }
+      const asked = ev.rules === undefined ? (this.opts.rules ?? null) : parseRules(ev.rules);
+      if (ev.rules !== undefined && !asked) { conn.send(JSON.stringify({ type: 'refused', reason: 'no such rules' })); socket.close(4004, 'no such rules'); return; }
+      const rules = offeredRules(asked, this.opts.respawnRules ?? RESPAWN_RULES_ENABLED);
       session.joining = true;
       const map = ev.map;
       this.room(map, rules).then((room) => {

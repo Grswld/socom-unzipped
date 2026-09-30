@@ -7,7 +7,9 @@
  * - `map=MP2` -- the archive's stem.
  * - `view=modern` or `view=ps2` -- the picture switch.
  * - `online=off`, `shared` or `local` -- the Online setting. `&server=` and `&mp` still override it (`./online`).
- * - `rules=respawn` or `classic` -- the match's rules under Online (`./rules`; web sprint 3's classic mode).
+ *
+ * `rules=` (the match's rules, web sprint 3) is retired while classic is the only ruleset (owner ruling, 2026-09-29;
+ * `./net/protocol` `RESPAWN_RULES_ENABLED`): never read, and taken out of the address the next time it is written.
  *
  * On load the address beats the remembered choice; with a parameter absent the remembered choice applies, and the page
  * writes it into the address (`history.replaceState`: no reload, no history entries). A value this page does not know
@@ -16,7 +18,7 @@
  * `server` and `mp` out (`onlineChoiceAddress`): the choice replaces the server they named, so the link must too.
  */
 import type { OnlineChoice } from './online';
-import { parseRules, type Rules } from './net/protocol';
+import { RESPAWN_RULES_ENABLED } from './net/protocol';
 
 export type ShareView = 'modern' | 'ps2';
 
@@ -26,7 +28,6 @@ export interface ShareState {
   map?: string | null;
   view?: ShareView | null;
   online?: OnlineChoice | null;
-  rules?: Rules | null;
   /** Other parameters to take out of the address (a developer's, which are otherwise always kept). */
   drop?: readonly string[];
 }
@@ -37,15 +38,15 @@ export interface ShareRead {
   map: string | null;
   view: ShareView | null;
   online: OnlineChoice | null;
-  /** The match's rules, when the address names them (absent otherwise). */
-  rules?: Rules;
   /** Whether it used `?redotcom`, which the page rewrites to `mode=play`. */
   alias: boolean;
 }
 
 /** The parameters this module owns, in the order it writes them; `redotcom` is read and dropped. */
-const KEYS = ['mode', 'map', 'view', 'online', 'rules'] as const;
+const KEYS = ['mode', 'map', 'view', 'online'] as const;
 const ALIAS = 'redotcom';
+/** Parameters the page no longer understands, taken out whenever it writes its address: `rules` while respawn is off. */
+const RETIRED: readonly string[] = RESPAWN_RULES_ENABLED ? [] : ['rules'];
 /** A map's archive stem: letters, digits and underscores (`MP2`, `MP71`). */
 const MAP_STEM = /^[A-Za-z0-9_]{1,16}$/;
 
@@ -67,8 +68,6 @@ export function readShare(search: string): ShareRead {
   if (view === 'modern' || view === 'ps2') out.view = view;
   const online = get('online');
   if (online === 'off' || online === 'shared' || online === 'local') out.online = online;
-  const rules = parseRules(get('rules'));
-  if (rules) out.rules = rules;
   return out;
 }
 
@@ -88,7 +87,7 @@ export function writeShare(search: string, state: ShareState): string {
   const rest: string[] = [];
   for (const part of parts) {
     const key = keyOf(part);
-    if (key === ALIAS || state.drop?.includes(key)) continue;
+    if (key === ALIAS || RETIRED.includes(key) || state.drop?.includes(key)) continue;
     if ((KEYS as readonly string[]).includes(key)) { if (!had.has(key)) had.set(key, part); continue; }
     rest.push(part);
   }
@@ -97,7 +96,6 @@ export function writeShare(search: string, state: ShareState): string {
     map: state.map === undefined ? undefined : state.map === null ? null : state.map,
     view: state.view,
     online: state.online,
-    rules: state.rules,
   };
   const ours: string[] = [];
   for (const key of KEYS) {

@@ -156,9 +156,9 @@
         on load, until the visitor picks a choice here, which takes them out of the address (`onlineChoiceAddress`).
         The line under it is the connection: connecting, online and the players, or unreachable and the retry. Remembered
         in this browser (`s2u.viewer.online`).
-        The Rules (web sprint 3, classic mode): Respawn, the one timed round, or Classic, respawn off (the game's create-game
-        default: 11 rounds, first to 6). Each map and rules is its own match. The link's `rules=` overrides it; remembered
-        in this browser (`s2u.viewer.rules`).
+        No Rules choice (owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode
+        selection."): every match is classic -- respawn off, the game's create-game default, 11 rounds, first to 6
+        (`./src/rules.ts`, `RESPAWN_RULES_ENABLED`).
         The match's name (web sprint 3, W3.R12; research 91 section 13): at most 30 printable ASCII characters, the game's
         in-game name buffer; blank takes the game's own "Player" guest default. Sent to the match on change, remembered in
         this browser only (`s2u.mp.name`).
@@ -171,11 +171,6 @@
           <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine: npm start -w @s2u/server, on port 8787.">Local<span class="s2u-tab__what">localhost:8787</span></button>
         </div>
         <p id="online-state" class="s2u-status"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
-        <p class="s2u-field__label" id="rules-label">Rules</p>
-        <div id="rules" class="s2u-tabs" role="group" aria-labelledby="rules-label">
-          <button type="button" class="s2u-tab" data-rules="respawn" aria-pressed="true" title="One timed round: respawn once the body has faded, and the side with more points wins at 00:00.">Respawn<span class="s2u-tab__what">one timed round</span></button>
-          <button type="button" class="s2u-tab" data-rules="classic" aria-pressed="false" title="Respawn off, the game's default: 11 rounds, first to 6; a round ends when a side is eliminated or the clock runs out (a draw). The dead watch their living teammates (Space) until the next round.">Classic<span class="s2u-tab__what">11 rounds, no respawn</span></button>
-        </div>
         <div class="row">
           <label class="s2u-range" title="Your name in the match: up to 30 characters, letters, digits and the keyboard's symbols. Blank: the game's guest name, Player and four digits."><span>name</span>
             <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" /></label>

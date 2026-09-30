@@ -5,7 +5,7 @@ import { WebSocket } from 'ws';
 import { FsAssetSource } from '@s2u/archive/node';
 import type { AssetSource } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
-import { decodeSnapshot, DoorSet, encodeCommands, loadSimMap, PROTOCOL_VERSION, type ServerEvent, type SimMap } from '../../viewer/src/sim';
+import { decodeSnapshot, DoorSet, encodeCommands, loadSimMap, PROTOCOL_VERSION, RESPAWN_RULES_ENABLED, type ServerEvent, type SimMap } from '../../viewer/src/sim';
 import { Room } from '../src/room';
 import { clientAddress, forkSimMap, HEARTBEAT_MS, MatchServer, sweepHeartbeat, type Beat } from '../src/server';
 
@@ -42,7 +42,9 @@ describe.skipIf(!MP2)(`the match server on Frostfire${MP2 ? '' : ` (${FIXTURES_A
   let server: MatchServer, port = 0;
   const log: Record<string, unknown>[] = [];
   beforeAll(async () => {
-    server = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: (e) => log.push(e) });
+    // The respawn ruleset is off by the owner's ruling of 2026-09-29 (`RESPAWN_RULES_ENABLED`); its rooms are kept, so
+    // this server turns it on to keep them pinned. The server as shipped is the next describe's.
+    server = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: (e) => log.push(e), respawnRules: true });
     port = await server.start();
   });
   afterAll(async () => { await server.stop(); });
@@ -88,6 +90,45 @@ describe.skipIf(!MP2)(`the match server on Frostfire${MP2 ? '' : ` (${FIXTURES_A
     await until(() => old.events.length > 0);
     expect(old.events[0]).toMatchObject({ type: 'refused' });   // an older protocol is refused
     a.ws.close(); b.ws.close();
+  });
+});
+
+/**
+ * Classic only (owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode selection."):
+ * the server as shipped (`respawnRules` left to `RESPAWN_RULES_ENABLED`, off) opens classic rooms and nothing else.
+ */
+describe.skipIf(!MP2)(`the match server as shipped: classic rooms only${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
+  let server: MatchServer, port = 0;
+  beforeAll(async () => {
+    server = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined });
+    port = await server.start();
+  });
+  afterAll(async () => { await server.stop(); });
+
+  it('a hello asking for respawn, one naming no rules and one asking for classic all join the map classic room', async () => {
+    expect(RESPAWN_RULES_ENABLED).toBe(false);
+    const asks = await Promise.all([connect(port, 'Resp', 'MP2', 'respawn'), connect(port, 'None', 'MP2'), connect(port, 'Clas', 'MP2', 'classic')]);
+    await until(() => asks.every((p) => p.events.some((e) => e.type === 'welcome')));
+    for (const p of asks) expect(p.events.find((e) => e.type === 'welcome')).toMatchObject({ rules: 'classic', rounds: 11 });
+    const rooms = await (await fetch(`http://127.0.0.1:${port}/rooms`)).json() as { map: string; rules: string; players: number }[];
+    expect(rooms.map((r) => [r.map, r.rules, r.players])).toEqual([['MP2', 'classic', 3]]);
+    expect(server.loadedRoom('MP2')).toBeUndefined();                        // no respawn room was ever opened
+    expect(server.metrics()).not.toMatch(/rules="respawn"/);
+    const odd = await connect(port, 'Odd', 'MP2', 'deathmatch');             // rules that are not rules: still refused
+    await until(() => odd.events.length > 0);
+    expect(odd.events[0]).toMatchObject({ type: 'refused', reason: 'no such rules' });
+    for (const p of asks) p.ws.close();
+  });
+
+  it('a RULES=respawn default is served classic too', async () => {
+    const other = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined, rules: 'respawn' });
+    const at = await other.start();
+    try {
+      const p = await connect(at, 'Env');
+      await until(() => p.events.some((e) => e.type === 'welcome'));
+      expect(p.events.find((e) => e.type === 'welcome')).toMatchObject({ rules: 'classic' });
+      p.ws.close();
+    } finally { await other.stop(); }
   });
 });
 
@@ -190,7 +231,7 @@ describe.skipIf(!MP2)(`the match server's pre-launch holes${MP2 ? '' : ` (${FIXT
   beforeAll(async () => {
     const fs = new FsAssetSource(FIXTURES);
     const source: AssetSource = { list: () => fs.list(), read: (path) => { reads.push(path); return fs.read(path); } };
-    server = new MatchServer({ source, port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined, heartbeatMs: 100 });
+    server = new MatchServer({ source, port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined, heartbeatMs: 100, respawnRules: true });
     port = await server.start();
   });
   afterAll(async () => { await server.stop(); });

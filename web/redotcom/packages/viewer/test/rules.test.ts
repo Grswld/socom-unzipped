@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   eliminationLines, eliminationWinner, halfRounds, isMatchOver, MAX_ROUNDS, nextFollow, objectiveOf, roundBanner,
 } from '../src/net/rules';
-import { parseRules, PROTOCOL_VERSION } from '../src/net/protocol';
-import { readRules, resolveRules, RULES_KEY, rulesChoice, writeRules } from '../src/rules';
+import { offeredRules, parseRules, PROTOCOL_VERSION, RESPAWN_RULES_ENABLED } from '../src/net/protocol';
+import { readRules, resolveRules, RULES_KEY, rulesChoice } from '../src/rules';
 import { readShare, writeShare } from '../src/shareUrl';
 
 /**
@@ -75,28 +75,34 @@ describe('the rules on the wire and on the page', () => {
     for (const v of [undefined, null, '', 'CLASSIC', 'deathmatch', 3]) expect(parseRules(v), String(v)).toBeNull();
   });
 
-  it('reads a stored value back as one of the two, respawn for anything else', () => {
-    expect(rulesChoice('classic')).toBe('classic');
-    for (const v of [null, '', 'x', 'respawn']) expect(rulesChoice(v)).toBe('respawn');
+  it('respawn is switched off (owner ruling, 2026-09-29): classic whatever is stored or linked', () => {
+    expect(RESPAWN_RULES_ENABLED).toBe(false);
+    for (const v of [null, '', 'x', 'respawn', 'classic']) expect(rulesChoice(v), String(v)).toBe('classic');
+    for (const q of ['', '?rules=respawn', '?map=MP2&rules=classic', '?rules=bogus', '?%E0%A4%A&rules=respawn']) {
+      expect(resolveRules(q, 'respawn'), q).toEqual({ rules: 'classic', fromUrl: false });
+    }
+    expect(offeredRules('respawn')).toBe('classic');
+    expect(offeredRules(null)).toBe('classic');
   });
 
-  it('the link\'s rules= first, then the stored choice', () => {
-    expect(resolveRules('?map=MP2&rules=classic', null)).toEqual({ rules: 'classic', fromUrl: true });
-    expect(resolveRules('?rules=respawn', 'classic')).toEqual({ rules: 'respawn', fromUrl: true });
-    expect(resolveRules('?rules=bogus', 'classic')).toEqual({ rules: 'classic', fromUrl: false });
-    expect(resolveRules('', null)).toEqual({ rules: 'respawn', fromUrl: false });
+  it('with the switch forced on, the respawn paths are as before: the link rules= first, then the stored choice, respawn by default', () => {
+    expect(rulesChoice('classic', true)).toBe('classic');
+    for (const v of [null, '', 'x', 'respawn']) expect(rulesChoice(v, true)).toBe('respawn');
+    expect(resolveRules('?map=MP2&rules=classic', null, true)).toEqual({ rules: 'classic', fromUrl: true });
+    expect(resolveRules('?rules=respawn', 'classic', true)).toEqual({ rules: 'respawn', fromUrl: true });
+    expect(resolveRules('?rules=bogus', 'classic', true)).toEqual({ rules: 'classic', fromUrl: false });
+    expect(resolveRules('', null, true)).toEqual({ rules: 'respawn', fromUrl: false });
+    expect(offeredRules(undefined, true)).toBe('respawn');
+    expect(offeredRules('classic', true)).toBe('classic');
   });
 
-  it('rides the links module (`./shareUrl`): written after the others, the rest of the address kept', () => {
-    expect(writeShare('?mode=play&map=MP2&online=shared&fly', { rules: 'classic' })).toBe('?mode=play&map=MP2&online=shared&rules=classic&fly');
-    expect(writeShare('?rules=classic&map=MP2', { rules: 'respawn' })).toBe('?map=MP2&rules=respawn');
-    expect(writeShare('?map=MP2&rules=classic', { rules: null })).toBe('?map=MP2');
-    expect(readShare('?rules=CLASSIC').rules).toBe('classic');
-    expect(readShare('?rules=ctf').rules).toBeUndefined();
-    expect(readShare(writeShare('', { online: 'local', rules: 'classic' }))).toMatchObject({ online: 'local', rules: 'classic' });
+  it('the address carries no rules: rules= is never read and is taken out whenever the page writes its link', () => {
+    expect(readShare('?rules=classic')).not.toHaveProperty('rules');
+    expect(writeShare('?mode=play&map=MP2&rules=respawn&fly', { view: 'modern' })).toBe('?mode=play&map=MP2&view=modern&fly');
+    expect(writeShare('?rules=classic&map=MP2', {})).toBe('?map=MP2');
   });
 
-  describe('remembered in this browser', () => {
+  describe('a choice remembered before the ruling', () => {
     let store: Map<string, string>;
     beforeEach(() => {
       store = new Map();
@@ -106,13 +112,12 @@ describe('the rules on the wire and on the page', () => {
     });
     afterEach(() => { delete (globalThis as { localStorage?: unknown }).localStorage; });
 
-    it('round-trips the choice under its key', () => {
+    it('is read back under its key, and plays classic', () => {
       expect(readRules()).toBeNull();
-      writeRules('classic');
-      expect(store.get(RULES_KEY)).toBe('classic');
-      expect(rulesChoice(readRules())).toBe('classic');
-      writeRules('respawn');
-      expect(resolveRules('', readRules()).rules).toBe('respawn');
+      store.set(RULES_KEY, 'respawn');
+      expect(readRules()).toBe('respawn');
+      expect(resolveRules('', readRules()).rules).toBe('classic');
+      expect(resolveRules('', readRules(), true).rules).toBe('respawn');
     });
   });
 });

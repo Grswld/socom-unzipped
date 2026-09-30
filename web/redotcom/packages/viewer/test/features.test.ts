@@ -18,14 +18,14 @@ const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
 const load = (): void => { document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML; };
 
 /**
- * The six segmented switches are groups of toggle buttons (`aria-pressed`), not radio groups: a radiogroup must own
+ * The five segmented switches are groups of toggle buttons (`aria-pressed`), not radio groups: a radiogroup must own
  * `role="radio"` children with `aria-checked` (WAI-ARIA 1.2), and the design system keys its lit state and the High
  * Contrast outline on `[aria-pressed="true"]` (web/shared/ds/components.css, base.css; its own showcase's `.s2u-tabs`
  * is `role="group"`).
  */
 describe('the segmented switches', () => {
   beforeEach(load);
-  const SWITCHES = ['recom', 'look', 'mode', 'online', 'rules', 'mouselaw'];
+  const SWITCHES = ['recom', 'look', 'mode', 'online', 'mouselaw'];
 
   it('are role=group with a name, each child a button with aria-pressed, exactly one pressed', () => {
     for (const id of SWITCHES) {
@@ -47,6 +47,19 @@ describe('the segmented switches', () => {
 
   it('no radiogroup is left on the page', () => {
     expect(document.querySelectorAll('[role="radiogroup"], [role="radio"]')).toHaveLength(0);
+  });
+});
+
+/** Owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode selection." */
+describe('the page offers classic rules only', () => {
+  beforeEach(load);
+  it('has no Rules choice: no switch, no rules button, no respawn offered anywhere in the settings', () => {
+    expect(document.getElementById('rules')).toBeNull();
+    expect(document.querySelectorAll('[data-rules]')).toHaveLength(0);
+    const panel = document.getElementById('panel')!;
+    const words = (panel.textContent ?? '') + [...panel.querySelectorAll('[title],[aria-label]')]
+      .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' ');
+    expect(words).not.toMatch(/\brespawn\b/i);
   });
 });
 

@@ -54,7 +54,7 @@ import { PlayUi, readPlayChoice, writePlayChoice } from './features';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
-import { readRules, resolveRules, writeRules } from './rules';
+import { readRules, resolveRules } from './rules';
 import type { Rules } from './net/protocol';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
@@ -603,8 +603,11 @@ const play = new Play();
 const remote = new RemotePlayers(scene);
 const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
 let NET: OnlineTarget = resolveOnline(SEARCH, SHARE.online ?? readOnline(), PAGE_LOCATION);
-/** The match's rules under Online (`./rules`): the link's `rules=` over the remembered choice; Respawn by default. */
-let RULES: Rules = resolveRules(SEARCH, readRules()).rules;
+/**
+ * The match's rules (`./rules`): classic, the only ruleset while respawn is off (owner ruling, 2026-09-29;
+ * `./net/protocol` `RESPAWN_RULES_ENABLED`), online and in the offline match alike.
+ */
+const RULES: Rules = resolveRules(SEARCH, readRules()).rules;
 let net: NetPage | null = null;
 /**
  * Offline, reCOM mode plays the match on its own (`./net/loopback`): the server's room in the page, joined as a match is.
@@ -1020,21 +1023,8 @@ ui.onOnline((choice: OnlineChoice) => {
   writeOnline(choice);
   updateAddress(onlineChoiceAddress(choice));   // the choice replaces a named server: `server=` / `mp` leave the link
   NET = resolveOnline('', choice, PAGE_LOCATION);
-  if (NET.url) updateAddress({ rules: RULES });
   if (loaded) connectNet(loaded);
   showOnline();
-});
-/**
- * The Rules under Online (web sprint 3, classic mode; `./rules`): Respawn or Classic, remembered, written into the link
- * while a match is joined, and the match joined again under the new rules (each map and rules its own room).
- */
-ui.setRules(RULES);
-if (NET.url) updateAddress({ rules: RULES });
-ui.onRules((rules: Rules) => {
-  RULES = rules;
-  writeRules(rules);
-  updateAddress({ rules });
-  if (loaded && (NET.url || solo)) connectNet(loaded);   // the single-player match too
 });
 /** The connection's line under the setting, and a toast when it comes up or goes unreachable (not at every retry). */
 let onlineShown = '';
