@@ -35,7 +35,7 @@ class DriveT0Test(unittest.TestCase):
                  mock.patch.object(drive.hostplatform, "process_running", lambda base: False), \
                  mock.patch.object(drive.hostplatform, "kill_process_by_name", lambda base: None), \
                  mock.patch.object(drive, "launch", lambda target, seconds: mock.Mock()), \
-                 mock.patch.object(drive.winshot, "find_window", lambda title: 1234), \
+                 mock.patch.object(drive.winshot, "find_window", lambda title, pid=None: 1234), \
                  mock.patch.object(drive.winshot, "keep_on_top", lambda hwnd: None), \
                  mock.patch.object(drive, "frame", lambda hwnd: object()), \
                  mock.patch.object(drive, "run_steps", run_steps), \
