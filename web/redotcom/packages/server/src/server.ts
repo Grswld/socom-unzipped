@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AssetSource } from '@s2u/archive';
@@ -15,7 +16,8 @@ import { Room, type RoomOptions } from './room';
  * drift-corrected clock; per-connection rate limits; a WebSocket ping/pong heartbeat; JSON-line logs. While the
  * respawn ruleset is off (owner ruling 2026-09-29, `RESPAWN_RULES_ENABLED`) every room is classic (`respawnRules`).
  *
- * The public surface (owner ruling 2026-09-29, OWNER-4): `/health`, `/rooms` (anonymous per-room counts, CORS `*`)
+ * The public surface (owner ruling 2026-09-29, OWNER-4): `/health`, `/rooms` (anonymous per-room counts, CORS `*`, an
+ * ETag answered with 304 and `Cache-Control: public, max-age=10`, `roomsHeaders`)
  * and `/ws`; `/metrics` is for the host only (the Caddyfile's 403, the tunnel's ingress). `deploy/README.md` names
  * them and `test/deployEnv.test.ts` pins the set.
  */
@@ -346,9 +348,17 @@ export class MatchServer {
       return;
     }
     if (req.url === '/rooms') {
-      // The room list: each loaded room's map, rules, players, spectators and round.
-      res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-      res.end(JSON.stringify([...this.rooms.values()].map((room) => ({ map: room.map.stem.toUpperCase(), ...room.stats() }))));
+      // The room list (`roomsBody`), with a validator and a short public cache (`roomsHeaders`): a page's poll that
+      // finds it unchanged is a 304, and a CDN in front may answer a burst of polls from one copy.
+      const body = roomsBody(this.rooms.values());
+      const headers = roomsHeaders(body);
+      if (etagMatches(req.headers['if-none-match'], headers.etag)) {
+        res.writeHead(304, headers);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json', ...headers });
+      res.end(body);
       return;
     }
     if (req.url === '/metrics') {
@@ -378,6 +388,47 @@ export class MatchServer {
   resetRates(): void {
     for (const s of this.sessions) { s.binary = 0; s.text = 0; }
   }
+}
+
+/**
+ * The public room list (`GET /rooms`): each loaded room's map, rules, players, spectators and round -- anonymous counts.
+ * Not the room's tick: it moves 60 times a second, so with it no two answers would be alike and no validator could
+ * ever match; nothing reads it from here (`/metrics` has the ticks). The viewer's PLAYERS ONLINE polls this
+ * (`viewer/src/playersOnline.ts`).
+ */
+export function roomsBody(rooms: Iterable<{ map: { stem: string }; stats(): { players: number; spectators: number; round: number; rules: Rules } }>): string {
+  return JSON.stringify([...rooms].map((room) => {
+    const { players, spectators, round, rules } = room.stats();
+    return { map: room.map.stem.toUpperCase(), rules, players, spectators, round };
+  }));
+}
+
+/** How long a cache may keep `/rooms` (seconds): short, so a count is at most this stale, long enough to fold a burst. */
+export const ROOMS_MAX_AGE = 10;
+
+/**
+ * `/rooms`' headers beside its type, on the 200 and the 304 alike: CORS `*` (as ever: a page on any origin may read the
+ * counts), a strong ETag -- the body's hash, so an unchanged list has the same one on any process -- and
+ * `Cache-Control: public, max-age=10`.
+ */
+export function roomsHeaders(body: string): { 'access-control-allow-origin': '*'; 'cache-control': string; etag: string } {
+  const etag = `"${createHash('sha1').update(body).digest('base64url').slice(0, 16)}"`;
+  return { 'access-control-allow-origin': '*', 'cache-control': `public, max-age=${ROOMS_MAX_AGE}`, etag };
+}
+
+/**
+ * Whether an `If-None-Match` names this ETag (RFC 9110 section 13.1.2: the weak comparison, so a `W/` a proxy added
+ * still matches; a list, or `*`).
+ */
+export function etagMatches(header: string | string[] | undefined, etag: string): boolean {
+  if (header === undefined) return false;
+  const bare = (t: string): string => t.trim().replace(/^W\//, '');
+  const want = bare(etag);
+  for (const tag of (Array.isArray(header) ? header.join(',') : header).split(',')) {
+    const t = tag.trim();
+    if (t === '*' || (t !== '' && bare(t) === want)) return true;
+  }
+  return false;
 }
 
 function toBytes(data: unknown): Uint8Array {

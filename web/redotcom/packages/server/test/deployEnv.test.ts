@@ -82,10 +82,29 @@ describe('the public surface (owner ruling 2026-09-29, OWNER-4: /rooms stays pub
   });
 
   it('the deploy README names every public path, /rooms as public, and /metrics as host-only, in its first paragraph', () => {
-    const first = read('deploy/README.md').split(/\n\n/)[1]!;
+    const first = read('deploy/README.md').split(/\r?\n\r?\n/)[1]!;
     for (const p of PUBLIC) expect(first).toContain(`\`${p === '/ws' ? '/ws' : `GET ${p}`}\``);
     expect(first).toMatch(/\/rooms`[^.]*public/);
     expect(first).toMatch(/\/metrics`[^.]*host only/);
+  });
+});
+
+describe('/rooms is cacheable (the viewer\'s PLAYERS ONLINE poll, owner 2026-09-29)', () => {
+  it('the server gives /rooms an ETag, a 304 for a matching If-None-Match, a public max-age of 10 s, and CORS * still', () => {
+    const src = read('packages/server/src/server.ts');
+    const route = src.slice(src.indexOf("req.url === '/rooms'"), src.indexOf("req.url === '/metrics'"));
+    expect(route).toMatch(/if-none-match/);
+    expect(route).toMatch(/writeHead\(304, headers\)/);
+    expect(route).toMatch(/writeHead\(200, \{ 'content-type': 'application\/json', \.\.\.headers \}\)/);
+    expect(src).toMatch(/export const ROOMS_MAX_AGE = 10;/);
+    expect(src).toMatch(/'cache-control': `public, max-age=\$\{ROOMS_MAX_AGE\}`/);
+    expect(src).toMatch(/'access-control-allow-origin': '\*', 'cache-control'/);
+  });
+
+  it('the deploy README says so in its first paragraph, and nothing in front strips it (the Caddyfile sets no header)', () => {
+    const first = read('deploy/README.md').split(/\r?\n\r?\n/)[1]!;
+    expect(first).toMatch(/\/rooms`[^)]*ETag[^)]*304[^)]*Cache-Control: public, max-age=10/);
+    expect(read('deploy/Caddyfile')).not.toMatch(/^\s*header\b/m);
   });
 });
 

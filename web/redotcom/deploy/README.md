@@ -1,10 +1,12 @@
 # Deploying the multiplayer server
 
 The server (`web/redotcom/packages/server`) is one Node process on one port (8787): `GET /health` (JSON), `GET /rooms`
-(each loaded room's map, rules, players, spectators, tick and round: anonymous counts, CORS `*`, public by the owner's
-ruling of 2026-09-29), the WebSocket `/ws`, and `GET /metrics` (Prometheus text, for the host only). The public set
-is `/health`, `/rooms` and `/ws`, and `packages/server/test/deployEnv.test.ts` pins it. It keeps one room per map and
-rules (respawn, classic). A front door gives it HTTPS/WSS: Caddy (the default, below) or a Cloudflare tunnel
+(each loaded room's map, rules, players, spectators and round: anonymous counts, CORS `*`, public by the owner's
+ruling of 2026-09-29; an ETag answered with 304 on a matching `If-None-Match`, and `Cache-Control: public, max-age=10`,
+so a CDN in front -- Cloudflare -- may answer a burst of the viewer's PLAYERS ONLINE polls from one copy), the
+WebSocket `/ws`, and `GET /metrics` (Prometheus text, for the host only). The public set is `/health`, `/rooms` and
+`/ws`, and `packages/server/test/deployEnv.test.ts` pins it. It keeps one room per map and rules (respawn, classic).
+A front door gives it HTTPS/WSS: Caddy (the default, below) or a Cloudflare tunnel
 ([Behind a Cloudflare tunnel](#behind-a-cloudflare-tunnel)). Transport is WebSocket only (ruling W3.R9 in
 `web/redotcom/docs/specs/2026-09-29-web-sprint-3-multiplayer-design.md`), so **no UDP port is needed**.
 

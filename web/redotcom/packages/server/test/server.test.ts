@@ -7,7 +7,7 @@ import type { AssetSource } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { decodeSnapshot, DoorSet, encodeCommands, loadSimMap, PROTOCOL_VERSION, RESPAWN_RULES_ENABLED, type ServerEvent, type SimMap } from '../../viewer/src/sim';
 import { Room } from '../src/room';
-import { clientAddress, forkSimMap, HEARTBEAT_MS, MatchServer, sweepHeartbeat, type Beat } from '../src/server';
+import { clientAddress, etagMatches, forkSimMap, HEARTBEAT_MS, MatchServer, roomsBody, roomsHeaders, ROOMS_MAX_AGE, sweepHeartbeat, type Beat } from '../src/server';
 
 /** The server over a real socket (web sprint 3, M3): Frostfire from the fixtures, two clients, snapshots both ways. */
 
@@ -112,6 +112,18 @@ describe.skipIf(!MP2)(`the match server as shipped: classic rooms only${MP2 ? ''
     for (const p of asks) expect(p.events.find((e) => e.type === 'welcome')).toMatchObject({ rules: 'classic', rounds: 11 });
     const rooms = await (await fetch(`http://127.0.0.1:${port}/rooms`)).json() as { map: string; rules: string; players: number }[];
     expect(rooms.map((r) => [r.map, r.rules, r.players])).toEqual([['MP2', 'classic', 3]]);
+    // The list is the counts alone, no tick (it would make every answer new, `roomsBody`); unchanged, it revalidates.
+    expect(Object.keys(rooms[0]!).sort()).toEqual(['map', 'players', 'round', 'rules', 'spectators']);
+    const first = await fetch(`http://127.0.0.1:${port}/rooms`);
+    const etag = first.headers.get('etag')!;
+    const again = await fetch(`http://127.0.0.1:${port}/rooms`, { headers: { 'if-none-match': etag } });
+    expect(again.status).toBe(304);
+    asks[0]!.ws.close();
+    await until(() => server.metrics().includes('s2u_room_players{map="MP2",rules="classic"} 2'));
+    const moved = await fetch(`http://127.0.0.1:${port}/rooms`, { headers: { 'if-none-match': etag } });
+    expect(moved.status).toBe(200);                                         // a player left: a new list, a new tag
+    expect(moved.headers.get('etag')).not.toBe(etag);
+    expect((await moved.json() as { players: number }[])[0]!.players).toBe(2);
     expect(server.loadedRoom('MP2')).toBeUndefined();                        // no respawn room was ever opened
     expect(server.metrics()).not.toMatch(/rules="respawn"/);
     const odd = await connect(port, 'Odd', 'MP2', 'deathmatch');             // rules that are not rules: still refused
@@ -359,4 +371,66 @@ describe.skipIf(!MP2)(`a map's two rules rooms share its parse, not its swinging
     expect(b.ground.points).toEqual(pristine);
     expect(parse.ground.points).toEqual(pristine);
   }, 60_000);
+});
+
+/**
+ * `/rooms` for the viewer's PLAYERS ONLINE poll (owner, 2026-09-29; `viewer/src/playersOnline.ts`): an ETag answered
+ * with 304, `Cache-Control: public, max-age=10` so a CDN can fold a burst, and CORS `*` as before -- on the 200 and the
+ * 304 alike. No fixtures needed: a server with no room loaded answers an empty list.
+ */
+describe('/rooms: a validator and a short public cache', () => {
+  let server: MatchServer, port = 0;
+  beforeAll(async () => {
+    server = new MatchServer({ source: new FsAssetSource(resolve(FIXTURES, 'no-such-dir')), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined });
+    port = await server.start();
+  });
+  afterAll(async () => { await server.stop(); });
+  const url = (): string => `http://127.0.0.1:${port}/rooms`;
+
+  it('answers 200 with the list, CORS *, a strong ETag and Cache-Control: public, max-age=10', async () => {
+    const res = await fetch(url());
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/json');
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('cache-control')).toBe('public, max-age=10');
+    expect(ROOMS_MAX_AGE).toBe(10);
+    expect(res.headers.get('etag')).toMatch(/^"[A-Za-z0-9_-]{16}"$/);
+    expect(await res.json()).toEqual([]);
+  });
+
+  it('answers 304, no body, the same headers, to an If-None-Match that names its tag (weak, listed or *)', async () => {
+    const etag = (await fetch(url())).headers.get('etag')!;
+    for (const inm of [etag, `W/${etag}`, `"other", ${etag}`, '*']) {
+      const res = await fetch(url(), { headers: { 'if-none-match': inm } });
+      expect(res.status, inm).toBe(304);
+      expect(res.headers.get('etag'), inm).toBe(etag);
+      expect(res.headers.get('access-control-allow-origin'), inm).toBe('*');
+      expect(res.headers.get('cache-control'), inm).toBe('public, max-age=10');
+      expect(await res.text(), inm).toBe('');
+    }
+    const other = await fetch(url(), { headers: { 'if-none-match': '"not-it"' } });
+    expect(other.status).toBe(200);
+    expect(await other.json()).toEqual([]);
+  });
+
+  it('the tag is the body\'s: the same list the same tag, any change a new one; the tick is not in the list', () => {
+    const room = (players: number, tick: number) => ({ map: { stem: 'mp2' }, stats: () => ({ players, spectators: 1, tick, round: 3, rules: 'classic' as const }) });
+    const a = roomsBody([room(2, 100)]), b = roomsBody([room(2, 9_999)]), c = roomsBody([room(3, 100)]);
+    expect(JSON.parse(a)).toEqual([{ map: 'MP2', rules: 'classic', players: 2, spectators: 1, round: 3 }]);
+    expect(a).toBe(b);                                                         // the tick moved: nothing a reader sees did
+    expect(roomsHeaders(a).etag).toBe(roomsHeaders(b).etag);
+    expect(roomsHeaders(c).etag).not.toBe(roomsHeaders(a).etag);
+  });
+
+  it('matches If-None-Match by the weak comparison, and nothing else', () => {
+    expect(etagMatches(undefined, '"x"')).toBe(false);
+    expect(etagMatches('', '"x"')).toBe(false);
+    expect(etagMatches('"x"', '"x"')).toBe(true);
+    expect(etagMatches('W/"x"', '"x"')).toBe(true);
+    expect(etagMatches(' "a" ,  "x"', '"x"')).toBe(true);
+    expect(etagMatches(['"a"', '"x"'], '"x"')).toBe(true);
+    expect(etagMatches('*', '"x"')).toBe(true);
+    expect(etagMatches('"y"', '"x"')).toBe(false);
+    expect(etagMatches('x', '"x"')).toBe(false);
+  });
 });
