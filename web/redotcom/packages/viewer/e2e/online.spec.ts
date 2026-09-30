@@ -86,6 +86,11 @@ test.describe('Online: Local', () => {
     await expect.poll(() => watcher.evaluate(() => window.__viewer.online!().players), { timeout: 30_000 }).toBe(1);
     // The player stays the only player: the watcher took no place.
     expect(await player.evaluate(() => window.__viewer.net!()!.remotes)).toBe(0);
+    // PLAYERS ONLINE (../src/playersOnline.ts): with Online on Local the page reads the local server's /rooms -- one
+    // player, the watcher not counted -- in the kicker and after Frostfire's name in the picker.
+    await expect(watcher.locator('#players-online')).toHaveText('1', { timeout: 30_000 });
+    await expect(watcher.locator('#maps option[value="RUN/MP2.ZDB"]')).toContainText('· 1 playing');
+    expect(await watcher.evaluate(() => window.__viewer.playersOnline!())).toEqual({ total: 1, byMap: { MP2: 1 } });
 
     // Off leaves the match; the line says so.
     await watcher.locator('#online [data-online="off"]').click();

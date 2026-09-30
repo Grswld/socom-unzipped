@@ -78,7 +78,13 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #panel.is-folded { display: none; }
 /* The overlay's overflow: hidden clips a ring drawn outside a control; drawn inside, it is whole. */
 #panel :focus-visible { outline-offset: -2px; }
-#panel-kicker { margin: 0; }
+/*
+ * PLAYERS ONLINE: the system's kicker as the panel's first line. The kicker is ordered after a head's title (order 1);
+ * the panel body is a grid, where that would send it to the foot, so it is put back first. The figure is the gold,
+ * tabular, so a count that changes does not shift the line.
+ */
+#panel-kicker { margin: 0; order: 0; }
+#players-online { color: var(--s2u-gold); font-variant-numeric: tabular-nums; }
 /*
  * The panel's rhythm (the polish pass, owner 2026-09-29): the body's grid gap between sections, a hairline over each
  * section after the first, 8px inside one; each section's heading the system's field label, its one line of help the

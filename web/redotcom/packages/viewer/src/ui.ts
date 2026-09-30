@@ -4,6 +4,7 @@ import { viewerRevision, viewerRevisionBadge } from './revision';
 import { chooseTab, CONTROLS_TAB_KEY, controlGroups, padControlGroups, type ControlGroup, type ControlsTab, type FaceGlyph } from './controlsList';
 import type { LookOptions } from './look';
 import type { OnlineChoice } from './online';
+import { mapSuffix, totalText, type PlayerCounts } from './playersOnline';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -18,6 +19,12 @@ export type SliderName = (typeof SLIDERS)[number];
 /** The page's controls, found once and typed, so the rest of the viewer never touches `getElementById`. */
 export class Ui {
   private readonly maps = find<HTMLSelectElement>('maps');
+  /** The kicker's figure (PLAYERS ONLINE, `./playersOnline`). */
+  private readonly playersOnline = find<HTMLElement>('players-online');
+  /** The last reading of the server's rooms, so a new map list carries it (null: not known). */
+  private playerCounts: PlayerCounts | null = null;
+  /** Each option's map, for its label (`labelFor`) and its archive (the rooms' key). */
+  private readonly optionMaps = new WeakMap<HTMLOptionElement, MapInfo>();
   private readonly status = find<HTMLParagraphElement>('status');
   private readonly diagnostics = find<HTMLUListElement>('diagnostics');
   private readonly diagnosticsCount = find<HTMLElement>('diagnostics-count');
@@ -87,10 +94,29 @@ export class Ui {
     this.maps.replaceChildren(...maps.map((m) => {
       const option = document.createElement('option');
       option.value = m.path;
-      option.textContent = labelFor(m);
+      option.textContent = labelFor(m) + mapSuffix(this.playerCounts, m.archive);
       option.selected = m.path === selected;
+      this.optionMaps.set(option, m);
       return option;
     }));
+  }
+
+  /**
+   * PLAYERS ONLINE (owner, 2026-09-29; `./playersOnline`): the kicker's total -- a dash while it is not known, never 0 --
+   * and each map's players after its name in the picker (" · 3 playing"; nothing for none). The option's text is its
+   * accessible name, so a screen reader hears the count with the map. Only an option whose words change is rewritten
+   * (an open picker is left alone otherwise).
+   */
+  setPlayerCounts(counts: PlayerCounts | null): void {
+    this.playerCounts = counts;
+    const total = totalText(counts);
+    if (this.playersOnline.textContent !== total) this.playersOnline.textContent = total;
+    for (const option of this.maps.options) {
+      const m = this.optionMaps.get(option);
+      if (!m) continue;
+      const text = labelFor(m) + mapSuffix(counts, m.archive);
+      if (option.textContent !== text) option.textContent = text;
+    }
   }
 
   select(path: string): void {

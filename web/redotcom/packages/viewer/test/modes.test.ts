@@ -78,12 +78,13 @@ describe('PlayUi: the play markup out and back in, at run time', () => {
     expect(heard).toBe(1);
   });
 
-  it('the panel kicker says redotcom, the product name, in both modes (owner ruling, handoff s3; do not flip it again)', () => {
+  it('the panel kicker is the PLAYERS ONLINE count in both modes, a dash until it is known (owner, 2026-09-29: it replaces "redotcom · SOCOM II multiplayer")', () => {
     const kicker = (): string | null | undefined => document.getElementById('panel-kicker')?.textContent;
-    expect(kicker()).toBe('redotcom · SOCOM II multiplayer');
+    expect(kicker()).toBe('Players online –');
+    expect(kicker()).not.toMatch(/redotcom|SOCOM II multiplayer/);
     const ui = new PlayUi();
     ui.detach();
-    expect(kicker()).toMatch(/^redotcom /);
+    expect(kicker()).toBe('Players online –');
   });
 
   it('with the markup out, no word about walking is left in the page text or tooltips (the mode and online switches included)', () => {
