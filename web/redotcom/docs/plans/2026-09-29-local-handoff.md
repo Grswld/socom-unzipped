@@ -27,8 +27,9 @@ the match on its own (section 4a); `&nomatch` keeps the free walk. Game data nev
   their own (5199 integration e2e, 5201+ per workstream).
 - **Verification (from `C:/Projects/wt-web-play/web`):** `npm run typecheck && npm test` -- each workspace's own vitest
   (web/ has no vitest config: a bare `npx vitest run` there ignores the per-package configs and even collects the
-  Playwright specs). Last green: the docs batch (agent/web-w3docs, 2026-09-29 ~23:59Z, fixtures present) redotcom
-  169 files passed / 1 skipped, 2003 tests passed / 4 skipped incl. the server tests; landing 206 passed (b6). Landing's globalSetup (`tools/vitest-prepare.mjs`) makes
+  Playwright specs). Last green: the docs batch's repair (agent/web-w3docs, on its committed head, 2026-09-30 00:21Z, fixtures present)
+  redotcom typecheck clean, 169 files passed / 1 skipped, 2004 tests passed / 4 skipped incl. the server tests and the
+  paths guard (which skips its own file: it names the pre-move paths on purpose); landing 206 passed (b6). Landing's globalSetup (`tools/vitest-prepare.mjs`) makes
   story.html and public/story first, so a targeted run works too; `S2U_TEST_FIXTURES=<empty dir>` points
   `archive/test/fixtures.ts` away (its users skip, as on CI). Then `E2E_PORT=5199 npx playwright test` (last full run
   49+ passed, before the launch fixes; the multiplayer spec needs `node --import tsx`, fixed in 055d52ec). Load test:
@@ -127,7 +128,7 @@ with explicit paths, the co-author trailer. The browser runs happen only in a wi
 
 1. Owed browser checks: the release gate's e2e list (section 4a), then the owner's push. Owner rows: O28 (redeploy
    the site; later the disc-only switch); a live cloudflared tunnel must add `/rooms` to its ingress (OWNER-4,
-   `deploy/README.md`) -- no HUMAN_TASKS row yet, the controller's to add.
+   `deploy/README.md`) -- row O29.
 2. The pad's Triangle from prone stands (the game's pad rule); C and touch C crouch (the owner's PC rule).
 3. Sprint 3 deferred: WebRTC, delta snapshots, per-map kits, the claymore online, the radio menu's look, spectator
    views. The net code's placeholders are listed in research 91 section 16 (the ledger test keeps them there).

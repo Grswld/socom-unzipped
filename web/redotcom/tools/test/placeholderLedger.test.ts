@@ -8,8 +8,10 @@ import { describe, expect, it } from 'vitest';
  *
  * - A value no source gives is a `*_PLACEHOLDER` constant, and a reading the viewer had to choose a `*_READING`
  *   (docs/DATA_SOURCES.md, "Rules read from the game's code"). Every such name in the viewer, server, scene and sound
- *   sources must be listed in a research note's placeholder section -- a section whose heading says "placeholder(s)" or
- *   "reading(s)", down to the next heading of the same or a higher level.
+ *   sources must be listed in a research note's placeholder section -- a section whose heading, after its number,
+ *   opens on "placeholder(s)" or "reading(s)" (an optional "the" before it), down to the next heading of the same or a
+ *   higher level. A heading that only mentions them in passing ("Shaded, with two placeholders", "the feel's last
+ *   readings closed") opens none.
  * - A name a note's placeholder section lists that no source holds any more is either retired -- its row says
  *   resolved, retired, removed, replaced or "was" -- or never was code: its row says *note only* (an open gap in the
  *   research that no constant stands in for).
@@ -19,7 +21,8 @@ const root = resolve(import.meta.dirname, '../..');
 const SOURCES = ['viewer', 'server', 'scene', 'sound'].map((p) => join(root, 'packages', p, 'src'));
 const NOTES = join(root, 'docs', 'research');
 const NAME = /\b[A-Z][A-Z0-9_]*_(?:PLACEHOLDER|READING)\b/g;
-const SECTION = /placeholder|reading/i;
+/** A heading whose text, its number (`7.`, `6b.`, `19.1`) aside, opens on the word: a ledger section, not a mention. */
+const SECTION = /^(?:\d+[a-z]?(?:\.\d+)*\.?\s+)?(?:the\s+)?(?:placeholders?|readings?)\b/i;
 const RETIRED = /note only|resolved|retired|removed|replaced|\bwas\b/i;
 
 function files(dir: string, ext: RegExp): string[] {
@@ -51,7 +54,7 @@ export interface Listed { name: string; note: string; line: number; text: string
 
 /**
  * The names a note's placeholder sections list, one entry per name on a line. A section runs from a heading whose text
- * says placeholder(s) or reading(s) to the next heading of the same or a higher level.
+ * opens on placeholder(s) or reading(s) (`SECTION`) to the next heading of the same or a higher level.
  */
 export function listedNames(markdown: string, note: string): Listed[] {
   const out: Listed[] = [];
@@ -87,6 +90,15 @@ describe('the placeholder ledger: the code\'s named stand-ins and the research n
       '## 8. Next', '`BAZ_READING`', '### Readings', '`QUX_READING` (*note only*)',
     ].join('\n');
     expect(listedNames(md, 'n').map((l) => l.name)).toEqual(['BAR_PLACEHOLDER', 'QUX_READING']);
+  });
+
+  it('opens on a heading that begins with the word, not on one that mentions it in passing', () => {
+    const md = [
+      '## 6b. The third round: the feel\'s last readings closed', '`A_READING`', '### 6.2 Shaded, with two placeholders',
+      '`B_PLACEHOLDER`', '## 7. Readings and placeholders (named in the code)', '`C_READING`', '## 10. The placeholders, by name',
+      '`D_PLACEHOLDER`', '### 20.1 Placeholders: one added', '`E_PLACEHOLDER`', '### Placeholders', '`F_PLACEHOLDER`',
+    ].join('\n');
+    expect(listedNames(md, 'n').map((l) => l.name)).toEqual(['C_READING', 'D_PLACEHOLDER', 'E_PLACEHOLDER', 'F_PLACEHOLDER']);
   });
 
   it('takes a table row\'s subject from its first cell, and every name on a line that is not a row', () => {

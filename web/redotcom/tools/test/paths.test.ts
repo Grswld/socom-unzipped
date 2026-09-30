@@ -14,10 +14,14 @@ const root = resolve(import.meta.dirname, '../..');
 /** A pre-move path: `web/` straight into what now lives under `web/redotcom/` (not `.../socom_pc/web/...` prose). */
 const STALE = /(^|[^A-Za-z0-9_/.-])web\/(docs\/|public\/maps|packages\/|tools\/|test-fixtures|deploy\/)/;
 const RECORDS = /^(docs\/plans|docs\/specs)\//;
+/** This guard names the pre-move paths on purpose (the header and the self-test), so it does not scan itself. */
+const SELF = 'tools/test/paths.test.ts';
 
 function tracked(): string[] {
   const out = execFileSync('git', ['ls-files', '-z', '--', '.'], { cwd: root, encoding: 'utf8', maxBuffer: 64 << 20 });
-  return out.split('\0').filter((f) => f && !RECORDS.test(f) && !/(^|\/)dist\//.test(f) && /\.(ts|mjs|js|md|json|jsonl|txt|html|css|ya?ml)$/.test(f));
+  return out
+    .split('\0')
+    .filter((f) => f && f !== SELF && !RECORDS.test(f) && !/(^|\/)dist\//.test(f) && /\.(ts|mjs|js|md|json|jsonl|txt|html|css|ya?ml)$/.test(f));
 }
 
 describe('the tree cites the paths it has', () => {

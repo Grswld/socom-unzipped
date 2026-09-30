@@ -186,7 +186,9 @@ export const PAD_LAYOUT: readonly PadRow[] = [
     note: 'the game\'s L2: SwapWeapon2, the second-weapon swap (controller.rdr\'s Default; launcher_config.cpp '
       + '`crouchShortcutHint`, the l2 branch; host_crouch_shortcut.h, the R139 paragraph) -- a press takes up the kit slot '
       + 'assigned to L2 (FUN_00594cf0 0x5957d8), the controller\'s default slot 1.0 (FUN_00598280, decomp 454786): the '
-      + 'Mark 23, the kit\'s sidearm (the PC\'s 2). No toggle back (FUN_005c4b10); L1 / 1 returns the rifle',
+      + 'Mark 23, the kit\'s sidearm (the PC\'s 2). No toggle back: every L2 press asks for that same fixed slot '
+      + '(FUN_00594cf0 453301-453310, `ctrl+0x228`), and FUN_005c4b10 (478806) swaps nothing when the slot asked for is '
+      + 'the one in the hand (`+0x824`); L1 / 1 returns the rifle',
   },
   {
     control: 'R2', action: 'inventory', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
