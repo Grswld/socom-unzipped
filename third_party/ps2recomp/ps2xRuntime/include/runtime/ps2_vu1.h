@@ -472,12 +472,16 @@ private:
 // microcode at m_state.pc with every live register set as the microcode would have them.
 // execute() resets the scheduler before the native call, but resume() (MSCNT) does not: a
 // program registered at a mid-program entry pc that hands back must expect in-flight FMAC
-// results to commit after it returns. Entry pcs that are program starts (0, 0x1b50) are safe.
+// results to commit after it returns. Entry pcs that are program starts (0, 0x1b50, and 0x33c8,
+// which the EE MSCALs) are safe.
+// `enabled`, when set, is asked after (hash, pc) match and before the program is taken: false leaves
+// the entry exactly as if it were not in the table (the knob-gated 0x33c8 program, research/82).
 struct Vu1NativeProgram
 {
     uint64_t hash;
     uint32_t entryPc;
     VU1Interpreter::KnownProgramFn fn;
+    bool (*enabled)() = nullptr;
 };
 
 #endif

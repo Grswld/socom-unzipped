@@ -27,12 +27,20 @@
 // 0x34 an eleven-qword one, and all three advance vi14 past them, so the pre-scan applies that
 // rewrite as it walks (scanCommandList).
 //
-// Two command words are still missing, and a list containing either of them hands back WHOLE at
-// 0x1b50 before this file touches any state, so the generated microcode translation runs it
+// Two command words are still missing at 0x1b50, and a list containing either of them hands back
+// WHOLE there before this file touches any state, so the generated microcode translation runs it
 // exactly as before. Over the 166-run dispatcher corpus that residual is four programs:
 //   * 0x52 (0x3100) and 0x66 (0x2e28), the skinning half of the fourth family, four programs.
 //     Both are scope decisions with reasons, not gaps waiting to be filled -- see
 //     isFamilyDCommand.
+//
+// Sprint 17 F N1 (docs/research/82): a second entry, 0x33c8, the MSCAL the EE issues after every
+// 0x52 bone pass. With the previous chunk's flags (live-in vi5) marking the last bone it repacks
+// the skinned staging array into the vertex block and resumes this dispatcher at 0x1b60 with the
+// live-in vi14 -- the `66 08 40 42` tail of the `52 66 08 40 42` list -- so 0x66 has a handler
+// here, admitted by that entry's pre-scan only (cmdFaceNormals). Otherwise the microcode branches
+// to 0x3100 for another bone pass, which is refused whole as skin_pass. Behind
+// PS2X_VU1_NATIVE_33C8 (Dev, default 0): off, the registry leaves the entry to the generated code.
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
 // vi1). Family B is not: vi8 and vi10 (the clipped polygon and its vertex count, set inside
@@ -243,6 +251,8 @@ namespace
                                    //        positions and a multiply by TOP+3.w
         kCmdDrawUntextured = 0x40u, // 0x1968 a three-pair shim into 0x28's body at 0x1790: the
                                     //        same triangles again, untextured and unfogged
+        kCmdFaceNormals = 0x66u,    // 0x2e28 per-triangle face normal (v2-v1) x (v0-v1), FTOI15,
+                                    //        into index record [1]; run from entry 0x33c8 only
 
         // Family C.
         kCmdKickRenderState = 0x64u, // 0x04a8 XGKICK the render-state packet at data qword 330
@@ -333,6 +343,9 @@ namespace
     //     A native 0x66 could only ever fire behind a native 0x52, so nothing here could verify it.
     // The four `52 66 08 40 42` lists therefore still hand back whole on their first command word,
     // a documented residual of 4 dumps.
+    // Sprint 17 F N1 lifts the second half for the 0x33c8 entry: its last-bone path resumes the list
+    // at the 0x66 and runs 0x66 here (cmdFaceNormals, admitted by that entry's pre-scan and Ctx flag
+    // only); the corpus's three such programs are its fence (docs/research/82). 0x52 stays out.
     bool isFamilyDCommand(uint32_t command)
     {
         switch (command)
@@ -349,6 +362,9 @@ namespace
     struct Ctx
     {
         VU1Interpreter &vu;
+        // Entry 0x33c8's run: command 0x66 has a handler (research/82). False at 0x1b50, where a 0x66
+        // stays the microcode's.
+        bool faceNormals = false;
 
         int32_t &vi(uint32_t r) { return vu.m_state.vi[r]; }
         // VU1 data memory is 16 KB and every access wraps inside it, exactly like the microcode's
@@ -818,9 +834,12 @@ namespace
     // written. (Handing back mid-list at 0x1b60 would in fact also be safe, since this file
     // reproduces the whole register file and all of VU data memory -- including the vi14 that
     // 0x30/0x32 rewrote -- but the walk makes that a safety net rather than the plan.)
-    bool scanCommandList(Ctx &c, ListFacts &facts)
+    // `startIndex` is where the walk begins: 0 at entry 0x1b50 (its `IADDIU vi14, vi0, 0`), the live-in vi14 at
+    // entry 0x33c8, which resumes the list at 0x1b60 past the 0x52 that ended the previous program. There
+    // `c.faceNormals` also admits 0x66, whose handler runs only from that entry (research/82).
+    bool scanCommandList(Ctx &c, ListFacts &facts, uint32_t startIndex = 0u)
     {
-        uint32_t index = 0u;
+        uint32_t index = startIndex;
         // The three commands that consume the clipper's output -- 0x2a's flush count, 0x4c's
         // vi12/vi15 re-entry and 0x32's rescale count -- all read state only 0x02 writes. The
         // check is deliberately ORDER-based rather than a "the list contains 0x02 somewhere"
@@ -848,7 +867,8 @@ namespace
             if (command == kCmdEnd)
                 return true;
             if (!isFamilyACommand(command) && !isFamilyBCommand(command) &&
-                !isFamilyCCommand(command) && !isFamilyDCommand(command))
+                !isFamilyCCommand(command) && !isFamilyDCommand(command) &&
+                !(c.faceNormals && command == kCmdFaceNormals))
                 return refuse(facts.refusal, Vu1Refusals::Reason::UnknownCommand, command);
 
             if (isFamilyBCommand(command))
@@ -903,10 +923,10 @@ namespace
 
     // True when this run is one this file may take over: a list scanCommandList accepts, plus a
     // header whose counts keep the work inside kMaxVertices / kMaxTriangles.
-    bool isNativeRun(Ctx &c, int32_t top, Vu1Refusals::Refusal &refusal)
+    bool isNativeRun(Ctx &c, int32_t top, Vu1Refusals::Refusal &refusal, uint32_t startIndex = 0u)
     {
         ListFacts facts;
-        if (!scanCommandList(c, facts))
+        if (!scanCommandList(c, facts, startIndex))
         {
             refusal = facts.refusal;
             return false;
@@ -3408,6 +3428,130 @@ namespace
         return cmdBuildPacket(c);
     }
 
+    // ---- command 0x66 -> 0x2e28: per-triangle face normals (research/15 5, research/82) ------
+    //
+    // For every index record (two qwords from TOP + TOP+2.x): v0, v1, v2 = the vertex records its
+    // x/y/z words name (qword offsets from TOP+4), normal = (v2 - v1) x (v0 - v1) by OPMULA/OPMSUB,
+    // FTOI15.xyz, stored to record [1] with SQ.xyzw -- so its w lane is whatever vf29.w held before
+    // the handler (the repack's last MR32.w at entry 0x33c8), a data-memory byte the golden compares.
+    // Software-pipelined: the loop loads the next record's three vertices before testing, so on exit
+    // vi5-vi7 and vf17-vf19 hold the record past the end. The body runs once before the IBGTZ, so a
+    // zero triangle count still computes one normal. Run only from entry 0x33c8 (Ctx::faceNormals).
+    bool cmdFaceNormals(Ctx &c)
+    {
+        using vu1ops::ArithMsub;
+        using vu1ops::ArithMul;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        // Clamp: 0x2e40's triangle count, read before the handler touches anything.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()))
+            return handBackAtNextCommand(c);
+
+        c.vi(4) = c.loadWord(c.vi(1) + 2, 0);            // 0x2e28 ILW.x vi4, 2(vi1): the index list offset
+        c.vi(3) = vi16(c.vi(1) + 4);                     // 0x2e30 the vertex block
+        c.vi(4) = vi16(c.vi(4) + c.vi(1));               // 0x2e38
+        c.vi(13) = c.loadWord(c.vi(1) + 2, 3);           // 0x2e40 ILW.w: the triangle count
+        c.vi(5) = c.loadWord(c.vi(4), 0);                // 0x2e48
+        c.vi(6) = c.loadWord(c.vi(4), 1);                // 0x2e50
+        c.vi(7) = c.loadWord(c.vi(4), 2);                // 0x2e58
+        c.vi(5) = vi16(c.vi(3) + c.vi(5));               // 0x2e68
+        loadQword<17, kXYZW>(c, c.vi(5));                // 0x2e70
+        c.vi(6) = vi16(c.vi(3) + c.vi(6));               // 0x2e78
+        loadQword<18, kXYZW>(c, c.vi(6));                // 0x2e80
+        c.vi(7) = vi16(c.vi(3) + c.vi(7));               // 0x2e88
+        loadQword<19, kXYZW>(c, c.vi(7));                // 0x2e90
+        for (;;)
+        {
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, 17, 18>(c);         // 0x2ea8 SUB.xyz vf26, vf17, vf18
+            c.vi(13) = vi16(c.vi(13) - 1);                                 //        IADDI vi13, vi13, -1
+            writeVf<26, kXYZ>(c, up);
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, 19, 18>(c);         // 0x2eb0 SUB.xyz vf28, vf19, vf18
+            c.vi(4) = vi16(c.vi(4) + 2);                                   //        IADDI vi4, vi4, 2
+            writeVf<28, kXYZ>(c, up);
+            c.vi(5) = c.loadWord(c.vi(4), 0);                              // 0x2ec0
+            c.vi(6) = c.loadWord(c.vi(4), 1);                              // 0x2ec8
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, 28, 26, true>(c);   // 0x2ed0 OPMULA.xyz ACC, vf28, vf26
+            c.vi(7) = c.loadWord(c.vi(4), 2);                              //        ILW.z vi7, 0(vi4)
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMsub, Vu1Gen::SrcVt, 0, kXYZ, 26, 28, true>(c);  // 0x2ed8 OPMSUB.xyz vf29, vf26, vf28
+            writeVf<29, kXYZ>(c, up);
+            c.vi(5) = vi16(c.vi(3) + c.vi(5));                             // 0x2ee0
+            loadQword<17, kXYZW>(c, c.vi(5));                              // 0x2ee8
+            c.vi(6) = vi16(c.vi(3) + c.vi(6));                             // 0x2ef0
+            up = ftoi<15, 29>(c);                                          // 0x2ef8 FTOI15.xyz vf29, vf29
+            loadQword<18, kXYZW>(c, c.vi(6));                              //        LQ vf18, 0(vi6)
+            writeVf<29, kXYZ>(c, up);
+            c.vi(7) = vi16(c.vi(3) + c.vi(7));                             // 0x2f00
+            loadQword<19, kXYZW>(c, c.vi(7));                              // 0x2f08
+            const bool again = c.vi(13) > 0;                               // 0x2f10 IBGTZ vi13, 0x2ea8
+            storeQword<29, kXYZW>(c, c.vi(4) - 1);                         // 0x2f18 (delay slot) SQ.xyzw vf29, -1(vi4)
+            if (!again)
+                break;
+        }
+        return true;                                                       // 0x2f20: B 0x1b60
+    }
+
+    // ---- entry 0x33c8's last-bone path, 0x33f8-0x3498 (research/15 4.4, research/82) ---------
+    //
+    // Repacks the staging array the 0x52 passes accumulated (qword 37.x = its base, 40; position,
+    // normal per vertex) into the vi9 three-qword vertex records at TOP+4: position xyz with w =
+    // normal.x (MR32.w), the record's UV xy through ITOF12 with zw = normal.y, normal.z, and the
+    // colour quad of data qword 338. MULz.w and ADDy.z are FMAC ops (MAC/STATUS move); ITOF12 and
+    // MR32 are not. Falls into `B 0x1b60` with vi3 past the last record and vi9 = 0. The caller has
+    // proved vi9 in 1..kMaxVertices and the record range clear of the command list.
+    void repackSkinnedVertices(Ctx &c)
+    {
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMul;
+        __m128 up;
+        c.vi(2) = c.loadWord(37, 0);                                       // 0x33f8 ILW.x vi2, 37(vi0)
+        c.vi(3) = vi16(c.vi(1) + 4);                                       // 0x3400
+        loadQword<28, kXYZW>(c, 338);                                      // 0x3408 LQ vf28, 338(vi0)
+        for (;;)
+        {
+            loadQword<27, kXYZW>(c, c.vi(3) + 1);                          // 0x3410 the record's UV qword
+            loadQword<30, kXYZW>(c, c.vi(2) + 1);                          // 0x3418 skinned normal
+            loadQword<29, kXYZW>(c, c.vi(2));                              // 0x3420 skinned position
+            c.vi(2) = vi16(c.vi(2) + 2);                                   // 0x3428
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 2, kW, 0, 30, false, false, true>(c); // 0x3430 MULz.w vf30, vf0, vf30z
+            c.vi(9) = vi16(c.vi(9) - 1);                                   //        ISUBIU vi9, vi9, 1
+            writeVf<30, kW>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 1, kZ, 0, 30, false, false, true>(c); // 0x3438 ADDy.z vf30, vf0, vf30y
+            writeVf<30, kZ>(c, up);
+            up = itof<12, 27>(c);                                          // 0x3440 ITOF12.xy vf27, vf27
+            writeVf<27, kXY>(c, up);
+            moveRotate32<29, 30, kW>(c);                                   // 0x3458 MR32.w vf29, vf30
+            storeQword<27, kXY>(c, c.vi(3) + 1);                           // 0x3460
+            storeQword<30, kZW>(c, c.vi(3) + 1);                           // 0x3468
+            storeQword<28, kXYZW>(c, c.vi(3) + 2);                         // 0x3470
+            storeQword<29, kXYZW>(c, c.vi(3));                             // 0x3478
+            const bool again = c.vi(9) != 0;                               // 0x3480 IBNE vi9, vi0, 0x3410
+            c.vi(3) = vi16(c.vi(3) + 3);                                   // 0x3488 (delay slot)
+            if (!again)
+                break;
+        }
+        // 0x3490: B 0x1b60, a NOP in its delay slot.
+    }
+
+    // Whether the repack's vi9 records, TOP+4 .. TOP+4+3*vi9-1, may be written before the pre-scan's
+    // reading of the list is trusted: a count the loop can end on (IBNE vi9 after a decrement: 0 is 65536
+    // iterations) under the vertex ceiling, no wrap past VU data memory's 1024 qwords, and no qword of the
+    // command list's kMaxListQwords (the header at TOP+2 lies below the first record). The corpus's TOPs are
+    // 424 and 724, clear of both.
+    bool repackFits(int32_t top, int32_t count)
+    {
+        if (count < 1 || count > kMaxVertices)
+            return false;
+        const int32_t first = top + 4;
+        const int32_t last = first + 3 * count - 1;
+        if (last >= 1024)
+            return false;
+        const int32_t listFirst = kCommandListQword;
+        const int32_t listLast = kCommandListQword + static_cast<int32_t>(kMaxListQwords) - 1;
+        return last < listFirst || first > listLast;
+    }
+
     Outcome fromHandler(bool reachedNextCommand)
     {
         return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
@@ -3464,8 +3608,74 @@ namespace
             return fromHandler(cmdInlineBlockOverB(c));
         case kCmdSphereMapBlock:
             return fromHandler(cmdSphereMapBlock(c));
+        case kCmdFaceNormals:
+            if (!c.faceNormals)
+                return Outcome::NotImplemented; // at 0x1b50 a 0x66 stays the microcode's
+            return fromHandler(cmdFaceNormals(c));
         default:
             return Outcome::NotImplemented;
+        }
+    }
+}
+
+namespace
+{
+    // 0x1b60 onward: the dispatcher's read-dispatch loop from the vi1/vi14 the entry left, to the E bit or a
+    // hand-back at 0x1b60. Both entries share it: 0x1b50 after XTOP and `vi14 = 0`, 0x33c8 after its repack
+    // with the live-in vi14. `entryPc` keys PS2X_VU1_NATIVE_REFUSALS' mid-list hand-backs.
+    bool runFromNextCommand(Ctx &c, uint32_t entryPc)
+    {
+        for (;;)
+        {
+            // 0x1b60-0x1b90: read the command word, form the jump-table address, jump.
+            //   vi5 = data[340 + vi14].x (low 16)   vi4 = 884 (= 0x1ba0 / 8, the jump table)
+            //   vi14 += 1                           vi3 = vi5 + vi4 -> JR
+            // The jump-table slot is a `B <handler>` pair, so handler pc = 0x1ba0 + 8 * command.
+            const int32_t index = c.vi(14);
+            const uint32_t command = static_cast<uint32_t>(c.loadWord(kCommandListQword + index, 0)) & 0xFFFFu;
+
+            // The dispatcher's own register writes, in microcode order and before the handler runs.
+            c.vi(5) = static_cast<int32_t>(static_cast<int16_t>(command));
+            c.vi(4) = 884;
+            c.vi(14) = static_cast<int32_t>(static_cast<int16_t>(index + 1));
+            c.vi(3) = static_cast<int32_t>(static_cast<int16_t>(c.vi(5) + c.vi(4)));
+
+            if (command == kCmdEnd)
+            {
+                // 0x1b40's E bit: one more pair, then the program ends leaving pc = 0x1b50.
+                c.vu.m_viBranchBackupValid = false;
+                c.vu.m_state.pc = kProgramEndPc;
+                return true;
+            }
+
+            const Outcome outcome = runCommand(c, command);
+            if (outcome == Outcome::ProgramEnd)
+            {
+                // Command 0x4c's `B 0x1b40`: a family-B list ends here, with its trailing 0x42 never
+                // dispatched.
+                c.vu.m_viBranchBackupValid = false;
+                c.vu.m_state.pc = kProgramEndPc;
+                return true;
+            }
+            if (outcome == Outcome::NotImplemented)
+            {
+                // Give the microcode the command back, through the same helper the clamps use -- one
+                // place decides what a hand-back leaves behind. `index` rather than the helper's
+                // vi14 - 1, because a handler that got as far as rewriting vi14 (0x30/0x32) can reach
+                // here too, and this command's index is what the re-dispatch needs.
+                // PS2X_VU1_NATIVE_REFUSALS: every mid-list hand-back passes here. A command with a handler got
+                // here through that handler's ceiling clamp (or 0x30/0x32's dead JR vi6 guard); one without is
+                // runCommand's default, which the pre-scan makes unreachable.
+                if (Vu1Refusals::enabled())
+                    Vu1Refusals::note(entryPc,
+                                      isFamilyACommand(command) || isFamilyBCommand(command) ||
+                                              isFamilyCCommand(command) || isFamilyDCommand(command) ||
+                                              (c.faceNormals && command == kCmdFaceNormals)
+                                          ? Vu1Refusals::Reason::HandlerClamp
+                                          : Vu1Refusals::Reason::MidUnknownCommand,
+                                      command);
+                return handBackAtCommandIndex(c, index);
+            }
         }
     }
 }
@@ -3499,57 +3709,7 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     c.vi(1) = top;
     c.vi(14) = 0;
 
-    for (;;)
-    {
-        // 0x1b60-0x1b90: read the command word, form the jump-table address, jump.
-        //   vi5 = data[340 + vi14].x (low 16)   vi4 = 884 (= 0x1ba0 / 8, the jump table)
-        //   vi14 += 1                           vi3 = vi5 + vi4 -> JR
-        // The jump-table slot is a `B <handler>` pair, so handler pc = 0x1ba0 + 8 * command.
-        const int32_t index = c.vi(14);
-        const uint32_t command = static_cast<uint32_t>(c.loadWord(kCommandListQword + index, 0)) & 0xFFFFu;
-
-        // The dispatcher's own register writes, in microcode order and before the handler runs.
-        c.vi(5) = static_cast<int32_t>(static_cast<int16_t>(command));
-        c.vi(4) = 884;
-        c.vi(14) = static_cast<int32_t>(static_cast<int16_t>(index + 1));
-        c.vi(3) = static_cast<int32_t>(static_cast<int16_t>(c.vi(5) + c.vi(4)));
-
-        if (command == kCmdEnd)
-        {
-            // 0x1b40's E bit: one more pair, then the program ends leaving pc = 0x1b50.
-            vu.m_viBranchBackupValid = false;
-            vu.m_state.pc = kProgramEndPc;
-            return true;
-        }
-
-        const Outcome outcome = runCommand(c, command);
-        if (outcome == Outcome::ProgramEnd)
-        {
-            // Command 0x4c's `B 0x1b40`: a family-B list ends here, with its trailing 0x42 never
-            // dispatched.
-            vu.m_viBranchBackupValid = false;
-            vu.m_state.pc = kProgramEndPc;
-            return true;
-        }
-        if (outcome == Outcome::NotImplemented)
-        {
-            // Give the microcode the command back, through the same helper the clamps use -- one
-            // place decides what a hand-back leaves behind. `index` rather than the helper's
-            // vi14 - 1, because a handler that got as far as rewriting vi14 (0x30/0x32) can reach
-            // here too, and this command's index is what the re-dispatch needs.
-            // PS2X_VU1_NATIVE_REFUSALS: every mid-list hand-back passes here. A command with a handler got
-            // here through that handler's ceiling clamp (or 0x30/0x32's dead JR vi6 guard); one without is
-            // runCommand's default, which the pre-scan makes unreachable.
-            if (Vu1Refusals::enabled())
-                Vu1Refusals::note(entryPc,
-                                  isFamilyACommand(command) || isFamilyBCommand(command) ||
-                                          isFamilyCCommand(command) || isFamilyDCommand(command)
-                                      ? Vu1Refusals::Reason::HandlerClamp
-                                      : Vu1Refusals::Reason::MidUnknownCommand,
-                                  command);
-            return handBackAtCommandIndex(c, index);
-        }
-    }
+    return runFromNextCommand(c, entryPc);
 }
 
 // ps2x_tests only (vu1_ops_tests.cpp's RefusalRig): force the XGKICK model the dispatcher's whole-list guard
@@ -3563,4 +3723,56 @@ void vu1native_socom2_forceXgkickImmediateForTest(int state)
 void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling)
 {
     s_testVertexCeiling.store(ceiling < 0 ? -1 : ceiling, std::memory_order_relaxed);
+}
+
+// Sprint 17 F N1 (docs/research/82): registered for (image d418194495c25213, entry pc 0x33c8) behind
+// PS2X_VU1_NATIVE_33C8 (the registry asks this gate after the (hash, pc) match; read once, after developer mode).
+bool vu1native_socom2_entry_0x33c8_enabled()
+{
+    static const bool s_on = ps2x::knobOn("PS2X_VU1_NATIVE_33C8");
+    return s_on;
+}
+
+// The EE's MSCAL after a 0x52 bone pass. 0x33c8 XTOP vi1; 0x33d0/0x33d8 vi7 = vi5 & 4 -- vi5 is LIVE-IN, the
+// previous chunk's flags word; 0x33e8 IBEQ vi7, vi0, 0x3100: not the last bone -> another bone pass, which
+// ends at 0x33c8 again (the 0x52 body, no native handler: refused whole as skin_pass). The last bone falls
+// through into the repack (repackSkinnedVertices) and `B 0x1b60`, the dispatcher resumed at the LIVE-IN vi14
+// (1 in the corpus: q341 = 0x66 of `52 66 08 40 42`). Every refusal is whole-program, before anything is
+// written: pc stays 0x33c8 and the generated code runs it. Contract as 0x1b50's: packets, register file and
+// VU data memory bit for bit (`vu1_replay --verify --native --regs all` over the 0x33c8 dumps).
+bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
+{
+    Ctx c{vu};
+    c.faceNormals = true;
+    const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
+    const uint32_t entryPc = vu.m_state.pc;
+    // The repack's count (IBNE on a 16-bit register) and the dispatcher's resume index, both live-in.
+    const int32_t repackCount = vi16(c.vi(9));
+    const int32_t resumeIndex = vi16(c.vi(14));
+    Vu1Refusals::Refusal refusal;
+    if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u)
+        refuse(refusal, Vu1Refusals::Reason::NoDataMemory);
+    else if (!xgkickIsImmediate())
+        refuse(refusal, Vu1Refusals::Reason::XgkickCycleExact);
+    else if ((c.vi(5) & 4) == 0)
+        refuse(refusal, Vu1Refusals::Reason::SkinPass);
+    else if (!repackFits(top, repackCount))
+        refuse(refusal, Vu1Refusals::Reason::RepackRange);
+    else if (resumeIndex < 0 || resumeIndex >= static_cast<int32_t>(kMaxListQwords))
+        refuse(refusal, Vu1Refusals::Reason::ResumeIndex);
+    else
+        // The list and the header as the repack will leave them: it writes only TOP+4.., which repackFits
+        // keeps off the list's qwords, and the header is TOP+2.
+        isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex));
+    if (refusal.reason != Vu1Refusals::Reason::None)
+    {
+        if (Vu1Refusals::enabled())
+            Vu1Refusals::note(entryPc, refusal.reason, refusal.command);
+        return false; // whole-program hand-back: pc is still 0x33c8 and nothing has been touched
+    }
+
+    c.vi(1) = top;                                  // 0x33c8 XTOP vi1
+    c.vi(7) = vi16(c.vi(5) & 4);                    // 0x33d0 IADDIU vi7, vi0, 4; 0x33d8 IAND vi7, vi5, vi7 (= 4)
+    repackSkinnedVertices(c);                       // 0x33e8 IBEQ not taken; 0x33f8-0x3498
+    return runFromNextCommand(c, entryPc);          // 0x3490 B 0x1b60, vi14 as the previous program left it
 }
