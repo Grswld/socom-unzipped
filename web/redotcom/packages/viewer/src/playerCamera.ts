@@ -1,6 +1,7 @@
 import { Vector3, type Camera } from 'three';
 import { isCameraSurface, segmentHit, segmentHits, surfaceWord, SEAL_TUNING, SURFACE_SIDE, SURFACE_SKIP, type Grid, type WorldPoly } from '@s2u/scene';
 import type { Stance } from './walk';
+import { deathEye, deathFar, orbit, type DeathCamera } from './deathCamera';
 import {
   CAM_BACK, CAM_CLOSE, CAM_FAR, CAM_MARGIN, localCamera, lookHeight, peekShift, ramp, scopeEyeHeight, scopePeekShift, toWorld,
   LEAD_DOWN, type LocalCamera, type Vec3,
@@ -216,6 +217,9 @@ export class PlayerCamera {
   /** TRAVERSAL SEAM (`./traversal`'s lean): the peek value `DAT_004161c0`, -1 left .. 1 right, the next tick reads. */
   peek = 0;
 
+  /** The death camera (`./deathCamera`, `FUN_00297a30`) while the SEAL is dead, else null. */
+  death: DeathCamera | null = null;
+
   /** Forgets the camera: the next tick places it at the goal with no hold, as a new camera does. */
   reset(): void {
     this.pass = newPassState();
@@ -249,8 +253,12 @@ export class PlayerCamera {
     // FUN_00297410 (decomp 140987-141028): far = targetL + rotate(actor+0x1070, (0, 0, -1000)) -- the look quaternion
     // turns a straight-ahead vector, so the peek's shift moves the eye and the target across and leaves the aim parallel
     // to the body's facing. (Along `-back` the aim swung ~5.7 degrees back toward the body at a held right peek.)
-    const far = world(add(targetL, scale(local.ahead, CAM_FAR)));
-    const eye0 = world(eyeL);
+    // DEAD (`./deathCamera`): the orbit laid on the local eye and the aim, the killer's point blended into the aim.
+    const d = this.death;
+    const ahead = scale(local.ahead, CAM_FAR);
+    const eye0 = world(d ? deathEye(d, eyeL, feet, yawDegrees, dt) : eyeL);    // the orbit turns first (141213-141217)
+    let far = world(add(targetL, d ? orbit(d, ahead) : ahead));
+    if (d) far = deathFar(d, far, dt);
     // FUN_00296f10: the target on the line from the eye to the aim, `dist` from the eye.
     const target = add(eye0, scale(unit(sub(far, eye0)), local.dist));
     const eye = cameraPass(this.grid, target, eye0, this.pass, dt, this.peek !== 0 ? isPeekCameraSurface : isCameraSurface);

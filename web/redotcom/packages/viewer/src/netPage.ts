@@ -433,6 +433,13 @@ export class NetPage {
           }
           hud.setHealth(0);
           this.deps.walk.setDeathPose(clip ? () => deathPose(clip, (performance.now() - at) / 1000, this.deps.clips()) : null);
+          // The death camera (`./deathCamera`): toward the killer (mode 3), or turning on its own for a death by no
+          // other hand -- a suicide, a fall (mode 6; `FUN_002980d0` 141361-141375).
+          const killer = ev.killer;
+          this.deps.walk.setDeathKiller(killer !== null && killer !== this.client.id ? () => {
+            const b = this.client.bodies().find((x) => x.id === killer);
+            return b ? [b.feet[0], b.feet[1], b.feet[2]] : null;
+          } : null);
         } else remote.died(ev.victim, ev.clip);
         break;
       case 'spawn':
