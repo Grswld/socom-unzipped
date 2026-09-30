@@ -56,7 +56,8 @@ import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
 import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
-import { RoomsPoller, roomsUrl } from './playersOnline';
+import { roomsUrl } from './playersOnline';
+import { multiplayerEnabled, onlineTarget, playersPoller, singlePlayerAddress, stripMultiplayerUi } from './multiplayer';
 import type { Rules } from './net/protocol';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
@@ -109,6 +110,17 @@ const SEARCH = globalThis.location?.search ?? '';
  * this setup. The retired `redotcom` and `rules` are ignored and rewritten out (`RETIRED_PARAMS`).
  */
 const SHARE = readShare(SEARCH);
+/**
+ * MULTIPLAYER, the build's switch (owner, 2026-09-30: the site's redotcom ships "with multiplayer disabled";
+ * `./multiplayer`): `VITE_S2U_MULTIPLAYER=off` (the site's release build, `web/shared/deploy/site/deploy.sh`) takes the
+ * Online section out and makes the kicker the product's name, before `Ui` reads the page; the address's `online`, `mp`
+ * and `server` are taken out; no server is joined and no `/rooms` is asked. The offline match stays. On by default.
+ */
+const MULTIPLAYER = multiplayerEnabled(import.meta.env.VITE_S2U_MULTIPLAYER as string | undefined);
+if (!MULTIPLAYER) {
+  stripMultiplayerUi();
+  updateAddress(singlePlayerAddress());
+}
 /**
  * Playing as a SEAL (walk mode, the body, the rifle, the HUD) is reCOM mode (`./features`; the owner 2026-09-28 and
  * 2026-09-29): the settings' Mode switch, always on the page ("&redotcom can die now. The mode replaces it"), remembered,
@@ -618,7 +630,7 @@ const play = new Play();
 // the URL's `&mp` / `&server=` over it. reCOM mode joins as a player, the map viewer as a watcher (`connectNet`).
 const remote = new RemotePlayers(scene);
 const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
-let NET: OnlineTarget = resolveOnline(SEARCH, SHARE.online ?? readOnline(), PAGE_LOCATION);
+let NET: OnlineTarget = onlineTarget(MULTIPLAYER, SEARCH, () => SHARE.online ?? readOnline(), PAGE_LOCATION);   // none with multiplayer off
 /**
  * The match's rules (`./rules`): classic, the only ruleset while respawn is off (owner ruling, 2026-09-29;
  * `./net/protocol` `RESPAWN_RULES_ENABLED`), online and in the offline match alike.
@@ -1031,31 +1043,35 @@ ui.onRecomSwitch((on) => setPlayMode(on, true));
  * The Online setting (owner, 2026-09-29; `./online`): the choice remembered, the match joined again at the new server or
  * left. A server the URL named is replaced by the choice.
  */
-ui.offerLocal(pageIsLocal(PAGE_LOCATION));    // Local is a developer's: never on the deployed site
-ui.setOnline(NET.choice);
-// The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten on load -- only a
-// choice the visitor makes below takes it out.
-if (NET.choice !== 'url') updateAddress({ online: NET.choice });
+if (MULTIPLAYER) {
+  ui.offerLocal(pageIsLocal(PAGE_LOCATION));    // Local is a developer's: never on the deployed site
+  ui.setOnline(NET.choice);
+  // The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten on load -- only a
+  // choice the visitor makes below takes it out.
+  if (NET.choice !== 'url') updateAddress({ online: NET.choice });
+}
 /**
  * PLAYERS ONLINE (owner, 2026-09-29; `./playersOnline`): the panel's kicker and the picker's per-map counts, from the
  * shared server's `/rooms` -- the local server's when Online is Local. `VITE_S2U_ROOMS` replaces the shared list at
  * build time (`off`: none; the e2e run sets it, `playwright.config.ts`, while the shared server is not live). Polled
  * about every 20 s while the page shows, paused while it is hidden, stopped when the page goes (and started again if
- * the browser brings it back from its back-forward cache).
+ * the browser brings it back from its back-forward cache). None at all with multiplayer off (`./multiplayer`).
  */
 const ROOMS_OVERRIDE = import.meta.env.VITE_S2U_ROOMS as string | undefined;
-const rooms = new RoomsPoller({ url: roomsUrl(NET.choice, ROOMS_OVERRIDE), onCounts: (c) => ui.setPlayerCounts(c) });
-rooms.start();
-globalThis.addEventListener?.('pagehide', () => rooms.stop());
-globalThis.addEventListener?.('pageshow', (e) => { if ((e as PageTransitionEvent).persisted) rooms.start(); });
-ui.onOnline((choice: OnlineChoice) => {
-  writeOnline(choice);
-  updateAddress(onlineChoiceAddress(choice));   // the choice replaces a named server: `server=` / `mp` leave the link
-  NET = resolveOnline('', choice, PAGE_LOCATION);
-  rooms.setUrl(roomsUrl(NET.choice, ROOMS_OVERRIDE));
-  if (loaded) connectNet(loaded);
-  showOnline();
-});
+const rooms = playersPoller(MULTIPLAYER, NET.choice, ROOMS_OVERRIDE, (c) => ui.setPlayerCounts(c));
+if (rooms) {
+  rooms.start();
+  globalThis.addEventListener?.('pagehide', () => rooms.stop());
+  globalThis.addEventListener?.('pageshow', (e) => { if ((e as PageTransitionEvent).persisted) rooms.start(); });
+  ui.onOnline((choice: OnlineChoice) => {
+    writeOnline(choice);
+    updateAddress(onlineChoiceAddress(choice));   // the choice replaces a named server: `server=` / `mp` leave the link
+    NET = resolveOnline('', choice, PAGE_LOCATION);
+    rooms.setUrl(roomsUrl(NET.choice, ROOMS_OVERRIDE));
+    if (loaded) connectNet(loaded);
+    showOnline();
+  });
+}
 /** The connection's line under the setting, and a toast when it comes up or goes unreachable (not at every retry). */
 let onlineShown = '';
 function showOnline(): void {
@@ -1657,7 +1673,7 @@ window.__viewer = {
   recom: (on) => { if (on !== undefined) setPlayMode(on, true); return playOn; },
   discPage: () => ui.discPageShown(),
   playersOnline: () => {
-    const c = rooms.counts();
+    const c = rooms?.counts();
     return c ? { total: c.total, byMap: Object.fromEntries(c.byMap) } : null;
   },
   online: () => ({ ...(net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn }), choice: NET.choice, url: NET.url }),

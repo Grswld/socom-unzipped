@@ -19,8 +19,8 @@ export type SliderName = (typeof SLIDERS)[number];
 /** The page's controls, found once and typed, so the rest of the viewer never touches `getElementById`. */
 export class Ui {
   private readonly maps = find<HTMLSelectElement>('maps');
-  /** The kicker's figure (PLAYERS ONLINE, `./playersOnline`). */
-  private readonly playersOnline = find<HTMLElement>('players-online');
+  /** The kicker's figure (PLAYERS ONLINE, `./playersOnline`); none in a build with multiplayer off (`./multiplayer`). */
+  private readonly playersOnline = document.getElementById('players-online');
   /** The last reading of the server's rooms, so a new map list carries it (null: not known). */
   private playerCounts: PlayerCounts | null = null;
   /** Each option's map, for its label (`labelFor`) and its archive (the rooms' key). */
@@ -41,6 +41,11 @@ export class Ui {
    * The settings switch changes it at run time (`setPlay`).
    */
   private play = document.getElementById('walk') !== null;
+  /**
+   * Whether this build has multiplayer: the Online section is on the page only then (`./multiplayer`
+   * `stripMultiplayerUi` takes it out before the `Ui` is made). Off, the Controls lists say so.
+   */
+  private readonly multiplayer = document.getElementById('mp-section') !== null;
   /** The loaded map's name, for the cog's tooltip; null before the first load. */
   private mapName: string | null = null;
   /**
@@ -110,7 +115,7 @@ export class Ui {
   setPlayerCounts(counts: PlayerCounts | null): void {
     this.playerCounts = counts;
     const total = totalText(counts);
-    if (this.playersOnline.textContent !== total) this.playersOnline.textContent = total;
+    if (this.playersOnline && this.playersOnline.textContent !== total) this.playersOnline.textContent = total;
     for (const option of this.maps.options) {
       const m = this.optionMaps.get(option);
       if (!m) continue;
@@ -766,8 +771,8 @@ export class Ui {
   private renderControls(): void {
     const mode = this.walking ? 'walk' : 'fly';
     const toggle = this.play && this.flyToggle;
-    fillList('#keys-list tbody', controlGroups(mode, toggle));
-    fillList('#pad-list tbody', padControlGroups(mode, toggle));
+    fillList('#keys-list tbody', controlGroups(mode, toggle, this.multiplayer));
+    fillList('#pad-list tbody', padControlGroups(mode, toggle, this.multiplayer));
   }
 
   /** Whether the walk / fly toggle is offered in Play (`./flyAccess`: the developer's `?devmode` alone). */
