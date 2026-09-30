@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The frag grenade on Frostfire (web/docs/research/85): from spawn A, walking, a full throw (the button held a
+ * The frag grenade on Frostfire (web/redotcom/docs/research/85): from spawn A, walking, a full throw (the button held a
  * second) leaves the standing hand at `ComputeMaxVel`'s speed, arcs over the map's hull, bounces, lies still and goes
  * off 3 s after it left the hand; a light one is an underhand toss. The screenshots are the evidence: the arc (the
  * debug trail, seen from beside it) and the explosion.

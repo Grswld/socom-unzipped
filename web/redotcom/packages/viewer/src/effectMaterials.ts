@@ -8,7 +8,7 @@ import { blendFactorsFor, makeTexture } from './world';
 import type { EffectModelData, EffectTexture } from './effectData';
 
 /**
- * The effects' materials, in the world's GS arithmetic (`./world`'s shading, web/docs/research/89 §6): the texel times
+ * The effects' materials, in the world's GS arithmetic (`./world`'s shading, web/redotcom/docs/research/89 §6): the texel times
  * the vertex colour, clamped (`MODULATE`, then `COLCLAMP`), times the frame's brighten (`1 + FIX/128`, `./lighting`),
  * blended by the texture's own `ALPHA_1` -- `effect_muzzle01.tif` additive, `cloudpuff01.tif` and the casing's
  * `shell_gold.tif` source alpha (its bind packet, `@s2u/gs`'s `GsState`). Blended effects go to three's transparent

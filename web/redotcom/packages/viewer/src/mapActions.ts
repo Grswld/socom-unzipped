@@ -2,7 +2,7 @@ import { parseRdr, rdrGet, Zar, zdbMember, type RdrNode, type ZdbEntry } from '@
 import { flattenScene, parseSceneGraph, transformPoint } from '@s2u/scene';
 
 /**
- * The map's own context actions (web/docs/research/87-hud.md §5): `READERM.ZAR/actions.rdr` lists, per map, the
+ * The map's own context actions (web/redotcom/docs/research/87-hud.md §5): `READERM.ZAR/actions.rdr` lists, per map, the
  * scene nodes an action hangs on -- `node`, `valve`, `anim`, `type` (`DOOR`, `MPBOMB`), `range` (units) and the
  * prompt's `bitmap` (`action_door_open.tif`, `action_MP_bomb.tif`). This is where the door icon comes from: the ELF
  * never names it, the map data does. Frostfire has three doors (`bdoor_4`, `wdoor_1`, `wdoor_2`), Blizzard six doors

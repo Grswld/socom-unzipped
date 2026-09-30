@@ -13,7 +13,7 @@ import { effectBrighten } from './effectMaterials';
 import type { EffectTexture } from './effectData';
 
 /**
- * The zAnim `LIGHT` command's dynamic light, drawn as the engine draws it (web/docs/research/89 §10): not a light on the
+ * The zAnim `LIGHT` command's dynamic light, drawn as the engine draws it (web/redotcom/docs/research/89 §10): not a light on the
  * vertex colours but **a second pass of every lit visual in its reach** -- `FUN_00339660` gives a node the world's
  * lights whose sphere meets its own (at most six), `FUN_003b5b90` emits VU1 command 0x3a once a light, and the VU1
  * handler at 0x23d8 re-draws the node's triangles with `light_map.tif` (`EFFE_TXR`, a white spot, alpha 0.94 at its

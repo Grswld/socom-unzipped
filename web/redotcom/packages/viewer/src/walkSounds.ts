@@ -6,7 +6,7 @@ import type { PlayEvent } from './play';
 import type { Stance } from './walk';
 
 /**
- * The walk's events turned into `GameAudio`'s (web/docs/research/81 §4-§6): the body's (`Play.onEvent`: the game's
+ * The walk's events turned into `GameAudio`'s (web/redotcom/docs/research/81 §4-§6): the body's (`Play.onEvent`: the game's
  * footfalls off the play's phase, `FUN_005a3570`; each clip's `zanim_callback` as its key is crossed -- `jump_whoosh`
  * among them; the landing with its contact speed, research 80) and the rifle's (`Fire.subscribe`: a round, a reload).
  * Each sound is heard where it happens: a step at the foot, a round at the muzzle.

@@ -1,6 +1,6 @@
 /**
  * Every field of a map's `AIMAPS.MPS` the reader knows, per sub-map, straight off the disc -- the dump
- * web/docs/research/75 was written from. Archives are looked up in `public/maps/RUN`, then
+ * web/redotcom/docs/research/75 was written from. Archives are looked up in `public/maps/RUN`, then
  * `test-fixtures/RUN`; with no names it runs the three fixtures and the two one-sub-map maps.
  *
  *   npx tsx tools/dump-aimaps.ts                 # MP2 MP6 MP72 MP9 MP64

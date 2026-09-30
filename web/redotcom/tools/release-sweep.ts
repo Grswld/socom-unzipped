@@ -21,7 +21,7 @@
  *   npx vite --config packages/viewer/vite.config.ts --port 5208   # another shell
  *   npx tsx tools/release-sweep.ts [url] [--maps MP2,MP6] [--looks modern,ps2] [--backends webgpu,webgl2] [--channel chrome] [--out <dir>]
  *
- * Output: `web/test-fixtures/screens/release-sweep/` (git-ignored): `sweep.json` and a folder of PNGs a run.
+ * Output: `web/redotcom/test-fixtures/screens/release-sweep/` (git-ignored): `sweep.json` and a folder of PNGs a run.
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';

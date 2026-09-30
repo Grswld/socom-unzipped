@@ -283,31 +283,13 @@ export function alongSurfaceVy(n: readonly [number, number, number], vx: number,
   return n[1] > 1e-6 ? -(n[0] * vx + n[2] * vz) / n[1] + 0 : 0;
 }
 
-/**
- * PLACEHOLDER (W2.R2): the crouched eye as a fraction of the standing one. Research 17 section 1's 15.38 is the
- * look-at of a SEAL at rest standing; nothing on hand gives the crouch's -- the seal's tick (`decomp
- * CZSealBody_Tick_0_0x57a330`) reads no field of the table, and the table has no crouch height. 0.65 puts the eye at
- * 10.01, a metre at the maps' scale: a crouching adult's, not the game's.
- */
-export const CROUCH_EYE_PLACEHOLDER = 0.65;
-
-/**
- * PLACEHOLDER (W2.R2, W2.R6): the crouched walk's speed as a fraction of the standing run's (40 units a second,
- * research 18 Finding 3). A half is a round number, not the game's. The seal's tick sets the model velocity from the
- * throttles times two per-stance limits (`decomp CZSealBody_Tick_0_0x57a330` lines 4999-5255: `func_58BB50` and
- * `func_58BC00`, whose bodies are not supplied; reCOM's `CZSealBody::GetMaxZMotion` takes them from the anim set's
- * per-stance `m_crouch_max_fwd` and the like, `zSeal/seal_anim.cpp:47-76`). The disc's motion clips carry speeds
- * that may be those limits; they are a measurement for the spec's section 6, not a number for the source (W2.R6).
- */
-export const CROUCH_SPEED_PLACEHOLDER = 0.5;
-
 /** The upward speed that rises `height` under gravity before it turns: sqrt(2 g h). */
 export function jumpSpeed(height: number, g: number = G): number {
   return Math.sqrt(2 * g * height);
 }
 
 /**
- * The jump is read (web/docs/research/80-the-jump.md; `./walk`): the running jump's impulse is `jump_factor x gravity x
+ * The jump is read (web/redotcom/docs/research/80-the-jump.md; `./walk`): the running jump's impulse is `jump_factor x gravity x
  * 0.4` (`FUN_0057e1b0` writes -0.4 of it into `actor+0x1364`, `FUN_005af930` into the fall speed 0.1 s later), and the
  * standing jump's rise is the clip's skeleton root alone (`FUN_0059afd0`). `min_jump_height` is not read by either:
  * what it bounds is not found (the cloud sprint's placeholder impulse from it is retired).

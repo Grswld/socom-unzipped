@@ -9,7 +9,7 @@ export type SurfaceShade = (point: [number, number, number], normal: [number, nu
 /**
  * How far either side of the hit's plane a drawn triangle still takes the mark, in units: `FUN_003b3ab0` keeps a
  * triangle only when each of its three vertices projects within 4.8 of the mark's plane (`fabs(z) <= 4.8`, decomp
- * 306620). The collision hull and the drawn world are separate meshes, and a hull face can sit a unit or more off the
+ * 306632-306635). The collision hull and the drawn world are separate meshes, and a hull face can sit a unit or more off the
  * surface drawn over it.
  */
 export const MARK_DEPTH = 4.8;
@@ -18,7 +18,7 @@ export const MARK_DEPTH = 4.8;
 const LAYER_GAP = 0.05;
 
 /**
- * EFFECTS (web/docs/research/89 §5, "the mark's colour"): the game draws a bullet mark -- and a footprint, and a
+ * EFFECTS (web/redotcom/docs/research/89 §5, "the mark's colour"): the game draws a bullet mark -- and a footprint, and a
  * grenade's scorch, all `FUN_003139e0` decals -- with the vertex colour of the world polygon it is clipped to. For every
  * clipped vertex `FUN_003b3ab0` (decomp 306470) keeps a pointer to the world vertex's own 32-bit colour (the vertex
  * walk's `+0x3c`, `FUN_003ba9a0`: the colour array + index x 4), and `FUN_003beca0` (decomp 313065) unpacks the three

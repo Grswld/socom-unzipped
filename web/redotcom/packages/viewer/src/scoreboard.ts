@@ -2,7 +2,7 @@ import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudQuad, HudTri } from './hud';
 
 /**
- * The multiplayer round's scoreboard (web/docs/research/87-hud.md §12): what SOCOM II shows while SELECT is held in a
+ * The multiplayer round's scoreboard (web/redotcom/docs/research/87-hud.md §12): what SOCOM II shows while SELECT is held in a
  * round -- `FUN_0022be20` (L79675) builds it on the press (`FUN_0022cc10` L79974), rebuilds it every second while held
  * and hides it on the release (`FUN_0022bb30`); `FUN_0022a8b0` (L79100) draws it; while it is up the ammo box, the
  * compass, the prompts, the reticle and the timer are hidden (L56808-56828). Two parts: the team tables (SEALs above,

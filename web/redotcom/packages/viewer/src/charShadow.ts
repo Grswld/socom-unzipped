@@ -5,7 +5,7 @@ import { MeshBasicNodeMaterial, type Node, type WebGPURenderer } from 'three/web
 import { float, normalWorld, positionWorld, select, texture as textureNode, uniform, vec2, vec4 } from 'three/tsl';
 
 /**
- * The characters' shadow as the engine draws it: a render map, not a blob (web/docs/research/82, round 4).
+ * The characters' shadow as the engine draws it: a render map, not a blob (web/redotcom/docs/research/82, round 4).
  *
  * **Who casts one.** Only the node flagged at `+0xa1` bit 5, and one place sets it: the character spawn (`FUN_00599f00`),
  * when the shadows are on (`DAT_003df138`), the character answers its controller's `+0x2c` query, and the world has no

@@ -19,7 +19,7 @@ import { Walker, type GroundMotion, type MoverAction } from '../src/walk';
 import { buildGrid, type CollisionOwner, type GridParams, type WorldPoly } from '@s2u/scene';
 
 /**
- * The animator (web sprint 2 W2.2b; the motion workstream, web/docs/research/80-the-jump.md): the mover's action or
+ * The animator (web sprint 2 W2.2b; the motion workstream, web/redotcom/docs/research/80-the-jump.md): the mover's action or
  * ground state names a play -- nodes sharing one phase, `./locomotion`'s port of the game's pick and blend -- which
  * starts with a cross-fade, advances as `FUN_0028c4f0` does, fires its events, and poses the skeleton. Synthetic clips
  * pin the rules with made-up numbers; the owner's `MOTION_P.ZAR`, `READERC.ZAR` and Frostfire's SEAL pin the rest.

@@ -14,7 +14,7 @@ import { loadMap, spawnSlotsOf, type LoadedMap } from '../src/loadMap';
 
 /**
  * The disc's spawn slots as the worker reads them (W1.5b): `AIMAPS.MPS` out of the map's archive, its
- * trailer's list placed (`placeSpawnSlots`, web/docs/research/75 §5.5-§7), and `LoadedMap.slots` set
+ * trailer's list placed (`placeSpawnSlots`, web/redotcom/docs/research/75 §5.5-§7), and `LoadedMap.slots` set
  * beside the other members. The spec's W1.R9 is the oracle: every measured spawn of `spawns.ts` lies at a
  * slot of its own side (the 4 actor rows) or up to 30 units behind one along its facing (the 40 rows that are
  * the orbit camera behind the actor, research 75 §11).

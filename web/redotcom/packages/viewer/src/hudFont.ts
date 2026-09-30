@@ -1,5 +1,5 @@
 /**
- * The HUD's font (web/docs/research/87-hud.md §3): `READERC.ZAR/fonts.rdr`'s face `font_text_01` over
+ * The HUD's font (web/redotcom/docs/research/87-hud.md §3): `READERC.ZAR/fonts.rdr`'s face `font_text_01` over
  * `FONT_TXR.ZED`'s `font_text_01.tif` (512x128, PSMT4, a white alpha ramp in its palette 139). The face's header:
  * `textures (font_text_01.tif font_special_01.tif)`, `xspacing 0`, `opacity 0.7`, `scale 1`, `topy 0`, `boty 15`,
  * `dropshadow { offset (1.5 1.5) color (0 0 0) opacity 0.75 }`. Transcribed here as `tuning.ts` transcribes

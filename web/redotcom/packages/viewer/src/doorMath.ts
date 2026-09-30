@@ -1,5 +1,5 @@
 /**
- * The engine's quaternion and node-matrix algebra, as the door's zAnim uses it (`web/docs/research/92-doors.md` §2).
+ * The engine's quaternion and node-matrix algebra, as the door's zAnim uses it (`web/redotcom/docs/research/92-doors.md` §2).
  * A quaternion is `(x, y, z, w)`, `w` last, as the engine stores one; a node matrix is row-major, row vectors, the
  * translation in floats 12-14 (`@s2u/scene`'s `SceneNode.matrix`).
  *

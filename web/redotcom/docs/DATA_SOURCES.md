@@ -19,8 +19,12 @@ this repository that reads it, and how it was checked. The same facts, as machin
   tree.
 - **The multiplayer server reads the disc files it needs from a private directory** and never serves them
   ([`../deploy/README.md`](../deploy/README.md)).
-- **A development build can serve extracted files from your machine** for your own testing; that path is for
-  development only and is not how the page is meant to be used.
+- **A development build can serve extracted files from your machine** for your own testing (`?devmode`); that path
+  is for development only and is not how the page is meant to be used. **socomunzipped.com serves such a tree today,
+  by the owner's choice and for now** (`/redotcom/maps/`, the development mode's reads; the site also plays the game's
+  menu movie and HUD sounds, cut from the owner's disc). The page itself still reads the visitor's disc; the move to
+  disc-only is the owner's row O28 in `docs/HUMAN_TASKS.md`, and the site's credits say the same
+  (`web/landing/src/claims.test.ts`).
 - SOCOM II: U.S. Navy SEALs and all of its assets belong to Sony Interactive Entertainment; the game was developed by
   Zipper Interactive. This project is not affiliated with or endorsed by either. Obtain the game only as your own copy.
 
@@ -70,7 +74,7 @@ The research notes are in [`research/`](research/); `repo/NN` is a note of the P
 
 | data | on the disc | read by | verified by |
 |---|---|---|---|
-| Banks | `RUN/SOUNDS/BNKSTORE.ZAR` (989snd `SBlk` v3 banks: per map `_am`, `_fx`, `_vc`, and `HUDUI`) | `@s2u/sound` `bank.ts`, `vag.ts` (SPU ADPCM), `render.ts`; read by HTTP range, a map's banks only | research 81 §1-2; `repo/06`, `repo/36` and the PC project's 989snd model; `sound/test/sound.test.ts`; `npm run dump-sounds` renders any sound to WAV with its length, peak and RMS (research 81 §11) |
+| Banks | `RUN/SOUNDS/BNKSTORE.ZAR` (989snd `SBlk` v3 banks: per map `_am`, `_fx`, `_vc`, and `HUDUI`) | `@s2u/sound` `bank.ts`, `vag.ts` (SPU ADPCM), `render.ts`; read by HTTP range: the map's three banks and `HUDUI` (about 1.9 MB for Frostfire), plus a lent bank or two | research 81 §1-2; `repo/06`, `repo/36` and the PC project's 989snd model; `sound/test/sound.test.ts`; `npm run dump-sounds` renders any sound to WAV with its length, peak and RMS (research 81 §11) |
 | Per-sound parameters | `RUN/SOUNDRDR.ZAR/sounds.rdr` (looked up by the CRC-32 of the sound's name) | `sound/src/script.ts`, `catalog.ts` | research 81 §3 |
 | Footsteps and landings per surface | `READERC.ZAR/materials.rdr` (`SOILS`), the polygon's material byte | `sound/src/materials.ts`, `rules.ts`, `viewer/src/walkSounds.ts` | research 81 §4, §7; `viewer/test/audio.test.ts` |
 | Reverb | `RUN/IRX/LIBSD.IRX` (the SPU2 presets) | `sound/src/spuReverb.ts` | research 81 §9 |
@@ -80,7 +84,7 @@ The research notes are in [`research/`](research/); `repo/NN` is a note of the P
 | data | on the disc | read by | verified by |
 |---|---|---|---|
 | Muzzle, casing, impacts, explosions, lights | zAnim scripts in `RUN/CZANIM.ZAR`, each map's `MZANIM.ZAR`, `RUN/MPZANIM.ZAR` | `scene/src/zanim.ts`, `effects.ts`, `effectMotion.ts`, `effectParticles.ts`; `tools/dump-effects.ts` | research 77 §9, research 89; `scene/test/zanim.test.ts`, `effects.test.ts` |
-| Bullet marks and scorches | `decals.rdr`, `EFFE_TXR.ZED` | `viewer/src/markClip.ts`, `effects.ts` | research 89 §5, §13-15; `viewer/test/markClip.test.ts`, `markShade.test.ts` |
+| Bullet marks and scorches | `decals.rdr` (`TEMP_DECAL_POOL` 150 + 50, `PERM_DECAL_POOL` 30 + 0: the scorch pool), `EFFE_TXR.ZED` | `viewer/src/markClip.ts`, `effects.ts`, `grenade.ts` | research 89 §5, §13-15; `viewer/test/markClip.test.ts`, `markShade.test.ts`, `grenadeScorchPool.test.ts`, `grenadeScorchSlope.test.ts` |
 | HUD bitmaps and font | `HUD_TXR`, `HUD2_TXR`, `HUDW_TXR`, `FONT_TXR` (each with its `_PAL`), `READERC.ZAR/fonts.rdr` | `viewer/src/hud.ts`, `hudFont.ts`, `hudAssets.ts` | research 87 §2-3, §6: each element within a pixel of the console frame's; `viewer/test/hud.test.ts`, `e2e/hud.spec.ts` |
 
 ### Rules read from the game's code
@@ -101,9 +105,14 @@ decompilation is silent.
 | Grenades: throw, flight, fuse, blast, arc | 85 | `scene/test/projectile.test.ts`, `throwArc.test.ts`, `viewer/test/grenade.test.ts` |
 | Ladders, climbs, peek, water | 86 | `viewer/test/traversal.test.ts`, `e2e/traversal.spec.ts` |
 | Damage, death, respawn, teams, score, names | 91 | `viewer/test/netDamage.test.ts`, `netLobby.test.ts`, `server/test/room.test.ts` |
+| The blast on the player (reach, fragments, knock, ringing ears); the offline match | 85 §12, 91 §20 | `viewer/test/netBlast.test.ts`, `knock.test.ts`, `loopback.test.ts`, `ringingEars.test.ts`, `server/test/roomBlast.test.ts` |
+| The server's fire and reload checks (rate, cone, reload lock) | 84 §18, 91 §16 | `server/test/room.test.ts`, `viewer/test/shotCone.test.ts`, `weapon.test.ts` |
 
-A value no source gives is a named `*_PLACEHOLDER` constant with a comment saying what was searched; each note lists
-its placeholders by name.
+A value no source gives is a named `*_PLACEHOLDER` constant with a comment saying what was searched, and a reading
+the viewer had to choose is a named `*_READING`; each note lists its own by name in a section whose heading says
+placeholders or readings. `tools/test/placeholderLedger.test.ts` holds the two in step: every such name in the viewer,
+server, scene and sound sources is in a note's section, and a name a note lists that no source holds any more is marked
+there as resolved, retired or note only.
 
 ### The look, checked against the console
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EffectOp, EffectProgram } from '@s2u/scene';
 import { EffectRun, type EffectHost } from '../src/effectRunner';
 
-/** The zAnim sequencer the effects run on (web/docs/research/89 §1): control flow, waits, loops, timed commands. */
+/** The zAnim sequencer the effects run on (web/redotcom/docs/research/89 §1): control flow, waits, loops, timed commands. */
 
 const program = (...sequences: { name?: string; ops: EffectOp[] }[]): EffectProgram => ({
   name: 't', root: 0, flags: 0, nodes: ['NA'],

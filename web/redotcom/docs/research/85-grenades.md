@@ -560,7 +560,7 @@ What it found:
 |---|---|---|
 | `HAND_PLACEHOLDER` | (3.5, 12.5, -4) | the hold, only without a posed body |
 | release point | `GetThrowAnim`'s table | the posed hand, only without a posed body |
-| `L2_SLOT_PLACEHOLDER` | the M67 | the slot the player assigns to L2 (default the sidearm) |
+| `L2_SLOT_PLACEHOLDER` (retired) | was the M67 | L2 is sourced: the controller's default slot 1.0, the Mark 23 (`FUN_00598280` 454786; `kit.ts`, `gamepad.ts`) |
 | R2 | one press a step | the inventory menu |
 | the throw clip's blend out | 0.4 s | the play after a throw |
 | `SMOKE_PLACEHOLDER` / `SMOKE_ALWAYS_PLACEHOLDER` | §9.6 | the effects' `large_smoke` as a screen |
@@ -694,7 +694,8 @@ out of reach; the wall; the ringing; the knock's numbers and sides; prone), `tes
 its clips, two movers agreeing), `server/test/roomBlast.test.ts` (a survivor knocked in the room, the thrower killed by
 its own, the wall), `test/netDamage.test.ts` (the part table), `test/ringingEars.test.ts`.
 
-Placeholders and readings this adds:
+### 12.1 Placeholders and readings (named in the code)
+
 - `KNOCK_SIDE_READING`: which of the two fall clips -- the game puts the line through a VU0 matrix routine
   (`FUN_00306fd0`) on a stack copy of the actor's negated first row (L441044-441051) and takes `Fall backwards` for a
   positive third component; read as "pushed against the facing falls backwards".

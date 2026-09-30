@@ -9,7 +9,7 @@ import {
 } from '../src/index';
 
 /**
- * The zAnim effect commands (web/docs/research/89): the numbering, the control-flow and state commands decoded from
+ * The zAnim effect commands (web/redotcom/docs/research/89): the numbering, the control-flow and state commands decoded from
  * their bytes, `OBJECT_MOTION`'s launch and flight, `PARTICLE_SOURCE`'s keys and fades -- and, on the game's own
  * archives where the fixtures are, the M4A1 SD's `muzzle_m4SD`, `shell_eject` and `shell_smoke_med` read to the
  * numbers the decomp gives them.

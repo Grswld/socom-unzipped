@@ -4,7 +4,7 @@ import { FONT_TEXT_01, layoutText } from './hudFont';
 import type { HudQuad, HudTri } from './hud';
 
 /**
- * SOCOM II's tactical map (`CZNewHudMap` with its `CZLineMap`; web/docs/research/87-hud.md §9), drawn as the HUD
+ * SOCOM II's tactical map (`CZNewHudMap` with its `CZLineMap`; web/redotcom/docs/research/87-hud.md §9), drawn as the HUD
  * pass's layer 1. **The game has it in single player only**: in a multiplayer round SELECT holds the scoreboard
  * instead, and the map object is neither made nor ticked while the multiplayer flag `DAT_0045a0c1` is set (L56700,
  * `FUN_001fb420` L57630). The viewer walks multiplayer maps, so this is the single-player map over their data --

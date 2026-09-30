@@ -9,7 +9,7 @@ import { flipRows, HUD_LIBRARIES, readHud } from '../src/hudAssets';
 import { PEN_NUDGE } from '../src/hudFont';
 
 /**
- * The in-game HUD (web/docs/research/87-hud.md): its layout against `CHUD`'s constants and the console frames, and its
+ * The in-game HUD (web/redotcom/docs/research/87-hud.md): its layout against `CHUD`'s constants and the console frames, and its
  * bitmaps off Frostfire's four HUD libraries.
  */
 

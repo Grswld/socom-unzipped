@@ -58,7 +58,7 @@ export interface CollisionPoly {
   shadow: number;
   /**
    * Surface word bit 27 (the first of reCOM's `m_reserved` bits after `m_shadow`): which entry of the mission's
-   * `IndoorReverb`/`OutdoorReverb` list a camera over this polygon takes (`FUN_002dc150`, web/docs/research/81 §9).
+   * `IndoorReverb`/`OutdoorReverb` list a camera over this polygon takes (`FUN_002dc150`, web/redotcom/docs/research/81 §9).
    */
   reverbZone: number;
   /** xyz per point, model space: the stored `CPnt4D`'s `w` is unused and dropped (36 section 6). */

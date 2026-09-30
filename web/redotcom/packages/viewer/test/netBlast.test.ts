@@ -87,7 +87,7 @@ describe('the fragments on the player (FUN_005a18b0, FUN_005a0e70 L459236-459256
   });
 });
 
-describe('the knock (FUN_0057ed10 L441094, FUN_0057e770 L440940-441092, FUN_005807d0 L442057 ff., side pick FUN_0057e770 L441044-441051)', () => {
+describe('the knock (FUN_0057ed10 L441094, FUN_0057e770 L440940-441092, FUN_005807d0 L442057-442137, side pick FUN_0057e770 L441044-441051)', () => {
   it('stores the push only when fragments struck and the damage at the feet is over 0', () => {
     const far = resolveBlast(freshHealth(), standing(140), [0, 0, 0], M67_BLAST, () => 0.999, true)!;
     expect(far.knock).toBeNull();

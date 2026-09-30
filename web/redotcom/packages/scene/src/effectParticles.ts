@@ -3,7 +3,7 @@ import type { CmdBytes, Vec3 } from './effects';
 /**
  * `PARTICLE_SOURCE` (27): an emitter's configuration, decoded from its tick `FUN_00266830` (decomp 112759) and the
  * particle manager it drives (`FUN_00329b40` the emission, 226782; `FUN_00327cd0` a particle's spawn; `FUN_003282b0`
- * its step; `FUN_003251b0` its draw, 223925); web/docs/research/89 §3. Every field is an override that applies only
+ * its step; `FUN_003251b0` its draw, 223925); web/redotcom/docs/research/89 §3. Every field is an override that applies only
  * when its bit of `flagsA` (+4) is set; the rest keep the source's defaults (`FUN_0032ab20`, decomp 227362).
  *
  * **Active or not** (flag A 0x1): the source is switched to flag A 0x2 (`FUN_00329ac0`), and a source that is off

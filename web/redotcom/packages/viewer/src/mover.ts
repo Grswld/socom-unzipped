@@ -14,7 +14,7 @@ import { wrapYaw } from './yaw';
  * Walk mode (web sprint 1, W1.4; web sprint 2, W2.2b): a mover that stands on the floor the engine's probe finds,
  * slides along the walls research 24 names, runs at the game's speeds, crouches, goes prone and falls.
  *
- * - **The tick.** `CGame::Tick` (`FUN_001E7040`) runs the game at 60 Hz (web/docs/research/71 section 1.5). The
+ * - **The tick.** `CGame::Tick` (`FUN_001E7040`) runs the game at 60 Hz (web/redotcom/docs/research/71 section 1.5). The
  *   mover steps on that clock from a fixed-step accumulator the page feeds real time into, so it takes the same
  *   steps at 30 fps and at 240 fps; the eye is drawn between the last two steps (`eye`).
  * - **The speed: the law, as read from the decompilation (W2.2b step 1 and its review).** Each actor tick
@@ -101,7 +101,7 @@ import { wrapYaw } from './yaw';
  *   person (the owner, 2026-09-29: the views are third person and scoped, as SOCOM II's). The mouse turns the body's
  *   yaw and the camera's pitch (`camera.ts`). Sprint 1's eye 15.4 (`EYE_HEIGHT`, W1.R2) is retired as a view; it
  *   stays the height a pose drops the mover from.
- * - **The jump** (web/docs/research/80-the-jump.md, read from the decompilation). `FUN_0057e1b0` (decomp
+ * - **The jump** (web/redotcom/docs/research/80-the-jump.md, read from the decompilation). `FUN_0057e1b0` (decomp
  *   440776-440867) takes the press when the SEAL is on walkable ground (`actor+0x1348` >= cos `max_slope`), not prone
  *   (`FUN_005b4340(.., 0xb)` refuses stance 2), and not within 0.4 s (`actor+0x135c`) of a running jump's take-off or
  *   of a landing. **At 15 units a second or more** (speed^2 >= 225) it is the **running jump**: the `Jump launch` action
@@ -125,7 +125,7 @@ import { wrapYaw } from './yaw';
  *   The ground state does not run while a transition plays (`FUN_005870e0` runs it only on a locomotion action) [reading].
  */
 
-/** Seconds per tick: `CGame::Tick` at 60 Hz (web/docs/research/71 section 1.5). */
+/** Seconds per tick: `CGame::Tick` at 60 Hz (web/redotcom/docs/research/71 section 1.5). */
 export const TICK = 1 / 60;
 /**
  * Sprint 1's eye over the feet (W1.R2): no longer a view (W2.1 retired it: W2.R1), the height `setCamera` and the
@@ -343,7 +343,7 @@ export function packGround(grid: GridParams, polys: readonly WorldPoly[], owners
   polys.forEach((p, i) => {
     points.set(p.points, at);
     at += p.points.length;
-    // AUDIO (web/docs/research/81 §9): the sixth word also carries m_inside (bit 3) and the reverb zone (bit 4).
+    // AUDIO (web/redotcom/docs/research/81 §9): the sixth word also carries m_inside (bit 3) and the reverb zone (bit 4).
     const flags = (p.appflags ?? 0) | ((p.inside ?? 0) << 3) | ((p.reverbZone ?? 0) << 4);
     fields.set([p.ptcount, p.ditype, p.material, p.cameratype, p.region >>> 0, flags], i * GROUND_FIELDS);
   });
@@ -653,7 +653,7 @@ export const ACTION_SECONDS: Readonly<Record<keyof typeof ACTION_CLIPS, number>>
 ) as Record<keyof typeof ACTION_CLIPS, number>);
 
 /**
- * PLACEHOLDER (named; research 80 s6c and s7, research 86 s7.2): offline, the deadly fall's `Land forward` gets up
+ * PLACEHOLDER (named; research 80 s6c and s7, research 86 s7.2): in the free walk (`&nomatch`, `&fly`), the deadly fall's `Land forward` gets up
  * (`Get up forward`), since the viewer's walk alone has no death. In the game `FUN_005af590` (decomp 466641-466728)
  * pushes `Land forward` in state 8 and the SEAL dies there (the vtable's +0x90, `FUN_005a5da0`): the controller's
  * `FUN_005979a0` (454470-454495) spectates, or in a respawn game fades the body out (alpha 0 at 0.1 a second,

@@ -2,7 +2,7 @@ import { SEAL_LOCOMOTION, type MotionClip } from '@s2u/scene';
 import type { MotionEntry, MotionTable } from './motionTable';
 
 /**
- * How the game plays the SEAL's clips (web sprint 3 motion workstream; web/docs/research/80-the-jump.md §3-§5): the
+ * How the game plays the SEAL's clips (web sprint 3 motion workstream; web/redotcom/docs/research/80-the-jump.md §3-§5): the
  * loaded motion's constants, the locomotion sets and the pick-and-blend of `FUN_0058bdf0`, the stand, crouch and
  * prone playlists, all read from `game/analysis/socom2_game.elf.decomp.c`. `./animator` plays what these return.
  *

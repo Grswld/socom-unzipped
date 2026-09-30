@@ -1,7 +1,7 @@
 import { THROW_GRAVITY, type V3 } from './projectile';
 
 /**
- * The yellow arc SOCOM II draws while a grenade is held (web/docs/research/85 §11). `CSealCtrl`'s draw method
+ * The yellow arc SOCOM II draws while a grenade is held (web/redotcom/docs/research/85 §11). `CSealCtrl`'s draw method
  * (`FUN_005970b0`, the player controller's vtable slot at 0x6694ec) works out the throw exactly as the release will
  * (`GetThrowAnim`'s table point, `ComputeMaxVel`, the aim plus `ComputeElevOfs`, the power's speed, the aimed
  * correction) and hands the hand's world point and the velocity to `ai::DrawFunc<CDynGrenade>` (`FUN_00598860`),

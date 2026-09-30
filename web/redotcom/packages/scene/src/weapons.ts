@@ -33,7 +33,7 @@ import { rdrReal } from './tuning';
  *   SD's `muzzle_m4SD` has no flash), `FireSoundClose`/`Med`/`Far` and `ReloadSound` (the sound bank's names).
  * - **The mark.** `READERC.ZAR/decals.rdr`'s `DECAL_SETS` entry `BULLET_MARK_SMALL` lists a bitmap and a size range
  *   per surface material. The effects resolve the hit polygon's material to its row (`READERC.ZAR/materials.rdr`'s
- *   SOILS, web/docs/research/89 §5); without those tables the viewer takes the `STONE` row: `bullet_mark_stone.tif`,
+ *   SOILS, web/redotcom/docs/research/89 §5); without those tables the viewer takes the `STONE` row: `bullet_mark_stone.tif`,
  *   1 to 1.8 units.
  *   The bitmaps ride in every map archive's `RUN\COMMON\EFFE_TXR.ZED` (`viewer/src/hudBitmaps.ts`).
  */

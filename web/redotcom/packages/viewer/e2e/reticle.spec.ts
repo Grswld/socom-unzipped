@@ -11,7 +11,7 @@ import type {} from '../src/hook';
  * pixels x 288-352, y 192-256 of 640x448, `src/reticle.ts`), and not drawn in fly mode.
  */
 
-/** Screenshots are evidence, not fixtures: `web/test-fixtures/` is git-ignored. */
+/** Screenshots are evidence, not fixtures: `web/redotcom/test-fixtures/` is git-ignored. */
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/reticle', import.meta.url));
 /** A's spawn (KNOWN section 1), the feet; the walk's eye 15.4 over them (W1.R2). */
 const SPAWN_A: [number, number, number] = [796, 100, 614];

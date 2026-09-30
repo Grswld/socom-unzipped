@@ -195,7 +195,7 @@ describe('the reloads (FUN_005a82e0): still, a one-shot that holds; moving, the 
 });
 
 describe('the scope\'s x 0.2 on the move stick (FUN_005966a0 453818-453821), in the shared mover', () => {
-  it('is zoom.ts\'s SCOPE_SLOW, DAT_00650638', () => {
+  it('is the literal 0.2 of FUN_005966a0 453818-453821, the same value as zoom.ts\'s SCOPE_SLOW', () => {
     expect(SCOPED_STICK).toBe(SCOPE_SLOW);
     expect(SCOPED_STICK).toBe(0.2);
   });

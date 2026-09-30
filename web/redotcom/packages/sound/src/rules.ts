@@ -1,7 +1,7 @@
 import type { Material } from './materials';
 
 /**
- * When the game plays the walk's sounds, and which (web/docs/research/81 §4-§6), as pure functions of what the
+ * When the game plays the walk's sounds, and which (web/redotcom/docs/research/81 §4-§6), as pure functions of what the
  * viewer knows about the SEAL.
  */
 

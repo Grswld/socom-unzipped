@@ -36,7 +36,7 @@ function flatMap(): SimMap {
 }
 
 /**
- * DOORS: the flat map with one door (web/docs/research/92-doors.md) -- a leaf 12 wide and 24 high along x from its hinge
+ * DOORS: the flat map with one door (web/redotcom/docs/research/92-doors.md) -- a leaf 12 wide and 24 high along x from its hinge
  * at the origin, and the game's shape of swing: shut (valve 0), a quarter turn about y over a second and the valve set
  * to 1; open, back and the valve to 0.
  */
@@ -618,7 +618,7 @@ describe('grenades (research 85, 91 section 5)', () => {
   });
 });
 
-describe('doors (web/docs/research/92-doors.md): the server runs them and every client sees them', () => {
+describe('doors (web/redotcom/docs/research/92-doors.md): the server runs them and every client sees them', () => {
   it('a player at the door opens it with the door event; the snapshots carry it swinging, then open; its leaf moves in the hull', () => {
     const { room, join } = setup({}, doorMap());
     const a = join(1), b = join(2);

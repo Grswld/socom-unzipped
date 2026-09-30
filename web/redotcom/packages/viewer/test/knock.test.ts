@@ -3,10 +3,10 @@ import type { CollisionOwner, GridParams, WorldPoly } from '@s2u/scene';
 import { ACTION_CODES, applyKnock, groundGrid, MoverSim, packGround, SEAL_ANIMS, Walker, type Knock } from '../src/sim';
 
 /**
- * The blast's knock on the shared mover (`FUN_0057e770` L440940-441092, `FUN_005807d0` L442057 ff. with its side
- * picked at `FUN_0057e770` L441044-441051, the landing on a knock `FUN_005805b0` via L441960-441985, the get-up on
- * its end L446653-446700): off the ground at the push, in `Fall forward` / `Fall backwards`; on the ground
- * `Land forward` / `Land backwards`, then `Get up forward` / `Get up backwards`. The server's room and the page's prediction run the same `Walker`, so the two agree.
+ * The blast's knock on the shared mover (`FUN_0057e770` L440940-441092, `FUN_005807d0` L442057-442137, the landing on
+ * a knock `FUN_005805b0` via L441960-441985, the get-up on its end L446653-446700): off the ground at the push, in
+ * `Fall forward` / `Fall backwards`; on the ground `Land forward` / `Land backwards`, then `Get up forward` /
+ * `Get up backwards`. The server's room and the page's prediction run the same `Walker`, so the two agree.
  */
 
 function flat(): Walker {

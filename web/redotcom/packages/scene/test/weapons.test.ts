@@ -125,7 +125,7 @@ const web = resolve(import.meta.dirname, '../../..');
 const onDisc = (name: string): string | undefined => [
   resolve(web, `public/maps/RUN/${name}`),
   ...(process.env.SOCOM_DISC ? [resolve(process.env.SOCOM_DISC, `RUN/${name}`)] : []),
-  resolve(web, `../game/disc/RUN/${name}`),
+  resolve(web, `../../game/disc/RUN/${name}`),
   `C:/projects/socom_pc/game/disc/RUN/${name}`,
 ].find((p) => existsSync(p));
 const ZWEAPON = onDisc('ZWEAPON.ZAR'), READERC = onDisc('READERC.ZAR');

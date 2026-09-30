@@ -115,7 +115,7 @@ export function materialSpec(
  * list carries a GIF block with the second texture's GS state, the handler kicks it, multiplies the
  * staging `S`,`T` by the block's scale and re-runs the draw handler -- same vertices, same colours, same
  * `PRIM` (so the same fog bit), new texture and blend. What the block holds is compiled from the texture's
- * manifest `detail` record (web/docs/research/72 §6) into each visual's `detail_buff` (`CVisual::Read`,
+ * manifest `detail` record (web/redotcom/docs/research/72 §6) into each visual's `detail_buff` (`CVisual::Read`,
  * `research/recom/src/gamez/zVisual/vis_main.cpp:276-296`), which the viewer reads the record for.
  */
 export interface DetailSpec {

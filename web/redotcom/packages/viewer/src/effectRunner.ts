@@ -1,7 +1,7 @@
 import type { EffectCondition, EffectOp, EffectProgram } from '@s2u/scene';
 
 /**
- * The zAnim sequencer for the effect animations (web/docs/research/89 §1), as `CZAnimMain` runs a sequence: each tick
+ * The zAnim sequencer for the effect animations (web/redotcom/docs/research/89 §1), as `CZAnimMain` runs a sequence: each tick
  * a sequence steps its commands from its program counter -- a command's tick answers done (the next command runs in
  * the same tick) or not yet (the sequence resumes there next tick). The sequences of an animation run side by side;
  * the animation ends when every sequence has run off its end, or on `FAIL`.

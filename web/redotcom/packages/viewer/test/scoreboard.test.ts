@@ -7,7 +7,7 @@ import {
   SCOREBOARD_HIDES, SCOREBOARD_KEEPS_BOTTOM,
 } from '../src/hud';
 
-/** The multiplayer round's scoreboard (web/docs/research/87-hud.md §12): SELECT held, `FUN_0022a8b0`'s layout. */
+/** The multiplayer round's scoreboard (web/redotcom/docs/research/87-hud.md §12): SELECT held, `FUN_0022a8b0`'s layout. */
 
 const PS2 = { width: 640, height: 448 };
 const SIZES: Record<string, { width: number; height: number }> = {

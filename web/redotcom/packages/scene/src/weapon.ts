@@ -6,7 +6,7 @@ import { NODE_FLAGS_LIT, parseSceneGraph, transformPoint, VISUAL_FLAG_CULL, type
 import type { Pnt3D } from './firePoint';
 
 /**
- * The weapons (W2.4; web/docs/research/79 §2): `RUN\COMMON\WEAP_GEO.ZED` and `WEAP_MDL.ZED`, inside every map
+ * The weapons (W2.4; web/redotcom/docs/research/79 §2): `RUN\COMMON\WEAP_GEO.ZED` and `WEAP_MDL.ZED`, inside every map
  * archive (the world root's `assetlibs` names `//common/assetlib/weapons`). They are the props' shape, not the
  * characters': `WEAP_GEO` is a `models` forest of 59 `CNode` trees (research 72 §2) and `WEAP_MDL` one chain
  * buffer per model with `N%03d_%03d` chunk keys (`hookupVisuals`' fallback naming: no weapon instances another),

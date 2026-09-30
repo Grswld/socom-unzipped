@@ -36,6 +36,11 @@ guess until then.
 3. **Firewall.** The instance's Networking tab: keep TCP 22, add **TCP 80 and TCP 443** (80 is for the certificate
    challenge and the redirect). No UDP.
 4. **DNS.** An `A` record for the multiplayer name (say `mp.example.com`) to the static IP. Wait until it resolves.
+   If the zone is on Cloudflare, make the record **DNS only** (the grey cloud): proxied, every peer Caddy sees is a
+   Cloudflare edge, and since Caddy (v2.5 and later) replaces `X-Forwarded-For` for any peer outside its
+   `trusted_proxies`, the last entry -- the vote ban's key (`TRUST_PROXY`, below) -- would be an edge address shared by
+   many players. To keep the orange cloud instead, give the `Caddyfile` a `servers { trusted_proxies static ... }`
+   global block with Cloudflare's published ranges.
 5. **The disc, once, by hand** (from the machine holding your own copy of the disc's `RUN/`):
    ```
    ssh ubuntu@HOST 'sudo mkdir -p /srv/socom-disc && sudo chown $USER /srv/socom-disc'
@@ -99,6 +104,9 @@ ingress:
 
 - The name's DNS record is the tunnel's (`cloudflared tunnel route dns <tunnel-name> mp.example.com`), not an `A` record;
   steps 2-4 above (static IP, ports 80/443, `A` record) do not apply.
+- The ingress must pass `/rooms` beside `/ws` and `/health`: it is public by the owner's ruling (OWNER-4, 2026-09-29),
+  and `packages/server/test/deployEnv.test.ts` pins the rule above to the server's public set. A tunnel set up with
+  `^/(ws|health)$` answers 404 on `/rooms` until its rule gains it.
 - Compose: after `deploy.sh`'s sync, start only the server on the host, `sudo docker compose up -d --build mp`
   (`deploy.sh` itself starts `caddy` too, which a tunnel box does not want). Without Docker: the unit below.
 - `TRUST_PROXY=1` (compose sets it; the unit's `/etc/socom-mp.env` needs the line): Cloudflare appends the client to

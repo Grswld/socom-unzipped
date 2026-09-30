@@ -4,7 +4,7 @@ import { decodeVag, type VagSample } from './vag';
 /**
  * One 989snd sound rendered to PCM: the grain sequencer (the IRX's `BlockSoundHandler`), its voices (a tone's sample
  * at its pitch under the SPU's ADSR) and the volume and pan arithmetic, run offline into a stereo buffer the page then
- * plays (web/docs/research/81 §3). It is a transliteration of the repository's own model of the IRX,
+ * plays (web/redotcom/docs/research/81 §3). It is a transliteration of the repository's own model of the IRX,
  * `third_party/ps2recomp/ps2xRuntime/src/lib/snd989_mixer.cpp` (research/32 §3 and §5, research/36): `doGrain` and
  * `stepGrain`, `startTone`, `note2Pitch`/`sceSdNote2Pitch`, `makeVolume`, the square-law `adjustVolToGroup`, the SPU's
  * half-scale voice (`>> 1`) and the psx-spx ADSR `Envelope`, at the same 240 Hz tick and 48 kHz output. What it does
@@ -74,7 +74,7 @@ export interface RenderedSound {
   left: Float32Array;
   right: Float32Array;
   /**
-   * The reverb send: the voices whose tone carries flags bit 0 (web/docs/research/81 §9: SOCOM's IRX sets the voice's
+   * The reverb send: the voices whose tone carries flags bit 0 (web/redotcom/docs/research/81 §9: SOCOM's IRX sets the voice's
    * VMIXEL/VMIXER effect-input bits from it, `989SND.IRX` decomp 14339-14345), at their volumes; null with none.
    */
   sendLeft: Float32Array | null;

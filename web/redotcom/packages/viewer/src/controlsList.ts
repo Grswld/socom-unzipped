@@ -1,7 +1,7 @@
 /**
  * The Controls popover's two lists (owner, 2026-09-29: two tabs, Controller and Mouse & Keyboard, only what a player
  * needs): each row the button or key and what it does, grouped, for the mode you are in. Player-facing words only --
- * the sources, the readings and the debug keys live in the developer section of `web/README.md`, and the pad's full
+ * the sources, the readings and the debug keys live in the developer sections of `web/redotcom/README.md` ("Controls", "Build"), and the pad's full
  * table with its citations stays `./gamepad`'s `PAD_LAYOUT`.
  *
  * The keys are the ones the page binds: `WASD` and the fly keys (`./camera`), `G`, `C`, `Space` (`./walk`), `R`

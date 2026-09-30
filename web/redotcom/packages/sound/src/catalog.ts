@@ -1,7 +1,7 @@
 import { parseRdr, rdrGet, Zar, type RdrNode } from '@s2u/archive';
 
 /**
- * Where the game names the sounds the walk plays, apart from the materials (web/docs/research/81 §5-§6).
+ * Where the game names the sounds the walk plays, apart from the materials (web/redotcom/docs/research/81 §5-§6).
  */
 
 /**
@@ -136,8 +136,9 @@ export const ZANIM_SOUND_VOLUME = 0x10;
  * (`FUN_0026ac20` registers it at index 0 when the set is made, string 0x3ed270), then the base commands in
  * `FUN_0025bc20`'s order (decomp 106862-106925: QUAD_ALIGN 1, IF 2, ELSEIF 3, ELSE 4, ENDIF 5 ... LOOP 14, WAIT 15 ...
  * SOUND 30 ... WHILE 39, END_WHILE 40 ... EXPRESSION 43, BREAK 44, CALL_ANIMATION 45, STOP_ANIMATION 46 ...
- * REMOVE_SATCHELS 58), then the game's own in `FUN_002ad290`'s order (decomp 152550-152557; the `ai::` ones go to
- * their own set): `RESET_BODY_PARTS` 59, `BODY_FALL_ON_MATERIAL_SOUND` 60, `VALVE` 61, `VBIT` 62, `VWATCH` 63,
+ * REMOVE_SATCHELS 58), then the game's own, registered by `FUN_002ad290`'s callees in
+ * their call order (152552-152556: `FUN_0059ac60`, `FUN_00354470`, `FUN_00293890`, `FUN_0029bc20`, `FUN_002b3930`; after
+ * `FUN_0026b1a0` (152550) runs `FUN_0025bc20` at 115649; the `ai::` ones go to their own set, `FUN_005de320`): `RESET_BODY_PARTS` 59, `BODY_FALL_ON_MATERIAL_SOUND` 60, `VALVE` 61, `VBIT` 62, `VWATCH` 63,
  * `DYNAMICS_RELEASE_CAMERA` 64, `DYNAMICS_ACQUIRE_CAMERA` 65, **`CAMERA_INDOORS` 66**, `SET_CAMERA_REGION_TEST` 67,
  * `GET_CAMERA_REGION_TEST` 68, `CAMERA_PARAMS` 69, `CAMERA_3RD_PERSON` 70, `CAMERA_SHAKE` 71, **`PLAYER_INDOORS` 72**.
  * The anchors hold: the data's play-sound commands are 30 and its starts 45 (research 81 §6, §10).
@@ -250,7 +251,7 @@ function soundCommand(set: string, anim: ZAnimLike, offset: number, payload?: ZA
 }
 
 /**
- * Every animation's sound commands (web/docs/research/81 §6, §10), one per name as the game resolves it
+ * Every animation's sound commands (web/redotcom/docs/research/81 §6, §10), one per name as the game resolves it
  * (`resolveZAnims`: the mission set first): a play-sound command (30) names its sound by the `u16` at +6 (an index
  * into the animation's name table), carries flags at +4 (0x280 the beds, 0x82/0x282 a sound at a node, 0x10 a volume
  * at +8) and its node at +16 (a node reference's index, `0xf9` the animation's root node); a start (45) and a stop

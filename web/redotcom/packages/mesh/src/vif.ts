@@ -4,7 +4,7 @@ import type { Chain } from './dma';
  * The VIF1 side of a model chunk: the command stream a chain transfers, decoded and unpacked into the VU1
  * data memory each packet hands to the microprogram.
  *
- * Format reference: `web/docs/research/72-mp-map-archive-anatomy.md` §3. Map geometry uses **five** VIF commands
+ * Format reference: `web/redotcom/docs/research/72-mp-map-archive-anatomy.md` §3. Map geometry uses **five** VIF commands
  * (NOP, STCYCL, UNPACK, MSCAL, MSCNT) and **five** unpack formats (V4-32, V4-16, V4-8 USN, V3-16, and the
  * V4-32 parameter unpack before each MSCAL); there are no MPG, DIRECT, STMASK, STROW or STCOL commands and no
  * masked unpacks. Anything else in a stream means the walker is reading something that is not map geometry,

@@ -126,6 +126,10 @@ into the static hull the grid files once and the mover caches per cell. So the p
 
 - The kick (`kick_door`, `FUN_005ec4e0`'s second animation): its conditions are not traced far enough to model.
 - The set-2 commands of the door animations (AI notices by their payloads) are skipped: there is no AI in a round.
-- Bullet marks made on a leaf stay where they were made when it swings (the game's own behaviour is not traced).
 - The climb's per-grid polygon caches (`./climb`) do not know a leaf moves; a door is not a climb (its top is 23 up).
 - The client does not predict its own door: the swing starts when the server's snapshot says so (a round trip).
+
+Done since (launch fix PL-5, B5): **a mark on a leaf swings with it.** The game files each kept triangle in the hit
+visual's own decal list (`FUN_003b3800` 306396-306416) and draws the list in that node's own packet (`FUN_003b2ea0`
+306133-306135): the decal is node-local. The page hangs a mark clipped onto a moving node (a leaf) on that node
+(`FireSource.attachToNode`, `fire.ts`), and takes it off when the pool drops it; the world's own node never moves. Pinned by `viewer/test/doorMarks.test.ts`.

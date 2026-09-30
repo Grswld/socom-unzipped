@@ -88,8 +88,8 @@ export function decodeGridParams(bytes: Uint8Array): GridParams | null {
 /**
  * `grid_params` from a world root, or the engine's default grid when it is absent or unusable. A grid above
  * `GRID_CELLS_MAX` is refused by name instead: falling back to 8 x 8 would put the walk and the engine order
- * on the wrong grid without a word; the callers (the viewer's loadMap and simMap) turn the throw into a named
- * `grid_params: ...` diagnostic.
+ * on the wrong grid without a word; the callers (the viewer's loadMap and simMap) name the refusal in a
+ * `grid_params: ...` diagnostic and then take the engine's default grid (`DEFAULT_GRID_PARAMS`).
  */
 export function parseGridParams(zar: Zar): GridParams {
   const key = zar.find('grid_params');

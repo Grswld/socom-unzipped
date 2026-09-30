@@ -21,7 +21,7 @@ import { markClipGeometry, PERM_DECAL_TRIANGLES, squareInto, type MarkClipper, t
 import type { PlaySnapshot, WalkView } from './walk';
 
 /**
- * SOCOM II's frag grenade in walk mode (the grenades workstream; web/docs/research/85). The physics is
+ * SOCOM II's frag grenade in walk mode (the grenades workstream; web/redotcom/docs/research/85). The physics is
  * `@s2u/scene`'s `projectile.ts`, the game's own; this file is the page's part: the slot, the held throw, the clip's
  * timing, the grenades in flight over the map's hull, what is drawn, and the events the audio, weapon and UI
  * workstreams hang off.
@@ -385,7 +385,7 @@ export class GrenadeThrower {
   }
 
   /**
-   * EFFECTS (web/docs/research/89): whether the explosion draws `EXPLOSION_READING`'s sprites -- only when the page
+   * EFFECTS (web/redotcom/docs/research/89): whether the explosion draws `EXPLOSION_READING`'s sprites -- only when the page
    * has not the game's own zAnim explosion to run (`main.ts` answers false once the map's effect data is in).
    */
   private placeholderBurst: () => boolean = () => true;
@@ -854,7 +854,7 @@ export class GrenadeThrower {
   // ---- the arc ------------------------------------------------------------------------------------------------
 
   /**
-   * The yellow arc (`FUN_005970b0`, the player controller's draw; web/docs/research/85 §11): while the fire button
+   * The yellow arc (`FUN_005970b0`, the player controller's draw; web/redotcom/docs/research/85 §11): while the fire button
    * holds a hand grenade (`+0x170` bit 6, set on the press for category 0x79 with one left) and it has not been let go
    * (bit 7), in view modes under 4 (`FUN_005b90f0`, `FUN_005b9990`), the throw the release would make now -- the
    * power, the aim, `GetThrowAnim`'s clip and its table point (not the hand bone), the same `throwVelocity` -- drawn

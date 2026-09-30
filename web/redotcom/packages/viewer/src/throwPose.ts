@@ -4,7 +4,7 @@ import { BLEND_TIME_DEFAULT, entryOf, motionOf, type Motion } from './locomotion
 import type { MotionTable } from './motionTable';
 
 /**
- * The throw's clip on the body (the grenades workstream; web/docs/research/85 §3): the clip `GetThrowAnim` picked,
+ * The throw's clip on the body (the grenades workstream; web/redotcom/docs/research/85 §3): the clip `GetThrowAnim` picked,
  * played as the game plays a one-shot and laid over the locomotion as an `Animator` pose layer, the way the weapon's
  * reload is (`./weaponPose`) -- the clip picker and its cross-fade untouched.
  *

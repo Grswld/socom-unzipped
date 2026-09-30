@@ -133,7 +133,7 @@ describe('drawState in three\'s order', () => {
 
 /**
  * The detail pass (W1.6): a second draw of a surface whose texture's manifest entry carries a `detail`
- * record (`readTexManifest`, web/docs/research/72 §6). The record's `bmode` is read as the GS ALPHA its
+ * record (`readTexManifest`, web/redotcom/docs/research/72 §6). The record's `bmode` is read as the GS ALPHA its
  * visuals carry in `detail_buff` -- `COLORBLEND` is `0x44` on all 932 records of that mode over the 22
  * maps, `ADDITIVE` `0x48` on all 68 -- its `uv` scales S,T (SEMANTICS §11.6), and its `range` is a squared
  * distance (`m_range_sqd_to_camera`), so the weight reaches zero at its root.

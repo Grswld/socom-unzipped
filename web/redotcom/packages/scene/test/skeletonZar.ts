@@ -1,5 +1,5 @@
 /**
- * A v2 ZAR/ZED writer for tests (web/docs/research/72 §1): 100-byte head, the string table, 16-byte keys in
+ * A v2 ZAR/ZED writer for tests (web/redotcom/docs/research/72 §1): 100-byte head, the string table, 16-byte keys in
  * pre-order, the data blob aligned to the padding. Enough to stand a synthetic `CLIB_GEO.ZED` model tree
  * up in front of the reader that parses the real one.
  */

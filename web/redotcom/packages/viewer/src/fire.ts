@@ -32,7 +32,7 @@ import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type Mar
  *   by `DAT_0044d758` (`segment.ts`); the five callers that set it to 1 (`FUN_0029bf70` the camera, `FUN_0057efe0`
  *   the headroom ray, `FUN_00596d60` the peek, `FUN_005aa6e0` a camera-side ray) are none of them a round, and the
  *   round's own path was not found in the sitting, so no class is applied (the brief's fallback).
- * - **The mark.** EFFECTS (`setMarks`, web/docs/research/89 §5): the hit polygon's material's row of the rifle's
+ * - **The mark.** EFFECTS (`setMarks`, web/redotcom/docs/research/89 §5): the hit polygon's material's row of the rifle's
  *   `DecalSet`, projected along the round, none where the material has none. Without the tables,
  *   `READERC.ZAR/decals.rdr`'s `BULLET_MARK_SMALL` (the M4A1's `DecalSet`), its `STONE` row:
  *   `bullet_mark_stone.tif` (16x16, off every map archive's `RUN\COMMON\EFFE_TXR.ZED`: `hudBitmaps.ts`), a side
@@ -177,11 +177,11 @@ export type FireEvent =
 export type FireListener = (event: FireEvent) => void;
 export interface ShotHit {
   point: Vec3; normal: Vec3; distance: number;
-  /** EFFECTS: the polygon's `material` byte, an index into the SOILS table (web/docs/research/81 §4, 89 §5). */
+  /** EFFECTS: the polygon's `material` byte, an index into the SOILS table (web/redotcom/docs/research/81 §4, 89 §5). */
   material?: number;
 }
 /**
- * EFFECTS (web/docs/research/89 §5): the mark per surface -- the polygon's material byte to its `decals.rdr` row of the
+ * EFFECTS (web/redotcom/docs/research/89 §5): the mark per surface -- the polygon's material byte to its `decals.rdr` row of the
  * rifle's `DecalSet` (null: the material has no row, and the round leaves no mark) and a row's bitmap by texture name
  * (null: the dark disc). Without one every hit takes the constructor's mark.
  */

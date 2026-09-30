@@ -5,7 +5,7 @@ import type { VuPacket } from '../src/vif';
 /**
  * The two position forms of a drawn packet (SEMANTICS §3 `TOP+3`; research 15 §0 item 1): command `0x68` converts
  * the position lanes with `ITOF4` and **adds** `TOP+3.xyz` (the world and the props), command `0x70` converts them
- * with `ITOF15` and **multiplies** by `TOP+3.w` (the weapons, the fittings, the turrets: web/docs/research/79 §2).
+ * with `ITOF15` and **multiplies** by `TOP+3.w` (the weapons, the fittings, the turrets: web/redotcom/docs/research/79 §2).
  * Every other lane is the same in both. One triangle, built straight into VU memory.
  */
 function triangle(bias: [number, number, number, number]): VuPacket {

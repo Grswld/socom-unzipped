@@ -80,7 +80,7 @@ describe('the mover (W1.4, W1.R2)', () => {
     w.place(0, 0, 0);
     expect(w.advance(0.01, FORWARD)).toBe(0);
     expect(w.advance(0.01, FORWARD)).toBe(1);
-    expect(TICK).toBe(1 / 60);                            // CGame::Tick, web/docs/research/71 section 1.5
+    expect(TICK).toBe(1 / 60);                            // CGame::Tick, web/redotcom/docs/research/71 section 1.5
   });
 
   it('a step toward a wall is still stopped when the walk is fast: 65 a second is 1.08 a tick', () => {
@@ -738,7 +738,7 @@ describe('walk mode (W1.4 step 5)', () => {
 });
 
 // ---------------------------------------------------------------------------------------------------------------
-// The jump (web/docs/research/80-the-jump.md): FUN_0057e1b0's two jumps, FUN_005af930's impulse, FUN_005af590's landing.
+// The jump (web/redotcom/docs/research/80-the-jump.md): FUN_0057e1b0's two jumps, FUN_005af930's impulse, FUN_005af590's landing.
 
 describe('the jump, as the decompilation has it (research 80)', () => {
   const plain = world([floor(-200, -200, 200, 200, 0)]);

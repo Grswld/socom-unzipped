@@ -7,7 +7,7 @@ import {
 import { fixture } from '../../archive/test/fixtures';
 
 /**
- * The character-model chain form, `CMesh`/`CSubMesh` (web/docs/research/78 §2): a count quadword whose low
+ * The character-model chain form, `CMesh`/`CSubMesh` (web/redotcom/docs/research/78 §2): a count quadword whose low
  * half is the tag count, then per VU1 batch a reloc-9 matrix tag and a reloc-10 bone list for every bone
  * the batch is skinned to, and one reloc-11 draw packet; reloc-6 tags cite the texture in force.
  *

@@ -9,11 +9,11 @@ import { join, relative, sep } from 'node:path';
  * - `records.jsonl`, written by hand: one record per data kind, subsystem or finding -- a question, a short answer,
  *   the sources (a research note and its section, decomp functions and lines, disc files), a confidence, the code and
  *   the tests that pin it. Nothing here generates them; the test checks every citation resolves.
- * - `sections.jsonl` and `llms.txt`, generated: one row per numbered section of every note in `web/docs/research/`
+ * - `sections.jsonl` and `llms.txt`, generated: one row per numbered section of every note in `web/redotcom/docs/research/`
  *   (its title, its line, the `FUN_` addresses it cites, the files under `packages/` and `tools/` that cite the note),
  *   and an index of the whole. The test rebuilds both in memory and refuses a stale copy on disk.
  *
- * Note keys: a web note by its number (`"84"`, `web/docs/research/84-*.md`); a note of the repository's own research
+ * Note keys: a web note by its number (`"84"`, `web/redotcom/docs/research/84-*.md`); a note of the repository's own research
  * (`docs/research/`) as `"repo/24"` -- the two series overlap (`79` is the weapon table here, the SEAL's speed there).
  */
 
@@ -23,7 +23,7 @@ export const KINDS = ['data', 'rule', 'subsystem', 'finding', 'process'] as cons
 export type Kind = (typeof KINDS)[number];
 
 export interface SourceRef {
-  /** `"84"` for `web/docs/research/84-*.md`, `"repo/24"` for `docs/research/24-*.md`. */
+  /** `"84"` for `web/redotcom/docs/research/84-*.md`, `"repo/24"` for `docs/research/24-*.md`. */
   note: string;
   /** A section id as `sections.jsonl` spells it (`"3"`, `"2.1"`, `"D1"`, `"17/1"`); omitted = the whole note. */
   section?: string;
@@ -138,7 +138,7 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const posix = (p: string): string => p.split(sep).join('/');
 
-/** Every note of `web/docs/research/`, in number order, with its sections and the files that cite it. */
+/** Every note of `web/redotcom/docs/research/`, in number order, with its sections and the files that cite it. */
 export function readNotes(web: string): Note[] {
   const dir = join(web, 'docs', 'research');
   const files = readdirSync(dir).filter((f) => /^\d+-.*\.md$/.test(f)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));

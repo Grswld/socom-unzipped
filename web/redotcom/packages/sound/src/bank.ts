@@ -1,7 +1,7 @@
 import { Reader } from '@s2u/archive';
 
 /**
- * A 989snd sound bank as SOCOM II ships it: one `.bnk` member of `RUN/SOUNDS/BNKSTORE.ZAR` (web/docs/research/81 §1).
+ * A 989snd sound bank as SOCOM II ships it: one `.bnk` member of `RUN/SOUNDS/BNKSTORE.ZAR` (web/redotcom/docs/research/81 §1).
  *
  * The file is 989snd's `FileAttributes` head -- `u32 type` (3), `u32 chunk count` (2), then an `(offset, size)` pair
  * per chunk -- over two chunks: the `SBlk` sound block (version 3, the `SFXBlock2` of research/989snd-ziemas

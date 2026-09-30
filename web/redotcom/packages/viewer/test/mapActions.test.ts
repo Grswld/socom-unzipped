@@ -3,7 +3,7 @@ import { parseZdb } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { actionInReach, readMapActions, type MapAction } from '../src/mapActions';
 
-/** The map's own context actions (web/docs/research/87-hud.md §5): `READERM.ZAR/actions.rdr` on placed nodes. */
+/** The map's own context actions (web/redotcom/docs/research/87-hud.md §5): `READERM.ZAR/actions.rdr` on placed nodes. */
 
 describe('actionInReach', () => {
   const door = (node: string, at: [number, number, number]): MapAction => ({ node, type: 'DOOR', range: 30, bitmap: 'action_door_open.tif', at });

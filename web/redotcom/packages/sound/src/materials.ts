@@ -1,7 +1,7 @@
 import { parseRdr, rdrGet, Zar, type RdrNode } from '@s2u/archive';
 
 /**
- * The surface materials, `READERC.ZAR/materials.rdr`'s `SOILS` list (web/docs/research/81 §4), as `FUN_002dde40`
+ * The surface materials, `READERC.ZAR/materials.rdr`'s `SOILS` list (web/redotcom/docs/research/81 §4), as `FUN_002dde40`
  * (decomp 181253-181468) reads it into the table at `0x44f350`. Before the file's records, `FUN_002de4b0`
  * (decomp 181496-181567) appends two of the engine's own, `UNKNOWN` (0) and `PARTICLE_SYSTEM` (1), with no sounds;
  * then one record a list entry that has a `NAME` -- an entry without one is dropped, not kept as a hole -- in the

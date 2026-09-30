@@ -8,7 +8,7 @@ import type { PlaySnapshot } from '../src/walk';
 import type { SurfaceShade } from '../src/surfaceShade';
 
 /**
- * The grenade's scorch takes the wall's colour (web/docs/research/89 §13): the scorch is a `FUN_003139e0` decal like a
+ * The grenade's scorch takes the wall's colour (web/redotcom/docs/research/89 §13): the scorch is a `FUN_003139e0` decal like a
  * bullet mark and a footprint (`FUN_003d0ba0`, the permanent pool), so `FUN_003beca0` puts the world vertices' own
  * colour words in its packet and the GS modulates its texel by them. The scorch draws with the marks' material (texel x
  * vertex colour) and carries the drawn world's colour under it (`./surfaceShade`), asked again while the ground under it

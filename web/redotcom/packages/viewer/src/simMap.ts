@@ -31,7 +31,7 @@ export interface SimMap {
   /** Its twin records: where a SEAL respawns (research 91 section 4, `FUN_002b7ee0`), placed the same way. */
   respawns: SpawnSlot[];
   /**
-   * DOORS (`./doors`, web/docs/research/92-doors.md): the map's doors, their polygons marked in `ground.owners`
+   * DOORS (`./doors`, web/redotcom/docs/research/92-doors.md): the map's doors, their polygons marked in `ground.owners`
    * (`sweep`) so the server's movers read them as they swing. Absent on a map built by hand without them.
    */
   doors?: DoorSpec[];

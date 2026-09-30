@@ -16,7 +16,7 @@
  * - **The actor's feet, 4 rows (2 maps).** `docs/KNOWN.md` section 1's Frostfire and Vigilance rows, for
  *   the two maps the sweep did not cover -- the two rows marked `(KNOWN section 1)` below.
  *
- * `AIMAPS.MPS` is read now (`aimaps.ts`, web/docs/research/75), and it does not replace this table
+ * `AIMAPS.MPS` is read now (`aimaps.ts`, web/redotcom/docs/research/75), and it does not replace this table
  * (W1.R4, W1.R9): its `PlayerStart` is one named cell holding neither spawn on any map, and what does explain
  * all 44 positions is its spawn list -- 24 slots a side: the 4 actor rows at a slot's centre, the 40 camera
  * rows 20-28 units behind one along its facing (75 §7, §11) -- which says where a side may start, not which

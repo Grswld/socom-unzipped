@@ -14,9 +14,9 @@ import {
  * viewer's: Blender, three.js's editor, the Khronos sample viewer, a validator.
  *
  * Usage: `npm run export-gltf -- [ARCHIVE] [OUT.glb]`
- *   ARCHIVE  path under `web/test-fixtures/`, default `RUN/MP2.ZDB` (Frostfire, R36 §0)
+ *   ARCHIVE  path under `web/redotcom/test-fixtures/`, default `RUN/MP2.ZDB` (Frostfire, R36 §0)
  *   OUT.glb  path relative to the current directory (or absolute),
- *            default `web/test-fixtures/<map>-world.glb`
+ *            default `web/redotcom/test-fixtures/<map>-world.glb`
  * e.g. from the repository root: `npm --prefix web run export-gltf -- RUN/MP2.ZDB`
  *
  * Coordinates: the decoded geometry is MODEL space (SEMANTICS §4). SEMANTICS §8 measures the Frostfire

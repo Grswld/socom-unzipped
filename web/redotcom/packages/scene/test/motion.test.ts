@@ -11,7 +11,7 @@ import {
 import { buildZar, cat, f32, i16, u32 } from './syntheticZar';
 
 /**
- * The skeletal motion format of `MOTION_S.ZAR` (web/docs/research/77): a hand-built clip first, which is what CI
+ * The skeletal motion format of `MOTION_S.ZAR` (web/redotcom/docs/research/77): a hand-built clip first, which is what CI
  * runs, then Frostfire's seven victory clips, then every map's.
  */
 
@@ -186,7 +186,7 @@ describe('sampleClip: the pose at a time (77 §7)', () => {
   });
 });
 
-/** Frostfire's seven victory clips (web/test-fixtures/RUN/MP2.ZDB). */
+/** Frostfire's seven victory clips (web/redotcom/test-fixtures/RUN/MP2.ZDB). */
 const MP2 = fixture('RUN/MP2.ZDB');
 const absent = !MP2;
 

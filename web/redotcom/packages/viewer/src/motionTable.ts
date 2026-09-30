@@ -4,7 +4,7 @@ import { parseMotionClip, type MotionClip } from '@s2u/scene';
 /**
  * The play mode's disc data (web sprint 2, W2.2b; ruling W2.R6: read at run time, never written into the source):
  *
- * - **`motion.rdr`**, in `RUN/READERC.ZAR`, the playback table (web/docs/research/77 §7): one entry a clip, by the
+ * - **`motion.rdr`**, in `RUN/READERC.ZAR`, the playback table (web/redotcom/docs/research/77 §7): one entry a clip, by the
  *   clip's name, with `looped`, `playback`, `max_velocity`, `BlendTime`, `transition_speed_A/B`, `NoInterrupt`,
  *   `zanim_callback` and the flags beside them. The fields the animator reads are kept (`MotionEntry`), each a number
  *   or absent, and the `zanim_callback`s; the rest (`NoFire`, `Lateral`, ...) are left for the tasks that act on them.

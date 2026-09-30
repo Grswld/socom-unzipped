@@ -6,7 +6,7 @@ import { parseBankFile, renderSound, SampleCache, type SoundBank } from '@s2u/so
 /**
  * Renders a map's 989snd sounds to WAV files and prints each one's length, peak and RMS, so a decode can be checked
  * without a speaker: a wrong ADPCM filter is noise (a flat spectrum at full scale), a wrong pitch the wrong length, a
- * wrong volume a peak far off the rest (web/docs/research/81 §11).
+ * wrong volume a peak far off the rest (web/redotcom/docs/research/81 §11).
  *
  * Usage: npm run dump-sounds -- [MP2] [out-dir] [.STEP_STONE .M4A1_SIL ...]
  *   The map's `_am`, `_fx` and `_vc` banks out of `test-fixtures/RUN/SOUNDS/BNKSTORE.ZAR`; with no names, every

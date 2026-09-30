@@ -62,10 +62,10 @@ The full list is `ZANIM_COMMAND_NAMES` in `@s2u/scene`'s `effects.ts`. 59-60 are
 
 **Control flow.**
 - `IF`/`ELSEIF` carry a u32 count, then their conditions as whole sub-commands.
-- `RANDOM_WEIGHT` holds when `rand()·2⁻³¹ <= p` (the f32 at +4; decomp 107832). The flash's eight turns chain them at
+- `RANDOM_WEIGHT` holds when `rand()·2⁻³¹ <= p` (the f32 at +4; decomp 107783). The flash's eight turns chain them at
   1/8, 1/7, 1/6, 1/5, 1/4: each branch one eighth.
 - `RANGE_TEST` compares the squared distance between two points against +0x24 (flags 0x40-0x800 pick the
-  comparison, 0x100 "farther than"; decomp 107880).
+  comparison, 0x100 "farther than"; decomp 107820).
 - `VALVE` (tick `FUN_00353fd0`, decomp 252128): a valve reference (+4; flag 2 at +13 makes it a name index), an
   operand (+8) and an operation (+12): 0 true, 1 !=, 2 ==, 3 >, 4 <, 5 >=, 6 <=, 0x0b set, 0x0c add, 0x0d subtract
   (floored at 0), 0x0e multiply.
@@ -295,7 +295,10 @@ up without regard to case in every animation set (`FUN_0026a250`). Every gun's `
   the count reaches base + overflow (313254-313262); `FUN_003bf110` trims the temporary pool only (218207, 219048,
   236776) and `FUN_003bf050` empties both at the level's teardown (218219, 219060). So a map keeps its first 30 scorch
   triangles, the one that only partly fits partly drawn, and refuses the rest; nothing is recycled
-  (`PERM_DECAL_TRIANGLES`, `viewer/test/grenadeScorchPool.test.ts`).
+  (`PERM_DECAL_TRIANGLES`, `viewer/test/grenadeScorchPool.test.ts`). [Reading, the viewer's: a scorch with nothing
+  drawn under it yet stands in as the bare square and charges the pool its **2** entries (`grenade.ts`
+  `squareEntries`) until the late clip (`clipLate`) swaps them for the clipped count; the game would take no entry for
+  a mark over no triangle. The candidates' order in the clip is the viewer's walk, not the game's list.]
 - Its colour is the colour of the world vertices it is clipped to, per vertex (§13).
 
 **The material table** (SOILS index = the polygon's `material` byte, research 81 §4; 0 takes the map's
@@ -389,8 +392,9 @@ The flash they open with (`fire_flash`: `firepuff`, `explosion2.tif`) is additiv
 - Whether a mark's or a footprint's 100.0 lifetime is ever counted down.
 - The body (skinned) under a light's pass; the lit visuals' own gate (visual flags 0x4000 and 0x10).
 - A `WHILE` with conditions (only the endless form is on the effects' path).
-- The round's own path: the `PENETRATION` 1.0 materials passed through, and the penetration into a second surface.
-  `Fire` still stops at the first polygon; that is the shot's owner's.
+- Closed since: the round's own path. `Fire` walks it with `round.ts` `roundPath` (research 84 section 13, the walk the
+  match server re-runs): the `PENETRATION` 1.0 materials passed over, a second surface struck when the piercing beats
+  the first.
 
 ## 9. The grenades' explosions and bounces (round two)
 
@@ -661,7 +665,7 @@ The owner, after playing: the bullet marks show up much lighter and fainter than
 **The game's build, read whole** (`FUN_003b3ab0`, decomp 306491-306670). For each visual of the hit node flagged
 `0x10000` (`FUN_003139e0` 213893), each triangle of the visual:
 - **faces the round**: its stored normal (the visual's normal stream, `+0x40`, s16/32768) dotted with the round's
-  direction brought into the node's frame (`FUN_003b3950` 306426) is below **-0.01** (306595); else it is skipped;
+  direction brought into the node's frame (`FUN_003b3950` 306426) is below **-0.01** (306534); else it is skipped;
 - **lies within 4.8** of the mark's plane: all three vertices, projected by the mark's matrix (`FUN_00307810` 206431:
   a look-at along the round, x and y scaled by `(w - 1) / (size * w)` and offset 0.5 -- the bitmap's u and v -- z the
   depth along the round), have `fabs(z) <= 4.8` (306632);
@@ -694,7 +698,7 @@ marks standing, not 150.
   buffer bound and not the game's). Nothing drawn under it yet: the bare square at unity, clipped again four a frame.
 - Fire's temporary pool counts triangles (`TEMP_DECAL_TRIANGLES` 150), oldest marks hidden first. The footprints keep
   their own pool of meshes [the game shares one; not joined here]. The grenade's scorch (permanent pool) is clipped
-  the same way, projected straight down.
+  the same way, framed on the probed ground's normal negated (research 85 section 7.3; since 8a4e853e, §15).
 
 **Readings.**
 - The `(w - 1) / w` texel-centre scale of the uv is not applied (a 16-texel bitmap: 6 %).
@@ -718,7 +722,7 @@ drawn late); the pool counting triangles; a footprint and a scorch over a step's
 **The report.** Controller, the integration head: on Frostfire, walk, `setCamera({ yaw: 100, pitch: -3 })`, every
 round on the container (material 25) left `lastShade` null and a light bare square -- `squareInto`, nothing kept;
 `e2e/effects.spec.ts` "the marks take the colour of the wall they are on" timed out on it; the MP71 release sweep's
-magazine at the nearest wall left no mark.
+magazine at the nearest wall left no mark (not this cause: see the end of this section).
 
 **Not the streaming.** `MarkClipper` walks the live group on every clip; nothing is snapshotted. With every world and
 prop draw revealed, as `main.ts` builds it, the clip still kept nothing (`viewer/test/markClipMaps.test.ts`, RED).
@@ -741,6 +745,15 @@ making sense only so; the round's direction there would keep back faces.]
 **The fix.** `Fire.placeClipped` builds the frame along the hit normal negated (`markFrame(point, n, -n, side)`); the
 footprints already did (`Effects.footfall`). Verified: `markClipMaps.test.ts`, Frostfire's container four rounds at
 yaw 96.25-103.75 (0.508, 0.508, 0.523) and Desert Glory's stone at 36.25-43.75 (0.126, 0.124, 0.110), each equal to
-the probe's colour there to 5 places and the mark's own vertices that colour. Not done: the grenade's scorch still
-projects straight down (`grenade.ts` `scorchClipped`: the blast has no ground normal to hand); a big sloped ground
-triangle there can still drop it.
+the probe's colour there to 5 places and the mark's own vertices that colour.
+
+**The grenade's scorch: done 2026-09-29 (8a4e853e).** `grenade.ts` `groundUnder` probes the game's column under the
+blast (`FUN_003c7af0` 318876 -> `FUN_002d4c20`) and `scorchClipped` frames the scorch on that record's normal negated
+(`FUN_003d0ba0` 323891), as the marks are; pinned by `viewer/test/grenadeScorchSlope.test.ts` (MP6's hillside `g157`).
+
+**The MP71 "no mark" was not this.** The release sweep chose its heading by the least walk reach (yaw 135 from spawn
+(1199, 45.7, 1450)); a level round from the eye along it meets only `INVISIBLE_DI` (72.1, 124.1, 147.4 units) to the
+M4A1's range, and `INVISIBLE_DI`'s `PENETRATION` is 1, which `HandleIntersections` passes over by rule (`FUN_003c9b70`
+320028-320030: `if (fVar15 != 1.0)`), so nothing was struck and no mark is the game's answer. The sweep's heading was
+the defect: `tools/sweepHeading.ts` now picks the nearest first strikable surface (`PENETRATION` != 1) and records
+`noSurface` when there is none (launch fix PL-1; `tools/test/sweepHeading.test.ts` pins the MP71 numbers).

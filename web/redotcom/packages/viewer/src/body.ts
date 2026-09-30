@@ -11,7 +11,7 @@ import {
  * The player's body, decoded in the worker (web sprint 2, W2.1): the map's player character as the game dresses
  * it -- its mesh out of `CLIB_MDL.ZED`, its skeleton out of `CLIB_GEO.ZED`, its default gear out of `FLIB_MDL.ZED`
  * hung where `READERC.ZAR/character.rdr` says -- stood in its bind pose at spawn slot A. Pure data; `./bodyView`
- * makes the three objects on the page. The format is web/docs/research/78.
+ * makes the three objects on the page. The format is web/redotcom/docs/research/78.
  */
 
 /** W2.R4: the default target is the SEAL model, `seal_A_scuba` (the owner's word, 2026-09-28). */

@@ -299,7 +299,7 @@ export class WalkMode {
 
   /**
    * Dead or alive, as the match server has it (the net client's `kill` and `spawn`): a dead mover's death landing stays
-   * down (`Walker.dead`, `DEATH_LANDING_GETUP_PLACEHOLDER` is the offline walk's alone).
+   * down (`Walker.dead`, `DEATH_LANDING_GETUP_PLACEHOLDER` is the free walk's alone (`&nomatch`, `&fly`)).
    */
   setDead(on: boolean): void {
     this.dead = on;

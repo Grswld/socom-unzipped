@@ -3,7 +3,7 @@ import type { HudQuad, HudTri } from './hud';
 import { SCORE_LAYOUT, type ScoreRowInfo } from './scoreboard';
 
 /**
- * The round's end screens (web/docs/research/91-the-round.md §18), drawn in the HUD's own pass with its font and its
+ * The round's end screens (web/redotcom/docs/research/91-the-round.md §18), drawn in the HUD's own pass with its font and its
  * colours: ROUND COMPLETE (`dlgMultiplayerRound.rdr`), FINAL ROUND (`dlgMultiplayerFinal.rdr`: the last round's lists
  * before the totals) and GAME COMPLETE / FINAL TOTALS (`dlgMultiplayerFinalReally.rdr`). Their strings are SOCOM II's
  * own (`UIMPXLOC`, 91 §18 §2.3); their layouts and backgrounds are not on the handoff disc (91 §18 "UI assets"), so the

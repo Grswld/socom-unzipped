@@ -142,7 +142,7 @@ function palettized(
 /**
  * A 16-entry PSMT4 CLUT is uploaded as an 8x2 block under `csm1`: entries 0-7 on the buffer's first row, 8-15 on
  * its second, and the second row starts 16 entries on (the `_PAL` buffer is a 16-wide CT32 image). Found on
- * `FONT_TXR.ZED`'s `font_text_01.tif` (web/docs/research/87, 2026-09-28): its palette 139 holds a white alpha ramp
+ * `FONT_TXR.ZED`'s `font_text_01.tif` (web/redotcom/docs/research/87, 2026-09-28): its palette 139 holds a white alpha ramp
  * in entries 0-7 and 16-23 and zeros between.
  */
 export function csm1Clut4Index(i: number): number {

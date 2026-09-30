@@ -13,7 +13,7 @@ import { loadMap, type LoadedMap } from '../src/loadMap';
 
 /**
  * W2.1: the player's SEAL in its bind pose at spawn slot A (side 0, slot #0), feet on the slot's floor, facing the
- * slot's facing, in the gear the game hangs on it, textured from `CLIB_TXR`/`CLIB_PAL` (web/docs/research/78 §5-§6).
+ * slot's facing, in the gear the game hangs on it, textured from `CLIB_TXR`/`CLIB_PAL` (web/redotcom/docs/research/78 §5-§6).
  */
 describe('bodyYaw: the model faces -z, facing step 0 (research 75 §11, 78 §3)', () => {
   it('turns the model\'s forward onto every one of the eight facings', () => {

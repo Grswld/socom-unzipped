@@ -5,7 +5,7 @@ import { DoorSet, pickDoor, type DoorSpec } from '../src/doors';
 import { groundGrid, Walker, TICK, BODY_RADIUS, type WalkInput } from '../src/mover';
 
 /**
- * The doors (web/docs/research/92-doors.md): the owner's play test of 2026-09-29 -- "opening doors: I can see the
+ * The doors (web/redotcom/docs/research/92-doors.md): the owner's play test of 2026-09-29 -- "opening doors: I can see the
  * action but they do not open or close". Frostfire's `bdoor_4` is research 24's leaf between B's region and the
  * building (x 576-589, z 1117-1118): shut it stops the SEAL (walk.test.ts pins that); the action on it must swing it
  * open and let the SEAL through, and a second action must shut it again.

@@ -1,7 +1,7 @@
 import { rdrGet, type RdrNode } from '@s2u/archive';
 
 /**
- * The character types: `READERC.ZAR`'s `character.rdr` (web/docs/research/78 §5). Not in a map archive -- a file
+ * The character types: `READERC.ZAR`'s `character.rdr` (web/redotcom/docs/research/78 §5). Not in a map archive -- a file
  * of its own on the disc, which the extractor copies beside the maps -- and the only place that says which part
  * a piece of gear hangs from.
  *
@@ -129,7 +129,7 @@ export function gearMatrix(gear: GearDef, angleUnits: 'DEG' | 'RAD' = 'DEG'): Fl
 /**
  * A team's character on a map: the `index`-th entry of `team` (`navyseals` or `terrorists`) in its
  * `READERM.ZAR/chartype.rdr` that names a `character` -- `mp2_seal1`, or Frostfire's first Terrorist -- or null.
- * Each map lists four of each (Seal1-4, Terrorist1-4; web/docs/research/91 §14); without the armory a player gets
+ * Each map lists four of each (Seal1-4, Terrorist1-4; web/redotcom/docs/research/91 §14); without the armory a player gets
  * `DEFAULT_CHARTYPE_PLACEHOLDER`, which is the first entry, so index 0 is the default.
  */
 export function teamCharacter(chartype: RdrNode, team: 'navyseals' | 'terrorists', index = 0): string | null {

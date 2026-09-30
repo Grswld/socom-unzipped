@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The doors (web/docs/research/92-doors.md; the owner's play test of 2026-09-29: "I can see the action but they do not
+ * The doors (web/redotcom/docs/research/92-doors.md; the owner's play test of 2026-09-29: "I can see the action but they do not
  * open or close"): on Frostfire, before `bdoor_4` from B's side looking at it, the door prompt shows; X swings it open
  * -- heard, the leaf drawn turned -- and the SEAL walks through where the shut leaf stopped it; X again shuts it.
  */

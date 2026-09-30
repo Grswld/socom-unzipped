@@ -1,5 +1,5 @@
 /**
- * SPU ADPCM ("VAG"), the sample format of every 989snd bank's second chunk (web/docs/research/81 §2). A run of
+ * SPU ADPCM ("VAG"), the sample format of every 989snd bank's second chunk (web/redotcom/docs/research/81 §2). A run of
  * 16-byte blocks: byte 0 is `shift | filter << 4`, byte 1 the flags, then 14 bytes = 28 four-bit samples, low nibble
  * first. Each sample is `nibble << 12 >> shift` plus the filter's prediction from the two before it, over 64, with
  * the five filter pairs (0,0) (60,0) (115,-52) (98,-55) (122,-60). The flags: bit 2 marks the block a loop goes back

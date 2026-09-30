@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildGrid, castRay, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '../src/index';
 
 /**
- * `castRay` (web/docs/research/79 §4): the first hull polygon a segment meets, walked through the grid's cells in
+ * `castRay` (web/redotcom/docs/research/79 §4): the first hull polygon a segment meets, walked through the grid's cells in
  * the order the segment crosses them. Synthetic worlds on a 4 x 4 grid of 100-unit cells from (-200, -200).
  */
 

@@ -30,7 +30,7 @@ if (!stems.length) {
     .sort((a, b) => Number(a.slice(2)) - Number(b.slice(2)));
 }
 
-/** The name the game shows: `mission.rdr`'s `description` (web/docs/research/72 §0). */
+/** The name the game shows: `mission.rdr`'s `description` (web/redotcom/docs/research/72 §0). */
 function shownName(zdb: Uint8Array): string {
   const readerm = Zar.parse(zdbMember(zdb, parseZdb(zdb), 'READERM.ZAR'));
   const mission = readerm.root.children.find((k) => k.name.toLowerCase() === 'mission.rdr');

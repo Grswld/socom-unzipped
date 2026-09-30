@@ -72,7 +72,7 @@ export class HttpAssetSource implements RangedAssetSource {
   }
 
   /**
-   * A file's length (web/docs/research/81 §1: the ranged reads of `SOUNDS/BNKSTORE.ZAR`): a `HEAD`'s
+   * A file's length (web/redotcom/docs/research/81 §1: the ranged reads of `SOUNDS/BNKSTORE.ZAR`): a `HEAD`'s
    * `Content-Length`, or, where a server leaves it out, the total a one-byte `Range` answer's `Content-Range` names.
    */
   async size(path: string): Promise<number> {

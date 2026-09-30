@@ -74,8 +74,8 @@ import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
 import { indexVerdict, discOpened } from './discIndex';
 
-/** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
-// The maps directory sits beside the page: `/maps` in dev, `/map-viewer/maps` when served under a prefix.
+/** The served disc tree: `web/redotcom/public/maps/`, with its own `index.json` beside it. */
+// The maps directory sits beside the page: `/maps` in dev, `/redotcom/maps` when served under a prefix (socomunzipped.com; `/map-viewer/` redirects there).
 const MAPS = `${import.meta.env.BASE_URL}maps`;
 /** The map the viewer opens on, and the one the screenshot test asks for by name. */
 const DEFAULT_ARCHIVE = 'MP2';
@@ -154,7 +154,7 @@ const traversal = new TraversalPage(walk, {
 });
 traversal.bindKeys();
 /**
- * The map's doors (`./doorPage`, web/docs/research/92-doors.md): the action button on the door under the reticle swings
+ * The map's doors (`./doorPage`, web/redotcom/docs/research/92-doors.md): the action button on the door under the reticle swings
  * it -- here, or on the server in a match -- its leaf drawn and its polygons turned with it, its sound played.
  */
 const doors = new DoorPage({
@@ -195,7 +195,7 @@ const fire: Fire = new Fire({
 }, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
 scene.add(fire.object);
 /**
- * The throwables (`./grenade`, web/docs/research/85): `3` and `4` the kit's equipment slots 1 and 2 (the M67, the HE),
+ * The throwables (`./grenade`, web/redotcom/docs/research/85): `3` and `4` the kit's equipment slots 1 and 2 (the M67, the HE),
  * `1` the rifle back -- the pad's R2 (the game's Inventory) -- and the trigger throws: held for power, let go to throw. The throw's
  * clip plays on the body (`./throwPose`), the grenade rides the right hand's held node, and leaves the posed hand.
  */
@@ -226,7 +226,7 @@ grenade.on('refuse', (info) => { ui.toast(info.text); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
 grenade.on('throw', (info) => { if (!audio.onAnimCallback(info.fireAnim, info.from)) audio.play(info.sound, info.from); net?.throwEvent(info.item, info.from, info.velocity); });
 /**
- * EFFECTS (web/docs/research/89): a grenade's bounce runs the game's own `grenade_hit_<material>` through
+ * EFFECTS (web/redotcom/docs/research/89): a grenade's bounce runs the game's own `grenade_hit_<material>` through
  * `effects.play` (its sound, and snow's and water's spurts), at the point as if the grenade's node were there (the
  * sparks' `OBJECT_TRANSLATE_STATE` takes the caller's place); the explosion goes through the grenade's own door
  * (`setEffectPlayer`). The audio's zAnim map is the fallback before the effect data is in.
@@ -396,7 +396,7 @@ function trigger(down: boolean): void {
   else fire.release();
 }
 /**
- * The sound (web/docs/research/81, `./audio`): the map's own banks, played on the walk's events (`./walkSounds`) --
+ * The sound (web/redotcom/docs/research/81, `./audio`): the map's own banks, played on the walk's events (`./walkSounds`) --
  * the footfalls, the jump, the landing, the rifle's rounds and reload. The first click or key press unlocks it.
  * `gameAudio` is the API the panel and the other workstreams import from `./audio` (`setVolume`, `setMuted`,
  * `onFootstep`, `onFire`, `onReload`, `onJump`, `onLand`, `onAnimCallback`).
@@ -412,7 +412,7 @@ const walkSounds = new WalkSounds(audio, {
   grid: () => walk.grid(),
 });
 /**
- * EFFECTS (web/docs/research/89, `./effects`): the game's own zAnim effect animations out of the map's `CZANIM.ZAR` --
+ * EFFECTS (web/redotcom/docs/research/89, `./effects`): the game's own zAnim effect animations out of the map's `CZANIM.ZAR` --
  * a round's `FireAnimName` (the M4A1 SD's `muzzle_m4SD`: the casing, and the smoke source the retail data switches
  * off), the casings bouncing on the hull with their material's sound, the marks per surface (`Fire.setMarks`).
  * `effects.play(name, place)` is the grenades' door to their impacts and explosions.

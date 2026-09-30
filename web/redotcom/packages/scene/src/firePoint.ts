@@ -3,7 +3,7 @@
  * `recomp/socom2_names.csv`, named by the call graph), ported from the recompiler's body of it, `decomp
  * CZSealBody_GetPutativeFirePointW` 0x57fa70 (the owner's handoff, reference only; the file is `<name>_<address>.cpp`,
  * cited with a space because the joined name reads to the leak check as a key). Line numbers `:n` below are that
- * file's. web/docs/research/79 §3 has the walk-through; the short version:
+ * file's. web/redotcom/docs/research/79 §3 has the walk-through; the short version:
  *
  * - **a1 true** (`:51` falls through): pick a stance code from the list at `+0x1c0`, and from it, the actor state, the
  *   body's velocity and `m_item`, one of ten constant offsets at 0x65d038..0x65d0c8 (or the zero point at 0x3f64c0);

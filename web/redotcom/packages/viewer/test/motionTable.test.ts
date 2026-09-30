@@ -11,7 +11,7 @@ import {
 } from '../src/motionTable';
 
 /**
- * `motion.rdr`, the playback table (web/docs/research/77 §7): each clip's `looped`, `playback`, `max_velocity`,
+ * `motion.rdr`, the playback table (web/redotcom/docs/research/77 §7): each clip's `looped`, `playback`, `max_velocity`,
  * `BlendTime`, transition speeds and `NoInterrupt`, read at run time out of `RUN/READERC.ZAR` (W2.R6: none of its
  * values is in the source; the synthetic entries below are made up). And the player's pack, `RUN/MOTION_P.ZAR`, read
  * for the clips the play mode asks for.

@@ -190,6 +190,18 @@ describe('PAD_LAYOUT: the owner\'s layout (2026-09-28), each row stated, documen
     expect(row('Cross').note).toMatch(/controller\.rdr/);
     expect(row('Triangle').note).toMatch(/prone/);
     expect(row('Triangle').note).toMatch(/guess/);          // the hold's length is named as one
+    // L2 takes the controller's default slot 1.0, the kit's Mark 23 (FUN_00598280 454786); R2 steps the whole kit.
+    expect(row('L2').note).toMatch(/Mark 23/);
+    expect(row('L2').note).not.toMatch(/M67/);
+    expect(row('R2').note).toMatch(/rifle, Mark 23, M67, HE/);
+    // third_party moves under the runtime's sprints: cite it by symbol, not by line.
+    for (const r of PAD_LAYOUT) expect(r.note, r.control).not.toMatch(/launcher_config\.(cpp|h):\d|\$\{/);
+  });
+
+  it('words the kit as the keys take it: 1 rifle, 2 Mark 23, 3 M67, 4 HE (the owner, 2026-09-29)', () => {
+    expect(ACTION_WORDS.swap2.walk).toMatch(/Mark 23/);
+    expect(ACTION_WORDS.inventory.walk).toMatch(/3 M67, 4 HE/);
+    expect(ACTION_WORDS.inventory.walk).not.toMatch(/\b5\b/);
   });
 
   it('gives every action a control, and each control one row', () => {

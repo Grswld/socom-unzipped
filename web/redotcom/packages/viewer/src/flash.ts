@@ -1,7 +1,7 @@
 import { BLIND_KEYS, blindStrength } from '@s2u/scene';
 
 /**
- * The flashbang's white-out on the screen (web/docs/research/85 §9.5): the map's `MZANIM.ZAR` animation
+ * The flashbang's white-out on the screen (web/redotcom/docs/research/85 §9.5): the map's `MZANIM.ZAR` animation
  * `blindplayer0<level>` the player controller starts (0x597c00) for a Mark141 inside 150 units -- level 3 facing it
  * close, 2 half-turned or further, 1 facing away or far (`@s2u/scene`'s `flashLevel`). Its `blinded` command holds the
  * screen white at a strength (60, or 25 for level 1) for 1.5 s / 8 s and brings it back by 4 s / 10 s (2 s for level

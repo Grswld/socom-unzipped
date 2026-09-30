@@ -550,9 +550,15 @@ second fault: a column whose floor was over the feet was refused, stalling the f
 So in the game a slope rising over a jump's feet lifts them onto it and the rise goes on; the landing is on the way
 down. **The fix** (`walk.ts` `fall`, `airStep`): the airborne floor is `selectFloor(probeGround(x, z), from + 5, y)`,
 the ground's own pick; feet at or under it are put on it; a fall (`vy <= 0`) is the landing, a rise goes on. A column is
-entered in the air when it has a floor within `step_height` over the feet (the ground step's allowance, which the
-wind-up already had). The flat jump, the walk-off and every landing test are unchanged (the flat floor is never over
-the feet in flight).
+entered in the air when that same pick finds a floor there -- `selectFloor(probeGround(x, z), y + PROBE_LIFT, y)`, up to
+20 over the feet (`FUN_005b5d40` 470163-470290) -- and the tick's floor then puts the feet on it (`FUN_0059ad30`
+456313-456322, `FUN_0059b440`). No floor (the map's edge, a hole, a top more than 20 over the feet) is the probe's miss:
+`FUN_005b0420` (467057, 467098) with `DAT_003df1c8` set (1 in the ELF) puts the actor back at its last hit
+(`FUN_003157d0`), so the sub-step is not taken (`mover.ts` `airStep`). This replaced, 2026-09-29 (OWNER-5, launch fix
+B10), the viewer's former allowance -- a column entered only with a floor within `step_height` (6.5) over the feet, a
+rule no function gave -- which stopped a jump dead at a wall-less ledge 7-20 high. Pinned by `test/walk.test.ts`: a
+12-high wall-less ledge is entered, its cut far side taken at 12 and refused at 25, and the map's edge pins the jump.
+The flat jump, the walk-off and every landing test are unchanged (the flat floor is never over the feet in flight).
 
 **Bounds** [derived]: with `FUN_005b56c0`'s uphill factor on the stick (section 5.3) the run up a slope of angle a is
 `65 cos^2 a`, so the feet end the wind-up at most `0.98 + 65 cos^2 a x 7/60 x tan a <= 0.98 + 3.79` = 4.8 under the
@@ -613,6 +619,15 @@ factor, the ripples and the splash, the lean's toss, the dive. Left: the climb-o
 character (the viewer has none); the steep-ground slide (section 6.2); the ripples' `actor+0xe1` bit 4 (taken as set);
 the Triangle's pressure (a hold stands in for the full press); the ladder's 7.59 is derived (W2.2c to measure); the
 fallback clip shapes (a smoothstep with each clip's seconds, rise and travel) stand in only before the pack arrives.
+
+Named in the code:
+
+| name | value | stands for | status |
+|---|---|---|---|
+| `DEATH_LANDING_GETUP_PLACEHOLDER` (`mover.ts`) | true | a deadly fall's `Land forward` getting up (`Get up forward`) in the free walk (`&nomatch`, `&fly`), where nothing kills; the game dies in that landing (`FUN_005af590` 466641-466728, state 8, vtable +0x90) and never gets up (`FUN_005979a0` 454470-454495 spectates or fades the body; research 80 section 6c) | open, the free walk alone: in a match -- online, or the offline match run in the page (research 91 section 20) -- the net client's `kill` sets `Walker.dead`, which holds `Land forward` (or a knock's `Land backwards`) at its last key. A blast knock's landing always gets up, as the game's own (`knockLanding_`, L446653-446700) |
+| `STANCE_HOLD_S_PLACEHOLDER` (`stanceButton.ts`) | 0.4 s | how long Triangle (the pad) or `C` (the PC) is held before it means prone: the game reads the button's pressure, not a time (a light press toggles crouch at release, a full press goes prone at once; `host_crouch_shortcut.h`, KNOWN R139), and a browser's button is only on or off, so the owner's rule (2026-09-28: tap crouches, hold goes prone) needs a length | open, the owner's to set (handoff section 6) |
+
+Retired: the airborne column's `step_height` allowance (section 6.3; the ground's pick replaced it, OWNER-5).
 
 ### 7.3 The seams (re-applied over the MOTION rewrite at the merge of `claude/web-viewer-playtest-fixes`, 3e673174)
 

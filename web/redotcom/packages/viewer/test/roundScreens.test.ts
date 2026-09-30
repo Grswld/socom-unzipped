@@ -6,7 +6,7 @@ import type { ScoreRowInfo } from '../src/scoreboard';
 import { DEFAULT_MODEL, hudPass, ROUND_SCREEN_HIDES, SCOREBOARD_HIDES, Hud, AT_REST } from '../src/hud';
 import { layoutText } from '../src/hudFont';
 
-/** The round's end screens (web/docs/research/91-the-round.md §18): ROUND COMPLETE, FINAL ROUND, GAME COMPLETE. */
+/** The round's end screens (web/redotcom/docs/research/91-the-round.md §18): ROUND COMPLETE, FINAL ROUND, GAME COMPLETE. */
 
 const PS2 = { width: 640, height: 448 };
 const SIZES: Record<string, { width: number; height: number }> = {

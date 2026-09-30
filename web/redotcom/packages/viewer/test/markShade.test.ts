@@ -8,7 +8,7 @@ import { Fire, type FireAim } from '../src/fire';
 import { MARK_DEPTH, surfaceShade } from '../src/surfaceShade';
 
 /**
- * The bullet mark's shade (web/docs/research/89 §5, "the mark's colour"): the game draws a mark with the vertex colour
+ * The bullet mark's shade (web/redotcom/docs/research/89 §5, "the mark's colour"): the game draws a mark with the vertex colour
  * of the world polygon it lies on -- `FUN_003beca0` (decomp 313065) unpacks each clipped vertex's own 32-bit colour
  * (`V4-8`, the world vertex's `+0x3c` word, `FUN_003b3ab0` 306470) into the packet the world's VU program draws -- so
  * the GS modulates the mark's texel by the same baked light the wall under it gets. The viewer drew the bitmap bare
@@ -55,7 +55,7 @@ describe('the world\'s drawn colour under a mark (surfaceShade)', () => {
     expect(surfaceShade(root)([0, 20, -30], [0, 0, 1])![0]).toBeCloseTo(0.3, 6);
   });
 
-  it('takes the base surface under a blended overlay, and a drawn surface up to 4.8 units off the hull (decomp 306620)', () => {
+  it('takes the base surface under a blended overlay, and a drawn surface up to 4.8 units off the hull (decomp 306632-306635)', () => {
     const root = new Group();
     const overlay = wall([[0.9, 0.9, 0.9, 0.04], [0.9, 0.9, 0.9, 0.04], [0.9, 0.9, 0.9, 0.04], [0.9, 0.9, 0.9, 0.04]]);
     (overlay.material as MeshBasicMaterial).transparent = true;

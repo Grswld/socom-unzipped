@@ -15,7 +15,7 @@
  * shell (`--channel headless-shell`) offers an adapter but fails the device (`dxil.dll`), so it draws with WebGL2 -- as
  * every run before round 6 did. The backend each map drew with is printed and kept in `playtest.json`.
  *
- * Screenshots and `playtest.json` go to `web/test-fixtures/screens/playtest/` (git-ignored: evidence, not fixtures).
+ * Screenshots and `playtest.json` go to `web/redotcom/test-fixtures/screens/playtest/` (git-ignored: evidence, not fixtures).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

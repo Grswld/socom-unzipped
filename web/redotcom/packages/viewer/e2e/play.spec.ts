@@ -15,7 +15,7 @@ import type {} from '../src/hook';
  * bind pose and `stats().anim` stays null.
  */
 
-/** Screenshots are evidence, not fixtures: `web/test-fixtures/` is git-ignored. */
+/** Screenshots are evidence, not fixtures: `web/redotcom/test-fixtures/` is git-ignored. */
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/play', import.meta.url));
 
 /** A's spawn on Frostfire (KNOWN section 1), the feet, and the eye 15.4 over them (W1.R2), as `walk.spec.ts` has them. */

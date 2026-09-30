@@ -5,7 +5,7 @@ import {
 } from '../src/index';
 
 /**
- * The yellow arc a held grenade shows (web/docs/research/85 §11): `CSealCtrl`'s draw `FUN_005970b0` and
+ * The yellow arc a held grenade shows (web/redotcom/docs/research/85 §11): `CSealCtrl`'s draw `FUN_005970b0` and
  * `ai::DrawFunc<CDynGrenade>` (`FUN_00598860`). The arc is the throw's own parabola, so it must be the path the
  * flight (`stepGrenade`) takes from the same launch, up to the flight's per-frame integration.
  */

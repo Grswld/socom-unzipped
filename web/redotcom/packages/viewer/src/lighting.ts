@@ -29,7 +29,7 @@ export interface Lightable {
  * (`frostA_probe600.rdram`, `frostB_probe600.rdram`) it is off, +0x31 = 0 and the pass count at
  * `0x488e90` = 0, and the frame goes out as drawn. The frames agree: PCSX2's Vigilance at spawn A and
  * the recompiled Frostfire at spawn B are 0.55 of the viewer's old 1.73x picture band for band and 1.0
- * of the bare one (`web/docs/research/82-map-fidelity-audit.md`, D1). So the default `FIX` is 0 and the
+ * of the bare one (`web/redotcom/docs/research/82-map-fidelity-audit.md`, D1). So the default `FIX` is 0 and the
  * slider stays, for the campaign's look.
  *
  * The rig itself is exact -- it reproduces the captured VU1 quadwords bit for bit -- and is applied

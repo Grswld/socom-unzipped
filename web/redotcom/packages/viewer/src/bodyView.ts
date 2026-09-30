@@ -16,7 +16,7 @@ import { blendFactorsFor, makeTexture } from './world';
  * The player's body on the page (W2.1): a three `SkinnedMesh` per sub-mesh on one `Skeleton` built from the
  * character's parts, the fittings hung off their bones, the whole stood at slot A (`./body`, `LoadedBody.at`).
  *
- * **Skinned, not CPU-posed.** The palette semantics are settled (web/docs/research/78 §3): the mesh was exported
+ * **Skinned, not CPU-posed.** The palette semantics are settled (web/redotcom/docs/research/78 §3): the mesh was exported
  * against the bind palette, every bone's own copy of every vertex landing on one point, so one bind-space
  * position per vertex with the bind matrices' inverses as `boneInverses` is exactly the game's weighted sum for
  * any pose -- up to the four-influence cut (`topInfluences`; 1 vertex of seal_A_scuba's 2,094 has five). The

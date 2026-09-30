@@ -40,7 +40,7 @@ export interface WorldPoly {
   appflags?: number;
   /**
    * `m_inside` (surface word bit 23) and the reverb zone (bit 27): the camera over the polygon is indoors, and which
-   * `IndoorReverb`/`OutdoorReverb` entry it takes (`FUN_002dc180`, `FUN_002dc150`; web/docs/research/81 §9). Absent (0)
+   * `IndoorReverb`/`OutdoorReverb` entry it takes (`FUN_002dc180`, `FUN_002dc150`; web/redotcom/docs/research/81 §9). Absent (0)
    * where a caller built the polygon by hand.
    */
   inside?: number;
@@ -50,7 +50,7 @@ export interface WorldPoly {
 }
 
 /**
- * The surface word: the packed third word of a `di`'s params (web/docs/research/72 section 6, `DI_PARAMS` in reCOM
+ * The surface word: the packed third word of a `di`'s params (web/redotcom/docs/research/72 section 6, `DI_PARAMS` in reCOM
  * `zIntersect/zintersect.h:21-28`) -- `m_ditype:2, m_ptcount:8, m_material:8, m_cameratype:2, ...` -- which is the
  * live `CDIPoly`'s `+8` word research 23 section 1.3 reads its bits from ("ptcount at bits 2-9, material at bits
  * 10-17", section 8). Rebuilt from the fields `WorldPoly` keeps, up to and including `m_cameratype`, so the bits

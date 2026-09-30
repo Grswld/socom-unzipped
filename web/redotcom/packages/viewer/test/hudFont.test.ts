@@ -5,7 +5,7 @@ import { FONT_TEXT_01, layoutText, PEN_NUDGE, textWidth, TEXT_V } from '../src/h
 import { GS_SAMPLE_OFFSET } from '../src/hud';
 
 /**
- * The HUD's font (web/docs/research/87-hud.md §3): `fonts.rdr`'s `font_text_01`, transcribed, and the text model
+ * The HUD's font (web/redotcom/docs/research/87-hud.md §3): `fonts.rdr`'s `font_text_01`, transcribed, and the text model
  * fitted on the console frame's "30/30" and "2 MAGS".
  */
 
