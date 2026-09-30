@@ -165,6 +165,15 @@ triangles, a list over 64 qwords or 32 commands, the `0x02` ordering check, a ze
 refusal-reason count (one counter per refusal branch, printed on the `[vu1-stats]` line) over one walk. Only then
 can a native `0x66`, a native resume at `0x1b60`, or a relaxed ceiling be sized; the saving also depends on
 native's speed per vertex, which nothing here measures.
+> Superseded 2026-09-30 01:35Z by the refusal count itself (`PS2X_VU1_NATIVE_REFUSALS`, merged 77291f37; the mission
+> walk `logs/parity/ab/vu1refuse/on`, scored `python -m tools_py.parity.vu1_refusals --stamp ... --by key`): over the
+> 68 s walk window the fallback ran 10.44 s of host time = 154 ms/s, the whole of the generated program's self time
+> above, split: entry `0x33c8` with NO native program 7452 ms (71 %, 82 % of the fallback's VU cycles); `0x1b50`
+> refused on `0x52` 1275 ms (12 %); on `0x3e` 509 ms (5 %); entry `0x0` (no native program, 57 % of the refused
+> entries, tiny) 1120 ms (11 %); `0x3c`/`0x36`/`0x46` 85 ms. No list was refused on a ceiling, the ordering check, a
+> zero count or a hand-back at `0x1b60`. So "at most ~22 points" was wrong in both directions: the residual `0x52`
+> lists are ~12 points, and the dominant cost is the `0x33c8` follow-on programs, which native never attempts. The
+> lever is a native program at entry `0x33c8` (up to ~110 ms/s of game-thread time less its own cost), then `0x52`.
 
 ## 4. How a candidate is measured (R334, `docs/DEVELOPING.md` lines 868-902)
 
