@@ -162,7 +162,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_VU1_BAILHIST` | Presence | unset | Histogram of where generated VU1 code bails to the interpreter. |
 | `PS2X_VU1_COMMIT_BATCH` | Flag | `0` | S17 F C2 A/B: 1 drains the ready flag ring in one step (fastCommit), bit-exact; VU1 and VU0 alike. |
 | `PS2X_VU1_DUMP` | Path | unset | Dump VU1 program state at each run for vu1_replay (armed by TRIGGER or VU1_DUMP_AFTER). |
-| `PS2X_VU1_DUMP_AFTER` | Float | `0` | With VU1_DUMP: arm after this many seconds. |
+| `PS2X_VU1_DUMP_AFTER` | Float | `0` | With VU1_DUMP or VU1_DUMP_REFUSED: arm after this many seconds. |
 | `PS2X_VU1_DUMP_REFUSED` | Path | unset | dir[:count[:entrypc]]: dump only the VU1 programs native refused as resume_command or write_range. |
 | `PS2X_VU1_FAST` | Int | `1` | 0 selects the cycle-exact VU1 scheduler. |
 | `PS2X_VU1_FMAC_CHECK` | Flag | `0` | Cross-check the SIMD MAC-flag classifier against the long double path. |

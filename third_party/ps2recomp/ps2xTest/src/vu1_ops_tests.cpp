@@ -1727,7 +1727,7 @@ void register_vu1_ops_tests()
             t.IsTrue(dir.bins().empty() && dir.indexLines().empty(), "nothing written for either");
         });
 
-        tc.Run("dump refused: at most <count> files, and <entrypc> narrows the capture", [](TestCase &t)
+        tc.Run("dump refused: at most <count> files, <entrypc> narrows the capture, PS2X_VU1_DUMP_AFTER arms it", [](TestCase &t)
         {
             Entry33c8Rig rig;
             t.IsTrue(rig.load(), "fixture present");
@@ -1755,6 +1755,12 @@ void register_vu1_ops_tests()
                 Vu1DumpRefused::setForTest(dir.knob(":10:0x33c8").c_str());
                 rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
                 t.Equals(dir.bins().size(), static_cast<size_t>(1), "narrowed to 0x33c8: written");
+            }
+            {
+                DumpDir dir("armed_later");
+                Vu1DumpRefused::setForTest(dir.knob(":10").c_str(), 3600.0); // PS2X_VU1_DUMP_AFTER=3600
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.IsTrue(dir.bins().empty(), "PS2X_VU1_DUMP_AFTER not yet reached: not written");
             }
         });
     });

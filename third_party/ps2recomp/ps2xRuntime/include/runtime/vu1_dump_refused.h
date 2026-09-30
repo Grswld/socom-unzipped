@@ -15,6 +15,8 @@
 // qword 340 on, hex, up to and including the first 0x42 or 0x4c (64 qwords at most; an inline block's qwords are
 // listed raw -- tools_py/parity/vu1_refused_shapes.py walks them properly). At most <count> files (default 150);
 // <entrypc> (hex or decimal) narrows the capture to one entry, any entry otherwise. The directory is created.
+// PS2X_VU1_DUMP_AFTER=<seconds> holds the capture off for that long after the knob is read (the first native entry),
+// so the count is spent in the mission, not the menus.
 //
 // No 33 KB copy is taken per run: a whole-program refusal leaves the register file and VU data memory exactly as the
 // entry found them (the dispatcher's contract, pinned by vu1_ops_tests' "nothing touched before the hand-back"), so
@@ -26,6 +28,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -47,6 +50,7 @@ namespace Vu1DumpRefused
     {
         std::string dir;
         int maxFiles = kDefaultCount;
+        double afterSeconds = 0.0; // PS2X_VU1_DUMP_AFTER: nothing is written before this many seconds
         bool anyEntry = true;
         uint32_t entryPc = 0u;
         bool on() const { return !dir.empty() && maxFiles > 0; }
@@ -159,6 +163,7 @@ namespace Vu1DumpRefused
             m_config = config;
             m_written = 0;
             m_dirMade = false;
+            m_start = std::chrono::steady_clock::now();
         }
 
         Config config() const
@@ -182,6 +187,9 @@ namespace Vu1DumpRefused
             if (!dumpable(refusal.reason))
                 return std::string();
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_config.afterSeconds > 0.0 &&
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - m_start).count() < m_config.afterSeconds)
+                return std::string();
             if (!m_config.on() || m_written >= m_config.maxFiles ||
                 (!m_config.anyEntry && refusal.entryPc != m_config.entryPc))
                 return std::string();
@@ -217,6 +225,7 @@ namespace Vu1DumpRefused
         Config m_config;
         int m_written = 0;
         bool m_dirMade = false;
+        std::chrono::steady_clock::time_point m_start = std::chrono::steady_clock::now();
     };
 
     inline Capture &live()
@@ -244,14 +253,22 @@ namespace Vu1DumpRefused
         const int state = enabledState().load(std::memory_order_relaxed);
         if (__builtin_expect(state < 0, 0))
         {
-            apply(parse(ps2x::knob("PS2X_VU1_DUMP_REFUSED")));
+            Config config = parse(ps2x::knob("PS2X_VU1_DUMP_REFUSED"));
+            if (const char *after = ps2x::knob("PS2X_VU1_DUMP_AFTER"))
+                config.afterSeconds = std::atof(after);
+            apply(config);
             return enabledState().load(std::memory_order_relaxed) != 0;
         }
         return state != 0;
     }
 
-    // ps2x_tests: a value as the knob would carry it (nullptr or "" = off); -1 again re-reads the knob.
-    inline void setForTest(const char *value) { apply(parse(value)); }
+    // ps2x_tests: a value as the knob would carry it (nullptr or "" = off); resetForTest lets the next entry read it.
+    inline void setForTest(const char *value, double afterSeconds = 0.0)
+    {
+        Config config = parse(value);
+        config.afterSeconds = afterSeconds;
+        apply(config);
+    }
     inline void resetForTest()
     {
         live().configure(Config{});
