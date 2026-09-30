@@ -213,7 +213,21 @@ order a player reaches for them -- **Mode** first, since it decides which sectio
 line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
 a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
 control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
-Weapons, General; the fly lists are Move and General). The settings, in the panel's order:
+Weapons, General; the fly lists are Move and General).
+
+The panel's first line is **PLAYERS ONLINE** (owner, 2026-09-29; `packages/viewer/src/playersOnline.ts`): the players --
+not the watchers, the Explore pages that only look on -- in the classic matches on the shared server
+(`https://mp.socomunzipped.com/rooms`), or on the local server (`http://localhost:8787/rooms`) when Online is Local. It
+shows a dash while the count is not known (the server not answering), never 0. The **Map** picker says the same count
+after a map's name when anyone is on it (`FROSTFIRE · Suppression (MP2) · 3 playing`; nothing for none), in the option's
+own text, so a screen reader hears it with the map. The page asks about every 20 s while it is visible, not at all while
+it is hidden (once at once when shown again, if one fell due), never two requests at a time, backing off to 2 minutes
+while the server does not answer, and stops when the page goes. The request is a plain cross-origin GET with
+`cache: 'no-cache'`: the browser revalidates with the server's ETag, so an unchanged list is a 304. A build with
+`VITE_S2U_ROOMS=off` reads no shared list (the e2e run's, `playwright.config.ts`, while the shared server is not live);
+a URL there replaces the shared one.
+
+The settings, in the panel's order:
 
 | setting | choices (default first) | in the address | remembered as |
 |---|---|---|---|
@@ -702,7 +716,8 @@ code and documentation only, never the game or its data. CI for this directory i
 
 `packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a classic match per map, HTTP
 `/health`, `/metrics` (host only) and
-`/rooms` (each room's map, rules, players and round: anonymous counts, public by the owner's ruling) and a WebSocket
+`/rooms` (each room's map, rules, players, spectators and round: anonymous counts, public by the owner's ruling, with
+an ETag answered by 304 and `Cache-Control: public, max-age=10` for the viewer's PLAYERS ONLINE poll) and a WebSocket
 on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 `READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
 

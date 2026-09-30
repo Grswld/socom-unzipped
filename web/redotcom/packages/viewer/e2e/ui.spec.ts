@@ -100,9 +100,10 @@ test('in Explore (the default mode) there is no walking anywhere on the page', a
   const text = await page.evaluate(() => document.body.innerText + [...document.querySelectorAll('[title],[aria-label]')]
     .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' '));
   expect(text).not.toMatch(/\b(walk\w*|stance|crouch\w*|prone)\b/i);
-  // "redotcom" is the project's name (the owner's), no longer the walk flag's word: the kicker says it on every page,
-  // the fly-only one included (index.html:83; the unit twin is test/modes.test.ts). Never flip it back (b1eb349b).
-  await expect(page.locator('#panel-kicker')).toHaveText('redotcom · SOCOM II multiplayer');
+  // The kicker is PLAYERS ONLINE (owner, 2026-09-29: it replaces "redotcom · SOCOM II multiplayer"); the run turns the
+  // shared room list off (playwright.config.ts), so the count is not known: a dash, never 0 (the unit twin is
+  // test/modes.test.ts; the counts are e2e/playersOnline.spec.ts's).
+  await expect(page.locator('#panel-kicker')).toHaveText(/^Players online\s*–$/i);
 });
 
 test.describe('in Play with &fly&devmode (the developer fly camera)', () => {

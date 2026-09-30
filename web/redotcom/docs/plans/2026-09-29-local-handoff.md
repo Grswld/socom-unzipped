@@ -59,9 +59,10 @@ the match on its own (section 4a); `&nomatch` keeps the free walk. Game data nev
 - **Jumping up a slope clipped through the ground:** the airborne tick now takes the ground's floor pick (traversal
   2a491b07, research 86 §6.3; now in `mover.ts`).
 - Mouse sensitivity goes down to 0.05.
-- **The panel kicker says `redotcom · SOCOM II multiplayer`** on every page, fly-only included: redotcom is the
-  project's name, no longer the walk flag's word (a9228a66 restored it over b1eb349b; ui.spec.ts pins it). Do not flip
-  it.
+- **The panel kicker is the PLAYERS ONLINE count** (the owner, 2026-09-29, later the same day: "At the top just remove
+  'redotcom · SOCOM II multiplayer' and replace it with a PLAYERS ONLINE count"; `packages/viewer/src/playersOnline.ts`,
+  the map picker's per-map counts with it). This supersedes the earlier ruling that it say `redotcom · SOCOM II
+  multiplayer` (a9228a66 over b1eb349b); modes.test.ts and ui.spec.ts pin the new text.
 - **Launch-review rulings (the owner, 2026-09-29):** the site keeps serving `/redotcom/maps/` for now (OWNER-1
   withdrawn; the move to disc-only is row O28 in `docs/HUMAN_TASKS.md`); `/rooms` is public and documented (OWNER-4);
   the airborne column takes the ground's pick, not 6.5 (OWNER-5); the scorch pool is the game's 30 triangles, refused

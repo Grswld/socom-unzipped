@@ -91,7 +91,15 @@
     -->
     <div id="panel" class="s2u-overlay is-folded" data-density="compact">
       <div id="panel-body" class="s2u-overlay__body">
-      <p id="panel-kicker">redotcom &middot; SOCOM II multiplayer</p>
+      <!--
+        PLAYERS ONLINE (owner, 2026-09-29: "At the top just remove 'redotcom · SOCOM II multiplayer' and replace it with a
+        PLAYERS ONLINE count"; `./src/playersOnline.ts`): the players -- not the watchers -- in the shared server's
+        matches (the local server's when Online is Local), read from its public `/rooms` about every 20 s while the page
+        is visible. A dash while the count is not known (the server not answering), never 0. The system's kicker (upper
+        case by its type); the figure is the system gold, tabular. Not live: a figure that ticks every 20 s would talk
+        over the page for a screen reader, and it is read with the panel.
+      -->
+      <p id="panel-kicker" class="s2u-kicker" title="Players in a match on the match server right now: the shared one, or this machine&rsquo;s when Online is Local. Watchers are not counted. Updates every 20 seconds.">Players online <span id="players-online">&ndash;</span></p>
       <!--
         The page's mode (owner, 2026-09-29; `./src/features.ts`): Explore, the map viewer and its free camera, or Play --
         on the map as a SEAL: the walk, the rifle, the HUD, the Mouse look and Sound sections and the touch buttons (every
@@ -119,7 +127,8 @@
         <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
       </section>
       <!--
-        The map: the picker (named from each archive's own mission.rdr), the player's own disc (W1.7: a plain file input,
+        The map: the picker (named from each archive's own mission.rdr; a map with players in a match on the server says so
+        after its name, "· 3 playing", from the same `/rooms` as the kicker above), the player's own disc (W1.7: a plain file input,
         and a drop anywhere on the page, `./src/ui.ts` `onDisc`; read in the browser by range, never uploaded) and the
         status, one dim two-line readout whose full text is its tooltip.
       -->

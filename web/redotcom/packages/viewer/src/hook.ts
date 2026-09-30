@@ -107,6 +107,8 @@ export interface ViewerHook {
   recom?(on?: boolean): boolean;
   /** Whether the disc page (`#disc-page`, `./source`) stands over the canvas. */
   discPage?(): boolean;
+  /** PLAYERS ONLINE (`./playersOnline`): the last reading of the server's rooms -- players by map archive -- or null (not known). */
+  playersOnline?(): { total: number; byMap: Record<string, number> } | null;
   /** The Online setting and the connection (`./online`): the choice, the server, and `NetPage.status`'s line. */
   online?(): OnlineStatus & { choice: OnlineChoice | 'url'; url: string | null };
   /**
