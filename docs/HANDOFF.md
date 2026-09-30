@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-30 01:35Z, LATEST) -- Sprint 17, `sprint-17` at 36f9748a: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1). Unproved by a chain: the loop fix, F3, the persona check, Q2 Step 5, C1, C2, the refusal count. No close date (R338); one controller in the main tree (owner).**
-  Now: #118 fixed (2507696a, proved in use); N1 and C2 NOT picked at rung two (both orders, quiet host); next the refusal count with N1 on, N2 sized; the chain over the batch; #110 parked (O27).
+- **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1) and PROVED by the batch-5 chain on 1fd3cfdb with everything merged before it. No close date (R338); one controller in the main tree (owner).**
+  Now: batch 5 PROVED (chain s17_b5 ALL GREEN on 1fd3cfdb, C1 adopted: SYNCV 23.3, FRAME 16.72); N1 and C2 NOT picked; next the slice to main, the refusal count with N1 on, N2 sized; #110 parked (O27).
 - **Next free ruling number: R339** (R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
