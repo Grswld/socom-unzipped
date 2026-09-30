@@ -672,9 +672,19 @@ namespace
         return parsed > fallback ? fallback : parsed;
     }
 
+    // ps2x_tests' hooks over the two process-wide inputs below (vu1native_socom2_force*ForTest, at the end of
+    // this file). -1, the only value the game ever has, reads the latched knob exactly as before; a test sets a
+    // value for one case and puts -1 back, so its result does not hang on the environment or on which case
+    // latched the knob first.
+    std::atomic<int> s_testXgkickImmediate{-1};
+    std::atomic<int32_t> s_testVertexCeiling{-1};
+
     int32_t vertexCeiling()
     {
         static const int32_t value = envCeiling("PS2X_VU1_NATIVE_TEST_CEILING", kMaxVertices);
+        const int32_t forced = s_testVertexCeiling.load(std::memory_order_relaxed);
+        if (forced >= 0)
+            return forced > kMaxVertices ? kMaxVertices : forced;   // narrows only, as envCeiling does
         return value;
     }
 
@@ -941,7 +951,8 @@ namespace
     bool xgkickIsImmediate()
     {
         static const bool immediate = !ps2x::knobOn("PS2X_VU1_XGKICK_CYCLE_EXACT");
-        return immediate;
+        const int forced = s_testXgkickImmediate.load(std::memory_order_relaxed);
+        return forced < 0 ? immediate : forced != 0;
     }
 
     // ---- command 0x68 -> 0x0b20: int -> float vertex unpack --------------------------------
@@ -3539,4 +3550,17 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
             return handBackAtCommandIndex(c, index);
         }
     }
+}
+
+// ps2x_tests only (vu1_ops_tests.cpp's RefusalRig): force the XGKICK model the dispatcher's whole-list guard
+// reads (-1 = PS2X_VU1_XGKICK_CYCLE_EXACT as latched, 0 = cycle-exact, 1 = immediate) and the handler-side
+// vertex ceiling (-1 = PS2X_VU1_NATIVE_TEST_CEILING as latched, else clamped into [0, kMaxVertices]).
+void vu1native_socom2_forceXgkickImmediateForTest(int state)
+{
+    s_testXgkickImmediate.store(state < 0 ? -1 : (state != 0 ? 1 : 0), std::memory_order_relaxed);
+}
+
+void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling)
+{
+    s_testVertexCeiling.store(ceiling < 0 ? -1 : ceiling, std::memory_order_relaxed);
 }

@@ -753,8 +753,36 @@ void register_vu1_ops_tests()
         // dispatcher refuses the planted list before touching anything, the microcode (the E bit at pair 8) runs
         // as the fallback, and its cycles are charged to the refusal. The table is process-wide, so every case
         // reads a before/after delta.
+        // The dispatcher's two process-wide inputs are set by the rig, never read from the environment: the
+        // XGKICK model (ps2x_tests' main sets PS2X_VU1_XGKICK_CYCLE_EXACT=1 for the PATH1 tests, and under it the
+        // dispatcher refuses every list as xgkick_cycle_exact before its pre-scan) and the handler-side vertex
+        // ceiling. Each rig forces the default immediate model and the real ceiling, and gives both back to the
+        // knobs when it goes out of scope.
         struct RefusalRig
         {
+            static void forceXgkickImmediate(int state)   // -1 = the knob, 0 = cycle-exact, 1 = immediate
+            {
+                void vu1native_socom2_forceXgkickImmediateForTest(int state);
+                vu1native_socom2_forceXgkickImmediateForTest(state);
+            }
+            static void forceVertexCeiling(int32_t ceiling)   // -1 = the knob (PS2X_VU1_NATIVE_TEST_CEILING)
+            {
+                void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling);
+                vu1native_socom2_forceVertexCeilingForTest(ceiling);
+            }
+            RefusalRig()
+            {
+                forceXgkickImmediate(1);
+                forceVertexCeiling(256);
+            }
+            ~RefusalRig()
+            {
+                forceXgkickImmediate(-1);
+                forceVertexCeiling(-1);
+            }
+            RefusalRig(const RefusalRig &) = delete;
+            RefusalRig &operator=(const RefusalRig &) = delete;
+
             PS2Memory mem;
             GS gs;
             uint8_t *code = nullptr;
@@ -885,6 +913,26 @@ void register_vu1_ops_tests()
             t.Equals(Vu1Refusals::live().countFor(Vu1Refusals::Reason::UnknownCommand), unknownBefore, "unknown_command unmoved");
         });
 
+        tc.Run("native refusals: knob on, the cycle-exact XGKICK model counts xgkick_cycle_exact before the pre-scan", [](TestCase &t)
+        {
+            // What a run with PS2X_VU1_XGKICK_CYCLE_EXACT=1 (and ps2x_tests' own main) reads: every list the
+            // dispatcher is entered for is refused whole under xgkick_cycle_exact, whatever its commands.
+            RefusalRig rig;
+            RefusalRig::forceXgkickImmediate(0);
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.command(0u, 0x52u);   // a list the pre-scan would refuse as unknown_command
+            rig.command(1u, 0x42u);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::XgkickCycleExact, 0u);
+            const uint64_t total = Vu1Refusals::live().totalCount();
+            rig.run(0u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::XgkickCycleExact, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            t.Equals(after.n - before.n, 1ull, "xgkick_cycle_exact at entry 0x0 +1");
+            t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "and nothing else: the pre-scan never ran");
+            t.IsTrue(after.cycles > before.cycles, "the microcode's cycles are charged to it");
+        });
+
         tc.Run("native refusals: knob on, an entry pc the image has no native program at counts no_native_entry", [](TestCase &t)
         {
             RefusalRig rig;
@@ -1008,25 +1056,11 @@ void register_vu1_ops_tests()
 
         tc.Run("native refusals: knob on, a handler's ceiling clamp counts handler_clamp with its command", [](TestCase &t)
         {
-            // PS2X_VU1_NATIVE_TEST_CEILING lowers the handler-side vertex ceiling only (the pre-scan keeps 256), and
-            // the dispatcher reads it once, at the first handler clamp check in the process. No test before this one
-            // reaches a dispatcher handler (every other case here is refused by the pre-scan or runs a stub, and no
-            // other suite runs the dispatcher), so setting it here, when the environment has not, is in time.
-            if (std::getenv("PS2X_VU1_NATIVE_TEST_CEILING") == nullptr)
-            {
-#ifdef _WIN32
-                _putenv_s("PS2X_VU1_NATIVE_TEST_CEILING", "4");
-#else
-                setenv("PS2X_VU1_NATIVE_TEST_CEILING", "4", 1);
-#endif
-            }
-            const int ceiling = std::atoi(std::getenv("PS2X_VU1_NATIVE_TEST_CEILING"));
-            if (ceiling < 0 || ceiling >= 256)
-            {
-                t.IsTrue(true, "PS2X_VU1_NATIVE_TEST_CEILING is set at or above the real ceiling: no clamp to drive");
-                return;
-            }
+            // The handler-side vertex ceiling lowered to 4 through the rig (what PS2X_VU1_NATIVE_TEST_CEILING=4 does):
+            // the pre-scan keeps 256, so a 5-vertex header passes it and the 0x68 handler's clamp hands back.
+            const int32_t ceiling = 4;
             RefusalRig rig;
+            RefusalRig::forceVertexCeiling(ceiling);
             t.IsTrue(rig.init(), "rig should initialize");
             const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
             rig.pair(0x1b60u, lowerNop, upperNop | eBit);   // where the microcode resumes the clamped command
