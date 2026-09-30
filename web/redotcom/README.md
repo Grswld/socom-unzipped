@@ -127,6 +127,7 @@ Run from `web/redotcom/` (npm finds the workspace root, `web/`, itself; from `we
 | `npm run dev` | Vite at `http://localhost:5173` |
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `VIEWER_BASE=/redotcom/ npm run build` | the same, to be served under a path prefix (the site's, `/redotcom/`) |
+| `VITE_S2U_MULTIPLAYER=off npm run build` | the same, single player: multiplayer off in this build (the site's release build; see **Multiplayer off** below) |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 
 **For developers: `?devmode`.** Opened by its plain address the viewer reads only the visitor's own disc image: it shows
@@ -153,6 +154,16 @@ wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web spr
 (`web/shared/deploy/site/nginx.conf`, `location /redotcom/maps/`) serves the owner's extracted archives, mounted from
 the box (`docker-compose.yml`) and uploaded by `web/shared/deploy/site/deploy.sh maps`; the plan is to take it down
 and leave the site disc-only. The landing's credits say so (`web/landing/src/claims.test.ts` pins the wording).
+
+**Multiplayer off: `VITE_S2U_MULTIPLAYER=off`** (owner, 2026-09-30: redotcom goes out on the site "in its current
+state with multiplayer disabled"; `packages/viewer/src/multiplayer.ts`). One build-time switch, on unless it says `off`
+(`0`, `false` and `no` too): `npm run dev` and a plain build keep multiplayer; the site's release build
+(`web/shared/deploy/site/deploy.sh`) sets it off. **Multiplayer is off in that build**: the settings' **Online** section
+(the switch, its line, the name) is not in the page; the panel's kicker is the plain title `redotcom`, with no PLAYERS
+ONLINE count; the `/rooms` poll never starts, so the page asks nothing of `mp.socomunzipped.com` or of a local server;
+`online=`, `mp` and `server=` in the address are ignored and taken out of it; no match server is ever joined; and both
+Controls lists end with "Multiplayer · off in this build". The **offline match** (reCOM mode against yourself, the match
+server's room run in the page, `packages/viewer/src/net/loopback.ts`) stays: it is single player and needs no network.
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -213,7 +224,9 @@ order a player reaches for them -- **Mode** first, since it decides which sectio
 line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
 a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
 control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
-Weapons, General; the fly lists are Move and General).
+Weapons, General; the fly lists are Move and General). In a build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the
+site's; **Multiplayer off** under **Deploying**) there is no **Online** section, and both lists' General group ends with
+"Multiplayer · off in this build".
 
 The panel's first line is **PLAYERS ONLINE** (owner, 2026-09-29; `packages/viewer/src/playersOnline.ts`): the players --
 not the watchers, the Explore pages that only look on -- in the classic matches on the shared server
@@ -225,7 +238,8 @@ it is hidden (once at once when shown again, if one fell due), never two request
 while the server does not answer, and stops when the page goes. The request is a plain cross-origin GET with
 `cache: 'no-cache'`: the browser revalidates with the server's ETag, so an unchanged list is a 304. A build with
 `VITE_S2U_ROOMS=off` reads no shared list (the e2e run's, `playwright.config.ts`, while the shared server is not live);
-a URL there replaces the shared one.
+a URL there replaces the shared one. A build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the site's) has no count
+and no poll at all: the kicker is the plain title `redotcom`.
 
 The settings, in the panel's order:
 

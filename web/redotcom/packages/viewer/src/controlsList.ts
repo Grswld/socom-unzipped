@@ -29,9 +29,27 @@ export const GROUP_GENERAL = 'General';
 /**
  * The keyboard and mouse for a mode. `toggle` is whether `G` switches walk and fly: only in Play, and only with the
  * developer's `?devmode` (owner, 2026-09-29: the fly camera is not a player's in Play; `./flyAccess`). Without it
- * neither list names `G`.
+ * neither list names `G`. `multiplayer` false (a build with it off, `./multiplayer`) adds `MULTIPLAYER_OFF_ROW` to General.
  */
-export function controlGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
+export function controlGroups(mode: ControlMode, toggle: boolean, multiplayer = true): ControlGroup[] {
+  return withMultiplayerNote(keyGroups(mode, toggle), multiplayer);
+}
+
+/**
+ * The row a build with multiplayer off (`./multiplayer`, `VITE_S2U_MULTIPLAYER=off`) adds to both lists' General group:
+ * no key or button joins a match there, and the list says so rather than leave a player looking for one.
+ */
+export const MULTIPLAYER_OFF_ROW: ControlRow = { keys: 'Multiplayer', does: 'off in this build' };
+
+function withMultiplayerNote(groups: ControlGroup[], multiplayer: boolean): ControlGroup[] {
+  if (multiplayer) return groups;
+  const general = groups.find((g) => g.name === GROUP_GENERAL);
+  if (general) general.rows.push(MULTIPLAYER_OFF_ROW);
+  else groups.push({ name: GROUP_GENERAL, rows: [MULTIPLAYER_OFF_ROW] });
+  return groups;
+}
+
+function keyGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
   if (mode === 'fly') {
     return [
       {
@@ -102,8 +120,15 @@ export function controlGroups(mode: ControlMode, toggle: boolean): ControlGroup[
   ];
 }
 
-/** The controller for a mode, by the PS2 pad's names (the Gamepad API's standard layout, by position); Start as `G`. */
-export function padControlGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
+/**
+ * The controller for a mode, by the PS2 pad's names (the Gamepad API's standard layout, by position); Start as `G`.
+ * `multiplayer` false (a build with it off) adds `MULTIPLAYER_OFF_ROW`, as `controlGroups` does.
+ */
+export function padControlGroups(mode: ControlMode, toggle: boolean, multiplayer = true): ControlGroup[] {
+  return withMultiplayerNote(padGroups(mode, toggle), multiplayer);
+}
+
+function padGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
   if (mode === 'fly') {
     return [
       {

@@ -97,7 +97,8 @@
         matches (the local server's when Online is Local), read from its public `/rooms` about every 20 s while the page
         is visible. A dash while the count is not known (the server not answering), never 0. The system's kicker (upper
         case by its type); the figure is the system gold, tabular. Not live: a figure that ticks every 20 s would talk
-        over the page for a screen reader, and it is read with the panel.
+        over the page for a screen reader, and it is read with the panel. A build with multiplayer off
+        (`VITE_S2U_MULTIPLAYER=off`, the site's; `./src/multiplayer.ts`) makes it the plain title `redotcom`, no count.
       -->
       <p id="panel-kicker" class="s2u-kicker" title="Players in a match on the match server right now: the shared one, or this machine&rsquo;s when Online is Local. Watchers are not counted. Updates every 20 seconds.">Players online <span id="players-online">&ndash;</span></p>
       <!--
@@ -193,6 +194,8 @@
         "Remove the respawn option entirely for the time being. No mode selection."; `./src/rules.ts`).
         The match's name (W3.R12): at most 30 printable ASCII characters; blank takes the game's "Player" guest default.
         Sent to the match on change, remembered in this browser only (`s2u.mp.name`).
+        A build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the site's; `./src/multiplayer.ts`) takes this whole
+        section out of the page before anything reads it.
       -->
       <section class="section" id="mp-section" aria-labelledby="online-label">
         <h2 class="s2u-field__label" id="online-label">Online</h2>
