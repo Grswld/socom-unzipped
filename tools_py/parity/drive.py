@@ -426,11 +426,12 @@ def wait_capturer(out_dir, hwnd, step, period=1.0):
 
 
 def process_tree_pids(root_pid):
-    """`root_pid` first, then its descendants. launch() starts our exe through wrappers (`bash run.sh` -> `timeout`
-    -> socom2.exe on Windows, `timeout` -> the exe on Linux), so the window's owner is a descendant of the launched
-    process, not the process itself; PCSX2 is launched directly and owns its window. psutil where it is installed
-    (requirements.txt pins it on Windows), else /proc on Linux; a process that is gone, or a host with neither, is
-    just the root."""
+    """`root_pid` first, then its descendants. On Linux launch() starts `timeout` -> the exe, and the exe is a
+    descendant; PCSX2 is launched directly and owns its window. On Windows it is NOT: launch() runs `bash ./run.sh`,
+    and Git Bash's fork leaves `timeout.exe` -> socom2.exe with no Windows parent chain back to the launched bash
+    (probed 2026-09-30: `process_tree_pids(<bash pid>) == [<bash pid>]` with PING.EXE alive under timeout.exe) --
+    find_game_window's exe-name leg covers that. psutil where it is installed (requirements.txt pins it on
+    Windows), else /proc on Linux; a process that is gone, or a host with neither, is just the root."""
     pids = [root_pid]
     try:
         import psutil
@@ -462,14 +463,45 @@ def process_tree_pids(root_pid):
     return pids
 
 
-def find_game_window(title, launched_pid=None, tree=None):
+# A process's create_time is read back at a coarser grain than time.time(); the exe-name leg accepts a process
+# created this much before the launch stamp. The drive refuses to start while any socom2 is up, so nothing older
+# than the launch can carry the name anyway -- this is the second lock on that door, not the first.
+LAUNCH_CLOCK_SLACK_S = 1.0
+
+
+def launched_exe_pids(exe_name, since, slack=LAUNCH_CLOCK_SLACK_S):
+    """Pids of the processes whose image name is `exe_name` (case-insensitive) created at or after `since` (epoch
+    seconds, less `slack`), oldest first; [] without psutil. The Windows launch's game is found here: run.sh's
+    `timeout` orphans it from the launched bash (process_tree_pids)."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    want = exe_name.lower()
+    found = []
+    for proc in psutil.process_iter(["name", "create_time"]):
+        info = getattr(proc, "info", {}) or {}
+        name, created = info.get("name"), info.get("create_time")
+        if name and created is not None and name.lower() == want and created >= since - slack:
+            found.append((created, proc.pid))
+    return [pid for _created, pid in sorted(found)]
+
+
+def find_game_window(title, launched_pid=None, tree=None, exe_name=None, launched_at=None, exe_pids=None):
     """(hwnd, pid, how) of the game's window, or (None, None, how) while there is none yet.
 
-    `launched_pid` is the process drive.py started: the window is the first titled one owned by it or by one of
-    its descendants (`tree`, default process_tree_pids), and how is "pid". Issue #118: `winshot.find_window` alone
-    returns the FIRST visible window whose title contains the substring, and a browser tab on the site ends in the
-    same `-- SOCOM Unzipped` -- seven walks on 2026-09-30 captured the browser. Only a caller that did not launch
-    the game (launched_pid None: attach-only) falls back to the title alone, and how is then "title"."""
+    Issue #118: `winshot.find_window` alone returns the FIRST visible window whose title contains the substring,
+    and a browser tab on the site ends in the same `-- SOCOM Unzipped` -- seven walks on 2026-09-30 captured the
+    browser. So when drive.py launched the game (`launched_pid`), every lookup is restricted to a process that is
+    the game's:
+
+    1. the launched process or one of its descendants (`tree`, default process_tree_pids): how "pid";
+    2. else, with `exe_name` and `launched_at`, a process whose image is the runtime exe's name created after the
+       launch (`exe_pids`, default launched_exe_pids): how "exe". This is the Windows launch, where run.sh's
+       `timeout` leaves the exe with no parent chain to the launched bash. A browser is never either.
+
+    Nothing found is (None, None, "pid") -- never a bare title match. Only a caller that did not launch the game
+    (launched_pid None: attach-only) uses the title alone, and how is then "title"."""
     if launched_pid is None:
         hwnd = winshot.find_window(title)
         return hwnd, (winshot.window_pid(hwnd) if hwnd else None), "title"
@@ -477,6 +509,11 @@ def find_game_window(title, launched_pid=None, tree=None):
         hwnd = winshot.find_window(title, pid=pid)
         if hwnd:
             return hwnd, pid, "pid"
+    if exe_name and launched_at is not None:
+        for pid in (exe_pids or launched_exe_pids)(exe_name, launched_at):
+            hwnd = winshot.find_window(title, pid=pid)
+            if hwnd:
+                return hwnd, pid, "exe"
     return None, None, "pid"
 
 
@@ -520,6 +557,7 @@ def main():
                              "refusing to start a second game instance")
     os.makedirs(a.out, exist_ok=True)
     steps = parse(open(a.script).read())
+    launched_at = time.time()
     proc = launch(a.target, a.seconds)
     t0 = time.time()
     # Every step line's t= is measured from this t0, which falls after the process checks and the launch -- 1.3-1.5 s
@@ -529,14 +567,18 @@ def main():
     # The driver launched the game, so the window is looked up by the launched process tree, never by the title
     # alone: a browser tab on the site carries the same title (issue #118).
     title = keys.WINDOW_TITLES[a.target]
+    # Our exe on Windows is orphaned from the launched bash (find_game_window's leg 2); PCSX2 is the launched process.
+    lookup = dict(launched_pid=proc.pid, launched_at=launched_at,
+                  exe_name=os.path.basename(hostplatform.runtime_exe()) if a.target == "ours" else None)
     hwnd = pid = None
     how = "pid"
     while hwnd is None and time.time() - t0 < 60:
-        hwnd, pid, how = find_game_window(title, launched_pid=proc.pid)
+        hwnd, pid, how = find_game_window(title, **lookup)
         time.sleep(0.5)
     if hwnd is None:
         proc.terminate()
-        raise SystemExit(f"game window not found (no window titled {title!r} in the launched process tree)")
+        raise SystemExit(f"game window not found (no window titled {title!r} owned by the launched process tree "
+                         f"or by a {lookup['exe_name'] or '(no exe name)'} started after the launch)")
     winshot.keep_on_top(hwnd)
     manifest = []
     # The window can be found while it is still being created (empty client area); wait it out.
@@ -546,7 +588,7 @@ def main():
             last = frame(hwnd)
         except RuntimeError:
             time.sleep(0.5)
-            again = find_game_window(title, launched_pid=proc.pid)
+            again = find_game_window(title, **lookup)
             if again[0] is not None:
                 hwnd, pid, how = again
     if last is None:
