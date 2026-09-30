@@ -399,6 +399,9 @@ describe('the page: the toast and the layout table', () => {
       document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
       vi.useFakeTimers();
       ui = new Ui();
+      // The developer's page (`?devmode`), whose lists name the walk / fly toggle (G, Start); a player's page names
+      // neither (owner, 2026-09-29; pinned in flyAccess.test.ts).
+      ui.setFlyToggle(true);
     });
     afterEach(() => { vi.useRealTimers(); });
 
