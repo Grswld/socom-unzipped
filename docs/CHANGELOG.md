@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-300 merges (84 on the first-parent line, 216 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+301 merges (85 on the first-parent line, 216 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-75 merges.
+76 merges.
 
+- 2026-09-30 `e4dbc152` the attach tests patch the host platform (Linux CI red on 32e265b4, issue #118) [agent/s17-i118-linux]
 - 2026-09-30 `263b941d` drive.py finds the game by pid then exe name, never a browser tab (issue #118) [agent/s17-i118-window]
 - 2026-09-29 `44fb2d90` N1, a native VU1 program at entry 0x33c8 behind PS2X_VU1_NATIVE_33C8 (Sprint 17 F) [agent/s17-n1-33c8]
 - 2026-09-29 `f5ce378b` the refusal tests force the dispatcher's XGKICK model (CI red on a0709bca) [agent/s17-refusal-tests]
