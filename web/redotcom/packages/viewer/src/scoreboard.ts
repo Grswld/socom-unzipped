@@ -104,14 +104,20 @@ type Rgba4 = [number, number, number, number];
  * The scoreboard's quads (layer 1 of the HUD pass) on a frame: pure. `sizes` are the HUD's bitmaps; `white` the
  * untextured rects' bitmap. Centred on the frame, scaled by height / 448 like the HUD. `lift` raises all of it by that
  * many frame pixels: the Modern presentation's `MODERN_SCOREBOARD_LIFT`, 0 (the game's place) for the PS2 one.
+ * `scale` shrinks all of it -- panel, bars, rows, strings, GAME DETAILS, SPECTATORS -- uniformly about its (lifted)
+ * top-centre, (320, SCORE_TOP - lift): the Modern presentation's `modernScoreboardFit` (`./hud`), 1 for the PS2 one
+ * (whose numbers then take exactly the unscaled path, bit for bit).
  */
 export function scoreboardLayout(
   frame: { width: number; height: number }, info: ScoreboardInfo, sizes: Record<string, { width: number; height: number }>,
-  lift = 0,
+  lift = 0, scale = 1,
 ): { quads: HudQuad[]; tris: HudTri[] } {
   const s = frame.height / 448;
   const tris: HudTri[] = [];
-  const X = (x: number): number => frame.width / 2 + (x - 320) * s, Y = (y: number): number => (y - lift) * s;
+  const top = SCORE_TOP - lift;
+  const X = scale === 1 ? (x: number): number => frame.width / 2 + (x - 320) * s
+    : (x: number): number => frame.width / 2 + (x - 320) * scale * s;
+  const Y = scale === 1 ? (y: number): number => (y - lift) * s : (y: number): number => (top + (y - SCORE_TOP) * scale) * s;
   const quads: HudQuad[] = [];
   const L = SCORE_LAYOUT;
   const panel = sizes['newweapnbkrnd.tif'];

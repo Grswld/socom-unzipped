@@ -9,7 +9,7 @@ import { segmentHit, type Grid } from '@s2u/scene';
 import type { HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
-import { DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
+import { DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, SCORE_TOP, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
 import type { Presentation } from './renderer';
 import { roundScreenLayout, type RoundScreen } from './roundScreens';
 import { roundBanner } from './net/rules';
@@ -501,7 +501,8 @@ export function hudLayout(
  * The pass's quads and shapes on a frame, pure: the in-round HUD less what the tactical map, the scoreboard or a round
  * screen hides, then the extra layer -- a round screen (over everything, replacing the scoreboard and the tactical
  * map), else the tactical map's overlay and the scoreboard. `presentation` places the scoreboard: the Modern one
- * (`'native'`) raises it by `MODERN_SCOREBOARD_LIFT`; the PS2 one keeps the game's place.
+ * (`'native'`) raises it by `MODERN_SCOREBOARD_LIFT` and shrinks it clear of the bottom HUD (`modernScoreboardFit`);
+ * the PS2 one keeps the game's place.
  */
 export function hudPass(
   frame: { width: number; height: number }, model: HudModel, sizes: Record<string, { width: number; height: number }>,
@@ -521,14 +522,82 @@ export function hudPass(
   return { quads: [...base, ...(tac?.quads ?? []), ...(board?.quads ?? [])], tris: [...(tac?.tris ?? []), ...(board?.tris ?? [])] };
 }
 
-/** The scoreboard's quads and shapes for the model, in the presentation's place (`MODERN_SCOREBOARD_LIFT`). */
+/**
+ * The Modern board's clearance over the bottom HUD, in the 640x448 frame's pixels (owner ruling 2026-09-29: "you can
+ * just make it a bit smaller instead of moving the top chat"): its bottom, and its sides where it stands beside an
+ * element rather than over it, keep this far from every bottom-HUD element still up while it shows.
+ */
+export const MODERN_SCOREBOARD_MARGIN = 4;
+/**
+ * The smallest the Modern board is drawn (legibility): its rows' 0.8 text is then 0.6 of the font, the smallest the HUD
+ * writes anywhere is the stance word's 0.765. An aspect needing less is drawn at this and reported (`fits` false).
+ */
+export const MODERN_SCOREBOARD_MIN_SCALE = 0.75;
+/** The bottom HUD still drawn while the board is up (all but `SCOREBOARD_HIDES`): what the Modern board must clear. */
+export const SCOREBOARD_KEEPS_BOTTOM: readonly HudElement[] = ['bar', 'name', 'box', 'range', 'stance', 'zoom'];
+
+/** One bottom-HUD element's footprint on a frame (frame pixels): its sides and its top edge. */
+export interface BottomEdge { element: HudElement; x0: number; x1: number; top: number }
+
+/**
+ * The bottom HUD's footprint on a frame while the board is up: each of `SCOREBOARD_KEEPS_BOTTOM` at its widest -- the
+ * health bar, the name on it, the timer line's box, the range ("999m"), the stance word (the widest of the three), the
+ * zoom readout ("ZOOM: 10.0x") -- from `hudLayout`'s own anchors (all of them the right edge but the zoom's left edge).
+ */
+export function bottomHudEdges(frame: { width: number; height: number }, sizes: Record<string, { width: number; height: number }>): BottomEdge[] {
+  const edges = new Map<HudElement, BottomEdge>();
+  for (const stance of ['stand', 'crouch', 'prone'] as const) {
+    const probe: HudModel = { ...DEFAULT_MODEL, name: DEFAULT_PLAYER, range: 999, zoom: 10, stance };
+    const { rects } = hudLayout(frame, probe, sizes, { fade: 1, stance: 1, pulse: 0 });
+    for (const element of SCOREBOARD_KEEPS_BOTTOM) {
+      const r = rects[element];
+      if (!r) continue;
+      const e = edges.get(element), x0 = r.x, x1 = r.x + r.width, top = r.y;
+      edges.set(element, e ? { element, x0: Math.min(e.x0, x0), x1: Math.max(e.x1, x1), top: Math.min(e.top, top) } : { element, x0, x1, top });
+    }
+  }
+  return [...edges.values()];
+}
+
+/**
+ * The Modern board's place on a frame: the lift, and the uniform scale about its top-centre that brings its bottom
+ * `MODERN_SCOREBOARD_MARGIN` clear of every bottom-HUD element it would stand over (an element it clears sideways by
+ * that margin does not bind it), at most 1, at least `MODERN_SCOREBOARD_MIN_SCALE`; `fits` false when even the minimum
+ * does not clear. The board's top stays at the lift's place (100), under the message window, whatever the scale.
+ */
+export function modernScoreboardFit(
+  frame: { width: number; height: number }, sizes: Record<string, { width: number; height: number }>,
+): { lift: number; scale: number; fits: boolean; need: number; edges: BottomEdge[]; board: { x0: number; x1: number; top: number; bottom: number } } {
+  const s = frame.height / PS2_H, m = MODERN_SCOREBOARD_MARGIN * s, cx = frame.width / 2;
+  const lift = MODERN_SCOREBOARD_LIFT;
+  const full = scoreboardLayout(frame, { player: DEFAULT_PLAYER, game: 'GAME', type: 'TYPE' }, sizes, lift);
+  const xs = [...full.quads.flatMap((q) => [q.x - q.w / 2, q.x + q.w / 2]), ...full.tris.flatMap((t) => [t.p[0], t.p[2], t.p[4]])];
+  const ys = [...full.quads.flatMap((q) => [q.y - q.h / 2, q.y + q.h / 2]), ...full.tris.flatMap((t) => [t.p[1], t.p[3], t.p[5]])];
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), bottom = Math.max(...ys), top = (SCORE_TOP - lift) * s;
+  const edges = bottomHudEdges(frame, sizes);
+  let need = 1;
+  for (const e of edges) {
+    const kv = (e.top - m - top) / (bottom - top);
+    const right = e.x0 - m - cx, left = cx - e.x1 - m;
+    const kh = Math.max(right > 0 ? right / (x1 - cx) : 0, left > 0 ? left / (cx - x0) : 0);
+    need = Math.min(need, Math.max(kv, kh));
+  }
+  const scale = Math.max(MODERN_SCOREBOARD_MIN_SCALE, need);
+  return { lift, scale, fits: need >= MODERN_SCOREBOARD_MIN_SCALE, need, edges, board: { x0, x1, top, bottom } };
+}
+
+/**
+ * The scoreboard's quads and shapes for the model, in the presentation's place: the Modern one lifted
+ * (`MODERN_SCOREBOARD_LIFT`) and scaled to clear the bottom HUD (`modernScoreboardFit`); the PS2 one the game's.
+ */
 function boardLayout(
   frame: { width: number; height: number }, model: HudModel, sizes: Record<string, { width: number; height: number }>,
   presentation: Presentation,
 ): ReturnType<typeof scoreboardLayout> {
+  const fit = presentation === 'native' ? modernScoreboardFit(frame, sizes) : { lift: 0, scale: 1 };
   return scoreboardLayout(frame, { player: model.name || DEFAULT_PLAYER, game: model.game.name, type: model.game.type,
     ...(model.scoreRows.rows ? { rows: model.scoreRows.rows, spectators: model.scoreRows.spectators, wins: model.scoreRows.wins } : {}) }, sizes,
-    presentation === 'native' ? MODERN_SCOREBOARD_LIFT : 0);
+    fit.lift, fit.scale);
 }
 
 /** What `Hud.feed` reads each frame. */
