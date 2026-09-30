@@ -1,10 +1,12 @@
 /**
  * What the page offers (owner, 2026-09-28; the settings toggle, 2026-09-29). Playing as a SEAL -- walk mode, the body,
  * the rifle, the HUD, the Sound and Mouse look sections, the touch stance and fire buttons -- is the settings' Mode
- * switch's **Play** (Explore / Play, remembered in this browser under `PLAY_KEY`). The address's `mode=play` /
- * `mode=explore` beats the memory, and the old `?redotcom` is read as `mode=play` when no `mode` is given (`./shareUrl`
- * `readShare`, which `./main` reads; `?mode=explore&redotcom` is Explore). On Explore the page is the map viewer alone:
- * `PlayUi` takes the play's markup out after the page is wired and puts it back when Play is chosen, without a reload.
+ * switch's **Play** (Explore / Play, remembered in this browser under `PLAY_KEY`). The Mode switch is on every page
+ * load: there is no feature flag in front of it (owner, 2026-09-29: "&redotcom can die now. The mode replaces it"; an
+ * old link's `redotcom` has no effect and leaves the address, `./shareUrl` `RETIRED_PARAMS`). The address's
+ * `mode=play` / `mode=explore` beats the memory, and Explore is the default. On Explore the page is the map viewer
+ * alone: `PlayUi` takes the play's markup out after the page is wired and puts it back when Play is chosen, without a
+ * reload.
  */
 
 /** Where the settings switch remembers the mode: '1' reCOM, '0' the map viewer. */

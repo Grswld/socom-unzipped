@@ -23,7 +23,7 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto('/?redotcom&fly&devmode');
+  await page.goto('/?mode=play&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -102,7 +102,7 @@ test('a night map: the zoom steps third person -> night vision -> scope, the gog
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto('/?redotcom&fly&devmode');
+  await page.goto('/?mode=play&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP1.ZDB');          // NightMission 1 (research 84 section 11)

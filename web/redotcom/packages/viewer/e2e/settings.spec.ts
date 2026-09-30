@@ -3,7 +3,8 @@ import type {} from '../src/hook';
 
 /**
  * The Mode switch (owner, 2026-09-29): Explore / Play in the settings, the picture switch's markup, switched at run
- * time both ways without a reload (`../src/features.ts` `PlayUi`), remembered in this browser, `?redotcom` forcing it on.
+ * time both ways without a reload (`../src/features.ts` `PlayUi`), remembered in this browser, `mode=` in the address
+ * over the memory. It is on every page: the old `?redotcom` flag is gone (owner, 2026-09-29) and has no effect.
  * A clean context but for the panel's "open" (the switch is in it), so no remembered mode leaks in from another spec.
  */
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -24,7 +25,7 @@ test('a first visit is the map viewer; reCOM comes on and off at run time and is
   await recom(page, 'on').click();
   await expect(recom(page, 'on')).toHaveAttribute('aria-pressed', 'true');
   for (const id of ['mode', 'sound-section', 'look-section']) await expect(page.locator(`#${id}`)).toHaveCount(1);
-  // reCOM opens on foot, as a ?redotcom visit does, once the SEAL's clips are in.
+  // reCOM opens on foot, as a mode=play visit does, once the SEAL's clips are in.
   await expect.poll(() => page.evaluate(() => window.__viewer.mode()), { timeout: 60_000 }).toBe('walk');
   await expect(page.locator('#mode [data-mode="walk"]')).toHaveAttribute('aria-pressed', 'true');
   expect(await page.evaluate(() => localStorage.getItem('s2u.viewer.recom'))).toBe('1');
@@ -50,14 +51,13 @@ test('a first visit is the map viewer; reCOM comes on and off at run time and is
   await expect(page.locator('#mode')).toHaveCount(1);
 });
 
-test('?redotcom forces reCOM on over a remembered Explore, is rewritten to mode=play, and the switch writes mode', async ({ page }) => {
+test('mode=play turns reCOM on over a remembered Explore, and the switch writes mode', async ({ page }) => {
   await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('s2u.viewer.recom', '0'); sessionStorage.setItem('seeded', '1'); } });
-  await open(page, '?redotcom&fly&devmode&map=MP2');
+  await open(page, '?mode=play&fly&devmode&map=MP2');
   await expect(recom(page, 'on')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#mode')).toHaveCount(1);
-  expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');           // &fly: the free camera at the start
+  await expect(page.locator('#mode')).toHaveCount(1);                              // devmode: the developer's Fly / Walk switch
+  expect(await page.evaluate(() => window.__viewer.mode())).toBe('fly');           // &fly (with devmode): the free camera at the start
   let url = new URL(page.url());
-  expect(url.searchParams.has('redotcom')).toBe(false);                            // the alias, rewritten
   expect(url.searchParams.get('mode')).toBe('play');
   await recom(page, 'off').click();
   await expect(page.locator('#mode')).toHaveCount(0);
@@ -65,4 +65,15 @@ test('?redotcom forces reCOM on over a remembered Explore, is rewritten to mode=
   expect(url.searchParams.get('mode')).toBe('explore');
   expect(url.searchParams.has('devmode')).toBe(true);
   expect(url.search).toMatch(/[?&]fly(&|$)/);
+});
+
+test('the old ?redotcom has no effect: a remembered Explore stays Explore, the Mode switch is there, and redotcom leaves the address', async ({ page }) => {
+  await page.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('s2u.viewer.recom', '0'); sessionStorage.setItem('seeded', '1'); } });
+  await open(page, '?redotcom&devmode&map=MP2');
+  await expect(recom(page, 'off')).toHaveAttribute('aria-pressed', 'true');
+  await expect(recom(page, 'on')).toHaveCount(1);
+  await expect(page.locator('#sound-section')).toHaveCount(0);
+  const url = new URL(page.url());
+  expect(url.searchParams.has('redotcom')).toBe(false);
+  expect(url.searchParams.get('mode')).toBe('explore');
 });

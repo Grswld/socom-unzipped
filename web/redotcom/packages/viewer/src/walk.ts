@@ -54,6 +54,8 @@ export class WalkMode {
   private spawn: [number, number, number] | null = null;
   private walking = false;
   private bound: EventTarget | null = null;
+  /** Whether `G` switches walk and fly (owner, 2026-09-29: off in Play for a player; the developer's `?devmode` keeps it). */
+  modeKey = true;
   /** The stance, kept here so a new map's mover takes it on (`setGround` makes a new `Walker`). */
   private stance_: Stance = 'stand';
   /** The game's camera over the mover (W2.1), made with it. */
@@ -600,6 +602,7 @@ export class WalkMode {
   private readonly onKey = (e: KeyboardEvent): void => {
     if (!['KeyG', 'KeyC', 'Space'].includes(e.code) || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if (e.code !== 'KeyG' && !this.walking) return;          // in fly mode Space stays the camera's "up"
+    if (e.code === 'KeyG' && !this.modeKey) return;           // the fly camera is not a player's in Play
     const target = e.target;
     if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
     e.preventDefault();

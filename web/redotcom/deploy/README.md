@@ -82,7 +82,7 @@ On the host, in `~/socom-mp/redotcom/deploy` (`~/socom-mp/deploy` before 2026-09
 
 ## Joining
 
-The page picks the server from its address: `https://<viewer>/?redotcom&mp&server=wss://mp.example.com/ws`.
+The page picks the server from its address: `https://<viewer>/?mode=play&mp&server=wss://mp.example.com/ws`.
 
 ## Behind a Cloudflare tunnel
 

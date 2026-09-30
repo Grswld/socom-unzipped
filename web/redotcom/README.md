@@ -24,11 +24,12 @@ An agent working on the recomp can skip this directory entirely.
 - **reCOM mode.** Walk the maps as a SEAL: the game's third-person camera and movement law, the SEAL's own model and
   motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
   accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
-  no first person (the owner's ruling). reCOM mode is the settings' **Mode** switch (`mode=play` in the address,
-  remembered; the older `?redotcom` still works, read as `mode=play`) and opens on foot. Offline it plays a match on its
-  own -- the match server's room run in the page ([Offline match](#offline-match)); `&nomatch` keeps the free walk.
-- **Multiplayer.** Respawn and classic matches of up to 16 players plus spectators on a Node server, one match per map
-  and rules, the round's damage, death, respawn, teams, scoring and scoreboard read from the game
+  no first person (the owner's ruling). reCOM mode is the settings' **Mode** switch's **Play**, on every page, and opens
+  on foot. Offline it plays a match on its own -- the match server's room run in the page
+  ([Offline match](#offline-match)); `&nomatch` keeps the free walk.
+- **Multiplayer.** Classic matches (respawn off, the game's create-game default: 11 rounds, first to 6) of up to 16
+  players plus spectators on a Node server, one match per map, the round's damage, death, teams, scoring and scoreboard
+  read from the game
   ([Multiplayer server](#multiplayer-server-web-sprint-3)).
 - **A worked example of recreating a PS2 game in the browser** from its own data: see
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for which parts are general PS2 and where to start with another game.
@@ -132,7 +133,7 @@ Run from `web/redotcom/` (npm finds the workspace root, `web/`, itself; from `we
 the disc page and makes no request under `maps/`. Add `?devmode` (its presence is enough) and it reads the served,
 extracted tree from `public/maps/` as it always did, falling back to the disc page when `maps/index.json` does not
 answer (`packages/viewer/src/source.ts`). The e2e specs and the measuring tools under `tools/` add it to their URLs; do
-the same by hand, e.g. `http://localhost:5173/?map=MP2&redotcom&devmode`. It is not shown anywhere in the page.
+the same by hand, e.g. `http://localhost:5173/?map=MP2&mode=play&devmode`. It is not shown anywhere in the page.
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
 | `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §11) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
@@ -169,7 +170,7 @@ Everything below is relative to `web/redotcom/`.
 | `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`), the zAnim effect commands, the thrown casing's flight, the particle sources and the effect models (`effects.ts`, `effectMotion.ts`, `effectParticles.ts`, `effectModels.ts`) |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
-| `packages/server` | the multiplayer match server (Node, `ws`): one room per map and rules (respawn, classic; the two share the map's parse) running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
+| `packages/server` | the multiplayer match server (Node, `ws`): one classic room per map (the respawn rooms are switched off, `RESPAWN_RULES_ENABLED`) running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
 | `tools/` | the extractor, the dump/export tools, the comparison instruments, the release sweep, the bot load test, `build-corpus.ts` |
 | `docs/research/`, `docs/corpus/` | the research notes (71-91) and the AI-readable corpus built from them (`llms.txt`, `records.jsonl`, `sections.jsonl`) |
 | `deploy/` | the multiplayer server's Docker image, Compose with Caddy, systemd unit and `deploy.sh` |
@@ -190,39 +191,55 @@ reCOM mode the page also has walk mode, the SEAL's body, the rifle, the HUD, the
 touch stance and fire buttons. In the map viewer none of that is rendered, bound or answered: no `G`, no Start, no Fly /
 Walk switch, no walk in the Controls popover, and the debug hook's `setMode('walk')` returns false. The switch works at
 run time, both ways, without a reload (the disc you opened stays open), and is remembered in this browser
-(`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and the old `?redotcom` is
-read as `mode=play` and rewritten to it (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
-`viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready;
-add `&fly` to open on the free camera instead (the e2e specs and the measuring tools do, and enter the walk themselves).
+(`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that for the visit, and Explore is the default.
+The switch is on every page load: no flag gates it (owner, 2026-09-29: "&redotcom can die now. The mode replaces it"),
+and an old link's `redotcom` has no effect and is taken out of the address (see **Shareable links** below; `viewer/src/features.ts` `PlayUi`,
+`viewer/src/shareUrl.ts`). reCOM mode **opens on foot** (owner, 2026-09-29): the map starts walking once its body and clips are ready.
+
+**The fly camera is Explore's** (owner, 2026-09-29: "Block the fly automatically and disable it while in play mode";
+`viewer/src/flyAccess.ts`). In Play a player cannot reach it: there is no Fly / Walk switch, `G` and the pad's Start do
+not toggle, the Controls lists name no toggle, the debug hook's `setMode('fly')` returns false, and a `fly` in the
+address is ignored and taken out of it. The developer's `?devmode` keeps all of that: `&fly&devmode` opens Play on the
+free camera (the e2e specs and the measuring tools do, and enter the walk themselves), and `G`, Start and the switch
+toggle walk and fly as before.
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
-**Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
-the choice is remembered. A failed load unfolds the panel so the error is seen.
+**Controls** and **GitHub** sit together at the right of the bar in that order (owner, 2026-09-29), one size; the cog
+folds the panel away and back, and the choice is remembered. A failed load unfolds the panel so the error is seen.
 
-In reCOM mode the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
-`setMuted`) and a **Mouse look** section (raw, the default, or the game's stick curve -- both kept by the owner's ruling of
-2026-09-29 -- a sensitivity slider, invert pitch, and equal
-pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
-`s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover's two
-lists are grouped the same way (Move, Combat, Stance & action, Weapons, General; the fly lists are Move and General).
+The panel (polished 2026-09-29 at the owner's ask, for usability and readability) is one column of sections in the
+order a player reaches for them -- **Mode** first, since it decides which sections follow, then **Map**, **Picture**,
+**Mouse look** and **Sound** (Play's own), **Online**, and the developer's **Advanced** -- each a heading and at most a
+line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
+a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
+control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
+Weapons, General; the fly lists are Move and General). The settings, in the panel's order:
+
+| setting | choices (default first) | in the address | remembered as |
+|---|---|---|---|
+| **Mode** | Explore (free camera) · Play (as a SEAL) | `mode=explore` · `mode=play` | `s2u.viewer.recom` |
+| **Map** | the picker; or open your own disc (.iso) | `map=MP2` | `s2u.viewer.lastMap` |
+| **Picture** | Modern (fits your screen) · PS2 (640x448 on 4:3) | `view=modern` · `view=ps2` | `s2u.viewer.look` |
+| **Mouse look** (Play) | Raw · Stick curve; sensitivity 0.05-4x (1x); invert up / down (off); equal up / down (off) | -- | `s2u.viewer.mouseLook` |
+| **Sound** (Play) | volume 0-100% (100%); mute (off) | -- | `s2u.viewer.volume`, `s2u.viewer.muted` |
+| **Online** | Off · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`; offered only on a local page) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
+| **Your name** (Online) | up to 30 characters; blank is the game's `Player####` guest name | -- | `s2u.mp.name` |
+| **Advanced** | the developer's diagnostic switches, lighting and fog | -- | not remembered |
+
+The Sound, Mouse look and name choices are kept in this browser only (`localStorage`) and start from the defaults on a
+first visit. The fold of the panel itself is remembered (`s2u.viewer.panelOpen`), and so is the Controls tab
+(`s2u.viewer.controlsTab`).
 
 **Shareable links** (owner, 2026-09-29; `viewer/src/shareUrl.ts`). The page's state lives in its address and follows every
 change (`history.replaceState`: no reload, no history entries), so copying the address bar gives a friend the same setup:
 `mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`, `rules=respawn`
 or `rules=classic`. On load the
 address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
-written in. A value the page does not know is ignored. `devmode`, `fly`, `mp`, `server=`, `lag=` and `loss=` work as
-before and pass through untouched (never added); `server=` (or `mp`) beats `online=` and implies it -- until the visitor
-picks an Online choice, which takes `server=` and `mp` out of the address (`onlineChoiceAddress`). A link with
-`online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with `mode=explore`.
-
-| setting | choices | in the address | remembered as |
-|---|---|---|---|
-| **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` (`?redotcom` read as it) | `s2u.viewer.recom` |
-| **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
-| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
-| **Rules** | Respawn (the default) · Classic ([Playing a match](#playing-a-match)) | `rules=respawn` · `rules=classic` | `s2u.viewer.rules` |
-| map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
+written in. A value the page does not know is ignored. `devmode`, `mp`, `server=`, `lag=` and `loss=` work as before
+and pass through untouched (never added), and so does `fly` with `devmode` (without it `fly` is ignored and taken out);
+`server=` (or `mp`) beats `online=` and implies it. The retired `redotcom` and `rules=` have no effect and are taken out.
+A link with `online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with
+`mode=explore`.
 
 **Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
 (Space follows the next player, V the free camera) and never takes a player's place. The line under it says what the
@@ -230,7 +247,12 @@ connection is doing -- connecting, online and the number of players, or "server 
 8 ... 60 s to a server never reached; 1, 2, 4 ... 10 s after a drop) -- and a toast says when it comes up or goes
 away. `&mp` and `&server=` in the address still override it (`viewer/src/online.ts`).
 
-### Flying (always)
+**Local is offered only on a local page** (owner, 2026-09-29): a page served from `localhost`, `127.0.0.1`, `[::1]` or a
+`.localhost` name shows Off · Shared · Local; anywhere else -- the deployed site -- the Local option is not rendered at
+all, the switch shows Off · Shared, and an `online=local` link or a remembered Local falls back to Off (written back
+into the address as `online=off`).
+
+### Flying (Explore; in Play only with `?devmode`)
 
 | input | what it does |
 |---|---|
@@ -250,7 +272,7 @@ away. `&mp` and `&server=` in the address still override it (`viewer/src/online.
 
 | input | what it does |
 |---|---|
-| `G` | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **Fly / Walk** switch (the Modern / PS2 switch's own markup) mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
+| `G` (`?devmode` only) | walk and fly. Walk stands the SEAL on the game's own collision hull, sliding along walls at a body radius of 3.5, seen through the game's own third-person camera; the panel's **Fly / Walk** switch (the Modern / PS2 switch's own markup) mirrors it, and entering walk drops you onto the floor under the camera, or onto spawn A |
 | `W`/`S`, `A`/`D` | run and back up, strafe, at the game's speeds; a touch stick pushed part way is a part stick, as a pad's is |
 | mouse (captured) | turns the SEAL (yaw) and tilts the camera (pitch, between the game's aim limits) |
 | `Space` | jump |
@@ -282,7 +304,7 @@ neither the owner nor the repository documents (`viewer/src/gamepad.ts`, `PAD_LA
 | Triangle | stance: a tap toggles crouch, a hold goes prone, a tap from prone stands up | down |
 | L1 | the rifle (the game's SwapWeapon1); no held aim, no first person | — |
 | d-pad Up / Down | zoom in / out, a step a press (the scope; research 84) | — |
-| Start | fly (as `G`) | walk (as `G`) |
+| Start (`?devmode` only) | fly (as `G`) | walk (as `G`) |
 | L3 | fire mode (research 84 section 6) | — |
 | R3 | reload, as `R` (the owner's ruling, 2026-09-29, and the game's own: `controller.rdr`'s Default binds R3 to Reload) | — |
 | Circle | — (the game's TeamCommand, which the viewer does not have) | boost (on R3 until R3 became the reload) |
@@ -370,8 +392,8 @@ for a landscape lock. The canvas is `100dvh`, so the picture's centre is the scr
 showing, and the pixel ratio starts at 1.5 on a coarse pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it
 down to 0.75, frames under 12 ms step it back up.
 
-Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Controls,
-Settings and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
+Everything the viewer draws over the map goes in one strip along the top: the site bar (the back link, then Settings,
+Controls and GitHub, one size, each its mark alone under 480px), with the panel or the Controls popover beneath it. The
 panel starts folded everywhere, leaving only the bar (a remembered choice still wins), its body scrolls inside itself;
 on a phone held sideways, open, it docks in the top middle band -- right of the fullscreen button, left of the pill row
 under the compass, above the SHOOT / JUMP cluster -- so no touch button is under it (it lies over the stick zones, open
@@ -678,8 +700,8 @@ code and documentation only, never the game or its data. CI for this directory i
 
 ## Multiplayer server (web sprint 3)
 
-`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a match per map and rules (a
-timed respawn match, or classic; the two rooms share one parse of the map), HTTP `/health`, `/metrics` (host only) and
+`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a classic match per map, HTTP
+`/health`, `/metrics` (host only) and
 `/rooms` (each room's map, rules, players and round: anonymous counts, public by the owner's ruling) and a WebSocket
 on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 `READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
@@ -688,11 +710,14 @@ on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
 SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS, RULES, TRUST_PROXY
 ```
 
-`RULES` (respawn by default) is the rules of a join that names none; `MAX_ROUNDS` is the game's `mp_max_rounds` (11,
-the create-game default): classic's match length and the count the round-start banner shows under both rules.
+**Classic only** (owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode
+selection."). Every room is classic: a join asking for respawn, or naming no rules, joins the map's classic room, and
+`RULES` (classic by default) is served classic even when set to `respawn`. The respawn ruleset's code stays in the tree
+behind one switch, `RESPAWN_RULES_ENABLED` in `packages/viewer/src/net/protocol.ts`; its tests turn it on. `MAX_ROUNDS`
+is the game's `mp_max_rounds` (11, the create-game default): the match length and the count the round-start banner shows.
 
 Join from the viewer with Settings > Online > **Local** (this server on its default port), or with
-`?redotcom&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
+`?mode=play&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
 as a spectator outside the queue: never promoted, sharing the spectators' room with it.
 
 To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim Node 22 image, build context `web/`), a
@@ -702,33 +727,27 @@ time and is never part of an image.
 
 ### Playing a match
 
-Choose Settings > Online (Shared or Local) in reCOM mode, or open the viewer with `?redotcom&mp` (the server at this
-page's host, `/ws`) or `?redotcom&mp&server=wss://host/ws`, on the map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
+Choose Settings > Online (Shared, or Local on a local page) in reCOM mode, or open the viewer with `?mode=play&mp` (the
+server at this page's host, `/ws`) or `?mode=play&mp&server=wss://host/ws`, on the map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
 §7); past 16 players it spectates, and is moved in, first come first served, when a place frees up.
 
 | key | in the match |
 |---|---|
 | the walk's keys | as in single play: the page predicts its own SEAL and the server agrees (W3.R8) |
-| X | respawn, once "Press the X button to respawn." shows (5 s dead; the press counts once the body has faded, 10 s) |
 | Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
 | K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
 | Space / V | spectating: the next living player / the free camera |
 | Space (classic, dead) | the next living teammate to watch until the next round |
 | Settings > Online > name | your name, 30 characters at most; blank is the game's `Player####` |
 
-A match is the original's SUPPRESSION with RESPAWN on: one 6-minute round, "TIME EXPIRED" and 15 s more, the side with
-more points wins, then FINAL ROUND and GAME COMPLETE, and the next match. Its banner reads "STARTING ROUND 1 OF 11", as
-the original's does for its one respawn round.
-
-**Classic** (respawn off, the game's create-game default) is picked with Settings > Online > Rules > **Classic**, or
-with `&rules=classic` in the link (the page writes it back into the address and remembers the choice). Each map has a
-classic room beside its respawn room. The match starts once both sides have a player: 11 rounds, first to 6. A round
+A match is **classic** (respawn off, the game's create-game default), online and in the offline match alike; there is
+no Rules choice, and an old link's `rules=` is ignored and taken out of the address. The match starts once both sides
+have a player: 11 rounds, first to 6. A round
 ends when a side has no living player (tested from 15 s in; "ALL TERRORISTS ELIMINATED" / "SEALS VICTORIOUS!", 23 s
 more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died." and watch their
 living teammates (Space) until the next round. A player who joins mid-round is a ghost until then. Level after round
 11 plays a tiebreaker ("PLAYING TIEBREAKER ROUND"), and another while it is drawn. Every round starts everyone at the
-side's start slots with a full kit. Scoring is the respawn match's: +2 a kill, +1 alive at the end, +5 each on the
-winning side. The rules and their sources are in research 91 section 19.
+side's start slots with a full kit. Scoring: +2 a kill, +1 alive at the end, +5 each on the winning side. The rules and their sources are in research 91 section 19.
 
 ### Offline match
 

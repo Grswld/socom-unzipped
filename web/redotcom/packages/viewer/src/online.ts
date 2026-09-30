@@ -4,6 +4,9 @@ import type { Simulate } from './net/client';
 /**
  * The panel's **Online** setting (owner, 2026-09-29): Off (the single page, as before), Shared (the public match server)
  * or Local (the static server `npm start -w @s2u/server` runs on this machine). Remembered in this browser (`ONLINE_KEY`).
+ * Local is a developer's: offered only on a page served from this machine (`isLocalHost`; owner, 2026-09-29: "Make sure
+ * the localhost option is only visible locally, never on the deployed site"). Elsewhere the option is not rendered, and
+ * an `online=local` link or a remembered Local reads as Off (the page then writes Off into its address).
  * In reCOM mode the page joins the match as a player (`./netPage`); in the map viewer it joins as a spectator that
  * never takes a player's place (the hello's `watch`), to watch the match on the map.
  *
@@ -22,9 +25,29 @@ export const LOCAL_SERVER = 'ws://localhost:8787/ws';
 /** Where the choice is remembered. */
 export const ONLINE_KEY = 's2u.viewer.online';
 
-/** A stored value, read back: one of the three, or Off. */
-export function onlineChoice(stored: string | null): OnlineChoice {
-  return stored === 'shared' || stored === 'local' ? stored : 'off';
+/**
+ * Whether a host (`location.host` or `.hostname`: a port and IPv6 brackets are fine) is this machine: `localhost`,
+ * `127.0.0.1`, `[::1]` or a name under `.localhost` (RFC 6761), case aside.
+ */
+export function isLocalHost(host: string): boolean {
+  const h = host.toLowerCase();
+  const name = h.startsWith('[') ? h.slice(0, h.indexOf(']') + 1) : h.split(':')[0]!;
+  return name === 'localhost' || name === '127.0.0.1' || name === '[::1]' || name === '::1' || name.endsWith('.localhost');
+}
+
+/** Whether the page is served from this machine (so Local is offered). */
+export function pageIsLocal(location: { host: string; hostname?: string }): boolean {
+  return isLocalHost(location.hostname || location.host);
+}
+
+/** The choices the setting offers: Local only on a local page. */
+export function onlineChoices(local: boolean): readonly OnlineChoice[] {
+  return local ? ONLINE_CHOICES : ONLINE_CHOICES.filter((c) => c !== 'local');
+}
+
+/** A stored or linked value, read back: one of the choices offered (`local`: whether Local is), or Off. */
+export function onlineChoice(stored: string | null, local = true): OnlineChoice {
+  return stored === 'shared' || (stored === 'local' && local) ? stored : 'off';
 }
 
 export interface OnlineTarget {
@@ -39,9 +62,9 @@ export interface OnlineTarget {
 
 /**
  * The server the page joins: the URL's `&mp` / `&server=` first (an override, as before the setting), else the stored
- * choice's. `location` is the page's own, for `&mp`'s default of this host.
+ * choice's -- Local only on a local page (`pageIsLocal`), else Off. `location` is the page's own, for `&mp`'s default of this host.
  */
-export function resolveOnline(search: string, stored: string | null, location: { protocol: string; host: string }): OnlineTarget {
+export function resolveOnline(search: string, stored: string | null, location: { protocol: string; host: string; hostname?: string }): OnlineTarget {
   const fromUrl = netSettings(search, location);
   const q = new URLSearchParams(search);
   const lag = Number(q.get('lag') ?? '0'), loss = Number(q.get('loss') ?? '0');
@@ -50,7 +73,7 @@ export function resolveOnline(search: string, stored: string | null, location: {
     const choice = fromUrl.url === SHARED_SERVER ? 'shared' : fromUrl.url === LOCAL_SERVER ? 'local' : 'url';
     return { choice, url: fromUrl.url, fromUrl: true, ...(fromUrl.simulate ? { simulate: fromUrl.simulate } : {}) };
   }
-  const choice = onlineChoice(stored);
+  const choice = onlineChoice(stored, pageIsLocal(location));
   const url = choice === 'shared' ? SHARED_SERVER : choice === 'local' ? LOCAL_SERVER : null;
   return { choice, url, fromUrl: false, ...(simulate && url ? { simulate } : {}) };
 }

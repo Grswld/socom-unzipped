@@ -7,7 +7,7 @@ import { shortTurn } from '../src/yaw';
  * Walk mode on a phone (owner, 2026-09-29: dual floating sticks, SHOOT and JUMP, the needed buttons tidied): with emulated
  * touch in landscape (812x375, 667x375, 915x412) and portrait (375x812), a finger on the left half moves, one on the right
  * half looks -- both at once -- and the buttons hold the lanes the pad's buttons hold. The page is loaded with
- * `?redotcom&fly`; the touches go through the browser's own input (`Input.dispatchTouchEvent`), so a hold is a hold.
+ * `?mode=play&fly`; the touches go through the browser's own input (`Input.dispatchTouchEvent`), so a hold is a hold.
  */
 
 // A phone's first visit, the panel folded: opened (the specs' default, `playwright.config.ts`) it would cover the buttons.
@@ -22,7 +22,7 @@ const hit = (a: Rect, b: Rect): boolean => a.x < b.x + b.width && a.x + a.width 
 
 async function phone(page: Page, size: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(size);
-  await page.goto('/?redotcom&fly&devmode');
+  await page.goto('/?mode=play&fly&devmode');
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   // The tip is a first visit's (`./mobileTip`); these specs are about the controls under it.
@@ -242,7 +242,7 @@ test.describe('the tip on a phone', () => {
 
   test('recommends a controller and landscape once a visit, and a dismissal is remembered', async ({ page }) => {
     await page.setViewportSize(LANDSCAPE);
-    await page.goto('/?redotcom&fly&devmode');
+    await page.goto('/?mode=play&fly&devmode');
     const tip = page.locator('#mobile-tip');
     await expect(tip).toBeVisible();
     await expect(tip).toContainText(/controller/i);
@@ -264,7 +264,7 @@ test.describe('the tip on a phone', () => {
   test('is not shown on a desktop', async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
-    await page.goto('/?redotcom&fly&devmode');
+    await page.goto('/?mode=play&fly&devmode');
     await expect(page.locator('#status')).toContainText(/triangles|tris/);
     await expect(page.locator('#mobile-tip')).toBeHidden();
     await context.close();
@@ -293,7 +293,7 @@ test.describe('walk mode on a phone, portrait', () => {
   });
 });
 
-test.describe('without ?redotcom&fly', () => {
+test.describe('in Explore (no mode=play)', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: LANDSCAPE });
 
   test('the phone has no walk layout, no look stick, no hint, and the fly touch UI as it was', async ({ page }) => {

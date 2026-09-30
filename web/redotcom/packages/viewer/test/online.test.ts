@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  LOCAL_SERVER, ONLINE_KEY, SHARED_SERVER, onlineChoice, onlineLine, readOnline, resolveOnline, writeOnline,
+  isLocalHost, LOCAL_SERVER, ONLINE_KEY, SHARED_SERVER, onlineChoice, onlineChoices, onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline,
 } from '../src/online';
 import { retryDelayMs } from '../src/netPage';
 
@@ -21,16 +21,52 @@ describe('the Online setting: the servers', () => {
   });
 });
 
+/**
+ * The Local option is a developer's (owner, 2026-09-29: "Make sure the localhost option is only visible locally, never
+ * on the deployed site"): offered only on a page served from this machine -- localhost, 127.0.0.1, [::1] or a
+ * `.localhost` name.
+ */
+describe('the Local option: a local page only', () => {
+  it('knows a local host by its name, with or without a port', () => {
+    for (const h of ['localhost', 'localhost:5173', '127.0.0.1', '127.0.0.1:8787', '[::1]', '[::1]:5173', 'viewer.localhost', 'a.b.localhost:5192', 'LOCALHOST']) {
+      expect(isLocalHost(h), h).toBe(true);
+    }
+    for (const h of ['socomunzipped.com', 'mp.socomunzipped.com', 'localhost.example.com', '127.0.0.2', '203.0.113.5:5173', 'notlocalhost', '', '[::2]']) {
+      expect(isLocalHost(h), h).toBe(false);
+    }
+  });
+
+  it('offers Off / Shared / Local locally and Off / Shared elsewhere', () => {
+    expect(onlineChoices(true)).toEqual(['off', 'shared', 'local']);
+    expect(onlineChoices(false)).toEqual(['off', 'shared']);
+    expect(pageIsLocal(HTTP)).toBe(true);
+    expect(pageIsLocal(HTTPS)).toBe(false);
+    expect(pageIsLocal({ host: '[::1]:5173' })).toBe(true);
+  });
+
+  it('reads a stored Local as Off where Local is not offered', () => {
+    expect(onlineChoice('local', false)).toBe('off');
+    expect(onlineChoice('shared', false)).toBe('shared');
+    expect(onlineChoice('local', true)).toBe('local');
+  });
+});
+
 describe('resolveOnline: the URL first, then the stored choice', () => {
   it('with nothing in the URL takes the stored choice: Off (no server), Shared, Local', () => {
     expect(resolveOnline('', null, HTTP)).toEqual({ choice: 'off', url: null, fromUrl: false });
-    expect(resolveOnline('?map=MP2&redotcom', 'off', HTTP)).toEqual({ choice: 'off', url: null, fromUrl: false });
+    expect(resolveOnline('?map=MP2&mode=play', 'off', HTTP)).toEqual({ choice: 'off', url: null, fromUrl: false });
     expect(resolveOnline('', 'shared', HTTP)).toEqual({ choice: 'shared', url: SHARED_SERVER, fromUrl: false });
-    expect(resolveOnline('?map=MP2', 'local', HTTPS)).toEqual({ choice: 'local', url: LOCAL_SERVER, fromUrl: false });
+    expect(resolveOnline('?map=MP2', 'local', HTTP)).toEqual({ choice: 'local', url: LOCAL_SERVER, fromUrl: false });
+  });
+
+  it('a remembered or linked Local on a page that is not local falls back to Off (the deployed site has no Local)', () => {
+    expect(resolveOnline('?map=MP2', 'local', HTTPS)).toEqual({ choice: 'off', url: null, fromUrl: false });
+    expect(resolveOnline('?lag=50', 'local', HTTPS).simulate).toBeUndefined();
+    expect(resolveOnline('', 'shared', HTTPS)).toMatchObject({ choice: 'shared', url: SHARED_SERVER });
   });
 
   it('&mp overrides it with this page own host, ws or wss by the page protocol', () => {
-    expect(resolveOnline('?redotcom&mp', 'off', HTTP)).toEqual({ choice: 'url', url: 'ws://localhost:5173/ws', fromUrl: true });
+    expect(resolveOnline('?mode=play&mp', 'off', HTTP)).toEqual({ choice: 'url', url: 'ws://localhost:5173/ws', fromUrl: true });
     expect(resolveOnline('?mp', 'local', HTTPS)).toEqual({ choice: 'url', url: 'wss://socomunzipped.com/ws', fromUrl: true });
   });
 

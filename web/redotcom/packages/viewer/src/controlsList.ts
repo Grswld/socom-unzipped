@@ -27,10 +27,11 @@ export const GROUP_WEAPONS = 'Weapons';
 export const GROUP_GENERAL = 'General';
 
 /**
- * The keyboard and mouse for a mode. `play` is whether reCOM mode is on: without it the fly list is all there is, and
- * it does not say `G` walks.
+ * The keyboard and mouse for a mode. `toggle` is whether `G` switches walk and fly: only in Play, and only with the
+ * developer's `?devmode` (owner, 2026-09-29: the fly camera is not a player's in Play; `./flyAccess`). Without it
+ * neither list names `G`.
  */
-export function controlGroups(mode: ControlMode, play: boolean): ControlGroup[] {
+export function controlGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
   if (mode === 'fly') {
     return [
       {
@@ -46,7 +47,7 @@ export function controlGroups(mode: ControlMode, play: boolean): ControlGroup[] 
       {
         name: GROUP_GENERAL,
         rows: [
-          ...(play ? [{ keys: 'G', does: 'walk' }] : []),
+          ...(toggle ? [{ keys: 'G', does: 'walk' }] : []),
           { keys: 'Esc', does: 'release the mouse' },
           { keys: 'F', does: 'fullscreen' },
           { keys: '`', does: 'hide the interface' },
@@ -94,15 +95,15 @@ export function controlGroups(mode: ControlMode, play: boolean): ControlGroup[] 
         { keys: 'Tab (hold)', does: 'scoreboard' },
         { keys: 'M', does: 'map' },
         { keys: 'Esc', does: 'release the mouse' },
-        ...(play ? [{ keys: 'G', does: 'fly camera' }] : []),
+        ...(toggle ? [{ keys: 'G', does: 'fly camera' }] : []),
         { keys: 'F', does: 'fullscreen' },
       ],
     },
   ];
 }
 
-/** The controller for a mode, by the PS2 pad's names (the Gamepad API's standard layout, by position). */
-export function padControlGroups(mode: ControlMode, play: boolean): ControlGroup[] {
+/** The controller for a mode, by the PS2 pad's names (the Gamepad API's standard layout, by position); Start as `G`. */
+export function padControlGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
   if (mode === 'fly') {
     return [
       {
@@ -115,7 +116,7 @@ export function padControlGroups(mode: ControlMode, play: boolean): ControlGroup
           { keys: 'Circle', does: 'boost (hold)', glyph: 'circle' },
         ],
       },
-      ...(play ? [{ name: GROUP_GENERAL, rows: [{ keys: 'Start', does: 'walk' }] }] : []),
+      ...(toggle ? [{ name: GROUP_GENERAL, rows: [{ keys: 'Start', does: 'walk' }] }] : []),
     ];
   }
   return [
@@ -156,7 +157,7 @@ export function padControlGroups(mode: ControlMode, play: boolean): ControlGroup
       name: GROUP_GENERAL,
       rows: [
         { keys: 'Select (hold)', does: 'scoreboard' },
-        ...(play ? [{ keys: 'Start', does: 'fly camera' }] : []),
+        ...(toggle ? [{ keys: 'Start', does: 'fly camera' }] : []),
       ],
     },
   ];

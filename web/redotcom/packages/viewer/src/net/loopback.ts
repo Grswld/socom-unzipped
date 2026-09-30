@@ -5,7 +5,7 @@ import type { MotionClip } from '@s2u/scene';
 import type { MotionEntry } from '../motionTable';
 import type { DoorSpec } from '../doors';
 import { stemOf, type SimClips, type SimMap } from '../simMap';
-import { TICK_HZ, type ClientEvent } from './protocol';
+import { offeredRules, RESPAWN_RULES_ENABLED, TICK_HZ, type ClientEvent } from './protocol';
 import type { WebSocketLike } from './client';
 
 /**
@@ -60,6 +60,11 @@ export function simClipsOfPlay(play: { clips: MotionClip[]; table: [string, Moti
 export interface LoopbackOptions extends Partial<RoomOptions> {
   /** Run the room's clock (the page); false: the caller steps it (`step`, the tests). */
   auto?: boolean;
+  /**
+   * Whether the respawn rules may be played (`./protocol` `RESPAWN_RULES_ENABLED`, off by the owner's ruling of
+   * 2026-09-29): off, the match is classic whatever `rules` asks. The respawn room's tests turn it on.
+   */
+  respawnRules?: boolean;
 }
 
 /** The id the page's player takes in its own room. */
@@ -73,9 +78,9 @@ export class LoopbackMatch {
   private stopped = false;
 
   constructor(map: SimMap, clips: SimClips | null, opts: LoopbackOptions = {}) {
-    const { auto = true, ...room } = opts;
+    const { auto = true, respawnRules = RESPAWN_RULES_ENABLED, ...room } = opts;
     this.clips = clips !== null;
-    this.room = new Room(map, clips, { now: () => performance.now(), ...room, solo: true });
+    this.room = new Room(map, clips, { now: () => performance.now(), ...room, rules: offeredRules(room.rules, respawnRules), solo: true });
     if (auto) this.loop();
   }
 

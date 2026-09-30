@@ -14,7 +14,8 @@ const MP2 = fixture('RUN/MP2.ZDB');
 describe.skipIf(!MP2)(`the bots against the match server${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, () => {
   let server: MatchServer, port = 0;
   beforeAll(async () => {
-    server = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined });
+    // A respawn room (the harness's measure predates classic-only, owner ruling 2026-09-29): the flag forced on.
+    server = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined, respawnRules: true });
     port = await server.start();
   });
   afterAll(async () => { await server.stop(); });

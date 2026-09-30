@@ -2,12 +2,15 @@
  * Shareable links (owner, 2026-09-29): the page's state lives in its address, so copying the address bar gives a friend
  * the same setup.
  *
- * - `mode=play` (reCOM, on foot) or `mode=explore` (the free camera). `?redotcom` is the old spelling of `mode=play`:
- *   read as it, and rewritten to it (`alias`).
+ * - `mode=play` (reCOM, on foot) or `mode=explore` (the free camera). Absent, the remembered choice, else Explore.
  * - `map=MP2` -- the archive's stem.
  * - `view=modern` or `view=ps2` -- the picture switch.
  * - `online=off`, `shared` or `local` -- the Online setting. `&server=` and `&mp` still override it (`./online`).
- * - `rules=respawn` or `classic` -- the match's rules under Online (`./rules`; web sprint 3's classic mode).
+ *
+ * `redotcom` (the old flag that gated the play, owner 2026-09-29: "&redotcom can die now. The mode replaces it") has no
+ * effect and is taken out of the address the next time the page writes it. `rules=` (the match's rules, web sprint 3) is
+ * retired while classic is the only ruleset (owner ruling, 2026-09-29;
+ * `./net/protocol` `RESPAWN_RULES_ENABLED`): never read, and taken out of the address the next time it is written.
  *
  * On load the address beats the remembered choice; with a parameter absent the remembered choice applies, and the page
  * writes it into the address (`history.replaceState`: no reload, no history entries). A value this page does not know
@@ -16,7 +19,7 @@
  * `server` and `mp` out (`onlineChoiceAddress`): the choice replaces the server they named, so the link must too.
  */
 import type { OnlineChoice } from './online';
-import { parseRules, type Rules } from './net/protocol';
+import { RESPAWN_RULES_ENABLED } from './net/protocol';
 
 export type ShareView = 'modern' | 'ps2';
 
@@ -26,7 +29,6 @@ export interface ShareState {
   map?: string | null;
   view?: ShareView | null;
   online?: OnlineChoice | null;
-  rules?: Rules | null;
   /** Other parameters to take out of the address (a developer's, which are otherwise always kept). */
   drop?: readonly string[];
 }
@@ -37,38 +39,32 @@ export interface ShareRead {
   map: string | null;
   view: ShareView | null;
   online: OnlineChoice | null;
-  /** The match's rules, when the address names them (absent otherwise). */
-  rules?: Rules;
-  /** Whether it used `?redotcom`, which the page rewrites to `mode=play`. */
-  alias: boolean;
 }
 
-/** The parameters this module owns, in the order it writes them; `redotcom` is read and dropped. */
-const KEYS = ['mode', 'map', 'view', 'online', 'rules'] as const;
-const ALIAS = 'redotcom';
+/** The parameters this module owns, in the order it writes them. */
+const KEYS = ['mode', 'map', 'view', 'online'] as const;
+/**
+ * Parameters the page no longer understands, never read and taken out whenever it writes its address: the old
+ * `redotcom` flag, and `rules` while respawn is off.
+ */
+export const RETIRED_PARAMS: readonly string[] = RESPAWN_RULES_ENABLED ? ['redotcom'] : ['redotcom', 'rules'];
 /** A map's archive stem: letters, digits and underscores (`MP2`, `MP71`). */
 const MAP_STEM = /^[A-Za-z0-9_]{1,16}$/;
 
 export function readShare(search: string): ShareRead {
-  const out: ShareRead = { play: null, map: null, view: null, online: null, alias: false };
+  const out: ShareRead = { play: null, map: null, view: null, online: null };
   let q: URLSearchParams;
   try { q = new URLSearchParams(search); } catch { return out; }
   const get = (key: string): string | null => q.get(key)?.toLowerCase() ?? null;
   const mode = get('mode');
   if (mode === 'play') out.play = true;
   else if (mode === 'explore') out.play = false;
-  if (q.has(ALIAS)) {
-    out.alias = true;
-    if (out.play === null) out.play = true;
-  }
   const map = q.get('map');
   if (map && MAP_STEM.test(map)) out.map = map.toUpperCase();
   const view = get('view');
   if (view === 'modern' || view === 'ps2') out.view = view;
   const online = get('online');
   if (online === 'off' || online === 'shared' || online === 'local') out.online = online;
-  const rules = parseRules(get('rules'));
-  if (rules) out.rules = rules;
   return out;
 }
 
@@ -88,7 +84,7 @@ export function writeShare(search: string, state: ShareState): string {
   const rest: string[] = [];
   for (const part of parts) {
     const key = keyOf(part);
-    if (key === ALIAS || state.drop?.includes(key)) continue;
+    if (RETIRED_PARAMS.includes(key) || state.drop?.includes(key)) continue;
     if ((KEYS as readonly string[]).includes(key)) { if (!had.has(key)) had.set(key, part); continue; }
     rest.push(part);
   }
@@ -97,7 +93,6 @@ export function writeShare(search: string, state: ShareState): string {
     map: state.map === undefined ? undefined : state.map === null ? null : state.map,
     view: state.view,
     online: state.online,
-    rules: state.rules,
   };
   const ours: string[] = [];
   for (const key of KEYS) {

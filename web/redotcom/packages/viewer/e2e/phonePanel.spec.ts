@@ -30,7 +30,7 @@ function controls(page: Page): Promise<Array<{ id: string } & Rect>> {
 
 async function openPanel(page: Page, size: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(size);
-  await page.goto('/?redotcom&fly&devmode');
+  await page.goto('/?mode=play&fly&devmode');
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await expect(page.locator('#panel')).toBeHidden();
   await page.locator('#panel-toggle').click();
@@ -101,7 +101,7 @@ for (const size of [{ width: 812, height: 375 }, { width: 667, height: 375 }, { 
 
     test('the disc page fits, its card and its button on the screen', async ({ page }) => {
       await page.setViewportSize(size);
-      await page.goto('/?redotcom');                                           // no ?devmode: the player's own disc
+      await page.goto('/?mode=play');                                          // no ?devmode: the player's own disc
       await expect(page.locator('#disc-page')).toBeVisible();
       await onScreen(page, '#disc-page', size);
       await page.locator('#disc-pick').scrollIntoViewIfNeeded();
@@ -130,7 +130,7 @@ test.describe('the panel on a phone held upright', () => {
 
   test('the disc page and the Controls popover fit upright too', async ({ page }) => {
     await page.setViewportSize(size);
-    await page.goto('/?redotcom');
+    await page.goto('/?mode=play');
     await expect(page.locator('#disc-page')).toBeVisible();
     await onScreen(page, '#disc-page', size);
     await page.locator('#controls-toggle').click();

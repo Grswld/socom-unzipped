@@ -9,7 +9,7 @@ import { Ui } from '../src/ui';
 
 /**
  * The owner's 2026-09-29 settings: the Mode switch (Explore / Play, at run time, remembered; the address's `mode=play` /
- * `mode=explore` beats the memory and `?redotcom` is read as `mode=play` -- `./shareUrl`, pinned in shareUrl.test.ts),
+ * `mode=explore` beats the memory -- `./shareUrl`, pinned in shareUrl.test.ts; no flag gates it, "&redotcom can die now"),
  * the Online setting's markup, and the disc page the page opens on without `?devmode`.
  */
 const here = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +98,30 @@ describe('the Mode switch in the panel', () => {
   let ui: Ui;
   beforeEach(() => { load(); ui = new Ui(); });
 
+  it('is always there: no flag gates it (owner, 2026-09-29: "&redotcom can die now. The mode replaces it")', () => {
+    const src = (f: string): string => readFileSync(resolve(here, f), 'utf-8');
+    // The page builds the same markup for every address; nothing reads a feature flag before it.
+    expect(document.getElementById('recom')).not.toBeNull();
+    for (const f of ['../src/main.ts', '../src/features.ts', '../src/ui.ts']) {
+      expect(src(f), f).not.toMatch(/playEnabled|PLAY_PARAM|\.has\(['"]redotcom['"]\)|get\(['"]redotcom['"]\)/);
+    }
+    // With the play's markup out (Explore) the switch stays, and offers Play.
+    new PlayUi().detach();
+    expect(document.querySelector('#recom [data-recom="on"]')).not.toBeNull();
+    expect(document.querySelector('#recom [data-recom="off"]')).not.toBeNull();
+  });
+
+  it('the Play-only settings follow the mode: in on Play, out on Explore, the rest stays', () => {
+    const play = new PlayUi();
+    const PLAY_ONLY = ['sound-section', 'look-section', 'body-row'];
+    const ALWAYS = ['recom', 'look', 'online', 'maps', 'advanced'];
+    play.set(false);
+    for (const id of PLAY_ONLY) expect(document.getElementById(id), id).toBeNull();
+    for (const id of ALWAYS) expect(document.getElementById(id), id).not.toBeNull();
+    play.set(true);
+    for (const id of [...PLAY_ONLY, ...ALWAYS]) expect(document.getElementById(id), id).not.toBeNull();
+  });
+
   it('is the picture switch markup, in the panel, not the play (it is there in both modes)', () => {
     const recom = document.getElementById('recom')!;
     expect(recom.className).toBe(document.getElementById('look')!.className);
@@ -127,7 +151,8 @@ describe('the Mode switch in the panel', () => {
     expect(on.getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('the Controls popover follows the mode: G walk listed only with the play on the page', () => {
+  it('the Controls popover follows the mode: G walk listed only with the play on the page (and the developer toggle)', () => {
+    ui.setFlyToggle(true);
     const play = new PlayUi();
     play.detach(); ui.setPlay(false);
     expect(keys()).not.toMatch(/walk/i);
@@ -165,6 +190,36 @@ describe('the Online setting in the panel', () => {
     expect(button('local').getAttribute('aria-pressed')).toBe('false');
     ui.setOnline('url');
     expect([...document.querySelectorAll('#online [aria-pressed="true"]')]).toHaveLength(0);
+  });
+
+  it('on a local page keeps all three options', () => {
+    ui.offerLocal(true);
+    expect([...document.querySelectorAll('#online button')].map((b) => (b as HTMLElement).dataset['online'])).toEqual(['off', 'shared', 'local']);
+  });
+
+  it('on the deployed site Local is not rendered at all: two options, one pressed, both working', () => {
+    ui.offerLocal(false);
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('#online button')];
+    expect(buttons.map((b) => b.dataset['online'])).toEqual(['off', 'shared']);
+    expect(document.querySelector('[data-online="local"]')).toBeNull();
+    expect(document.getElementById('online')!.textContent).not.toMatch(/localhost|Local/);
+    const heard: string[] = [];
+    ui.onOnline((c) => heard.push(c));
+    ui.setOnline('off');
+    buttons[1]!.click();
+    expect(heard).toEqual(['shared']);
+    expect(buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset['online'])).toEqual(['shared']);
+    ui.setOnline('local');                                        // a server=ws://localhost link: nothing pressed
+    expect(buttons.filter((b) => b.getAttribute('aria-pressed') === 'true')).toHaveLength(0);
+  });
+
+  it('the switch lays out two options as it does three: its columns follow its children, and a segment may shrink', () => {
+    const css = readFileSync(resolve(here, '../src/styles.css'), 'utf-8');
+    const rule = css.match(/\.s2u-overlay \.s2u-tabs\[role="group"\]\s*{([^}]*)}/)![1]!;
+    expect(rule).toMatch(/grid-template-columns:\s*none/);          // not the system's fixed 1fr 1fr
+    expect(rule).toMatch(/grid-auto-flow:\s*column/);
+    expect(rule).toMatch(/grid-auto-columns:\s*minmax\(0, 1fr\)/);
+    expect(css).toMatch(/\.s2u-overlay \.s2u-tabs\[role="group"\] \.s2u-tab\s*{[^}]*min-width:\s*0/);
   });
 
   it('writes the connection line and lights the lamp up or down', () => {

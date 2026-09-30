@@ -59,11 +59,12 @@ test('opening that address reproduces the state, over what this browser remember
   await context.close();
 });
 
-test('an unknown value falls back silently, and the old ?redotcom becomes mode=play', async ({ page }) => {
-  await open(page, '?redotcom&view=crt&online=everywhere&fly&devmode');
-  await expect(page.locator('#recom [data-recom="on"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect.poll(() => params(page).get('mode')).toBe('play');
+test('an unknown value falls back silently, and the old ?redotcom and rules= leave the address with no effect', async ({ page }) => {
+  await open(page, '?redotcom&rules=respawn&view=crt&online=everywhere&fly&devmode');
+  await expect(page.locator('#recom [data-recom="off"]')).toHaveAttribute('aria-pressed', 'true');   // redotcom no longer means Play
+  await expect.poll(() => params(page).get('mode')).toBe('explore');
   expect(params(page).has('redotcom')).toBe(false);
+  expect(params(page).has('rules')).toBe(false);
   await expect.poll(() => params(page).get('view')).toBe('modern');
   await expect.poll(() => params(page).get('online')).toBe('off');
 });

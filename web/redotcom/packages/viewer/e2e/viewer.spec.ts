@@ -276,7 +276,7 @@ test('the fonts ship: Oswald and JetBrains Mono load, the woff2 answers as font/
 });
 
 /**
- * W2.0: the fold control is a cog in the site bar, beside GitHub; folded, nothing of the panel shows;
+ * W2.0: the fold control is a cog in the site bar, first of its tabs; folded, nothing of the panel shows;
  * the backtick hides the panel but not the bar, so the cog stays; the GitHub link wears its mark.
  */
 test('the cog in the site bar folds the panel away entirely; the backtick leaves the cog', async ({ page }) => {

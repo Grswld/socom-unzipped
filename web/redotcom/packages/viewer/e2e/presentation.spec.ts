@@ -49,7 +49,7 @@ async function lit(page: Page): Promise<number> {
 async function check(page: Page, archive: string, want: 'webgpu' | 'webgl2'): Promise<void> {
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto(`/?redotcom&fly&map=${archive}&devmode`);
+  await page.goto(`/?mode=play&fly&map=${archive}&devmode`);
   const status = page.locator('#status');
   await expect(status).toContainText(`(${archive})`);
   await expect(status).toContainText('triangles');

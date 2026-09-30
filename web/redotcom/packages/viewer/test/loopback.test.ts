@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
 import { NetClient, type NetWalk } from '../src/net/client';
 import { LoopbackMatch, simMapOfLoaded } from '../src/net/loopback';
-import { Button, groundGrid, packGround, TICK_HZ, type Command, type Knock, type ServerEvent } from '../src/sim';
+import { Button, groundGrid, packGround, RESPAWN_RULES_ENABLED, TICK_HZ, type Command, type Knock, type ServerEvent } from '../src/sim';
 
 /**
  * The page's single-player match (owner, 2026-09-29: "let's make offline tick rounds etc too"): the server's own `Room`
@@ -45,8 +45,12 @@ class Walk implements NetWalk {
 
 const flush = async (): Promise<void> => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
 
-async function join(rules: 'respawn' | 'classic' = 'respawn') {
-  const match = new LoopbackMatch(simMapOfLoaded(loaded()), null, { rules, auto: false });
+/**
+ * The room joined as the page does. The respawn ruleset is off by the owner's ruling of 2026-09-29
+ * (`RESPAWN_RULES_ENABLED`); its code is kept, so these tests force it on to keep the respawn room pinned.
+ */
+async function join(rules: 'respawn' | 'classic' = 'respawn', respawnRules = true) {
+  const match = new LoopbackMatch(simMapOfLoaded(loaded()), null, { rules, auto: false, respawnRules });
   const walk = new Walk();
   const events: ServerEvent[] = [];
   const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, walk);
@@ -120,6 +124,18 @@ describe('the single-player match (./loopback)', () => {
     const ctx = await join('classic');
     await run(ctx, 2);
     expect(ctx.events.some((e) => e.type === 'roundStart')).toBe(true);
+  });
+
+  it('plays classic as the page ships (respawn off): a respawn ask and no ask both open a classic room', async () => {
+    expect(RESPAWN_RULES_ENABLED).toBe(false);
+    for (const rules of [undefined, 'respawn', 'classic'] as const) {
+      const match = new LoopbackMatch(simMapOfLoaded(loaded()), null, { auto: false, ...(rules ? { rules } : {}) });
+      expect(match.room.rules, String(rules)).toBe('classic');
+    }
+    const ctx = await join('respawn', false);
+    await run(ctx, 2);
+    const welcome = ctx.events.find((e) => e.type === 'welcome') as Extract<ServerEvent, { type: 'welcome' }>;
+    expect(welcome.rules).toBe('classic');
   });
 
   it('stops its clock when closed', async () => {

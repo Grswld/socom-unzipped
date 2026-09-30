@@ -235,6 +235,26 @@ export function parseRules(value: unknown): Rules | null {
   return value === 'respawn' || value === 'classic' ? value : null;
 }
 
+/**
+ * Whether the respawn rules are offered at all (owner ruling, 2026-09-29: "Remove the respawn option entirely for the
+ * time being. No mode selection."). Off, classic is the only multiplayer ruleset: the page has no Rules choice and
+ * never reads or writes `rules=` (`../rules`, `../shareUrl`), the offline match plays classic (`./loopback`), and the
+ * match server opens classic rooms only -- a hello asking for respawn joins classic (`@s2u/server` `server.ts`,
+ * `main.ts`). The respawn code paths (the room's respawn round, the page's respawn prompt) stay in the tree behind this
+ * one switch; their tests force it on (`offeredRules(..., true)`, the server's and the loopback's `respawnRules`).
+ */
+export const RESPAWN_RULES_ENABLED = false;
+
+/**
+ * The rules a room is opened under for `asked` (a hello's, the page's, the environment's; null or undefined: none
+ * named): with respawn off always classic; with it on, what was asked, respawn when nothing was (the default before
+ * the ruling).
+ */
+export function offeredRules(asked: Rules | null | undefined, respawnEnabled: boolean = RESPAWN_RULES_ENABLED): Rules {
+  if (!respawnEnabled) return 'classic';
+  return asked ?? 'respawn';
+}
+
 /** Client -> server, text frames. */
 export type ClientEvent =
   /**

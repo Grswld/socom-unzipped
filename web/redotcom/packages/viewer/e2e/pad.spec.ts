@@ -9,7 +9,7 @@ import { shortTurn } from '../src/yaw';
  * plugs in, pushes and unplugs. The toast names it, the layout table appears with the flying controls only (the walking
  * ones once walking), the left stick walks the mover and flies the camera, Square is the jump on foot and up in the
  * air, R1 fires, Triangle is the stance (a tap crouches, a hold goes prone, a tap from prone stands), d-pad Up is the
- * scope's lane, Start is `G`, the right stick looks. The page is loaded with `?redotcom&fly`, which walking needs.
+ * scope's lane, Start is `G`, the right stick looks. The page is loaded with `?mode=play&fly`, which walking needs.
  *
  * Held inputs are held for real time, as `walk.spec.ts` holds W: the mover's distance then depends on the host's frame
  * rate, so the checks are that it moved, the right way and on the right floor, not how far.
@@ -83,7 +83,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
     });
   }, PAD_ID);
 
-  await page.goto('/?redotcom&fly&devmode');
+  await page.goto('/?mode=play&fly&devmode');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

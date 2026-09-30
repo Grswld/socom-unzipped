@@ -34,10 +34,10 @@ export class WhiteOut {
   constructor(parent: HTMLElement | null) {
     this.el = parent ? document.createElement('div') : null;
     if (this.el && parent) {
+      // Drawn by the page's stylesheet (`styles.css` `#whiteout`); only its opacity is written here, frame by frame.
       this.el.id = 'whiteout';
-      Object.assign(this.el.style, {
-        position: 'absolute', inset: '0', background: '#fff', opacity: '0', pointerEvents: 'none', zIndex: '5',
-      } satisfies Partial<CSSStyleDeclaration>);
+      this.el.setAttribute('aria-hidden', 'true');
+      this.el.style.opacity = '0';
       parent.appendChild(this.el);
     }
   }

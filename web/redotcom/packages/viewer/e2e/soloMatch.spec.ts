@@ -19,7 +19,7 @@ test('offline: the page plays its own match, and a grenade at the feet hurts the
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
-  await page.goto('/?map=MP2&redotcom&devmode');
+  await page.goto('/?map=MP2&mode=play&devmode');
   await expect(page.locator('#status')).toContainText('FROSTFIRE (MP2)', { timeout: 60_000 });
   await expect.poll(async () => page.evaluate(() => window.__viewer.net?.()?.state ?? null), { timeout: 30_000 }).toBe('open');
   const net = await page.evaluate(() => window.__viewer.net!()!);

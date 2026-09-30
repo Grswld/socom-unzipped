@@ -4,7 +4,6 @@ import { viewerRevision, viewerRevisionBadge } from './revision';
 import { chooseTab, CONTROLS_TAB_KEY, controlGroups, padControlGroups, type ControlGroup, type ControlsTab, type FaceGlyph } from './controlsList';
 import type { LookOptions } from './look';
 import type { OnlineChoice } from './online';
-import { parseRules, type Rules } from './net/protocol';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -214,29 +213,19 @@ export class Ui {
     }
   }
 
+  /**
+   * The Local option only on a local page (owner, 2026-09-29; `./online` `pageIsLocal`): elsewhere its button is taken
+   * out of the page, not hidden, and the switch lays its two remaining options out as it does three (the segmented
+   * track's columns follow its children, `styles.css`).
+   */
+  offerLocal(local: boolean): void {
+    if (!local) document.querySelector('#online button[data-online="local"]')?.remove();
+  }
+
   /** Puts the Online switch on a choice; 'url' (a server the URL named) presses none. */
   setOnline(choice: OnlineChoice | 'url'): void {
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#online button[data-online]'))) {
       b.setAttribute('aria-pressed', b.dataset['online'] === choice ? 'true' : 'false');
-    }
-  }
-
-  /** The Rules under Online (web sprint 3, classic mode; `./rules`): Respawn or Classic, the markup `#rules`. */
-  onRules(handler: (rules: Rules) => void): void {
-    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#rules button[data-rules]'))) {
-      b.addEventListener('click', () => {
-        const rules = parseRules(b.dataset['rules']);
-        if (!rules || b.getAttribute('aria-pressed') === 'true') return;
-        this.setRules(rules);
-        handler(rules);
-      });
-    }
-  }
-
-  /** Puts the Rules switch on a choice. */
-  setRules(rules: Rules): void {
-    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#rules button[data-rules]'))) {
-      b.setAttribute('aria-pressed', b.dataset['rules'] === rules ? 'true' : 'false');
     }
   }
 
@@ -315,7 +304,7 @@ export class Ui {
    * answer different wants: the backtick takes *everything* away for a clean picture, and the cog
    * takes the panel only and stays where a thumb can tap it to bring the panel back.
    *
-   * The panel starts folded on every device: a first visit shows the map, and the cog (beside the GitHub link)
+   * The panel starts folded on every device: a first visit shows the map, and the cog (the bar's first tab, before Controls and GitHub)
    * opens the settings. A choice the visitor made with the cog is remembered, in `localStorage` and so
    * best-effort: a private window, blocked site data or a browser that throws on access all end up with the
    * panel folded, which is the default anyway. Nothing here fails if storage does.
@@ -744,11 +733,22 @@ export class Ui {
     this.renderControls();
   }
 
-  /** The two lists (`./controlsList`): grouped, for the mode you are in and no other. */
+  /**
+   * The two lists (`./controlsList`): grouped, for the mode you are in and no other. `G` and Start are listed only where
+   * they toggle: in Play with the developer's `?devmode` (`./flyAccess`).
+   */
   private renderControls(): void {
     const mode = this.walking ? 'walk' : 'fly';
-    fillList('#keys-list tbody', controlGroups(mode, this.play));
-    fillList('#pad-list tbody', padControlGroups(mode, this.play));
+    const toggle = this.play && this.flyToggle;
+    fillList('#keys-list tbody', controlGroups(mode, toggle));
+    fillList('#pad-list tbody', padControlGroups(mode, toggle));
+  }
+
+  /** Whether the walk / fly toggle is offered in Play (`./flyAccess`: the developer's `?devmode` alone). */
+  setFlyToggle(on: boolean): void {
+    if (this.flyToggle === on) return;
+    this.flyToggle = on;
+    this.setCameraHint(...this.hintArgs);
   }
 
   /** One of the popover's two tabs shown, the other hidden; the tab lit and selected. */
@@ -808,6 +808,8 @@ export class Ui {
   private tabChosen = false;
   /** The mode the page shows, which picks the lists' words (`setWalk`). */
   private walking = false;
+  /** Whether `G` and Start toggle walk and fly in Play (`setFlyToggle`); off for a player. */
+  private flyToggle = false;
 
   /**
    * A short line in the frame counter's pill, top centre, for `TOAST_MS`. One at a time: a second replaces the first
