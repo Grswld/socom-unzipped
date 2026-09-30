@@ -404,7 +404,7 @@ the time. The proof has to:
    - `0x0a`, `0x12`, `0x56`, `0x1a`, `0x2a` and `0x32` each clamp `vi10` against `clippedVertexCeiling()` (12).
      `vi10` is computed at run time by the clipper, so it cannot be checked up front: it must be shown unreachable.
    - The count argument: a Sutherland-Hodgman stage that classifies each vertex once and emits the inside vertices
-     plus one intersection per sign change emits at most ⌊4n/3⌋ (I + 2·min(I, O) with I + O = n). Over five stages:
+     plus one intersection per sign change emits at most ⌊4n/3⌋ (I + 2·min(I, O) with I + O = n) -- an arithmetic slip, corrected in §9.7 to n+⌊n/2⌋ per stage (3→4→6→9→13→20; the review of 89df19d2). Over five stages:
      3 → 4 → 5 → 6 → 8 → 10, and 10 ≤ 12. The research/13 §2 buffer bound, 12 slots, agrees.
      **[inferred]**: `primSubroutine3618`'s emission (`0x3ad0`) must be read to confirm the one-classification
      property, and planted degenerate triangles (NaN, zero-area, on-plane vertices) tested.
