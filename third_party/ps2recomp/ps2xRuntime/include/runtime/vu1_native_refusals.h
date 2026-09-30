@@ -354,6 +354,43 @@ namespace Vu1Refusals
         return slot;
     }
 
+    // ---- the whole-program refusal, for PS2X_VU1_DUMP_REFUSED (runtime/vu1_dump_refused.h) ----------------------
+    // A whole-program refusal site (pc left at the entry, nothing touched) remembers (entry, reason, command) here
+    // whether or not the count above is on, but only while a listener asked for it: with nobody listening the site
+    // pays one relaxed load on its already-cold path. run() takes it after the hand-back.
+    struct WholeRefusal
+    {
+        uint32_t entryPc = 0u;
+        Reason reason = Reason::None;
+        uint32_t command = 0u;
+    };
+
+    inline std::atomic<bool> &wholeListening()
+    {
+        static std::atomic<bool> s_on{false};
+        return s_on;
+    }
+
+    inline WholeRefusal &lastWhole()
+    {
+        static thread_local WholeRefusal t_last;
+        return t_last;
+    }
+
+    inline void rememberWhole(uint32_t entryPc, const Refusal &refusal)
+    {
+        if (wholeListening().load(std::memory_order_relaxed))
+            lastWhole() = WholeRefusal{entryPc, refusal.reason, refusal.command};
+    }
+
+    // The last whole-program refusal on this thread (reason None when there was none), forgotten as it is taken.
+    inline WholeRefusal takeWhole()
+    {
+        const WholeRefusal last = lastWhole();
+        lastWhole() = WholeRefusal{};
+        return last;
+    }
+
     // run(), after a native program handed back: the slot its refusal site noted (and forget it), or -1.
     inline int takeNoted()
     {

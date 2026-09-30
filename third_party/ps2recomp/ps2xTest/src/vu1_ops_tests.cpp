@@ -13,12 +13,15 @@
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_vu1.h"
 #include "runtime/vu1_native_refusals.h"   // Sprint 17 F: the native dispatcher's refusal count
+#include "runtime/vu1_dump_refused.h"      // Sprint 17 F N1c: PS2X_VU1_DUMP_REFUSED
 
+#include <algorithm>
 #include <cfloat>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <emmintrin.h>
 #include <limits>
 #include <memory>
@@ -1106,8 +1109,12 @@ void register_vu1_ops_tests()
 
             bool load()
             {
-                const std::string path = std::string(PS2X_TEST_FIXTURES_DIR) +
-                                         "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump3_prog_31.bin";
+                return loadFrom(std::string(PS2X_TEST_FIXTURES_DIR) +
+                                "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump3_prog_31.bin");
+            }
+            // Any PS2X_VU1_DUMP-format file (vu1_replay's loadDump layout): the fixture, or a dump this suite wrote.
+            bool loadFrom(const std::string &path)
+            {
                 FILE *f = std::fopen(path.c_str(), "rb");
                 if (!f)
                     return false;
@@ -1550,6 +1557,211 @@ void register_vu1_ops_tests()
             const Vu1Refusals::Row after = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x66u);
             Vu1Refusals::setEnabledForTest(false);
             t.Equals(after.n - before.n, 1ull, "unknown_command cmd=0x66 at entry 0x1b50 +1: 0x66 is admitted only at 0x33c8");
+        });
+
+        // ---- Sprint 17 F N1c (docs/research/82 section 9): PS2X_VU1_DUMP_REFUSED -------------------------------------
+        // The walk's last-bone lists entry 0x33c8 still refuses (resume_command 0x02, 0x54, 0x10) were never on disk:
+        // 4,000 dumps at one instant held none. The capture writes a refused program's entry state -- a refused one's
+        // only -- in PS2X_VU1_DUMP's format, and an index line naming the reason, the command and the resumed list.
+        struct DumpDir
+        {
+            std::filesystem::path path;
+            explicit DumpDir(const char *name)
+            {
+                path = std::filesystem::temp_directory_path() / (std::string("ps2x_dump_refused_") + name);
+                std::error_code ec;
+                std::filesystem::remove_all(path, ec);
+            }
+            ~DumpDir()
+            {
+                Vu1DumpRefused::resetForTest();
+                std::error_code ec;
+                std::filesystem::remove_all(path, ec);
+            }
+            DumpDir(const DumpDir &) = delete;
+            DumpDir &operator=(const DumpDir &) = delete;
+            std::string knob(const char *suffix) const { return path.generic_string() + suffix; }
+            std::vector<std::string> bins() const
+            {
+                std::vector<std::string> names;
+                std::error_code ec;
+                for (const auto &e : std::filesystem::directory_iterator(path, ec))
+                    if (e.path().extension() == ".bin")
+                        names.push_back(e.path().filename().string());
+                std::sort(names.begin(), names.end());
+                return names;
+            }
+            std::vector<std::string> indexLines() const
+            {
+                std::vector<std::string> lines;
+                FILE *f = std::fopen((path / "refused.txt").string().c_str(), "rb");
+                if (!f)
+                    return lines;
+                std::string text;
+                char buf[512];
+                size_t got;
+                while ((got = std::fread(buf, 1, sizeof(buf), f)) > 0)
+                    text.append(buf, got);
+                std::fclose(f);
+                size_t start = 0;
+                for (size_t i = 0; i < text.size(); ++i)
+                    if (text[i] == '\n')
+                    {
+                        lines.push_back(text.substr(start, i - start));
+                        start = i + 1;
+                    }
+                return lines;
+            }
+        };
+        // A last-bone entry whose resumed list holds a 0x28 (no store range derived: refused as resume_command 0x28).
+        static const std::vector<uint32_t> kRefusedList = {0x66u, 0x06u, 0x08u, 0x28u, 0x42u};
+
+        tc.Run("PS2X_VU1_DUMP_REFUSED is a Dev Path defaulting to empty (off)", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_DUMP_REFUSED");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Path &&
+                         std::string(e->dflt).empty(),
+                     "a Dev Path, default empty (a capture instrument, off unless asked for)");
+            if (ps2x::knob("PS2X_VU1_DUMP_REFUSED") == nullptr)
+            {
+                Vu1DumpRefused::resetForTest();
+                t.IsTrue(!Vu1DumpRefused::enabled(), "unset: the capture is off");
+                t.IsTrue(!Vu1Refusals::wholeListening().load(), "unset: no refusal site remembers anything");
+            }
+        });
+
+        tc.Run("PS2X_VU1_DUMP_REFUSED's value: <dir>[:<count>[:<entrypc>]], a drive letter is not a separator", [](TestCase &t)
+        {
+            const Vu1DumpRefused::Config bare = Vu1DumpRefused::parse("C:/logs/refused");
+            t.IsTrue(bare.on() && bare.dir == "C:/logs/refused" && bare.maxFiles == 150 && bare.anyEntry,
+                     "a bare dir: 150 files, any entry");
+            const Vu1DumpRefused::Config counted = Vu1DumpRefused::parse("logs/refused:40");
+            t.IsTrue(counted.dir == "logs/refused" && counted.maxFiles == 40 && counted.anyEntry, "dir:count");
+            const Vu1DumpRefused::Config narrowed = Vu1DumpRefused::parse("C:/r:5:0x33c8");
+            t.IsTrue(narrowed.dir == "C:/r" && narrowed.maxFiles == 5 && !narrowed.anyEntry && narrowed.entryPc == 0x33c8u,
+                     "dir:count:entrypc narrows to one entry");
+            t.IsTrue(!Vu1DumpRefused::parse("").on() && !Vu1DumpRefused::parse(nullptr).on(), "empty: off");
+            t.IsTrue(!Vu1DumpRefused::parse("logs/r:0").on(), "a zero count: off");
+        });
+
+        tc.Run("dump refused: knob off, a refused last-bone list writes nothing", [](TestCase &t)
+        {
+            DumpDir dir("off");
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList(kRefusedList);
+            Vu1DumpRefused::setForTest(nullptr);
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+            t.IsTrue(native.nativeRan && !native.nativeEnded, "the list was refused (handed back)");
+            t.IsTrue(!std::filesystem::exists(dir.path), "off: no directory, no file");
+        });
+
+        tc.Run("dump refused: a refused last-bone list writes one entry-state .bin that replays, and one index line", [](TestCase &t)
+        {
+            DumpDir dir("one");
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList(kRefusedList);
+            Vu1DumpRefused::setForTest(dir.knob(":10").c_str());
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+            t.IsTrue(native.nativeRan && !native.nativeEnded, "the list was refused (handed back)");
+            const std::vector<std::string> bins = dir.bins();
+            t.Equals(bins.size(), static_cast<size_t>(1), "one file");
+            if (bins.size() != 1u)
+                return;
+            t.IsTrue(bins[0] == "vu1_refused_0_resume_command_0x28.bin", "named by reason and command: " + bins[0]);
+            const std::vector<std::string> lines = dir.indexLines();
+            t.Equals(lines.size(), static_cast<size_t>(1), "one index line");
+            if (!lines.empty())
+                t.IsTrue(lines[0] == "vu1_refused_0_resume_command_0x28.bin entry=0x33c8 reason=resume_command cmd=0x28 "
+                                     "resume=1 list=66,06,08,28,42",
+                         "the index line: " + lines[0]);
+
+            // The dump reader's layout: the header, then the entry state exactly as the rig handed it to execute().
+            const std::string path = (dir.path / bins[0]).string();
+            uint32_t hdr[4] = {};
+            if (FILE *f = std::fopen(path.c_str(), "rb"))
+            {
+                t.IsTrue(std::fread(hdr, sizeof(hdr), 1, f) == 1, "header read");
+                std::fclose(f);
+            }
+            t.Equals(hdr[0], 0x33c8u, "header startPc = the entry");
+            t.Equals(hdr[1], rig.top, "header top");
+            t.Equals(hdr[3], static_cast<uint32_t>(PS2_VU1_CODE_SIZE), "header codeSize");
+            Entry33c8Rig back;
+            t.IsTrue(back.loadFrom(path), "the dump reads back whole (PS2X_VU1_DUMP's size)");
+            t.IsTrue(back.code == rig.code, "code = the entry's");
+            t.IsTrue(back.data == rig.data, "VU data memory = the entry's (nothing touched before the write)");
+            t.IsTrue(std::memcmp(back.vi, rig.vi, sizeof(rig.vi)) == 0, "vi[16] = the entry's (vi5, vi9, vi14 live-in)");
+            t.IsTrue(std::memcmp(back.vf, rig.vf, sizeof(rig.vf)) == 0, "vf[32] = the entry's");
+
+            // And it replays: the interpreter over the dump ends where it ends over the rig's own state.
+            Vu1DumpRefused::setForTest(nullptr);
+            const Entry33c8Rig::End fromRig = rig.run(0x33c8u, 0x33c8u, nullptr);
+            const Entry33c8Rig::End fromDump = back.run(0x33c8u, 0x33c8u, nullptr);
+            const std::string why = Entry33c8Rig::diff(fromRig, fromDump, true);
+            t.IsTrue(why.empty(), "the dumped state replays to the same end:" + why);
+        });
+
+        tc.Run("dump refused: an accepted list and a skin pass write nothing", [](TestCase &t)
+        {
+            DumpDir dir("accepted");
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList({0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+            Vu1DumpRefused::setForTest(dir.knob(":10").c_str());
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "66 06 08 40 42 is taken natively");
+            rig.vi[5] = 1; // bit 2 clear: another bone pass, refused whole as skin_pass -- not a list shape
+            const Entry33c8Rig::End skin = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+            t.IsTrue(skin.nativeRan && !skin.nativeEnded, "the skin pass was refused");
+            t.IsTrue(dir.bins().empty() && dir.indexLines().empty(), "nothing written for either");
+        });
+
+        tc.Run("dump refused: at most <count> files, <entrypc> narrows the capture, PS2X_VU1_DUMP_AFTER arms it", [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList(kRefusedList);
+            {
+                DumpDir dir("cap");
+                Vu1DumpRefused::setForTest(dir.knob(":2").c_str());
+                for (int i = 0; i < 3; ++i)
+                    rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.Equals(dir.bins().size(), static_cast<size_t>(2), "three refusals, a count of 2: two files");
+                t.Equals(dir.indexLines().size(), static_cast<size_t>(2), "and two index lines");
+                t.Equals(Vu1DumpRefused::live().written(), 2, "the capture counts two");
+            }
+            {
+                DumpDir dir("other_entry");
+                Vu1DumpRefused::setForTest(dir.knob(":10:0x1b50").c_str());
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.IsTrue(dir.bins().empty(), "narrowed to 0x1b50: a 0x33c8 refusal is not written");
+            }
+            {
+                DumpDir dir("this_entry");
+                Vu1DumpRefused::setForTest(dir.knob(":10:0x33c8").c_str());
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.Equals(dir.bins().size(), static_cast<size_t>(1), "narrowed to 0x33c8: written");
+            }
+            {
+                DumpDir dir("armed_later");
+                Vu1DumpRefused::setForTest(dir.knob(":10").c_str(), 3600.0); // PS2X_VU1_DUMP_AFTER=3600
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.IsTrue(dir.bins().empty(), "PS2X_VU1_DUMP_AFTER not yet reached: not written");
+            }
         });
     });
 }
