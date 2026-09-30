@@ -426,6 +426,9 @@ namespace
         }
         uint32_t below(uint32_t n) { return next() % n; }
     };
+
+    // Sprint 17 F N1c, the real shapes: RealDump, and last-bone 0x33c8 entry states from the walk's refused capture.
+#include "vu1_33c8_real_dumps.inc"
 }
 
 void register_vu1_ops_tests()
@@ -1132,6 +1135,36 @@ void register_vu1_ops_tests()
                 std::memcpy(vf, blob.data() + 16 + PS2_VU1_CODE_SIZE + PS2_VU1_DATA_SIZE + sizeof(vi), sizeof(vf));
                 return true;
             }
+            // A real refused capture (vu1_33c8_real_dumps.inc): its TOP, register file and the qwords its program
+            // reads, written over the fixture image.
+            bool loadReal(const RealDump &d)
+            {
+                if (!load())
+                    return false;
+                top = d.top;
+                std::memcpy(vi, d.vi, sizeof(vi));
+                std::memcpy(vf, d.vf, sizeof(vf));
+                for (size_t s = 0; s < d.spanCount; ++s)
+                {
+                    const std::string hex = d.spans[s].hex;
+                    for (size_t w = 0; w + 8u <= hex.size(); w += 8u)
+                        setWord(d.spans[s].first + static_cast<uint32_t>(w / 32u), static_cast<uint32_t>((w / 8u) % 4u),
+                                static_cast<int32_t>(std::stoul(hex.substr(w, 8u), nullptr, 16)));
+                }
+                return true;
+            }
+            // The list the dispatcher resumes: the command words from vi14 through the first 0x42.
+            std::vector<uint32_t> resumedList() const
+            {
+                std::vector<uint32_t> list;
+                for (int32_t k = vi[14]; k >= 0 && k < 64; ++k)
+                {
+                    list.push_back(static_cast<uint32_t>(word(340u + static_cast<uint32_t>(k), 0u)) & 0xFFFFu);
+                    if (list.back() == 0x42u)
+                        break;
+                }
+                return list;
+            }
             int32_t word(uint32_t qword, uint32_t lane) const
             {
                 int32_t v;
@@ -1479,6 +1512,11 @@ void register_vu1_ops_tests()
                 {"54 66 06 08 10 40 42, V = 0 (every body runs once)", {0x54u, 0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 0, true},
                 {"54 66 06 08 40 42, V = 96 (0x54's last store q326: the largest V clear of q329)",
                  {0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 96, false},
+                // N1c, the real shapes: shape A on the fixture's mesh, at the edges of 0x18's range.
+                {"66 06 08 54 18 28 42, V = 41 (odd: 0x18's last pass lights vertex 41 as well)",
+                 {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u}, 41, false},
+                {"66 06 08 54 18 28 42, V = 96 (0x18's last store q326: the largest V clear of q329)",
+                 {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u}, 96, false},
             };
             for (const Shape &shape : linearShapes)
             {
@@ -1524,6 +1562,49 @@ void register_vu1_ops_tests()
                         t.IsTrue(changed > 0, "0x10 wrote the fog lane: " + std::to_string(changed) + " of " +
                                                   std::to_string(passes) + " differ from the list without it");
                     }
+                });
+            }
+        }
+
+        // ---- Sprint 17 F N1c, the real shapes (docs/research/82 section 9.7): shape A --------------------------------
+        // The walk's refused capture (logs/vu1refused1, 2,000 last-bone lists) holds two shapes. Shape A (816) is
+        // `66 06 08 54 18 28 42` from index 1: the transform, the template fill, then 0x18's lighting (0x1440, SQ.xyzw
+        // at -11(vi4) and -8(vi4): slot +1 of two staging triples a pass from q40, the body before its IBGTZ, so qwords
+        // 41 + 3j for j < 2 max(ceil(V/2), 1), proven as [41, 38 + 6 max(ceil(V/2), 1)]) and 0x28's triangle assembly
+        // (0x1780, 0x40's body from 0x1790 behind two loads: the tags at 290/300, nine packet qwords after each of
+        // q329.x/.y, q329.x/.y rewritten with the same pair, one XGKICK per drawn triangle). Neither reads a flag. Three
+        // real captures, their entry state written over the fixture image, run natively against the interpreter.
+        {
+            struct RealCase
+            {
+                const char *what;
+                const RealDump *dump;
+            };
+            static const RealCase shapeA[] = {
+                {"1 triangle, 3 vertices, TOP 424 (vu1_refused_1078)", &kA1},
+                {"5 triangles, 9 vertices, TOP 724 (vu1_refused_1076)", &kA5},
+                {"19 triangles, 24 vertices, TOP 724 (vu1_refused_104)", &kA19},
+            };
+            for (const RealCase &real : shapeA)
+            {
+                tc.Run(std::string("native 0x33c8: the walk's shape A, 66 06 08 54 18 28 42, ") + real.what +
+                           ": taken natively, bit-exact",
+                       [&real](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*real.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    const std::vector<uint32_t> shape = {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u};
+                    t.IsTrue(rig.resumedList() == shape, "the capture resumes 66 06 08 54 18 28 42 at vi14 = 1");
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file, VU data memory and packets:" + why);
+                    if (Entry33c8Rig::packetsComparable())
+                        t.IsTrue(!native.packets.empty(), "the list drew (0x28 kicks one packet per drawn triangle)");
                 });
             }
         }
@@ -1591,8 +1672,30 @@ void register_vu1_ops_tests()
                  [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 2u, 101); }, -1},
                 {"q329.x = 335: 0x40's packet would overwrite the list", R::WriteRange, 0x40u,
                  [](Entry33c8Rig &r) { r.setWord(329u, 0u, 335); }, -1},
-                {"a 0x28 in the resumed list (no store range derived for it)", R::ResumeCommand, 0x28u,
-                 [](Entry33c8Rig &r) { r.setResumedList({0x66u, 0x06u, 0x08u, 0x28u, 0x42u}); }, -1},
+                {"a 0x64 in the resumed list (no store range derived for it)", R::ResumeCommand, 0x64u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x66u, 0x06u, 0x08u, 0x64u, 0x42u}); }, -1},
+                // N1c, the real shapes: shape A's 0x18 and 0x28.
+                {"18 66 06 08 40 42, TOP+2.z = 97: 0x18's lit colours [41, 332] would overwrite the packet pointers at q329",
+                 R::WriteRange, 0x18u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x18u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"18 66 06 08 40 42, TOP 100 (the header copied to q102): 0x18's lit colours [41, 164] would overwrite TOP+2",
+                 R::WriteRange, 0x18u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x18u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
+                 }, -1},
+                {"66 06 08 54 18 28 42, q329.x = 335: 0x28's packet would overwrite the list", R::WriteRange, 0x28u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u});
+                     r.setWord(329u, 0u, 335);
+                 }, -1},
+                {"66 06 08 54 18 28 42, q329.y = 1020: 0x28's packet would wrap past the end of VU memory", R::WriteRange, 0x28u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u});
+                     r.setWord(329u, 1u, 1020);
+                 }, -1},
                 {"06 08 40 42, TOP+2.x = -84: 0x06's flag words from q340 would overwrite the list", R::WriteRange, 0x06u,
                  [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, -84); }, -1},
                 {"06 08 40 42, TOP+2.x = -10: 0x06's seventh flag word (q426) would overwrite the header TOP+2", R::WriteRange, 0x06u,
@@ -1728,8 +1831,9 @@ void register_vu1_ops_tests()
                 return lines;
             }
         };
-        // A last-bone entry whose resumed list holds a 0x28 (no store range derived: refused as resume_command 0x28).
-        static const std::vector<uint32_t> kRefusedList = {0x66u, 0x06u, 0x08u, 0x28u, 0x42u};
+        // A last-bone entry whose resumed list holds a 0x64 (no store range derived: refused as resume_command 0x64).
+        // It held a 0x28 until N1c's real shapes admitted that one.
+        static const std::vector<uint32_t> kRefusedList = {0x66u, 0x06u, 0x08u, 0x64u, 0x42u};
 
         tc.Run("PS2X_VU1_DUMP_REFUSED is a Dev Path defaulting to empty (off)", [](TestCase &t)
         {
@@ -1790,12 +1894,12 @@ void register_vu1_ops_tests()
             t.Equals(bins.size(), static_cast<size_t>(1), "one file");
             if (bins.size() != 1u)
                 return;
-            t.IsTrue(bins[0] == "vu1_refused_0_resume_command_0x28.bin", "named by reason and command: " + bins[0]);
+            t.IsTrue(bins[0] == "vu1_refused_0_resume_command_0x64.bin", "named by reason and command: " + bins[0]);
             const std::vector<std::string> lines = dir.indexLines();
             t.Equals(lines.size(), static_cast<size_t>(1), "one index line");
             if (!lines.empty())
-                t.IsTrue(lines[0] == "vu1_refused_0_resume_command_0x28.bin entry=0x33c8 reason=resume_command cmd=0x28 "
-                                     "resume=1 list=66,06,08,28,42",
+                t.IsTrue(lines[0] == "vu1_refused_0_resume_command_0x64.bin entry=0x33c8 reason=resume_command cmd=0x64 "
+                                     "resume=1 list=66,06,08,64,42",
                          "the index line: " + lines[0]);
 
             // The dump reader's layout: the header, then the entry state exactly as the rig handed it to execute().

@@ -536,3 +536,76 @@ not committed: `0 of 25 differ, 3 taken natively` (`vu1dump3`) and `0 of 51 diff
 **Not known.** None of the walk's `cmd=0x54` or `cmd=0x10` lists has been seen. If one holds a `0x02` (§9.4), it is
 still refused, now as `resume_command cmd=0x2` rather than `cmd=0x54`. The fence is the refused capture (§9.4) with
 this branch's build. The stake stays §9.5's estimate, about 9-11 ms/s for `0x54`. **[estimate]**
+
+### 9.7 N1c, the real shapes (2026-09-30, branch `agent/s17-n1c-shapes`)
+
+**The capture.** `logs/vu1refused1` (the walk at 15:58Z, knob on, `PS2X_VU1_DUMP_REFUSED=logs/vu1refused1:2000:0x33c8`,
+armed at t = 290 s): 2,000 last-bone `0x33c8` entries. Every one resumes at vi14 = 1 with vi9 = TOP+2.z, q37.x = 40,
+q39.w = 2; TOP is 424 (1,056) or 724 (944), vi5 is 5 (1,632) or 6 (368), q329 is (290, 300) or (300, 290). The image
+is the fixture's (`vu1dump3_prog_31`), byte for byte. `python -m tools_py.parity.vu1_refused_shapes logs/vu1refused1
+--quiet` prints exactly two shapes:
+
+| shape | lists | refused as (the capture's build) | resumed list | TOP+2.w | TOP+2.z | y of qwords 0-9 |
+|---|---|---|---|---|---|---|
+| L (loop) | 1,184 | `resume_command 0x2` | `66 06 02 [0a 56 1a 2a 4c]` | 1-58 (35 values) | 3-51 (24 values) | 0 0 0 0 4 4 4 4 4 4 |
+| A (linear) | 816 | `resume_command 0x54` | `66 06 08 54 18 28 42` | 1-52 (22 values) | 3-48 (27 values) | 0 0 0 0 3 3 3 3 4 4 |
+
+The tool's parentheses count distinct values; the ranges are the first figures (the brief's "1-35" and "3-24" read
+the counts as ranges). The capture's build predates N1c's linear half, so shape A was refused at `0x54`; on
+`285761ed` it is refused at `0x18` (the scratch differential below: `resume_command 0x18` n=816, `0x2` n=1184).
+§9.4's questions have answers: no list mixes the 40-base staging with the clipper (shape L has no `0x08`, `0x54`,
+`0x10` or `0x40`; shape A no `0x02`), no `0x02` hides behind a `0x54`, and every loop has uniform y: 4 from the
+`0x0a` at index 4 through the qword after the `0x4c` (index 9). **[verified]**
+
+**Shape A: `0x18` and `0x28` admitted.** Both re-derived from the microcode (`python tools_py/vu1dis.py --start 0
+--count 2048` over the fixture, the pairs `0x1440-0x15a0` and `0x1780-0x1960`) and from `cmdLighting` and
+`cmdBuildPacket`, which agree pair for pair.
+- **`0x18` (`0x1440`).** `vf31` = q27, `vi3` = TOP+4, `vi4` = 40, `vi9` = TOP+2.z; `vi4 += 6` before the loop
+  (`0x14b8`) and again in it (`0x1530`), `IADDI vi9 -2` (`0x14e0`), then `SQ.xyzw` at `-11(vi4)` (`0x1580`, vertex
+  a) and `-8(vi4)` (`0x1588`, vertex b) before the `IBGTZ vi9` at `0x1590`. So the stores are slot +1 of the staging
+  triples, qwords 41 + 3j for j < 2m with m = max(⌈V/2⌉, 1): an odd count lights vertex V too, and V = 0 still
+  lights two. The proof takes `[41, 38 + 6m]`, whole qwords. It reaches q329 from V = 97, as `0x08` does. Its loads
+  (q27, the records and the staging RGBA, one pair past the end) write nothing. It has no flag read; its last FMAC is
+  `0x1578`'s `MADDw` (the two `MAXx` after it set no flags). **[verified]**
+- **`0x28` (`0x1780`).** `LQ vf20, 38` and `LQ vf19, 1(vi1)`, then `0x40`'s body from `0x1790` unchanged: the tags
+  `SQ` at 290 and 300 with `ISW.x` over them, nine `SQ` after the packet pointer per drawn triangle (the pointers
+  q329.x/.y swap per drawn triangle), `ISW.x`/`ISW.y` of the pair back to q329. So `0x40`'s proof is `0x28`'s: 290,
+  300, and `[p + 1, p + 9]` for both pointers, q329's rewrite keeping the pair. **[verified]**
+- **The XGKICKs** (`0x1920`, one per drawn triangle) store nothing. The entry requires the immediate model
+  (`xgkick_cycle_exact` refuses otherwise): each kick copies its whole packet to the GIF before the next triangle
+  is built over the other buffer. The rig forces that model (`vu1native_socom2_forceXgkickImmediateForTest(1)`) so
+  the entry runs under `ps2x_tests`' latched cycle-exact default, and compares packets only when the process
+  default is immediate (`PS2X_VU1_XGKICK_CYCLE_EXACT=0`): under cycle-exact the interpreter streams a kick as its
+  cycle advances and native never advances it, so the kicks of a native run do not reach the GS in that process.
+- **Flags.** The brief's "`0x2858` is an `FMAND` inside `0x28`" is not so: `0x28` is `0x1780-0x1960` and holds
+  none. `0x2858` belongs to `0x34` (the sphere map, `0x2690-0x2948`), which is not admitted. The image's six flag
+  reads are §9.6's list, re-read from the full disassembly. Shape A's one flag read is `0x06`'s at `0x1718`, and it
+  runs before `0x18` and `0x28`. If they ran first, their last FMACs would issue 20 or more pairs before it, behind
+  the dispatcher's eight and `0x06`'s prologue: landed and older, as the repack's `ADDy.z` is (§8.2). **[verified]**
+- **Clamps.** `0x18` loops on TOP+2.z (clamp at `0x1458`, `vertexCeiling()`), `0x28` on TOP+2.w (`0x17d0`,
+  `triangleCeiling()`). The entry's whole-program header check covers both, as it covers `0x08` and `0x40`.
+
+**What changed (shape A).**
+- `socom2_dispatch_0x1b50.cpp`: `proveResumedWrites` admits `kCmdLight` with `[41, 38 + 6m]` and `kCmdBuildPacket`
+  with `0x40`'s case; the comments carry the derivations.
+- `knobs.h`: the meaning names `66 06 08 10 18 28 40 54`; `docs/KNOBS.md` regenerated.
+- `vu1_ops_tests.cpp`, with `ps2xTest/src/vu1_33c8_real_dumps.inc`:
+  - Three real shape-A captures, `vu1_refused_1078` (1 triangle, 3 vertices, TOP 424), `1076` (5, 9, TOP 724) and
+    `104` (19, 24, TOP 724). `logs/` is not in the tree and the existing tests read only `tests/fixtures/`, so each
+    capture is carried as the state its program reads (the register file, TOP, and about 80-200 qwords), written
+    over the fixture image. That this is the capture was checked in scratch: the interpreter over the real dump and
+    over the fixture with the state written ends the same (registers, GIF packets, every stored qword), on the exact
+    and the fast path. Each runs natively, bit-exact against the interpreter, packets included.
+  - `66 06 08 54 18 28 42` on the fixture's mesh at V = 41 (odd) and V = 96 (0x18's last store q326).
+  - Four refusals before any write: `0x18` at V = 97 (q329) and against a TOP+2 at q102; `0x28`'s packet on the
+    list (q329.x = 335) and wrapping VU memory (q329.y = 1020).
+  - The "a command with no range" examples used `0x28`; they use `0x64` now (the refusal case and the
+    `PS2X_VU1_DUMP_REFUSED` cases' list, file name and index line).
+
+**Evidence (shape A).** RED on the base: the three captures and the two fixture shapes handed back, and the four
+refusals were not counted under `write_range` (6 of 53 cases fail). GREEN: 53 of 53 under the test binary's defaults,
+with `PS2X_VU1_XGKICK_CYCLE_EXACT=0`, and with that plus `PS2X_VU1_FAST=1`. Two planted mutations each fail: ⌊V/2⌋
+passes for `0x18` (the V = 97 refusal) and `0x28` admitted without a range (both packet refusals). Scratch, not
+committed, with packets compared under the immediate model, `PS2X_VU1_FAST=0` and `=1`: `0 of 25 differ, 3 taken
+natively` (`vu1dump3`), `0 of 51 differ, 51 taken natively` (`vu1dump5/lastbone.txt`) and `0 of 2000 differ, 816
+taken natively` (`vu1refused1`; the other 1,184 refused as `resume_command 0x2`). **[measured]**
