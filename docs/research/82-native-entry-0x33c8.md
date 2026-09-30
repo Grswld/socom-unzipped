@@ -157,6 +157,8 @@ header or the packet pointers at q329, but nothing in the microcode guarantees i
 
 ## 7. Not done: (A), the `0x52` body (N2)
 
+**Done in §10 (N2, 2026-09-30):** a native `0x52` at both entries, behind `PS2X_VU1_NATIVE_SKIN`.
+
 A native `0x52` serves both (A) and the lists refused at `0x1b50` on `0x52` (1,275 ms over the window, 18.6 ms/s).
 Size: the header and branch (14 pairs), the first-pass loop (20 pairs a vertex, 4x4 and 3x3 MADD chains with the
 `LOI 10.0` scale), the accumulate loop (30 pairs a vertex, the staging value pre-multiplied into ACC), the E-bit
@@ -685,3 +687,237 @@ differ, 15 taken natively`, as on the base. **[measured]**
 **Not known.** The capture is one moment of one walk: other scenes may hold shapes this proof refuses. The next
 walk's `[vu1-refuse]` lines name them. The stake stays §9.5's estimate, about 21-24 ms/s for the loop and 9-11 ms/s
 for shape A, until rung two measures it. **[estimate]**
+
+## 10. N2 -- the skinning pass `0x52` at both of its entries (2026-09-30, branch `agent/s17-n2-skin`)
+
+**Why.** With N1c on, the walk (`logs/parity/ab/vu1refuse/n1con`, 22:39Z, the same 68 s window) refuses two keys that
+run the same program, `0x52` (`0x3100-0x33c0`):
+- `entry=0x33c8 skin_pass`: 654,570 entries, 1,103 ms, 16 ms/s. These are the (A) bone passes of §0.
+- `entry=0x1b50 unknown_command cmd=0x52`: 293,356 entries, 1,276 ms, 19 ms/s. These are the `52 66 08 40 42` lists
+  refused whole at the main entry.
+
+**A correction to the brief.** It says that at `0x1b50` "the list continues: `66 08 40 42` are already native". It does
+not continue. `0x52` never returns to the dispatcher: it falls into the E bit at `0x33b8` and the program ends at
+`pc = 0x33c8` with no packet (research/15 §0.3, §4.4). The `66 08 40 42` tail runs in a later MSCAL, the last bone's (B).
+So at `0x1b50`, N2 is a handler that ends the program at `0x33c8`, and nothing after it runs in that program.
+**[verified]** by disassembly, and on every `0x1b50` `0x52` dump in `vu1dump3` and `vu1dump5`: the interpreter ends at
+`0x33c8`.
+
+### 10.1 What `0x52` does (`0x3100-0x33c0`)
+
+Read pair by pair with `python tools_py/vu1dis.py --start 0x3100 --count 100` over the fixture image, against the
+generated translation (`vu1_d418194495c25213.cpp`, `L_0x3100`-`L_0x33b8`). The code comment above `cmdSkin` carries the
+full listing.
+
+- **The chunk.** TOP+0..3 hold the bone matrix: `vf23`-`vf25` are the rows, `vf26` the translation. They are loaded by
+  `LQI`, which leaves `vi4 = TOP+4`.
+  - TOP+4.x holds the flags, copied to `vi5`. TOP+4.w holds the vertex count n, copied to `vi10`.
+  - Vertex k is two qwords at TOP+5+2k. `.xyz` of the first is the position (1.15); its `.w` is the destination
+    offset `dst_k`. The second holds the normal and, in `.w`, the weight.
+  - Bit 0 of the flags selects the path (`IBGTZ vi7`, with `vi7 = vi5 & 1`).
+- **The first pass** (bit 0 clear). `vi3 = 40`, then `ISW.x vi3 -> q37.x`, which persists the staging base. `vi9 = n`:
+  this is the count the repack at `0x33c8` loops on. The first bone's chunk covers every vertex of the mesh. Per
+  vertex:
+  - the position is scaled by `LOI 10.0` (`MULi`), and the position and normal are weighted (`MULw` by the weight);
+  - `vf27.xyz = M * position + T * weight` (`MULAx`, `MADDAy`, `MADDAz`, `MADDw`);
+  - `vf28.xyz = M * normal` (`MULAx`, `MADDAy`, `MADDz`);
+  - `SQ.xyz` of both to the staging pair `40 + dst_k` and `41 + dst_k`.
+- **The accumulate pass** (bit 0 set). `vi3 = q37.x`, and `vi9` is not written. Before each MADD chain the pair already
+  there is loaded and put into ACC (`MULAw ... vf0w`), so the bone's weighted contribution is added.
+- **Software pipelining.** Vertex k+1's two qwords and its destination (`ILWR.w vi4` at `0x3200`/`0x3340`) are read
+  before vertex k's stores. On an accumulate pass, the next pair is also read, at `0x3388`/`0x3398`: after vertex k's
+  position store (`0x3378`) and before its normal store (`0x33a0`). The last iteration reads vertex n, one past the end.
+- **Stores.** Only these:
+  - q37.x, on the first pass: the 16-bit value 40, zero-extended;
+  - `SQ.xyz` at `base + dst_k` and at `base + dst_k + 1`, for k < n. The address is the 16-bit `IADD`, then VU
+    memory's wrap. The corpus's pairs lie in q40-137.
+- **Registers it leaves.**
+  - `vi1 = TOP`, `vi2 = TOP+5+2n`, `vi3 = base`, `vi4 = dst_n` (read ahead), `vi5` = the flags;
+  - `vi6 = base + dst_n`, `vi7 = flags & 1`, `vi10 = 0`;
+  - `vi9 = n` on the first pass; `vi12 = base + dst_n` on the accumulate pass;
+  - `vf19`/`vf20` = vertex n in flight, `vf23`-`vf26` = the matrix, `vf27`/`vf28` = vertex n-1's results, and on the
+    accumulate pass `vf29`/`vf30` = the read-ahead pair;
+  - ACC from the last `MADDAy`, and I = 10.0;
+  - the MAC/STATUS of the last FMAC: `0x3268`'s `MULi` of the read-ahead vertex, or `0x3380`'s `MADDz`.
+
+  Q, P, CLIP and vi14 are untouched. At `0x1b50` the dispatcher's `0x1b70` has already set vi14 to 1, the index the
+  last bone's list resumes at.
+- **The bones.** Each MSCAL is one bone, and TOP+4.x marks the last. The next MSCAL, at `0x33c8`, tests that mark:
+  `vi7 = vi5 & 4` at `0x33d8`. Bit 2 set means (B), the repack and the resumed list. Clear means (A), `B 0x3100`,
+  another pass.
+
+  | flags | meaning | where it appears |
+  |---|---|---|
+  | 2 | first bone, not the last | `0x1b50` |
+  | 6 | first bone and the last: a one-bone mesh | 18 of `vu1dump5`'s 51 `0x1b50` `0x52` lists |
+  | 1 | accumulate, not the last | the (A) passes |
+  | 5 | accumulate and the last | the (A) passes |
+
+  **[verified]** over `vu1dump3` and `vu1dump5`.
+- **Branches and the backup register.** Each of the three branches follows a pair that writes no VI: `0x3158` (a
+  MOVE), `0x3260` and `0x33a0` (both SQ). So each branch reads its register's current value, and the interpreter's VI
+  branch-backup rule never applies.
+
+**Flags.** The pass reads no flag register. There is no FMAND, FSAND or FCAND in `0x3100-0x33c0`. The image's six
+FMANDs all lie outside it:
+- `0x1718` (`0x06`) and `0x2858` (`0x34`);
+- `0x2fa8` and `0x2fd8`, in the subroutine `0x2f30-0x30f8`, which returns by `JR vi2`;
+- `0x3b60` and `0x3b78`, in the clipper.
+
+The flags reach the next program only through the E bit. There the interpreter lands its FMAC pipeline in issue order,
+so the MAC and STATUS that native's immediate commit leaves are the interpreter's own. The next MSCAL also reads no flag
+before an FMAC of its own:
+- another pass writes I, ACC and `vf19`-`vf30` before it reads them;
+- (B) runs the repack's `MULz.w`/`ADDy.z` first, then `0x66`/`0x06`, whose one FMAND (`0x1718`) reads its own `MADDz.w`
+  four pairs back (§8.2).
+
+This is the `0x1718` argument, carried across an MSCAL boundary. At `0x1b50` nothing follows `0x52` in the same program.
+**[verified]** by reading, by the bit-exact register files below (MAC and STATUS included), and by the chains of §10.3,
+whose (B) steps then run bit-exact on the state native left.
+
+**Operand normalisation.** Each FMAC takes the generated translation's per-site `NormS`/`NormT` choice:
+- a register that an ITOF or an FMAC just wrote is already normal, so it is not normalised;
+- a register loaded from memory is normalised: the matrix, `vf29`/`vf30`.
+
+That choice is the interpreter's result, bit for bit.
+
+### 10.2 The write proof (`skinPassProvable`)
+
+The proof runs before the first write, at both entries, and refuses the whole program under a named reason (appended to
+`vu1_native_refusals.h`). It checks, in order:
+
+1. **`skin_count`.** n = TOP+4.w must lie in 1..`vertexCeiling()`. The loop is an `IBNE` after a decrement, so n = 0
+   means 65,536 passes. The ceiling is 256, or lower under the test knob.
+2. **`skin_range`.** The chunk the pass reads, TOP .. TOP+6+2n (read-ahead included), must lie inside VU memory without
+   wrapping. q37 must lie outside it, because the first pass's `ISW.x` rewrites q37 before the loop reads the vertices.
+3. **`skin_range`.** For each k < n, the pair `base + dst_k`, `base + dst_k + 1` must lie inside VU memory without
+   wrapping, off the chunk and off q37. The base is 40, or q37.x on an accumulate pass.
+4. **`skin_not_first`** (`0x1b50` only). The `0x52` must be the list's first command. After another command, the chunk
+   would be read as a header by that command and as a bone matrix by this one, and no list in any corpus has that
+   shape.
+
+**Why the proof holds.** No store then lands on anything the pass reads after its first store, except the staging pairs.
+Their read-modify-write order `cmdSkin` reproduces exactly (§10.1). So, by induction, every `dst_k` the proof read is the
+one the microcode reads.
+
+**What it leaves out, and why.** Nothing after the pass reads the list, the header or q329 in the same program: its E
+bit ends the program. The next program proves its own reads (§3). So N2 adds no range for those.
+
+**At `0x1b50`.** A list whose first command is `0x52` skips the header ceilings (TOP+2 is a matrix row: research/15 §7
+note 1) and takes this proof instead. That is `0x1b50`'s only write proof. **The other handlers at `0x1b50` still have
+none** (§7, LATER 62), and this branch leaves them as they are.
+
+**The corpus is nowhere near.** Its TOPs are 424 and 724. Its highest pair is q137, in both sets that hold passes (`vu1dump3`, `vu1dump5`). **[verified]**
+
+### 10.3 What changed
+
+- **`socom2_dispatch_0x1b50.cpp`.**
+  - `cmdSkin` holds both paths and the derivation above. `skinPassProvable` is the proof.
+  - `kCmdSkin` is admitted by `scanCommandList` only as the first command, and only with `Ctx::skin` set.
+    `ListFacts::skinFirst` makes `isNativeRun` take the proof in place of the header ceilings.
+  - `runCommand` returns a new `Outcome::SkinEnd`, and `runFromNextCommand` ends the program there at pc `0x33c8`.
+  - Entry `0x33c8`'s (A) branch runs the pass: XTOP, then `vi7 = 0`, `cmdSkin`, and pc `0x33c8`.
+  - `skinEnabled()` reads `PS2X_VU1_NATIVE_SKIN` once, and `vu1native_socom2_forceSkinForTest` forces it for tests.
+  - With the knob off, both entries are byte-for-byte the old paths (`unknown_command 0x52`, `skin_pass`).
+- **`knobs.h` and `docs/KNOBS.md`** (regenerated). `PS2X_VU1_NATIVE_SKIN` is a Dev Flag, default 0.
+  - It gates both entries, so it is measured apart from `PS2X_VU1_NATIVE_33C8`.
+  - `0x33c8`'s (A) also needs the registry's `PS2X_VU1_NATIVE_33C8` gate. With `SKIN=1` alone, only `0x1b50`'s lists
+    move, and (A) stays `no_native_entry`.
+- **`vu1_native_refusals.h`.** Appends `skin_count`, `skin_range` and `skin_not_first`, none of them keyed by a command.
+  `vu1_dump_refused.h` does not capture them.
+- **`vu1_ops_tests.cpp`** gains twelve cases. **`vu1_52_real_dumps.inc`** (new) holds the real states, written over the
+  fixture as `vu1_33c8_real_dumps.inc`'s are.
+  - Three (A) passes: prog 122 (vi5 2, flags 1, 12 vertices, TOP 724), 127 (vi5 1, flags 5, one vertex) and 135 (vi5 1,
+    9 vertices, destinations 44-90).
+  - Three `0x1b50` lists: prog 121, 129 and 145, with 29, 46 and 49 vertices. These are three of research/15's four;
+    `vu1dump4` holds none.
+  - The chain prog 142 → 143 → 144: one mesh's three MSCALs, `0x1b50`'s first pass, a bone pass and the last bone's
+    `66 08 40 42`.
+    - It runs on one interpreter and one VU memory, with the VIF's uploads written between the MSCALs, the oracle's
+      chain against the native one.
+    - The register file each program leaves equals the next dump's entry, lane for lane.
+  - Each case above is taken natively and bit-exact, with the register file and VU memory compared, and packets on
+    the chain's last step.
+  - Pairs at the proof's edge (q722-723 just below the chunk, q755-756 just past it) are taken. The first pass's q37.x
+    = 40 is seen on a cleared q37.
+  - With the knob off, a bone pass counts `skin_pass` +1 and a `0x52` list `unknown_command 0x52` +1, and each fallback
+    is the microcode's own run.
+  - Sixteen unprovable states are refused under their reason, with nothing touched: the count at 0, 257, -3 and over a
+    lowered ceiling; pairs one qword onto the chunk at either end, onto q37, below q0 and past q1023; the base q37.x at
+    700 and 1000; the chunk wrapping at TOP 1010; `0x1b50`'s count 0; a pair on the matrix; q37 inside the chunk at
+    TOP 30; and `70 52 42`.
+
+### 10.4 Evidence (scratch harness, no lock, no game, no `vu1_replay`)
+
+The harness is the N1 pattern: the worktree's VU1 core, dispatcher, `knobs.cpp` and test file, with a MiniTest main on
+`ps2x_tests`' defaults, linked read-only against the main tree's libraries.
+
+- **RED.** On the base dispatcher, with a no-op `vu1native_socom2_forceSkinForTest` and the base `knobs.cpp`, **11 of 72
+  fail**: the knob row, the six real passes, the chain, the edge pairs, the q37 case and the refusal table. The knob-off
+  case passes, as it must.
+- **GREEN.** **72 of 72** under the defaults (`PS2X_VU1_FAST=0`, cycle-exact XGKICK), with `PS2X_VU1_XGKICK_CYCLE_EXACT=0`,
+  and with that plus `PS2X_VU1_FAST=1`.
+- **Planted mutations.** Four, and each fails:
+  - `chunkLast` one short fails the q754 case;
+  - the `ISW.x` dropped fails the q37 case;
+  - the chunk overlap's `pair + 1` read as `pair` fails the q723 case;
+  - `MADDw` on lane z fails the three `0x1b50` lists.
+- **Differentials, knob on.** Native against the interpreter (`PS2X_VU1_FAST=0`) and against the generated code (`=1`),
+  with registers, all of VU memory and packets compared:
+
+  | set | dumps | differ | taken natively | knob off, for comparison |
+  |---|---|---|---|---|
+  | `vu1dump3` | 77 | 0 | 77 | 51 taken; `skin_pass` n=22, `unknown_command 0x52` n=4 |
+  | `vu1dump5` | 1,288 of 4,000 (the rest are entry `0x0`) | 0 | 1,246: every `0x33c8` entry (198, 147 of them passes) and every `0x52` list (51) | 1,048 taken; `skin_pass` n=147, `0x52` n=51 |
+  | `vu1refused1` | 2,000 | 0 | 2,000 | 2,000 taken |
+  | `vu1dump4` | 83 of 300 (217 are entry `0x0`, with no native program) | 0 | 83 | 83 taken |
+
+  On `vu1dump5`, the 42 not taken are `unknown_command 0x3c`, which is not `0x52`'s.
+- **Chains.** The four real chains of `vu1dump3` run end to end, native against the interpreter: 121-128, 129-141,
+  142-144 and 145-149, 29 MSCALs in all. Each step's end state is identical, including ACC, I, MAC and STATUS, and so
+  is every qword written. No step refuses.
+- **Timing.** `execute()` alone, 1,000 runs, best of five, `-O3`, on the loaded host, against the generated code:
+
+  | program | generated | native | native's share |
+  |---|---|---|---|
+  | `0x1b50` lists 121, 129, 145 | 2.93, 4.85, 5.32 µs | 2.45, 4.06, 4.54 µs | 83-85 % |
+  | (A) passes 122, 127, 135, 146 | 1.54, 0.26, 1.23, 3.37 µs | 1.35, 0.24, 1.09, 2.98 µs | 88-91 % |
+
+  **[measured]**, a scratch reading, not rung one. The pass is FMAC arithmetic with the flags computed per op, and
+  native computes the same flags; what it saves is the generated code's cycle and pipeline bookkeeping.
+
+**The stake, measured small.** The walk's fallback costs 4.35 µs per `0x52` list (1,276 ms / 293,356) and 1.69 µs
+per (A) pass (1,103 ms / 654,570). At these shares:
+- the `0x52` lists save 15-17 %, about 0.65-0.74 µs × 4,300/s, or 2.8-3.2 ms/s of their 19 ms/s;
+- the (A) passes save 9-12 %, about 0.15-0.2 µs × 9,600/s, or 1.4-1.9 ms/s of their 16 ms/s.
+
+That is **about 4-5 ms/s** of game-thread time in all, if the walk's passes look like the corpus's. **[estimate]** The
+walk (rung two) decides.
+
+**What would make N2 pay more.** The lever is the per-op flag work, which must stay bit-exact: the pass reads no flag,
+but the last FMAC's MAC and the sticky STATUS reach the next program. A faster pass would compute only those: the MAC of
+the last op and the OR of every op's sticky bits. It has not been tried. **[inferred]**
+
+### 10.5 Not done, and the fence
+
+- **Not done:**
+  - `m_cycle` is not advanced, as for every native program. VU cycles/s under-reports by the passes' cost, 278 cycles
+    per (A) entry in the corpus.
+  - `vu1_dump_refused.h` does not capture the three new reasons.
+  - At `0x33c8`, (A) under the cycle-exact XGKICK model is still refused as `xgkick_cycle_exact`, although the pass
+    kicks nothing. That is conservative, and it keeps the entry's order.
+  - The other `0x1b50` handlers still have no write proof (§7).
+- **The controller's fence** (a build, under the lock). Take goldens on the interpreter, native off, per dump set:
+  `PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch logs/vu1golden/n2_<set> --no-native <dumps>`. Take them
+  for `vu1dump3` (77), `vu1dump5` (all 4,000, or its 1,288 dispatcher entries), `vu1refused1` (2,000) and `vu1dump4`
+  (300), in batches of 200, because 2,000 paths overflow the command line (§9.7's `n1c_fence_batched.sh` pattern). Then
+  verify each against its golden:
+  - **Both knobs on:** `PS2X_VU1_NATIVE_SKIN=1 PS2X_VU1_NATIVE_33C8=1 PS2X_VU1_NATIVE_REFUSALS=1 dist/vu1_replay.exe
+    --verify logs/vu1golden/n2_<set>/state.txt --native --regs all <dumps>`. Expect every `OK` and `PASS: 0 mismatching
+    field(s)`. Expect no `skin_pass`, `skin_count`, `skin_range` or `skin_not_first` line, and no `unknown_command
+    cmd=0x52` line.
+  - **`SKIN=1` alone:** the `0x52` lists are taken, and every (A) pass counts `entry=0x33c8 no_native_entry`.
+  - **Both knobs off:** every `OK`, and `skin_pass` / `unknown_command 0x52` at the counts in the table above.
+  - **Then the full `ps2x_tests`,** and rung two: the mission walk, `SKIN` off then on, both with `PS2X_VU1_NATIVE_33C8=1`,
+    on one exe. With `PS2X_VU1_NATIVE_REFUSALS=1`, the two rows of the Why should be gone. Compare the legs by
+    `[vu1-stats] host=` and `ee: work=` only, as §6.4 says.
