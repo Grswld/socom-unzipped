@@ -298,3 +298,175 @@ picked set (all, or the first 50) as `<P>`. Then, under the lock:
 3. Knob off: the same without `PS2X_VU1_NATIVE_33C8`: every `OK`, and `entry=0x33c8 reason=no_native_entry n=<|P|>`.
 4. The 25 `vu1dump3` dumps as §6 item 2, unchanged. Then rung two: the mission walk, knob off then on, one exe. With
    `PS2X_VU1_NATIVE_REFUSALS=1` the `resume_command cmd=0x6` row should be gone.
+
+## 9. N1c -- the world-object loop, the fill and the fade in the resumed list (2026-09-30, branch `agent/s17-n1c-dump-refused`)
+
+**Why.** With N1b on, the walk (`logs/parity/ab/vu1refuse/n1bon`, 12:10Z, the same 68 s window, `--by key`) still
+refuses at `0x33c8`: `resume_command cmd=0x2` 108,236 times (51.5 % of the fallback's VU cycles, 4,023 ms, about
+59 ms/s), `cmd=0x54` 145,086 (19.1 %, 1,764 ms, about 26 ms/s) and `cmd=0x10` 5,556 (0.4 %). `skin_pass` is 9.7 %
+(N2's). A refusal names only the FIRST command the proof has no range for, so a `cmd=0x54` list may still hold a `0x02`
+further on. The controller's 4,000 dumps at one instant (`logs/vu1dump5`) hold 51 last-bone `0x33c8` entries, all
+`66 08 40 42`. So these lists cluster in time, by mesh or by moment. None is on disk, and nobody has seen their full
+shape. **[verified]** (the refusal table; `vu1_refused_shapes --last-bone` on `vu1dump5` prints one shape, 51 dumps.)
+
+### 9.1 What this branch adds (the instrument, not the admission)
+
+- **`PS2X_VU1_DUMP_REFUSED=<dir>[:<count>[:<entrypc>]]`** (Dev Path, default empty = off;
+  `runtime/vu1_dump_refused.h`). A program refused whole as `resume_command` or `write_range` is written in the
+  `PS2X_VU1_DUMP` format, so `vu1_replay` reads it. The file is `<dir>/vu1_refused_<n>_<reason>_<cmd>.bin`, and each
+  gets one line in `<dir>/refused.txt`: file, `entry=`, `reason=`, `cmd=`, `resume=` (vi14 at `0x33c8`), and
+  `list=` (the list words from the resume index through the first `0x42`/`0x4c`). At most `<count>` files (default
+  150). `<entrypc>` narrows the capture; without it any entry is taken, and today only `0x33c8` gives these reasons.
+  The directory is created, unlike `PS2X_VU1_DUMP`'s.
+- **Arming.** `PS2X_VU1_DUMP_AFTER=<s>` now arms this capture too. It counts seconds from the first native entry,
+  about boot. The walk refuses about 3.7k of these lists a second, so without the delay the count would be spent on
+  the first scene that refuses.
+- **No copy per run.** The brief asked for the entry state to be buffered and then written or dropped. That is not
+  needed: a whole-program refusal leaves pc, the register file and VU data memory exactly as the entry found them.
+  That is the dispatcher's contract, pinned by §3's "nothing touched before the hand-back" cases. So `run()` writes
+  after the hand-back, before the fallback runs. The refusal sites record (entry, reason, cmd) through
+  `Vu1Refusals::rememberWhole`, whether or not `PS2X_VU1_NATIVE_REFUSALS` is on. Off, the capture costs one relaxed
+  load per native entry and one per refusal. `PS2X_VU1_DUMP` now writes through the same `writeProgram`.
+- **`tools_py/parity/vu1_refused_shapes.py <dir> [--entry <pc>] [--last-bone] [--quiet]`** walks each list the way
+  the dispatcher runs it:
+  - It steps over inline blocks (8 or 11 qwords each, the count in z).
+  - It prints the `0x02` loop once, bracketed from `0x4c`'s target (the y of the qword AFTER the `0x4c`) to the
+    `0x4c`.
+  - It adds `y=mixed` when a culled or clipped-away primitive would read another target (§9.3).
+  - It prints a table of distinct shapes: count, refusal, and the TOP+2.w/TOP+2.z seen.
+
+  On `logs/vu1dump4` at `0x1b50` it prints research/13 §5's seven shapes. Example: `68 06 02 [0a 12 56 1a 2a 4c]`
+  (12 lists). Every loop has uniform y. **[verified]**
+- Tests: the `VU1Ops` rig has six cases. RED on the base (the capture API present, `run()` not offering): 2 of 41
+  fail. GREEN: 41 of 41 under the test binary's defaults, with `PS2X_VU1_XGKICK_CYCLE_EXACT=0`, and with that plus
+  `PS2X_VU1_FAST=1`. A planted mutation that dumps every reason fails the skin-pass case. The picker has 12 unittest
+  cases on synthetic dumps. Scratch, not committed: the 25-dump differential is unchanged, `0 of 25 differ, 3 taken
+  natively`, with the capture off and on (it writes 0: those refusals are `skin_pass`). Over `vu1dump5`'s 198 `0x33c8`
+  entries: `0 of 198 differ, 51 taken natively`, and the capture writes 0. **[measured]**
+
+### 9.2 What a last-bone `0x02`-family list does after the repack
+
+- **Assumed shape.** From research/13 §4.3-4.7 and §5, a skinned world-object list is presumably
+  `66 06 02 [0a (12) (56) (1a) 2a 4c]` after the `0x52`, the family-B body with the repacked vertex block standing in
+  for `0x68`'s. **[inferred]** (the shape is unread: §9.4).
+- **`0x02` (`0x1f70`).** It runs once: it reads TOP+2.x and TOP+2.w into the cursor `vi15` and the counter `vi12`,
+  then enters the per-primitive body at `0x1f98`.
+- **Per primitive.** The body does four things:
+  1. It reads the index record: the three vertex offsets and the flag word, whose bit 0 is `0x06`'s.
+  2. It saves the cursor to **329.z on both paths** (the delay slot at `0x1fe0`).
+  3. If the primitive is visible, it stashes flag bit 1 in **112.w**, loads the triangle and calls the five-plane
+     clipper `0x3618`. The clipper writes its ping-pong buffers **40-111** and leaves `vi8` (the polygon) and `vi10`
+     (its count).
+  4. If anything survives clipping, it writes the per-primitive GIFtag **112.x** (NLOOP = `vi10`, EOP) and
+     **112.yz** (from TOP+0), then hands back to `0x1b60`.
+- **The body commands.** `0x0a` kicks 423 and transforms into the staging **150..**. `0x12` fades the F lanes of
+  150... `0x56` fills slot +1 of 150.. from q327, overshooting to a multiple of 3. `0x1a` lights slot +1 of 150...
+  `0x2a` flushes 150.. into **113..** and kicks 423 and 112.
+- **`0x4c` (`0x20c8`) stores nothing.** It decrements `vi12`, restores `vi15` from 329.z, ends the program at zero
+  (`B 0x1b40`), or sets `vi14` from the qword after it and re-enters `0x1f98`. The static `0x42` is never dispatched.
+- **Culled or clipped-away primitives.** These fall into `0x20c8` WITHOUT a dispatch. `vi14` is then whatever the
+  last dispatch left: one past the `0x02` on the first primitive, or the target on a later one.
+- The native dispatcher already runs all of this for entry `0x1b50` (`cmdWorldObject`, `primitiveLoop`, the shims),
+  bit-exact on the corpus's 39 family-B lists. N1c is a proof extension, not new handlers.
+
+### 9.3 Can the linear write proof take a loop?
+
+**Yes, and more simply than the linear commands.** Every store the `0x02` family makes lands at a FIXED address, and
+none depends on the primitive count:
+- 40-111 (the clipper);
+- 112 (the GIFtag);
+- 113 .. 113+3·`vi10`-1 (`0x2a`);
+- 150 .. about 190 (the `0x0a`/`0x12`/`0x56`/`0x1a` staging, `vi10`-bounded, `0x56`'s overshoot included);
+- 329.z; 39.w (`0x72`/`0x74`); 339 (an inline block's scratch).
+
+So the union of the body's stores is proven once and holds for every iteration, and the primitive count bounds only
+the time. The proof has to:
+
+1. **Bound the loop.** Require TOP+2.w in 1..`triangleCeiling()` as a whole-program check before the repack.
+   `0x4c` tests `== 0` after a decrement, so a zero count is 65,536 primitives. `cmdWorldObject`'s clamp does this
+   today, but it fires mid-list.
+2. **Fix the loop's shape statically.** The list is proven unwritten (all the fixed ranges lie below q340). So:
+   - The target `t` = y(`b`+1), where `b` is the `0x4c`'s index. `t` must lie after the `0x02` and at or before `b`.
+   - y(`t`) and y(`i02`+1) must equal `t`, where `i02` is the `0x02`'s index. Those are the qwords a fall-in reads
+     (`0x20e8`, `ILW.y 340(vi14)`), and research/13 §4.7's invariant is data, not microcode. Otherwise refuse:
+     `vu1_refused_shapes` prints `y=mixed` for exactly this.
+   - Any `0x30`/`0x32`/`0x34` in the body moves `vi14` by the block count in its z, read from the list. The walk
+     follows it as the pre-scan does.
+3. **Prove each body command's store set once** against the proof's read set:
+   - the list 340-403;
+   - TOP+2;
+   - the packet pointers **329.x/.y** that `0x40` reads.
+
+   `writeRangeClear` treats q329 as a whole qword. `0x02`'s 329.z store would fail it, although the proof never reads
+   329.z. So the range check must become **lane-aware for q329**: allow `.z`, keep refusing `.x`/`.y`. One more
+   condition: TOP+2 must not fall inside the fixed ranges (TOP of about 190 or more; the corpus's TOPs are 424 and 724).
+4. **No clamp after the repack.**
+   - `0x0a`, `0x12`, `0x56`, `0x1a`, `0x2a` and `0x32` each clamp `vi10` against `clippedVertexCeiling()` (12).
+     `vi10` is computed at run time by the clipper, so it cannot be checked up front: it must be shown unreachable.
+   - The count argument: a Sutherland-Hodgman stage that classifies each vertex once and emits the inside vertices
+     plus one intersection per sign change emits at most ⌊4n/3⌋ (I + 2·min(I, O) with I + O = n). Over five stages:
+     3 → 4 → 5 → 6 → 8 → 10, and 10 ≤ 12. The research/13 §2 buffer bound, 12 slots, agrees.
+     **[inferred]**: `primSubroutine3618`'s emission (`0x3ad0`) must be read to confirm the one-classification
+     property, and planted degenerate triangles (NaN, zero-area, on-plane vertices) tested.
+   - Under a lowered test ceiling (`PS2X_VU1_NATIVE_TEST_CLIP_CEILING`) the program must refuse whole, the way
+     `HeaderVertices` does today.
+5. **The flag reads after the repack**, as §8.2 did for `0x06`. The clipper gates on flag state (research/13 §4.4);
+   each flag read in the `0x02` path must be shown to read its own FMAC's result, landed, and not the repack's
+   `ADDy.z`. **[unknown until read]**
+
+**The linear commands.** `0x54` and `0x10` fit the existing linear walk, each one range:
+- **`0x54`** (`0x05d8`) writes slot +1, the RGBAQ template from q327, of each staging triple from q40, three
+  vertices an iteration. The body runs before its `IBGTZ`, so the range is
+  `[41, 40 + 9·max(⌈V/3⌉, 1) - 2]` as whole qwords. It hits the list at V ≥ 100, where `0x08` is already refused.
+- **`0x10`** (`0x0f90`) writes only the fog lane `.w` of slot +2: qwords 42 + 3k for k < max(V, 1) (an odd count
+  exits after vertex a). That lies inside `0x08`'s `[40, 40 + 3·max(V, 1))`. Its reads are q28 and q29, the vertex
+  block and the staging ST.w that `0x08` wrote. It has no flag read.
+
+Both loop on TOP+2.z only, which the entry's `HeaderVertices` check already bounds.
+
+### 9.4 What is unknown until the shapes are read
+
+- The actual lists. The questions:
+  - Is it the family-B body, or a family-C one with `0x64`/`0x32`/`0x72`/`0x74`?
+  - Does a skinned `0x02` list mix the 40-base staging (`0x08`/`0x54`/`0x10`/`0x40`) with the clipper, which writes
+    the same qwords? Research/13 §2 found them exclusive in the corpus.
+  - What follows the `0x54` in the 145k `cmd=0x54` lists, and whether a `0x02` hides behind it?
+- The primitive and vertex counts: whether any exceeds the ceilings (a whole-program refusal, not a loss).
+- Whether the uniform-y invariant holds.
+- Capture on one exe, knob on, then read (the controller's, a game run under the lock):
+
+```
+bash scripts/loop_lock.sh run <owner> --purpose n1c-refused -- bash logs/s17_controller/f1_stats_walk_ab.sh vu1refuse n1cdump PS2X_VU1_NATIVE_33C8=1 PS2X_VU1_NATIVE_REFUSALS=1 PS2X_VU1_DUMP_REFUSED=logs/vu1refused1:2000:0x33c8 PS2X_VU1_DUMP_AFTER=290
+python -m tools_py.parity.vu1_refused_shapes logs/vu1refused1 --quiet
+```
+
+2,000 files is about 67 MB and about half a second of refusals from t=290 s, inside the sampler window. Every file
+is a refused list, where `vu1dump5`'s 4,000 held none. If the table shows one scene only, a second run with a later
+`PS2X_VU1_DUMP_AFTER` widens it. The picked files are also N1c's fence: goldens, then `--verify --native --regs all`,
+as §8.4.
+
+### 9.5 Size and risk
+
+- **Size.** `0x54` and `0x10` are two cases in `proveResumedWrites` and tests, about 40 lines. The loop is larger:
+  - the walk with the target and y checks;
+  - the fixed-range table;
+  - the lane-aware q329;
+  - the whole-program primitive and clip-ceiling checks;
+  - bit-exact shapes on a family-B fixture with a last-bone state grafted on (research/13's `vu1dump4` dumps carry
+    the clip planes and TOP+0; `vu1dump3_prog_31` does not);
+  - planted refusals.
+
+  About 150-250 lines of code and 250 of tests: one task, one review.
+- **Risk.**
+  - Low for `0x54`/`0x10`: linear, with no flag reads.
+  - Moderate for `0x02`, for four reasons: the clipper bound is an argument yet to be checked against the code;
+    the flag reads are unread; the fall-in invariant is guest data; and a family-B hand-back is only safe whole
+    (research/13 §6.3). The whole-or-nothing rule keeps a wrong proof to a refusal. A wrong admission is caught only
+    by the bit-exact tests and the fence.
+- **Stake.** If the lists are what §9.2 infers and native keeps §8.3's 59-65 % of the generated time:
+  - `0x02`: about 21-24 ms/s saved of its 59 ms/s;
+  - `0x54`: about 9-11 ms/s of 26 ms/s;
+  - `0x10`: noise.
+  - **[estimate]**, before the shapes are read.
+
+  N1c is not implemented in this branch.
