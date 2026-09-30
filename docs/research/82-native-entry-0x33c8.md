@@ -335,7 +335,7 @@ shape. **[verified]** (the refusal table; `vu1_refused_shapes --last-bone` on `v
   - It adds `y=mixed` when a culled or clipped-away primitive would read another target (§9.3).
   - It prints a table of distinct shapes: count, refusal, and the TOP+2.w/TOP+2.z seen.
 
-  On `logs/vu1dump4` at `0x1b50` it prints research/13 §5's seven shapes. Example: `68 06 02 [0a 12 56 1a 2a 4c]`
+  On `logs/vu1dump4` at `0x1b50` it prints seven shapes (two of family A, `68 08 10 54 18 28 42` and `68 06 08 10 54 18 28 42`, and five of the `0x02` family; research/13 §1.2's seven span `vu1dump2`-`vu1dump4`, so two of those are absent here; the review of ff3006bc). Example: `68 06 02 [0a 12 56 1a 2a 4c]`
   (12 lists). Every loop has uniform y. **[verified]**
 - Tests: the `VU1Ops` rig has six cases. RED on the base (the capture API present, `run()` not offering): 2 of 41
   fail. GREEN: 41 of 41 under the test binary's defaults, with `PS2X_VU1_XGKICK_CYCLE_EXACT=0`, and with that plus
@@ -417,7 +417,7 @@ the time. The proof has to:
 **The linear commands.** `0x54` and `0x10` fit the existing linear walk, each one range:
 - **`0x54`** (`0x05d8`) writes slot +1, the RGBAQ template from q327, of each staging triple from q40, three
   vertices an iteration. The body runs before its `IBGTZ`, so the range is
-  `[41, 40 + 9·max(⌈V/3⌉, 1) - 2]` as whole qwords. It hits the list at V ≥ 100, where `0x08` is already refused.
+  `[41, 40 + 9·max(⌈V/3⌉, 1) - 2]` as whole qwords. Both it and `0x08` are refused from V ≥ 97, where their ranges reach q329 (`writeRangeClear` checks it too); the list itself only from V ≥ 101 (the review of ff3006bc).
 - **`0x10`** (`0x0f90`) writes only the fog lane `.w` of slot +2: qwords 42 + 3k for k < max(V, 1) (an odd count
   exits after vertex a). That lies inside `0x08`'s `[40, 40 + 3·max(V, 1))`. Its reads are q28 and q29, the vertex
   block and the staging ST.w that `0x08` wrote. It has no flag read.
