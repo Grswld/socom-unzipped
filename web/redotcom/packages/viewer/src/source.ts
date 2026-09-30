@@ -7,7 +7,7 @@ import type { SourceRequest } from './worker';
  * extracted tree (`maps/`) at all.
  *
  * `DEV_PARAM` (a developer switch, deliberately not listed anywhere a visitor reads: only here, in the README's
- * developer section and the tests) turns on what the page did before: the served tree from `web/public/maps/`, if
+ * developer section and the tests) turns on what the page did before: the served tree from `web/redotcom/public/maps/`, if
  * `maps/index.json` answers, else the disc page. The e2e specs and the measuring tools add it to their URLs.
  */
 

@@ -10,7 +10,7 @@ import {
 } from '../src/index';
 
 /**
- * The frag grenade (web/docs/research/85): the throw's power and clip, the launch, and the flight against a hull --
+ * The frag grenade (web/redotcom/docs/research/85): the throw's power and clip, the launch, and the flight against a hull --
  * gravity, the bounce, the rest, the pass-through, the fuse -- over synthetic worlds; then the transcribed tables
  * against the game's own files when the fixtures are on hand.
  */

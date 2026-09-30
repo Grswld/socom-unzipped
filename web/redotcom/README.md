@@ -24,7 +24,9 @@ An agent working on the recomp can skip this directory entirely.
 - **reCOM mode.** Walk the maps as a SEAL: the game's third-person camera and movement law, the SEAL's own model and
   motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
   accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
-  no first person (the owner's ruling). Today reCOM mode is behind the `?redotcom` URL flag and opens on foot.
+  no first person (the owner's ruling). reCOM mode is the settings' **Mode** switch (`mode=play` in the address,
+  remembered; the older `?redotcom` still works, read as `mode=play`) and opens on foot. Offline it plays a match on its
+  own -- the match server's room run in the page ([Offline match](#offline-match)); `&nomatch` keeps the free walk.
 - **Multiplayer.** Respawn and classic matches of up to 16 players plus spectators on a Node server, one match per map
   and rules, the round's damage, death, respawn, teams, scoring and scoreboard read from the game
   ([Multiplayer server](#multiplayer-server-web-sprint-3)).
@@ -118,7 +120,7 @@ Run from `web/redotcom/` (npm finds the workspace root, `web/`, itself; from `we
 | command | what it does |
 |---|---|
 | `npm install` | workspace install (redotcom's seven packages plus `tools`, and the landing site and `shared`) |
-| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR`, `SOUNDS/BNKSTORE.ZAR` and `IRX/LIBSD.IRX`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to `C:/projects/socom_pc/game/disc`.) |
+| `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR`, `SOUNDS/BNKSTORE.ZAR` and `IRX/LIBSD.IRX`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to the repository's `game/disc`, two levels above `web/redotcom/`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
@@ -142,7 +144,8 @@ server for no game data. `?devmode` reads a `maps/` directory beside it instead,
 wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web sprint 2 `maps/RUN/READERC.ZAR` and
 `maps/RUN/ZWEAPON.ZAR`, the SEAL's tuning and the weapon table; with the sound, `maps/RUN/SOUNDRDR.ZAR` and
 `maps/RUN/SOUNDS/BNKSTORE.ZAR`, and `maps/RUN/IRX/LIBSD.IRX` for the SPU2's reverb presets). The archives are the game's and are never part of the build. The sound banks are read
-**by range** -- a map's two or three banks, not the 67 MB store -- so the server must answer HTTP `Range` requests
+**by range** -- a map's three banks and `HUDUI.bnk` (about 1.9 MB for Frostfire), plus a lent bank or two, not the
+67 MB store -- so the server must answer HTTP `Range` requests
 (nginx and Vite do); one that does not still works, fetching the whole store.
 
 **socomunzipped.com serves `maps/` today, by the owner's choice and for now.** The site's nginx
@@ -205,10 +208,12 @@ lists are grouped the same way (Move, Combat, Stance & action, Weapons, General;
 
 **Shareable links** (owner, 2026-09-29; `viewer/src/shareUrl.ts`). The page's state lives in its address and follows every
 change (`history.replaceState`: no reload, no history entries), so copying the address bar gives a friend the same setup:
-`mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`. On load the
+`mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`, `rules=respawn`
+or `rules=classic`. On load the
 address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
 written in. A value the page does not know is ignored. `devmode`, `fly`, `mp`, `server=`, `lag=` and `loss=` work as
-before and pass through untouched (never added); `server=` (or `mp`) beats `online=` and implies it. A link with
+before and pass through untouched (never added); `server=` (or `mp`) beats `online=` and implies it -- until the visitor
+picks an Online choice, which takes `server=` and `mp` out of the address (`onlineChoiceAddress`). A link with
 `online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with `mode=explore`.
 
 | setting | choices | in the address | remembered as |
@@ -216,6 +221,7 @@ before and pass through untouched (never added); `server=` (or `mp`) beats `onli
 | **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` (`?redotcom` read as it) | `s2u.viewer.recom` |
 | **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
 | **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
+| **Rules** | Respawn (the default) · Classic ([Playing a match](#playing-a-match)) | `rules=respawn` · `rules=classic` | `s2u.viewer.rules` |
 | map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
 
 **Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
@@ -609,9 +615,6 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
   (a named reading). The scoped sway moves the rounds but nothing on screen, as in the game as far as it was read
   (no reader of it that draws was found: [research 84](docs/research/84-accuracy-and-recoil.md) section 8); a
   console check would confirm.
-- **A round stops at the first surface.** The game's penetration rule is read (research 84 section 13: materials
-  whose `PENETRATION` is 1.0 are passed over), but the page's `Fire` still stops at the first polygon (research 89
-  section 8).
 - **Some effects are open.** The tracer's travelling model, a lifetime count-down on marks and footprints, and the
   skinned body under a light's pass (research 89 section 8). Maps with no game explosion effect show stand-in
   sprites for a grenade's blast.
@@ -646,10 +649,16 @@ of the ELF -- the ammo box's `newweapnbkrnd.tif` over x -10..160, y 364..439, th
 - **The auto-exposure is a slider.** A multiplayer round never runs it (the viewer opens at FIX 0, as the round
   draws); the campaign meters `FIX` per frame from a grid of frame pixels and applies it twice, which the viewer
   leaves to the slider.
-- **The ISO source has met no retail disc yet.** It reads ISO9660 (the primary volume at sector 16, `;1`
-  names, files by LBN) and was checked against images written by an independent library in four flavours
-  (plain, Joliet with Rock Ridge, a UDF bridge, El Torito), but no SOCOM II image was on the host that built
-  it. A raw 2352-byte `.bin` and a multi-extent file are refused by name rather than read.
+- **The ISO source is proven on one retail disc.** It reads ISO9660 (the primary volume at sector 16, `;1` names,
+  files by LBN), was checked against images written by an independent library in four flavours (plain, Joliet with
+  Rock Ridge, a UDF bridge, El Torito), and has read the retail US image (4,380,753,920 bytes): one volume of
+  2,139,040 blocks, 349 files, all 22 `RUN/MP*.ZDB` named; the gated test runs with `SOCOM_ISO` set to the image
+  ([research 93](docs/research/93-data-hardening.md) section 3). An image shorter than its volume is refused at open,
+  naming the two causes: a truncated file, or a Node `fs.openAsBlob` Blob over a file above 4 GiB, whose size Node
+  reports modulo 2^32 (a browser's `File.size` is exact). A dual-layer dump's second volume is read where the first
+  lacks a path, as PCSX2 and Open PS2 Loader find it (proven on a synthetic image only: no SOCOM II disc is
+  dual-layer). A raw 2352-byte `.bin`, a multi-extent file and an interleaved one are refused by name rather than
+  read.
 
 ## No game data in the repository
 
@@ -720,6 +729,17 @@ living teammates (Space) until the next round. A player who joins mid-round is a
 11 plays a tiebreaker ("PLAYING TIEBREAKER ROUND"), and another while it is drawn. Every round starts everyone at the
 side's start slots with a full kit. Scoring is the respawn match's: +2 a kill, +1 alive at the end, +5 each on the
 winning side. The rules and their sources are in research 91 section 19.
+
+### Offline match
+
+Offline (Online off), reCOM mode plays the match on its own: the page runs the match server's own `Room`
+(`packages/server/src/room.ts`, imported as it is) behind a socket that never leaves the page
+(`viewer/src/net/loopback.ts`), and joins it with the same client a match uses -- so the round's clock and banners,
+the game's damage (rounds, falls, grenades), deaths, respawns, scores and the scoreboard are the online match's, one
+implementation. The player is the host's side, the SEALs; nobody is kicked for idling; under classic the round starts
+with the one player and runs to its clock (`SOLO_ROUND_PLACEHOLDER`: the game launches only with both sides seated).
+`&nomatch` keeps the free walk of before, and so does `&fly` (the tests' and the tools' opening). The rules and their
+sources: [research 91](docs/research/91-the-round.md) section 20.
 
 `?lag=100&loss=2` runs the page's latency and
 loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a

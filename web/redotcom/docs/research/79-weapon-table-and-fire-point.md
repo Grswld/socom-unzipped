@@ -180,14 +180,14 @@ The zero point is read as (0, 0, 0): `Tick_0` resets `m_velM` from the same addr
 CZSealBody_Tick_0_0x57a330:7201-7209`, `:7920-7952`), and :625-628 pass its address where the others pass an
 offset's. The ten constants sit 16 bytes apart at 0x65d038-0x65d0c8, which is data; the handoff has none of it.
 
-### 3.4 What the viewer passes (all placeholders but the port)
+### 3.4 What the viewer passed (all placeholders but the port; retired, section 7)
 
 - **The actor frame** (`viewer/src/shot.ts` `actorMatrix`): the mover's feet as the position, the camera's yaw as the
   facing, local z the facing (the axis the moving test measures along), y up, x = y cross z (the actor's left).
   Which way the game's local z points is W2.1's to confirm from the bind pose.
-- **`VIEWER_FIRE_ARGS`**: a1 true, a2 false. **`VIEWER_ACTOR_PLACEHOLDER`**: actor state 1 (research 25's standing
+- **`VIEWER_FIRE_ARGS`**: a1 true, a2 false. **`VIEWER_ACTOR_PLACEHOLDER`** (retired, section 7): actor state 1 (research 25's standing
   and walking value), `+0x375` -1, `m_item` 0, an empty stance list (code 0). `m_velM` from the frames' positions.
-- **`HOLD_PLACEHOLDER`** (right 1.5, down 2, relief 1): all ten offsets take one value -- the M4A1 SD held with its
+- **`HOLD_PLACEHOLDER`** (retired, section 7; right 1.5, down 2, relief 1): all ten offsets take one value -- the M4A1 SD held with its
   sight point 1 ahead of the eye, 1.5 to its right and 2 under it, the muzzle where the weapon's own nodes then put
   it: (x -1.5, y 13.4, z 9.0) in the actor frame (15.4 - 2 up, W1.R2's eye; 1 + 8.0 ahead).
 - **The actor's position** is the drawn eye less 15.4, not the last tick's feet, so the weapon does not shake against
@@ -265,8 +265,8 @@ the aim's pitch after a shot) and tested as zero; its return is not wired.
 
 | name | value | stands for | until |
 |---|---|---|---|
-| `HOLD_PLACEHOLDER` | right 1.5, down 2, relief 1 | the ten stance offsets at 0x65d038..; where the weapon is drawn | ask 1; W2.1's hand |
+| `HOLD_PLACEHOLDER` | right 1.5, down 2, relief 1 | the ten stance offsets at 0x65d038..; where the weapon is drawn | retired: the weapon hangs from its own clip track in the posed hand (`heldItem.ts`, `weaponPose.ts`) and the round leaves its muzzle (`fire.ts`) |
 | `VIEWER_FIRE_ARGS` | a1 true, a2 false | the callers' arguments | ask 2 |
-| `VIEWER_ACTOR_PLACEHOLDER` | state 1, `+0x375` -1, `m_item` 0, no stance list | the body's fields the mover lacks | W2.1, W2.3a |
-| `SHOT_RANGE_PLACEHOLDER` | 5,000 units | `m_maxrange` | ask 3 |
-| `RECOIL_PLACEHOLDER` | 0 degrees a shot | the kick | ask 4, W2.5 |
+| `VIEWER_ACTOR_PLACEHOLDER` | state 1, `+0x375` -1, `m_item` 0, no stance list | the body's fields the mover lacks | retired with `shot.ts` (deleted, 2026-09-29): the mover carries the stance and `m_item` (`kit.ts`) |
+| `SHOT_RANGE_PLACEHOLDER` | 5,000 units | `m_maxrange` | replaced: the weapon record's `Maximum_Range` x `UNITS_PER_METRE` (`fire.ts`, `zweapon.rdr`; research 84 section 1) |
+| `RECOIL_PLACEHOLDER` | 0 degrees a shot | the kick | replaced: the game's kick, `rifleKick.ts` (research 84) |

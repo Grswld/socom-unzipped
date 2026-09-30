@@ -178,6 +178,7 @@ Game types (every MP map has one fixed type, `missionlist.rdr` `TYPE`, game `+0x
 | index >= count wraps (`index % count`) | | `FUN_0052b5c0` L395760 |
 | facing = flags & 0xf: 0 (0,0,-1), 1 (.707,0,-.707), 2 (1,0,0) ... 7, then negated | 8 headings | L395768-395800 |
 | y + 1.0 | lifted a unit above the cell | `FUN_002b8100` L158793 |
+| the floor under it | the walking tick's own pick: the probe from the feet + 5 (`PROBE_LIFT`), the highest hit at or under that origin + 1, else the lowest (`FUN_005b0420` -> `FUN_005b5d40` L470230-470240; research 86 s6.3). The server (`room.ts` `spawn`) and the page (`walk.ts` `respawn`) place from the record's y + 1 + 5; from the eye (+ 16.4) four Frostfire records stood the SEAL on an object 12 up (launch fix PL-2) | `room.test.ts`, `walk.test.ts`, `simMap.test.ts` |
 | 96-record maps: 24 respawn records a side -> 1 per slot; Frostfire/Rat's Nest (hundreds of twins) -> ~10 per slot | from research 75 §5.5 counts | research 75 |
 
 Where the notes overlap: 91b listed `RESPAWN_POINT_PLACEHOLDER` (the rebuild copies the body's own matrix, L455645; the placement not traced) as not found. 91a's is a cited function chain (`FUN_00598b90` -> `FUN_002b8100` -> `FUN_002b7ee0`), so it is the stronger evidence and resolves that placeholder. 91b's copy of the old matrix is the rebuild step, not the placement. Open: 91a's slot is the player slot `+0xfc8` (0..23); 91b found the lobby team slot `+0x3e` (0-7) with "no link to type found"; the link between the two slot numbers was not read.
@@ -517,35 +518,47 @@ shooter/victim split above.
 
 ## 16. Placeholders
 
-Neither note could read `.data` (no ELF). Deduplicated from both notes.
+Neither note could read `.data` (no ELF). Deduplicated from both notes. A name marked *note only* is a gap in the
+research that no code carries; the others are constants in the viewer or the server (`tools/test/placeholderLedger.test.ts`
+holds the two lists in step).
 
 | name | stands for / searched | status |
 |---|---|---|
 | `RESPAWN_POINT_PLACEHOLDER` (91b) | where a respawned player is placed; searched `FUN_00598b90`, `FUN_00599b60` (copies the old matrix), strings "respawn", "respawn_setup" (0x65b0e8, an AI script key), "on_respawn" (AI); `PlayerStart`/`spectator` readers not traced | resolved by 91a: `FUN_002b7ee0` farthest-from-nearest-enemy on flag-bit-4 `AIMAPS.MPS` records (§4.2) |
 | `FRIENDLY_FIRE_DEFAULT_PLACEHOLDER` (91a) | host-menu default; searched writers of `0x3f2860`/`0x3f5940`/`0x3f6230`/`0x3f1220` (only copies from the settings struct, `FUN_002e34d0` L197221) | resolved by 91b: the create-game screen reads "Friendly Fire is disabled." (`A_49_creategame`) |
 | `RESPAWN_OPTION_DEFAULT_PLACEHOLDER` (91a) | as above for respawn | resolved by 91b: "Respawn is disabled." (`A_49`, UIMnLOC 249-250) |
-| `RESPAWN_WAIT_CAMERA_PLACEHOLDER` (91a) | camera during the respawn wait (no call in `FUN_005979a0`) | partly: 91b says with respawn off the dead spectate (L454484-454487); respawn on still unknown |
+| `RESPAWN_WAIT_CAMERA_PLACEHOLDER` (*note only*; 91a) | camera during the respawn wait (no call in `FUN_005979a0`) | partly: 91b says with respawn off the dead spectate (L454484-454487); respawn on still unknown |
 | `LIMB_SPILL_SCALE_PLACEHOLDER` / `LIMB_SPILL_PIERCING_PLACEHOLDER` (91a) | `DAT_006508a8` / `DAT_006508b0`, `.data`; read from `socom2_game.elf` at those addresses | resolved (section 20): 0.3 at piercing 10 |
 | `FRAGMENT_PART_TABLE_PLACEHOLDER` (91a) | `DAT_006508e0` 6 thresholds, `DAT_006508d0` 6 parts; receiver's copy `DAT_00650900`/`DAT_006508f8`; `.data` | resolved (section 20): head 30 %, body 30 %, each limb 10 % |
-| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` (91a) | `DAT_006508b8` SP, `DAT_006508c0` MP 8 pellets, `DAT_006508c8` MP 4; `.data` | read (section 20): 2500, 6400, 22500; not used |
-| `FRIENDLY_FIRE_ENFORCEMENT_PLACEHOLDER` (91a) | searched `DAT_0044cdb8`/`44cdb8`, team-mask tests (`+200 & +200`) in L455000-466000, `FUN_005abbc0`, `FUN_005a5a80`, `FUN_005a1b80`; reCOM has no friendly-fire code. Next: the net receive of msg 0x40 before `FUN_005a1b80` (L160800-160840) | open |
-| `HEAD_NODE_NAMES_PLACEHOLDER` (91a) | strings at 0x65c4f8/0x65c500/0x65c508 under the strings dump's length cut; inferred `hips`, `head`, `neck` from research 78's skeleton | open (inferred) |
-| `DEATH_SOUND_IDS_PLACEHOLDER` (91a) | 0x3c/0x3d not mapped to `CHRSND_*` names | open |
-| `RESPAWN_BUTTON_PLACEHOLDER` (91a) | `FUN_002c64e0(0,pad)` state 1; glyphs 0xa6/0xb7 not decoded | partly: 91b maps pad result 0 to `Action` (X in Default config) |
-| `NET_DAMAGE_CLAMP_PLACEHOLDER` (91a) | `FUN_002bd220` bounds `DAT_003de728..750` | open |
-| `STUN_EFFECT_PLACEHOLDER`, `RECOVERY_FACTOR_PLACEHOLDER` (91a) | readers of ammo `+0x10` and char `+0x2f8` not traced | open |
-| `DOUBLE_AMMO_LOAD_PLACEHOLDER` (91a) | item 194: effect on the kit's magazines not traced | open |
-| `MP_PENALTY_PLACEHOLDER` (91a) | `mp_penalty` (0x3f1140) created and zeroed (L149589); game-script use not read | open |
+| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` (91a) | `DAT_006508b8` SP, `DAT_006508c0` MP 8 pellets, `DAT_006508c8` MP 4; `.data` | resolved (section 20): read, 2500, 6400, 22500; not used |
+| `FRIENDLY_FIRE_ENFORCEMENT_PLACEHOLDER` (*note only*; 91a) | searched `DAT_0044cdb8`/`44cdb8`, team-mask tests (`+200 & +200`) in L455000-466000, `FUN_005abbc0`, `FUN_005a5a80`, `FUN_005a1b80`; reCOM has no friendly-fire code. Next: the net receive of msg 0x40 before `FUN_005a1b80` (L160800-160840) | open |
+| `HEAD_NODE_NAMES_PLACEHOLDER` (*note only*; 91a) | strings at 0x65c4f8/0x65c500/0x65c508 under the strings dump's length cut; inferred `hips`, `head`, `neck` from research 78's skeleton | open (inferred) |
+| `DEATH_SOUND_IDS_PLACEHOLDER` (*note only*; 91a) | 0x3c/0x3d not mapped to `CHRSND_*` names | open |
+| `RESPAWN_BUTTON_PLACEHOLDER` (*note only*; 91a) | `FUN_002c64e0(0,pad)` state 1; glyphs 0xa6/0xb7 not decoded | partly: 91b maps pad result 0 to `Action` (X in Default config) |
+| `NET_DAMAGE_CLAMP_PLACEHOLDER` (*note only*; 91a) | `FUN_002bd220` bounds `DAT_003de728..750` | open |
+| `STUN_EFFECT_PLACEHOLDER`, `RECOVERY_FACTOR_PLACEHOLDER` (*note only*; 91a) | readers of ammo `+0x10` and char `+0x2f8` not traced | open |
+| `DOUBLE_AMMO_LOAD_PLACEHOLDER` (*note only*; 91a) | item 194: effect on the kit's magazines not traced | open |
+| `MP_PENALTY_PLACEHOLDER` (*note only*; 91a) | `mp_penalty` (0x3f1140) created and zeroed (L149589); game-script use not read | open |
 | `SPECTATOR_PAD_PLACEHOLDER` (91b) | buttons behind pad bytes +5, +6, +7, +10; searched `FUN_00295260`, `controller.rdr` (no spectator mappings); help-string glyphs cut | open |
-| `NAME_MAXLEN_PLACEHOLDER` (91b) | the name keyboard's own limit; searched UIMnLOC/`UIXLOC`/`UIMPXLOC`, "maxlength" (only `messages.rdr`'s); buffers give 30 (name) and 15 (clan) | open (use 30) |
+| `NAME_MAXLEN_PLACEHOLDER` (*note only*; 91b) | the name keyboard's own limit; searched UIMnLOC/`UIXLOC`/`UIMPXLOC`, "maxlength" (only `messages.rdr`'s); buffers give 30 (name) and 15 (clan) | open (use 30) |
 | `DEFAULT_CHARTYPE_PLACEHOLDER` (91b) | the type a player gets without choosing; searched `FUN_0053b4b0`, `UiCharType` (SP only, `FUN_002af8c0`), team slot `+0x3e` (0-7, no link found) | open |
-| `MATCH_WIN_COMPARE_PLACEHOLDER` (91b) | the test "round wins >= `mp_half_rounds`" and who sets `mp_game_over`, `mp_score00/08`, `mp_winner`; searched refs of 0x3f0fd8/0x3f0fe8/0x3f0ff8/0x3f0f88 (only reads and resets), "= 8" valve writes, type-5 branches | open |
-| `SUPPRESSION_ROUND_END_PLACEHOLDER` (91b) | what ends a SUPPRESSION round (elimination, clock) and which side wins on time; `mp_45_sec_clock`, `mp_x_sec_clock` created only (L149578-149586) | open |
-| `AUTOCOMM_TEXT_PLACEHOLDER` (91b) | text of comms 0x27/0x28/0x44; searched `FUN_005e7f20`; HudCLOC 60555-60561 candidates | open |
-| `GHOST_ROW_PLACEHOLDER` (91b) | that `+0xfd1` (rows hidden from the scoreboard) is the ghost flag; `FUN_0022de60` L80608; `FUN_00223970` L76148 copies `+0xfd1` to `+0xfd2` | open (91a's `+0xd2` bit 0x10000 ghost test is a related but different field) |
+| `MATCH_WIN_COMPARE_PLACEHOLDER` (91b) | the test "round wins >= `mp_half_rounds`" and who sets `mp_game_over`, `mp_score00/08`, `mp_winner`; searched refs of 0x3f0fd8/0x3f0fe8/0x3f0ff8/0x3f0f88 (only reads and resets), "= 8" valve writes, type-5 branches | resolved (section 18.2.2: the MP51 `objectives` script) |
+| `SUPPRESSION_ROUND_END_PLACEHOLDER` (91b) | what ends a SUPPRESSION round (elimination, clock) and which side wins on time; `mp_45_sec_clock`, `mp_x_sec_clock` created only (L149578-149586) | resolved (section 18.2.2: the MP51 `objectives` script) |
+| `AUTOCOMM_TEXT_PLACEHOLDER` (*note only*; 91b) | text of comms 0x27/0x28/0x44; searched `FUN_005e7f20`; HudCLOC 60555-60561 candidates | open |
+| `GHOST_ROW_PLACEHOLDER` (*note only*; 91b) | that `+0xfd1` (rows hidden from the scoreboard) is the ghost flag; `FUN_0022de60` L80608; `FUN_00223970` L76148 copies `+0xfd1` to `+0xfd2` | open (91a's `+0xd2` bit 0x10000 ghost test is a related but different field) |
 | `CONE_WINDOW_PLACEHOLDER` (launch review, OWNER-3: the server's cone, `net/shotCone.ts`) | the ticks of the server's own run of `Accuracy` a round's cone may be matched against (6, 100 ms): the page ticks its bloom by frames (`main.ts` `gunFrame`), the server by commands; no game source -- the game has no server | open (a server tolerance) |
 | `CONE_SLACK_PX_PLACEHOLDER` (launch review, OWNER-3) | reticle pixels (`kit+0x84c`'s units) the page's cone may stand off the server's (2): frame- against tick-sampled turn and pitch rates | open (a server tolerance) |
 | `ROOT_POSE_SLACK_PLACEHOLDER` (launch review, OWNER-3) | units the body's posed root (the clips', which the page's camera stands on, `FUN_0029a950` via `FUN_002869d0`) may stand off the stance's measured root the server has (4: the standing jump lifts it 3.6); the server poses no skeleton | open |
+| `RESPAWN_BLOCK_PLACEHOLDER` (`room.ts` `pick`) | the respawn pick's records: the game confines both the respawn pick (`FUN_002b7ee0` L158655-158718) and a respawn game's random round-start pick (`FUN_002b8100` L158760-158787) to the player slot's block of `count/24` records; the slot's `+0xfc8` link to the lobby is not traced (START_SLOT_LINK_PLACEHOLDER, section 4.2) | open (stands in: the whole side's records are searched) |
+| `VOTE_BAN_SCOPE_PLACEHOLDER` (`room.ts` `banned`, `VOTE_BAN_MS`) | how long a removed player is refused: the original refuses a rejoin to "that game" (section 17); a dedicated room never ends | open (10 minutes, two of the original's matches) |
+| `DEATH_NAME_PLACEHOLDER` (`net/deaths.ts`) | four `damanim.rdr` names with no clip of their own name -- "Die", "Death02", "Crawl death01", "Crawl death02"; searched `MOTION_P.ZAR`'s keys | open (read by the lists' order and the clips left over: `death_stand_chest01`, `_chest02`, `death_stand_groin01`, `_groin02`) |
+| `HIT_VOLUMES_PLACEHOLDER` (`net/hitVolumes.ts` `placeholderVolumes`) | the hit volumes without a skeleton: the game hits the skeleton node the round meets (`FUN_005abbc0`, section 1.3) | fallback only: hand-laid capsules on the stances' heights, used when a map's skeleton did not load; `skeletonVolumes` poses the SEAL's own skeleton otherwise |
+| `SPINELO_RADIUS_PLACEHOLDER` (`net/hitVolumes.ts`) | `spinelo`'s capsule radius: its `nparams` bbox is empty (it moves no vertex most; research 78 section 3), so none is measured | open (2.0, between the hips' 1.65 and `spinehi`'s 2.1) |
+| `QUEUE_TEXT_PLACEHOLDER` (`netPage.ts` `queueLine`) | the words for a spectator's place in line: the game has no queue (its 17th joiner is refused, section 7) | open (the viewer's words, in the game's message style) |
+| `BODY_FADE_PLACEHOLDER` (`remotePlayers.ts`) | a dead body's fade (alpha 0.1 a second, `FUN_00552780`): the skinned material has no opacity yet | open (drawn whole, hidden at 10 s, when the fade would end) |
+| `RADIO_MENU_PLACEHOLDER` (`netPage.ts`) | the radio menu's own look (TEAMMATES > a player > "VOTE RETAIN:REMOVE", section 17) | deferred (sprint 3): K opens the page's list in the message window, with the game's words |
+| `CLAYMORE_PLACEHOLDER` (`room.ts` `THROWN`) | the claymore in a match (placed, not thrown) | deferred (sprint 3): not in the match yet |
+| `KIT_PLACEHOLDER` (`room.ts` `THROWN`) | the throwables a SEAL carries in a match: the viewer's kit at each record's `capacity`; per-map kits are deferred | open |
 | `STANCE_CHANGE_TICKS_PLACEHOLDER` (launch review, OWNER-3) | ticks after a posture change during which the posed root may be anywhere between the two stances' (60); the change clips' lengths are not read into the server | open |
 
 ## 17. The kicks: the vote to remove, and no idle kick (research 91c, 2026-09-29)
@@ -808,13 +821,20 @@ The script side (MP51 seq `start` / `start2`): WAIT 5, then the objective pair b
 
 | name | what is missing | searched | next |
 |---|---|---|---|
-| `ROUND_SCREEN_LAYOUT_PLACEHOLDER` | SOCOM II positions, scales and background of `dlgMultiplayerRound` / `Final` / `FinalReally` | READERC, MPZANIM (scripts only), ZDB members, reCOM (SOCOM 1 only) | `READERX.ZAR` and the splash texture library from the full disc; or a console capture of the round's end |
-| `ROUND_LIST_COLUMNS_PLACEHOLDER` | which 3 stats the round lists show (`DAT_003dc7f0`, `0x3dc800`, `0x3dc810`, `0x3dc820`; exit-time `0x3dc7b0..e0`) | `FUN_00224210` | read `.data` from the ELF; SCORE / KILLS / DEATHS are inferred from `UIMPXLOC` 2106-2108 |
-| `CLOCK_NEG_STRING_PLACEHOLDER` | string `0x3e3070` drawn for a negative clock | strings dump (length cut) | the ELF |
-| `CLOCK_VISIBILITY_PLACEHOLDER` | which of vtable +0x18 / +0x1c shows and which hides the timer box in `FUN_001f6b60` | L56004-56020 | the C2D vtable |
-| `CLIENT_FINAL_EXIT_PLACEHOLDER` | whether non-host clients really leave `FinalReally` at once (`CloseAndSwitch` under `!IsSessionMaster`) or wait for the host | MPZANIM `ExitOnStart` | a two-client capture of a match end |
+| `ROUND_SCREEN_LAYOUT_PLACEHOLDER` (*note only*) | SOCOM II positions, scales and background of `dlgMultiplayerRound` / `Final` / `FinalReally` | READERC, MPZANIM (scripts only), ZDB members, reCOM (SOCOM 1 only) | `READERX.ZAR` and the splash texture library from the full disc; or a console capture of the round's end |
+| `ROUND_LIST_COLUMNS_PLACEHOLDER` (*note only*) | which 3 stats the round lists show (`DAT_003dc7f0`, `0x3dc800`, `0x3dc810`, `0x3dc820`; exit-time `0x3dc7b0..e0`) | `FUN_00224210` | read `.data` from the ELF; SCORE / KILLS / DEATHS are inferred from `UIMPXLOC` 2106-2108 |
+| `CLOCK_NEG_STRING_PLACEHOLDER` (*note only*) | string `0x3e3070` drawn for a negative clock | strings dump (length cut) | the ELF |
+| `CLOCK_VISIBILITY_PLACEHOLDER` (*note only*) | which of vtable +0x18 / +0x1c shows and which hides the timer box in `FUN_001f6b60` | L56004-56020 | the C2D vtable |
+| `CLIENT_FINAL_EXIT_PLACEHOLDER` (*note only*) | whether non-host clients really leave `FinalReally` at once (`CloseAndSwitch` under `!IsSessionMaster`) or wait for the host | MPZANIM `ExitOnStart` | a two-client capture of a match end |
 | `RESPAWN_BANNER_PLACEHOLDER` | that a respawn match's banner reads "STARTING ROUND 1 OF 11" although it lasts one round | `FUN_001fb420` | a capture of a respawn round |
-| `MSG_COLOUR_WORD_PLACEHOLDER` | the MESSAGE command's second word `0x01c8c8c8` (read here as flag 1 + RGB 200, 200, 200) and its window (assumed the main one) | MZANIM streams | the MESSAGE tick in the decomp (command 55) |
+| `MSG_COLOUR_WORD_PLACEHOLDER` (*note only*) | the MESSAGE command's second word `0x01c8c8c8` (read here as flag 1 + RGB 200, 200, 200) and its window (assumed the main one) | MZANIM streams | the MESSAGE tick in the decomp (command 55) |
+| `TITLE_PLACEHOLDER` (`roundScreens.ts`) | the screens' title: SOCOM 1 had it in the background bitmap | `ROUND_SCREEN_LAYOUT_PLACEHOLDER`'s search | stands in at the team captions' x 27 (`dlgMultiplayerRound.rdr` L58), NEXT ROUND's baseline 45 (L96), scale 1 |
+| `COLUMN_ORDER_PLACEHOLDER` (`roundScreens.ts`) | the round lists' three columns (`ROUND_LIST_COLUMNS_PLACEHOLDER`) | `FUN_00224210` L76333-76339 | KILLS, DEATHS, SCORE: the SELECT scoreboard's order (research 87 §12), SOCOM 1's first column KILLS |
+| `PANEL_PLACEHOLDER` (`roundScreens.ts`) | the panel behind a screen | as the title's | the scoreboard's nine-slice stretched over the frame's margin (10..630, 20..432) |
+| `TEAM_BAR_PLACEHOLDER` (`roundScreens.ts`) | the team bars under the captions | as the title's | the scoreboard's (25 high, 20 above the caption's baseline) |
+| `STRIPE_PLACEHOLDER` (`roundScreens.ts`) | the odd rows' stripes | as the title's | the scoreboard's, across x 20..450 |
+| `YOUR_STATS_PLACEHOLDER` (`roundScreens.ts`) | YOUR STATS (string 2115; SOCOM 1's final screen has none) | `dlgMultiplayerFinalReally.rdr` (SOCOM 1) | a fourth block in the bottom row, caption at y 327 (L768), numbers + 50 (L810), columns 60 apart (L1039) |
+| `BOTTOM_CAPTION_PLACEHOLDER` (`roundScreens.ts`) | the single-line SOCOM II captions SEAL ROUNDS / TERRORIST ROUNDS / TIME PLAYED | as YOUR STATS | on SOCOM 1's first caption line, y 327 |
 
 ## 19. Classic mode as implemented (web sprint 3, 2026-09-29)
 
@@ -867,7 +887,8 @@ The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZA
 | the banner | "STARTING ROUND r OF 11" on each round start, from the server's round; respawn keeps the original's "STARTING ROUND 1 OF 11" for its one round (the owner's ruling) | `FUN_001fb420` L57633-57648 reads `mp_max_rounds` and `mp_round_count` and no respawn flag; `RESPAWN_BANNER_PLACEHOLDER` (not captured) |
 | objective | "OBJECTIVE:" / "ELIMINATE THE TERRORISTS" for the SEALs, "ELIMINATE THE SEALS" for the Terrorists, on every map | seq `start` / `start2` (raw names 38-40); other game types' objectives: `OBJECTIVE_BY_MAP_PLACEHOLDER` |
 
-The placeholders this adds:
+### 19.1 Placeholders (named in the code)
+
 - `CLASSIC_WAITING_PLACEHOLDER`: the room before both sides are seated, and after a side empties. The original never
   plays that state: it stays in its lobby, or abandons the game (`FUN_002bc530` L161130-161140).
 - `START_SLOT_LINK_PLACEHOLDER`: the link from the player slot `+0xfc8` to the lobby (section 4.2, open).
@@ -909,13 +930,19 @@ asks no thrower); a wall between the blast and the head stops all of it; each fr
 crouched SEAL at up to `f x 50` u/s in `Fall forward` / `Fall backwards`, then `Land ...` and `Get up ...`; the ears ring
 (the mix at 0.35 for 5 s). Offline and online, through `resolveBlast` in the room.
 
-**Placeholders resolved from `.data`** (read from `game/disc/socom2_game.elf`, file offset = va - 0x4c5380 + 0x2f7a80):
+### 20.1 Placeholders: one added, three resolved from `.data`
+
+- `SOLO_ROUND_PLACEHOLDER` (`net/rules.ts`, the room's `solo`): classic's round 1 starts with the one player, and a
+  side with nobody on it is never eliminated (the table above); the game launches only with both sides seated
+  (`FUN_002c3cf0` L165325-165352), so it has no one-player round.
+
+Resolved (read from `game/disc/socom2_game.elf`, file offset = va - 0x4c5380 + 0x2f7a80):
 
 | name (section 16) | value | now |
 |---|---|---|
-| `LIMB_SPILL_SCALE_PLACEHOLDER` / `LIMB_SPILL_PIERCING_PLACEHOLDER` | `DAT_006508a8` = 0x3e99999a (0.3), `DAT_006508b0` = 0x41200000 (10) | `LIMB_SPILL`, `LIMB_SPILL_PIERCING` in `net/damage.ts`: a hit on a spent limb is 0.3 of it on the body, through the armour |
-| `FRAGMENT_PART_TABLE_PLACEHOLDER` | thresholds 0.3, 0.6, 0.7, 0.8, 0.9, 1.0; parts 00 03 02 01 05 04 (the receiver's copy at 0x6508f8 the same) | `FRAGMENT_ROLLS`, `FRAGMENT_PARTS`, `fragmentPart` |
-| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` | `DAT_006508b8` 2500, `DAT_006508c0` 6400, `DAT_006508c8` 22500 (squared: 50, 80, 150 units) | read only; no shotgun in the kits |
+| `LIMB_SPILL_SCALE_PLACEHOLDER` / `LIMB_SPILL_PIERCING_PLACEHOLDER` | `DAT_006508a8` = 0x3e99999a (0.3), `DAT_006508b0` = 0x41200000 (10) | resolved: `LIMB_SPILL`, `LIMB_SPILL_PIERCING` in `net/damage.ts`: a hit on a spent limb is 0.3 of it on the body, through the armour |
+| `FRAGMENT_PART_TABLE_PLACEHOLDER` | thresholds 0.3, 0.6, 0.7, 0.8, 0.9, 1.0; parts 00 03 02 01 05 04 (the receiver's copy at 0x6508f8 the same) | resolved: `FRAGMENT_ROLLS`, `FRAGMENT_PARTS`, `fragmentPart` |
+| `SHOTGUN_PELLET_RANGE_SQ_PLACEHOLDER` | `DAT_006508b8` 2500, `DAT_006508c0` 6400, `DAT_006508c8` 22500 (squared: 50, 80, 150 units) | resolved: read only; no shotgun in the kits |
 
 Tests: `test/loopback.test.ts` (the join as the host's SEAL, the commands in the room, a grenade at the feet killing the
 player through the client, the respawn at a respawn record, classic alone, the close), `server/test/roomBlast.test.ts`

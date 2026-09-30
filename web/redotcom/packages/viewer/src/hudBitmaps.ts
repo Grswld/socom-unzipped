@@ -5,7 +5,7 @@ import { decodeTexture, PaletteTable, parseTextureRecord, type Rgba } from '@s2u
  * The HUD's bitmaps (web sprint 2, W2.4): `RUN\COMMON\HUD2_TXR.ZED` rides in every `MP*.ZDB` (72 textures, the
  * reticles among them) with its palettes in `HUD2_PAL.ZED` beside it. They decode through the same
  * `parseTextureRecord` -> `decodeTexture` path as the world's (`./loadMap`), against a `PaletteTable` built from
- * **HUD2_PAL alone**: a library's textures cite the ids of its own `_PAL` (web/docs/research/72's caveat on
+ * **HUD2_PAL alone**: a library's textures cite the ids of its own `_PAL` (web/redotcom/docs/research/72's caveat on
  * `CLIB_TXR`/`CLIB_PAL`; the HUD pair has the same shape -- `ret_rifle_01.tif`'s TEX0.CBP is 188, an id of
  * HUD2_PAL's 39), so the map's palettes are not mixed in.
  *

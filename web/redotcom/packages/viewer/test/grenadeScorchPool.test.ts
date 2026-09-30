@@ -7,7 +7,7 @@ import type { PlaySnapshot } from '../src/walk';
 import { MarkClipper, markClipGeometry, markFrame, PERM_DECAL_TRIANGLES } from '../src/markClip';
 
 /**
- * The grenade's scorch goes to the game's permanent decal pool (web/docs/research/89 §5, §14): `decals.rdr`'s
+ * The grenade's scorch goes to the game's permanent decal pool (web/redotcom/docs/research/89 §5, §14): `decals.rdr`'s
  * `PERM_DECAL_POOL` `BASE 30, OVERFLOW 0` (read into `0x4b5050` at decomp 324141-324148); `FUN_003b3800` (306386-306418)
  * takes one entry per kept world triangle from it through `FUN_003bf1a0`, which refuses once `count >= base + overflow`
  * (313254-313262); the oldest-first trim `FUN_003bf110` runs on the temporary pool only (218207, 219048, 236776), and

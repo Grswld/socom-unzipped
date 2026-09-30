@@ -4,7 +4,7 @@ import { Reader, type Zar, type ZarKey } from '@s2u/archive';
  * The zAnim command archives -- `RUN/CZANIM.ZAR` (the common set), each map's `MZANIM.ZAR` (its `mission` set) and
  * `RUN/LDZANIM.ZAR` (the loading screen's) -- read the way `CZAnimMain::LoadZAR` 0x267ab0, `CZAnimNameTable::Load`
  * 0x268c00, `CZAnimSet::Load` 0x26bc50 and `CZAnim::Load` 0x26d370 walk them (the names are recomp/socom2_names.csv's;
- * their bodies are not in the tree). The structures are reCOM's (`zAnim/zanim.h`), and web/docs/research/77 §9
+ * their bodies are not in the tree). The structures are reCOM's (`zAnim/zanim.h`), and web/redotcom/docs/research/77 §9
  * checks every field read here on all 66 archives of the 22 maps: every count equals its list, every animation's
  * name index names its own key, every command stream tiles into sequences and commands to the byte.
  *
@@ -79,7 +79,7 @@ export interface ZAnimCommand {
   size: number;
   /**
    * The command's own bytes, its header included: a view into the animation's `Seq_Data`, not a copy. The effect
-   * commands' payloads are decoded from it (`./effects`, web/docs/research/89).
+   * commands' payloads are decoded from it (`./effects`, web/redotcom/docs/research/89).
    */
   bytes: Uint8Array;
 }

@@ -4,7 +4,7 @@ import type { GroundData } from './mover';
 import type { ClientEvent, DoorWire } from './net/protocol';
 
 /**
- * The doors on the page (`./doors`, web/docs/research/92-doors.md): the map's `DoorSet` on the walk's own hull, its
+ * The doors on the page (`./doors`, web/redotcom/docs/research/92-doors.md): the map's `DoorSet` on the walk's own hull, its
  * swings drawn (`WorldView.moveNode`) and heard (the zAnim's `SOUND`), the door under the reticle for the HUD's prompt
  * and the action button, and -- in a match -- the server's doors followed from the snapshots, the action sent to it
  * as a `door` event rather than run here. `main.ts` makes one.

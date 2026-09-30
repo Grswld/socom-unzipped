@@ -5,7 +5,7 @@ import { decodeNamedTextures } from './hudBitmaps';
 import type { LoadedMesh } from './loadMap';
 
 /**
- * The frag grenade's assets, read in the worker with the map (the grenades workstream; web/docs/research/85 §6):
+ * The frag grenade's assets, read in the worker with the map (the grenades workstream; web/redotcom/docs/research/85 §6):
  *
  * - **The model.** `zweapon.rdr`'s M67 names `ModelName grenade`: `COMMON/WEAP_GEO.ZED`'s `grenade`, 81 vertices and
  *   82 triangles in the weapons' form (`G11b.tif`, `m79.tif`), about 1.3 x 1.8 x 1 units -- drawn in the hand and in

@@ -211,7 +211,7 @@ export class Room {
    */
   private readonly volumes: StanceVolumes | null;
   /**
-   * DOORS (web/docs/research/92-doors.md): the map's doors, run here -- a client's `door` event asks, the reach is
+   * DOORS (web/redotcom/docs/research/92-doors.md): the map's doors, run here -- a client's `door` event asks, the reach is
    * checked, the swing turns the leaf's polygons in the hull every mover reads -- and sent in every snapshot.
    */
   readonly doors: DoorSet;
@@ -630,7 +630,7 @@ export class Room {
     void overall;
   }
 
-  // ---- doors (web/docs/research/92-doors.md) ----
+  // ---- doors (web/redotcom/docs/research/92-doors.md) ----
 
   /**
    * A client's action on the door under its reticle: taken from a living player within the door's reach of its leaf

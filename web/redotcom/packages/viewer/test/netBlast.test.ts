@@ -87,7 +87,7 @@ describe('the fragments on the player (FUN_005a18b0, FUN_005a0e70 L459236-459256
   });
 });
 
-describe('the knock (FUN_0057ed10 L441094, FUN_0057e770 L440940-441092, FUN_005807d0 L441900)', () => {
+describe('the knock (FUN_0057ed10 L441094, FUN_0057e770 L440940-441092, FUN_005807d0 L442057)', () => {
   it('stores the push only when fragments struck and the damage at the feet is over 0', () => {
     const far = resolveBlast(freshHealth(), standing(140), [0, 0, 0], M67_BLAST, () => 0.999, true)!;
     expect(far.knock).toBeNull();

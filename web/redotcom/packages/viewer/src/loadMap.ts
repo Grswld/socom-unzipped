@@ -128,7 +128,7 @@ export interface LoadedMap {
   textureFlags: Record<string, TextureFlags>;
   /**
    * The detail pass each drawn texture binds, by texture name: its `mp<N>_lib.rdr` entry's `detail` record
-   * (web/docs/research/72 §6, `readTexManifest`), the detail texture's name lower-cased as `textures` keys
+   * (web/redotcom/docs/research/72 §6, `readTexManifest`), the detail texture's name lower-cased as `textures` keys
    * it, and only where that texture decoded. Empty on a map with no detail textures (Night Stalker, MP81).
    */
   detail: Record<string, TexDetail>;
@@ -150,7 +150,7 @@ export interface LoadedMap {
   collision: CollisionLines;
   /**
    * The disc's spawn slots (W1.5b): `AIMAPS.MPS`'s spawn list, 24 a side with their facing, placed by
-   * `placeSpawnSlots` (web/docs/research/75 §5.5-§7), each on the ground probe's floor under its centre where
+   * `placeSpawnSlots` (web/redotcom/docs/research/75 §5.5-§7), each on the ground probe's floor under its centre where
    * the map has ground (W1.4b). Drawn as the spawn overlay; the camera's opening stand stays at the measured
    * spawn A of `spawns.ts` (the spec's W1.R9; `stand`). Empty, with a diagnostic, when the file will not read.
    */
@@ -172,7 +172,7 @@ export interface LoadedMap {
   stand?: Stand;
   /**
    * The player's body (W2.1, `./body`): the map's player character out of `CLIB_MDL`/`CLIB_GEO`, in the gear
-   * `READERC.ZAR/character.rdr` hangs on it out of `FLIB_MDL`, in its bind pose at slot A (web/docs/research/78).
+   * `READERC.ZAR/character.rdr` hangs on it out of `FLIB_MDL`, in its bind pose at slot A (web/redotcom/docs/research/78).
    * Null, with a diagnostic, when it will not decode; absent on a map built by hand.
    */
   body?: LoadedBody | null;
@@ -180,7 +180,7 @@ export interface LoadedMap {
   terrorist?: LoadedBody | null;
   /**
    * The held weapon (W2.4, `./shot`): the M4A1 SD (W2.R4) out of `COMMON/WEAP_GEO.ZED` and `WEAP_MDL.ZED`, its high
-   * LOD's packets in the weapon's own frame (x along the barrel, y up; web/docs/research/79 §2) and its named nodes --
+   * LOD's packets in the weapon's own frame (x along the barrel, y up; web/redotcom/docs/research/79 §2) and its named nodes --
    * the muzzle `firepoint` among them. Its textures are in `textures` with the map's. Absent when the library will
    * not read, with a diagnostic.
    */
@@ -200,7 +200,7 @@ export interface LoadedMap {
   grenade?: GrenadeAssets;
   /** The map's own context actions, `READERM.ZAR/actions.rdr` on placed nodes (`./mapActions`, research 87 §5). */
   actions?: MapAction[];
-  /** DOORS: the map's doors (`./doors`, web/docs/research/92-doors.md), their polygons marked in `ground.owners`. */
+  /** DOORS: the map's doors (`./doors`, web/redotcom/docs/research/92-doors.md), their polygons marked in `ground.owners`. */
   doors?: DoorSpec[];
   /** The tactical map's lines, zones and named points, `AIMAPS.MPS` in world units (`./tacMap`, research 87 §9). */
   tac?: TacData | null;
@@ -253,7 +253,7 @@ const say = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 /**
  * Loads a map archive and decodes its `worldmodel` and the textures that model cites.
  *
- * The sequence mirrors `web/tools/dump-textures.ts` for the texture half and the mesh package's Frostfire
+ * The sequence mirrors `web/redotcom/tools/dump-textures.ts` for the texture half and the mesh package's Frostfire
  * tests for the geometry half: ZDB table of contents, `WORL_MDL.ZED` -> `worldmodel` -> DMA chains ->
  * VIF packets -> `MeshData`, and `MP*_TXR.ZED` + `MP*_PAL.ZED` -> `TextureRecord` -> RGBA.
  *
@@ -531,7 +531,7 @@ export function transferables(map: LoadedMap): Transferable[] {
 
 /**
  * W2.4: the held weapon (`LoadedMap.weapon`), the M4A1 SD's high LOD out of the map's own `WEAP_GEO`/`WEAP_MDL`
- * (`@s2u/scene`'s `weaponLibrary`, web/docs/research/79 §2). A library that will not read costs one diagnostic and
+ * (`@s2u/scene`'s `weaponLibrary`, web/redotcom/docs/research/79 §2). A library that will not read costs one diagnostic and
  * the weapon, never the load; a chunk that will not decode costs its own line and nothing else.
  */
 function heldWeapon(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, model: string): LoadedMap['weapon'] {
@@ -623,7 +623,7 @@ function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes:
 }
 
 /**
- * W1.5b: the map's spawn slots, read out of its `AIMAPS.MPS` (web/docs/research/75) and placed
+ * W1.5b: the map's spawn slots, read out of its `AIMAPS.MPS` (web/redotcom/docs/research/75) and placed
  * (`placeSpawnSlots`): the y the ground probe's floor under each slot's centre when the probe's grid is given
  * (W1.4b), else the estimate from the side's measured spawn. A file that is missing or will not read -- the
  * reader refuses any file its layout does not account for to the last byte -- costs one diagnostic and an empty
@@ -654,7 +654,7 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string |
 
 /**
  * Every texture manifest `READERM.ZAR` holds -- one `*_lib.rdr` per library the map loads, `mp51_lib.rdr`
- * beside `rm51_lib.rdr` -- read (`readTexManifest`, web/docs/research/72 §6) and merged, the first entry
+ * beside `rm51_lib.rdr` -- read (`readTexManifest`, web/redotcom/docs/research/72 §6) and merged, the first entry
  * of a name winning as it does within one file. No name is listed by two files on the disc.
  */
 function texManifest(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, TexEntry> {

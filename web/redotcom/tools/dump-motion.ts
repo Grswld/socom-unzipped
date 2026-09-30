@@ -1,6 +1,6 @@
 /**
  * The skeletal motion clips of a map's `MOTION_S.ZAR` and its three zAnim archives, straight off the disc -- the
- * dump web/docs/research/77 was written from. Archives are looked up in `public/maps/RUN`, then `test-fixtures/RUN`.
+ * dump web/redotcom/docs/research/77 was written from. Archives are looked up in `public/maps/RUN`, then `test-fixtures/RUN`.
  *
  *   npx tsx tools/dump-motion.ts                     # MP2: every clip's head, layout, tracks and word histogram
  *   npx tsx tools/dump-motion.ts MP2 --hex           # plus a hex window per object record and per track head

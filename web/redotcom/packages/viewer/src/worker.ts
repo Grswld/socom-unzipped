@@ -33,9 +33,9 @@ export type ViewerRequest =
   | { kind: 'load'; id: number; source: SourceRequest; path: string }
   /** The play mode's clips (W2.2b): `RUN/MOTION_P.ZAR`'s named clips and `motion.rdr`'s entries for them, once a source. */
   | { kind: 'play'; id: number; source: SourceRequest; clips: string[] }
-  /** A map's sound (web/docs/research/81, `./soundData`): its banks, the script, the materials, the weapons, the callbacks. */
+  /** A map's sound (web/redotcom/docs/research/81, `./soundData`): its banks, the script, the materials, the weapons, the callbacks. */
   | { kind: 'sound'; id: number; source: SourceRequest; path: string; archive: string }
-  /** EFFECTS: a map's effect programs, models, textures and mark tables (web/docs/research/89, `./effectData`). */
+  /** EFFECTS: a map's effect programs, models, textures and mark tables (web/redotcom/docs/research/89, `./effectData`). */
   | { kind: 'effects'; id: number; source: SourceRequest; path: string; archive: string };
 
 /**

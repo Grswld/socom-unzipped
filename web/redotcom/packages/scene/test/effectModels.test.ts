@@ -5,7 +5,7 @@ import { fixture } from '../../archive/test/fixtures';
 import { boxFill, decodeFitted, EFFECT_MEMBERS, effectLibrary, insideBox } from '../src/index';
 
 /**
- * The effect models (web/docs/research/89 §3): `COMMON/EFFE_GEO.ZED` over `EFFE_MDL.ZED`, the casing and the flashes
+ * The effect models (web/redotcom/docs/research/89 §3): `COMMON/EFFE_GEO.ZED` over `EFFE_MDL.ZED`, the casing and the flashes
  * the zAnim effects name. Fixture-backed where the archives are needed.
  */
 

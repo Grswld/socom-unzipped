@@ -5,7 +5,7 @@ import type { Rules, Team } from './protocol';
  * 2026-09-29: every rule from the decompilation, the disc's scripts or reCOM, cited; what cannot be sourced is a named
  * placeholder). Sources: `analysis/socom2_game.elf.decomp.c` (`FUN_x Lnnn`), the disc's `MPxx.ZDB:MZANIM.ZAR`
  * animation `objectives` (read with `@s2u/scene` `parseAnimSets` / `decodeEffectProgram`; MP51's sequences cited, the
- * same in MP2, MP5, MP8, MP64, MP81), and web/docs/research/91-the-round.md (sections 9, 12, 18).
+ * same in MP2, MP5, MP8, MP64, MP81), and web/redotcom/docs/research/91-the-round.md (sections 9, 12, 18).
  */
 
 /** `mp_max_rounds`: the create-game default, 11 (frame `A_49_creategame`; 9 if the valve is 0 at load, `FUN_001f5e70` L55628-55631). */

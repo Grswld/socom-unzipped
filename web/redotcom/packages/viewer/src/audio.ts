@@ -8,7 +8,7 @@ import { loopKey, type SoundData } from './soundData';
 import { LOOP_FADE_SECONDS_PLACEHOLDER, LOOP_SECONDS_PLACEHOLDER } from './loopLength';
 
 /**
- * The game's own sounds in the browser (web/docs/research/81): the map's 989snd banks decoded from the disc, each sound
+ * The game's own sounds in the browser (web/redotcom/docs/research/81): the map's 989snd banks decoded from the disc, each sound
  * rendered by `@s2u/sound`'s model of the IRX -- its grains, voices, pitches, envelopes, volumes and pans -- at the
  * moment the game would start it, and played through Web Audio.
  *

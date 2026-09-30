@@ -30,7 +30,7 @@ export type PadStick = keyof typeof PAD_STICK;
 /**
  * The stick dead zone, radial: a push shorter than this reads as nothing, and past it the length is rescaled so the
  * zone's edge is 0 and the rim 1 (`./touch`, `stickVector`). 0.15 is the launcher's default (`padDeadZone`,
- * ps2xShared/include/launcher/launcher_config.h:165) and the runtime's since 2026-09-16
+ * ps2xShared/include/launcher/launcher_config.h, `padDeadZone`) and the runtime's since 2026-09-16
  * (ps2xRuntime/include/runtime/host_gamepad_select.h:39-47). The runtime applies it per axis (`hostPadAxis`, :70-79);
  * radial here, so a diagonal is not pulled onto the axes.
  */
@@ -67,7 +67,7 @@ export interface Input {
   action: boolean; leanLeft: boolean; leanRight: boolean; mode: boolean;
   /** The game's `SwapWeapon1` (L1), `SwapWeapon2` (L2) and `Inventory` (R2): the kit's slots, walking only (`./grenade`). */
   swap1: boolean; swap2: boolean; inventory: boolean;
-  /** The multiplayer round's SELECT, held: the scoreboard (web/docs/research/87-hud.md §12), walking only. */
+  /** The multiplayer round's SELECT, held: the scoreboard (web/redotcom/docs/research/87-hud.md §12), walking only. */
   scoreboard: boolean;
   /** The game's `Reload` (R3; `R` on the keys), walking only: a press asks for a reload (`./fire` `Fire.reload`). */
   reload: boolean;
@@ -99,7 +99,7 @@ const CROUCH_H = 'third_party/ps2recomp/ps2xRuntime/include/runtime/host_crouch_
 const LAUNCHER = 'third_party/ps2recomp/ps2xShared/src/launcher_config.cpp';
 const STICKS = `${MAPPING_H}:25-27; ${HOST_INPUT}:297, :336`;
 /** The grenades workstream's note on the kit's slots and the controls that select them. */
-const GRENADES = 'web/docs/research/85-grenades.md §9';
+const GRENADES = 'web/redotcom/docs/research/85-grenades.md §9';
 /** The disc's control map: `READERC.ZAR/controller.rdr`, `ControllerConfigs` `Default`. */
 const CONTROLLER_RDR = 'READERC.ZAR controller.rdr (Default)';
 /** A binding the owner stated in words (the play-test of walk mode), not one the repository documents on its own. */
@@ -153,7 +153,7 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + 'section 7), a step a press, on foot only, no wrap. The owner\'s word (2026-09-28); the right mouse button steps it too, and wraps',
   },
   {
-    control: 'Down', action: 'zoomOut', documented: 'web/docs/research/84-accuracy-and-recoil.md §7',
+    control: 'Down', action: 'zoomOut', documented: 'web/redotcom/docs/research/84-accuracy-and-recoil.md §7',
     note: 'the zoom out, a step a press: down the scope\'s levels, then to third person. The game\'s own zoom-out '
       + 'handler (the input byte beside d-pad Up\'s, FUN_00594cf0)',
   },
@@ -163,37 +163,38 @@ export const PAD_LAYOUT: readonly PadRow[] = [
       + '(socom2_host_input.cpp:294-296), the one button that takes a player out of play, as the fly camera is out of it',
   },
   {
-    control: 'L3', action: 'fireMode', documented: 'web/docs/research/84-accuracy-and-recoil.md §6',
+    control: 'L3', action: 'fireMode', documented: 'web/redotcom/docs/research/84-accuracy-and-recoil.md §6',
     note: 'the game\'s fire mode: semi, burst, automatic and round, not while scoped (FUN_005c4600, research 84 '
-      + 'section 6). The launcher\'s crouch shortcut on L3 (${LAUNCHER}:568) is gone: the stance is Triangle',
+      + 'section 6). The launcher\'s crouch shortcut on L3 (launcher_config.cpp `crouchShortcutHint`, the l3 branch) is gone: the stance is Triangle',
   },
   {
-    control: 'Cross', action: 'action', documented: 'web/docs/research/86-traversal.md §3.4; docs/KNOWN.md (R139 row)',
+    control: 'Cross', action: 'action', documented: 'web/redotcom/docs/research/86-traversal.md §3.4; docs/KNOWN.md (R139 row)',
     note: 'the action on foot: climbs what the climb icon offers (in the air too, after a jump), slides down a ladder. '
       + 'The game\'s own: controller.rdr\'s Default maps X to Action (FUN_00594cf0 -> FUN_00592d50, decomp 452182)',
   },
   {
-    control: 'Left', action: 'leanLeft', documented: 'web/docs/research/86-traversal.md §4.1',
+    control: 'Left', action: 'leanLeft', documented: 'web/redotcom/docs/research/86-traversal.md §4.1',
     note: 'held, the peek left on foot, standing still: FUN_00594cf0 (decomp 453431-453457) reads the d-pad\'s left as '
       + 'the peek, held, not toggled',
   },
   {
-    control: 'Right', action: 'leanRight', documented: 'web/docs/research/86-traversal.md §4.1',
+    control: 'Right', action: 'leanRight', documented: 'web/redotcom/docs/research/86-traversal.md §4.1',
     note: 'held, the peek right on foot, standing still (the same read, the d-pad\'s right)',
   },
   {
     control: 'L2', action: 'swap2', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
-    note: 'the game\'s L2: SwapWeapon2, the second-weapon swap (controller.rdr\'s Default; launcher_config.cpp:572, '
-      + 'host_crouch_shortcut.h:13-14) -- a press takes up the kit slot assigned to L2 (FUN_00594cf0 0x5957d8). The '
-      + 'viewer assigns it the M67 (the game\'s default slot is the sidearm it does not carry); again, the rifle',
+    note: 'the game\'s L2: SwapWeapon2, the second-weapon swap (controller.rdr\'s Default; launcher_config.cpp '
+      + '`crouchShortcutHint`, the l2 branch; host_crouch_shortcut.h, the R139 paragraph) -- a press takes up the kit slot '
+      + 'assigned to L2 (FUN_00594cf0 0x5957d8), the controller\'s default slot 1.0 (FUN_00598280, decomp 454786): the '
+      + 'Mark 23, the kit\'s sidearm (the PC\'s 2). No toggle back (FUN_005c4b10); L1 / 1 returns the rifle',
   },
   {
     control: 'R2', action: 'inventory', documented: `${GRENADES}; ${CONTROLLER_RDR}`,
     note: 'the game\'s R2: Inventory (controller.rdr\'s Default), the menu of the kit\'s slots (FUN_0021bda0). The viewer '
-      + 'steps to the next item it carries -- rifle, M67, HE -- one press each, in place of the menu',
+      + 'steps to the next item it carries -- rifle, Mark 23, M67, HE (KIT_SLOTS, then the pouch) -- one press each, in place of the menu',
   },
   {
-    control: 'Select', action: 'scoreboard', documented: `${CONTROLLER_RDR}; web/docs/research/87-hud.md §12`,
+    control: 'Select', action: 'scoreboard', documented: `${CONTROLLER_RDR}; web/redotcom/docs/research/87-hud.md §12`,
     note: 'held, the scoreboard, walking only: controller.rdr maps Select to TACMAP, but in a multiplayer round the game '
       + 'makes no tactical map and SELECT holds the scoreboard instead (shown on the press, refreshed each second, hidden '
       + 'on the release: FUN_0022be20). The viewer\'s tactical map stays on M',
@@ -235,7 +236,7 @@ export const ACTION_WORDS: Record<PadAction, { walk: string | null; fly: string 
   mode: { walk: 'fly (as G)', fly: 'walk (as G)' },
   swap1: { walk: 'weapon swap 1: the rifle (1)', fly: null },
   swap2: { walk: 'weapon swap 2: the Mark 23 (2)', fly: null },
-  inventory: { walk: 'inventory: next item (1 rifle, 2 Mark 23, 4 M67, 5 HE)', fly: null },
+  inventory: { walk: 'inventory: next item (1 rifle, 2 Mark 23, 3 M67, 4 HE)', fly: null },
   scoreboard: { walk: 'scoreboard (held)', fly: null },
   reload: { walk: 'reload', fly: null },
 };

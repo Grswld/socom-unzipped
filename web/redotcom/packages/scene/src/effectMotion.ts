@@ -2,7 +2,7 @@ import type { CmdBytes, Vec3 } from './effects';
 
 /**
  * `OBJECT_MOTION` (21): a node thrown -- the ejected casing (`shell_eject`), the chunks, a dropped item -- decoded from
- * its begin `FUN_00262690` (decomp 110463) and tick `FUN_00261370` (decomp 109820); web/docs/research/89 §2.
+ * its begin `FUN_00262690` (decomp 110463) and tick `FUN_00261370` (decomp 109820); web/redotcom/docs/research/89 §2.
  *
  * Launch (flag 0x10): an azimuth and a zenith in degrees, a speed and an acceleration, each plus its range times a
  * random in [0, 1) (block A at the s16 offset +0x20, block B at +0x22). The direction is `FUN_0025cb00`'s (decomp

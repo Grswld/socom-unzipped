@@ -25,7 +25,7 @@ const flag = (name: string): number => args.indexOf(name);
 
 const pack = fixture('RUN/MOTION_P.ZAR'), readerc = fixture('RUN/READERC.ZAR');
 const rows: FeelRow[] = feelTable(pack && readerc ? { pack, readerc } : null);
-if (!pack || !readerc) console.error('feel-parity: MOTION_P.ZAR / READERC.ZAR not in web/test-fixtures: the motion rows are left out');
+if (!pack || !readerc) console.error('feel-parity: MOTION_P.ZAR / READERC.ZAR not in web/redotcom/test-fixtures: the motion rows are left out');
 
 const seal = flag('--seal-speed');
 if (seal >= 0) {

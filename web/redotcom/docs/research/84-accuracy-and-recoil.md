@@ -302,8 +302,8 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   - HUD: draw `ZOOM: %2.1fx` and the scope's `RANGE(m)` line (above) off `hud.setZoom`; `hud.setFireMode` is fed.
   - WEAPON (`rifleKick.ts`): start the kick only when `kickStarts(zoom.state(), accuracy.rounds())` and tick it only when
     `kickTicks(zoom.state())`; unscoped the camera must not kick. **Done at the merge**: `FireGun.kickStarts/kickTicks`
-    gate `Fire`'s `RifleKick`, whose per-stance numbers now come off the parsed stances (the parser's inheritance). The two-leg shot should send its muzzle-leg hit to
-    the reticle for the accuracy pip (§9).
+    gate `Fire`'s `RifleKick`, whose per-stance numbers now come off the parsed stances (the parser's inheritance). The two-leg shot sends its muzzle-leg hit
+    (`fire.ts` `blockedMuzzle`) to the reticle for the accuracy pip (§9).
   - LOOK: `fly.setZoom` is called with `ZoomMode[state − 4]` (1 unscoped) and `mode4`; the move stick's × 0.2 is
     `zoom.moveScale()`.
 
@@ -316,10 +316,14 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
 | the airborne term | `(vx² + vz²) / 65` while `airborne` | `+0x1350` read as the carried air velocity, bit 5 as airborne |
 | the look rates | differences of `fly.pose()` a frame | the body's `+0x44`/`+0x60`; a > 45° jump is a placement |
 | the scoped sway | ported, not drawn | no drawing reader found (§8) |
-| the kick's stick follow | not applied here | the kick is `rifleKick.ts`'s |
-| night maps (state 3) | off | `setNight` exists; the map flag is not read |
+| the kick's stick follow (`STICK_FOLLOW_PLACEHOLDER`, `rifleKick.ts`) | 0 | while the kick falls the game raises the rest by the pad's pitch push (`ctrl+0x138` x `DAT_003df198` x `DAT_00650980` 0.04, `FUN_005b9280`); the viewer's look is the mouse, not a stick rate |
+| night maps (state 3) | ported | `main.ts` reads the map's `NightMission` (§14, `FUN_00318da0` 217135) into `Zoom.setNight`; `test/zoom.test.ts` 'night maps: third person zooms into the night vision' |
 | the reticle colour | rest | no targets in the viewer |
-| the accuracy pip | not drawn | needs the muzzle leg (§9) |
+| the accuracy pip | drawn | `fire.ts` `blockedMuzzle` (`FUN_005aa6e0`, the 0.008 tolerance at 464340-464350) -> `main.ts` -> `reticle.ts` `stepPip` (`FUN_00215250`) |
+| the reload's blend (`RELOAD_BLEND_PLACEHOLDER`, `weaponPose.ts`) | 0.2 s | the reload clips have no `BlendTime` in `motion.rdr`; the game's cross-fade into a motion without one is `FUN_00287620`'s 0.4 (`BLEND_TIME_DEFAULT`, `locomotion.ts`), but whether the reload overlay takes that path is not traced |
+| the reload's length without its clip (`RELOAD_SECONDS_PLACEHOLDER`, `reloadClip.ts`) | 2 s | a fallback only (a source or a server without `MOTION_P.ZAR`): the reload lasts its clip's `playback` -- `seal_reload` 1.6, `seal_crouch_reload` 1.9, `seal_prone_reload` 1.7, `seal_mv_reload` 1.2 (§18); the page and the room read one table (`reloadClip.ts`, launch fix MJ-1) |
+| the swap's hand-off phases (`HAND_OFF`, `kit.ts`) | stand 0.72, crouch 0.82, prone 0.62, moving 0.79 | a reading: the phase at which the clips' callbacks (`FUN_005a7730` / `FUN_005a75d0`) move the pistol to the hand, not settled |
+| the aim weight without the raise (`AIM_WEIGHT_PLACEHOLDER`, `animator.ts`) | 1 | the rifle taken as up when a mover gives no `aimWeight`; unreached in play (the page and the remote bodies always give one, `FUN_00286b80(actor+0x1160)`) |
 
 ## 12. Evidence
 
@@ -485,8 +489,12 @@ the decompilation (`socom2_game.elf.decomp.c`) and reCOM (`src/gamez/zSeal/zseal
   timer (`FUN_005c32b0`: `kit+0x820` = the weapon's `ReloadDelay`, 0.01 by default); `FUN_005c0fd0`'s frame (476549-476561)
   runs it down and calls `FUN_005c2a90`. **The automatic reload**: `FUN_005c5340` (479297-479320) arms the same timer
   when the magazine in the weapon is empty (not for the grenades and the other non-firearms, the item-id list there).
-  The viewer refuses `R` on a full magazine (the page's; the game's own gate for it is not traced -- `FUN_005b4340`
-  may be it -- so a full-magazine `R` stays a no-op here).
+  **No fullness gate**: the walk from `m_currentmag + 1` (477462-477483) is the only magazine test, so `R` on a full
+  magazine reloads whenever another slot holds rounds, and a one-magazine kit finds nothing and does not. The page and
+  the server once refused it (an uncited rule that failed the touch spec's RELOAD step); both dropped it in the launch
+  fixes (MJ-2: `fire.ts`, `room.ts`; `fire.test.ts`, `magazines.test.ts` and `room.test.ts` pin the walk). A reload is
+  refused during a weapon swap (`FUN_00594cf0` 453460-453463: `FUN_005a7ab0` before `FUN_005c32b0`) and in the air
+  (`FUN_005c2a90` 477394). It lasts its clip (`reloadClip.ts`, §11's `RELOAD_SECONDS_PLACEHOLDER` only without one).
 - **The ammo box** (`FUN_00237760`, 85128-85201): `"%d/%d"` (0x3e66b8) is `FUN_005c3890` -- the magazine in the
   weapon, `m_reloads[slot][m_currentmag]` (477877-477910) -- over `FUN_005c3ce0`, `Ammo_Capacity`. `"%d MAG%c"`
   (0x3e66c0) is `FUN_005c49b0() - 1`, where `FUN_005c49b0` (478716-478770) **counts the slots with rounds, the one in

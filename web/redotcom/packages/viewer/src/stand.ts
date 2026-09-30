@@ -13,7 +13,7 @@ import { probeFloor, type Grid } from '@s2u/scene';
  * is the recorded y + `EYE`, as it was before W1.4b.
  *
  * The (x, z) stays A's own: on the 20 camera-row maps that is where the player's camera opened, 20-28 units
- * behind the actor's slot (web/docs/research/75 §11), and the view from it toward B is the one they saw.
+ * behind the actor's slot (web/redotcom/docs/research/75 §11), and the view from it toward B is the one they saw.
  */
 
 /**

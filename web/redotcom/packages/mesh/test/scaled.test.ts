@@ -6,7 +6,7 @@ import { fixture } from '../../archive/test/fixtures';
 /**
  * VU1 command `0x70` (research 15 §2): the same vertex record as `0x68`, but the position is `ITOF15` times
  * `TOP+3.w` rather than `ITOF4` plus `TOP+3.xyz`. The fittings (`FLIB_MDL.ZED`) and the weapons
- * (`WEAP_MDL.ZED`) are stored that way (web/docs/research/78 §5); map geometry never is (SEMANTICS §9).
+ * (`WEAP_MDL.ZED`) are stored that way (web/redotcom/docs/research/78 §5); map geometry never is (SEMANTICS §9).
  */
 function scaledPacket(scale: number, verts: [number, number, number][]): Uint8Array {
   const words: number[] = [];

@@ -3,7 +3,7 @@ import { PaletteTable, type Rgba } from '@s2u/gs';
 import { decodeNamedTextures } from './hudBitmaps';
 
 /**
- * The in-game HUD's bitmaps (web/docs/research/87-hud.md): four texture libraries every `MP*.ZDB` carries under
+ * The in-game HUD's bitmaps (web/redotcom/docs/research/87-hud.md): four texture libraries every `MP*.ZDB` carries under
  * `RUN\COMMON\`, each decoded against its **own** `_PAL` (research 72's caveat; `./hudBitmaps` for the reticle's
  * pair) -- `HUD_TXR` (37: the context-action icons and the pad's button faces), `HUD2_TXR` (72: the ammo box's
  * panel, the compass, the team list's pieces, the reticles), `HUDW_TXR` (65: the weapon icons and the fire-mode

@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 // `page.evaluate`; the import is type-only, so nothing of the page's runtime is pulled into the test.
 import type {} from '../src/hook';
 
-/** Screenshots are evidence, not fixtures: `web/test-fixtures/` is git-ignored. */
+/** Screenshots are evidence, not fixtures: `web/redotcom/test-fixtures/` is git-ignored. */
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens', import.meta.url));
 
 /**

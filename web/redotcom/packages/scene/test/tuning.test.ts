@@ -94,7 +94,7 @@ const web = resolve(import.meta.dirname, '../../..');
 const READERC = [
   resolve(web, 'public/maps/RUN/READERC.ZAR'),
   ...(process.env.SOCOM_DISC ? [resolve(process.env.SOCOM_DISC, 'RUN/READERC.ZAR')] : []),
-  resolve(web, '../game/disc/RUN/READERC.ZAR'),
+  resolve(web, '../../game/disc/RUN/READERC.ZAR'),
   'C:/projects/socom_pc/game/disc/RUN/READERC.ZAR',
 ].find((p) => existsSync(p));
 

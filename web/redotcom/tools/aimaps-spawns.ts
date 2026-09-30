@@ -1,7 +1,7 @@
 /**
  * W1.R4's check: does each of the 44 measured spawn positions (`@s2u/scene` SPAWNS, docs/research/33 and
  * KNOWN section 1) fall inside its map's decoded `PlayerStart` -- and if not, what on the disc does it
- * stand on? One row per position, then the counts. web/docs/research/75 §7 is this table.
+ * stand on? One row per position, then the counts. web/redotcom/docs/research/75 §7 is this table.
  *
  *   npx tsx tools/aimaps-spawns.ts            # every RUN/MP*.ZDB under public/maps (or test-fixtures)
  *   npx tsx tools/aimaps-spawns.ts MP2 MP6
@@ -26,7 +26,7 @@ if (!stems.length) {
     .sort((a, b) => Number(a.slice(2)) - Number(b.slice(2)));
 }
 
-/** The name the game shows: `mission.rdr`'s `description` (web/docs/research/72 §0). */
+/** The name the game shows: `mission.rdr`'s `description` (web/redotcom/docs/research/72 §0). */
 function shownName(zdb: Uint8Array): string {
   const readerm = Zar.parse(zdbMember(zdb, parseZdb(zdb), 'READERM.ZAR'));
   const mission = readerm.root.children.find((k) => k.name.toLowerCase() === 'mission.rdr');

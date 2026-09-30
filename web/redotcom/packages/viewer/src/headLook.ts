@@ -1,5 +1,5 @@
 /**
- * The SEAL's head look (the motion workstream, round 4; web/docs/research/80-the-jump.md §6c): where the head, the neck
+ * The SEAL's head look (the motion workstream, round 4; web/redotcom/docs/research/80-the-jump.md §6c): where the head, the neck
  * and the spine turn to look, as `socom2_game.elf` does it for the player. Three pieces, each cited by address:
  *
  * 1. **The controller's request** (`CSealCtrl`, vtable 0x6694b0): each tick `FUN_00596f10` (decomp 453979-454030)

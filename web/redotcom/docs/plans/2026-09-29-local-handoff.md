@@ -1,14 +1,16 @@
 # Local controller handoff — the walk's 1:1 push (2026-09-29)
 
-For the next local agent or controller picking up the browser viewer's walk mode. Read this, then `web/redotcom/README.md`,
-then the research notes 77-91 in `web/redotcom/docs/research/` as needed. Rewritten 2026-09-29 ~11:30Z by the controller seated
-in `C:/Projects/wt-web-play` after the owner's play test, the fix rounds, and the merge of web sprint 3.
+For the next local agent or controller picking up the browser viewer's walk mode. Read this, then
+`web/redotcom/README.md`, then the research notes 77-93 in `web/redotcom/docs/research/` as needed. Rewritten
+2026-09-29 ~11:30Z by the controller seated in `C:/Projects/wt-web-play` after the owner's play test, the fix rounds,
+and the merge of web sprint 3; brought current 2026-09-29 ~23:58Z after the launch fixes (section 4a).
 
 ## 1. The goal (the owner's words, condensed)
 
 A fully operable, traversable SOCOM II in the browser viewer's **walk mode**: 1:1 maps, and 1:1 movement, animation,
 recoil — **the feel first** — models, sounds and UI, every value from the game (SOCOM II decomp where possible, reCOM
-where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never goes in git. Owner 2026-09-29:
+where needed). Walk mode is the settings' **Mode** switch (`mode=play`; `?redotcom` is its alias). Offline it plays
+the match on its own (section 4a); `&nomatch` keeps the free walk. Game data never goes in git. Owner 2026-09-29:
 "polish until it's release ready" and "complete any holes".
 
 ## 2. Where everything is
@@ -19,17 +21,20 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
   net page, `packages/server`, the Lightsail deploy under `web/redotcom/deploy/`.
 - **Pushing:** the PreToolUse guard refuses a push from this seat, even via `git -C` into the main tree. The owner (or
   the main-tree controller at the owner's word) pushes: `git -C C:/Projects/socom_pc push origin
-  claude/web-viewer-playtest-fixes`. Last pushed: d995b282 — everything after it is local.
-- **Dev server:** `npm --prefix C:/Projects/wt-web-play/web run dev -- --port 5181`; open `/?map=MP2&redotcom`. Port
-  5181 is the owner's; agents use their own (5199 integration e2e, 5201+ per workstream).
+  claude/web-viewer-playtest-fixes`. Last pushed: d995b282 -- everything after it (the launch fixes included) is local.
+- **Dev server:** `npm --prefix C:/Projects/wt-web-play/web run dev -- --port 5181`; open `/?map=MP2&mode=play&devmode`
+  (without `&devmode` the page shows the disc page: `viewer/src/source.ts`). Port 5181 is the owner's; agents use
+  their own (5199 integration e2e, 5201+ per workstream).
 - **Verification (from `C:/Projects/wt-web-play/web`):** `npm run typecheck && npm test` -- each workspace's own vitest
-  (web/ has no vitest config: a bare `npx vitest run` there ignores the per-package configs). Last green (b6,
-  2026-09-29): redotcom 1772 passed / 2 skipped incl. the server tests, landing 206 passed; landing's globalSetup
-  (`tools/vitest-prepare.mjs`) makes story.html and public/story first, so a targeted run works too;
-  `S2U_TEST_FIXTURES=<empty dir>` points `archive/test/fixtures.ts` away (its users skip, as on CI).
-  Then `E2E_PORT=5199 npx playwright test` (last full run 49+ passed; the multiplayer spec needs `node --import tsx`, fixed in 055d52ec). Load test: `npx tsx tools/mp-bots.ts --spawn-server
-  --disc test-fixtures --seconds 30` (60 ticks/s, 0 corrections at 16 players + 8 spectators). Sound/map data:
-  `SOCOM_DISC=C:/projects/socom_pc/game/disc npm run extract-maps`.
+  (web/ has no vitest config: a bare `npx vitest run` there ignores the per-package configs and even collects the
+  Playwright specs). Last green: the docs batch (agent/web-w3docs, 2026-09-29 ~23:59Z, fixtures present) redotcom
+  169 files passed / 1 skipped, 2003 tests passed / 4 skipped incl. the server tests; landing 206 passed (b6). Landing's globalSetup (`tools/vitest-prepare.mjs`) makes
+  story.html and public/story first, so a targeted run works too; `S2U_TEST_FIXTURES=<empty dir>` points
+  `archive/test/fixtures.ts` away (its users skip, as on CI). Then `E2E_PORT=5199 npx playwright test` (last full run
+  49+ passed, before the launch fixes; the multiplayer spec needs `node --import tsx`, fixed in 055d52ec). Load test:
+  `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures --seconds 30` (60 ticks/s, 0 corrections at 16
+  players + 8 spectators). Sound/map data: `npm run extract-maps` (`SOCOM_DISC` defaults to the repository's
+  `game/disc`).
 - **HOST RULE (owner, via the main-tree controller, 2026-09-29):** the web work must never collide with the game's
   runs and gates. Before EVERY Playwright/headless-Chrome run or bots load test: `bash
   C:/Projects/socom_pc/scripts/loop_lock.sh check`; run only if FREE or HELD with a build purpose; never beside a
@@ -54,12 +59,17 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
   2a491b07, research 86 §6.3; now in `mover.ts`).
 - Mouse sensitivity goes down to 0.05.
 - **The panel kicker says `redotcom · SOCOM II multiplayer`** on every page, fly-only included: redotcom is the
-  project's name, no longer the walk flag's word (a9228a66 restored it over b1eb349b; ui.spec.ts pins it). Do not flip it.
+  project's name, no longer the walk flag's word (a9228a66 restored it over b1eb349b; ui.spec.ts pins it). Do not flip
+  it.
+- **Launch-review rulings (the owner, 2026-09-29):** the site keeps serving `/redotcom/maps/` for now (OWNER-1
+  withdrawn; the move to disc-only is row O28 in `docs/HUMAN_TASKS.md`); `/rooms` is public and documented (OWNER-4);
+  the airborne column takes the ground's pick, not 6.5 (OWNER-5); the scorch pool is the game's 30 triangles, refused
+  when full (OWNER-6). OWNER-3 needed no answer: the server runs the page's own accuracy cone (`net/shotCone.ts`).
 
 ## 4. Rounds since the first rewrite (all merged here, 2026-09-29 afternoon)
 
-- **Multiplayer holes** (`wt-web-mp`): `web/redotcom/deploy/env.example` (placeholders only; its allow line is on sprint-17
-  7a176e35), only an accepted swap is replicated, remote players hand the weapon off mid-clip.
+- **Multiplayer holes** (`wt-web-mp`): `web/redotcom/deploy/env.example` (placeholders only; its allow line is on
+  sprint-17 7a176e35), only an accepted swap is replicated, remote players hand the weapon off mid-clip.
 - **Effects:** marks, footprints and the scorch clipped to the world triangles under them, shaded per vertex
   (`markClip.ts`, 6055a75e); the pool counts triangles as the game's does (`TEMP_DECAL_TRIANGLES` = 150, so ~30 marks
   stay up -- kept for fidelity); marks framed along the hit surface's normal, not the round (75495a54 -- slanted big
@@ -75,10 +85,39 @@ where needed). Walk mode is behind the URL flag **`?redotcom`**. Game data never
 
 Release checks in the 13:10-14:05Z window: e2e 50/53 (the audio spec's bank list fixed after; the muzzle flash
 flaked and passed; the mark-colour spec failed -> the 75495a54 fix, e2e owed); the release sweep clean on the 7
-remaining WebGL2 maps (MP71 "no mark" -> the same fix) and on MP2/MP62/MP9/MP10 x both looks on WebGPU (scope sides
-black, key 3, no pistol zoom, no first person, stance, audio, blasts).
+remaining WebGL2 maps and on MP2/MP62/MP9/MP10 x both looks on WebGPU (scope sides black, key 3, no pistol zoom, no
+first person, stance, audio, blasts). The sweep's MP71 "no mark" was not a game defect: its heading met only
+`INVISIBLE_DI` (`PENETRATION` 1, passed over by rule); the sweep now picks the first strikable surface (research 89
+section 15, `tools/sweepHeading.ts`). **Grenades:** the scorch is framed along the ground's normal (8a4e853e, research
+85 section 7.3).
 
-In flight: **grenades** -- the scorch framed along the ground's normal on slopes (it still projects straight down).
+## 4a. The launch fixes (2026-09-29 evening, all merged here)
+
+The Fable-signed launch fix list (blockers BL-1..7, majors MJ-1..11, post-launch items taken early) landed in three
+waves, each Fable-verified:
+
+- **Wave 1** (B1-B10, B13): the room owns fire and reload (the fastest mode's rate, the weapon from the server's frame,
+  the round re-run from the eye, the reload lock = the clip, `reloadClip.ts`, one table for the page and the room);
+  malformed frames dropped, never thrown (room and process); one hello per socket; a 5 s ping/pong heartbeat;
+  `TRUST_PROXY`; respawn refills the page's kit; R on a full magazine reloads (the game's ring walk); map switches
+  dispose what they made; mission zAnims before common; remote fire's MED/FAR reports; the ground pick in the air;
+  the spawn placed from the feet + 5; ISO/rdr/grid hardening (research 93); the e2e specs and the landing claims.
+- **Wave 2:** the scorch pool (30 triangles), the effect-light overlays out of the clip, the effect SOUND volume; the
+  release sweep's fall and mark heading; one yaw arithmetic (`yaw.ts`: the climb turns the short way at any winding);
+  one retail `.rdr` count (736); a dropped disc's unreadable archive named on the disc page.
+- **Grenade damage and the offline match** (df10caaa): grenades hurt, knock and ring the player (research 85 section
+  12); offline, reCOM mode runs the match server's own `Room` in the page (`net/loopback.ts`, research 91 section 20),
+  on by default -- `&nomatch` keeps the free walk, `&fly` too (every e2e spec but `soloMatch.spec.ts` opens with it).
+  **The protocol is 6** (four knock action codes and the `blast` event after protocol 5's).
+- **Docs** (the last batch): the research notes' placeholder rows and the retired ones, the stale paths
+  (`tools/test/paths.test.ts`), and `tools/test/placeholderLedger.test.ts`, which fails when a `*_PLACEHOLDER` /
+  `*_READING` in the viewer, server, scene or sound sources is in no note's placeholder section, or a note still lists
+  one no source holds without marking it resolved, retired or note only.
+
+**The release gate** (the signed GO): typecheck + `npm test` green with and without fixtures; then, in a window the
+main-tree controller names, the full e2e -- owed since the launch fixes: multiplayer, touch, weapon (the fire event's
+eye and aim), doors, pad, ui (MJ-11), share (PL-12), soloMatch, and effects' "the marks take the colour of the wall
+they are on"; web.yml green on the pushed head; the leak gate with the audio fixtures gone (B4); the owner's push.
 
 Merge recipe: in `wt-web-play`, `git merge --no-ff --no-edit <branch>`; union where both add, one path per effect
 where both implement the same thing; `npm install` if a package appears; typecheck + vitest + e2e (host rule); commit
@@ -86,12 +125,17 @@ with explicit paths, the co-author trailer. The browser runs happen only in a wi
 
 ## 5. Open issues
 
-1. Owed browser checks: `effects.spec.ts` "the marks take the colour of the wall they are on", the MP71 sweep, and
-   the grenade scorch once it lands; then a full e2e before the owner's push.
+1. Owed browser checks: the release gate's e2e list (section 4a), then the owner's push. Owner rows: O28 (redeploy
+   the site; later the disc-only switch); a live cloudflared tunnel must add `/rooms` to its ingress (OWNER-4,
+   `deploy/README.md`) -- no HUMAN_TASKS row yet, the controller's to add.
 2. The pad's Triangle from prone stands (the game's pad rule); C and touch C crouch (the owner's PC rule).
 3. Sprint 3 deferred: WebRTC, delta snapshots, per-map kits, the claymore online, the radio menu's look, spectator
-   views; ~20 `_PLACEHOLDER` constants in the net code.
+   views. The net code's placeholders are listed in research 91 section 16 (the ledger test keeps them there).
 4. Grenade stand-in sprites (maps with no game explosion effect) make materials per blast, so they cannot be warmed.
+5. Small leftovers the verifiers named: a door's zAnim `SOUND` still plays at 1.0 (`doors.ts` drops `op.volume`,
+   research 81 section 12); the sweep's `floorUnder` / `surfacesAlong` hooks are ungated like the rest of `__viewer`;
+   the knock's `ROOT_HEIGHT` has no disc-gated pin; the Online panel reads "single player: no server" while the
+   offline match runs.
 
 ## 6. Decisions waiting on the owner
 

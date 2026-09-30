@@ -2,7 +2,7 @@
  * The yaw's one arithmetic, for the viewer and the server alike (web research 86 section 3.8).
  *
  * SOCOM II keeps a facing as the actor's rotation -- a quaternion (`piVar10[0x14..0x17]` in `FUN_005b2d20`, decomp
- * 468642-468646) and its matrix -- never as an angle, so a facing has no winding and a turn between two facings is found
+ * 468642-468645) and its matrix -- never as an angle, so a facing has no winding and a turn between two facings is found
  * by vectors: `FUN_005b2d20` (468637-468686) brings the facing to reach into the actor's frame, takes `acos` of its dot
  * with the frame's forward (0..pi) and its side from their cross product's y (`FUN_001bfc78`; `fStack_ec < 0` negates
  * it). The viewer carries the facing as degrees (`Pose.yaw`); these two functions are what keeps it equivalent:

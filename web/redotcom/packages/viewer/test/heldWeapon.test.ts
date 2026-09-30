@@ -10,7 +10,7 @@ import { loadMap, transferables, type LoadedMap, type LoadedMesh } from '../src/
 import { buildWorld } from '../src/world';
 
 /**
- * The held weapon (W2.4 step 2; web/docs/research/79 §2): decoded in the worker beside the map, its textures from
+ * The held weapon (W2.4 step 2; web/redotcom/docs/research/79 §2): decoded in the worker beside the map, its textures from
  * the map's own asset-library chain (`WEAP_TXR`/`WEAP_PAL`), drawn by `buildWorld` on the world's own GS path.
  */
 

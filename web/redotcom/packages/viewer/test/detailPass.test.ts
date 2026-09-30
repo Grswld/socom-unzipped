@@ -8,7 +8,7 @@ import { detailBindings, loadMap, type LoadedMap } from '../src/loadMap';
 
 /**
  * The detail pass's binding (W1.6): which of a map's draws get a second pass, and with what. A draw's
- * texture binds one when its `mp<N>_lib.rdr` entry carries a `detail` record (web/docs/research/72 §6).
+ * texture binds one when its `mp<N>_lib.rdr` entry carries a `detail` record (web/redotcom/docs/research/72 §6).
  * That is the disc's own rule, measured: over the 22 maps every one of the 2,395 visuals drawn with a
  * texture that has a detail record carries a `detail_buff` of its own, and none drawn with such a texture
  * lacks one -- so binding by texture is binding by visual.

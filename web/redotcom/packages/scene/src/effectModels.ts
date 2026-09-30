@@ -6,7 +6,7 @@ import { parseSceneGraph, transformPoint, VISUAL_FLAG_CULL, type SceneNode } fro
 import type { Pnt3D } from './firePoint';
 
 /**
- * The effect models (web/docs/research/89 §3): `RUN\COMMON\EFFE_GEO.ZED` and `EFFE_MDL.ZED`, in every map archive beside
+ * The effect models (web/redotcom/docs/research/89 §3): `RUN\COMMON\EFFE_GEO.ZED` and `EFFE_MDL.ZED`, in every map archive beside
  * `EFFE_TXR.ZED`/`EFFE_PAL.ZED`. They have the weapons' shape (`./weapon`: a `models` forest over one chain buffer a
  * model, `N%03d_%03d` chunk keys) and hold what the zAnim effect commands name as nodes: `bullet_shell_9m` (the
  * rifle's casing, `shell_eject`'s node 1), `bullet_shell_m60`, `bullet_shell_shotgun`, the muzzle flashes

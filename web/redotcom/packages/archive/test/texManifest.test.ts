@@ -7,7 +7,7 @@ import { Reader } from '../src/bytes';
 import { fixture, FIXTURES_ABSENT } from './fixtures';
 
 /**
- * `mp<N>_lib.rdr`, the texture manifest inside `READERM.ZAR` (web/docs/research/72 §6): one record per
+ * `mp<N>_lib.rdr`, the texture manifest inside `READERM.ZAR` (web/redotcom/docs/research/72 §6): one record per
  * library -- `libname`, `locked`, `gearlib`, `renderphase`, `textures`, `palettes` -- whose `textures` list
  * holds one entry per texture: `name`, `dim2 (w h bpp)`, `typeU`/`typeV`, the bare flags `pal`,
  * `16bitpal`, `32bitpal`, and on the few ground and wall textures that have one a `detail` record

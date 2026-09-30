@@ -4,7 +4,7 @@ import { modelGate, upNormal, ALL_LAYERS } from './probe';
 import type { Pnt3D } from './firePoint';
 
 /**
- * A ray against the hull (W2.4; web/docs/research/79 §4): the first collision polygon a segment meets, found
+ * A ray against the hull (W2.4; web/redotcom/docs/research/79 §4): the first collision polygon a segment meets, found
  * through the grid the probe walks (`grid.ts`, `probe.ts`) -- the cells the segment crosses in the order it crosses
  * them, each cell's collision atoms, each owner's polygons.
  *

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The walk's sound on Frostfire (web/docs/research/81): the map's own banks come in by range, a click unlocks the
+ * The walk's sound on Frostfire (web/redotcom/docs/research/81): the map's own banks come in by range, a click unlocks the
  * output, and each event plays the sound the game names for it -- the rifle's round and reload, the jump's whoosh,
  * the landing and the footfalls on the rig's metal. Audio cannot be heard here, so the hook's stats are the evidence:
  * what was rendered and started, by name.

@@ -9,7 +9,7 @@ import { THROW_CLIPS, ThrowPose } from '../src/throwPose';
 import type { PlaySnapshot } from '../src/walk';
 
 /**
- * The grenades on the page (web/docs/research/85): the kit's slots and their controls, the release from the posed
+ * The grenades on the page (web/redotcom/docs/research/85): the kit's slots and their controls, the release from the posed
  * hand, and the throw's clip as a one-shot pose layer. The flight itself is `@s2u/scene`'s (`test/projectile.test.ts`).
  */
 

@@ -5,9 +5,9 @@ import type { Spawns } from './spawns';
 
 /**
  * `AIMAPS.MPS`, the AI map file each `RUN/MP*.ZDB` carries beside its ZARs. It is not a ZAR
- * (web/docs/research/72 §1, §6) and holds no members: a head, one record per AI sub-map (the grids
+ * (web/redotcom/docs/research/72 §1, §6) and holds no members: a head, one record per AI sub-map (the grids
  * `aimaps.rdr`'s `map_list` names), and a trailer. Every field read here is laid out in
- * web/docs/research/75, which checks each one on all 22 archives -- 83 sub-maps -- and the reader
+ * web/redotcom/docs/research/75, which checks each one on all 22 archives -- 83 sub-maps -- and the reader
  * holds the layout to the one proof a byte format has without its writer: it consumes every file to
  * its last byte, and throws when a count, a size or the file's length disagrees.
  *

@@ -4,12 +4,12 @@ import { MARK_DEPTH } from './surfaceShade';
 type Vec3 = [number, number, number];
 
 /**
- * EFFECTS (web/docs/research/89 §5 and §13): a mark -- a bullet's, a footprint, a grenade's scorch, every
+ * EFFECTS (web/redotcom/docs/research/89 §5 and §13): a mark -- a bullet's, a footprint, a grenade's scorch, every
  * `FUN_003139e0` decal -- clipped to the drawn world under it and shaded per vertex, as the game builds it.
  *
  * The game (`FUN_003139e0` decomp 213893 -> `FUN_003b3950` 306426 -> `FUN_003b3ab0` 306491), for each visual of the
  * hit node flagged `0x10000`, walks the visual's triangles and keeps one when
- * - its stored normal faces the round: `n . dir < -0.01` (306595; the direction is brought into the node's frame);
+ * - its stored normal faces the round: `n . dir < -0.01` (306534; the direction is brought into the node's frame);
  * - each of its three vertices projects within **4.8** units of the mark's plane (`fabs(z) <= 4.8`, 306632), the
  *   projection the mark's own matrix (`FUN_00307810` 206431: a look-at along the round, x and y scaled by
  *   `(w - 1) / (size * w)`, offset 0.5 -- so x, y are the bitmap's u, v and z the depth along the round);
@@ -32,7 +32,7 @@ type Vec3 = [number, number, number];
  * buffers [a reading: a mark is at most 3.4 units across; the maps' triangles near a hit number a handful].
  */
 
-/** The facing test's bound: a triangle is kept when its normal . the round's direction is below this (306595). */
+/** The facing test's bound: a triangle is kept when its normal . the round's direction is below this (306534). */
 export const MARK_FACING = -0.01;
 /** The world triangles one mark keeps at most [reading: the buffers' bound, not the game's; see the header]. */
 export const MARK_CLIP_MAX_TRIANGLES = 32;
@@ -360,7 +360,7 @@ export class MarkClipper {
     if (nl < 1e-12) return;
     const s = (entry.flip[n]! < 0 ? -1 : 1) / nl;
     nx *= s; ny *= s; nz *= s;
-    if (nx * f[0] + ny * f[1] + nz * f[2] >= MARK_FACING) return;   // 306595: faces the round
+    if (nx * f[0] + ny * f[1] + nz * f[2] >= MARK_FACING) return;   // 306534: faces the round
     c[base + 30] = nx; c[base + 31] = ny; c[base + 32] = nz;
     c[base + 33] = entry.node[n]!;
     c[base + 34] = blended;

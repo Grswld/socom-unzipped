@@ -8,7 +8,7 @@ import { gearMatrix, multiply, parseCharacterTable, playerCharacter, readSkeleto
 import { fixture } from '../../archive/test/fixtures';
 
 /**
- * The character types (web/docs/research/78 §5): `READERC.ZAR`'s `character.rdr` -- the part list, the gear with
+ * The character types (web/redotcom/docs/research/78 §5): `READERC.ZAR`'s `character.rdr` -- the part list, the gear with
  * the part each piece hangs from and its offset, and every character's model and default gear, a character
  * inheriting what it does not state from the one after its `:` -- and the map's own `chartype.rdr`, which names
  * the SEALs a map fields.

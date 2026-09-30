@@ -8,7 +8,7 @@ import {
 } from '@s2u/sound';
 
 /**
- * The walk's sound, read off the disc in the worker (web/docs/research/81; ruling W2.R6: at run time, never written
+ * The walk's sound, read off the disc in the worker (web/redotcom/docs/research/81; ruling W2.R6: at run time, never written
  * into the source) for one map:
  *
  * - **the banks**: the map's `<map>_am.bnk` (the steps, the landings, the jump, the world's impacts), `_fx.bnk` (the
@@ -31,7 +31,7 @@ import {
  * - **the map's `DefaultMaterial`** (its world root, `<map>.ZED`), what a polygon's material byte 0 is
  *   (`FUN_002dc1d0`), and the SEAL's hurt voice (`character.rdr`'s `mp_seal1` `CHRSND_DAMAGE`).
  *
- * Each part is optional: a source without `BNKSTORE.ZAR` (an index extracted before web/docs/research/81) answers
+ * Each part is optional: a source without `BNKSTORE.ZAR` (an index extracted before web/redotcom/docs/research/81) answers
  * null and the walk is silent; a missing script, table or archive leaves that part empty and says so in `missing`.
  */
 
@@ -39,7 +39,7 @@ export const SOUND_BANKS_PATH = 'RUN/SOUNDS/BNKSTORE.ZAR';
 export const SOUND_SCRIPT_PATH = 'RUN/SOUNDRDR.ZAR';
 export const SOUND_MATERIALS_PATH = 'RUN/READERC.ZAR';
 export const SOUND_WEAPONS_PATH = 'RUN/ZWEAPON.ZAR';
-/** libsd, whose data holds the SPU2 reverb presets (web/docs/research/81 §9). */
+/** libsd, whose data holds the SPU2 reverb presets (web/redotcom/docs/research/81 §9). */
 export const SOUND_LIBSD_PATH = 'RUN/IRX/LIBSD.IRX';
 /** The character whose `sounds` the SEAL's voice is read from: the first multiplayer SEAL kit (as `weapons.ts` takes its rifle). */
 export const SOUND_CHARACTER = 'mp_seal1';

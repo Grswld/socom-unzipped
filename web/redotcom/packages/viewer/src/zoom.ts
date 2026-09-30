@@ -49,7 +49,10 @@ export const ZOOM_NIGHT = 1.01;
 export const ZOOM_BINOCULARS = 9.0;
 /** The zoom's speed: 3 x the target (or the old target, zooming out) a second. */
 export const ZOOM_RATE = 3;
-/** `DAT_00650638`: the move stick while scoped, and the look's extra factor in state 4. */
+/**
+ * `DAT_00650638` (`FUN_005966a0` 453813-453817): the look's extra factor under `FUN_005b90f0` (state 4 here). The move
+ * stick's own factor in the 9x view or a scope is the literal 0.2 (453818-453821); the value is the same, so one constant.
+ */
 export const SCOPE_SLOW = 0.2;
 
 export class Zoom {

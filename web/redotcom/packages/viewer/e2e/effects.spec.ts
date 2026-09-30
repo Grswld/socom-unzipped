@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The gunplay's effects on Frostfire (web/docs/research/89): in walk mode at spawn A facing west, rounds from the M4A1 SD
+ * The gunplay's effects on Frostfire (web/redotcom/docs/research/89): in walk mode at spawn A facing west, rounds from the M4A1 SD
  * play its `muzzle_m4SD` -- the casing thrown to the rifle's right and bouncing on the rig's metal deck -- and, where
  * each round meets the hull, the surface's `bullet_hit_<material>` from the map's `MZANIM` and the surface's mark from
  * `decals.rdr`. The screenshots are the evidence: a casing in the air, the sparks and the metal mark on the container.
@@ -235,7 +235,7 @@ test('the smoke screen reads as a screen; the mission ambient effects burn', asy
 });
 
 /**
- * The marks' colour (web/docs/research/89 §5): the game modulates a mark's texel by the wall's own vertex colour
+ * The marks' colour (web/redotcom/docs/research/89 §5): the game modulates a mark's texel by the wall's own vertex colour
  * (`FUN_003beca0` puts the clipped world vertices' colour words in the mark's packet), so a mark is as dark as the wall
  * under it is lit. Frostfire's container (METAL_THICK) at spawn A and Desert Glory's stone wall: each round's mark takes
  * the drawn wall's colour -- 0x41 on the container, 0x10 on the stone in the wall's shade -- not unity (the old mark,

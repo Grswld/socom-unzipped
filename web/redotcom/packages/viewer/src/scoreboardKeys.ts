@@ -1,5 +1,5 @@
 /**
- * The scoreboard's keyboard hold (web/docs/research/87-hud.md §12): `Tab` held shows the multiplayer round's
+ * The scoreboard's keyboard hold (web/redotcom/docs/research/87-hud.md §12): `Tab` held shows the multiplayer round's
  * scoreboard, as SELECT held does on the console (the pad's `scoreboard` lane, `./gamepad`). `Tab` is taken from the
  * browser's focus walk only while walking, so the page's controls stay reachable by keyboard in flight.
  */

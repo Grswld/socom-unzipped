@@ -23,7 +23,7 @@ research notes (`docs/research/`); the notes are cited by number.
                                  |                      |
                           @s2u/viewer               @s2u/server
       three.js (WebGPU, WebGL2 fallback), a        Node + ws: one authoritative
-      decode worker, the GS-arithmetic shading,    room per map at 60 Hz, fed by
+      decode worker, the GS-arithmetic shading,    room per map and rules at 60 Hz, fed by
       the walk, HUD, audio, effects, the net page  the SAME sim modules the page runs
                                  \                      /
                                   +--- src/sim.ts -----+   headless: no three, no DOM, no Web Audio
@@ -43,7 +43,7 @@ not published to a registry; each exports its `src/index.ts` directly and Vite/`
 | `@s2u/sound` | archive | 989snd `SBlk` banks, headerless SPU ADPCM, the grain sequencer rendered at the game's volume and pan, the SPU2 reverb presets, `sounds.rdr`, the surface-material step table and the rules for when a sound plays | play audio (the viewer does, through Web Audio) |
 | `@s2u/scene` | archive, mesh | The engine's world: the world root, the scene graph and its matrices, the engine's walk order and grid, clutter, the collision hull and the ground probe, `AIMAPS.MPS` spawns, LOD bands, the character skeleton and gear, motion clips, the SEAL's tuning, the weapon table, zAnim effect scripts, grenade flight | draw anything |
 | `@s2u/viewer` | all of the above, `three` | The Vite app: decoding in a worker, the three.js scene, a shading graph that repeats the GS's arithmetic, the fly camera, the walk (mover, camera, clips, gunplay, grenades, traversal), the HUD, audio, effects, touch and pad input, the multiplayer page | run on the server, except through `src/sim.ts` |
-| `@s2u/server` | archive, scene, `ws`, and `viewer/src/sim.ts` by path | One match per map: the lobby, every player's mover run from its command stream, lag-compensated hits, deaths, respawns, scores, 30 Hz snapshots; HTTP `/health` and `/metrics` | serve the disc's files |
+| `@s2u/server` | archive, scene, `ws`, and `viewer/src/sim.ts` by path | One match per map and rules (respawn, classic; the two share the map's parse): the lobby, every player's mover run from its command stream, the shot cone and the round re-run, lag-compensated hits, deaths, respawns, scores, 30 Hz snapshots; HTTP `/health`, `/rooms` (public, CORS `*`: each room's map, rules, player and spectator counts, round) and `/metrics` (host only behind Caddy). The page imports its `Room` too, for the offline match (`viewer/src/net/loopback.ts`) | serve the disc's files |
 | `tools/` | archive, gs, mesh, sound | `extract-maps` and the `dump-*` readers, `export-gltf`, the console-frame and feel-parity instruments, the release sweep, the multiplayer bot load test, `build-corpus` | ship in the page |
 
 ### The sim boundary

@@ -9,7 +9,7 @@ import type { LandingKind } from './physics';
 import { STICK_SNAP_BLEND, type GroundMotion, type MoverAction, type Stance } from './mover';
 
 /**
- * The SEAL's clips on the mover, played the game's way (web sprint 2 W2.2b; the motion workstream's port, web/docs/
+ * The SEAL's clips on the mover, played the game's way (web sprint 2 W2.2b; the motion workstream's port, web/redotcom/docs/
  * research/80-the-jump.md): each frame the mover's state -- its action (the jumps, the landings, the stance
  * transitions) or its ground state and stick -- names a **play**, the game's `FUN_0028dc90` play on the skeleton at
  * `actor+0x170`: a list of nodes (a motion, a weight, a speed) sharing one phase (`./locomotion`).

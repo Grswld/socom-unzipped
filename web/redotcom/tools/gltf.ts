@@ -42,7 +42,7 @@ export class GlbWriter {
   private readonly bin: Uint8Array[] = [];
   private binLength = 0;
 
-  constructor(private readonly generator = 's2u web/tools/export-gltf') {}
+  constructor(private readonly generator = 's2u web/redotcom/tools/export-gltf') {}
 
   /** Appends `bytes` to the BIN chunk, 4-aligned, and returns the new buffer view's index. */
   addBufferView(bytes: Uint8Array, target?: number): number {

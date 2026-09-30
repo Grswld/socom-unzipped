@@ -33,7 +33,8 @@ import { PISTOL_RELOAD_CLIPS, RELOAD_CLIPS, reloadClip, reloadSeconds, type Relo
  *   a Fire version of a pose (stand, crouch, prone, the steps) runs on its own clock at its own rate. The game makes a
  *   second motion for it (`FUN_0028d860(slot, motion, -1)`), whose clock is not read here.
  * - `RELOAD_BLEND_PLACEHOLDER`: the reload clips have no `BlendTime` in `motion.rdr`, so they blend in and out over
- *   the animator's own placeholder (`BLEND_TIME_PLACEHOLDER`, 0.2 s).
+ *   0.2 s, the viewer's (research 84 s11: the game's cross-fade into a motion
+ *   with no `BlendTime` is `FUN_00287620`'s 0.4, `./locomotion` `BLEND_TIME_DEFAULT`; the reload overlay's path is not traced).
  * - The moving reload is the game's `FUN_005a82e0` test (`RELOAD_STILL_SPEED`), frame by frame at the same normalised
  *   time: a still reload the SEAL walks out of turns into the moving overlay (`FUN_00550ef0` 418205-418224).
  */

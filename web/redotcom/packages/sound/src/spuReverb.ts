@@ -1,5 +1,5 @@
 /**
- * The SPU2's reverb, as SOCOM II sets it (web/docs/research/81 §9): `snd_SetReverbType(2, 3)` -- core 1, libsd mode 3
+ * The SPU2's reverb, as SOCOM II sets it (web/redotcom/docs/research/81 §9): `snd_SetReverbType(2, 3)` -- core 1, libsd mode 3
  * (`SD_REV_MODE_STUDIO_B`; `FUN_0033f2a0(2, 3)` at decomp 55186, 243346, 243386) -- with the depth `snd_AutoReverb`
  * ramps to per place (`./rules`'s reverb zones, from `mission.rdr`).
  *

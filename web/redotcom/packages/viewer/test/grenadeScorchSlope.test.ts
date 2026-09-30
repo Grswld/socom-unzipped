@@ -13,7 +13,7 @@ import { groundGrid, type PlaySnapshot } from '../src/walk';
 import { buildWorld } from '../src/world';
 
 /**
- * The grenade's scorch on a slope (web/docs/research/85 §7.3, 89 §15). The game's explosion (`FUN_003c7af0`, decomp
+ * The grenade's scorch on a slope (web/redotcom/docs/research/85 §7.3, 89 §15). The game's explosion (`FUN_003c7af0`, decomp
  * 318876) probes a vertical column under the blast (`FUN_0031df50(10.0, world, pos)`: a type-2 `DiIntersect` at the
  * blast's x and z), takes the highest candidate no more than 10 units above the blast (`FUN_002d4c20`), and hands that
  * record -- `point, t, normal, node` -- to `FUN_003d0ba0`, which frames the decal along its normal negated (323891,

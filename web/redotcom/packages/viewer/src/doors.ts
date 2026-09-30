@@ -9,7 +9,7 @@ import { groundPolygons, type GroundData } from './mover';
 import type { DoorWire } from './net/protocol';
 
 /**
- * The map's doors (web/docs/research/92-doors.md): what the action button does to one, headless -- the page and the
+ * The map's doors (web/redotcom/docs/research/92-doors.md): what the action button does to one, headless -- the page and the
  * multiplayer server run this same code (`./sim`).
  *
  * **The game's door** is a `DOOR` record of `READERM.ZAR/actions.rdr` (`node`, `valve`, `anim`, `range`, `elevation`;

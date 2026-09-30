@@ -48,7 +48,7 @@ const POSITION_SCALE_ITOF15 = 32768;
  *
  * - `'bias'`, command `0x68`: `int16 / 16 + TOP+3.xyz` (`ITOF4`, then `ADD.xyz`). The world and the map's props.
  * - `'scale'`, command `0x70`: `int16 / 32768 * TOP+3.w` (`ITOF15`, then `MULw.xyz`). The weapons, the fittings and
- *   the turrets (web/docs/research/79 §2): every visual node of `WEAP_MDL`, `FLIB_MDL` and `TURR_MDL` lands inside
+ *   the turrets (web/redotcom/docs/research/79 §2): every visual node of `WEAP_MDL`, `FLIB_MDL` and `TURR_MDL` lands inside
  *   its own `nparams` bbox this way and none the other, and their `TOP+3.xyz` is zero in every packet.
  *
  * The command list that picks one is the EE's (SEMANTICS §9), not the packet's, so the caller says which.
@@ -333,7 +333,7 @@ export function interpretChainParts(chain: Chain): { meshes: MeshData[]; lines: 
 
 /**
  * `interpretChainParts` with the position form the drawing command applies (`PositionForm`): `'scale'` for the
- * weapons' chains (web/docs/research/79 §2). A separate name so `interpretChainParts` stays a one-argument callback.
+ * weapons' chains (web/redotcom/docs/research/79 §2). A separate name so `interpretChainParts` stays a one-argument callback.
  */
 export function interpretChainPartsAs(chain: Chain, form: PositionForm): { meshes: MeshData[]; lines: LineStrip[] } {
   const meshes: MeshData[] = [];
@@ -368,7 +368,7 @@ export function interpretChainLines(chain: Chain): LineStrip[] {
 
 /**
  * The scaled form's meshes alone, for a chunk drawn by command `0x70` -- the fittings of `FLIB_MDL.ZED` and the
- * weapons of `WEAP_MDL.ZED` (web/docs/research/78 §5.1, 79 §2). The character task's entry point (W2.1), kept as a
+ * weapons of `WEAP_MDL.ZED` (web/redotcom/docs/research/78 §5.1, 79 §2). The character task's entry point (W2.1), kept as a
  * wrapper over `interpretChainPartsAs` when the weapon task (W2.4) landed the general form.
  */
 export function interpretScaledChain(chain: Chain): MeshData[] {

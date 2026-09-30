@@ -4,7 +4,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { compassMarks, DEFAULT_MODEL, hudLayout } from '../src/hud';
 import { navBitmap, readTacData, TAC_LAYOUT, TacMap, tacMapLayout, type TacData } from '../src/tacMap';
 
-/** The tactical map and the compass's nav marks (web/docs/research/87-hud.md §9, §10). */
+/** The tactical map and the compass's nav marks (web/redotcom/docs/research/87-hud.md §9, §10). */
 
 const PS2 = { width: 640, height: 448 };
 const SIZES: Record<string, { width: number; height: number }> = {

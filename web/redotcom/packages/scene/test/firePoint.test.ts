@@ -5,7 +5,7 @@ import {
 } from '../src/index';
 
 /**
- * `GetPutativeFirePointW__10CZSealBodyFbbR6CPnt3D` (0x57fa70) ported (web/docs/research/79 §3). Every expected value
+ * `GetPutativeFirePointW__10CZSealBodyFbbR6CPnt3D` (0x57fa70) ported (web/redotcom/docs/research/79 §3). Every expected value
  * below is worked by hand from the body's arithmetic: the branch it takes (decomp line numbers in each case), the
  * offset it indexes, then `FUN_003085c0`'s `(x, y, z, 1) x M` or `FUN_00309240`'s add.
  */

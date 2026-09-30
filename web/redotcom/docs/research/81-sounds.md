@@ -348,7 +348,8 @@ Glory's indoor bed in the mission set").
 **The command numbers the scripts use** (set 0): the list opens with `Reserved` (`FUN_0026ac20`, string 0x3ed270), then
 `FUN_0025bc20`'s base commands in order (decomp 106862-106925: IF 2, ELSEIF 3, ELSE 4, ENDIF 5, LOOP 14, WAIT 15,
 SOUND 30, WHILE 39, END_WHILE 40, EXPRESSION 43, CALL_ANIMATION 45, STOP_ANIMATION 46 ...), then the game's own in
-`FUN_002ad290`'s order (152550-152557): `VALVE` 61 ... **`CAMERA_INDOORS` 66**, **`PLAYER_INDOORS` 72**. `CAMERA_INDOORS`'s
+`FUN_002ad290`'s callees' order (152552-152556: `FUN_0059ac60` 59-60, `FUN_00354470` 61-63, `FUN_00293890`
+64-69, `FUN_0029bc20` 70-71, `FUN_002b3930` 72; after `FUN_0026b1a0` (152550) runs `FUN_0025bc20` at 115649): `VALVE` 61 ... **`CAMERA_INDOORS` 66**, **`PLAYER_INDOORS` 72**. `CAMERA_INDOORS`'s
 tick (0x2936b0, read off the ELF) answers the byte the camera's floor probe writes from the polygon's `m_inside`
 (`FUN_002dc180`, 140054) -- the reverb's own test (241521); `PLAYER_INDOORS`'s (0x2b3880) bit 2 of the player's byte
 `+0x1060`. An `IF`'s expression follows its 8-byte head (`02 00 32 00 01 00 00 00 | 48 00 12 00`); the `ELSEIF` carries
@@ -439,3 +440,17 @@ Glory `.STEP_SAND` and `.SAND_JUMP`; nothing dropped.
   pitch bend (0x40). The effects' own zAnim `SOUND` op (`@s2u/scene`'s `effects.ts`) reads the command volume (flag
   0x10's f32 at +8, else 1.0) and the viewer's effect runs play at it (`viewer/test/effects.test.ts`); the doors'
   runs (`viewer/src/doors.ts`, the `sound` hook) still play theirs at 1.0.
+
+## 13. Placeholders, by name
+
+The values no source gives, named in the code (each is described where it is used: §8, §10).
+
+| name | value | stands for |
+|---|---|---|
+| `LISTENING_GAIN_PLACEHOLDER` (`viewer/src/audio.ts`) | x4 (+12 dB) on the whole mix | the television's volume knob: the console's effects peak at -30 to -20 dBFS (§8) |
+| `DEFAULT_RANGE_PLACEHOLDER` (`audio.ts`) | 30-200 | the range of a sound `sounds.rdr` does not list (§8) |
+| `BED_FADE_SECONDS_PLACEHOLDER` (`audio.ts`) | 0.5 s | the fade between the indoor and outdoor beds (§10) |
+| `MAX_RENDER_SECONDS_PLACEHOLDER` (`sound/src/render.ts`) | 4 s | the render's cap for a looping voice nothing keys off (§8) |
+| `LOOP_SECONDS_PLACEHOLDER` / `LOOP_FADE_SECONDS_PLACEHOLDER` (`viewer/src/loopLength.ts`) | 12 s + 1 s | the length and crossfade of a rendered ambience loop (§8, §10) |
+| `LONG_LOOP_SECONDS_PLACEHOLDER` (`loopLength.ts`) | 40 s | a loop with no voice in 12 s (the crickets' conductor waits up to 16.7 s, §10) |
+| `BED_CAMERA_ABOVE_FEET_PLACEHOLDER` (`viewer/src/soundData.ts`) | 25 | the camera's height over spawn A's floor that sets global register 2 for the beds, rendered once, not per frame (§10) |

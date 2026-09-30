@@ -8,7 +8,7 @@ import { effectMaterial } from './effectMaterials';
 import type { EffectTexture } from './effectData';
 
 /**
- * The particle manager the zAnim `PARTICLE_SOURCE` command drives (web/docs/research/89 §3; `@s2u/scene`'s
+ * The particle manager the zAnim `PARTICLE_SOURCE` command drives (web/redotcom/docs/research/89 §3; `@s2u/scene`'s
  * `effectParticles` for the fields and their decomp lines):
  *
  * - **A source** is one per animation run and name (`FUN_0026ea20`): later commands of the run update it; it emits while

@@ -6,8 +6,8 @@ import { parseZdb, zdbEntry, zdbMember, zdbTocLength, ZDB_HEAD } from './zdb';
  * Named members of a ZAR archive on a source, by path inside the archive (`Zar.find`'s `a/b/c`). Over a
  * `RangedAssetSource` -- the player's disc image, the served tree over HTTP -- it reads the head, then the string
  * table and the key tree (`zarIndexLength`), then each member's own bytes, and nothing else: the sound banks a map
- * needs are two of `SOUNDS/BNKSTORE.ZAR`'s 115 (web/docs/research/81 §1), 1.4 MB of its 67. Any other source reads
- * the archive whole. A name the archive does not hold is left out of the answer rather than thrown on.
+ * needs are its three and `HUDUI` of `SOUNDS/BNKSTORE.ZAR`'s 115 (web/redotcom/docs/research/81 §1), about 1.9 MB of
+ * its 67 for Frostfire. Any other source reads the archive whole. A name the archive does not hold is left out of the answer rather than thrown on.
  */
 export async function readZarMembers(source: AssetSource, path: string, names: readonly string[]): Promise<Map<string, Uint8Array>> {
   const out = new Map<string, Uint8Array>();
@@ -31,7 +31,7 @@ export async function readZarMembers(source: AssetSource, path: string, names: r
 /**
  * One member of a ZDB archive (`zdbEntry`'s suffix match), as `mapIndex`'s `READERM.ZAR` read does it: over a ranged
  * source the header, the table of contents and the member; otherwise the archive whole. The sound reads each map's
- * `CZANIM.ZAR` this way for the zAnim callbacks' sounds (web/docs/research/81 §4).
+ * `CZANIM.ZAR` this way for the zAnim callbacks' sounds (web/redotcom/docs/research/81 §4).
  */
 export async function readZdbMember(source: AssetSource, path: string, suffix: string): Promise<Uint8Array> {
   if (!isRanged(source)) {

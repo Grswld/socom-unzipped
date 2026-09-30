@@ -11,7 +11,7 @@ export const ZAR_HEAD = HEAD;
 /**
  * How many bytes from the start of an archive hold its head, its string table and its key tree -- all `Zar.parse`
  * needs to list the keys and say where each one's bytes are (`Zar.dataOffset + key.offset`). `head` is at least the
- * first `ZAR_HEAD` bytes. It is what lets a ranged source read one member of a large archive (web/docs/research/81
+ * first `ZAR_HEAD` bytes. It is what lets a ranged source read one member of a large archive (web/redotcom/docs/research/81
  * §1: `SOUNDS/BNKSTORE.ZAR` is 67 MB and a map wants two of its 115 banks) without the rest.
  */
 export function zarIndexLength(head: Uint8Array): number {
@@ -36,7 +36,7 @@ export class Zar {
     if (padding <= 0) throw new Error(`ZAR padding ${padding}: the data blob's alignment must be positive`);
     const stableAt = HEAD, keysAt = stableAt + stableSize;
     const dataAt = Math.ceil((keysAt + 16 * keyCount) / padding) * padding;
-    // The sound archives (`SOUNDS/BNKSTORE.ZAR`, `SOUNDS/VAGSTORE.ZAR`; web/docs/research/81 §1) write 0 here: the
+    // The sound archives (`SOUNDS/BNKSTORE.ZAR`, `SOUNDS/VAGSTORE.ZAR`; web/redotcom/docs/research/81 §1) write 0 here: the
     // engine never reads the field (zar_main.cpp keeps no data size), so a zero means "the rest of the file".
     // Bytes that stop at the key tree (`zarIndexLength`, a ranged read) parse to the keys over an empty blob.
     const rest = Math.max(0, bytes.byteLength - dataAt);

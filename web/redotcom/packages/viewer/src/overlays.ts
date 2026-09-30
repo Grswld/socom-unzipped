@@ -16,7 +16,7 @@ const LABEL_ABOVE = 26;
 const LABEL_SIZE = 22;
 /** A's marker and B's, the two sides of every measured round. */
 const SPAWN_COLOURS = { a: 0x4d9bff, b: 0xff6a3d } as const;
-/** A slot's cell, in game units: 10 x 10 on all 83 sub-maps (web/docs/research/75 §3). */
+/** A slot's cell, in game units: 10 x 10 on all 83 sub-maps (web/redotcom/docs/research/75 §3). */
 export const SLOT_CELL = 10;
 /** A slot's facing arrow, in game units: one cell long from the cell's centre, its barbs a third of that. */
 export const SLOT_ARROW = 10;

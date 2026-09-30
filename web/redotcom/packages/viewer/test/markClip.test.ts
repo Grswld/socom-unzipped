@@ -10,7 +10,7 @@ import type { PlaySnapshot } from '../src/walk';
 import { MarkClipper, markClipGeometry, markFrame, MARK_CLIP_MAX_TRIANGLES, TEMP_DECAL_TRIANGLES, type MarkFrame } from '../src/markClip';
 
 /**
- * The mark clipped to the world under it, shaded per vertex (web/docs/research/89 §5 and §13): `FUN_003b3ab0` (decomp
+ * The mark clipped to the world under it, shaded per vertex (web/redotcom/docs/research/89 §5 and §13): `FUN_003b3ab0` (decomp
  * 306491) takes each world triangle of the hit node's visuals that faces the round (its normal . the round's direction
  * below -0.01), whose three vertices lie within 4.8 units of the mark's plane and whose projected box meets the mark's
  * square (`FUN_003bf290`), and hands it to `FUN_003beca0` with its three vertices' own colour words. The viewer drew
@@ -158,7 +158,7 @@ describe('the mark clipped to the world triangles under it (FUN_003b3ab0)', () =
     expect(clipper.centre[1]).toBeCloseTo(gy(-0.7), 5);
   });
 
-  it('keeps only triangles facing the round, within 4.8 units of the mark\'s plane (decomp 306595, 306632)', () => {
+  it('keeps only triangles facing the round, within 4.8 units of the mark\'s plane (decomp 306534, 306632)', () => {
     const root = new Group();
     // Facing away (CW seen from +z), and a facing one whose far corner is 5 units behind the plane.
     const away = { corners: [[-10, 10, 0], [10, 10, 0], [10, -10, 0], [-10, -10, 0]] as V3[], colours: flat4(0.5) };

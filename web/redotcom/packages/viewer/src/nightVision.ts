@@ -3,7 +3,7 @@ import type { Node } from 'three/webgpu';
 import { float, select, uniform, vec4 } from 'three/tsl';
 
 /**
- * The night vision's colour as the engine applies it (research 84 section 14; web/docs/research/82, round 4).
+ * The night vision's colour as the engine applies it (research 84 section 14; web/redotcom/docs/research/82, round 4).
  *
  * Going into the goggles (`FUN_005c1800`, zoom state 3) the game calls `FUN_003b78d0(0, LensFX_NVG)`: four rows at
  * `0x4b4c70`, each `(0.33 r, 0.33 g, 0.33 b, 3.0303 a)` of the map's lens -- `(0.2, 0.898, 0.2, 0.24)` on every map --

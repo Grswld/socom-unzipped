@@ -5,7 +5,7 @@ import { isShotSurface } from './ray';
 import type { Grid } from './grid';
 
 /**
- * SOCOM II's thrown frag grenade, pure (the grenades workstream; web/docs/research/85). Every number is the game's:
+ * SOCOM II's thrown frag grenade, pure (the grenades workstream; web/redotcom/docs/research/85). Every number is the game's:
  * the M67's record in `RUN/ZWEAPON.ZAR/zweapon.rdr`, the `THROW_PARAMS` defaults the dynamics loader keeps
  * (`CharacterDynamics_Load` 0x59ba80; `dynamics.rdr` carries no `THROW_PARAMS`, so `FUN_002ce1a0`'s defaults stand),
  * the throw's own constants in `.data`, and the projectile's bounce and timers (`CZProjectile` 0x3c8f50, 0x3c99a0,
@@ -451,7 +451,7 @@ export function throwAnim(power: number, aimSin: number, stance: ThrowStance, sp
 
 /**
  * Seconds from the throw's start to the release (`FUN_005802b0`): `release x clip(+0x10) x FUN_0028ada0(clip)`. The
- * motion workstream read both factors (web/docs/research/80, `viewer/src/locomotion.ts`): `+0x10` of a one-shot is
+ * motion workstream read both factors (web/redotcom/docs/research/80, `viewer/src/locomotion.ts`): `+0x10` of a one-shot is
  * `motion.rdr`'s `playback` (`FUN_00287620`) and `FUN_0028ada0` is `(n - 1) / n` -- so the release is the moment the
  * clip's phase, which runs at `1 / (playback (n - 1) / n)` a second (`FUN_0028c4f0`), reaches the fraction. The
  * standing throw lets go 0.71 s in (`motion.rdr`'s `throw_whoosh` callback sits at phase 0.45, beside its 0.46).

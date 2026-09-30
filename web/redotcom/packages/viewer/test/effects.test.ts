@@ -12,7 +12,7 @@ import { flatCorners, rotatedCorners } from '../src/particles';
 import { EffectLights } from '../src/effectLights';
 
 /**
- * The gunplay's effects (web/docs/research/89): the names a round plays, the valves, the mark table, and -- on the
+ * The gunplay's effects (web/redotcom/docs/research/89): the names a round plays, the valves, the mark table, and -- on the
  * game's own data, where the fixtures are -- the M4A1 SD's round end to end: the casing thrown to the rifle's right,
  * falling at the zAnim gravity and bouncing on the deck with the metal's sound; the flash of the M4A1; the impacts.
  */

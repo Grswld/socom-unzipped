@@ -3,7 +3,7 @@ import { multiply } from './sceneGraph';
 
 /**
  * A character's skeleton: `CLIB_GEO.ZED`'s `models/<name>` tree read as the matrix palette the skinned mesh is
- * drawn against (web/docs/research/78 §3).
+ * drawn against (web/redotcom/docs/research/78 §3).
  *
  * The model node carries the one visual of `vtype` 1 -- the `CMesh`, whose DMA buffer is `CLIB_MDL.ZED`'s
  * `MESH_<name>` -- and every node below it one visual of `vtype` 2, a `CSubMesh` with a `matrix_id`

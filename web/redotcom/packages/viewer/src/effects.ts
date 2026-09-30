@@ -17,7 +17,7 @@ import { markClipGeometry, squareInto, type MarkClipper, type MarkFrame } from '
 import { fixSoundName } from '@s2u/sound';
 
 /**
- * The gunplay's effects (web/docs/research/89), drawn in walk mode: the game's own zAnim effect animations out of the
+ * The gunplay's effects (web/redotcom/docs/research/89), drawn in walk mode: the game's own zAnim effect animations out of the
  * map's `CZANIM.ZAR` and `MZANIM.ZAR`, run by the zAnim sequencer (`./effectRunner`) over the game's own models
  * (`EFFE_GEO`/`EFFE_MDL`) and particle textures (`ALPH_TXR`), in the world's GS arithmetic (`./effectMaterials`).
  *

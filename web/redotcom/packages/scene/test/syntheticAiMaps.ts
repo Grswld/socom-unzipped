@@ -1,5 +1,5 @@
 /**
- * A hand-built `AIMAPS.MPS` (web/docs/research/75), shared by `aimaps.test.ts` and the viewer's
+ * A hand-built `AIMAPS.MPS` (web/redotcom/docs/research/75), shared by `aimaps.test.ts` and the viewer's
  * `spawnSlots.test.ts`, which packs it into a hand-built ZDB to read it the way the worker does. It is the
  * file CI runs: no byte of it comes from the disc.
  */

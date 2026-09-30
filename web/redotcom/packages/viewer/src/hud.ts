@@ -14,7 +14,7 @@ import { roundScreenLayout, type RoundScreen } from './roundScreens';
 import { roundBanner } from './net/rules';
 
 /**
- * The in-game HUD (web/docs/research/87-hud.md): SOCOM II's own multiplayer HUD drawn over the world in walk mode --
+ * The in-game HUD (web/redotcom/docs/research/87-hud.md): SOCOM II's own multiplayer HUD drawn over the world in walk mode --
  * the ammo box (panel, "30/30", "2 MAGS", the weapon's icon, the fire-mode rounds), the compass ring turned by the
  * heading, the info box (the health bar, the round timer, the range), the stance word on a stance change, the
  * context-action icon (the climb icon among them) and the message banner -- out of the game's own bitmaps and font

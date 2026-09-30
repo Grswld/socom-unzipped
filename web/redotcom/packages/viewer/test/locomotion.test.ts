@@ -14,7 +14,7 @@ import { ACTION_CLIPS, SWAP_OVERLAY } from '../src/walk';
 
 /**
  * `./locomotion`: the loaded motion's constants (`FUN_00287620`, `FUN_0028ab10`, `FUN_0028aa20`), the pick and blend
- * of `FUN_0058bdf0`, the stand, crouch and prone plays (web/docs/research/80-the-jump.md). Synthetic motions pin the
+ * of `FUN_0058bdf0`, the stand, crouch and prone plays (web/redotcom/docs/research/80-the-jump.md). Synthetic motions pin the
  * arithmetic; the disc's `READERC.ZAR` and `MOTION_P.ZAR` pin the transcriptions.
  */
 

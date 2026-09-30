@@ -5,7 +5,7 @@ import { packetFogged } from './interpret';
 /**
  * The character-model chain form: `CLIB_MDL.ZED`'s `MESH_<name>` buffers, the `CMesh`/`CSubMesh` path
  * (reCOM `zVisual/vis_main.cpp:246-265` for the two `vtype`s, `:31-55` for `hookupMesh`). Research 72 §3
- * warned the map walker reads garbage here; web/docs/research/78 is the format this file decodes, and every
+ * warned the map walker reads garbage here; web/redotcom/docs/research/78 is the format this file decodes, and every
  * rule below cites the section it rests on.
  *
  * In one paragraph (78 §2): `MESH_<name>_START` is the byte offset of a count quadword whose low half is the

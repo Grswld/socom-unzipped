@@ -6,7 +6,7 @@ import { clutterMatrix, isAffineRowVector } from '../src/clutter';
  * describes. It exists because Abandoned's records are something else in the same bytes, and composing
  * one as a matrix drew basis rows thousands of units long across the map while reporting nothing.
  *
- * The fixtures are real records, read off the disc with `web/tools/probe-clutter.ts`.
+ * The fixtures are real records, read off the disc with `web/redotcom/tools/probe-clutter.ts`.
  */
 
 /** Row-major, row-vector: rows 0-2 are basis vectors with a zero fourth lane, row 3 the translation. */

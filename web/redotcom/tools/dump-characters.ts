@@ -1,5 +1,5 @@
 /**
- * The character libraries of every map (web/docs/research/78 §4): each `CLIB_MDL.ZED` mesh decoded
+ * The character libraries of every map (web/redotcom/docs/research/78 §4): each `CLIB_MDL.ZED` mesh decoded
  * (`readMeshLibrary`), its skeleton read out of `CLIB_GEO.ZED` (`readSkeleton`), and the bind palette checked
  * against the mesh (`influenceSpread`: how far apart a vertex's per-bone copies land). One line per map, then
  * the totals; `--models` adds a line per model. Exits non-zero when anything fails to decode.

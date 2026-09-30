@@ -7,7 +7,7 @@ import type {} from '../src/hook';
 /**
  * The gunplay on Frostfire (research 84, `src/accuracy.ts`, `src/zoom.ts`): the reticle at rest, opened by the walk,
  * climbed and opened by a burst, and the scope the zoom steps into -- in the PS2 presentation, so the HUD's pixels are
- * the console's. Screenshots of each go to `web/test-fixtures/screens/accuracy` (git-ignored).
+ * the console's. Screenshots of each go to `web/redotcom/test-fixtures/screens/accuracy` (git-ignored).
  */
 
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/accuracy', import.meta.url));

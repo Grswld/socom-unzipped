@@ -1,7 +1,7 @@
 import { parseRdr, rdrGet, Zar, type RdrNode } from '@s2u/archive';
 
 /**
- * `RUN/SOUNDRDR.ZAR/sounds.rdr`, the sound script (web/docs/research/81 §3): under `SETS`, one list per bank block
+ * `RUN/SOUNDRDR.ZAR/sounds.rdr`, the sound script (web/redotcom/docs/research/81 §3): under `SETS`, one list per bank block
  * (`MP2_AM`, `MP2_FX`, `HUDUI` ...) of the sounds that carry parameters, each named by the **CRC-32 of its bank
  * name** -- `.STEP_STONE` is 1440126871 -- and followed by keys: `ONESHOT`, `AMBIENT`, `DOPPLER`, `STREAMING_EFX`,
  * `RANGE (min max)`, `VOLUME`, `MED`/`FAR` (marks on a weapon's distance variants that the game never reads: its

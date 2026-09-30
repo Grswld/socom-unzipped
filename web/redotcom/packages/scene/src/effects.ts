@@ -6,7 +6,7 @@ import { decodeObjectMotion, type ObjectMotion } from './effectMotion';
 import { decodeParticleSource, type ParticleSource } from './effectParticles';
 
 /**
- * The zAnim effect commands, decoded (web/docs/research/89). A zAnim animation of `CZANIM.ZAR` (the `common` set) is
+ * The zAnim effect commands, decoded (web/redotcom/docs/research/89). A zAnim animation of `CZANIM.ZAR` (the `common` set) is
  * sequences of commands (77 §9); this file turns a command's bytes into what it does, for the ones the game's gunplay
  * runs -- the muzzle effects (`FireAnimName`: `muzzle_m4SD` calls `shell_eject` and `shell_smoke_med`), the shell's
  * flight, the smoke, the flash -- and the control flow around them.
@@ -134,10 +134,10 @@ export function lightAt(L: Vec3, n: Vec3, range: [number, number]): { f: number;
 
 /** A sub-command of an `IF`/`ELSEIF`'s condition list, as far as the effects need one. */
 export type EffectCondition =
-  /** `RANDOM_WEIGHT` (tick `FUN_0025dcf0`, decomp 107832): true when `rand() / 2^31 <= p`, the f32 at +4. */
+  /** `RANDOM_WEIGHT` (tick `FUN_0025dcf0`, decomp 107783): true when `rand() / 2^31 <= p`, the f32 at +4. */
   | { kind: 'random'; p: number }
   /**
-   * `RANGE_TEST` (tick `FUN_0025de90`, decomp 107880): the squared distance between two points -- a node's (+8 with flag
+   * `RANGE_TEST` (tick `FUN_0025de90`, decomp 107820): the squared distance between two points -- a node's (+8 with flag
    * 1, +9 with flag 8), an offset, the camera's -- against the f32 at +0x24 (`rangeSquared`); flags 0x40-0x800 pick
    * the comparison.
    */
@@ -170,7 +170,7 @@ export type EffectOp =
   | { op: 'rotate' | 'translate'; node: number; ref: number; flags: number; xyz: Vec3 }
   /**
    * `OBJECT_MOTION_FROM_TO` (22) as the flashes use it: a node's scale from `from` to `to` over `seconds` (research 89
-   * §4). DOORS (web/docs/research/92-doors.md): with flag 0x40 the node's rotation, the quaternions (x, y, z, w) at +0x10
+   * §4). DOORS (web/redotcom/docs/research/92-doors.md): with flag 0x40 the node's rotation, the quaternions (x, y, z, w) at +0x10
    * and +0x20 -- begin `FUN_0025fe70` (decomp 109034) takes the node's own rotation as the start unless flag 0x20 sets
    * +0x10; flag 1 makes +0x20 a turn after the start (`FUN_003070c0`); tick `FUN_0025f9b0` (108850) slerps by the time
    * over +0x34 (`FUN_00306ae0`) and sets the end when it is up.
@@ -242,7 +242,7 @@ const SOUND_VOLUME = 0x10;
  */
 function valveOf(c: CmdBytes, names: readonly string[]): { valve: string; operation: number; operand: number; context?: true } {
   const ref = c.u32(4), flags = c.u8(13);
-  // DOORS (web/docs/research/92-doors.md): flag bit 0 takes the valve from the animation's context
+  // DOORS (web/redotcom/docs/research/92-doors.md): flag bit 0 takes the valve from the animation's context
   // (`FUN_002721c0(context, ref)`, decomp 252144-252150) -- the door's own, handed in by `FUN_002b44e0`.
   const context = (flags & 1) !== 0 ? { context: true as const } : {};
   return { valve: (flags & 2) !== 0 ? NAME(names, ref) : `#${ref}`, operation: c.u8(12), operand: c.i32(8), ...context };

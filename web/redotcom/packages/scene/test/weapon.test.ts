@@ -7,7 +7,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { DEFAULT_SIDEARM, DEFAULT_WEAPON, weaponLibrary, type WeaponLibrary } from '../src/index';
 
 /**
- * The weapons (W2.4; web/docs/research/79 §2): `COMMON/WEAP_GEO.ZED`'s `models` and `WEAP_MDL.ZED`'s chains, the
+ * The weapons (W2.4; web/redotcom/docs/research/79 §2): `COMMON/WEAP_GEO.ZED`'s `models` and `WEAP_MDL.ZED`'s chains, the
  * props' shape (research 72 §2-§3), decoded with the scale form of the position (`ITOF15 x TOP+3.w`, command
  * `0x70`, research 15 §0). Fixture-backed: skipped where `npm run extract-maps` has not been run.
  */
@@ -126,7 +126,7 @@ describe('the weapon library: WEAP_GEO + WEAP_MDL', () => {
 });
 
 /**
- * Step 1 of W2.4 stopped here (web/docs/research/79 §1): `CTFireWeapon_Parse` is the AI script's `FireWeapon`
+ * Step 1 of W2.4 stopped here (web/redotcom/docs/research/79 §1): `CTFireWeapon_Parse` is the AI script's `FireWeapon`
  * task, not a weapon table's reader, and the owner's `READERC.ZAR` holds no weapon table. These pin the second fact:
  * none of the SOCOM 1 weapon reader's distinctive keys (reCOM `zWeapon/zwep_global.cpp:27-92`) is in the file.
  */

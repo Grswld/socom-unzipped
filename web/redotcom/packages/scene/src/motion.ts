@@ -4,7 +4,7 @@ import { Reader, type Zar } from '@s2u/archive';
  * The skeletal motion format: one clip per key of a `MOTION_*.ZAR`. `MOTION_S.ZAR` in every map archive carries
  * seven (`victory_backflip` ... `victory_rodeo`); `RUN/MOTION_P.ZAR`, the player's pack, carries 334 in the same
  * format -- `seal_stand`, `seal_walk`, `seal_run`, `seal_jump` ... -- and research 25's in-memory reads of it are
- * this layout (77 §12). Every field read here is laid out in web/docs/research/77 and checked there on all 341
+ * this layout (77 §12). Every field read here is laid out in web/redotcom/docs/research/77 and checked there on all 341
  * clips; the reader consumes a clip to its last byte and throws where a count, an offset, a flag or the length
  * disagrees.
  *

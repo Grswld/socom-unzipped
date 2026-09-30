@@ -205,7 +205,7 @@ export interface Snapshot {
   /** Every body in the round but the recipient's own. */
   bodies: BodyState[];
   /**
-   * DOORS (`../doors`, web/docs/research/92-doors.md): every door of the map, in `actions.rdr` order -- the server runs
+   * DOORS (`../doors`, web/redotcom/docs/research/92-doors.md): every door of the map, in `actions.rdr` order -- the server runs
    * them (`DoorSet`) and the page shows what it sends. Absent (none on the wire) on a map without doors.
    */
   doors?: DoorWire[];

@@ -41,7 +41,7 @@ export const KNOCK_RISE = 50;
  */
 export const ROOT_HEIGHT: Readonly<Record<Stance, number>> = { stand: 11.48, crouch: 5.5, prone: 2.17 };
 
-/** Which way the knocked SEAL falls: `Fall forward` or `Fall backwards` (`FUN_005807d0` L441900-441960). */
+/** Which way the knocked SEAL falls: `Fall forward` or `Fall backwards` (`FUN_005807d0` L442057-442137, called by `FUN_0057e770` L441044-441051). */
 export type KnockFall = 'fallForward' | 'fallBackwards';
 
 /** A knock: the velocity the SEAL leaves the ground with, units a second, and the clip it falls in. */

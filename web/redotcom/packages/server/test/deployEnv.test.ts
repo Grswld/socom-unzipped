@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * `web/deploy/env.example` (the merge review's hole 1): the deploy's README and `compose.yaml` tell the owner to copy
+ * `web/redotcom/deploy/env.example` (the merge review's hole 1): the deploy's README and `compose.yaml` tell the owner to copy
  * it as the git-ignored settings file, so it must exist and name every setting the server, the compose file and the
  * Caddyfile read -- each with a placeholder or the dev default, never a real value.
  */

@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The yellow arc on Frostfire (web/docs/research/85 §11, `FUN_005970b0`): with the M67 up and the trigger held the arc
+ * The yellow arc on Frostfire (web/redotcom/docs/research/85 §11, `FUN_005970b0`): with the M67 up and the trigger held the arc
  * shows -- the game's (0.78, 0.78, 0), its 100 steps and the closing one -- and grows as the power builds; let go, it is
  * gone, and the grenade that leaves follows it. The screenshot is the evidence.
  */

@@ -2,8 +2,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * One headless chromium against one Vite dev server, serving the extracted disc tree from
- * `web/public/maps/`. Nothing here runs in parallel: the point is a picture of a map, and the host is
- * shared with the game build.
+ * `web/redotcom/public/maps/`. Nothing here runs in parallel: the point is a picture of a map, and the host is
+ * shared with the game build. Specs pass `&devmode`: without it the page reads only the visitor's disc and makes no
+ * request under `maps/` (`packages/viewer/src/source.ts`; README "Deploying"). Most open with `&fly`, which also keeps
+ * the offline match off (`&nomatch` does the same on foot; `e2e/soloMatch.spec.ts` is the one that plays it).
  *
  * The port is overridable (`E2E_PORT`): 5173 is also Vite's own default for `npm run dev`, so a
  * session already running the dev server -- or another agent's -- can be holding it, and

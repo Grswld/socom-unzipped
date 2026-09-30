@@ -5,7 +5,7 @@ import type { RdrNode } from './rdr';
  *
  * - `name`: the detail texture, found by name in the map's texture libraries like any other.
  * - `uv`: the factor the second pass multiplies `S`,`T` by -- the float the `0x30`/`0x32` VU1 handlers
- *   scale the staging `ST` with (`web/packages/mesh/SEMANTICS.md` §7 and §11.6). 2 to 10 on the disc.
+ *   scale the staging `ST` with (`web/redotcom/packages/mesh/SEMANTICS.md` §7 and §11.6). 2 to 10 on the disc.
  * - `range`: a *squared* distance in world units, as the field it becomes is named:
  *   `tag_DETAIL_PARAMS.m_range_sqd_to_camera` (`research/recom/src/gamez/zVisual/zvis.h:96-99`), compared
  *   with the camera's range squared (`zRender/zrndr_pipe.cpp:311-322`). 90000 is 300 units, 250000 500.
@@ -13,7 +13,7 @@ import type { RdrNode } from './rdr';
  */
 export interface TexDetail { name: string; uv: number; range: number; bmode: string }
 
-/** One texture of `mp<N>_lib.rdr` (web/docs/research/72 §6). */
+/** One texture of `mp<N>_lib.rdr` (web/redotcom/docs/research/72 §6). */
 export interface TexEntry {
   /** As the manifest spells it; the map is keyed lower-cased, the way the chains' citations are compared. */
   name: string;
@@ -75,7 +75,7 @@ function libraryRecord(rdr: RdrNode): Fields {
 }
 
 /**
- * Reads the texture manifest `mp<N>_lib.rdr` out of `READERM.ZAR` (web/docs/research/72 §6), keyed by
+ * Reads the texture manifest `mp<N>_lib.rdr` out of `READERM.ZAR` (web/redotcom/docs/research/72 §6), keyed by
  * lower-cased texture name.
  *
  * A name listed twice keeps its **first** entry: Blizzard's `mp1_lib.rdr` lists `alaska4d_snow02.tif`

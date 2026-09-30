@@ -5,7 +5,7 @@ import { buildWorld } from '../src/world';
 import type { LoadedMap, LoadedMesh } from '../src/loadMap';
 
 /**
- * DOORS (web/docs/research/92-doors.md): `WorldView.moveNode` draws a door's leaf where its swing has it -- every prop
+ * DOORS (web/redotcom/docs/research/92-doors.md): `WorldView.moveNode` draws a door's leaf where its swing has it -- every prop
  * placement at or under the door's node path, a mesh of its own or one instance of a shared draw -- and nothing
  * else; the identity puts them back where the disc has them, so nothing drawn is left behind.
  */

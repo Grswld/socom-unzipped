@@ -18,7 +18,7 @@ import type {} from '../src/hook';
  * a different distance on every host. The keys themselves are checked once, with a short hold of W.
  */
 
-/** Screenshots are evidence, not fixtures: `web/test-fixtures/` is git-ignored. */
+/** Screenshots are evidence, not fixtures: `web/redotcom/test-fixtures/` is git-ignored. */
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/walk', import.meta.url));
 const CAMERA_SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens/camera', import.meta.url));
 

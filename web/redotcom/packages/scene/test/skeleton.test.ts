@@ -8,7 +8,7 @@ import { nparams, u32, writeZar, type ZarTree } from './skeletonZar';
 /**
  * The skeleton of a character model: `CLIB_GEO.ZED`'s `models/<name>` node tree, where every node under the
  * model carries one visual of `vtype` 2 (a `CSubMesh`, reCOM `zVisual/vis_main.cpp:246-265`) whose
- * `matrix_id` names its slot in the mesh's matrix palette (web/docs/research/78 §3).
+ * `matrix_id` names its slot in the mesh's matrix palette (web/redotcom/docs/research/78 §3).
  */
 const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const T = (x: number, y: number, z: number) => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1];

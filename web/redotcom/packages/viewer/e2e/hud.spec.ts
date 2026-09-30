@@ -6,7 +6,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The in-game HUD on Frostfire (web/docs/research/87-hud.md): in walk mode, in the PS2 presentation, the ammo box, the
+ * The in-game HUD on Frostfire (web/redotcom/docs/research/87-hud.md): in walk mode, in the PS2 presentation, the ammo box, the
  * compass, the info box and the prompts are drawn at `CHUD`'s places, and the drawn pixels are checked against the
  * console's own frame at spawn (`scripts/parity/refs/console_spawn_slot8.png`, 640x448): each element's sub-pixel
  * offset, by cross-correlation of the two frames over the element's box, within a pixel. Not drawn in fly mode.

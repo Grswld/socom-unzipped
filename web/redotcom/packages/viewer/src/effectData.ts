@@ -7,7 +7,7 @@ import {
 import { parseSoils } from '@s2u/sound';
 
 /**
- * The gunplay's effects, read off the disc in the worker for one map (web/docs/research/89), as the sound is
+ * The gunplay's effects, read off the disc in the worker for one map (web/redotcom/docs/research/89), as the sound is
  * (`./soundData`): at run time, never written into the source.
  *
  * - **the programs**: every animation of the map's `CZANIM.ZAR` (the `common` set: the muzzle effects, the casings,

@@ -1,5 +1,5 @@
 /**
- * The zAnim effect animations of a map, straight off the disc -- the dump web/docs/research/89 was written from.
+ * The zAnim effect animations of a map, straight off the disc -- the dump web/redotcom/docs/research/89 was written from.
  * Archives are looked up in `public/maps/RUN`, then `test-fixtures/RUN`.
  *
  *   npx tsx tools/dump-effects.ts MP2                          # CZANIM: every animation, its command count

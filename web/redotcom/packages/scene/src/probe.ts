@@ -33,7 +33,7 @@ import { cellAt, type CollisionObject, type CollisionOwner, type Grid } from './
  * **What is not modelled**, because the viewer has none of it: the self skip (`+0x3c`) and the characters flag
  * (`*(top+0xa1) & 4`), which concern actors; the material table's VOLUMETRIC and LIQUID candidates
  * (`0x44f358[m]+0x3c`, from the SOILS reader, which is not in a map's archive -- no Frostfire ground polygon uses
- * one, research 24 section 1.2); and `CDIBBox` surfaces, which on disc do not exist (web/docs/research/72 section 6).
+ * one, research 24 section 1.2); and `CDIBBox` surfaces, which on disc do not exist (web/redotcom/docs/research/72 section 6).
  */
 
 /** One candidate (research 23 section 1.3's 0x20-byte slot): the hit, its surface, its normal and its model. */

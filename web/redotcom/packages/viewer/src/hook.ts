@@ -194,7 +194,7 @@ export interface ViewerHook {
   /** The peek held, as the d-pad (Q / E) would hold it: -1 left, 1 right, 0 off. */
   setLean(side: -1 | 0 | 1): void;
   /**
-   * The sound (web/docs/research/81, `./audio`): unlocked or not, the banks loaded, the samples decoded, the sounds
+   * The sound (web/redotcom/docs/research/81, `./audio`): unlocked or not, the banks loaded, the samples decoded, the sounds
    * played by name, the events sent, the plays dropped and why, the last few plays.
    */
   audio(): AudioStats;
@@ -216,14 +216,14 @@ export interface ViewerHook {
   /** WEAPON: shows or hides a piece of the SEAL's gear by its `character.rdr` name (`Satchel`: the bomb carrier's). */
   setGear(name: string, on: boolean): boolean;
   /**
-   * The in-game HUD (`./hud`, web/docs/research/87-hud.md): drawn or not, what it shows, and each element's rectangle in
+   * The in-game HUD (`./hud`, web/redotcom/docs/research/87-hud.md): drawn or not, what it shows, and each element's rectangle in
    * the drawing buffer's pixels (y down) on `frame`.
    */
   hud(): HudView;
   /** The HUD's inputs the walk does not drive yet (a prompt, a message, the fire mode, the team list), for the tests. */
   setHud(patch: HudPatch): HudView;
   /**
-   * The frag grenade (`./grenade`, web/docs/research/85): the slot, the phase, the power, the grenades left and in the
+   * The frag grenade (`./grenade`, web/redotcom/docs/research/85): the slot, the phase, the power, the grenades left and in the
    * air, the last throw, the bounces and the explosions, and the M67's numbers.
    */
   grenade(): GrenadeStats;
@@ -247,7 +247,7 @@ export interface ViewerHook {
   /** Sets off the placed claymores (the `9` key; the claymore's own trigger is not ported); the count set off. */
   detonateCharges(): number;
   /**
-   * EFFECTS (`./effects`, web/docs/research/89): the map's effect data loaded or not, the animations played by name,
+   * EFFECTS (`./effects`, web/redotcom/docs/research/89): the map's effect data loaded or not, the animations played by name,
    * the runs live, the casings in the air and the last one's place, the bounces, the particles, the sounds.
    */
   effects(): EffectStats;

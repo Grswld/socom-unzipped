@@ -410,7 +410,7 @@ research 84 section 17's finding that the scoped SEAL moved at full speed.
   server's mover holds on the same tick. The body's clip is still the grenade's and the weapon's pose layers
   (`throwPose.ts`, `weaponPose.ts`): the lock stops the legs' locomotion, it plays no clip of its own. [reading: when the
   stick cuts a throw the game pops its clip; the viewer's throw layer plays on to its end.]
-- **The scoped stick**: `FUN_005966a0` (453818-453821) multiplies both move axes by `DAT_00650638` (0.2) in the 9x view
+- **The scoped stick**: `FUN_005966a0` (453818-453821) multiplies both move axes by 0.2 (a literal; `DAT_00650638` is the look's factor, 453813-453817) in the 9x view
   (`FUN_005b9990`) or a scope (`FUN_005b90f0`) before it stores them -- so before the ramp, the ground state and the
   cut test read them. Ported in the mover (`Walker.scoped`: the axes clamped, then x 0.2); the page sets it from the
   zoom's state 4 and up (not the night vision, which `Button.Aim` covers too) and sends `Button.Scope`.
@@ -421,7 +421,10 @@ research 84 section 17's finding that the scoped SEAL moved at full speed.
 
 ## 7. Readings and placeholders (named in the code)
 
-- **Death**: the viewer gets up after `Land forward` (the game dies there: §6c); no damage is kept.
+- **Death** (`DEATH_LANDING_GETUP_PLACEHOLDER`, `mover.ts`; research 86 section 7.2): in the free walk (`&nomatch`,
+  `&fly`) the viewer gets up after `Land forward` (the game dies there: §6c), since nothing kills there. In a match --
+  online, or the offline match the page runs by default (research 91 section 20) -- the server's fall death is the
+  game's: the net client's `kill` sets `Walker.dead` and `Land forward` holds at its last key.
 - **The weapon switch's blend**: the playing motion's `BlendTime`; the overlay swap eased in and out over its own.
 - **The swap's gates**: refused in the air and during an action (the caller's gate not read); the moving swap
   backwards to the rifle.

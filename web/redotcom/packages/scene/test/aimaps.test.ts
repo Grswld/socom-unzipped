@@ -8,7 +8,7 @@ import {
 import { loc, syntheticAiMaps as synthetic } from './syntheticAiMaps';
 
 /**
- * `AIMAPS.MPS` read to its last byte (web/docs/research/75): a hand-built file first, which is what CI runs,
+ * `AIMAPS.MPS` read to its last byte (web/redotcom/docs/research/75): a hand-built file first, which is what CI runs,
  * then the three fixture maps, whose numbers the note's tables were read off.
  */
 

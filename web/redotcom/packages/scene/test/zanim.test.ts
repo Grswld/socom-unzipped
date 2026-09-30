@@ -9,7 +9,7 @@ import { buildZar, cat, f32, u16, u32, type KeySpec } from './syntheticZar';
 
 /**
  * The zAnim command archives -- `RUN/CZANIM.ZAR`, the map's `MZANIM.ZAR`, `RUN/LDZANIM.ZAR` -- read to their name
- * tables, sets, animations and command streams (web/docs/research/77 §9): a hand-built archive first, then the
+ * tables, sets, animations and command streams (web/redotcom/docs/research/77 §9): a hand-built archive first, then the
  * fixture's three, then every map's.
  */
 

@@ -8,7 +8,7 @@ import type { GridParams } from './worldRoot';
  * each cell its bounds cover, and a walk over the cells outward from the camera. The draw walks it
  * (`CPipe::RenderWorld`, `research/recom/src/gamez/zRender/zrndr_pipe.cpp:207`) and so does the ground probe
  * (research 23 section 1.1, 24 section 1.1). Nothing of it is on the disc but `grid_params` (`worldRoot.ts`):
- * the cells are generated at load (`CGrid::Create`, `zGrid/grid_main.cpp:35-147`; `web/docs/research/72`
+ * the cells are generated at load (`CGrid::Create`, `zGrid/grid_main.cpp:35-147`; `web/redotcom/docs/research/72`
  * section 6).
  *
  * What the viewer links, and what it does not copy from the engine:
@@ -48,7 +48,7 @@ export interface CollisionOwner {
    */
   flags?: number;
   /**
-   * DOORS (`web/docs/research/92-doors.md`): the ground-plane box a moving node's polygons can reach -- a door leaf's
+   * DOORS (`web/redotcom/docs/research/92-doors.md`): the ground-plane box a moving node's polygons can reach -- a door leaf's
    * whole swing. The grid links the owner into every cell it covers and keeps it as the object's footprint, so the
    * polygons can be turned in place (their points rewritten) without relinking; the mover re-reads such an owner's
    * walls every step rather than caching them. Absent on every static node.
