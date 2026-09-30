@@ -1453,6 +1453,96 @@ void register_vu1_ops_tests()
             }
         }
 
+        // ---- Sprint 17 F N1c, the linear half (docs/research/82 section 9.6): 0x54 and 0x10 in the resumed list --------
+        // 0x54 (0x05d8) broadcasts q327 into slot +1 of the staging triples from q40, three vertices an iteration with the
+        // body before its IBGTZ: stores 41 + 3j for j < 3 max(ceil(V/3), 1), proven as [41, 40 + 9 max(ceil(V/3), 1) - 2].
+        // 0x10 (0x0f90) writes only the fog lane .w of slot +2, 42 + 3k for k < max(V, 1), proven as [42, 39 + 3 max(V, 1)].
+        // V is TOP+2.z. Neither reads a flag, and neither's addresses depend on what another command wrote, so the proof
+        // takes them in any order. Each shape runs natively against the interpreter on the real image; where the list
+        // leaves it visible, 0x54's last store (past 0x08's triples) must hold q327, and 0x10's fog lanes must differ
+        // from the same list run without its 0x10.
+        {
+            struct Shape
+            {
+                const char *what;
+                std::vector<uint32_t> resumed;
+                int32_t vertices; // TOP+2.z; the repack's vi9 stays the fixture's 42
+                bool fillVisible; // 0x54's last store lies past 0x08's triples
+            };
+            static const Shape linearShapes[] = {
+                {"66 06 08 10 40 42, V = 41 (odd: 0x10's last pass stores vertex a only)",
+                 {0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 41, false},
+                {"66 06 08 10 40 42, V = 42", {0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 42, false},
+                {"54 66 06 08 40 42, V = 40 (0x54 overshoots to vertices 40 and 41)",
+                 {0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 40, true},
+                {"54 66 06 08 10 40 42, V = 40", {0x54u, 0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 40, true},
+                {"54 66 06 08 10 40 42, V = 0 (every body runs once)", {0x54u, 0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 0, true},
+                {"54 66 06 08 40 42, V = 96 (0x54's last store q326: the largest V clear of q329)",
+                 {0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 96, false},
+            };
+            for (const Shape &shape : linearShapes)
+            {
+                tc.Run(std::string("native 0x33c8: a last-bone ") + shape.what + " is taken natively, bit-exact", [&shape](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.load(), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    rig.makeLastBone();
+                    rig.setResumedList(shape.resumed);
+                    rig.setWord(rig.top + 2u, 2u, shape.vertices);
+                    const float fill[4] = {0.5f, 0.25f, 0.125f, 64.0f}; // q327, so 0x54's stores are recognisable
+                    for (uint32_t lane = 0; lane < 4u; ++lane)
+                        rig.setFloat(327u, lane, fill[lane]);
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file and VU data memory:" + why);
+                    auto qword = [](const std::vector<uint8_t> &mem, int32_t q) { return mem.data() + ((q * 16) & 0x3FFF); };
+                    const int32_t passes = shape.vertices > 0 ? shape.vertices : 1;
+                    if (shape.fillVisible)
+                    {
+                        const int32_t last = 40 + 9 * ((passes + 2) / 3) - 2;
+                        t.IsTrue(std::memcmp(qword(rig.data, last), qword(rig.data, 327), 16u) != 0 &&
+                                     std::memcmp(qword(native.data, last), qword(rig.data, 327), 16u) == 0,
+                                 "0x54 filled its last slot, q" + std::to_string(last) + ", with q327");
+                    }
+                    const bool fades = std::find(shape.resumed.begin(), shape.resumed.end(), 0x10u) != shape.resumed.end();
+                    if (fades)
+                    {
+                        std::vector<uint32_t> without;
+                        for (uint32_t command : shape.resumed)
+                            if (command != 0x10u)
+                                without.push_back(command);
+                        rig.setResumedList(without);
+                        const Entry33c8Rig::End plain = rig.run(0x33c8u, 0x33c8u, nullptr);
+                        int32_t changed = 0;
+                        for (int32_t k = 0; k < passes; ++k)
+                            changed += std::memcmp(qword(oracle.data, 42 + 3 * k) + 12, qword(plain.data, 42 + 3 * k) + 12, 4u) != 0 ? 1 : 0;
+                        t.IsTrue(changed > 0, "0x10 wrote the fog lane: " + std::to_string(changed) + " of " +
+                                                  std::to_string(passes) + " differ from the list without it");
+                    }
+                });
+            }
+        }
+
+        tc.Run("native 0x1b50 is unchanged: vu1dump4_prog_11's own 68 08 10 54 18 28 42 runs natively, bit-exact", [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadFrom(std::string(PS2X_TEST_FIXTURES_DIR) +
+                                  "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_11.bin"),
+                     "the fixture tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_11.bin is present");
+            if (rig.code.empty())
+                return;
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcher);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "the 0x1b50 dispatcher took the list whole");
+            const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
         tc.Run("native 0x1b50 is unchanged: the fixture's own 70 06 08 40 42 runs natively, bit-exact", [](TestCase &t)
         {
             Entry33c8Rig rig;
@@ -1471,9 +1561,10 @@ void register_vu1_ops_tests()
             // Every write range of the program is proven before the repack's first store: the repack's records, 0x66's
             // index records, 0x08's staging triples and 0x40's packets must not wrap VU memory or land on what the
             // proof itself read (the list's 64 qwords, the header TOP+2, the packet pointers at q329); the resumed
-            // list may hold only 0x66, 0x06, 0x08, 0x40 and its 0x42 (0x06's flag words, record [0] of every
-            // triangle, proven like 0x66's record [1]: N1b); and no handler clamp may be able to fire after the
-            // repack. Each refusal leaves the register file and VU data memory exactly as the entry found them.
+            // list may hold only 0x66, 0x06, 0x08, 0x10, 0x40, 0x54 and its 0x42 (0x06's flag words, record [0] of
+            // every triangle, proven like 0x66's record [1]: N1b; 0x54's fill and 0x10's fog lanes, from q41 and q42
+            // on TOP+2.z: N1c); and no handler clamp may be able to fire after the repack. Each refusal leaves the
+            // register file and VU data memory exactly as the entry found them.
             using R = Vu1Refusals::Reason;
             struct Case
             {
@@ -1513,6 +1604,30 @@ void register_vu1_ops_tests()
                      r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u});
                      r.setWord(r.top + 2u, 0u, -21);
                      r.setWord(r.top + 2u, 3u, 1);
+                 }, -1},
+                {"54 66 06 08 40 42, TOP+2.z = 97: 0x54's fill [41, 335] would overwrite the packet pointers at q329",
+                 R::WriteRange, 0x54u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"54 66 06 08 40 42, TOP+2.z = 101: 0x54's fill [41, 344] would overwrite the list", R::WriteRange, 0x54u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 101); }, -1},
+                {"54 66 06 08 40 42, TOP 100 (the header copied to q102): 0x54's fill [41, 164] would overwrite TOP+2",
+                 R::WriteRange, 0x54u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
+                 }, -1},
+                {"10 66 06 08 40 42, TOP+2.z = 97: 0x10's fog lanes [42, 330], proven as whole qwords, cover q329",
+                 R::WriteRange, 0x10u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x10u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"10 66 06 08 40 42, TOP 100 (the header copied to q102): 0x10's fog lanes [42, 165] would overwrite TOP+2",
+                 R::WriteRange, 0x10u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x10u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
                  }, -1},
                 {"the handler vertex ceiling at 10 (0x08's clamp would fire after the repack)", R::HeaderVertices, 0u,
                  [](Entry33c8Rig &) {}, 10},
