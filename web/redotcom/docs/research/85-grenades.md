@@ -702,7 +702,7 @@ Placeholders and readings this adds:
   nothing plays.
 - `KNOCK_IN_MOVE_PLACEHOLDER`: on a ladder or a hang the game drops the SEAL out of the state first; the viewer skips
   the knock while a traversal move holds the mover.
-- `CORPSE_KNOCK_PLACEHOLDER`: the game pushes the dead too (state 8); a SEAL the blast kills is not thrown here.
+- `CORPSE_KNOCK_PLACEHOLDER` -- **retired 2026-09-29**: the game pushes the dead too (`FUN_0057e770` L440981: inside the radius *or dead*; state 8 at L441001; prone dead, `FUN_005a0950(actor, 3, 2)` L441013-441015), and so does the viewer now: `blastKnock(..., dead)` throws the SEAL the blast kills (the room sends the knock before the `kill`), the corpse lands in `Land forward` / `Land backwards` and stays down (`Walker.dead`), and a prone one plays the BODY list's prone death clip (`deathClip('blast', ...)`). Tests: `test/localDeath.test.ts`, `server/test/roomBlast.test.ts`.
 - `KNOCK_REPLAY_PLACEHOLDER`: the server lays the knock after command `after`; the page lays it when the event comes
   (the loopback's same tick; online a round trip later) -- the difference is a correction the reconciliation takes.
 - `RING_VOLUME_READING`: the page has one mix; the whole of it is held at 0.35 (the game lowers channels 0-6).

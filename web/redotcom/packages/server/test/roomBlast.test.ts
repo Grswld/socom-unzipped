@@ -107,6 +107,52 @@ describe('the room\'s blast (FUN_005a0e70)', () => {
     expect(t.of('kill')[0]).toMatchObject({ victim: 1, how: 'suicide', weapon: 'M67' });
   });
 
+  it('throws the SEAL it kills (FUN_0057e770 L440981: inside the radius or dead) and the corpse stays down', () => {
+    const { room, join } = setup();
+    const t = join(1);
+    join(2);
+    room.step();
+    room.player(1)!.sim.walker.place(0, 20, 0);
+    room.player(2)!.sim.walker.place(600, 20, 0);
+    room.text(1, { type: 'throw', seq: 1, kind: 'M67', from: [0, 15.4, 0], velocity: [0, 0, 0] });
+    for (let i = 0; i < FUSE_TICKS; i++) room.step();
+    const b = t.of('blast');
+    expect(b).toHaveLength(1);
+    expect(b[0]!.knock).not.toBeNull();                              // CORPSE_KNOCK_PLACEHOLDER retired
+    expect(t.of('kill')[0]).toMatchObject({ victim: 1, clip: null }); // standing: no death clip, the knock's fall
+    // The blast event comes before the kill, so the page lays the knock on its prediction while still alive.
+    const order = t.events.map((e) => e.type).filter((k) => k === 'blast' || k === 'kill');
+    expect(order).toEqual(['blast', 'kill']);
+    const w = room.player(1)!.sim.walker;
+    expect(w.dead).toBe(true);
+    const seen: string[] = [];
+    for (let i = 0; i < 4 * TICK_HZ; i++) {                          // no commands come: the room's clock ticks the body
+      room.step();
+      const n = w.action?.name ?? 'none';
+      if (seen[seen.length - 1] !== n) seen.push(n);
+    }
+    expect(['landDeath', 'landBackwards']).toContain(seen[seen.length - 1]);
+    expect(seen.some((n) => n.startsWith('getUp'))).toBe(false);
+    expect(w.airborne).toBe(false);
+  });
+
+  it('a prone SEAL it kills is not thrown: the prone death clip of the BODY list (L441013-441015)', () => {
+    const { room, join } = setup();
+    const t = join(1);
+    join(2);
+    room.step();
+    room.player(1)!.sim.walker.place(0, 20, 0);
+    room.player(1)!.sim.walker.changeStance('prone');
+    for (let i = 0; i < 2 * TICK_HZ; i++) room.player(1)!.sim.walker.tick({ forward: 0, right: 0, boost: false });
+    expect(room.player(1)!.sim.walker.posture).toBe('prone');
+    room.player(2)!.sim.walker.place(600, 20, 0);
+    room.text(1, { type: 'throw', seq: 1, kind: 'M67', from: [0, 15.4, 0], velocity: [0, 0, 0] });
+    for (let i = 0; i < FUSE_TICKS; i++) room.step();
+    expect(room.player(1)!.alive).toBe(false);
+    expect(t.of('blast')[0]!.knock).toBeNull();
+    expect(t.of('kill')[0]).toMatchObject({ victim: 1, clip: 'death_prone_chest01' });
+  });
+
   it('a wall between the blast and the head: no hurt, no blast event (FUN_005ac070)', () => {
     const { room, join } = setup({}, map(true));
     join(1);

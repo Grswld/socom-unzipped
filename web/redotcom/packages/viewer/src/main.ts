@@ -386,6 +386,7 @@ globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
 });
 /** The trigger, pressed or let go: the grenade's while it is up, else the rifle's -- only while walking. */
 function trigger(down: boolean): void {
+  if (down && walk.isDead()) return;                  // the dead fire nothing and pull no pin (`FUN_00592560`)
   if (grenade.equipped()) {
     if (down) grenade.pull();
     else grenade.release();
@@ -943,7 +944,7 @@ function padFrame(dt: number): void {
   if (pressed.includes('zoomOut')) stepZoom('out');
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
   // R3 the reload, as R is (the owner's ruling, 2026-09-29; the game's controller.rdr Default binds R3 to Reload).
-  if (pressed.includes('reload') && walk.mode() === 'walk') fire.reload();
+  if (pressed.includes('reload') && walk.mode() === 'walk' && !walk.isDead()) fire.reload();
   // The kit's slots (the game's L1 SwapWeapon1, L2 SwapWeapon2 and R2 Inventory, research 85 §9), walking only.
   if (playOn && walk.mode() === 'walk') {
     if (pressed.includes('swap1')) selectFirearm('rifle');
@@ -958,7 +959,7 @@ function padFrame(dt: number): void {
   touchReleased.clear();
 }
 touchControls = attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
-attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk') fire.reload(); });
+attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk' && !walk.isDead()) fire.reload(); });
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
 ui.onControlsPopover();
@@ -1224,6 +1225,8 @@ async function boot(): Promise<void> {
     if (walking) kit.frame(dt); else kit.settle();   // WEAPON: the swap's hand-off and end (`./kit`)
     play.setMounts(kit.state().mounts);
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in the scope
+    // DEAD: the dead's controller (`FUN_00592560` L451642-451730) takes the respawn press alone -- a held trigger lets go.
+    if (walk.isDead() && fire.triggerHeld()) fire.release();
     net?.frame(dt, fly.camera, fire.triggerHeld());   // MULTIPLAYER: the others at the view tick, the clock
     doors.frame(dt);                // DOORS: the swings (the server's, in a match)
     if (!walking) fire.release();  // leaving the walk lets a held trigger go

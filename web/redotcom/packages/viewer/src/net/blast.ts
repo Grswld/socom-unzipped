@@ -68,16 +68,22 @@ export interface BlastOutcome {
   /** The last fragment's part (the death's, `FUN_005a54d0(actor, part, 4)`), BODY with none. */
   part: number;
   died: boolean;
-  /** The push, when fragments struck with damage at the feet; null otherwise, and prone (`blastKnock`). */
+  /** The push, when fragments struck with damage at the feet -- the one that killed too; null otherwise, and prone (`blastKnock`). */
   knock: Knock | null;
 }
 
 /**
  * The push of a blast (`FUN_0057e770`): from the root (`ROOT_HEIGHT` over the feet) at `len` from the blast, inside the
- * radius only (a living SEAL; L440988), `f = clamp(1 - len^2 / r^2)`; prone, no push -- the game plays `Prone cover`
- * (`DAT_003dece0`, L441003-441012) in place, a clip the SEAL's pack does not hold (PRONE_COVER_PLACEHOLDER: nothing
- * plays). Standing or crouched: the speed `min(100, f x (dmg / 14) x 120 / 90)` along the unit line from the blast to
- * the root, its rise at least `f x 50` (L441053-441068), and the fall clip by the side the blast is on.
+ * radius -- or dead, whatever the distance (L440981: `len < r || !alive`; the alive bit is `actor+0xe1` 0x10) --
+ * `f = clamp(1 - len^2 / r^2)`; prone, no push -- alive, the game plays `Prone cover` (`DAT_003dece0`, L441016-441018)
+ * in place, a clip the SEAL's pack does not hold (PRONE_COVER_PLACEHOLDER: nothing plays); dead, a death clip of the
+ * BODY list for prone (`FUN_005a0950(actor, 3, 2)` L441013-441015: `./deaths` `deathClip('blast', ...)`). Standing or
+ * crouched: the speed `min(100, f x (dmg / 14) x 120 / 90)` along the unit line from the blast to the root, its rise at
+ * least `f x 50` (L441053-441068), and the fall clip by the side the blast is on -- for the dead too, in state 8
+ * (L441001, `FUN_005807d0` L442057: the corpse is thrown in `Fall forward` / `Fall backwards` and lands in `Land
+ * forward` / `Land backwards`, `FUN_005805b0` L441994, with no get-up: `Walker.dead`). This retires
+ * CORPSE_KNOCK_PLACEHOLDER: a SEAL the blast kills is thrown as the game throws it (the blast stores the push before
+ * the death, `FUN_0057ed10` L459281, and `FUN_005a54d0(actor, part, 4)` L459285 plays no clip for cause 4, L461387).
  *
  * KNOCK_SIDE_READING: the clip is chosen by the line put through the actor's matrix (`FUN_00306fd0`, a VU0 routine on
  * a stack copy of the negated first row, L441044-441051): a positive third component `Fall backwards`, else `Fall
@@ -85,13 +91,13 @@ export interface BlastOutcome {
  *
  * `damage` is `GetDamage` at the feet (`fragmentDamage` at the feet's distance), 14 x the push's `dmg / 14`.
  */
-export function blastKnock(victim: BlastVictim, point: readonly number[], record: { explosionRadius: number }, damage: number): Knock | null {
+export function blastKnock(victim: BlastVictim, point: readonly number[], record: { explosionRadius: number }, damage: number, dead = false): Knock | null {
   if (victim.posture === 'prone' || !(damage > 0)) return null;
   const r = record.explosionRadius;
   const root: V3 = [victim.feet[0]!, victim.feet[1]! + ROOT_HEIGHT[victim.posture], victim.feet[2]!];
   const d: V3 = [root[0] - point[0]!, root[1] - point[1]!, root[2] - point[2]!];
   const len = Math.hypot(d[0], d[1], d[2]);
-  if (!(len < r)) return null;
+  if (!(len < r) && !dead) return null;                        // L440981: inside the radius, or dead
   const f = Math.max(0, Math.min(1, 1 - (len * len) / (r * r)));
   const speed = Math.min(KNOCK_SPEED_MAX, (f * (damage / 14) * KNOCK_PUSH) / KNOCK_MASS);
   const u: V3 = len > 0 ? [d[0] / len, d[1] / len, d[2] / len] : [0, 1, 0];
@@ -122,7 +128,7 @@ export function resolveBlast(health: Health, victim: BlastVictim, point: readonl
     hits.push({ part, damage: atFeet });
     if (applyHit(health, part, atFeet, kind.piercing)) died = true;
   }
-  const knock = fragments > 0 ? blastKnock(victim, point, kind.record, atFeet) : null;
+  const knock = fragments > 0 ? blastKnock(victim, point, kind.record, atFeet, died) : null;
   return { factor, ring: true, fragments, hits, part, died, knock };
 }
 

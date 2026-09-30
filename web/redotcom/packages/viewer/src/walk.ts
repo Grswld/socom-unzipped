@@ -8,6 +8,7 @@ import { quantiseCommand } from './net/codec';
 import { shortTurn, wrapYaw } from './yaw';
 import type { GroundWish, Pose } from './camera';
 import { pitchLimits, PlayerCamera, INIT_AIM_PITCH, scopeEyeHeight, scopePeekShift, type Vec3 } from './playerCamera';
+import { newDeathCamera } from './deathCamera';
 import { KEY_STANCE, StanceButton, STANCE_HOLD_S_PLACEHOLDER } from './stanceButton';
 
 /**
@@ -103,6 +104,8 @@ export class WalkMode {
   private trigger_ = false;
   /** Dead or spectating in a networked round: the mover takes no stick and no presses. */
   private locked = false;
+  /** Dead (the net client's `kill` until its `spawn`): the look is not the mover's and the camera is the death's. */
+  private dead = false;
   private tickLook: [number, number, number] = [0, 0, 0];
   private deathPose: (() => TraversalPose | null) | null = null;
 
@@ -299,7 +302,24 @@ export class WalkMode {
    * down (`Walker.dead`, `DEATH_LANDING_GETUP_PLACEHOLDER` is the offline walk's alone).
    */
   setDead(on: boolean): void {
+    this.dead = on;
     if (this.walker) this.walker.dead = on;
+    // The death camera from the death (`FUN_00297410` 140900-140913: mode 1 at state 8) to the respawn's new camera
+    // (`FUN_00299150`): mode 6 until a killer is named (`setDeathKiller`).
+    if (this.player) this.player.death = on ? (this.player.death ?? newDeathCamera()) : null;
+  }
+
+  /**
+   * The killer the death camera turns to (`./deathCamera` mode 3: `FUN_002980d0` 141355-141375), its origin as the page
+   * sees it now; null for a death with none but the SEAL itself (a suicide, a fall: mode 6).
+   */
+  setDeathKiller(killer: (() => Vec3 | null) | null): void {
+    if (this.player?.death) this.player.death = newDeathCamera(killer);
+  }
+
+  /** Dead, as the match server has it. */
+  isDead(): boolean {
+    return this.dead;
   }
 
   /** A correction from the server: the mover moved by (dx, dy, dz) now (a small one is spread over ticks by the caller). */
@@ -331,7 +351,7 @@ export class WalkMode {
 
   /** Third person, or the scope's view while zoomed. */
   view(): WalkView {
-    return this.scoped ? 'scope' : 'third';
+    return this.scoped && !this.dead ? 'scope' : 'third';     // dead: the death camera, a third-person one
   }
 
   /** The scope (the zoom in a lens view, `main.ts`): the view from the head while on, third person after. */
@@ -446,10 +466,13 @@ export class WalkMode {
   frame(dt: number): void {
     const w = this.walker;
     if (!this.walking || !w) return;
-    this.look(w);
+    // DEAD (DEAD_LOOK_READING, research 91 s16): the look is not the body's -- the dead's controller (`FUN_00592560` L451642-451730) takes the respawn press
+    // alone; the body keeps the facing it died with and turns at no rate (the server's corpse ticks the same, `room.ts`).
+    if (!this.dead) this.look(w);
     const yaw = w.state.yaw;
     const look = this.camera.lookState?.();
-    if (look) this.turnRate = look.turnRate;
+    if (this.dead) this.turnRate = 0;
+    else if (look) this.turnRate = look.turnRate;
     else if (this.lastYaw !== null && dt > 0) {
       const turn = shortTurn(this.lastYaw, yaw);
       this.turnRate = (turn * Math.PI) / 180 / dt;

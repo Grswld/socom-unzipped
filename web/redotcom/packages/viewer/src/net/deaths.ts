@@ -30,16 +30,22 @@ const BODY: Readonly<Record<Stance, readonly string[]>> = {
 /** Every death clip, for the page's clip request. */
 export const DEATH_CLIPS: readonly string[] = [...new Set([...Object.values(HEAD), ...Object.values(BODY)].flat())];
 
-/** The clip a SEAL dies in, or null for a death with no clip of its own (a fall, a blast). */
+/** One of a list at random (`FUN_005a0950`: `rand() % count`). */
+const pick = (list: readonly string[], random: () => number): string => list[Math.min(list.length - 1, Math.floor(random() * list.length))]!;
+
+/**
+ * The clip a SEAL dies in, or null for a death with no clip of its own. A fall: none (its `Land forward` holds, cause 7,
+ * L461387). A blast: none from the death itself (cause 4, L461387) -- the corpse is thrown by the knock (`./blast`
+ * `blastKnock`, dead) -- except prone, where the knock does not throw and the game plays a clip of the BODY list for
+ * prone instead (`FUN_0057e770` L441013-441015: `FUN_005a0950(actor, 3, 2)`, part 3 the body, posture 2 prone).
+ */
 export function deathClip(cause: 'bullet' | 'blast' | 'fall', part: number, stance: Stance, random: () => number): string | null {
+  if (cause === 'blast') return stance === 'prone' ? pick(BODY.prone, random) : null;
   if (cause !== 'bullet') return null;
-  if (part === PART.HEAD) {
-    const list = HEAD[stance];
-    return list[Math.min(list.length - 1, Math.floor(random() * list.length))]!;
-  }
+  if (part === PART.HEAD) return pick(HEAD[stance], random);
   const list = BODY[stance];
   if (part !== PART.BODY) return list[0]!;
-  return list[Math.min(list.length - 1, Math.floor(random() * list.length))]!;
+  return pick(list, random);
 }
 
 /** "Press the %c button to respawn." shows from this long dead (`FUN_00592560` L451680-451701; research 91 section 4.1). */

@@ -116,6 +116,8 @@ const THROWN: Readonly<Record<string, { record: ThrowableRecord; piercing: numbe
 };
 /** The fastest a throw leaves the hand (`throwVelocity`'s range at the most power, with slack), units a second. */
 const THROW_SPEED_MAX = 400;
+/** The dead's stick: at rest (the dead take no stick, `FUN_00592560`). */
+const DEAD_STICK = { forward: 0, right: 0, boost: false } as const;
 /** The head over the feet by posture, for the blast's line of sight to the head node (research 91 section 5). */
 const HEAD_OVER: Readonly<Record<'stand' | 'crouch' | 'prone', number>> = { stand: 18.3, crouch: 11.1, prone: 1.7 };
 
@@ -409,6 +411,7 @@ export class Room {
     this.creditStep = this.lastStepAt === null ? 1 : Math.max(1, ((now - this.lastStepAt) / 1000) * TICK_HZ);
     this.lastStepAt = now;
     for (const p of this.players.values()) this.run(p, now);
+    for (const p of this.players.values()) this.corpse(p);
     for (const p of this.players.values()) this.remember(p);
     this.doors.step(1 / TICK_HZ);
     this.flyGrenades();
@@ -416,6 +419,17 @@ export class Room {
     if (!this.opts.solo) this.idle(now);
     if (this.scoreDirty) { this.scoreDirty = false; this.broadcast(this.scoreEvent()); }
     if (this.tick % Math.round(TICK_HZ / SNAPSHOT_HZ) === 0) this.snapshots();
+  }
+
+  /**
+   * A dead SEAL's body, a tick on the room's clock: it goes on falling and playing its death (a thrown corpse lands, and
+   * `Land forward` / `Land backwards` hold: `Walker.dead`) with the stick at rest and the facing it died with -- the
+   * other screens draw it from the snapshots, and the page's locked walk ticks its own the same (`WalkMode.frame`).
+   */
+  private corpse(p: Player): void {
+    if (p.alive || !p.sim.walker.dead) return;
+    p.sim.walker.turn = 0;
+    p.sim.walker.tick(DEAD_STICK);
   }
 
   /** A player's commands, in order, as far as its credit goes. */
@@ -435,6 +449,7 @@ export class Room {
       p.lastYaw = cmd.yaw; p.lastPitch = cmd.pitch;
       if (!p.alive) {
         p.sim.seq = cmd.seq;
+        // The dead's controller (`FUN_00592560` L451642-451730) reads the respawn press alone: no stick, no look.
         if ((cmd.buttons & Button.Action) && this.respawnReady(p)) this.spawn(p, 'respawn');
         this.settle(p);
         continue;
@@ -677,8 +692,10 @@ export class Room {
   /**
    * A blast (`../../viewer/src/net/blast` `resolveBlast`; research 85 section 7, 91 section 5): each living SEAL it
    * reaches -- the thrower too; friendly fire off spares the thrower's team -- rings, takes its fragments, and is knocked
-   * (its mover here, and the page's prediction by the `blast` event). A SEAL killed by it is not thrown
-   * (CORPSE_KNOCK_PLACEHOLDER: the game pushes the dead too, L440988, in state 8).
+   * (its mover here, and the page's prediction by the `blast` event). A SEAL killed by it is thrown too, as the game
+   * throws the dead (`FUN_0057e770` L440981, state 8 at L441001; `blastKnock` with `died`): the knock is laid and sent
+   * before the `kill`, so the page's own prediction lays it while still alive and then holds the landing down (`Walker.
+   * dead`); prone, the corpse plays the BODY list's prone clip instead (L441013-441015, `deathClip('blast', ...)`).
    */
   private blast(f: Flying, at: readonly number[]): void {
     const t = THROWN[f.kind];
@@ -694,13 +711,13 @@ export class Room {
       const seen = !segmentHit(this.map.grid, point, head);        // the line to the head (FUN_005ac070)
       const out = resolveBlast(q.health, { feet: [s.x, s.y, s.z], posture, yaw: s.yaw }, point, kind, this.opts.random, seen);
       if (!out) continue;
-      const k = out.knock && !out.died && applyKnock(q.sim.walker, q.sim.moves, out.knock) ? out.knock : null;
+      const k = out.knock && applyKnock(q.sim.walker, q.sim.moves, out.knock) ? out.knock : null;
       this.send(q.id, {
         type: 'blast', ring: out.ring ? { seconds: BLAST_RING_SECONDS, volume: BLAST_RING_VOLUME } : null,
         knock: k ? { velocity: [k.velocity[0], k.velocity[1], k.velocity[2]], fall: k.fall } : null, after: q.sim.seq,
       });
       if (out.fragments > 0) this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: point, part: out.part });
-      if (out.died) this.kill(q, thrower, t.record.name, q === thrower ? 'suicide' : 'weapon', null);
+      if (out.died) this.kill(q, thrower, t.record.name, q === thrower ? 'suicide' : 'weapon', deathClip('blast', out.part, posture, this.opts.random));
     }
   }
 
@@ -743,6 +760,7 @@ export class Room {
   private kill(victim: Player, killer: Player | null, weapon: string | null, how: KillHow, clip: string | null = null): void {
     victim.alive = false;
     victim.diedAt = this.tick;
+    victim.sim.walker.dead = true;                             // the body stays down: no get-up (`Walker.dead`)
     victim.deaths++;
     let line: KillHow = how;
     if (!killer || killer === victim) {

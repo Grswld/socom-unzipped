@@ -21,7 +21,7 @@ function page(rules: Rules) {
   const poses: ({ x: number } | null)[] = [];
   const walk = {
     setNetTap: () => undefined, setLocked: () => undefined, respawn: () => true, nudge: () => undefined,
-    setTrigger: () => undefined, setDeathPose: () => undefined, setMode: (m: string) => { modes.push(m); return true; },
+    setTrigger: () => undefined, setDeathPose: () => undefined, setDeathKiller: () => undefined, setMode: (m: string) => { modes.push(m); return true; },
     mode: () => 'walk',
   } as unknown as WalkMode;
   const bodies: { id: number; flags: number; feet: [number, number, number]; yaw: number }[] = [];
