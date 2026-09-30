@@ -78,15 +78,20 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #panel :focus-visible { outline-offset: -2px; }
 #panel-kicker { margin: 0; }
 /*
- * The panel's rhythm: the body's 10px grid gap between sections, 8px inside one, the section label the system's field
- * label. The status under the map picker is one dim two-line readout (its whole text is its tooltip, `Ui.setStatus`); an
- * error shows in full. The switches under Advanced sit two to a row.
+ * The panel's rhythm (the polish pass, owner 2026-09-29): the body's grid gap between sections, a hairline over each
+ * section after the first, 8px inside one; each section's heading the system's field label, its one line of help the
+ * system's field note, both flush. The status under the map picker is one dim two-line readout (its whole text is its
+ * tooltip, `Ui.setStatus`); an error shows in full. The switches sit two to a row; the sliders' names share one width,
+ * so the tracks line up section to section.
  */
 #status { margin: 0; font: var(--s2u-type-readout-caption); color: var(--s2u-text-dim); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 #status.is-bad { display: block; font: var(--s2u-type-readout); color: var(--s2u-warn); }
-#view-label { margin: 0; }
-.section { display: grid; gap: var(--s2u-space-2); }
-.section > .s2u-field__label { margin: 0; }
+.section { display: grid; gap: var(--s2u-space-2); min-width: 0; margin: 0; }
+.section + .section { padding-top: var(--s2u-space-3); box-shadow: inset 0 1px 0 var(--s2u-panel-edge); }
+.section .s2u-field__label, .section .s2u-field__note { margin: 0; }
+.section .s2u-range > span:first-child { flex: none; min-width: 11ch; }
+#disc { justify-self: start; }
+#disc:focus-within { outline: 2px solid var(--s2u-focus); outline-offset: 2px; }
 .section .row { gap: var(--s2u-space-4); }
 .section .row .s2u-range { flex: 1; min-width: 0; margin-top: 0; }
 .checks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2u-space-2) var(--s2u-space-3); margin: var(--s2u-space-2) 0; }
@@ -367,6 +372,21 @@ body.touch.is-walking.tip-on #rotate-hint { display: none; }
     left: var(--panel-left); width: min(400px, calc(100vw - var(--panel-left) - var(--panel-right)));
   }
   #panel .s2u-overlay__body { box-sizing: border-box; max-height: calc(55vh - 60px - 8px); }
+}
+
+/*
+ * Hit targets on a touch screen (the polish pass): every control of the panel and the Controls popover is at least
+ * 44 px tall, and so is the tip's close button. The bar's tabs keep their 30 px look and take a 44 px tall touch area
+ * (a transparent band over and under each, inside the gap to the page), so the bar and what hangs under it do not move.
+ */
+@media (pointer: coarse) {
+  #panel .s2u-tab, #controls .s2u-tab, #panel .s2u-check, #panel .s2u-range, #panel .s2u-disclosure > summary,
+  #panel .s2u-field select, #panel .s2u-field input, #disc { min-height: 44px; }
+  #panel .s2u-range input[type="range"] { height: 44px; }
+  #disc { display: inline-flex; align-items: center; }
+  .s2u-bar__end .s2u-tab { position: relative; }
+  .s2u-bar__end .s2u-tab::after { content: ''; position: absolute; left: 0; right: 0; top: -7px; bottom: -7px; }
+  #mobile-tip .s2u-iconbtn { width: 44px; height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

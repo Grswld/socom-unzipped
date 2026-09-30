@@ -203,30 +203,40 @@ toggle walk and fly as before.
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
 **Controls** and **GitHub** sit together at the right of the bar in that order (owner, 2026-09-29), one size; the cog
-folds the panel away and back, and
-the choice is remembered. A failed load unfolds the panel so the error is seen.
+folds the panel away and back, and the choice is remembered. A failed load unfolds the panel so the error is seen.
 
-In reCOM mode the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and
-`setMuted`) and a **Mouse look** section (raw, the default, or the game's stick curve -- both kept by the owner's ruling of
-2026-09-29 -- a sensitivity slider, invert pitch, and equal
-pitch, driving `fly.setLookOptions`, `viewer/src/look.ts`). Both are remembered in this browser only (`localStorage`:
-`s2u.viewer.volume`, `.muted`, `.mouseLook`) and start from the defaults on a first visit. The **Controls** popover's two
-lists are grouped the same way (Move, Combat, Stance & action, Weapons, General; the fly lists are Move and General).
+The panel (polished 2026-09-29 at the owner's ask, for usability and readability) is one column of sections in the
+order a player reaches for them -- **Mode** first, since it decides which sections follow, then **Map**, **Picture**,
+**Mouse look** and **Sound** (Play's own), **Online**, and the developer's **Advanced** -- each a heading and at most a
+line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
+a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
+control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
+Weapons, General; the fly lists are Move and General). The settings, in the panel's order:
+
+| setting | choices (default first) | in the address | remembered as |
+|---|---|---|---|
+| **Mode** | Explore (free camera) · Play (as a SEAL) | `mode=explore` · `mode=play` | `s2u.viewer.recom` |
+| **Map** | the picker; or open your own disc (.iso) | `map=MP2` | `s2u.viewer.lastMap` |
+| **Picture** | Modern (fits your screen) · PS2 (640x448 on 4:3) | `view=modern` · `view=ps2` | `s2u.viewer.look` |
+| **Mouse look** (Play) | Raw · Stick curve; sensitivity 0.05-4x (1x); invert up / down (off); equal up / down (off) | -- | `s2u.viewer.mouseLook` |
+| **Sound** (Play) | volume 0-100% (100%); mute (off) | -- | `s2u.viewer.volume`, `s2u.viewer.muted` |
+| **Online** | Off · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`; offered only on a local page) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
+| **Your name** (Online) | up to 30 characters; blank is the game's `Player####` guest name | -- | `s2u.mp.name` |
+| **Advanced** | the developer's diagnostic switches, lighting and fog | -- | not remembered |
+
+The Sound, Mouse look and name choices are kept in this browser only (`localStorage`) and start from the defaults on a
+first visit. The fold of the panel itself is remembered (`s2u.viewer.panelOpen`), and so is the Controls tab
+(`s2u.viewer.controlsTab`).
 
 **Shareable links** (owner, 2026-09-29; `viewer/src/shareUrl.ts`). The page's state lives in its address and follows every
 change (`history.replaceState`: no reload, no history entries), so copying the address bar gives a friend the same setup:
 `mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`. On load the
 address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
-written in. A value the page does not know is ignored. `devmode`, `fly`, `mp`, `server=`, `lag=` and `loss=` work as
-before and pass through untouched (never added); `server=` (or `mp`) beats `online=` and implies it. A link with
-`online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with `mode=explore`.
-
-| setting | choices | in the address | remembered as |
-|---|---|---|---|
-| **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` | `s2u.viewer.recom` |
-| **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
-| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`; offered only on a local page) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
-| map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
+written in. A value the page does not know is ignored. `devmode`, `mp`, `server=`, `lag=` and `loss=` work as before
+and pass through untouched (never added), and so does `fly` with `devmode` (without it `fly` is ignored and taken out);
+`server=` (or `mp`) beats `online=` and implies it. The retired `redotcom` and `rules=` have no effect and are taken out.
+A link with `online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with
+`mode=explore`.
 
 **Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
 (Space follows the next player, V the free camera) and never takes a player's place. The line under it says what the

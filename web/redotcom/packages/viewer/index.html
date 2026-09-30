@@ -78,124 +78,129 @@
       <p id="loading-what" class="s2u-status">loading</p>
       <div id="loading-bar" class="s2u-loading__bar"></div>
     </div>
-    <!-- The settings. Folded (the first visit's state), none of it shows: the cog in #site-links is the only trace (W2.0). -->
+    <!--
+      The settings (owner, 2026-09-29: "another polish pass for usability and readability"). Folded -- the first visit's
+      state -- none of it shows: the cog in #site-links is the only trace (W2.0). Open, it is one column of sections, each
+      a heading (`s2u-field__label`), at most one line of plain help (`s2u-field__note`) and its controls, in the order a
+      player reaches for them: the Mode first (it decides which sections follow, so choosing it never moves the switch
+      under the pointer), then the map, the picture, the mouse and the sound (Play's own), Online, and the developer's
+      Advanced. Every choice of a few options is one segmented switch (a `role="group"` of `aria-pressed` buttons); every
+      on / off is a switch-drawn checkbox; every amount is a slider with its value beside it. On a touch screen each
+      control is at least 44 px tall (`styles.css`). What each setting does, and where it is kept, is README's settings
+      table.
+    -->
     <div id="panel" class="s2u-overlay is-folded" data-density="compact">
       <div id="panel-body" class="s2u-overlay__body">
       <p id="panel-kicker">redotcom &middot; SOCOM II multiplayer</p>
       <!--
-        The page's mode (owner, 2026-09-29; `./src/features.ts`): the map viewer, or reCOM -- playing as a SEAL, the walk,
-        the SEAL, the rifle, the HUD, the Sound and Mouse look sections and the touch buttons (every `data-play` element).
-        The Modern / PS2 switch's markup. Switched at run time, both ways, without a reload (`PlayUi`): the disc stays
-        open. Remembered in this browser (`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that
+        The page's mode (owner, 2026-09-29; `./src/features.ts`): Explore, the map viewer and its free camera, or Play --
+        on the map as a SEAL: the walk, the rifle, the HUD, the Mouse look and Sound sections and the touch buttons (every
+        `data-play` element). Switched at run time, both ways, without a reload (`PlayUi`): the disc stays open.
+        Remembered in this browser (`s2u.viewer.recom`); the address's `mode=play` / `mode=explore` beats that
         (`./src/shareUrl.ts`). Always on the page: no flag gates it (the old `redotcom` has no effect).
       -->
-      <div class="section" id="recom-section">
-        <p class="s2u-field__label" id="recom-label">Mode</p>
-        <div id="recom" class="s2u-tabs" role="group" aria-labelledby="recom-label">
-          <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly the free camera through the maps.">Explore<span class="s2u-tab__what">fly the maps</span></button>
-          <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play as a SEAL on the map: on foot, the rifle, the HUD, the game&rsquo;s sound.">Play<span class="s2u-tab__what">play as a SEAL</span></button>
+      <section class="section" id="recom-section" aria-labelledby="recom-label">
+        <h2 class="s2u-field__label" id="recom-label">Mode</h2>
+        <p class="s2u-field__note" id="recom-note">Explore flies a free camera through the map. Play puts you in it as a SEAL.</p>
+        <div id="recom" class="s2u-tabs" role="group" aria-labelledby="recom-label" aria-describedby="recom-note">
+          <button type="button" class="s2u-tab" data-recom="off" aria-pressed="true" title="Fly a free camera through the map. The default.">Explore<span class="s2u-tab__what">free camera</span></button>
+          <button type="button" class="s2u-tab" data-recom="on" aria-pressed="false" title="Play the map as a SEAL, with the rifle, the HUD and the game&rsquo;s sound.">Play<span class="s2u-tab__what">as a SEAL</span></button>
         </div>
-      </div>
-      <!-- Map: the picker and the player's own disc first; the status under them is one dim line (its full text is the tooltip). -->
-      <div class="row">
-        <div class="s2u-field"><label class="s2u-field__label" for="maps">Map</label><select id="maps" aria-label="map"><option value="">loading maps...</option></select></div>
         <!--
-          The player's own disc (W1.7, milestone M5): a plain file input, and a drop anywhere on the page
-          (`./src/ui.ts`, `onDisc`). Not the File System Access API, which Safari does not offer. The image
-          is read in the browser, by range, and never leaves it.
+          The developer's Fly / Walk switch, `?devmode` only: `./src/main.ts` removes it otherwise (owner, 2026-09-29:
+          "Block the fly automatically and disable it while in play mode"; `./src/flyAccess.ts`). The play's
+          (`data-play`). The hidden `walk` checkbox stays the state everything reads (the hook, the tests); with `?devmode`
+          G and the pad's Start toggle it and this follows (`./src/ui.ts`, `onWalkSwitch`, `setWalk`).
         -->
-        <label id="disc" class="s2u-label" title="Your own SOCOM II disc image (.iso, 2048-byte sectors). It is read here, in this browser, a piece at a time, and never uploaded.">
+        <div id="mode" class="s2u-tabs" data-play role="group" aria-label="camera (developer)">
+          <button type="button" class="s2u-tab" data-mode="fly" aria-pressed="true" title="The free camera, for developers (G).">Fly<span class="s2u-tab__what">free camera (G)</span></button>
+          <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="On foot on the map&rsquo;s floors (G).">Walk<span class="s2u-tab__what">on foot (G)</span></button>
+        </div>
+        <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
+      </section>
+      <!--
+        The map: the picker (named from each archive's own mission.rdr), the player's own disc (W1.7: a plain file input,
+        and a drop anywhere on the page, `./src/ui.ts` `onDisc`; read in the browser by range, never uploaded) and the
+        status, one dim two-line readout whose full text is its tooltip.
+      -->
+      <section class="section" id="map-section" aria-labelledby="map-label">
+        <div class="s2u-field"><label class="s2u-field__label" id="map-label" for="maps">Map</label><select id="maps"><option value="">loading maps...</option></select></div>
+        <label id="disc" class="s2u-label" title="Your own SOCOM II disc image (.iso). It is read in this browser and never uploaded.">
           Open your own disc (.iso)
           <input type="file" id="disc-file" accept=".iso" />
         </label>
-      </div>
-      <p id="status" class="s2u-status">booting</p>
-      <!-- View: how the picture is drawn, and (on Play) how the camera moves. Two segmented toggles, one markup. -->
-      <p class="s2u-field__label" id="view-label">View</p>
+        <p id="status" class="s2u-status" role="status" aria-live="polite">booting</p>
+      </section>
       <!--
-        The one choice a visitor makes: the picture as a modern screen shows it, or as the console drew
-        it. It is the `ps2look` checkbox under Advanced, presented as a switch; the checkbox stays the
-        state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
+        The picture: as a modern screen shows it, or as the console drew it. It drives the `ps2look` checkbox under
+        Advanced (hidden), the state the toggles, the hook and the tests read.
       -->
-      <div id="look" class="s2u-tabs" role="group" aria-label="picture">
-        <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true" title="The game&rsquo;s own 49&deg; vertical field (46&deg; on Rat&rsquo;s Nest), kept at any screen shape: the width widens with a wider screen, to 78&deg; across on 16:9 (owner, 2026-09-29).">Modern<span class="s2u-tab__what">your screen&rsquo;s shape</span></button>
-        <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false" title="The 640&times;448 frame the console drew, stretched smooth onto a 4:3 box as a television showed it (owner, 2026-09-29).">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
-      </div>
-      <!--
-        Walk mode -- the play's, so shown only while the Mode switch above is on Play (`mode=play` in the address;
-        remembered under `s2u.viewer.recom`): on Explore, `PlayUi` (`./src/features.ts`) takes this
-        switch, the body row, the Sound and Mouse look sections and the touch buttons (each carries `data-play`) out of the
-        page after it is wired, and puts the same nodes back when Play is chosen, at run time, without a reload.
-        (web sprint 1, W1.4; web sprint 2, W2.2b, W2.1): the game's third-person camera behind the SEAL on
-        the floor the engine's ground probe finds, stepping at the game's 60 Hz at motion.rdr's speeds, stopped by its
-        walls, falling off its edges. Fly or Walk, as the Modern / PS2 switch above is Modern or PS2: the same markup, and
-        the hidden `walk` checkbox stays the state everything reads (the hook, the tests). G and the pad's Start toggle
-        it and this follows (`./src/ui.ts`, `onWalkSwitch`, `setWalk`).
-      -->
-      <div id="mode" class="s2u-tabs" data-play role="group" aria-label="camera">
-        <button type="button" class="s2u-tab" data-mode="fly" aria-pressed="true" title="Fly the free camera through the map, through walls and over floors: WASD along the look, Space and Shift up and down, a double-tapped W boosts, the wheel trims the speed. G switches to walking.">Fly<span class="s2u-tab__what">free camera (G)</span></button>
-        <button type="button" class="s2u-tab" data-mode="walk" aria-pressed="false" title="Walk on the game's own floors, seen from behind as the game's camera sees you, at the game's own speeds: 65 units a second running, 37 backing up, 14 crouched, 11 prone. The floor is the one the engine's ground probe picks, a step over 6.5 units is a wall, a drop over 8 is a fall at the game's gravity, and the step runs at the game's 60 Hz. There is no sprint on foot. G switches back to flying.">Walk<span class="s2u-tab__what">on the floors (G)</span></button>
-      </div>
-      <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
-      <!--
-        Sound (web/docs/research/81, `./src/audio`): the mix's volume and a mute, driving `gameAudio.setVolume` and `setMuted`.
-        The sound plays on the play's events, so on Explore the section is taken out of the page (`data-play`, `PlayUi`).
-        Remembered in this browser only (`./src/ui.ts`, `onSound`).
-      -->
-      <div class="section" id="sound-section" data-play>
-        <p class="s2u-field__label">Sound</p>
-        <div class="row">
-          <label class="s2u-check" title="Silences the game's sounds; the volume below is kept."><input type="checkbox" id="mute" /> <span>mute</span></label>
-          <label class="s2u-range" title="The mix's volume: 100% is the level the viewer lifts the console's mix to for a browser tab (a television's knob did the rest)."><span>volume</span>
-            <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out"></output></label>
+      <section class="section" id="view-section" aria-labelledby="view-label">
+        <h2 class="s2u-field__label" id="view-label">Picture</h2>
+        <p class="s2u-field__note" id="view-note">Modern fills your screen. PS2 shows the console&rsquo;s own frame on a 4:3 screen.</p>
+        <div id="look" class="s2u-tabs" role="group" aria-labelledby="view-label" aria-describedby="view-note">
+          <button type="button" class="s2u-tab" data-look="modern" aria-pressed="true" title="The game&rsquo;s own field of view, widened to fit your screen. The default.">Modern<span class="s2u-tab__what">fits your screen</span></button>
+          <button type="button" class="s2u-tab" data-look="ps2" aria-pressed="false" title="The console&rsquo;s 640&times;448 frame, stretched onto a 4:3 box as a television showed it.">PS2<span class="s2u-tab__what">640&times;448 on 4:3</span></button>
         </div>
-      </div>
+      </section>
+      <!--
+        The mouse's look (`./src/look.ts`; `FlyCamera.setLookOptions`), Play's (`data-play`). Raw is the default (owner,
+        2026-09-29), the stick curve kept beside it. Remembered in this browser only (`./src/ui.ts`, `onLookControls`).
+      -->
+      <section class="section" id="look-section" data-play aria-labelledby="look-label">
+        <h2 class="s2u-field__label" id="look-label">Mouse look</h2>
+        <p class="s2u-field__note" id="look-note">How far the mouse turns you. Raw is the default.</p>
+        <div id="mouselaw" class="s2u-tabs" role="group" aria-labelledby="look-label" aria-describedby="look-note">
+          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="The same turn for the same movement, however fast you move the mouse. The default.">Raw<span class="s2u-tab__what">steady turn</span></button>
+          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse runs through the game&rsquo;s own stick curve: slow movements turn less, fast ones more.">Stick curve<span class="s2u-tab__what">the game&rsquo;s feel</span></button>
+        </div>
+        <label class="s2u-range" title="1&times; is the default; 2&times; turns twice as far for the same movement."><span>sensitivity</span>
+          <input type="range" id="sensitivity" min="0.05" max="4" step="0.01" value="1" /><output id="sensitivity-out" for="sensitivity"></output></label>
+        <div class="checks">
+          <label class="s2u-check" title="Moving the mouse forward looks down. Off by default, as in the game."><input type="checkbox" id="invertpitch" /> <span>invert up / down</span></label>
+          <label class="s2u-check" title="Up and down turn as fast as left and right. Off by default: the game turns up and down more slowly."><input type="checkbox" id="uniformpitch" /> <span>equal up / down</span></label>
+        </div>
+      </section>
+      <!--
+        Sound (`./src/audio`): the mix's volume and a mute, driving `gameAudio.setVolume` and `setMuted`. The sound plays
+        on the play's events, so on Explore the section is out of the page (`data-play`, `PlayUi`). Remembered in this
+        browser only (`./src/ui.ts`, `onSound`).
+      -->
+      <section class="section" id="sound-section" data-play aria-labelledby="sound-label">
+        <h2 class="s2u-field__label" id="sound-label">Sound</h2>
+        <label class="s2u-range" title="100% is the default."><span>volume</span>
+          <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out" for="volume"></output></label>
+        <div class="checks">
+          <label class="s2u-check" title="Silences the game; the volume is kept for when you turn it back on."><input type="checkbox" id="mute" /> <span>mute</span></label>
+        </div>
+      </section>
       <!--
         Online (owner, 2026-09-29; `./src/online.ts`): Off, the single page; Shared, the public match server; Local, the
-        static server `npm start -w @s2u/server` runs here. In reCOM mode the page joins as a player, in the map viewer as
-        a spectator watching the match (Space the next player, V the free camera). The URL's `mp` / `server=` override it
-        on load, until the visitor picks a choice here, which takes them out of the address (`onlineChoiceAddress`).
-        The line under it is the connection: connecting, online and the players, or unreachable and the retry. Remembered
-        in this browser (`s2u.viewer.online`).
-        No Rules choice (owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode
-        selection."): every match is classic -- respawn off, the game's create-game default, 11 rounds, first to 6
-        (`./src/rules.ts`, `RESPAWN_RULES_ENABLED`).
-        The match's name (web sprint 3, W3.R12; research 91 section 13): at most 30 printable ASCII characters, the game's
-        in-game name buffer; blank takes the game's own "Player" guest default. Sent to the match on change, remembered in
-        this browser only (`s2u.mp.name`).
+        server `npm start -w @s2u/server` runs on this machine -- offered on a local page only (`Ui.offerLocal` removes it
+        elsewhere, owner 2026-09-29). In Play the page joins as a player, in Explore as a spectator (Space the next
+        player, V the free camera). The URL's `mp` / `server=` override it on load, until the visitor picks a choice here,
+        which takes them out of the address (`onlineChoiceAddress`). The line under it is the connection. Remembered in
+        this browser (`s2u.viewer.online`). Every match is classic: there is no Rules choice (owner ruling, 2026-09-29:
+        "Remove the respawn option entirely for the time being. No mode selection."; `./src/rules.ts`).
+        The match's name (W3.R12): at most 30 printable ASCII characters; blank takes the game's "Player" guest default.
+        Sent to the match on change, remembered in this browser only (`s2u.mp.name`).
       -->
-      <div class="section" id="mp-section">
-        <p class="s2u-field__label" id="online-label">Online</p>
-        <div id="online" class="s2u-tabs" role="group" aria-labelledby="online-label">
-          <button type="button" class="s2u-tab" data-online="off" aria-pressed="true" title="No server: this page alone.">Off<span class="s2u-tab__what">single</span></button>
+      <section class="section" id="mp-section" aria-labelledby="online-label">
+        <h2 class="s2u-field__label" id="online-label">Online</h2>
+        <p class="s2u-field__note" id="online-note">Join the map&rsquo;s match on a server. Off plays on your own.</p>
+        <div id="online" class="s2u-tabs" role="group" aria-labelledby="online-label" aria-describedby="online-note">
+          <button type="button" class="s2u-tab" data-online="off" aria-pressed="true" title="No server: this page on its own. The default.">Off<span class="s2u-tab__what">on your own</span></button>
           <button type="button" class="s2u-tab" data-online="shared" aria-pressed="false" title="The public match server, mp.socomunzipped.com.">Shared<span class="s2u-tab__what">public server</span></button>
-          <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine: npm start -w @s2u/server, on port 8787.">Local<span class="s2u-tab__what">localhost:8787</span></button>
+          <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine (npm start -w @s2u/server, port 8787).">Local<span class="s2u-tab__what">this machine</span></button>
         </div>
-        <p id="online-state" class="s2u-status"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
-        <div class="row">
-          <label class="s2u-range" title="Your name in the match: up to 30 characters, letters, digits and the keyboard's symbols. Blank: the game's guest name, Player and four digits."><span>name</span>
-            <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" /></label>
+        <p id="online-state" class="s2u-status" role="status" aria-live="polite"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
+        <div class="s2u-field">
+          <label class="s2u-field__label" for="mp-name">Your name</label>
+          <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" aria-describedby="mp-name-note" />
+          <p class="s2u-field__note" id="mp-name-note">Up to 30 letters, digits or symbols. Blank: a guest name.</p>
         </div>
-      </div>
-      <!--
-        The mouse's look (web research 83, `./src/look`; `FlyCamera.setLookOptions`), walk mode's, so on the page only while
-        the Mode switch is on Play, like the rest of the play (`data-play`). Raw is the default (owner, 2026-09-29; the stick curve kept beside it): one inch of an 800-DPI mouse turns as far as one second of the full stick. Remembered
-        in this browser only (`./src/ui.ts`, `onLookControls`).
-      -->
-      <div class="section" id="look-section" data-play>
-        <p class="s2u-field__label">Mouse look</p>
-        <div id="mouselaw" class="s2u-tabs" role="group" aria-label="mouse look">
-          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="The default (owner, 2026-09-29). Each count of the mouse is one fixed angle: one inch of an 800-DPI mouse turns as far as one second of full stick (128 degrees).">Raw<span class="s2u-tab__what">one inch, one second</span></button>
-          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse's speed goes through the game's own stick law (dead zone, curve, ramp), so a slow drag turns less than proportionally and a fast one more. Kept beside raw (owner, 2026-09-29).">Stick curve<span class="s2u-tab__what">the game&rsquo;s stick law</span></button>
-        </div>
-        <label class="s2u-range" title="A multiplier on the mapping: 1 is the default, 2 turns twice as far for the same movement."><span>sensitivity</span>
-          <input type="range" id="sensitivity" min="0.05" max="4" step="0.01" value="1" /><output id="sensitivity-out"></output></label>
-        <div class="checks">
-          <label class="s2u-check" title="Moving the mouse away looks down. The game's own default is not inverted."><input type="checkbox" id="invertpitch" /> <span>invert pitch</span></label>
-          <label class="s2u-check" title="One angle a count on both axes, the PC shooter's. Off is the game's: the pitch moves at 0.425 of what the same movement turns."><input type="checkbox" id="uniformpitch" /> <span>equal pitch</span></label>
-        </div>
-      </div>
-      <!-- Advanced: every diagnostic switch, folded; the long explanations are tooltips. -->
+      </section>
+      <!-- Advanced: the developer's diagnostic switches, folded; the long explanations are tooltips. -->
       <details id="advanced" class="s2u-disclosure">
         <summary>Advanced</summary>
         <div class="checks">
@@ -221,7 +226,7 @@
         </div>
         <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
         <details id="sliders-box" class="s2u-disclosure">
-          <summary title="The PS2 draws a multiplayer map from the vertex colours the exporter baked; only the odd node flagged dynamic (a fern, a palm, a flare) takes the map's own GlobalLighting rig. The campaign then brightens the whole frame by 1 + FIX/128, twice, FIX coming from its auto-exposure; a multiplayer round switches that pass off, so the frame goes out as drawn.">lighting</summary>
+          <summary title="How the map is lit and how bright the frame is. A multiplayer round draws the frame as it is; the campaign brightens it.">lighting</summary>
           <label class="s2u-range" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 0, the bare frame, is what a multiplayer round draws; the campaign's spawn read 89-93."><span>brighten</span>
             <input type="range" id="brighten" min="0" max="255" step="1" value="0" /><output id="brighten-out"></output></label>
           <div class="checks">
@@ -229,7 +234,7 @@
           </div>
         </details>
         <details id="fog-box" class="s2u-disclosure">
-          <summary title="GS FOGCOL and VU1 qwords 28/29">fog</summary>
+          <summary title="The map&rsquo;s own fog: on or off, its colour, and where it starts and ends.">fog</summary>
           <div class="row">
             <label class="s2u-check"><input type="checkbox" id="fog" checked /> <span>fog</span></label>
             <label class="s2u-colour">colour <input type="color" id="fogcolour" value="#646464" /></label>
