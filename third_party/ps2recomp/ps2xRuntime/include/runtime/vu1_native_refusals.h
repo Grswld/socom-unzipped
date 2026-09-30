@@ -63,6 +63,8 @@ namespace Vu1Refusals
         SkinPass,          // vi5 bit 2 clear: the microcode's `B 0x3100`, another 0x52 bone pass (no native 0x52)
         RepackRange,       // vi9 outside 1..256, or the repack's records wrap VU memory or overlap the command list
         ResumeIndex,       // the live-in vi14 the dispatcher resumes at is outside the list's 64 qwords
+        WriteRange,        // cmd='s stores would wrap VU memory or land on the list, TOP+2 or q329 (0x66, 0x08, 0x40)
+        ResumeCommand,     // the resumed list holds a command outside 0x66 0x08 0x40 (write ranges unproven): cmd=
         kCount
     };
 
@@ -93,6 +95,8 @@ namespace Vu1Refusals
         case Reason::SkinPass: return "skin_pass";
         case Reason::RepackRange: return "repack_range";
         case Reason::ResumeIndex: return "resume_index";
+        case Reason::WriteRange: return "write_range";
+        case Reason::ResumeCommand: return "resume_command";
         default: return "unknown";
         }
     }
@@ -102,7 +106,8 @@ namespace Vu1Refusals
     {
         return r == Reason::UnknownCommand || r == Reason::ClipBeforeWorld || r == Reason::ZeroBlockCount ||
                r == Reason::SphereBlockCount || r == Reason::BlockPastList || r == Reason::BlockNotOnePacket ||
-               r == Reason::HandlerClamp || r == Reason::MidUnknownCommand;
+               r == Reason::HandlerClamp || r == Reason::MidUnknownCommand || r == Reason::WriteRange ||
+               r == Reason::ResumeCommand;
     }
 
     // A refusal as a site reports it.

@@ -3534,22 +3534,86 @@ namespace
         // 0x3490: B 0x1b60, a NOP in its delay slot.
     }
 
-    // Whether the repack's vi9 records, TOP+4 .. TOP+4+3*vi9-1, may be written before the pre-scan's
-    // reading of the list is trusted: a count the loop can end on (IBNE vi9 after a decrement: 0 is 65536
-    // iterations) under the vertex ceiling, no wrap past VU data memory's 1024 qwords, and no qword of the
-    // command list's kMaxListQwords (the header at TOP+2 lies below the first record). The corpus's TOPs are
-    // 424 and 724, clear of both.
+    // ---- entry 0x33c8's write proof (research/82 section 3) ------------------------------------
+    //
+    // The pre-scan validates the list, the header and the packet pointers by READING them before anything
+    // runs; a store that later lands on one of them would let a command run on something the scan never saw
+    // (the list read again at 0x1b60, a loop count re-read from TOP+2). At 0x1b50 that hole is the base's and
+    // stays (research/82 section 7, a LATER candidate); at 0x33c8 every store range of the program is proven
+    // clear before the repack's first store, or the whole program is refused.
+    constexpr int32_t kPacketPointerQword = 329; // 0x28/0x40's two packet buffers, x and y (0x17e0/0x17e8)
+    constexpr int32_t kVuDataQwords = 1024;
+
+    // A store range [first, first + count) that may be written after the proof: inside VU data memory without
+    // wrapping (a negative start wraps too), and clear of what the proof read -- the list's kMaxListQwords, the
+    // header TOP+2 and the packet pointers at q329.
+    bool writeRangeClear(int32_t top, int32_t first, int32_t count)
+    {
+        if (count < 1)
+            return true;
+        const int32_t last = first + count - 1;
+        if (first < 0 || last >= kVuDataQwords)
+            return false;
+        auto hits = [&](int32_t lo, int32_t hi) { return first <= hi && last >= lo; };
+        return !hits(kCommandListQword, kCommandListQword + static_cast<int32_t>(kMaxListQwords) - 1) &&
+               !hits(top + 2, top + 2) && !hits(kPacketPointerQword, kPacketPointerQword);
+    }
+
+    // The repack's vi9 records, TOP+4 .. TOP+4+3*vi9-1: a count the loop can end on (IBNE vi9 after a
+    // decrement: 0 is 65536 iterations) under the vertex ceiling, and a range writeRangeClear accepts. The
+    // corpus's TOPs are 424 and 724, clear of all three.
     bool repackFits(int32_t top, int32_t count)
     {
         if (count < 1 || count > kMaxVertices)
             return false;
-        const int32_t first = top + 4;
-        const int32_t last = first + 3 * count - 1;
-        if (last >= 1024)
-            return false;
-        const int32_t listFirst = kCommandListQword;
-        const int32_t listLast = kCommandListQword + static_cast<int32_t>(kMaxListQwords) - 1;
-        return last < listFirst || first > listLast;
+        return writeRangeClear(top, top + 4, 3 * count);
+    }
+
+    // The resumed list's commands, walked from vi14 to its 0x42 as the dispatcher will run them (the pre-scan has
+    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the three commands the
+    // corpus's 0x33c8 lists hold are admitted, because only their store ranges are derived here:
+    //   0x66  index record [1] of every triangle, TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1) (the body runs once
+    //         before its IBGTZ);
+    //   0x08  the staging triples from q40, three a vertex, max(TOP+2.z, 1) of them (likewise);
+    //   0x40  (0x28's body from 0x1790) the tag qwords 290 and 300, the packets' nine qwords after each of the
+    //         two pointers at q329.x and q329.y, and q329 itself -- rewritten with the same pair, swapped, so the
+    //         proof's reading of it holds for a later 0x40 too.
+    // TOP+2 and q329 are proven unwritten, so the counts and pointers read here are the ones the handlers read.
+    bool proveResumedWrites(Ctx &c, int32_t top, uint32_t startIndex, Vu1Refusals::Refusal &refusal)
+    {
+        const int32_t indexBase = vi16(top + c.loadWord(top + 2, 0)); // 0x2e38: vi4 = TOP+2.x + vi1
+        const int32_t vertices = c.loadWord(top + 2, 2);
+        const int32_t triangles = c.loadWord(top + 2, 3);
+        const int32_t facePasses = triangles > 1 ? triangles : 1;
+        const int32_t stagePasses = vertices > 1 ? vertices : 1;
+        const int32_t packetA = c.loadWord(kPacketPointerQword, 0);
+        const int32_t packetB = c.loadWord(kPacketPointerQword, 1);
+        uint32_t index = startIndex;
+        for (uint32_t step = 0; step < kMaxCommands && index < kMaxListQwords; ++step, ++index)
+        {
+            const uint32_t command = peekCommand(c, index);
+            switch (command)
+            {
+            case kCmdEnd:
+                return true;
+            case kCmdFaceNormals:
+                if (!writeRangeClear(top, indexBase + 1, 2 * facePasses - 1))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdTransform:
+                if (!writeRangeClear(top, 40, 3 * stagePasses))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdDrawUntextured:
+                if (!writeRangeClear(top, 290, 1) || !writeRangeClear(top, 300, 1) ||
+                    !writeRangeClear(top, packetA + 1, 9) || !writeRangeClear(top, packetB + 1, 9))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            default:
+                return refuse(refusal, Vu1Refusals::Reason::ResumeCommand, command);
+            }
+        }
+        return refuse(refusal, Vu1Refusals::Reason::NoEnd);
     }
 
     Outcome fromHandler(bool reachedNextCommand)
@@ -3760,10 +3824,19 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
         refuse(refusal, Vu1Refusals::Reason::RepackRange);
     else if (resumeIndex < 0 || resumeIndex >= static_cast<int32_t>(kMaxListQwords))
         refuse(refusal, Vu1Refusals::Reason::ResumeIndex);
-    else
-        // The list and the header as the repack will leave them: it writes only TOP+4.., which repackFits
-        // keeps off the list's qwords, and the header is TOP+2.
-        isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex));
+    else if (isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex)))
+    {
+        // No handler clamp may fire after the repack has stored: the handler-side ceilings (lowered only by the
+        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x08 and 0x40 --
+        // all proveResumedWrites admits -- loop on these two counts and nothing else.
+        if (c.loadWord(top + 2, 2) > vertexCeiling())
+            refuse(refusal, Vu1Refusals::Reason::HeaderVertices);
+        else if (c.loadWord(top + 2, 3) > triangleCeiling())
+            refuse(refusal, Vu1Refusals::Reason::HeaderTriangles);
+        else
+            // Every store range the program can make, proven off the list, the header and the packet pointers.
+            proveResumedWrites(c, top, static_cast<uint32_t>(resumeIndex), refusal);
+    }
     if (refusal.reason != Vu1Refusals::Reason::None)
     {
         if (Vu1Refusals::enabled())

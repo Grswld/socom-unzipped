@@ -1171,17 +1171,36 @@ void register_vu1_ops_tests()
                 std::vector<uint8_t> packets;
                 bool nativeRan = false;
                 bool nativeEnded = false;
+                // A hand-back only: what the native program changed before it returned, against a snapshot of
+                // the register file and VU data memory taken as it was entered ("" = nothing; a whole-program
+                // refusal must leave it empty -- pc included, which stays 0x33c8).
+                std::string touchedBeforeHandBack;
             };
             static End &current()
             {
                 static End s_end;
                 return s_end;
             }
+            static uint8_t *&activeData()
+            {
+                static uint8_t *s_data = nullptr;
+                return s_data;
+            }
             static bool entry(VU1Interpreter &vu, uint64_t budgetEnd)
             {
                 bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t budgetEnd);
+                End before;
+                before.s = vu.state();
+                before.data.assign(activeData(), activeData() + PS2_VU1_DATA_SIZE);
                 current().nativeRan = true;
                 current().nativeEnded = vu1native_socom2_entry_0x33c8(vu, budgetEnd);
+                if (!current().nativeEnded)
+                {
+                    End after;
+                    after.s = vu.state();
+                    after.data.assign(activeData(), activeData() + PS2_VU1_DATA_SIZE);
+                    current().touchedBeforeHandBack = diff(before, after, false);
+                }
                 return current().nativeEnded;
             }
             static bool dispatcher(VU1Interpreter &vu, uint64_t budgetEnd) { return RefusalRig::dispatcher(vu, budgetEnd); }
@@ -1201,6 +1220,7 @@ void register_vu1_ops_tests()
                 std::memcpy(vuCode, code.data(), PS2_VU1_CODE_SIZE);
                 mem.markVU1CodeModified();
                 std::memcpy(vuData, data.data(), PS2_VU1_DATA_SIZE);
+                activeData() = vuData;
                 mem.setGifPacketCallback([&end](const uint8_t *p, uint32_t n) {
                     const uint32_t len = n;
                     end.packets.insert(end.packets.end(), reinterpret_cast<const uint8_t *>(&len),
@@ -1340,6 +1360,7 @@ void register_vu1_ops_tests()
             Vu1Refusals::setEnabledForTest(false);
             const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
             t.IsTrue(native.nativeRan && !native.nativeEnded, "native was asked and handed the program back");
+            t.IsTrue(native.touchedBeforeHandBack.empty(), "nothing touched before the hand-back:" + native.touchedBeforeHandBack);
             t.Equals(after.n - before.n, 1ull, "skin_pass at entry 0x33c8 +1");
             t.Equals(totalAfter - total, 1ull, "and nothing else");
             t.Equals(oracle.s.pc, 0x33c8u, "the bone pass ends at 0x33c8 again");
@@ -1347,16 +1368,47 @@ void register_vu1_ops_tests()
             t.IsTrue(why.empty(), "the fallback is the microcode's own run:" + why);
         });
 
-        tc.Run("native 0x33c8: a repack count or resume index it cannot bound is refused before anything is touched", [](TestCase &t)
+        tc.Run("native 0x33c8: a state whose writes it cannot bound is refused before anything is touched", [](TestCase &t)
         {
-            struct Case { const char *what; int32_t vi9; int32_t vi14; uint32_t top; Vu1Refusals::Reason reason; };
+            // Every write range of the program is proven before the repack's first store: the repack's records, 0x66's
+            // index records, 0x08's staging triples and 0x40's packets must not wrap VU memory or land on what the
+            // proof itself read (the list's 64 qwords, the header TOP+2, the packet pointers at q329); the resumed
+            // list may hold only 0x66, 0x08, 0x40 and its 0x42; and no handler clamp may be able to fire after the
+            // repack. Each refusal leaves the register file and VU data memory exactly as the entry found them.
+            using R = Vu1Refusals::Reason;
+            struct Case
+            {
+                const char *what;
+                R reason;
+                uint32_t cmd;
+                void (*setup)(Entry33c8Rig &);
+                int32_t vertexCeiling;
+            };
             const Case cases[] = {
-                {"vi9 = 0 (the loop's IBNE would run 65536 times)", 0, 1, 0u, Vu1Refusals::Reason::RepackRange},
-                {"vi9 = 257 (over the vertex ceiling)", 257, 1, 0u, Vu1Refusals::Reason::RepackRange},
-                {"TOP 330: the records from qword 334 would overwrite the list at 340", -1, 1, 330u, Vu1Refusals::Reason::RepackRange},
-                {"TOP 1000: the records would wrap past the end of VU memory", -1, 1, 1000u, Vu1Refusals::Reason::RepackRange},
-                {"vi14 = 64 (past the list's qwords)", -1, 64, 0u, Vu1Refusals::Reason::ResumeIndex},
-                {"vi14 = -1", -1, -1, 0u, Vu1Refusals::Reason::ResumeIndex},
+                {"vi9 = 0 (the loop's IBNE would run 65536 times)", R::RepackRange, 0u, [](Entry33c8Rig &r) { r.vi[9] = 0; }, -1},
+                {"vi9 = 257 (over the vertex ceiling)", R::RepackRange, 0u, [](Entry33c8Rig &r) { r.vi[9] = 257; }, -1},
+                {"TOP 330: the records from qword 334 would overwrite the list at 340", R::RepackRange, 0u, [](Entry33c8Rig &r) { r.top = 330u; }, -1},
+                {"TOP 1000: the records would wrap past the end of VU memory", R::RepackRange, 0u, [](Entry33c8Rig &r) { r.top = 1000u; }, -1},
+                {"TOP 322, vi9 = 2: the records would overwrite the packet pointers at q329", R::RepackRange, 0u,
+                 [](Entry33c8Rig &r) { r.top = 322u; r.vi[9] = 2; }, -1},
+                {"vi14 = 64 (past the list's qwords)", R::ResumeIndex, 0u, [](Entry33c8Rig &r) { r.vi[14] = 64; }, -1},
+                {"vi14 = -1", R::ResumeIndex, 0u, [](Entry33c8Rig &r) { r.vi[14] = -1; }, -1},
+                {"TOP+2.x = -124: 0x66's records from q301 would overwrite the list", R::WriteRange, 0x66u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 0u, -124); }, -1},
+                {"TOP+2.x = 560: 0x66's records would wrap past the end of VU memory", R::WriteRange, 0x66u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 0u, 560); }, -1},
+                {"TOP+2.z = 101: 0x08's staging triples from q40 would reach the list", R::WriteRange, 0x08u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 2u, 101); }, -1},
+                {"q329.x = 335: 0x40's packet would overwrite the list", R::WriteRange, 0x40u,
+                 [](Entry33c8Rig &r) { r.setWord(329u, 0u, 335); }, -1},
+                {"a 0x06 in the resumed list", R::ResumeCommand, 0x06u,
+                 [](Entry33c8Rig &r) {
+                     const uint32_t list[6] = {0x52u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u};
+                     for (uint32_t k = 0; k < 6u; ++k)
+                         r.setWord(340u + k, 0u, static_cast<int32_t>(list[k]));
+                 }, -1},
+                {"the handler vertex ceiling at 10 (0x08's clamp would fire after the repack)", R::HeaderVertices, 0u,
+                 [](Entry33c8Rig &) {}, 10},
             };
             for (const Case &k : cases)
             {
@@ -1365,20 +1417,21 @@ void register_vu1_ops_tests()
                 if (rig.code.empty())
                     return;
                 rig.makeLastBone();
-                if (k.vi9 >= 0)
-                    rig.vi[9] = k.vi9;
-                rig.vi[14] = k.vi14;
+                k.setup(rig);
+                if (k.vertexCeiling >= 0)
+                    RefusalRig::forceVertexCeiling(k.vertexCeiling);
                 Vu1Refusals::setEnabledForTest(true);
-                const Vu1Refusals::Row before = RefusalRig::row(0x33c8u, k.reason, 0u);
-                if (k.top != 0u)
-                    rig.top = k.top;
+                const Vu1Refusals::Row before = RefusalRig::row(0x33c8u, k.reason, k.cmd);
                 // Budget-bounded: the fallback is the microcode on a state it was never meant to see (vi9 = 0 is
-                // its own 65536-iteration repack); only the refusal is checked here.
+                // its own 65536-iteration repack); the refusal and the untouched state are what is checked.
                 const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
-                const Vu1Refusals::Row after = RefusalRig::row(0x33c8u, k.reason, 0u);
+                const Vu1Refusals::Row after = RefusalRig::row(0x33c8u, k.reason, k.cmd);
                 Vu1Refusals::setEnabledForTest(false);
+                RefusalRig::forceVertexCeiling(-1);
                 t.IsTrue(native.nativeRan && !native.nativeEnded, std::string(k.what) + ": handed back");
                 t.Equals(after.n - before.n, 1ull, std::string(k.what) + ": counted under its reason");
+                t.IsTrue(native.touchedBeforeHandBack.empty(),
+                         std::string(k.what) + ": nothing touched before the hand-back:" + native.touchedBeforeHandBack);
             }
         });
 
