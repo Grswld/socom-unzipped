@@ -268,7 +268,11 @@ class AttachTest(unittest.TestCase):
         self.assertIn(BROWSER[2], msg)
         self.assertIn("1913x1229", msg)
 
-    def _main(self, desk, exe_search):
+    def _main(self, desk, exe_search, system, tree=windows_tree):
+        """drive.main() for `--target ours` on the host `system` names ("Windows" or "Linux"), whatever host runs
+        the suite: main() takes the exe name from hostplatform.runtime_exe(), which is socom2.exe on Windows and
+        socom2 on Linux, so a chain is modelled under the platform it claims (the Linux runner reddened on a
+        Windows chain that read the host's platform, issue #118)."""
         seen = {}
 
         def run_steps(a, steps, proc, hwnd, t0, last, manifest):
@@ -282,12 +286,14 @@ class AttachTest(unittest.TestCase):
             out = io.StringIO()
             with contextlib.ExitStack() as stack:
                 stack.enter_context(desktop(desk))
-                for p in (mock.patch.object(sys, "argv", argv),
+                host = types.SimpleNamespace(system=lambda: system)
+                for p in (mock.patch.object(drive.hostplatform, "platform", host),
+                          mock.patch.object(sys, "argv", argv),
                           mock.patch.dict(os.environ, {"SOCOM_EXE": ""}),
                           mock.patch.object(drive.hostplatform, "process_running", lambda base: False),
                           mock.patch.object(drive.hostplatform, "kill_process_by_name", lambda base: None),
                           mock.patch.object(drive, "launch", lambda target, seconds: mock.Mock(pid=BASH_PID)),
-                          mock.patch.object(drive, "process_tree_pids", windows_tree),
+                          mock.patch.object(drive, "process_tree_pids", tree),
                           mock.patch.object(drive, "launched_exe_pids", exe_search),
                           mock.patch.object(drive.winshot, "keep_on_top", lambda hwnd: None),
                           mock.patch.object(drive, "frame", lambda hwnd: object()),
@@ -304,10 +310,32 @@ class AttachTest(unittest.TestCase):
             asked.append((name, since))
             return [GAME[1]] if name.lower() == EXE and since <= time.time() else []
 
-        seen, out = self._main(FakeDesktop(), exe_search)
+        seen, out = self._main(FakeDesktop(), exe_search, "Windows")
         self.assertEqual(seen["hwnd"], GAME[0])
         self.assertIn("attach: hwnd=0xca pid=4242 client=640x448 found_by=exe", out)
         self.assertEqual(asked[0][0].lower(), EXE, "the runtime exe's own name, from hostplatform.runtime_exe()")
+
+    def test_main_on_linux_the_exe_name_search_asks_for_socom2_without_the_suffix(self):
+        # The exe-name leg with the game outside the launched tree, on Linux: main() asks for `socom2`, the name
+        # the Linux build writes (dist-linux/socom2), and attaches to the game's window, not the browser.
+        asked = []
+
+        def exe_search(name, since):
+            asked.append((name, since))
+            return [GAME[1]] if name == "socom2" and since <= time.time() else []
+
+        seen, out = self._main(FakeDesktop(), exe_search, "Linux")
+        self.assertEqual(seen["hwnd"], GAME[0])
+        self.assertIn("attach: hwnd=0xca pid=4242 client=640x448 found_by=exe", out)
+        self.assertEqual(asked[0][0], "socom2", "the Linux runtime exe's name, from hostplatform.runtime_exe()")
+
+    def test_main_on_the_linux_chain_attaches_to_the_launched_trees_window(self):
+        # The real Linux launch: the exe is a descendant of the launched process, found by pid before any name.
+        asked = []
+        seen, out = self._main(FakeDesktop(), lambda name, since: asked.append(name) or [], "Linux", tree=linux_tree)
+        self.assertEqual(seen["hwnd"], GAME[0])
+        self.assertIn("attach: hwnd=0xca pid=4242 client=640x448 found_by=pid", out)
+        self.assertEqual(asked, [], "the exe-name search is not needed when the tree owns the window")
 
 
 if __name__ == "__main__":
