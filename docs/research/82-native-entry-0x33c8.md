@@ -470,3 +470,69 @@ as §8.4.
   - **[estimate]**, before the shapes are read.
 
   N1c is not implemented in this branch.
+
+### 9.6 N1c's linear half: `0x54` and `0x10` admitted (2026-09-30, branch `agent/s17-n1c-linear`)
+
+The brief named this "§9.1 the linear half". §9.1 already holds the instrument, so it is §9.6 here. Both commands
+are re-derived from the microcode (`python tools_py/vu1dis.py --start 0x5d8 --count 14` and `--start 0xf90 --count 45`
+over `logs/vu1dump3/vu1_prog_31.bin`) and from the native handlers (`cmdTemplateFill`, `cmdDistanceFade`), which
+agree pair for pair.
+
+- **`0x54` (`0x05d8-0x0638`).** `vi4 = 40`, `vi9 = TOP+2.z`, `vf28 = q327`, then a four-pair body: `IADDI vi9 -3`,
+  `SQ.xyzw vf28` at `1(vi4)`, `4(vi4)`, `7(vi4)`, `IBGTZ vi9` with `IADDI vi4 +9` in its delay slot. With
+  n = max(⌈V/3⌉, 1) passes (the body runs before the test, so V = 0 still stores once), the stores are qwords
+  41 + 3j for j < 3n, whole qwords. The proof takes `[41, 40 + 9n - 2]`, which is §9.3's. It leaves `vi4 = 40 + 9n`,
+  `vi9 = V - 3n` and `vf28`. It has no FMAC and reads no flag. **[verified]**
+- **`0x10` (`0x0f90-0x1100`).** `vi9 = TOP+2.z`, `vi3 = TOP+4`, `vi4 = 40`, two vertices a pass. After
+  `vi4 += 6` it stores `SQ.w vf14, -4(vi4)` (vertex a, `0x10c8`). Then `IADDI vi9 -2` has run, and `IBLTZ vi9, 0x10f8`
+  leaves on an odd or zero count. Otherwise `SQ.w vf15, -1(vi4)` (vertex b, `0x10e0`) and `IBGTZ vi9, 0x1008`. The
+  stores are the fog lane `.w` of qwords 42 + 3k for k < max(V, 1). The proof takes the whole qwords
+  `[42, 39 + 3·max(V, 1)]`, which lies inside `0x08`'s `[40, 40 + 3·max(V, 1))`. Its loads (q28, q29, the vertex
+  block, the staging ST and XYZF2 quads, one pair past the end) write nothing. It leaves `vi3`, `vi4`, `vi9`,
+  `vf14`/`vf15`, `vf17`/`vf18`, `vf20-vf31`, `ACC.w`, `I` = 1.0 and the MAC/STATUS of its last FMAC. `MINI`/`MAX`
+  set no flags. **[verified]**
+- **Flags.** The whole image has six flag reads, all `FMAND`: `0x1718` (`0x06`), `0x2858` (`0x34`), `0x2fa8` and
+  `0x2fd8`, and `0x3b60` and `0x3b78` (the clipper). There is no `FSAND`, `FSEQ`, `FSOR`, `FCAND`, `FCEQ`, `FCOR`
+  or `FCGET` (a `grep` over the full disassembly). Neither `0x54` nor `0x10` holds one. The only flag read among the
+  admitted commands is `0x06`'s at `0x1718`, which reads its own `MADDz.w` four pairs back (§8.2). `0x10`'s last FMAC
+  (`0x10f0`, or `0x10b0` on the odd exit) issues 40 or more pairs before that `FMAND`, so it has landed and is older
+  than the `MADDz.w`. That is the position the repack's `ADDy.z` holds in §8.2, and the reading is the same in both
+  models. **[verified]** by reading and by the `66 06 08 10 40 42` shapes below, where the cull still splits the
+  triangles.
+- **Order.** Every proven range is a function of TOP, TOP+2 and q329 only, never of data another command wrote.
+  `0x10` reads the ST.w `0x08` left, and `0x40` reads `0x06`'s flag words, but as values, not addresses. So the proof
+  walks the admitted set in any order and count and needs no order check. A `0x10` with no `0x08` before it fades
+  whatever the staging holds, as the microcode does.
+- **Clamps.** Both loop on TOP+2.z only. The entry's whole-program `HeaderVertices` check (TOP+2.z against
+  `vertexCeiling()`) covers their clamps at `0x05e0` and `0x0f90`, as it covers `0x08`'s.
+- **Surprise (small).** §9.3's "the list itself only from V ≥ 101" is `0x08`'s bound. `0x54`'s fill reaches the
+  list from V = 100: 34 passes, whose store at q341 lies inside the list. Both refuse from V ≥ 97 on q329 first, so
+  nothing admitted changes. `0x10`'s actual stores never land on q329 (329 - 42 is not a multiple of 3), but the
+  whole-qword range refuses it from V ≥ 97 too. That is conservative, and a lane-exact check would buy nothing while
+  `0x08` shares the bound.
+
+**What changed.**
+- `socom2_dispatch_0x1b50.cpp`: `proveResumedWrites` admits `kCmdFade` and `kCmdTemplateFill` with the two ranges
+  above. The derivation is in its comment.
+- `knobs.h`: `PS2X_VU1_NATIVE_33C8`'s meaning names the admitted set (§8.3's "undersells" is fixed), and
+  `docs/KNOBS.md` is regenerated.
+- `vu1_ops_tests.cpp`: six shapes on the real image, each native and bit-exact against the interpreter:
+  - `66 06 08 10 40 42` at V = 41 (the odd exit) and 42;
+  - `54 66 06 08 40 42` at V = 40 and 96 (the largest V clear of q329);
+  - `54 66 06 08 10 40 42` at V = 40 and 0.
+
+  Where visible, `0x54`'s last store past `0x08`'s triples must hold q327, and `0x10`'s fog lanes must differ from
+  the same list without it. There are five new refusals, each before any write: `0x54` at V = 97 (q329) and V = 101
+  (the list), `0x54` and `0x10` against a TOP+2 at q102, and `10 66 06 08 40 42` at V = 97. `0x1b50` is unchanged on
+  `vu1dump4_prog_11`'s own `68 08 10 54 18 28 42`, bit-exact.
+
+**Evidence.** RED on the base: the six shapes handed back and the five refusals were counted as `resume_command`
+(7 of 48 cases failed). GREEN: 48 of 48 under the test binary's defaults, with `PS2X_VU1_XGKICK_CYCLE_EXACT=0`, and
+with that plus `PS2X_VU1_FAST=1`. A planted mutation (⌊V/3⌋ passes for `0x54`) fails the V = 97 refusal. Scratch,
+not committed: `0 of 25 differ, 3 taken natively` (`vu1dump3`) and `0 of 51 differ, 51 taken natively` (the
+`vu1dump5` last-bone dumps). None of them holds a `0x54` or a `0x10`, so these show only that nothing else moved.
+**[measured]**
+
+**Not known.** None of the walk's `cmd=0x54` or `cmd=0x10` lists has been seen. If one holds a `0x02` (§9.4), it is
+still refused, now as `resume_command cmd=0x2` rather than `cmd=0x54`. The fence is the refused capture (§9.4) with
+this branch's build. The stake stays §9.5's estimate, about 9-11 ms/s for `0x54`. **[estimate]**

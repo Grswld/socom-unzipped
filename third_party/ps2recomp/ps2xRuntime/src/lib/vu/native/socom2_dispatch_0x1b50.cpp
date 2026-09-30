@@ -3579,18 +3579,37 @@ namespace
     }
 
     // The resumed list's commands, walked from vi14 to its 0x42 as the dispatcher will run them (the pre-scan has
-    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the four commands whose
-    // store ranges are derived here are admitted -- the corpus's three and the walk's 0x06 (research/82 N1b):
+    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the six commands whose
+    // store ranges are derived here are admitted -- the corpus's three, the walk's 0x06 (research/82 N1b) and the
+    // walk's 0x54 and 0x10 (research/82 section 9.6, N1c's linear half):
     //   0x66  index record [1] of every triangle, TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1) (the body runs once
     //         before its IBGTZ);
     //   0x06  index record [0] of every triangle, TOP+TOP+2.x+2k for k < max(TOP+2.w, 1): its one store, the
     //         ISW.w of the flag word at 0x1738 (proven as the whole qword), also once before its IBGTZ at 0x1750.
     //         Its loads (the eye q30, the records' .x and .w, the normals, the vertices) write nothing;
     //   0x08  the staging triples from q40, three a vertex, max(TOP+2.z, 1) of them (likewise);
+    //   0x10  (0x0f90-0x1100) the fog lane .w of slot +2 of each staging triple, SQ.w at 0x10c8 (vertex a, -4(vi4))
+    //         and 0x10e0 (vertex b, -1(vi4)) after vi4 += 6 from 40: qwords 42 + 3k for k < max(TOP+2.z, 1) -- two a
+    //         pass, IADDI vi9 -2 then IBLTZ at 0x10d0 leaving after vertex a on an odd count or a zero one, IBGTZ
+    //         at 0x10e8 looping. Proven as the whole qwords [42, 39 + 3 max(V, 1)], inside 0x08's range. Its loads
+    //         (q28, q29, the vertex block, the staging ST and XYZF2 quads, one pair past the end) write nothing;
+    //   0x54  (0x05d8-0x0638) slot +1 of each staging triple, SQ.xyzw of q327 at 1(vi4), 4(vi4) and 7(vi4) from
+    //         vi4 = 40, vi4 += 9 in the IBGTZ's delay slot, the body before the test: qwords 41 + 3j for
+    //         j < 3 max(ceil(V/3), 1), overshooting to a multiple of three. Proven as
+    //         [41, 40 + 9 max(ceil(V/3), 1) - 2];
     //   0x40  (0x28's body from 0x1790) the tag qwords 290 and 300, the packets' nine qwords after each of the
     //         two pointers at q329.x and q329.y, and q329 itself -- rewritten with the same pair, swapped, so the
     //         proof's reading of it holds for a later 0x40 too.
     // TOP+2 and q329 are proven unwritten, so the counts and pointers read here are the ones the handlers read.
+    // Order: every range above is a function of TOP, TOP+2 and q329 alone, never of data another command wrote --
+    // 0x10 reads the ST.w 0x08 left and 0x40 the flag words 0x06 left, but as values, not addresses -- so the walk
+    // proves them in any order and count. Registers: 0x54 leaves vi4 = 40 + 9n, vi9 = V - 3n and vf28 = q327; 0x10
+    // leaves vi3/vi4/vi9, vf14/15, vf17/18, vf20-31, ACC.w, I = 1.0 and the MAC/STATUS of its last FMAC. No admitted
+    // command takes any of them as an input it has not rewritten first but through the data path the native handler
+    // reproduces bit for bit. Flags: neither 0x54 (no FMAC) nor 0x10 (MINI/MAX set none; no FMAND/FSAND/FCAND) reads
+    // a flag, and the one flag read among the admitted, 0x06's FMAND at 0x1718, reads its own MADDz.w four pairs
+    // back (research/82 8.2): 0x10's last FMAC (0x10f0, or 0x10b0 on the odd exit) issues 40 or more pairs before
+    // that FMAND and before the MADDz.w, so it has landed and is older, as the repack's ADDy.z is.
     bool proveResumedWrites(Ctx &c, int32_t top, uint32_t startIndex, Vu1Refusals::Refusal &refusal)
     {
         const int32_t indexBase = vi16(top + c.loadWord(top + 2, 0)); // 0x2e38: vi4 = TOP+2.x + vi1
@@ -3598,6 +3617,7 @@ namespace
         const int32_t triangles = c.loadWord(top + 2, 3);
         const int32_t facePasses = triangles > 1 ? triangles : 1;
         const int32_t stagePasses = vertices > 1 ? vertices : 1;
+        const int32_t fillPasses = vertices > 3 ? (vertices + 2) / 3 : 1; // 0x54: three vertices a pass
         const int32_t packetA = c.loadWord(kPacketPointerQword, 0);
         const int32_t packetB = c.loadWord(kPacketPointerQword, 1);
         uint32_t index = startIndex;
@@ -3618,6 +3638,14 @@ namespace
                 break;
             case kCmdTransform:
                 if (!writeRangeClear(top, 40, 3 * stagePasses))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdFade:
+                if (!writeRangeClear(top, 42, 3 * stagePasses - 2))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdTemplateFill:
+                if (!writeRangeClear(top, 41, 9 * fillPasses - 2))
                     return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
                 break;
             case kCmdDrawUntextured:
@@ -3844,8 +3872,9 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     else if (isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex)))
     {
         // No handler clamp may fire after the repack has stored: the handler-side ceilings (lowered only by the
-        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x06, 0x08 and 0x40
-        // -- all proveResumedWrites admits -- loop on these two counts and nothing else.
+        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x06, 0x08, 0x10, 0x40
+        // and 0x54 -- all proveResumedWrites admits -- loop on these two counts and nothing else (0x10's and 0x54's
+        // clamps, at 0x0f90 and 0x05e0, are TOP+2.z against vertexCeiling(), as 0x08's).
         if (c.loadWord(top + 2, 2) > vertexCeiling())
             refuse(refusal, Vu1Refusals::Reason::HeaderVertices);
         else if (c.loadWord(top + 2, 3) > triangleCeiling())
