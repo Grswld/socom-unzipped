@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import type {} from '../src/hook';
 
 /**
- * The page's chrome (owner, 2026-09-28): the settings panel starts folded and the cog beside GitHub opens it; the bar's
+ * The page's chrome (owner, 2026-09-28): the settings panel starts folded and the cog, first in the bar, opens it; the bar's
  * tabs are one size; the Fly / Walk switch is the Modern / PS2 switch's own markup; the Controls popover names the
  * current mode's controls; and the play (walk, the SEAL, the touch stance and fire) exists only in Play (`mode=play`).
  *
@@ -19,7 +19,7 @@ const loaded = async (page: Page, query = ''): Promise<void> => {
 
 const box = async (page: Page, selector: string) => (await page.locator(selector).boundingBox())!;
 
-test('a first visit has the settings folded; the cog beside GitHub opens and folds them', async ({ page }) => {
+test('a first visit has the settings folded; the cog, first in the bar, opens and folds them', async ({ page }) => {
   await loaded(page);
   const cog = page.locator('#panel-toggle');
   await expect(page.locator('#panel')).toBeHidden();
@@ -29,11 +29,14 @@ test('a first visit has the settings folded; the cog beside GitHub opens and fol
   // The map is on screen and the loading state is not stuck: the page is a canvas and a bar.
   await expect(page.locator('#loading')).toBeHidden();
   await expect(page.locator('#status')).toContainText('FROSTFIRE');           // the text is there, the panel just does not show it
-  // Beside GitHub: the same row, cog directly before the link.
-  const [c, g] = [await box(page, '#panel-toggle'), await box(page, '#source')];
+  // The bar's order (owner, 2026-09-29): Settings, then Controls, then GitHub, on one row, a small gap each.
+  const [c, k, g] = [await box(page, '#panel-toggle'), await box(page, '#controls-toggle'), await box(page, '#source')];
   expect(Math.abs(c.y - g.y)).toBeLessThan(1);
-  expect(g.x - (c.x + c.width)).toBeGreaterThan(0);
-  expect(g.x - (c.x + c.width)).toBeLessThan(16);
+  expect(Math.abs(c.y - k.y)).toBeLessThan(1);
+  expect(k.x - (c.x + c.width)).toBeGreaterThan(0);
+  expect(k.x - (c.x + c.width)).toBeLessThan(16);
+  expect(g.x - (k.x + k.width)).toBeGreaterThan(0);
+  expect(g.x - (k.x + k.width)).toBeLessThan(16);
   await cog.click();
   await expect(page.locator('#panel')).toBeVisible();
   await expect(cog).toHaveAttribute('aria-expanded', 'true');
@@ -53,8 +56,10 @@ test('the bar tabs share one height, one padding and one gap, at a desktop width
       expect(Math.round(b.height), `${width}px height`).toBe(Math.round(ctl.height));
       expect(Math.abs(b.y - ctl.y), `${width}px row`).toBeLessThan(1);
     }
-    // One gap between neighbours.
-    expect(Math.round(cog.x - (ctl.x + ctl.width))).toBe(Math.round(git.x - (cog.x + cog.width)));
+    // Settings, Controls, GitHub (owner, 2026-09-29), one gap between neighbours.
+    expect(cog.x).toBeLessThan(ctl.x);
+    expect(ctl.x).toBeLessThan(git.x);
+    expect(Math.round(ctl.x - (cog.x + cog.width))).toBe(Math.round(git.x - (ctl.x + ctl.width)));
     // The brand is on the tabs' centre line.
     expect(Math.abs((home.y + home.height / 2) - (ctl.y + ctl.height / 2))).toBeLessThan(1.5);
     // The tabs sit inside the bar.

@@ -202,7 +202,8 @@ free camera (the e2e specs and the measuring tools do, and enter the walk themse
 toggle walk and fly as before.
 
 The settings panel starts folded on every device, so a first visit is the map and a small bar. **Settings** (the cog),
-**Controls** and **GitHub** sit together at the right of the bar, one size; the cog folds the panel away and back, and
+**Controls** and **GitHub** sit together at the right of the bar in that order (owner, 2026-09-29), one size; the cog
+folds the panel away and back, and
 the choice is remembered. A failed load unfolds the panel so the error is seen.
 
 In reCOM mode the panel also has a **Sound** section (a volume slider and a mute switch, driving `gameAudio.setVolume` and

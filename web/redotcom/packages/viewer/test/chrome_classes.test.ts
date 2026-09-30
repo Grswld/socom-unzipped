@@ -115,13 +115,15 @@ describe('the viewer chrome uses the design system', () => {
  * github an icon". The fold control leaves the panel for the site bar; a folded panel shows nothing.
  */
 describe('W2.0: the cog beside the brand, the GitHub mark', () => {
-  it('the panel toggle is a cog tab in the end group of the bar, right before GitHub and after Controls', () => {
+  it('the panel toggle is a cog tab in the end group of the bar: Settings, then Controls, then GitHub (owner, 2026-09-29)', () => {
     const cog = doc.getElementById('panel-toggle')!;
     expect(cog.tagName).toBe('BUTTON');
     expect(cog.parentElement!.classList.contains('s2u-bar__end')).toBe(true);
     expect(cog.parentElement!.parentElement!.id).toBe('site-links');
-    expect(cog.previousElementSibling!.id).toBe('controls-toggle');
-    expect(cog.nextElementSibling!.id).toBe('source');
+    expect(cog.previousElementSibling).toBeNull();                          // first in the end group
+    expect(cog.nextElementSibling!.id).toBe('controls-toggle');
+    expect(doc.getElementById('controls-toggle')!.nextElementSibling!.id).toBe('source');
+    expect([...cog.parentElement!.children].map((e) => e.id)).toEqual(['panel-toggle', 'controls-toggle', 'source']);
     expect(cog.getAttribute('aria-label')).toBe('settings');
     expect(cog.getAttribute('aria-controls')).toBe('panel-body');
     expect(cog.getAttribute('aria-expanded')).toBe('false');                 // the panel starts folded

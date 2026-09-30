@@ -304,7 +304,7 @@ export class Ui {
    * answer different wants: the backtick takes *everything* away for a clean picture, and the cog
    * takes the panel only and stays where a thumb can tap it to bring the panel back.
    *
-   * The panel starts folded on every device: a first visit shows the map, and the cog (beside the GitHub link)
+   * The panel starts folded on every device: a first visit shows the map, and the cog (the bar's first tab, before Controls and GitHub)
    * opens the settings. A choice the visitor made with the cog is remembered, in `localStorage` and so
    * best-effort: a private window, blocked site data or a browser that throws on access all end up with the
    * panel folded, which is the default anyway. Nothing here fails if storage does.
