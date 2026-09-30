@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HELD_RIFLE, HELD_SIDEARM, type CollisionOwner, type GridParams, type SpawnSlot, type WorldPoly } from '@s2u/scene';
 import { FlyCamera } from '../src/camera';
 import { packGround, WalkMode } from '../src/walk';
 import { NetClient, type WebSocketLike } from '../src/net/client';
 import { LoopbackMatch, simMapOfLoaded } from '../src/net/loopback';
-import { blastKnock, deathClip, PART, TICK_HZ, type ServerEvent } from '../src/sim';
+import { blastKnock, deathClip, PART, RESPAWN_RULES_ENABLED, TICK_HZ, type ServerEvent } from '../src/sim';
+import { ELIMINATED_HOLD_S, eliminationLines, MAX_ROUNDS, roundBanner, ROUND_WATCH_S } from '../src/net/rules';
+import { DEAD_LINES, NetPage } from '../src/netPage';
+import { Hud } from '../src/hud';
+import { roundScreenLayout } from '../src/roundScreens';
+import type { RemotePlayers } from '../src/remotePlayers';
+import { ENGINE_READ_S, ROUND_COMPLETE_S } from '../../server/src/room';
 
 const M67 = { explosionRadius: 150 };
 import { DEATH_EYE_REACH, DEATH_ORBIT_RATE, DEATH_TILT_MAX, deathEye, newDeathCamera } from '../src/deathCamera';
@@ -14,8 +20,16 @@ import { DEATH_EYE_REACH, DEATH_ORBIT_RATE, DEATH_TILT_MAX, deathEye, newDeathCa
  * character did not fall over ... He stayed standing waiting for respawn, unable to move"). The game throws a SEAL its
  * blast kills (`FUN_0057e770` L440981: inside the radius or dead; state 8 at L441001), lands it in `Land forward` /
  * `Land backwards` and leaves it down (no get-up for the dead); the dead's camera is the death camera
- * (`FUN_00297a30`); the respawn stands a new SEAL. The page's real `WalkMode`, driven by the real `NetClient`, offline
- * through the loopback room and online through a socket fed the server's events.
+ * (`FUN_00297a30`). The page's real `WalkMode`, driven by the real `NetClient`, offline through the loopback room and
+ * online through a socket fed the server's events.
+ *
+ * What stands the SEAL up again depends on the rules. The page ships classic (`RESPAWN_RULES_ENABLED` off, the owner's
+ * ruling of 2026-09-29), offline too: the dead do not respawn (`FUN_002a7560` L149405-149431) and watch until the next
+ * round (`FUN_005979a0` L454484-454489). Offline the one SEAL is its whole side, so its death eliminates the SEALs
+ * (MP51 `objectives` `start`: `aiteam_00` == 0 after WAIT 5 + WAIT 10; the empty Terrorist side is never eliminated,
+ * SOLO_ROUND_PLACEHOLDER, research 91 section 20), the Terrorists win the round, and the next round stands a fresh SEAL
+ * at its start slot (`FUN_00223680` L75913-75931). The respawn ruleset (kept behind the switch) stands a new SEAL at a
+ * respawn record on the press after the fade (research 91 section 4.1); its test forces the switch on.
  */
 
 const PARAMS: GridParams = { atomCount: 8192, posts: 16, cellDim: 200, cellsX: 10, cellsZ: 10, originX: -1000, originZ: -1000 };
@@ -50,8 +64,8 @@ function walkRig() {
 
 const flush = async (): Promise<void> => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
 
-/** The single-player match with the page's real walk; `script` is the room's draw, spent first. */
-async function offline() {
+/** A seeded draw for the room; `script` is spent first. */
+function draw() {
   let seed = 1;
   const script: number[] = [];
   const random = (): number => {
@@ -59,8 +73,19 @@ async function offline() {
     seed = (seed * 16807) % 2147483647;
     return seed / 2147483647;
   };
-  const loaded = { path: 'RUN/MP99.ZDB', name: 'FLAT', ground: ground(), slots: [slot(0, 0, -100, 0), slot(1, 0, 100, 0)], respawns: [slot(0, 0, -300, 0)], doors: [] };
-  const match = new LoopbackMatch(simMapOfLoaded(loaded), null, { auto: false, random });
+  return { script, random };
+}
+
+/** The test map: one SEAL start slot at x -100, its respawn twin at x -300 (the Terrorists' slot empty offline). */
+const LOADED = () => ({ path: 'RUN/MP99.ZDB', name: 'FLAT', ground: ground(), slots: [slot(0, 0, -100, 0), slot(1, 0, 100, 0)], respawns: [slot(0, 0, -300, 0)], doors: [] });
+
+/**
+ * The single-player match with the page's real walk; `script` is the room's draw, spent first. `respawnRules` forces the
+ * respawn ruleset on (it is off as the page ships: the room plays classic).
+ */
+async function offline(respawnRules = RESPAWN_RULES_ENABLED) {
+  const { script, random } = draw();
+  const match = new LoopbackMatch(simMapOfLoaded(LOADED()), null, { auto: false, random, respawnRules });
   const rig = walkRig();
   const events: ServerEvent[] = [];
   const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, rig.walk);
@@ -72,6 +97,55 @@ async function offline() {
   };
   return { ...rig, match, client, events, script, run };
 }
+
+/**
+ * The offline match as the page plays it (`main.ts`): the real `NetPage` -- its HUD's banner and round screens, its
+ * scoreboard rows -- joined to the loopback room with the page's real walk, on a clock the test runs (the page's
+ * `performance.now`, the room's and the screens' alike).
+ */
+async function offlinePage() {
+  let clock = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => clock);
+  const { random } = draw();
+  const match = new LoopbackMatch(simMapOfLoaded(LOADED()), null, { auto: false, random });
+  const rig = walkRig();
+  const hud = new Hud();
+  hud.setVisible(true);
+  const remote = { setTeam: () => undefined, forget: () => undefined, died: () => undefined, clear: () => undefined, frame: () => undefined } as unknown as RemotePlayers;
+  const respawned: number[] = [];
+  const net = new NetPage({
+    walk: rig.walk, remote, hud, clips: () => null, remoteGrenade: () => undefined, spectate: () => undefined,
+    respawned: () => { respawned.push(clock); }, roundEffects: () => undefined, weapons: [HELD_RIFLE, HELD_SIDEARM],
+    socket: match.socket, solo: true,
+  }, 'loopback:', 'MP99', 'Solo', undefined, false, 'classic');
+  const events: ServerEvent[] = [];
+  net.client.on((ev) => events.push(ev));
+  await flush();
+  /** Every message the HUD has up now, its lines joined by '/'. */
+  const banner = (): string[] => hud.state().model.banner.map((b) => b.lines.map((l) => l.text).join('/'));
+  /** Every message the HUD put up while `n` frames ran. */
+  const posted = new Set<string>();
+  /** `n` page frames at 60 Hz (the walk, the page, the HUD), the room stepped once after each. */
+  const run = async (n: number): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      clock += 1000 / TICK_HZ;
+      rig.walk.frame(1 / TICK_HZ);
+      net.frame(1 / TICK_HZ, {} as never, false);
+      hud.step(1 / TICK_HZ);
+      for (const b of banner()) posted.add(b);
+      match.step();
+      await flush();
+    }
+  };
+  /** Frames until the `count`th event of `type` has come (at most `max`); the frames it took. */
+  const until = async (type: ServerEvent['type'], max: number, count = 1): Promise<number> => {
+    for (let i = 0; i < max; i++) { if (events.filter((e) => e.type === type).length >= count) return i; await run(1); }
+    throw new Error(`no ${type} in ${max} frames`);
+  };
+  return { ...rig, match, net, hud, events, respawned, banner, posted, run, until, tick: () => match.room.tick };
+}
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 /** The action names the page's mover went through, frame by frame (repeats dropped). */
 function track(walk: WalkMode, seen: string[]): void {
@@ -130,8 +204,107 @@ describe('the page\'s own death by a blast, offline (the loopback room)', () => 
     expect(ctx.walk.cameraState()!.mode).toBe('third');
   });
 
-  it('the respawn stands a new SEAL: out of the landing, unlocked, the look and the camera its own again', async () => {
-    const ctx = await offline();
+  it('classic, as shipped: no respawn; the lone SEAL\'s death eliminates the SEALs, the round ends, the next stands a fresh SEAL', async () => {
+    expect(RESPAWN_RULES_ENABLED).toBe(false);
+    const ctx = await offlinePage();
+    expect(ctx.match.room.rules).toBe('classic');
+    await ctx.run(5);
+    const id = ctx.net.client.id;
+    const start = ctx.events.find((e) => e.type === 'roundStart') as Extract<ServerEvent, { type: 'roundStart' }>;
+    expect(start).toMatchObject({ round: 1, rounds: MAX_ROUNDS, wins: { seal: 0, terrorist: 0 } });
+    const startedAt = ctx.tick() - 5;                              // round 1 began at the room's first step with the SEAL
+    const feet0 = ctx.walk.feet()!;
+    expect(feet0[0]).toBeCloseTo(-100, 3);                         // the SEAL's start slot
+    // The join places the SEAL (the waiting room's spawn) and round 1 places it again (`startRound`).
+    const spawns = (): number => ctx.events.filter((e) => e.type === 'spawn').length;
+    const spawned = spawns(), refills = ctx.respawned.length;
+    ctx.net.throwEvent('M67', [feet0[0], feet0[1] + 16.4, feet0[2]], [0, 0, 0]);
+    await ctx.until('kill', 4 * TICK_HZ);
+    const deadAt = ctx.tick();
+    expect(ctx.events.find((e) => e.type === 'kill')).toMatchObject({ victim: id, how: 'suicide' });
+    await ctx.run(3 * TICK_HZ);
+    // The body down, locked, on the death camera; the game's classic lines for the dead, never the respawn prompt.
+    expect(ctx.walk.isDead()).toBe(true);
+    expect(ctx.walk.isLocked()).toBe(true);
+    expect(['landDeath', 'landBackwards']).toContain(ctx.walk.snapshot()!.action!.name);
+    expect(ctx.walk.cameraState()!.mode).toBe('third');
+    expect([...ctx.posted]).toContain(DEAD_LINES.join('/'));
+    // Past the fade (10 s, where the respawn room takes the press) the press stands nobody up (`FUN_002a7560`: respawn
+    // needs the option) -- and it is still before the elimination is watched.
+    await ctx.run(10.2 * TICK_HZ - (ctx.tick() - deadAt));
+    ctx.walk.action();
+    await ctx.run(3);
+    expect(ctx.tick() - startedAt).toBeLessThan(ROUND_WATCH_S * TICK_HZ);
+    expect(spawns()).toBe(spawned);
+    expect(ctx.walk.isDead()).toBe(true);
+    expect(ctx.events.some((e) => e.type === 'eliminated')).toBe(false);   // nothing is watched before 15 s
+    // From 15 s into the round: no living SEAL -> "ALL SEALS ELIMINATED" / "TERRORISTS WIN!"; the empty Terrorist side
+    // is not eliminated (no SEAL win, SOLO_ROUND_PLACEHOLDER).
+    await ctx.until('eliminated', 15 * TICK_HZ);
+    expect(ctx.tick() - startedAt).toBeGreaterThanOrEqual(ROUND_WATCH_S * TICK_HZ);
+    expect(ctx.tick() - startedAt).toBeLessThanOrEqual(ROUND_WATCH_S * TICK_HZ + 2);
+    expect(ctx.events.filter((e) => e.type === 'eliminated')).toEqual([{ type: 'eliminated', winner: 'terrorist' }]);
+    await ctx.run(1);
+    expect(ctx.banner()).toContain(eliminationLines('terrorist').map((l) => l.text).join('/'));
+    expect(ctx.banner()).toContain('ALL SEALS ELIMINATED/TERRORISTS WIN!');
+    // The result 23 s later (`success` / `failure` WAIT 20, WAIT 1, after `start`'s WAIT 2): the round's end.
+    const decidedAt = ctx.tick();
+    const over = await ctx.until('roundOver', (ELIMINATED_HOLD_S + 1) * TICK_HZ);
+    expect(over).toBeGreaterThanOrEqual(ELIMINATED_HOLD_S * TICK_HZ - 2);
+    expect(ctx.tick() - decidedAt).toBeLessThanOrEqual(ELIMINATED_HOLD_S * TICK_HZ + 2);
+    expect(ctx.events.find((e) => e.type === 'roundOver')).toMatchObject({
+      round: 1, winner: 'terrorist', wins: { seal: 0, terrorist: 1 }, matchOver: false,
+      screens: [{ screen: 'roundComplete', seconds: ROUND_COMPLETE_S }],
+    });
+    // The scoreboard: the suicide's -2, no +1 (dead at the end), no +5 (the losing side) (`FUN_00223970` L76146-76165).
+    await ctx.run(1);
+    const score = ctx.events.filter((e) => e.type === 'score').at(-1) as Extract<ServerEvent, { type: 'score' }>;
+    expect(score.wins).toEqual({ seal: 0, terrorist: 1 });
+    expect(score.rows).toEqual([expect.objectContaining({ id, team: 'seal', kills: 0, deaths: 1, score: -2, alive: false })]);
+    expect(ctx.walk.isDead()).toBe(true);                          // still down through the result
+    // ROUND COMPLETE after the engine's 3 s: the SEALs LOSER, the Terrorists WINNER, the one row under the SEALs.
+    await ctx.run(ENGINE_READ_S * TICK_HZ + 30);
+    expect(ctx.net.screenUp()).toBe(true);
+    const screen = ctx.hud.state().model.roundScreen!;
+    expect(screen).toMatchObject({ kind: 'roundComplete', winner: 'terrorist', wins: { seal: 0, terrorist: 1 } });
+    const texts = roundScreenLayout(screen).texts;
+    expect(texts.filter((t) => t.role === 'title').map((t) => t.text)).toEqual(['ROUND COMPLETE']);
+    expect(texts.filter((t) => t.role === 'result').map((t) => t.text)).toEqual(['LOSER', 'WINNER']);
+    expect(texts.some((t) => t.text === 'Solo')).toBe(true);
+    // The next round: the SEAL stood fresh at its start slot, not at the respawn record; the kit refilled.
+    await ctx.until('roundStart', ROUND_COMPLETE_S * TICK_HZ, 2);
+    const next = ctx.events.filter((e) => e.type === 'roundStart').at(-1) as Extract<ServerEvent, { type: 'roundStart' }>;
+    expect(next).toMatchObject({ round: 2, rounds: MAX_ROUNDS, wins: { seal: 0, terrorist: 1 } });
+    await ctx.run(3);
+    expect(spawns()).toBe(spawned + 1);
+    expect(ctx.respawned).toHaveLength(refills + 1);
+    expect(ctx.net.screenUp()).toBe(false);
+    expect(ctx.walk.isDead()).toBe(false);
+    expect(ctx.walk.isLocked()).toBe(false);
+    const snap = ctx.walk.snapshot()!;
+    expect(snap.action).toBeNull();
+    expect(snap.stance).toBe('stand');
+    expect(snap.feet[0]).toBeCloseTo(-100, 3);
+    expect(ctx.match.room.player(id)!.alive).toBe(true);
+    ctx.fly.setPose({ yaw: 45 });
+    await ctx.run(2);
+    expect(ctx.walk.snapshot()!.yaw).toBeCloseTo(45, 0);           // the look is the body's again
+    // The death camera is left: the eye no longer turns about the body on its own (mode 6 turned it ~0.87 rad a second).
+    const angle = (): number => { const c = ctx.walk.cameraState()!, f = ctx.walk.feet()!; return Math.atan2(c.eye[0] - f[0], c.eye[2] - f[2]); };
+    const a0 = angle();
+    await ctx.run(TICK_HZ);
+    expect(Math.abs(angle() - a0)).toBeLessThan(0.01);
+    // The round's banner: "STARTING ROUND 2 OF 11" (`FUN_001fb420`), then the SEALs' objective.
+    await ctx.run(6 * TICK_HZ);
+    expect(roundBanner(2, MAX_ROUNDS)).toBe('STARTING ROUND 2 OF 11');
+    expect([...ctx.posted]).toContain('STARTING ROUND 2 OF 11');
+    expect([...ctx.posted]).toContain('OBJECTIVE:/ELIMINATE THE TERRORISTS');
+    ctx.net.close();
+  });
+
+  it('respawn rules (forced on; off as shipped): the respawn stands a new SEAL -- out of the landing, unlocked, the look and the camera its own again', async () => {
+    const ctx = await offline(true);
+    expect(ctx.match.room.rules).toBe('respawn');
     await ctx.run(5);
     const feet0 = ctx.walk.feet()!;
     ctx.client.send({ type: 'throw', seq: ctx.client.lastSeq(), kind: 'M67', from: [feet0[0], feet0[1] + 16.4, feet0[2]], velocity: [0, 0, 0] });
