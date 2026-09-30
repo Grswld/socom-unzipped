@@ -70,6 +70,12 @@ namespace Vu1Refusals
                            // 0x4c after it, a vi10 reader before it or another command in its body, or a loop target
                            // (y after the 0x4c) outside the body or not the y a skipped primitive reads
         ClipCeiling,       // PS2X_VU1_NATIVE_TEST_CLIP_CEILING lowered, and the list reads the clipper's vi10
+        // Sprint 17 F N2 (research/82 section 10): the skinning pass 0x52 under PS2X_VU1_NATIVE_SKIN, whole-program, at
+        // 0x1b50 (the list's first command) and at 0x33c8 (vi5 bit 2 clear, the microcode's B 0x3100).
+        SkinCount,         // TOP+4.w, the pass's vertex count, outside 1..the vertex ceiling (0 is 65536 passes)
+        SkinRange,         // the bone chunk TOP..TOP+6+2n wraps VU memory, or a store (a vertex's staging pair, the first
+                           // pass's q37.x) would wrap it or land on that chunk or on q37
+        SkinNotFirst,      // at 0x1b50, a 0x52 after another command: only a list that starts with it is taken
         kCount
     };
 
@@ -104,6 +110,9 @@ namespace Vu1Refusals
         case Reason::ResumeCommand: return "resume_command";
         case Reason::LoopShape: return "loop_shape";
         case Reason::ClipCeiling: return "clip_ceiling";
+        case Reason::SkinCount: return "skin_count";
+        case Reason::SkinRange: return "skin_range";
+        case Reason::SkinNotFirst: return "skin_not_first";
         default: return "unknown";
         }
     }
