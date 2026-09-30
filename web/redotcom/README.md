@@ -248,7 +248,7 @@ The settings, in the panel's order:
 | **Mode** | Explore (free camera) · Play (as a SEAL) | `mode=explore` · `mode=play` | `s2u.viewer.recom` |
 | **Map** | the picker; or open your own disc (.iso) | `map=MP2` | `s2u.viewer.lastMap` |
 | **Picture** | Modern (fits your screen) · PS2 (640x448 on 4:3) | `view=modern` · `view=ps2` | `s2u.viewer.look` |
-| **Mouse look** (Play) | Raw · Stick curve; sensitivity 0.05-4x (1x); invert up / down (off); equal up / down (off) | -- | `s2u.viewer.mouseLook` |
+| **Mouse look** (Play) | sensitivity 0.05-4x (1x); invert up / down (off); equal up / down (off) | -- | `s2u.viewer.mouseLook` |
 | **Sound** (Play) | volume 0-100% (100%); mute (off) | -- | `s2u.viewer.volume`, `s2u.viewer.muted` |
 | **Online** | Off · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`; offered only on a local page) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
 | **Your name** (Online) | up to 30 characters; blank is the game's `Player####` guest name | -- | `s2u.mp.name` |
@@ -374,7 +374,9 @@ The surface's own mark comes from `decals.rdr`, the metal's, the stone's, the sa
 game has none. `window.__viewer.effects()` reports what played; `playEffect(name)` plays any of the map's effects.
 
 The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
-acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
+acceleration stays out of the look. The mouse's look is always raw -- the same turn for the same movement -- and a
+controller's always the game's stick curve (`viewer/src/look.ts`); there is no setting for it (owner hotfix,
+2026-09-30), and a `mouse: 'stick'` remembered from before reads as raw. `?map=MP7` opens a map by its archive, the picker writes the URL,
 and the last map picked is remembered for the next visit.
 
 Starts ramp and stops glide rather than snapping. The velocity is integrated in closed form, so the camera

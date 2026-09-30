@@ -18,14 +18,14 @@ const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
 const load = (): void => { document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML; };
 
 /**
- * The five segmented switches are groups of toggle buttons (`aria-pressed`), not radio groups: a radiogroup must own
+ * The four segmented switches (the Mouse look law switch is gone: owner hotfix, 2026-09-30) are groups of toggle buttons (`aria-pressed`), not radio groups: a radiogroup must own
  * `role="radio"` children with `aria-checked` (WAI-ARIA 1.2), and the design system keys its lit state and the High
  * Contrast outline on `[aria-pressed="true"]` (web/shared/ds/components.css, base.css; its own showcase's `.s2u-tabs`
  * is `role="group"`).
  */
 describe('the segmented switches', () => {
   beforeEach(load);
-  const SWITCHES = ['recom', 'look', 'mode', 'online', 'mouselaw'];
+  const SWITCHES = ['recom', 'look', 'mode', 'online'];
 
   it('are role=group with a name, each child a button with aria-pressed, exactly one pressed', () => {
     for (const id of SWITCHES) {
@@ -108,7 +108,7 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
       expect(keys).not.toMatch(/walk|jump|stance|fire|reload|peek|grenade|zoom/i);
       const rows = [...document.querySelectorAll('#pad-list tbody tr:not(.pad-group)')].map((r) => r.querySelector('td')!.textContent);
       expect(rows).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle', 'Circle']);
-      for (const id of ['sound-section', 'look-section', 'mute', 'volume', 'mouselaw', 'sensitivity']) expect(document.getElementById(id), id).toBeNull();
+      for (const id of ['sound-section', 'look-section', 'mute', 'volume', 'sensitivity']) expect(document.getElementById(id), id).toBeNull();
     });
   });
 });
@@ -180,34 +180,28 @@ describe('the Sound section (round 2): mute and volume, remembered', () => {
   });
 });
 
-describe('the Mouse look section (round 2): the law, the sensitivity, the pitch, remembered', () => {
+describe('the Mouse look section (round 2): the sensitivity, the pitch, remembered; the mouse always raw', () => {
   let ui: Ui;
   const seen: Partial<LookOptions>[] = [];
   const handler = (o: Partial<LookOptions>): void => { seen.push(o); };
   const sens = (): HTMLInputElement => document.getElementById('sensitivity') as HTMLInputElement;
-  const law = (l: string): HTMLButtonElement => document.querySelector(`#mouselaw button[data-law="${l}"]`) as HTMLButtonElement;
   beforeEach(() => { localStorage.clear(); seen.length = 0; load(); ui = new Ui(); });
   afterEach(() => { localStorage.clear(); });
 
-  it('is the play\'s, in the panel, as the same segmented markup as the picture switch', () => {
+  it('is the play\'s, in the panel, with no law switch (owner hotfix, 2026-09-30: raw for the mouse, the stick curve for a pad)', () => {
     expect(document.getElementById('look-section')!.hasAttribute(PLAY_ATTRIBUTE)).toBe(true);
-    expect(document.getElementById('mouselaw')!.className).toBe(document.getElementById('look')!.className);
-    expect(document.getElementById('mouselaw')!.getAttribute('role')).toBe('group');
+    expect(document.getElementById('mouselaw')).toBeNull();
+    expect(document.querySelector('[data-law]')).toBeNull();
   });
 
-  it('starts at the raw default the look law ships with, and tells the handler', () => {
+  it('starts raw with the defaults, and tells the handler', () => {
     ui.onLookControls(handler);
     expect(seen).toEqual([{ mouse: 'raw', sensitivity: 1, pitchRatio: 'game', invertPitch: false }]);
-    expect(law('raw').getAttribute('aria-pressed')).toBe('true');
     expect(document.getElementById('sensitivity-out')!.textContent).toBe('1.00×');
   });
 
   it('every control changes the options the handler hears, and they are remembered', () => {
     ui.onLookControls(handler);
-    law('stick').click();
-    expect(seen.at(-1)!.mouse).toBe('stick');
-    expect(law('stick').getAttribute('aria-pressed')).toBe('true');
-    expect(law('raw').getAttribute('aria-pressed')).toBe('false');
     sens().value = '2.5';
     sens().dispatchEvent(new Event('input', { bubbles: true }));
     expect(seen.at(-1)!.sensitivity).toBe(2.5);
@@ -216,17 +210,14 @@ describe('the Mouse look section (round 2): the law, the sensitivity, the pitch,
     invert.checked = true; invert.dispatchEvent(new Event('change', { bubbles: true }));
     const uniform = document.getElementById('uniformpitch') as HTMLInputElement;
     uniform.checked = true; uniform.dispatchEvent(new Event('change', { bubbles: true }));
-    expect(seen.at(-1)).toEqual({ mouse: 'stick', sensitivity: 2.5, pitchRatio: 'uniform', invertPitch: true });
-    const n = seen.length;
-    law('stick').click();                                                        // already chosen: nothing
-    expect(seen).toHaveLength(n);
+    expect(seen.at(-1)).toEqual({ mouse: 'raw', sensitivity: 2.5, pitchRatio: 'uniform', invertPitch: true });
     expect(JSON.parse(localStorage.getItem('s2u.viewer.mouseLook')!)).toEqual(seen.at(-1));
   });
 
-  it('comes back as it was left, and falls back to the defaults on a stored value that is not ours', () => {
+  it('comes back as it was left (a stored stick law from before reads as raw), and falls back to the defaults on a stored value that is not ours', () => {
     localStorage.setItem('s2u.viewer.mouseLook', JSON.stringify({ mouse: 'stick', sensitivity: 3, pitchRatio: 'uniform', invertPitch: true }));
     ui.onLookControls(handler);
-    expect(seen).toEqual([{ mouse: 'stick', sensitivity: 3, pitchRatio: 'uniform', invertPitch: true }]);
+    expect(seen).toEqual([{ mouse: 'raw', sensitivity: 3, pitchRatio: 'uniform', invertPitch: true }]);
     seen.length = 0; load();
     localStorage.setItem('s2u.viewer.mouseLook', '{not json');
     new Ui().onLookControls(handler);

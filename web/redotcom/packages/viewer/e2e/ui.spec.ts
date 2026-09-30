@@ -82,7 +82,7 @@ test('the bar tabs share one height, one padding and one gap, at a desktop width
 
 test('in Explore (the default mode) there is no walking anywhere on the page', async ({ page }) => {
   await loaded(page);
-  for (const id of ['mode', 'walk', 'body-row', 'player-body', 'ammo', 'touch-stance', 'touch-fire', 'sound-section', 'look-section', 'mute', 'volume', 'mouselaw', 'sensitivity']) await expect(page.locator(`#${id}`)).toHaveCount(0);
+  for (const id of ['mode', 'walk', 'body-row', 'player-body', 'ammo', 'touch-stance', 'touch-fire', 'sound-section', 'look-section', 'mute', 'volume', 'sensitivity']) await expect(page.locator(`#${id}`)).toHaveCount(0);
   // G does nothing, and the hook cannot walk.
   await page.keyboard.press('KeyG');
   await page.waitForTimeout(200);
@@ -205,23 +205,25 @@ test.describe('in Play with &fly&devmode (the developer fly camera)', () => {
     expect(await page.evaluate(() => window.__viewer.audio().volume)).toBe(0.5);
     await page.locator('#mute').setChecked(true);
     expect(await page.evaluate(() => window.__viewer.audio().muted)).toBe(true);
-    // Mouse look: the law, the sensitivity, the pitch.
+    // Mouse look: the sensitivity, the pitch; the mouse is always raw, with no law switch (owner hotfix, 2026-09-30).
     const look = (): Promise<Record<string, unknown>> => page.evaluate(() => ({ ...window.__viewer.setLook({}) }));
     expect(await look()).toMatchObject({ mouse: 'raw', sensitivity: 1, pitchRatio: 'game', invertPitch: false });
-    await page.locator('#mouselaw button[data-law="stick"]').click();
+    await expect(page.locator('#mouselaw')).toHaveCount(0);
     await page.locator('#sensitivity').fill('2');
     await page.locator('#invertpitch').setChecked(true);
     await page.locator('#uniformpitch').setChecked(true);
-    expect(await look()).toMatchObject({ mouse: 'stick', sensitivity: 2, pitchRatio: 'uniform', invertPitch: true });
+    expect(await look()).toMatchObject({ mouse: 'raw', sensitivity: 2, pitchRatio: 'uniform', invertPitch: true });
     // Reloaded, the same page comes back as it was left, in the panel and in the game.
     await page.reload();
     await expect(page.locator('#status')).toContainText(/triangles|tris/);
     expect(await page.evaluate(() => window.__viewer.audio())).toMatchObject({ volume: 0.5, muted: true });
-    expect(await look()).toMatchObject({ mouse: 'stick', sensitivity: 2, pitchRatio: 'uniform', invertPitch: true });
+    expect(await look()).toMatchObject({ mouse: 'raw', sensitivity: 2, pitchRatio: 'uniform', invertPitch: true });
     await page.locator('#panel-toggle').click();
     await expect(page.locator('#mute')).toBeChecked();
     await expect(page.locator('#volume')).toHaveValue('0.5');
-    await expect(page.locator('#mouselaw button[data-law="stick"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#sensitivity')).toHaveValue('2');
+    await expect(page.locator('#invertpitch')).toBeChecked();
+    await expect(page.locator('#uniformpitch')).toBeChecked();
   });
 
   test('while walking the fullscreen button leaves the bottom-right corner of the HUD (the range readout) for the left edge', async ({ page }) => {
