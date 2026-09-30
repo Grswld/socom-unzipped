@@ -71,8 +71,9 @@ next record's three vertices are loaded before the test (vi5-vi7, vf17-vf19 live
 | writes before the dispatcher | `vi1` = TOP, `vi7` = 4, `vi2` = q37.x + 2 vi9, `vi3` = TOP+4+3 vi9, `vi9` = 0; vf27-vf30 the last vertex's; MAC/STATUS from the last `ADDy.z`; records TOP+4 .. TOP+4+3 vi9-1 | **[verified]** |
 | the dispatcher from 0x1b60 | exactly as at `0x1b50` after its `vi14 = 0`, but from the live-in index | **[verified]** |
 
-The corpus TOPs are 424 and 724 and the list sits at q340-q403: the repack's records never touch the list or the
-header, but nothing in the microcode guarantees it, so native checks it (§3). **[verified]**
+The corpus TOPs are 424 and 724 and the list sits at q340-q403: no store of the program touches the list, the
+header or the packet pointers at q329, but nothing in the microcode guarantees it, so native proves it (§3).
+**[verified]**
 
 ## 3. What was implemented (`agent/s17-n1-33c8`)
 
@@ -81,10 +82,20 @@ header, but nothing in the microcode guarantees it, so native checks it (§3). *
   `cmdFaceNormals` (`0x66`, with the triangle clamp every handler has) and `repackFits`. The pre-scan starts at the
   live-in `vi14` and admits `0x66` only for this entry (`Ctx::faceNormals`); at `0x1b50` a `0x66` is still
   `unknown_command` and a list holding one still hands back whole (a test holds it).
-- Refusals, whole-program with pc left at `0x33c8` (`runtime/vu1_native_refusals.h`, appended): `skin_pass` (A),
-  `repack_range` (`vi9` outside 1..256, the records wrapping VU memory or overlapping the list's 64 qwords),
-  `resume_index` (`vi14` outside the list); the dispatcher's own (`xgkick_cycle_exact`, `unknown_command`, the
-  header ceilings, ...) are keyed `entry=0x33c8`. Mid-list hand-backs at `0x1b60` are exact, as at `0x1b50`.
+- Refusals, whole-program with pc left at `0x33c8` and nothing written (`runtime/vu1_native_refusals.h`,
+  appended): `skin_pass` (A), `repack_range` (`vi9` outside 1..256, or the records failing the write proof below),
+  `resume_index` (`vi14` outside the list), `write_range cmd=` (that command's stores would fail the proof) and
+  `resume_command cmd=` (the resumed list holds a command other than `0x66`, `0x08`, `0x40`); the dispatcher's own
+  (`xgkick_cycle_exact`, `unknown_command`, the header ceilings, ...) are keyed `entry=0x33c8`.
+- **The write proof (fix round, 2026-09-30).** The pre-scan validates by reading the list, the header TOP+2 and
+  the packet pointers at q329; a later store landing on any of them would let a command run on something the scan
+  never saw. So before the repack's first store every store range of the program is proven not to wrap VU memory
+  and not to touch those three (`writeRangeClear`): the repack's records; `0x66`'s index records [1],
+  TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1); `0x08`'s staging triples, q40 + 3 max(TOP+2.z, 1); `0x40`'s tag qwords
+  290 and 300 and the nine packet qwords after each of q329.x and q329.y (its own rewrite of q329 keeps the pair).
+  Only those three commands are admitted after the resume, because only their ranges are derived. The handler-side
+  ceilings (lowered only by the test knobs) are checked there too, so no clamp can hand back mid-list after the
+  repack has stored: the program is accepted with every write proven, or refused before the first write.
 - The gate: `Vu1NativeProgram` gained an optional `enabled()`, asked after the (hash, pc) match (`ps2_vu1.h`,
   `ps2_vu1_core.cpp`); the registry's `0x33c8` row points it at `PS2X_VU1_NATIVE_33C8`, read once. Off, run()
   finds no program there, exactly as before: `no_native_entry` counted, no `native-entered` count, the generated
@@ -94,8 +105,7 @@ header, but nothing in the microcode guarantees it, so native checks it (§3). *
 
 - **The fence is three real programs.** Every (B) dump of the corpus is `66 08 40 42` from index 1 with 15-46
   vertices; the walk's (B) entries run two to two and a half times the corpus's cycles (§0 item 2's estimate), so
-  bigger meshes, same code path. A
-  list shape outside the corpus passes the same pre-scan rules the `0x1b50` entry applies.
+  bigger meshes, same code path. A list shape outside `66 08 40 42` from any index is refused (`resume_command`).
 - The handlers' known caveats carry over unchanged (the file's header): FMAC flags committed immediately (no FMAND
   in `0x66` or the repack), `m_cycle` not advanced (VU cycles/s under-reports by what these lists cost), the
   immediate XGKICK model required.
@@ -107,7 +117,9 @@ header, but nothing in the microcode guarantees it, so native checks it (§3). *
 - `ps2xTest/src/vu1_ops_tests.cpp`, six cases on the real image (the fixture `vu1dump3_prog_31.bin` with a last-bone
   state written over it): the gate; (B) against the interpreter (register file and VU data memory; packets too under
   the immediate XGKICK model); a zero triangle count; (A) refused as `skin_pass` with the microcode's own end state;
-  six unboundable states refused under their reason; `0x1b50` unchanged. RED on a stub, GREEN on the code, and
+  thirteen unprovable states (the repack's, `0x66`'s, `0x08`'s and `0x40`'s ranges, the resume index, a `0x06` in
+  the list, a lowered vertex ceiling) each refused under its reason with the register file and VU data memory
+  unchanged against a snapshot taken as the program was entered; `0x1b50` unchanged. RED on a stub, GREEN on the code, and
   three planted mutations (no `MR32.w`, `OPMSUB` operands swapped, `SQ.xyz` for `SQ.xyzw` in `0x66`) each fail.
 - Scratch, not committed: the same comparison over the 25 real `0x33c8` dumps, `PASS: 0 of 25 differ, 3 taken
   natively`, `skin_pass n=22 cycles=6120`, against the interpreter (`PS2X_VU1_FAST=0`) and against the generated
@@ -116,7 +128,10 @@ header, but nothing in the microcode guarantees it, so native checks it (§3). *
   4.7-5.6 against 2.6-3.1. **[measured]**, a scratch reading, not rung one.
 - The walk's native path, for scale: `[vu1-stats]` means over the window, `host=275.1 ms/s`, `native-entered/s=14288`,
   `native-ended/s=9754`; less the fallback's 152.0 ms/s that is at most 8.6 µs per native entry (12.6 per list it
-  ended) against 7.84 µs per generated `0x33c8` entry. **[measured]** from `mission.game.log`.
+  ended) against 7.84 µs per generated `0x33c8` entry. **[measured]** from `mission.game.log`. That per-entry figure
+  does not carry across the knob: with it on, EVERY `0x33c8` entry counts as `native-entered`, about 13.8k/s over
+  the walk, the (A) skin passes included (about 9.5k/s of them, each refused and handed back) -- so `native-entered/s`, `native-handbacks/s` and
+  any cost per native entry change meaning between the two legs (§6.4).
 
 ## 6. The controller's fence and pick (after a build)
 
@@ -132,7 +147,10 @@ header, but nothing in the microcode guarantees it, so native checks it (§3). *
    the existing `--native --regs all` fixture sets, unchanged by construction.
 4. Rung two: the mission walk knob off then on, one exe, `PS2X_DEV=1`; SYNCV decides, `ee: work=` and `[vu1-stats]
    host=` say why; with `PS2X_VU1_NATIVE_REFUSALS=1` the `0x33c8 no_native_entry` row becomes `skin_pass`, at about
-   two thirds of its entries.
+   two thirds of its entries. Compare the legs by `[vu1-stats] host=` ms/s and `ee: work=` ms/s only: knob on, every
+   `0x33c8` entry, (A) included, is counted in `native-entered/s` (about 13.8k/s more than knob off) and each (A) in
+   `native-handbacks/s` (about 9.5k/s more), so the native counters and any per-entry native cost are not comparable across the
+   knob.
 
 ## 7. Not done: (A), the `0x52` body (N2)
 
@@ -143,3 +161,16 @@ exit; about 250-350 lines and a test like §5's. The difficulty is not size: its
 I, MAC/STATUS) is read by the next MSCAL (research/15 §4.5), each MSCAL being one dump the fence compares
 `--regs all`. The stake is 18.6 ms/s plus (A)'s share of the 108, 10-32 ms/s, less what native costs. Entry `0x0`
 (11 % of the fallback, 1.68 M tiny entries) is not a candidate.
+
+**LATER candidate: the `0x1b50` entry's unproven writes.** The fix round's write proof (§3) is `0x33c8`'s only.
+The `0x1b50` entry carries the same hole, in the base and unchanged by this branch: its pre-scan reads the list, the
+header and q329 once and then trusts them, while its handlers store to ranges nothing bounds against them --
+`0x08` stages at q40 + 3k for up to 256 vertices (q340, the list, from the 101st vertex); `0x68`/`0x70` convert the
+records at TOP+4 in place (the list from any TOP below 340 with TOP+4+3·TOP+2.z past 340; TOP+2 itself is never
+hit, being below); `0x28`/`0x40` write nine qwords after each packet pointer read from q329, guest data. The input
+that reaches it: a `0x1b50` list with `0x08` and TOP+2.z of 101 to 256 (the pre-scan allows 256), or TOP at most
+336 with `0x68`/`0x70` and enough vertices, or q329.x/.y within nine qwords below the list. The microcode does the
+same stores, so every handler native runs stays exact; the proof is what breaks -- the list re-read at `0x1b60` can
+then hold a command, or a `0x30`/`0x32`/`0x34` block, the scan never checked. No corpus list comes near (maxima 78
+vertices, TOP 424/724, q329 = 300/290). The fix would be `0x33c8`'s: derive each admitted command's store range
+and refuse whole, a pre-scan change to the most-covered entry, so it waits for its own task and fence.
