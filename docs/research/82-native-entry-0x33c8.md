@@ -105,7 +105,7 @@ header or the packet pointers at q329, but nothing in the microcode guarantees i
 
 - **The fence is three real programs.** Every (B) dump of the corpus is `66 08 40 42` from index 1 with 15-46
   vertices; the walk's (B) entries run two to two and a half times the corpus's cycles (§0 item 2's estimate), so
-  bigger meshes, same code path. A list shape outside `66 08 40 42` from any index is refused (`resume_command`).
+  bigger meshes, same code path. Any command other than `0x66`, `0x08`, `0x40` and `0x42` in the resumed list is refused (`resume_command`); a list made only of those, in any order or count, is accepted with every write proven (the review of 7e894298, 2026-09-30).
 - The handlers' known caveats carry over unchanged (the file's header): FMAC flags committed immediately (no FMAND
   in `0x66` or the repack), `m_cycle` not advanced (VU cycles/s under-reports by what these lists cost), the
   immediate XGKICK model required.
