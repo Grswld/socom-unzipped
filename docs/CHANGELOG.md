@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-297 merges (81 on the first-parent line, 216 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+298 merges (82 on the first-parent line, 216 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-72 merges.
+73 merges.
 
+- 2026-09-29 `f5ce378b` the refusal tests force the dispatcher's XGKICK model (CI red on a0709bca) [agent/s17-refusal-tests]
 - 2026-09-29 `77291f37` the native VU1 refusal count behind PS2X_VU1_NATIVE_REFUSALS (Sprint 17 F) [agent/s17-vu1-refusals]
 - 2026-09-29 `9c446e49` hostprof_diff skips stack lines, replay_bench resolves its exe (issues #116, #117) [agent/s17-tools-116-117]
 - 2026-09-29 `19c63c88` C2, the flag ring drained in one step behind PS2X_VU1_COMMIT_BATCH (Sprint 17 F1) [agent/s17-vu1-c2]
