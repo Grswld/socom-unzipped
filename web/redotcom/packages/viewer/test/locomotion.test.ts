@@ -11,6 +11,7 @@ import {
 } from '../src/locomotion';
 import { clipsFromPack, motionTableFromArchive, type MotionEntry } from '../src/motionTable';
 import { ACTION_CLIPS, SWAP_OVERLAY } from '../src/walk';
+import { ROOT_HEIGHT } from '../src/net/blast';
 
 /**
  * `./locomotion`: the loaded motion's constants (`FUN_00287620`, `FUN_0028ab10`, `FUN_0028aa20`), the pick and blend
@@ -327,5 +328,14 @@ describe.skipIf(noDisc)(`the anim set and the clips on the disc${noDisc ? ' (REA
     const slow = standPlay(0, 0.3, s);
     expect(slow.map((n) => n.motion.name)).toEqual(['seal_rstrafe', 'seal_rstrafe_fast']);
     for (const n of slow) expect(n.speed * n.motion.travel / n.motion.period).toBeCloseTo(19.5, 6);
+  });
+
+  it("ROOT_HEIGHT is skel_root's y at key 0 of MOTION_P.ZAR's seal_stand, seal_crouch, seal_prone (FUN_0057e770 L440983)", () => {
+    const names = { stand: 'seal_stand', crouch: 'seal_crouch', prone: 'seal_prone' } as const;
+    const clips = new Map(clipsFromPack(new Uint8Array(readFileSync(PACK)), Object.values(names)).map((c) => [c.name, c]));
+    for (const [stance, name] of Object.entries(names)) {
+      const root = clips.get(name)!.parts.find((p) => p.name === 'skel_root')!.translations;
+      expect(root[1], name).toBeCloseTo(ROOT_HEIGHT[stance as keyof typeof ROOT_HEIGHT], 2);
+    }
   });
 });

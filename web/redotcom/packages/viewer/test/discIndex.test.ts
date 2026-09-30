@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IsoAssetSource } from '@s2u/archive';
 import { buildIso } from '../../archive/test/isoImage';
-import { indexVerdict, listDiscMaps } from '../src/discIndex';
+import { indexVerdict, listDiscMaps, discOpened } from '../src/discIndex';
 
 /**
  * An unreadable archive on a dropped ISO reaches the disc page's status line with its reason (PL-11, wave-1 B13's
@@ -57,5 +57,32 @@ describe('the disc map list and what would not read in it', () => {
     expect(worker).not.toMatch(/await listMaps\(source\)/);
     expect(main).toMatch(/indexVerdict\(message\.maps, message\.problems\)/);
     expect(main).toMatch(/ui\.setDiscState\(verdict\.note, 'error'\)/);
+  });
+});
+
+describe('the note outlives the disc page (wave-2 carry-over: hideDiscPage took the line with it)', () => {
+  const page = () => {
+    const said: string[] = [];
+    let hidden = false;
+    return { said, hidden: () => hidden, hideDiscPage: () => { hidden = true; }, toast: (t: string) => { said.push(t); } };
+  };
+
+  it('an archive unreadable: the page opens and the note is toasted over the map', () => {
+    const p = page();
+    discOpened(p, indexVerdict([MP2, MP7], [{ path: 'RUN/MP7.ZDB', message: 'zdb: toc runs past the file' }]).note);
+    expect(p.hidden()).toBe(true);
+    expect(p.said).toEqual(['listed 1 of 2 maps; MP7.ZDB unreadable: zdb: toc runs past the file']);
+  });
+
+  it('every archive read: the page opens and nothing is toasted', () => {
+    const p = page();
+    discOpened(p, indexVerdict([MP2], []).note);
+    expect(p.hidden()).toBe(true);
+    expect(p.said).toEqual([]);
+  });
+
+  it('main opens the disc through discOpened with the verdict note, not a bare hideDiscPage', () => {
+    expect(main).toMatch(/discOpened\(ui, verdict\.note\)/);
+    expect(main).not.toMatch(/ui\.hideDiscPage\(\)/);
   });
 });

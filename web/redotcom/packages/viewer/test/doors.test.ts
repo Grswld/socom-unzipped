@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { simMapFromBytes } from '../src/simMap';
-import { DoorSet, pickDoor } from '../src/doors';
+import { DoorSet, pickDoor, type DoorSpec } from '../src/doors';
 import { groundGrid, Walker, TICK, BODY_RADIUS, type WalkInput } from '../src/mover';
 
 /**
@@ -145,4 +145,23 @@ describe.skipIf(!MP2)(`Frostfire's doors${MP2 ? '' : ` (${FIXTURES_ABSENT})`}`, 
     expect(page.state(i).open).toBe(true);
     expect(page.wire()).toEqual(server.wire());
   });
+});
+
+describe('a door\'s SOUND plays at the command\'s own volume (FUN_002659c0 112363-112416: flag 0x10\'s f32 at +8)', () => {
+  const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  const spec = (volume: number): DoorSpec => ({
+    index: 0, node: 'leaf', path: 'leaf', valve: 'v', range: 10, elevation: -1, local: I, parent: I, owners: [],
+    sweep: { minX: -1, maxX: 1, minZ: -1, maxZ: 1 },
+    programs: [{ name: 'swing', root: 0, flags: 0, nodes: ['NA'],
+      sequences: [{ name: 's0', activation: 1, ops: [{ op: 'sound', sound: '.DOOR_WOOD_OPEN', node: 0, volume }] }] }],
+  });
+  for (const volume of [0.4, 1, 2.5]) {
+    it(`a command's ${volume} reaches the page's sound hook`, () => {
+      const heard: [string, number][] = [];
+      const doors = new DoorSet([spec(volume)], null, { sound: (name, _at, v) => heard.push([name, v]) });
+      expect(doors.use(0)).toBe(true);
+      for (let k = 0; k < 10 && doors.state(0).busy; k++) doors.step(TICK);
+      expect(heard).toEqual([['.DOOR_WOOD_OPEN', volume]]);
+    });
+  }
 });

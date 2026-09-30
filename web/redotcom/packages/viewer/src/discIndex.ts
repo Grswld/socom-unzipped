@@ -36,3 +36,18 @@ export function indexVerdict(maps: MapInfo[], problems: IndexProblem[]): { open:
   const named = maps.length - new Set(problems.map((p) => p.path)).size;
   return { open: named > 0, note: `listed ${named} of ${maps.length} maps; ${diagnostics.join('; ')}`, diagnostics };
 }
+
+/** What `discOpened` asks of the page (`./ui`'s `Ui`). */
+export interface DiscPage {
+  hideDiscPage(): void;
+  toast(text: string): void;
+}
+
+/**
+ * The disc opened: the disc page comes down -- and its status line with it, so the `listed N of M maps; X unreadable:
+ * ...` note is said again where the visitor now looks, the toast over the map (the diagnostics list keeps it for good).
+ */
+export function discOpened(page: DiscPage, note: string | null): void {
+  page.hideDiscPage();
+  if (note) page.toast(note);
+}
