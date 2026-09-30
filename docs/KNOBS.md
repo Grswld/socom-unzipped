@@ -170,7 +170,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_VU1_GEN` | Int | `1` | 0 disables the generated VU1 programs. |
 | `PS2X_VU1_HOST_DRAW` | Int | `0` | 1 draws the native dispatcher triangles in host space instead of kicking GIF packets. |
 | `PS2X_VU1_NATIVE` | Int | `1` | 0 reverts the hand-written native VU1 programs to the generated/interpreted path. |
-| `PS2X_VU1_NATIVE_33C8` | Flag | `0` | 1 runs VU1 entry 0x33c8's last-bone repack and resumed 66 06 08 10 18 28 40 54 lists natively; 0 = generated. |
+| `PS2X_VU1_NATIVE_33C8` | Flag | `0` | 1 runs VU1 entry 0x33c8 natively: repack, resumed 66 06 08 10 18 28 40 54 and the 0x02 loop; 0 = generated. |
 | `PS2X_VU1_NATIVE_REFUSALS` | Flag | `0` | 1 counts native VU1 dispatcher refusals by reason, entry and command, with the fallback cycles ([vu1-refuse]). |
 | `PS2X_VU1_NATIVE_TEST_CEILING` | Int | unset | Test hook: lower the native dispatcher vertex and triangle ceilings. |
 | `PS2X_VU1_NATIVE_TEST_CLIP_CEILING` | Int | unset | Test hook: lower the native dispatcher clipped-vertex ceiling. |
