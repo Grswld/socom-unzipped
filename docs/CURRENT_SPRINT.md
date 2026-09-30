@@ -19,7 +19,7 @@ spec:         docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back
               owner's order; approved by the owner 2026-09-27 ~23:00Z). The Sprint 16, 15, 14, 13, 12 and 11 specs closed
               with v0.16.0 down to v0.11.0.
 plans:        docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, the rulings R322-R335 from the global counter, the
-              Outcome, the Log newest first -- its entries before 2026-09-29 in docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
+              Outcome, the Log newest first -- its entries before 2026-09-29 in docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md and those to 2026-09-30 ~10Z in docs/archive/2026-09-27-sprint-17-log-to-2026-09-30.md; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
               The Sprint 16 plan (R299-R321, R314 vacant; docs/superpowers/plans/2026-09-27-sprint-16.md) and the Sprint 15
               plan (R282-R289; R298 the close's window, superseded) with the owner's sitting (R290-R297,
               docs/superpowers/plans/2026-09-26-owner-sitting.md) are closed, their blocks below; the Sprint 14 plan
