@@ -134,9 +134,10 @@ function startInWalk(mapName: string): void {
     if (startedWalk || loaded?.name !== mapName) return;     // entered already, or another map was picked
     if (!playOn) return;                                        // Explore was chosen meanwhile
     if (walk.mode() === 'walk' || walk.setMode('walk')) { startedWalk = true; return; }
-    // The body and clips may still be on their way (~5 s); past that, a slower try, since a player in Play has no
-    // other way onto their feet (no G without `?devmode`, `./flyAccess`).
-    if (++tries < 300) requestAnimationFrame(attempt); else setTimeout(attempt, 1000);
+    // The body and clips may still be on their way (~5 s); past that, a slower try once a second for a minute, since a
+    // player in Play has no other way onto their feet (no G without `?devmode`, `./flyAccess`). A map with no floor to
+    // stand on never allows it, so the tries end there rather than run for the life of the page.
+    if (++tries < 300) requestAnimationFrame(attempt); else if (tries < 360) setTimeout(attempt, 1000);
   };
   attempt();
 }
