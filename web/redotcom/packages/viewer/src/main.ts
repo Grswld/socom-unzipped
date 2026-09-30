@@ -54,7 +54,7 @@ import { PlayUi, readPlayChoice, writePlayChoice } from './features';
 import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
-import { onlineLine, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
+import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
 import type { Rules } from './net/protocol';
 import { PLAY_CLIPS } from './animator';
@@ -1028,6 +1028,7 @@ ui.onRecomSwitch((on) => setPlayMode(on, true));
  * The Online setting (owner, 2026-09-29; `./online`): the choice remembered, the match joined again at the new server or
  * left. A server the URL named is replaced by the choice.
  */
+ui.offerLocal(pageIsLocal(PAGE_LOCATION));    // Local is a developer's: never on the deployed site
 ui.setOnline(NET.choice);
 // The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten on load -- only a
 // choice the visitor makes below takes it out.

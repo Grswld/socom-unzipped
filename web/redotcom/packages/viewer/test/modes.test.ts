@@ -192,6 +192,36 @@ describe('the Online setting in the panel', () => {
     expect([...document.querySelectorAll('#online [aria-pressed="true"]')]).toHaveLength(0);
   });
 
+  it('on a local page keeps all three options', () => {
+    ui.offerLocal(true);
+    expect([...document.querySelectorAll('#online button')].map((b) => (b as HTMLElement).dataset['online'])).toEqual(['off', 'shared', 'local']);
+  });
+
+  it('on the deployed site Local is not rendered at all: two options, one pressed, both working', () => {
+    ui.offerLocal(false);
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('#online button')];
+    expect(buttons.map((b) => b.dataset['online'])).toEqual(['off', 'shared']);
+    expect(document.querySelector('[data-online="local"]')).toBeNull();
+    expect(document.getElementById('online')!.textContent).not.toMatch(/localhost|Local/);
+    const heard: string[] = [];
+    ui.onOnline((c) => heard.push(c));
+    ui.setOnline('off');
+    buttons[1]!.click();
+    expect(heard).toEqual(['shared']);
+    expect(buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset['online'])).toEqual(['shared']);
+    ui.setOnline('local');                                        // a server=ws://localhost link: nothing pressed
+    expect(buttons.filter((b) => b.getAttribute('aria-pressed') === 'true')).toHaveLength(0);
+  });
+
+  it('the switch lays out two options as it does three: its columns follow its children, and a segment may shrink', () => {
+    const css = readFileSync(resolve(here, '../src/styles.css'), 'utf-8');
+    const rule = css.match(/\.s2u-overlay \.s2u-tabs\[role="group"\]\s*{([^}]*)}/)![1]!;
+    expect(rule).toMatch(/grid-template-columns:\s*none/);          // not the system's fixed 1fr 1fr
+    expect(rule).toMatch(/grid-auto-flow:\s*column/);
+    expect(rule).toMatch(/grid-auto-columns:\s*minmax\(0, 1fr\)/);
+    expect(css).toMatch(/\.s2u-overlay \.s2u-tabs\[role="group"\] \.s2u-tab\s*{[^}]*min-width:\s*0/);
+  });
+
   it('writes the connection line and lights the lamp up or down', () => {
     const lamp = document.getElementById('online-lamp')!;
     ui.setOnlineState('online · 3 players', 'up');

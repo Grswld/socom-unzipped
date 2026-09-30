@@ -213,6 +213,15 @@ export class Ui {
     }
   }
 
+  /**
+   * The Local option only on a local page (owner, 2026-09-29; `./online` `pageIsLocal`): elsewhere its button is taken
+   * out of the page, not hidden, and the switch lays its two remaining options out as it does three (the segmented
+   * track's columns follow its children, `styles.css`).
+   */
+  offerLocal(local: boolean): void {
+    if (!local) document.querySelector('#online button[data-online="local"]')?.remove();
+  }
+
   /** Puts the Online switch on a choice; 'url' (a server the URL named) presses none. */
   setOnline(choice: OnlineChoice | 'url'): void {
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#online button[data-online]'))) {

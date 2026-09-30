@@ -224,7 +224,7 @@ before and pass through untouched (never added); `server=` (or `mp`) beats `onli
 |---|---|---|---|
 | **Mode** | Explore (the default) · Play (as a SEAL) | `mode=explore` · `mode=play` | `s2u.viewer.recom` |
 | **View** | Modern · PS2 | `view=modern` · `view=ps2` | `s2u.viewer.look` |
-| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
+| **Online** | Off (the default) · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`; offered only on a local page) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
 | map | the picker | `map=MP2` | `s2u.viewer.lastMap` |
 
 **Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
@@ -232,6 +232,11 @@ before and pass through untouched (never added); `server=` (or `mp`) beats `onli
 connection is doing -- connecting, online and the number of players, or "server unreachable" and when it retries (2, 4,
 8 ... 60 s to a server never reached; 1, 2, 4 ... 10 s after a drop) -- and a toast says when it comes up or goes
 away. `&mp` and `&server=` in the address still override it (`viewer/src/online.ts`).
+
+**Local is offered only on a local page** (owner, 2026-09-29): a page served from `localhost`, `127.0.0.1`, `[::1]` or a
+`.localhost` name shows Off · Shared · Local; anywhere else -- the deployed site -- the Local option is not rendered at
+all, the switch shows Off · Shared, and an `online=local` link or a remembered Local falls back to Off (written back
+into the address as `online=off`).
 
 ### Flying (Explore; in Play only with `?devmode`)
 
