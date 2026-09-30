@@ -310,11 +310,11 @@
       <div id="aim-zone" data-play></div>
       <div id="aim-base" data-play hidden><div id="aim-knob"></div></div>
       <div id="touch-lift">
-        <button id="touch-up" type="button" aria-label="up">&#9650;</button>
-        <button id="touch-down" type="button" aria-label="down">&#9660;</button>
+        <button id="touch-up" class="s2u-fab" type="button" aria-label="up">&#9650;</button>
+        <button id="touch-down" class="s2u-fab" type="button" aria-label="down">&#9660;</button>
       </div>
-      <button id="touch-stance" type="button" data-play aria-label="stance: tap stands or crouches, hold goes prone" title="Tap: stand / crouch. Hold: prone.">C<span aria-hidden="true">hold: prone</span></button>
-      <button id="touch-fire" type="button" data-play aria-label="fire">&#9673;</button>
+      <button id="touch-stance" class="s2u-fab" type="button" data-play aria-label="stance: tap stands or crouches, hold goes prone" title="Tap: stand / crouch. Hold: prone.">C<span aria-hidden="true">hold: prone</span></button>
+      <button id="touch-fire" class="s2u-fab" type="button" data-play aria-label="fire">&#9673;</button>
       <!--
         Walk mode's touch layout (owner, 2026-09-29: what a player needs, tidied), for a phone held in landscape, routed
         through the same lanes the pad's buttons are (`./src/main.ts` `padFrame`, `./src/touch.ts` `attachWalkTouch`): the
@@ -324,16 +324,16 @@
       -->
       <div id="touch-walk" data-play>
         <div id="tw-actions">
-          <button id="tw-fire" type="button" data-lane="fire" aria-label="shoot">SHOOT</button>
-          <button id="tw-jump" type="button" data-lane="jump" aria-label="jump"><svg class="s2u-hint__glyph s2u-hint__glyph--square" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 2.5h9v9h-9z"/></svg>JUMP</button>
-          <button id="tw-stance" type="button" data-lane="stance" aria-label="stance: tap crouches, hold goes prone"><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 12.5 11.5h-11z"/></svg></button>
-          <button id="tw-action" type="button" data-lane="action" aria-label="action: doors, climb, ladders"><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3 11 11M11 3 3 11"/></svg></button>
+          <button id="tw-fire" class="s2u-fab" type="button" data-lane="fire" aria-label="shoot">SHOOT</button>
+          <button id="tw-jump" class="s2u-fab" type="button" data-lane="jump" aria-label="jump"><svg class="s2u-hint__glyph s2u-hint__glyph--square" viewBox="0 0 14 14" aria-hidden="true"><path d="M2.5 2.5h9v9h-9z"/></svg>JUMP</button>
+          <button id="tw-stance" class="s2u-fab" type="button" data-lane="stance" aria-label="stance: tap crouches, hold goes prone"><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 12.5 11.5h-11z"/></svg></button>
+          <button id="tw-action" class="s2u-fab" type="button" data-lane="action" aria-label="action: doors, climb, ladders"><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3 11 11M11 3 3 11"/></svg></button>
         </div>
         <div id="tw-scope">
-          <button id="tw-reload" type="button" data-do="reload" aria-label="reload">RELOAD</button>
-          <button id="tw-inventory" type="button" data-lane="inventory" aria-label="next item: grenades, equipment">NEXT</button>
-          <button id="tw-zoom-out" type="button" data-lane="zoomOut" aria-label="zoom out">&minus;</button>
-          <button id="tw-zoom-in" type="button" data-lane="zoom" aria-label="zoom in">+</button>
+          <button id="tw-reload" class="s2u-tab" type="button" data-do="reload" aria-label="reload">RELOAD</button>
+          <button id="tw-inventory" class="s2u-tab" type="button" data-lane="inventory" aria-label="next item: grenades, equipment">NEXT</button>
+          <button id="tw-zoom-out" class="s2u-tab" type="button" data-lane="zoomOut" aria-label="zoom out">&minus;</button>
+          <button id="tw-zoom-in" class="s2u-tab" type="button" data-lane="zoom" aria-label="zoom in">+</button>
         </div>
       </div>
       <p id="rotate-hint" class="s2u-status s2u-status--pill" data-play aria-live="off">Turn your phone sideways to play</p>
