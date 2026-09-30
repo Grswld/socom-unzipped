@@ -9,6 +9,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_guest_clock.h"
 #include "runtime/vu1_native_warning.h"
+#include "runtime/vu1_native_refusals.h"
 #include "ps2_vu1_detail.h"
 #include "ps2x/knobs.h"
 
@@ -1909,32 +1910,108 @@ void VU1Interpreter::continueProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t
 // ============================================================================
 // Fast path: same instruction semantics, no per-cycle scheduler.
 // ============================================================================
-void VU1Interpreter::fastCommit()
+
+// The fast path's flag ring (m_flagPipeline, m_fastFlagHead, m_fastFlagCount): its invariants, which
+// both drains below keep (S17 F C2, research/81; ps2xTest vu1_ops_tests.cpp "flag ring" cases).
+//
+// Producers (fast mode only; the exact path allocates the first !valid slot instead):
+//   * fastPushMacFlags -- every FMAC with a dest (execUpper via pushFmacFlags, Vu1Gen::fmac):
+//     writesMac + writesStatus, mac, the lane status, the product's extraSticky, issuePc.
+//   * queueFsset (FSSET), queueClip (CLIP), queueFcset (FCSET) -- through fastPushFlags:
+//     writesSticky (status & 0xFC0), writesClip (the 24-bit working clip).
+//   Not producers: queueStore and the VF/VI/ACC writes land at once in fast mode; Q (m_fdiv) and P
+//   (m_efu) have their own slots, drained after the ring, in ready order.
+// Order: the live entries are slots head .. head + count - 1 (mod 64), in issue order. Entries land
+//   in that order and a later one wins: MAC and m_lastMacPc (overwrite), STATUS bits 0-3 (overwrite),
+//   STATUS bits 6-11 (FMAC ORs (current | extraSticky) << 6 into them; FSSET replaces them),
+//   bits 4-5 (FDIV's D/I) untouched by the ring, CLIP (overwrite). Two FMACs in one cycle: the
+//   second's MAC and current bits win, both OR their sticky bits. An FSSET or FCSET clears
+//   writesStatus / writesClip of every valid entry issued in the same cycle (so an FMAC beside
+//   an FSSET lands its MAC but not its STATUS); an entry may therefore write nothing.
+// Delay: every entry is ready at issueCycle + kFmacLatency (4); m_cycle does not go back while the
+//   ring is live, so ready cycles do not decrease along it -- but a drain stops at the first entry
+//   not yet ready and never lands one behind it. m_nextReadyCycle is at most the head's ready cycle.
+// valid: set by every push, and true exactly for the live slots. Its readers: queueFsset and
+//   queueFcset (all 64 slots, `valid && issueCycle == m_cycle`), pipelinesPending (any valid slot is
+//   pending work), and the exact path (first !valid slot to fill; commitReadyPipelines skips
+//   !valid) should m_fast change between programs. No reader looks at any other field of a !valid
+//   slot, and every push writes all of an entry's fields, so a drain need only clear `valid` --
+//   but it must clear it: a stale valid bit is a phantom entry to all three readers.
+// Scope: the ring and fastCommit are the unit's, VU1's and VU0's alike (VU0 micro programs take the
+// same fast path through run(), PS2X_VU0_FAST); PS2X_VU1_COMMIT_BATCH is one process-wide choice,
+// so it selects the drain of both units.
+template <bool Batch>
+void VU1Interpreter::fastCommitWith()
 {
     if (m_cycle < m_nextReadyCycle)
         return;
-    while (m_fastFlagCount != 0u)
+    if (!Batch)
     {
-        FlagPipelineEntry &entry = m_flagPipeline[m_fastFlagHead];
-        if (entry.readyCycle > m_cycle)
-            break;
-        if (entry.writesMac)
+        // The old path: every landed entry writes the state, clears its 48 bytes and moves the head.
+        while (m_fastFlagCount != 0u)
         {
-            m_state.mac = entry.mac;
-            m_lastMacPc = entry.issuePc;
+            FlagPipelineEntry &entry = m_flagPipeline[m_fastFlagHead];
+            if (entry.readyCycle > m_cycle)
+                break;
+            if (entry.writesMac)
+            {
+                m_state.mac = entry.mac;
+                m_lastMacPc = entry.issuePc;
+            }
+            if (entry.writesStatus)
+            {
+                const uint32_t current = entry.status & 0xFu;
+                m_state.status = (m_state.status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
+            }
+            if (entry.writesSticky)
+                m_state.status = (m_state.status & 0x03Fu) | (entry.status & 0xFC0u);
+            if (entry.writesClip)
+                m_state.clip = entry.clip;
+            entry = {};
+            m_fastFlagHead = (m_fastFlagHead + 1u) % kMaxFlagEntries;
+            --m_fastFlagCount;
         }
-        if (entry.writesStatus)
+    }
+    else if (m_fastFlagCount != 0u)
+    {
+        // PS2X_VU1_COMMIT_BATCH=1: the ready run folds into locals with the same per-entry formulas
+        // (the native file's commitFmacFlags copy stays in sync), the state, head and count are
+        // written once, and a landed slot only loses its valid bit.
+        uint32_t count = m_fastFlagCount;
+        uint32_t head = m_fastFlagHead;
+        uint32_t mac = m_state.mac;
+        uint32_t status = m_state.status;
+        uint32_t clip = m_state.clip;
+        uint32_t lastMacPc = m_lastMacPc;
+        const uint64_t now = m_cycle;
+        do
         {
-            const uint32_t current = entry.status & 0xFu;
-            m_state.status = (m_state.status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
-        }
-        if (entry.writesSticky)
-            m_state.status = (m_state.status & 0x03Fu) | (entry.status & 0xFC0u);
-        if (entry.writesClip)
-            m_state.clip = entry.clip;
-        entry = {};
-        m_fastFlagHead = (m_fastFlagHead + 1u) % kMaxFlagEntries;
-        --m_fastFlagCount;
+            FlagPipelineEntry &entry = m_flagPipeline[head];
+            if (entry.readyCycle > now)
+                break;
+            if (entry.writesMac)
+            {
+                mac = entry.mac;
+                lastMacPc = entry.issuePc;
+            }
+            if (entry.writesStatus)
+            {
+                const uint32_t current = entry.status & 0xFu;
+                status = (status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
+            }
+            if (entry.writesSticky)
+                status = (status & 0x03Fu) | (entry.status & 0xFC0u);
+            if (entry.writesClip)
+                clip = entry.clip;
+            entry.valid = false;
+            head = (head + 1u) % kMaxFlagEntries;
+        } while (--count != 0u);
+        m_state.mac = mac;
+        m_state.status = status;
+        m_state.clip = clip;
+        m_lastMacPc = lastMacPc;
+        m_fastFlagHead = head;
+        m_fastFlagCount = count;
     }
     if (m_fdiv.valid && m_fdiv.readyCycle <= m_cycle)
     {
@@ -1964,6 +2041,35 @@ void VU1Interpreter::fastCommit()
         if (entry.valid && entry.readyCycle < next)
             next = entry.readyCycle;
     m_nextReadyCycle = next;
+}
+template void VU1Interpreter::fastCommitWith<false>();
+template void VU1Interpreter::fastCommitWith<true>();
+
+// PS2X_VU1_COMMIT_BATCH (Dev Flag, default 0 = the per-entry drain, R334), read once; run() passes
+// it to setFastCommitBatch so fastCommit reads a plain bool. The bool is process-wide: VU0 micro
+// programs run the same fast path through run(), so the knob selects their drain too.
+bool VU1Interpreter::fastCommitBatchKnob()
+{
+    static const bool s_on = ps2x::knobOn("PS2X_VU1_COMMIT_BATCH");
+    return s_on;
+}
+
+namespace
+{
+    bool s_vu1CommitBatch = false;
+}
+
+void VU1Interpreter::setFastCommitBatch(bool on)
+{
+    s_vu1CommitBatch = on;
+}
+
+void VU1Interpreter::fastCommit()
+{
+    if (s_vu1CommitBatch)
+        fastCommitWith<true>();
+    else
+        fastCommitWith<false>();
 }
 
 // Program end: every queued result lands; the cycle counter advances to the last landing like the
@@ -2468,6 +2574,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // the cycle-exact scheduler (they were ~4.5% of the game thread on it, STATUS 2026-09-09).
     static const bool s_vu0FastEnv = ps2x::knob("PS2X_VU0_FAST") == nullptr || std::atoi(ps2x::knob("PS2X_VU0_FAST")) != 0;
     m_fast = s_fastEnv && (m_unit == Unit::VU1 || s_vu0FastEnv) && !traceThis;
+    // S17 F C2: which flag-ring drain fastCommit runs, VU1 and VU0 alike (the knob is read once).
+    setFastCommitBatch(fastCommitBatchKnob());
     static const bool s_genEnv = ps2x::knob("PS2X_VU1_GEN") == nullptr || std::atoi(ps2x::knob("PS2X_VU1_GEN")) != 0;
     // Hand-written native programs (src/lib/vu/native) replace a microprogram entry point on
     // both the fast and the cycle-exact path: what they produce does not depend on how the
@@ -2496,6 +2604,18 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             m_knownHash = hash;
         }
     }
+    // PS2X_VU1_NATIVE_REFUSALS (runtime/vu1_native_refusals.h): the refusal this run's fallback is charged to.
+    // A fresh program starts with none; a slice of a program a budget stop left pending keeps its own.
+    const bool refusalsOn = m_unit == Unit::VU1 && Vu1Refusals::enabled();
+    int refusalSlot = -1;
+    uint64_t refusalCycle = runStartCycle;
+    auto refusalStart = runStart;
+    if (refusalsOn)
+    {
+        if (!m_programPending)
+            Vu1Refusals::programSlot() = -1;
+        refusalSlot = Vu1Refusals::programSlot();
+    }
     // The entry pc is part of the native key, so this resolves on every run.
     m_nativeFn = nullptr;
     if (s_nativeEnv && hashableImage)
@@ -2503,8 +2623,13 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         const Vu1NativeProgram *table = m_nativeTable ? m_nativeTable : g_vu1NativePrograms;
         const uint32_t count = m_nativeTable ? m_nativeCount : g_vu1NativeProgramCount;
         for (uint32_t i = 0; i < count; ++i)
-            if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn)
+            if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn &&
+                (!table[i].enabled || table[i].enabled()))
                 m_nativeFn = table[i].fn;
+        // A fresh program in an image with a native program, entered where it has none (0x0000, 0x33c8).
+        if (refusalsOn && !m_nativeFn && !m_programPending &&
+            Vu1NativeWarning::hashHasNativeEntry(table, count, m_knownHash))
+            refusalSlot = Vu1Refusals::note(m_state.pc, Vu1Refusals::Reason::NoNativeEntry);
         // Audit 2026-09-17 section 2.2 F7: the table is keyed to one disc's microcode hash, so
         // another revision ran the interpreter with nothing to say why. One line, once, and only
         // after a second of uninterrupted misses -- a boot whose gameplay microcode has not been
@@ -2529,12 +2654,30 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         !m_state.haltAfterDelaySlot && !m_state.branchPending)
     {
         g_vu1NativeEntered.fetch_add(1, std::memory_order_relaxed);
+        const uint32_t nativeEntryPc = m_state.pc;
+        // Forget any slot noted before this call, so a hand-back that names no reason is unnamed_handback,
+        // never charged to a stale key.
+        if (refusalsOn)
+            Vu1Refusals::takeNoted();
         programEnded = m_nativeFn(*this, budgetEnd);
         if (programEnded)
             g_vu1NativeEnded.fetch_add(1, std::memory_order_relaxed);
         else
+        {
             g_vu1NativeHandBacks.fetch_add(1, std::memory_order_relaxed);
+            if (refusalsOn)
+            {
+                // The native program noted its reason; everything from here on is the fallback's.
+                refusalSlot = Vu1Refusals::takeNoted();
+                if (refusalSlot < 0)
+                    refusalSlot = Vu1Refusals::note(nativeEntryPc, Vu1Refusals::Reason::UnnamedHandBack);
+                refusalCycle = m_cycle;
+                refusalStart = std::chrono::steady_clock::now();
+            }
+        }
     }
+    else if (refusalsOn && m_nativeFn && !m_programPending)
+        refusalSlot = Vu1Refusals::note(m_state.pc, Vu1Refusals::Reason::StateGuard);
     if (m_fast)
     {
         // Known program (recompiled image): run the generated code until it ends the program or
@@ -2812,6 +2955,16 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         const auto runEnd = std::chrono::steady_clock::now();
         ps2GuestClockExcludedNs().fetch_add(
             std::chrono::duration_cast<std::chrono::nanoseconds>(runEnd - runStart).count(), std::memory_order_relaxed);
+        if (refusalsOn)
+        {
+            if (refusalSlot >= 0)
+            {
+                const auto hostNs = std::chrono::duration_cast<std::chrono::nanoseconds>(runEnd - refusalStart).count();
+                Vu1Refusals::addCost(refusalSlot, m_cycle - refusalCycle, hostNs > 0 ? static_cast<uint64_t>(hostNs) : 0u,
+                                     m_programPending);
+            }
+            Vu1Refusals::maybePrint(runEnd);
+        }
     }
     // PS2X_VU_STATS=1: once a second, VU1 programs / cycles executed and host time spent in run().
     {

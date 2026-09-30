@@ -10,12 +10,9 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-28 01:24Z, LATEST) -- Sprint 16 is CLOSED on `sprint-16`; the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24).**
-  Done: V0, R1a, R2a, R3a, R5, L1a, L1b (#73), L2 (#74), F0, F2 (ADOPTED: the read-back 123 → 20 ms/s, `submit=` 568 → 541), X1, X3, X5. Carried to Sprint 17
-  (milestone 7): #70 (R1b at `3d17f192`, research/76), #71, #57, #59; to the backlog #32, #41.
-  Next: Sprint 17 "sixty and the way back" (spec agreed 2026-09-27), opened by its own seat off `main`; until then no
-  sprint branch is open. Record: the plan's Outcome.
-- **Next free ruling number: R322** (R299-R321 are Sprint 16's, its plan; R298 the Sprint 15 close's window, superseded).**
+- **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1) and PROVED by the batch-5 chain on 1fd3cfdb with everything merged before it. No close date (R338); one controller in the main tree (owner).**
+  Now: batch 5 PROVED (chain s17_b5 ALL GREEN on 1fd3cfdb, C1 adopted: SYNCV 23.3, FRAME 16.72); N1 and C2 NOT picked; next the slice to main, the refusal count with N1 on, N2 sized; #110 parked (O27).
+- **Next free ruling number: R339** (R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -54,8 +51,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 16 controller** (`.claude/worktrees/sprint-16-cronjob-setup-76e59d`) closed the sprint and ends; nothing
-  of it runs. **Keep** `wt-s16-r1b` (`agent/s16-r1b` at `3d17f192`, unmerged; its `logs/` hold research/76's patch and script).
+- **The main-tree controller from 2026-09-28 02:52Z is `socom-pc-e0`** (seated by the owner under the ruling above); the
+  Sprint 16 desktop seat (`.claude/worktrees/sprint-16-cronjob-setup-76e59d`) ended after the close. **Keep** `wt-s16-r1b` (`agent/s16-r1b` at `3d17f192`, unmerged; its `logs/` hold research/76's patch and script).
 - **Other sessions' trees, never edit:** the site/web session's `wt-doc-surfaces`, `wt-domain-socomunzipped`, `wt-web-*`,
   `socom_pc_web`; the Sprint 17 seat's `.claude/worktrees/mission-frame-drops-7e50ea`; `wt-pad-focus`, `wt-cherry`, `wt-ci-fix`.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
@@ -63,7 +60,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 6. What is owed
 
 - **The owner's rows** (`docs/SITTING.md`): O22 the helper as a shipped binary; O25 the persona viewer's human pass.
-- **After this close:** the PR `sprint-16 -> main` (approved 22:50Z), the three checks, the merge commit, the tag `v0.16.0` on it, `main` merged back; the push of `sprint-16` first -- the owner's hand (O24; this seat cannot move to the main tree); this session watches origin and opens the PR when it lands.
+- **After this close:** `main` (`d77b58c5`) merged back into `sprint-16` and pushed -- the main-tree seat's; tonight's collisions audit (the guards) is Sprint 17's Task 0 material, its seat holds the draft.
 - **Carried to Sprint 17's Task 0:** R1b (#70), R2 (#71), #57's r0004 leg, #59's fence, R3b, R3a's developer build, F1, F3
   (#32, backlog), X2, X4 (#41, backlog).
 - 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `../scotho/apps/s2u/src/ds`.

@@ -27,13 +27,27 @@
 #include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
 #include "Kernel/Stubs/Helpers/GsRuntimeState.h"
 #include "Kernel/Stubs/Helpers/LibCRuntimeState.h"
+#include "Kernel/Syscalls/System.h"   // Sprint 17 Q2: the boot-argument block, SetupThread
+#include "Kernel/Syscalls/Thread.h"   // Sprint 17 Q2: LoadExecPS2 and its ELF-name decision
+#include "Kernel/Syscalls/RPC.h"      // Sprint 17 Q2: the IOP module table
+#include "Kernel/Syscalls/FileIO.h"   // Sprint 17 Q2 review: the guest's open files across a restart
+#include "socom2_libnetb.h"           // Sprint 17 Q2 review: the guest's sockets across a restart
+#include "socom2_hostnet.h"
+#include "ps2x/exit_codes.h"
+#include "runtime/ee_scheduler.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace
 {
@@ -85,6 +99,253 @@ namespace
         std::lock_guard<std::mutex> lock(state.warningMutex);
         auto it = state.warningCount.find(name);
         return (it != state.warningCount.end()) ? it->second : 0u;
+    }
+}
+
+// Sprint 17 Task Q2: LoadExecPS2 as an in-process restart of the guest (D3).
+//
+// Leaving SOCOM Online is the game's own LoadExecPS2("cdrom0:\SCUS_972.75;1", 3, {"--menu_state",
+// "dlgAfterErrorReboot.rdr", ""}) from 0x22ED54 (docs/research/78-back-to-the-main-menu.md). On the console the
+// kernel reloads the ELF and the crt0 hands main() the arguments; this runtime used to exit 74.
+//
+// What the guest reads after a boot (game/analysis/SCUS_972.75.decomp.c, cited by address):
+//   - the crt0 `entry` zeroes the bss, calls SetupThread (syscall 0x3C) with its own argument block `_args` at
+//     0x1D5800 as $a3, then calls main(argc = *0x1D5800, argv = 0x1D5804) (FUN_001c4cc0);
+//   - main() keeps argv[0] as the program name (PTR_DAT_001ce650) and reads argc-1 options from argv+1, so the
+//     kernel's argv[0] is the ELF path LoadExecPS2 was given and the request's own arguments follow it;
+//   - the SDK's SetArg (0x1ACCF8) writes the request into the kernel's boot-argument area, the block syscall 0x5B
+//     answers for entry 3 (_InitSys caches it at 0x1CD0F0): a pointer to the filename at base+0, the argv
+//     pointers at base+4*(i+1), the strings from base+0x40.
+// So the restart rewrites the kernel block from the decoded request at the same 0x5B address, and the runtime's
+// SetupThread copies it into the crt0's block, which is the path main() reads.
+namespace
+{
+    namespace fs = std::filesystem;
+
+    constexpr uint32_t kQ2Entry = 0x00100000u;
+    constexpr uint32_t kQ2SegmentBytes = 32u;
+    constexpr uint32_t kQ2SegmentMemBytes = 64u;
+    // Where this test's crt0 keeps its argument block (SOCOM II's is at 0x1D5800; any address in RAM does).
+    constexpr uint32_t kQ2Crt0ArgsAddr = 0x00110000u;
+    constexpr uint32_t kQ2ModulePathAddr = 0x00002000u;
+    constexpr uint32_t kQ2DirtyByteAddr = 0x00300000u;
+
+    void q2Put32(uint8_t *rdram, uint32_t addr, uint32_t value)
+    {
+        std::memcpy(rdram + (addr & PS2_RAM_MASK), &value, sizeof(value));
+    }
+
+    uint32_t q2Get32(const uint8_t *rdram, uint32_t addr)
+    {
+        uint32_t value = 0;
+        std::memcpy(&value, rdram + (addr & PS2_RAM_MASK), sizeof(value));
+        return value;
+    }
+
+    std::string q2GetStr(const uint8_t *rdram, uint32_t addr)
+    {
+        std::string out;
+        for (uint32_t i = 0; addr != 0u && i < 256u; ++i)
+        {
+            const char c = static_cast<char>(rdram[(addr + i) & PS2_RAM_MASK]);
+            if (!c)
+                break;
+            out.push_back(c);
+        }
+        return out;
+    }
+
+    void q2PutStr(uint8_t *rdram, uint32_t addr, const std::string &s)
+    {
+        std::memcpy(rdram + (addr & PS2_RAM_MASK), s.c_str(), s.size() + 1u);
+    }
+
+    // A MIPS ET_EXEC with one PT_LOAD segment: 32 bytes of a pattern at kQ2Entry, 64 bytes in memory (the rest
+    // zeroed bss), exactly the shape PS2Runtime::loadELF reads.
+    fs::path q2WriteTestElf()
+    {
+        static int counter = 0;
+        const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+        const fs::path dir = fs::temp_directory_path() / ("ps2x_q2_" + std::to_string(ticks) + "_" + std::to_string(counter++));
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        const fs::path elf = dir / "q2_test.elf";
+
+        std::vector<uint8_t> bytes(52u + 32u + kQ2SegmentBytes, 0u);
+        auto w16 = [&](size_t at, uint16_t v) { std::memcpy(bytes.data() + at, &v, 2); };
+        auto w32 = [&](size_t at, uint32_t v) { std::memcpy(bytes.data() + at, &v, 4); };
+        bytes[0] = 0x7F; bytes[1] = 'E'; bytes[2] = 'L'; bytes[3] = 'F';
+        bytes[4] = 1;   // ELFCLASS32
+        bytes[5] = 1;   // little-endian
+        bytes[6] = 1;   // EV_CURRENT
+        w16(16, 2);     // ET_EXEC
+        w16(18, 8);     // EM_MIPS
+        w32(20, 1);     // version
+        w32(24, kQ2Entry);
+        w32(28, 52);    // phoff
+        w32(32, 0);     // shoff
+        w32(36, 0);     // flags
+        w16(40, 52);    // ehsize
+        w16(42, 32);    // phentsize
+        w16(44, 1);     // phnum
+        // the one program header
+        w32(52 + 0, 1);                    // PT_LOAD
+        w32(52 + 4, 84);                   // offset
+        w32(52 + 8, kQ2Entry);             // vaddr
+        w32(52 + 12, kQ2Entry);            // paddr
+        w32(52 + 16, kQ2SegmentBytes);     // filesz
+        w32(52 + 20, kQ2SegmentMemBytes);  // memsz
+        w32(52 + 24, 5);                   // PF_R | PF_X
+        w32(52 + 28, 16);                  // align
+        for (uint32_t i = 0; i < kQ2SegmentBytes; ++i)
+            bytes[84u + i] = static_cast<uint8_t>(0x11u + i);
+
+        std::ofstream out(elf, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        return elf;
+    }
+
+    void q2RemoveTestElf(const fs::path &elf)
+    {
+        std::error_code ec;
+        fs::remove_all(elf.parent_path(), ec);
+    }
+
+    // loadELF's configureIoPathsFromElf rewrites the process-wide IoPaths; every case that reloads an ELF puts them
+    // back, as support_state_tests.cpp's CdRootFixture does, so the suite stays order-independent.
+    struct Q2IoPathsGuard
+    {
+        PS2Runtime::IoPaths saved;
+        Q2IoPathsGuard() : saved(PS2Runtime::getIoPaths()) {}
+        ~Q2IoPathsGuard() { PS2Runtime::setIoPaths(saved); }
+    };
+
+    // sceInetCreate(type 0 = datagram, no local port) through the libnetb seam, as the game opens one; the cid
+    // (<= 0 on failure) owns a host socket in socom2_hostnet's table.
+    int32_t q2OpenLoopbackCid(uint8_t *rdram)
+    {
+        constexpr uint32_t kSendAddr = 0x00004000u, kRecvAddr = 0x00004100u, kRecvSize = 0x100u;
+        const uint32_t create[8] = {};
+        std::memcpy(rdram + kSendAddr, create, sizeof(create));
+        socom2_libnetb::call(rdram, 1u, kSendAddr, sizeof(create), kRecvAddr, kRecvSize);
+        int32_t cid = 0;
+        std::memcpy(&cid, rdram + kRecvAddr, sizeof(cid));
+        if (cid > 0 && socom2_hostnet::bindSocket(cid - 1, socom2_hostnet::Endpoint{0x7f000001u, 0u}) != 0)
+            return -1;
+        return cid;
+    }
+
+    // fioOpen("host0:/<name>", O_RDONLY) through the syscall, with the IoPaths' host root at the ELF's directory
+    // (what loadELF sets): the guest's file descriptor, < 0 on failure.
+    int32_t q2OpenGuestFile(PS2Runtime &runtime, uint8_t *rdram, const fs::path &elf, const char *name)
+    {
+        {
+            std::ofstream out(elf.parent_path() / name, std::ios::binary | std::ios::trunc);
+            out << "q2";
+        }
+        PS2Runtime::configureIoPathsFromElf(elf.string());
+        constexpr uint32_t kPathAddr = 0x00004200u;
+        q2PutStr(rdram, kPathAddr, std::string("host0:/") + name);
+        R5900Context ctx{};
+        setRegU32(ctx, 4, kPathAddr);
+        setRegU32(ctx, 5, PS2_FIO_O_RDONLY);
+        ps2_syscalls::fioOpen(rdram, &ctx, &runtime);
+        return static_cast<int32_t>(getRegU32(&ctx, 2));
+    }
+
+    // The IOP module table gets a row the way the game puts one there: sceSifLoadModule of a path in guest RAM.
+    void q2LoadOneIopModule(PS2Runtime &runtime, uint8_t *rdram)
+    {
+        q2PutStr(rdram, kQ2ModulePathAddr, "host0:/q2/fake_module.irx");
+        R5900Context ctx{};
+        setRegU32(ctx, 4, kQ2ModulePathAddr);
+        ps2_syscalls::SifLoadModule(rdram, &ctx, &runtime);
+    }
+
+    // The crt0's SetupThread(gp, stack, stack_size, args, root): $a3 is the block the kernel fills.
+    void q2Crt0SetupThread(PS2Runtime &runtime, uint8_t *rdram)
+    {
+        R5900Context ctx{};
+        setRegU32(ctx, 4, 0x00108000u);      // gp
+        setRegU32(ctx, 5, 0xFFFFFFFFu);      // stack: the top of RAM
+        setRegU32(ctx, 6, 0x00080000u);      // stack size, as SOCOM II's crt0 passes it
+        setRegU32(ctx, 7, kQ2Crt0ArgsAddr);  // args
+        setRegU32(ctx, 29, PS2_RAM_SIZE - 0x10u);
+        ps2_syscalls::SetupThread(rdram, &ctx, &runtime);
+    }
+
+    // Sprint 17 Q2 display round: SOCOM II's crt0 clearing loop (entry_0x180008, 0x18012c..0x180144: sq $zero,
+    // 0($v0); sltu $at,$v0,$v1; bnez $at with addiu $v0,$v0,0x10 in the delay slot, the generated backward edge's
+    // eeCheckpointDue return), here over 2 MB, then a known word. Registered at the entry and at the loop label, as
+    // the generated table resumes the function mid-way.
+    constexpr uint32_t kQ2ClearLoopPc = kQ2Entry + 0x10u;
+    constexpr uint32_t kQ2ClearStart = 0x01000000u;
+    constexpr uint32_t kQ2ClearEnd = 0x01200000u;
+    constexpr uint32_t kQ2ClearDoneAddr = 0x00120000u;
+    constexpr uint32_t kQ2ClearDoneValue = 0xC1EA2ED0u;
+    std::chrono::steady_clock::time_point g_q2ClearDoneAt{};
+    uint64_t g_q2ClearDispatches = 0u;
+
+    void q2Crt0ClearLoop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ++g_q2ClearDispatches;
+        if (ctx->pc != kQ2ClearLoopPc)
+        {
+            setRegU32(*ctx, 2, kQ2ClearStart);
+            setRegU32(*ctx, 3, kQ2ClearEnd);
+        }
+        for (;;)
+        {
+            ctx->pc = kQ2ClearLoopPc;
+            WRITE128(GPR_U32(ctx, 2), _mm_setzero_si128());
+            const bool more = GPR_U32(ctx, 2) < GPR_U32(ctx, 3);
+            setRegU32(*ctx, 2, GPR_U32(ctx, 2) + 16u);
+            if (!more)
+                break;
+            if (runtime->eeCheckpointDue())
+                return;
+        }
+        q2Put32(rdram, kQ2ClearDoneAddr, kQ2ClearDoneValue);
+        g_q2ClearDoneAt = std::chrono::steady_clock::now();
+        ctx->pc = 0u;
+        runtime->eeScheduler().requestStop();
+    }
+
+    struct Q2ClearRun
+    {
+        bool done = false;
+        double ms = 0.0;
+        uint64_t dispatches = 0u;
+    };
+
+    // One boot of the clearing loop on this thread: the scheduler reset with the boot context (as the game thread
+    // does before run()), run until the loop stops it or a watchdog does after budgetMs.
+    Q2ClearRun q2RunClearLoop(PS2Runtime &runtime, uint8_t *rdram, const R5900Context &boot, int budgetMs)
+    {
+        g_q2ClearDoneAt = {};
+        g_q2ClearDispatches = 0u;
+        q2Put32(rdram, kQ2ClearDoneAddr, 0u);
+        std::atomic<bool> finished{false};
+        std::thread watchdog([&]()
+        {
+            const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(budgetMs);
+            while (!finished.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < until)
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (!finished.load(std::memory_order_acquire))
+                runtime.eeScheduler().requestStop();
+        });
+        const auto start = std::chrono::steady_clock::now();
+        runtime.eeScheduler().reset(rdram, boot);
+        runtime.eeScheduler().run();
+        finished.store(true, std::memory_order_release);
+        watchdog.join();
+        Q2ClearRun out;
+        out.done = g_q2ClearDoneAt != std::chrono::steady_clock::time_point{} &&
+                   q2Get32(rdram, kQ2ClearDoneAddr) == kQ2ClearDoneValue;
+        const auto end = out.done ? g_q2ClearDoneAt : std::chrono::steady_clock::now();
+        out.ms = std::chrono::duration<double, std::milli>(end - start).count();
+        out.dispatches = g_q2ClearDispatches;
+        return out;
     }
 }
 
@@ -332,6 +593,291 @@ void register_runtime_state_tests()
                 t.Equals(libc.randNextOffset, 0xA8u,
                          "and so must the _rand_next offset beside it");
             }
+        });
+    });
+
+    MiniTest::Case("Guest restart: LoadExecPS2 in-process (Sprint 17 Q2)", [](TestCase &tc)
+    {
+        tc.Run("a requested restart reloads the ELF, zeroes RAM, resets the kernel and hands the crt0 the arguments", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *rdram = runtime.memory().getRDRAM();
+            const fs::path elf = q2WriteTestElf();
+
+            // The old guest's state: a loaded IRX, a byte of its RAM, a stale kernel block, a PCM ring playing
+            // (snd_PcmStreamStart through the 989snd notify the IOP module forwards), a VBlank count in the GS
+            // mirror -- each one live before the restart, so the assertions after it can fail.
+            q2LoadOneIopModule(runtime, rdram);
+            t.IsTrue(ps2_syscalls::SifLoadedModuleCount() >= 1u, "the IOP module table holds the module the old guest loaded");
+            rdram[kQ2DirtyByteAddr] = 0xABu;
+            const uint32_t block = ps2_syscalls::bootArgumentBlockAddress();
+            q2Put32(rdram, block, 0xDEADBEEFu);
+            const int32_t pcmStart[5] = {4096, 48000, 2, 0x400, 0};
+            runtime.audioBackend().onNotify(0x3Eu, pcmStart, 5u);
+            t.IsTrue(runtime.audioBackend().mixerPcmStreamActive(), "the old guest's PCM ring is playing before the restart");
+            runtime.memory().gs().vsyncTick.store(7u, std::memory_order_release);
+
+            const std::vector<std::string> argv{"--menu_state", "x.rdr", ""};
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), argv, "cdrom0:\\Q2_TEST.ELF;1"), "the first request is taken");
+            t.IsTrue(runtime.guestRestartPending(), "and is pending until the loop thread performs it");
+            t.IsTrue(runtime.restartGuest(), "restartGuest performs the pending request");
+            t.IsFalse(runtime.guestRestartPending(), "which is then no longer pending");
+            t.Equals(runtime.guestRestartCount(), static_cast<uint64_t>(1u), "one restart performed");
+
+            // Guest RAM: zeroed, then the ELF reloaded through the same loader main() uses.
+            t.Equals(static_cast<uint32_t>(rdram[kQ2DirtyByteAddr]), 0u, "the old guest's RAM is gone");
+            t.Equals(static_cast<uint32_t>(rdram[kQ2Entry]), 0x11u, "the ELF's first segment byte is back at its vaddr");
+            t.Equals(static_cast<uint32_t>(rdram[kQ2Entry + kQ2SegmentBytes - 1u]), 0x11u + kQ2SegmentBytes - 1u, "and its last");
+            t.Equals(static_cast<uint32_t>(rdram[kQ2Entry + kQ2SegmentBytes]), 0u, "the bss past filesz is zero");
+            t.Equals(runtime.cpu().pc, kQ2Entry, "the CPU restarts at the ELF's entry");
+
+            // The kernel's boot-argument area, in SetArg's layout at the address syscall 0x5B answers for entry 3:
+            // argc=3 worth of argv pointers at base+4*(i+1), the strings from base+0x40, a null after the third.
+            t.Equals(q2Get32(rdram, block), block + 0x40u, "base+0 points at the filename copy at base+0x40 (SetArg's layout)");
+            t.Equals(q2GetStr(rdram, block + 0x40u), std::string("cdrom0:\\Q2_TEST.ELF;1"), "the filename is the guest's own request path");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, block + 4u)), std::string("--menu_state"), "argv[0] pointer at base+4");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, block + 8u)), std::string("x.rdr"), "argv[1] pointer at base+8");
+            t.IsTrue(q2Get32(rdram, block + 12u) != 0u, "argv[2] pointer at base+12 is set");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, block + 12u)), std::string(""), "and names the empty string");
+            t.Equals(q2Get32(rdram, block + 16u), 0u, "no fourth argument: argc is 3");
+
+            // The crt0's block, through the same syscall the crt0 uses: SetupThread's $a3. main() reads argc-1
+            // options from argv+1, so argc counts the program name the kernel puts at argv[0].
+            q2Crt0SetupThread(runtime, rdram);
+            t.Equals(q2Get32(rdram, kQ2Crt0ArgsAddr), 4u, "argc is 1 + 3: the program name and the three arguments");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, kQ2Crt0ArgsAddr + 4u)), std::string("cdrom0:\\Q2_TEST.ELF;1"), "argv[0] is the program");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, kQ2Crt0ArgsAddr + 8u)), std::string("--menu_state"), "argv[1]");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, kQ2Crt0ArgsAddr + 12u)), std::string("x.rdr"), "argv[2]");
+            t.IsTrue(q2Get32(rdram, kQ2Crt0ArgsAddr + 16u) != 0u, "argv[3] is a real pointer");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, kQ2Crt0ArgsAddr + 16u)), std::string(""), "to the empty string");
+            t.Equals(q2Get32(rdram, kQ2Crt0ArgsAddr + 20u), 0u, "argv[4] is the null terminator");
+            const uint32_t firstString = q2Get32(rdram, kQ2Crt0ArgsAddr + 4u);
+            t.IsTrue(firstString >= kQ2Crt0ArgsAddr + 0x44u && firstString < kQ2Crt0ArgsAddr + 0x44u + 256u,
+                     "the strings live inside the crt0 block's own payload (4 + 16*4 pointers, then 256 bytes)");
+
+            // The rest of the machine.
+            t.Equals(runtime.eeScheduler().currentVSyncTick(), static_cast<uint64_t>(0u), "the scheduler's VBlank tick is 0");
+            t.Equals(runtime.memory().gs().vsyncTick.load(std::memory_order_acquire), static_cast<uint64_t>(0u), "and so is its GS mirror, which read 7 before");
+            t.Equals(ps2_syscalls::SifLoadedModuleCount(), static_cast<size_t>(0u), "the IOP module table is empty: the boot re-loads the IRXs");
+            t.Equals(runtime.audioBackend().mixerActiveHandlers(), static_cast<size_t>(0u), "the mixer has no live handler");
+            t.Equals(runtime.audioBackend().mixerActiveStreams(), static_cast<size_t>(0u), "no live stream");
+            t.Equals(runtime.audioBackend().mixerActiveVoices(), static_cast<size_t>(0u), "no live voice");
+            t.IsFalse(runtime.audioBackend().mixerPcmStreamActive(), "and the PCM ring that was playing is stopped");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("argc=0: a restart with no arguments hands the crt0 the program name alone and faults nothing", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *rdram = runtime.memory().getRDRAM();
+            const fs::path elf = q2WriteTestElf();
+
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {}), "the request with argc=0 is taken");
+            bool threw = false;
+            bool performed = false;
+            try
+            {
+                performed = runtime.restartGuest();
+            }
+            catch (...)
+            {
+                threw = true;
+            }
+            t.IsFalse(threw, "argc=0 must not fault the restart (Review Focus 3)");
+            t.IsTrue(performed, "and the restart is performed");
+
+            const uint32_t block = ps2_syscalls::bootArgumentBlockAddress();
+            t.Equals(q2Get32(rdram, block), block + 0x40u, "the kernel block still points at the filename");
+            t.Equals(q2GetStr(rdram, block + 0x40u), std::string("q2_test.elf"), "which defaults to the ELF's own name when the guest path is not given");
+            t.Equals(q2Get32(rdram, block + 4u), 0u, "and carries no argv pointer: argc is 0 at the block");
+
+            q2Crt0SetupThread(runtime, rdram);
+            t.Equals(q2Get32(rdram, kQ2Crt0ArgsAddr), 1u, "argc is 1: the program name alone, as the kernel hands a bare boot");
+            t.Equals(q2GetStr(rdram, q2Get32(rdram, kQ2Crt0ArgsAddr + 4u)), std::string("q2_test.elf"), "argv[0] is the program");
+            t.Equals(q2Get32(rdram, kQ2Crt0ArgsAddr + 8u), 0u, "argv[1] is the null terminator");
+            t.Equals(runtime.eeScheduler().currentVSyncTick(), static_cast<uint64_t>(0u), "the scheduler's VBlank tick is 0");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("a restart requested twice before the first completes performs one", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            const fs::path elf = q2WriteTestElf();
+
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {"--menu_state", "first.rdr"}), "the first request is taken");
+            t.IsFalse(runtime.requestGuestRestart(elf.string(), {"--menu_state", "second.rdr"}), "the second, before the first completes, is refused");
+            const PS2Runtime::GuestRestartRequest pending = runtime.guestRestartRequest();
+            t.Equals(pending.argv.size(), static_cast<size_t>(2u), "the pending request is the first one's");
+            t.Equals(pending.argv[1], std::string("first.rdr"), "with its own arguments");
+
+            t.IsTrue(runtime.restartGuest(), "one restart is performed");
+            t.IsFalse(runtime.restartGuest(), "and there is nothing left to perform");
+            t.Equals(runtime.guestRestartCount(), static_cast<uint64_t>(1u), "exactly one");
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {}), "after it completed a new request is taken again");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("the LoadExecPS2 decision: the game's own ELF restarts, a foreign path keeps exit 74", [](TestCase &t)
+        {
+            using ps2_syscalls::loadExecTargetsLoadedElf;
+            t.IsTrue(loadExecTargetsLoadedElf("cdrom0:\\SCUS_972.75;1", "socom2_game.elf"), "the disc's SCUS_972.75 is the r0001 ELF the runtime booted");
+            t.IsTrue(loadExecTargetsLoadedElf("cdrom0:\\SCUS_972.75;1", "socom2_game_r0004.elf"), "and the r0004 one (issue #69: every revision's ELF is SOCOM II)");
+            t.IsTrue(loadExecTargetsLoadedElf("cdrom0:\\scus_972.75;1", "SOCOM2_GAME.ELF"), "case does not matter on either side");
+            t.IsTrue(loadExecTargetsLoadedElf("cdrom0:\\Q2_TEST.ELF;1", "q2_test.elf"), "a path naming the loaded ELF's own file name restarts too");
+            t.IsTrue(loadExecTargetsLoadedElf("host0:/x/y/q2_test.elf", "q2_test.elf"), "whatever the device and directories");
+            t.IsFalse(loadExecTargetsLoadedElf("rom0:OSDSYS", "socom2_game.elf"), "the browser is a foreign ELF: 74 stays honest");
+            t.IsFalse(loadExecTargetsLoadedElf("cdrom0:\\SCUS_972.75;1", "other_game.elf"), "SCUS_972.75 is not another game's ELF");
+            t.IsFalse(loadExecTargetsLoadedElf("cdrom0:\\NETGUI.ELF;1", "socom2_game.elf"), "the network GUI is foreign");
+            t.IsFalse(loadExecTargetsLoadedElf("", "socom2_game.elf"), "an empty path is foreign");
+            t.IsFalse(loadExecTargetsLoadedElf("cdrom0:\\SCUS_972.75;1", ""), "and so is a runtime that booted nothing");
+        });
+
+        tc.Run("LoadExecPS2 with the loaded ELF's path requests the restart and stops the scheduler instead of exiting", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *rdram = runtime.memory().getRDRAM();
+            const fs::path elf = q2WriteTestElf();
+            PS2Runtime::configureIoPathsFromElf(elf.string());   // what loadELF records: the ELF the runtime booted
+
+            // The game's request as SetArg laid it out: the path, argc=2, the pointer table.
+            constexpr uint32_t kPath = 0x00003000u, kArg0 = 0x00003100u, kArg1 = 0x00003200u, kTable = 0x00003300u;
+            q2PutStr(rdram, kPath, "cdrom0:\\Q2_TEST.ELF;1");
+            q2PutStr(rdram, kArg0, "--menu_state");
+            q2PutStr(rdram, kArg1, "dlgAfterErrorReboot.rdr");
+            q2Put32(rdram, kTable, kArg0);
+            q2Put32(rdram, kTable + 4u, kArg1);
+            R5900Context ctx{};
+            setRegU32(ctx, 4, kPath);
+            setRegU32(ctx, 5, 2u);
+            setRegU32(ctx, 6, kTable);
+            setRegU32(ctx, 29, PS2_RAM_SIZE - 0x10u);
+
+            bool transferred = false;
+            try
+            {
+                ps2_syscalls::LoadExecPS2(rdram, &ctx, &runtime);
+            }
+            catch (const EeDispatcherTransfer &)
+            {
+                transferred = true;   // the requesting thread never returns from LoadExecPS2: it unwinds to the dispatcher
+            }
+            t.IsTrue(transferred, "the handler leaves the guest through the dispatcher, not through std::exit");
+            t.IsTrue(runtime.guestRestartPending(), "and the restart is pending for the loop thread");
+            const PS2Runtime::GuestRestartRequest request = runtime.guestRestartRequest();
+            std::error_code eqEc;
+            t.IsTrue(fs::equivalent(fs::path(request.elfPath), elf, eqEc), "the host ELF to reload is the one the runtime booted");
+            t.Equals(fs::path(request.elfPath).filename().string(), std::string("q2_test.elf"), "by name too");
+            t.Equals(request.guestPath, std::string("cdrom0:\\Q2_TEST.ELF;1"), "the guest's own path is kept for argv[0]");
+            t.Equals(request.argv.size(), static_cast<size_t>(2u), "with the request's two arguments");
+            t.Equals(request.argv[0], std::string("--menu_state"), "argv[0]");
+            t.Equals(request.argv[1], std::string("dlgAfterErrorReboot.rdr"), "argv[1]");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("a restart whose ELF cannot be read ends the run with exit 74, never 0 (Q2 review finding 2)", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            const int savedCode = ps2ProcessExitCode();
+            setPs2ProcessExitCode(0);
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            const fs::path elf = q2WriteTestElf();
+            const fs::path missing = elf.parent_path() / "no_such.elf";
+
+            t.IsTrue(runtime.requestGuestRestart(missing.string(), {"--menu_state", "x.rdr"}), "the request is taken");
+            t.IsFalse(runtime.restartGuest(), "the reload fails and restartGuest says so");
+            t.Equals(ps2ProcessExitCode(), ExitCodes::kRebootRequested,
+                     "the process exit code is 74 (reboot-requested): the game asked to restart and this build could not");
+            setPs2ProcessExitCode(savedCode);
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("a restart closes the old guest's sockets and files: the libnetb cids, the host socket table, the fio handles (finding 1, 5)", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *rdram = runtime.memory().getRDRAM();
+            const fs::path elf = q2WriteTestElf();
+
+            const int32_t cid = q2OpenLoopbackCid(rdram);
+            t.IsTrue(cid > 0, "a loopback socket opens through the libnetb seam");
+            t.Equals(socom2_libnetb::openCidCount(), static_cast<size_t>(1u), "one cid in the libnetb table");
+            t.Equals(socom2_hostnet::openSocketCount(), 1, "one host socket in the hostnet table");
+            const int32_t fd = q2OpenGuestFile(runtime, rdram, elf, "q2_open.txt");
+            t.IsTrue(fd >= 0, "a guest file opens through fioOpen");
+            t.Equals(ps2_syscalls::openGuestFileCount(), static_cast<size_t>(1u), "one open guest file");
+
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {}), "the request is taken");
+            t.IsTrue(runtime.restartGuest(), "and performed");
+            t.Equals(socom2_libnetb::openCidCount(), static_cast<size_t>(0u), "the libnetb cid table is empty: no leftover socket keeps a server session alive");
+            t.Equals(socom2_hostnet::openSocketCount(), 0, "the host socket table is empty: the 64 slots are all free");
+            t.Equals(ps2_syscalls::openGuestFileCount(), static_cast<size_t>(0u), "no guest file stays open");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("a restart resets the hardware state: a pending INTC cause of the old guest never reaches the new guest's handlers (finding 3)", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            const fs::path elf = q2WriteTestElf();
+
+            runtime.memory().queueIntcCause(5u);   // VIF1, as the VIF interpreter raises it
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {}), "the request is taken");
+            t.IsTrue(runtime.restartGuest(), "and performed");
+            t.IsTrue(runtime.memory().consumePendingIntcCauses().empty(), "no INTC cause is pending after the restart");
+            t.IsTrue(runtime.memory().consumeCompletedDmacCauses().empty(), "and no completed DMAC cause either");
+            q2RemoveTestElf(elf);
+        });
+
+        tc.Run("the restarted guest's crt0 clearing loop runs as fast as the first boot's (the display round: the new guest never drew)", [](TestCase &t)
+        {
+            Q2IoPathsGuard ioPaths;
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *rdram = runtime.memory().getRDRAM();
+            const fs::path elf = q2WriteTestElf();
+            runtime.registerFunction(kQ2Entry, q2Crt0ClearLoop);
+            runtime.registerFunction(kQ2ClearLoopPc, q2Crt0ClearLoop);
+
+            // The first boot, as run() starts the game thread on a fresh runtime.
+            R5900Context boot{};
+            boot.pc = kQ2Entry;
+            setRegU32(boot, 29, PS2_RAM_SIZE - 0x10u);
+            const Q2ClearRun first = q2RunClearLoop(runtime, rdram, boot, 3000);
+            t.IsTrue(first.done, "the first boot's loop clears its 2 MB and writes the known word");
+
+            // The restart as the loop thread performs it. The old game thread's last clock read and the new one's
+            // first are apart by the restart itself -- 50 ms in run_20260928_125710.log (105184.6 -> 105234.2).
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            t.IsTrue(runtime.requestGuestRestart(elf.string(), {}), "the request is taken");
+            t.IsTrue(runtime.restartGuest(), "and performed");
+            const Q2ClearRun second = q2RunClearLoop(runtime, rdram, runtime.cpu(), 3000);
+            std::printf("[q2-clear] first boot %.1f ms (%llu dispatches), restarted %.1f ms (%llu dispatches)%s\n",
+                        first.ms, static_cast<unsigned long long>(first.dispatches), second.ms,
+                        static_cast<unsigned long long>(second.dispatches), second.done ? "" : " -- NOT DONE at the 3 s watchdog");
+
+            t.IsTrue(second.done, "the restarted guest's loop reaches its known word; the game's sat at 0x18012c for good");
+            // Within 2x the first boot, plus 50 ms for a loaded host's scheduling noise on a few-ms loop.
+            t.IsTrue(second.ms <= 2.0 * first.ms + 50.0,
+                     "the restarted loop runs within 2x the first boot's time: first " + std::to_string(first.ms) +
+                         " ms, restarted " + std::to_string(second.ms) + " ms");
+            t.IsTrue(second.dispatches <= 2u * first.dispatches + 16u,
+                     "and returns to the dispatcher about as often: first " + std::to_string(first.dispatches) +
+                         ", restarted " + std::to_string(second.dispatches) + " (a pace wait at every checkpoint makes it one per VBlank)");
+
+            runtime.registerFunction(kQ2Entry, nullptr);
+            runtime.registerFunction(kQ2ClearLoopPc, nullptr);
+            q2RemoveTestElf(elf);
         });
     });
 }

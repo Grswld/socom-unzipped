@@ -14,9 +14,12 @@ void register_ps2_runtime_interrupt_tests();
 void register_ps2_memory_tests();
 void register_ps2_vu1_tests();
 void register_vu1_native_tests();
+void register_vu1_ops_tests();   // Sprint 17 F C1
 void register_ps2_vu_tests();
 void register_ps2_gs_tests();
 void register_gs_frame_backpressure_tests();
+void register_shot_queue_tests();   // Sprint 17 F0 Step 5b
+void register_gs_replay_file_tests();   // Sprint 17 F: the replay bench file
 void register_ps2_iop_tests();
 void register_ps2_sif_rpc_tests();
 void register_ps2_sif_dma_tests();
@@ -51,7 +54,11 @@ void register_socom2_pad2_hle_tests();       // Sprint 13 Task C8 (audit F8)
 void register_socom2_msifrpc_tests();        // Sprint 13 Task C8 (audit F8)
 void register_socom2_crypto_tests();         // Sprint 13 Task C8 (audit F9)
 void register_persona_record_tests();        // Sprint 16 L1b (#73)
+void register_card_save_tests();             // the persona-card plan Task 1
+void register_personas_card_tests();         // the persona-card plan Task 2
 void register_runtime_seams_tests();         // Sprint 13 Task C8 (audit F22)
+void register_socom2_net_bounds_tests();     // runtime/socom2_net_bounds.h
+void register_socom2_msg_bounds_tests();     // runtime/socom2_msg_bounds.h
 void reset_ps2_test_function_table();
 
 namespace
@@ -104,9 +111,12 @@ int main()
     register_ps2_memory_tests();
     register_ps2_vu1_tests();
     register_vu1_native_tests();
+    register_vu1_ops_tests();
     register_ps2_vu_tests();
     register_ps2_gs_tests();
     register_gs_frame_backpressure_tests();
+    register_shot_queue_tests();
+    register_gs_replay_file_tests();
     register_ps2_iop_tests();
     register_ps2_sif_rpc_tests();
     register_ps2_sif_dma_tests();
@@ -141,7 +151,11 @@ int main()
     register_socom2_msifrpc_tests();
     register_socom2_crypto_tests();
     register_persona_record_tests();
+    register_card_save_tests();
+    register_personas_card_tests();
     register_runtime_seams_tests();
+    register_socom2_net_bounds_tests();
+    register_socom2_msg_bounds_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

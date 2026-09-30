@@ -253,11 +253,14 @@ def write_expected(current, path, note=""):
         f.write("\n")
 
 
-def frame_info(ft, why=None):
-    """The informational frame-time record from a frame_time.FrameTime (or its absence and why)."""
-    if ft is None:
-        return {"frame_absent": why or "absent"}
-    return {"frame_mean_ms": round(ft.mean_ms, 2), "frame_worst_ms": round(ft.worst_ms, 2), "frame_n": ft.n}
+def frame_info(ft, why=None, syncv=None):
+    """The informational frame-time record from a frame_time.FrameTime (or its absence and why), and the game's
+    own frame rate (`syncv_mean`, from a frame_time.SyncV) when the log carried it (Sprint 17 F0)."""
+    info = ({"frame_absent": why or "absent"} if ft is None else
+            {"frame_mean_ms": round(ft.mean_ms, 2), "frame_worst_ms": round(ft.worst_ms, 2), "frame_n": ft.n})
+    if syncv is not None:
+        info.update(syncv_mean=round(syncv.mean, 1), syncv_n=syncv.n)
+    return info
 
 
 def informational_lines(info):

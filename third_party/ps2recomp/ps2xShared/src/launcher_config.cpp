@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 
 // config.json is a flat object of strings, numbers and booleans; a hand-rolled reader/writer covers it (no
@@ -92,6 +93,37 @@ namespace launcher
         if (rev == nullptr)
             rev = &kGameRevisions[0];   // unreachable while normalize answers a row's id; kept so it cannot crash
         return {rev->exeName[0] == '\0' ? defaultExe : std::string(rev->exeName), std::string(rev->elfName)};
+    }
+
+    bool isGameImage(const std::string &dir, const std::string &image, const std::string &defaultExe)
+    {
+        if (image.empty() || dir.empty())
+            return false;
+        const auto same = [](const std::string &a, const std::string &b) {
+#ifdef _WIN32
+            if (a.size() != b.size())
+                return false;
+            for (size_t i = 0; i < a.size(); ++i)
+                if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i])))
+                    return false;
+            return true;
+#else
+            return a == b;
+#endif
+        };
+        const std::filesystem::path path = std::filesystem::path(image).lexically_normal();
+        std::filesystem::path folder = std::filesystem::path(dir).lexically_normal();
+        if (!folder.has_filename())
+            folder = folder.parent_path();   // "C:/games/socom/" names the folder its parent does
+        std::string parent = path.parent_path().generic_string();
+        std::string wanted = folder.generic_string();
+        if (!same(parent, wanted))
+            return false;
+        const std::string name = path.filename().string();
+        for (const GameRevision &rev : kGameRevisions)
+            if (same(name, gameFilesFor(rev.id, defaultExe).exe))
+                return true;
+        return false;
     }
 
     const GameRevision *gameRevisionForElfName(const std::string &elfName)
@@ -184,6 +216,7 @@ namespace launcher
         out += "  \"gameRevision\": " + quote(normalizeGameRevision(c.gameRevision)) + ",\n";   // Task 11
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
+        out += "  \"serverEndpoint\": " + quote(c.serverEndpoint) + ",\n";   // the persona-card review, finding 1
         out += "  \"profile\": " + quote(c.profile) + ",\n";
         // Sprint 10 Goal 9, R179: the password is written plain -- this is the player's own file; the
         // diagnostics zip's copy of it blanks the field (diagnostics::sanitizedConfigJson). Sprint 16 L1b: only
@@ -262,7 +295,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "focusToggle" || key == "gameRevision" || key == "loginName" || key == "loginPassword")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverEndpoint" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "focusToggle" || key == "gameRevision" || key == "loginName" || key == "loginPassword")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -277,6 +310,7 @@ namespace launcher
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }
+                    else if (key == "serverEndpoint") c.serverEndpoint = v;
                     // a preset we do not know (an older or newer build's) falls back to the typed address
                     else if (key == "serverPreset")
                     {

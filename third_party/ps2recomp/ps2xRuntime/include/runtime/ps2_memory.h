@@ -312,6 +312,12 @@ public:
     uint32_t advanceEeTimers(uint64_t eeCycles) noexcept;
     [[nodiscard]] uint64_t cyclesUntilNextEeTimerInterrupt() const noexcept;
     void resetEeTimers() noexcept;
+    // Sprint 17 Q2 (review finding 3): the hardware state an in-process restart of the guest starts fresh, as
+    // initialize() leaves it, without touching the memories: the I/O register map (DMAC, INTC, GIF, VIF ...), the
+    // VIF and DMA channel registers, the GS privileged registers, the pending GIF/VIF0/VIF1 transfers and the
+    // masked-PATH3 FIFO, the MFIFO stall, the EE timers, and the pending INTC and completed DMAC causes -- so a
+    // cause the old guest queued never reaches the new guest's handlers.
+    void resetHardwareState();
 
     using GifPacketCallback = std::function<void(const uint8_t *, uint32_t)>;
     void setGifPacketCallback(GifPacketCallback cb) { m_gifPacketCallback = std::move(cb); }

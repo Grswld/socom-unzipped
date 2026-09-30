@@ -558,6 +558,11 @@ namespace GSMem
 	// Row span read: `count` consecutive pixels from (x, y) into dst as u32 values (the format's
 	// unpacked value, like the per-pixel Read*). Same values as `count` calls of the per-pixel reader.
 	bool ReadSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, u32* dst);
+	// Sprint 17 F1 attempt 3: the 256-byte block holding pixel (x, y), by the page tables WriteSpan itself uses, for a
+	// format whose pixels own their bytes outright (CT32, Z32, CT16, CT16S, Z16, Z16S, T8, T4): `blockW` x `blockH`
+	// pixels aligned on that grid fill the block, so a transfer covering it rewrites all 256 bytes. False for any
+	// other format (CT24, Z24, T8H, T4HL, T4HH share their words with bits a transfer keeps).
+	bool WholeBlockOf(u32 psm, u32 bp, u32 bw, u32 x, u32 y, u32& blockByteAddr, u32& blockW, u32& blockH);
 	void WriteP8(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 	void WriteP8H(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 

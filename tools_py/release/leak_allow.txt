@@ -107,3 +107,17 @@ tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "s
 # -- a git SSH remote in a documented command (feat/web-map-viewer, a5ab2280): the e-mail rule reads `git@github.com`
 #    as an address; it is a hostname in a URL, and the whole line is public by nature.
 email  web/README.md  git@github.com   # `git subtree push ... git@github.com:Scotho/...` -- a remote, not an address
+
+# -- web sprint 3's server deploy (33649f95, the cloud branch web-sprint-3-multiplayer) names its settings file
+#    `deploy/.env` -- the name only: no value is in the tree (the file is excluded from the rsync, the image and
+#    git). Each of the 19 history hits read by the web session and the controller, 2026-09-29.
+key-file-name  web/deploy/deploy.sh               .env   # copies, chmods and greps the host's deploy/.env by name
+key-file-name  web/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages
+key-file-name  web/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
+key-file-name  web/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
+key-file-name  web/deploy/env.example             .env   # the template's header: copy it to .env, never commit that (39e4d689; placeholders only)
+key-file-name  web/redotcom/deploy/deploy.sh               .env   # copies, chmods, greps and moves the host's settings file by name (moved from web/deploy/, 2026-09-29)
+key-file-name  web/redotcom/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages (moved from web/deploy/)
+key-file-name  web/redotcom/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it (moved from web/deploy/)
+key-file-name  web/redotcom/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image (moved from web/deploy/)
+key-file-name  web/redotcom/deploy/env.example             .env   # the template's header: copy it to .env, never commit that (moved from web/deploy/)

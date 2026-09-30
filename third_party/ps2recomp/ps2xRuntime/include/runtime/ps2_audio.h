@@ -40,6 +40,12 @@ public:
     size_t mixerActiveStreams() const { return m_mixer.activeStreams(); }
     uint64_t mixerRenderedFrames() const { return m_mixer.renderedFrames(); }   // the output-frame clock the [audio] events carry
     size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }
+    size_t mixerActiveHandlers() const { return m_mixer.activeHandlers(); }
+    bool mixerPcmStreamActive() const { return m_mixer.pcmStreamActive(); }
+    // Sprint 17 Q2: the guest is restarting in-process (LoadExecPS2). Every sound, every stream and the PCM
+    // ring stop and the raylib sounds go; the banks stay loaded until the restarted guest replaces them by
+    // handle, as an IRX reload would. The device and its callback are untouched.
+    void stopForGuestRestart();
     bool mixerIsPlaying(uint32_t handle) const { return m_mixer.isPlaying(handle); }
     int32_t mixerGlobalReg(uint32_t index) const { return m_mixer.globalReg(index); }
     void mixerRender(int16_t *interleaved, size_t frames);

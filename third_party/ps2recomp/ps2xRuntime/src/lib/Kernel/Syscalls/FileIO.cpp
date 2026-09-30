@@ -41,6 +41,35 @@ namespace ps2_syscalls
     static std::mutex g_vagAccumMutex;
     static constexpr size_t kVagAccumMaxBytes = 16 * 1024 * 1024;
 
+    size_t closeAllGuestFiles()
+    {
+        size_t closed = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_fd_mutex);
+            for (auto &entry : g_fileDescriptors)
+            {
+                if (entry.second)
+                {
+                    std::fclose(entry.second);
+                    ++closed;
+                }
+            }
+            g_fileDescriptors.clear();
+            g_nextFd = 3;   // after stdin, stdout, stderr, as at process start
+        }
+        {
+            std::lock_guard<std::mutex> lock(g_vagAccumMutex);
+            g_vagAccum.clear();
+        }
+        return closed;
+    }
+
+    size_t openGuestFileCount()
+    {
+        std::lock_guard<std::mutex> lock(g_fd_mutex);
+        return g_fileDescriptors.size();
+    }
+
     static const char *translateFioMode(int ps2Flags)
     {
         bool read = (ps2Flags & PS2_FIO_O_RDONLY) || (ps2Flags & PS2_FIO_O_RDWR);

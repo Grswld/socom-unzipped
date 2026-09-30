@@ -19,6 +19,7 @@ namespace
 #include "ps2_log.h"
 #include "runtime/ps2_memory.h"
 #include "ps2x/knobs.h"
+#include "runtime/gs/gs_loop_phases.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -607,7 +608,13 @@ void GS::latchHostPresentationFrame()
 {
     GSPresentationRequest request{};
     {
+        // Sprint 17 F3: the [gs-loop] latch_lock= column -- the render thread waiting for m_stateMutex, which the
+        // game thread holds across a whole GIF packet.
+        static const bool s_loopPhases = ps2x::knob("PS2X_GS_STATS") != nullptr;
+        const auto lockStart = s_loopPhases ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+        if (s_loopPhases)
+            GsLoopPhases::live().add(GsLoopPhases::LatchLock, GsLoopPhases::nsBetween(lockStart, std::chrono::steady_clock::now()));
         if (!m_backend || !m_privRegs)
         {
             std::lock_guard<std::mutex> presentationLock(m_presentationMutex);

@@ -119,7 +119,12 @@ case "$cmd" in
     date +%s.%N > "$OUT/.drive_started"
     # --seconds is OUR game's run length (drive.py defaults to 400): launch_to_mission_xl runs past 400 s, and a game
     # killed at 400 s leaves the last eleven windows as digital silence that reads as a FAIL of the mix (s9_q1_parity_ours).
-    "$PYTHON" -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds "$drive_s" > "$OUT/drive.stdout" 2>&1
+    # A `.sh` script is a DRIVER that runs in drive.py's place (Sprint 17 A1: mission_music_long.sh --stage lobby
+    # writes one around online_login_ours.py, whose login is no step script); it owns its own run length.
+    case "$script" in
+      *.sh) bash "$script" > "$OUT/drive.stdout" 2>&1 ;;
+      *) "$PYTHON" -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds "$drive_s" > "$OUT/drive.stdout" 2>&1 ;;
+    esac
     rc=$?
     kill $VOL 2>/dev/null
     wait $REC

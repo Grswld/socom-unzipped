@@ -3,6 +3,9 @@
 #include "runtime/gs/gs_backend.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_upload_reasons.h"
+#include "runtime/gs/gs_frame_histogram.h"
+#include "runtime/gs/gs_gl_replay_file.h"
+#include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_stall_coalescer.h"
@@ -10,6 +13,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
@@ -75,10 +79,52 @@ public:
     // GSRasterBackend pointer and cannot see this class.
     bool glUnavailable() const { return m_glCapsLatch.failed(); }
     std::string glMissing() const { return m_glCapsLatch.report().missing; }
+    // Sprint 17 F1 attempt 3, ps2x_tests only: the Upload commands recorded and not yet replayed; the replay of the
+    // pending queue on the calling thread (host->local transfers and uploads make no GL call; a queue holding draws
+    // needs a context); the render thread's shadow VRAM; how many uploads the replay swizzled itself; and the
+    // PS2X_GS_DOUBLE_SWIZZLE decision, which the constructor otherwise takes from the knob.
+    struct PendingUploadForTest
+    {
+        bool swizzledByRecorder = false;
+        std::vector<uint8_t> data;
+    };
+    std::vector<PendingUploadForTest> pendingUploadsForTest() const;
+    void replayPendingForTest();
+    const std::vector<uint8_t> &shadowVramForTest() const { return m_shadowMemory; }
+    uint64_t replaySwizzlesForTest() const { return m_replaySwizzles; }
+    void setDoubleSwizzleForTest(bool on) { m_doubleSwizzle = on; }
     static bool glUnavailableForProcess();
     static std::string glMissingForProcess();
 
-private:
+    // Sprint 17 F, the replay bench (src/tools/gs_replay_bench.cpp): replay a PS2X_GS_RECORD recording through
+    // executeCommands on the CALLING thread, which must own a current GL context (a hidden raylib window).
+    // Initialize() first with the recording's VRAM (it seeds the shadow); BenchBegin() brings GL up and loads the
+    // palettes; BenchReplay() replays one recorded batch and returns the presents in it; BenchResetTotals() ends a
+    // warm-up; BenchTotalsNow() reads the span since. Nothing in a running title calls these.
+    struct BenchTotals
+    {
+        GsGlUploadTrace::Accum trace;   // the [gs-submit], [gs-transfer] and [gs-upload] accumulators, summed
+        double cmdMs[8] = {};           // the [gs-gl stats] buckets (CmdType & 7: submit transfer upload wvram clear
+        uint64_t cmdCount[8] = {};      // present readback reset; a palette load lands in submit's, as there)
+        GsFrameHistogram hist;          // the replay's time from present to present (glFinish at each batch's end)
+        uint64_t presents = 0;
+        double elapsedMs = 0.0;         // the batches' replay wall: executeCommands + glFinish, no file reading
+        // Uploads F1 attempt 3's recorder already swizzled (Cmd::swizzledByRecorder): that swizzle ran on the game
+        // thread in the recorded run and is in no field here -- the bench replays the render thread only.
+        uint64_t recorderSwizzledUploads = 0;
+    };
+    bool BenchBegin(const std::vector<GSClutLoad> &cluts);
+    uint64_t BenchReplay(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader);
+    void BenchResetTotals();
+    BenchTotals BenchTotalsNow() const;
+
+    // The replay file's guards (fix round). replayCmdLayoutHash: every Cmd field's offset and size, and the sizes of
+    // the structs inside it, hashed -- a recording is replayed only by a build whose command record is the
+    // recorder's. replayKnobEnvironment: every PS2X_GS_* knob but PS2X_GS_RECORD as this process reads it now
+    // (ps2x::knob; an unset one as ""), in registry order: what a recording carries and the bench re-applies.
+    static uint32_t replayCmdLayoutHash();
+    static GsReplayFile::KnobList replayKnobEnvironment();
+
     enum class CmdType : uint8_t
     {
         Submit,
@@ -92,9 +138,29 @@ private:
         ClutLoad,
     };
 
+    // ps2x_tests only (no GL): a command as the recorder sees it, written through the recorder's packing into a
+    // replay file at `path`, read back and rebuilt as BenchReplay rebuilds it; `out` is the rebuilt commands.
+    struct ReplayCmdForTest
+    {
+        CmdType type = CmdType::Submit;
+        bool swizzledByRecorder = false;
+        GSPrimitiveBatch batch{};
+        GSTransferCommand transfer{};
+        GSPresentationRequest present{};
+        GSContext context{};
+        uint32_t args[5] = {0, 0, 0, 0, 0};
+        std::vector<uint8_t> data;
+    };
+    static bool replayRoundTripForTest(const std::vector<ReplayCmdForTest> &in, const std::string &path,
+                                       std::vector<ReplayCmdForTest> &out, std::string &err);
+
+private:
     struct Cmd
     {
         CmdType type = CmdType::Submit;
+        // Sprint 17 F1 attempt 3: an Upload whose data is GSCpuBackend::UploadImageAsBlocks' payload (the blocks the
+        // recorder already swizzled into the game VRAM), not the transfer's raw bytes; executeUpload copies them.
+        bool swizzledByRecorder = false;
         GSPrimitiveBatch batch{};
         GSTransferCommand transfer{};
         GSPresentationRequest present{};
@@ -258,10 +324,20 @@ private:
     void markRtDirtyFromFrame(const GSContext &context);
 
     // render-thread side
+    // Sprint 17 F: PS2X_GS_RECORD -- write the batch HostRenderFrame is about to replay (gs_gl_replay_file.h).
+    void recordReplayBatch(const CommandBuffer &buffer);
+    // A non-Submit command's fields for the file ('C' payload): args, a flags word (bit 0: swizzledByRecorder),
+    // then the transfer, present or context the type carries. Returns the bytes written; unpack is the inverse.
+    static uint32_t packReplayPayload(const Cmd &cmd, uint8_t *out);
+    static void unpackReplayPayload(Cmd &cmd, const uint8_t *in, uint32_t size);
+    // One batch into the file (returns the presents in it), and one read batch back into commands (returns the
+    // recorder-swizzled uploads in it): the recorder, BenchReplay and replayRoundTripForTest share these two.
+    static uint64_t writeReplayBatch(GsReplayFile::Writer &w, const CommandBuffer &buffer, uint64_t frameAtStart);
+    static uint64_t rebuildReplayBuffer(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader, CommandBuffer &buffer);
     void executeCommands(CommandBuffer &buffer);
     void executeSubmit(const GSPrimitiveBatch &batch);
     void executeTransfer(const GSTransferCommand &command);
-    void executeUpload(const uint8_t *data, size_t size);
+    void executeUpload(const uint8_t *data, size_t size, bool swizzledByRecorder);
     void executeClear(const GSContext &context, uint32_t rgba);
     void executePresent(const GSPresentationRequest &request);
     void executeReadback();
@@ -354,6 +430,25 @@ private:
     std::array<uint64_t, 512> m_shadowPageGeneration{};
     uint64_t m_generation = 1;
     uint64_t m_frameCounter = 0;
+    // Sprint 17 F0: the present-interval histogram (render thread only). executePresent stamps each
+    // present and adds the interval since the last; the [gs-gl stats] block prints and resets it.
+    GsFrameHistogram m_frameHist;
+    std::chrono::steady_clock::time_point m_lastPresent{};
+    bool m_lastPresentSet = false;
+    // Sprint 17 F: the recorder (render thread only; null until PS2X_GS_RECORD's start is reached) and the bench's
+    // totals (m_benchOn only in gs_replay_bench: every added line below is behind it).
+    std::unique_ptr<GsReplayFile::Writer> m_recWriter;
+    bool m_recDone = false;
+    uint64_t m_recPresents = 0;
+    bool m_benchOn = false;
+    GsGlUploadTrace::Accum m_benchTrace;
+    double m_benchCmdMs[8] = {};
+    uint64_t m_benchCmdCount[8] = {};
+    GsFrameHistogram m_benchHist;
+    uint64_t m_benchPresents = 0;
+    uint64_t m_benchRecorderSwizzled = 0;
+    std::chrono::steady_clock::duration m_benchElapsed{};
+    std::chrono::steady_clock::duration m_benchCarry{};   // replay time since the last present, across batches
     uint64_t m_movieStartFrame = 0;   // first 16x16 movie block upload seen (trace windows are relative to it)
     uint64_t m_seamFrame = 0;         // first decode where page columns 0 and 6 of the movie frame start on different rows
     long traceSkip(const char *env) const;
@@ -422,6 +517,13 @@ private:
     // Fed only with PS2X_GS_STATS or the skip knob set. Render thread only.
     GsGlUploadReasons::Gate m_uploadGate;
     std::vector<uint32_t> m_uploadBlocks;
+    // Sprint 17 F1 attempt 3: PS2X_GS_DOUBLE_SWIZZLE=1 (read once, in the constructor) keeps the old path, the raw
+    // tile recorded and swizzled a second time by the replay. Otherwise UploadImage records the swizzled blocks when
+    // the upload is whole blocks (m_recordBlocks, game thread only). m_replaySwizzles counts the uploads executeUpload
+    // swizzled into the shadow itself (render thread; read by ps2x_tests).
+    bool m_doubleSwizzle = false;
+    std::vector<uint8_t> m_recordBlocks;
+    uint64_t m_replaySwizzles = 0;
     std::string m_blendLog;
     std::string m_stateLog;
     uint64_t m_uploadExpectedBytes = 0;

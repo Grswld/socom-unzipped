@@ -2,8 +2,25 @@
 
 #include "ps2_syscalls.h"
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 namespace ps2_syscalls
 {
+    // Sprint 17 Q2: the kernel's boot-argument area -- the block syscall 0x5B (GetEntryAddress) answers for
+    // entry 3, which the SDK's LoadExecPS2 marshaller (SOCOM II's SetArg, 0x1ACCF8) writes the request into
+    // before the kernel call: a pointer to the filename at base+0, the argv pointers at base+4*(i+1), the
+    // strings from base+0x40. A restart rewrites it there from the decoded request, so the reloaded guest
+    // finds what it wrote. Returns the block's guest address.
+    uint32_t bootArgumentBlockAddress();
+    uint32_t writeBootArgumentBlock(uint8_t *rdram, const std::string &program, const std::vector<std::string> &argv);
+    // What SetupThread (syscall 0x3C) copies into the crt0's own block ($a3): the ps2sdk crt0 `_args` shape
+    // { int argc; char *argv[16]; char payload[256]; } with argv[0] the program the kernel loaded and the
+    // request's arguments after it (SOCOM II's main, FUN_001c4cc0, keeps argv[0] as the program name and reads
+    // argc-1 options from argv+1). Arguments past the 16 slots or the 256-byte payload are dropped with a line.
+    void writeCrt0Arguments(uint8_t *rdram, uint32_t argsAddr, const std::string &program, const std::vector<std::string> &argv);
+
     // Runs the guest's registered handler for this syscall, if there is one the runtime can
     // execute. It either does not return (the handler runs as a scheduler invocation, which is
     // [[noreturn]]) or returns having changed nothing, so the caller always goes on to the

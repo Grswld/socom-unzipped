@@ -403,6 +403,36 @@ public:
     void requestStop();
     bool isStopRequested() const;
 
+    // Sprint 17 Task Q2 (D3): LoadExecPS2 as an in-process restart of the guest. Leaving SOCOM Online is the
+    // game's own LoadExecPS2("cdrom0:\SCUS_972.75;1", 3, {"--menu_state", "dlgAfterErrorReboot.rdr", ""})
+    // (docs/research/78-back-to-the-main-menu.md); on the console the kernel reloads the ELF with those
+    // arguments, and this runtime used to exit 74 instead.
+    struct GuestRestartRequest
+    {
+        std::string elfPath;               // the host file the loader reloads (the ELF the runtime booted)
+        std::string guestPath;             // what the guest asked for ("cdrom0:\SCUS_972.75;1"): the crt0's argv[0]
+        std::vector<std::string> argv;     // the request's own arguments: the crt0's argv[1..]
+    };
+    // Called on the game thread (the LoadExecPS2 syscall): records the request, logs it, and stops the
+    // scheduler so the game thread returns at its next checkpoint. False, and nothing changed, when a request
+    // is already pending: two requests before the first completes perform one. An empty guestPath means the
+    // ELF's own file name.
+    bool requestGuestRestart(std::string elfPath, std::vector<std::string> argv, std::string guestPath = std::string());
+    bool guestRestartPending() const;
+    GuestRestartRequest guestRestartRequest() const;
+    // Called on the loop thread once the game thread has returned: the IOP, SIF and stub state reset, the
+    // mixer stopped, the GS reset (the window and its GL context untouched), guest RAM zeroed, the ELF reloaded
+    // through loadELF, the kernel's boot-argument block rewritten from the request, the EE kernel state fresh,
+    // the EE scheduler reset. The caller respawns the game thread (which resets the scheduler again on its own
+    // thread). True when a pending request was performed; false when none was pending or the reload failed
+    // (the log says why).
+    bool restartGuest();
+    uint64_t guestRestartCount() const;
+    // The boot arguments a restart set, for SetupThread to copy into the crt0's argument block. A first boot
+    // has none and the crt0's block stays what the ELF's bss makes it (argc 0), as it always has.
+    bool hasBootArguments() const;
+    GuestRestartRequest bootArguments() const;
+
     EeScheduler &eeScheduler();
     const EeScheduler &eeScheduler() const;
     void postEeEvent(EeEvent event);
@@ -502,6 +532,10 @@ private:
     [[nodiscard]] ps2x::iop::RpcResult handleIopRpc(uint8_t *rdram, R5900Context *ctx, ps2x::iop::RpcRequest request);
     void notifyIopSifTransfer(uint8_t *rdram, const ps2x::iop::SifTransfer &transfer);
     void resetIop();
+    // The guest-kernel prologue run() performs before the game thread starts, shared with restartGuest():
+    // the SIF, IOP, audio, MPEG and stub state, the EE kernel state, the boot registers.
+    void prepareGuestBoot();
+    void resetCpuContext();
 
     friend class PS2IopTransport;
     friend class EeScheduler;
@@ -541,6 +575,18 @@ private:
     std::atomic<bool> m_missingFunctionReported{false};
     bool m_dispatchUnwinding = false;
     std::atomic<bool> m_stopRequested{false};
+    // Sprint 17 Q2: the pending restart (written on the game thread, performed on the loop thread) and the
+    // boot arguments the last restart left for SetupThread. Guarded by m_guestRestartMutex.
+    mutable std::mutex m_guestRestartMutex;
+    bool m_guestRestartPending = false;
+    GuestRestartRequest m_guestRestartRequest;
+    bool m_bootArgumentsSet = false;
+    GuestRestartRequest m_bootArguments;
+    std::atomic<uint64_t> m_guestRestartCount{0};
+    // The ELF whose game overrides this runtime applied (loadELF): an in-process restart of the same ELF keeps
+    // them -- the function table is the process's, and the installers that start threads (the pc sampler, the
+    // RDRAM dump) or wrap table entries (HLE stats, the sched trace) are not built to run twice.
+    std::string m_overridesAppliedFor;
     DebugUiCallback m_debugUiInitCallback = nullptr;
     DebugUiCallback m_debugUiDrawCallback = nullptr;
     DebugUiCallback m_debugUiShutdownCallback = nullptr;

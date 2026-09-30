@@ -25,6 +25,11 @@ namespace socom2_hostnet
 
     bool init();
     void shutdown();
+    // Sprint 17 Q2 (review finding 1): every socket the table holds, closed and its row cleared, the stack kept
+    // up (unlike shutdown): what an in-process restart of the guest does so a logoff route that left one open
+    // cannot keep the server session alive or use up the 64 slots. Returns how many it closed.
+    int closeAllSockets();
+    int openSocketCount();
 
     // All calls return >= 0 on success or a negative host errno-style value on failure.
     int createSocket(Proto proto);

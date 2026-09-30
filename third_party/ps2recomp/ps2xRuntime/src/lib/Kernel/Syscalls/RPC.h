@@ -11,6 +11,10 @@ namespace ps2_syscalls
     // sceSifInitRpc neither reboots the IOP nor unloads an IRX). The reset itself belongs to an IOP reboot, so
     // sceSifRebootIop / sceSifResetIop call this to put the EE side back to "never initialised".
     void SifResetRpcState();
+    // Sprint 17 Q2: the IOP module table (sceSifLoadModule's rows) as an IOP reboot leaves it -- empty; the
+    // restarted guest loads its IRXs again. And how many rows are loaded, for the tests.
+    void SifResetModuleState();
+    size_t SifLoadedModuleCount();
     void SifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SifCallRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SifRegisterRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

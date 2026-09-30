@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # End-to-end build: synthetic ELF -> recompiled C++ -> socom2 runner (clang / llvm-mingw).
-# Usage: ./build.sh [tools|recomp|runtime|release|test|all] [--no-runner] [--dry-run]   (default all; release is never part of all)
+# Usage: ./build.sh [tools|recomp|runtime|release|test|all] [--no-runner] [--dry-run] [--full-suite]   (default all; release is never part of all)
 #   --dry-run     print the steps this would run and exit 0, building nothing (no toolchain needed). Every step but
 #                 tools refuses (exit 3) while another holder has the loop lock, unless run as that holder's child.
 #   --no-runner   build with no generated code at all (PS2X_RUNNER_GENERATED_DIR=""): the runtime library, the
 #                 launcher and the test suite, but not the game. This is what a fresh clone can do on Windows
 #                 (Sprint 10 H3): `bash scripts/bootstrap_windows.sh`, then `./build.sh runtime --no-runner`
 #                 and `./build.sh test --no-runner`. The recompiled game needs your own disc (README).
+#   --full-suite  `test` runs the full Python suite even where it would skip it (a linked worktree, or waiters queued
+#                 on the loop lock; python_suite_skip below).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 # Python the way every script here finds it (scripts/python_env.sh: PYTHON, else python, else python3), resolved
@@ -17,10 +19,12 @@ export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:
 STEP=""
 NO_RUNNER=0
 DRY_RUN=0
+FULL_SUITE=0
 for arg in "$@"; do
   case "$arg" in
     --no-runner) NO_RUNNER=1 ;;
     --dry-run) DRY_RUN=1 ;;
+    --full-suite) FULL_SUITE=1 ;;
     tools|recomp|runtime|release|test|all) STEP="$arg" ;;
     *) echo "unknown argument $arg" >&2; exit 2 ;;
   esac
@@ -56,6 +60,37 @@ if [ "$STEP" != tools ] && [ -f "$ROOT/scripts/loop_lock.sh" ]; then
       fi ;;
   esac
 fi
+# Sprint 17, the owner's rule of 2026-09-28: the full Python suite is the merged chain's bar (and CI's, on
+# every push), not a branch build's. Twice that night one `./build.sh test --no-runner` in an agent's worktree ran the
+# whole discover under the lock with three holders queued behind it; starved, it held the lock 60-110 minutes and
+# blocked the chain. So `test` prints one line and skips the discover -- the C++ tests still run, and the exit code
+# is theirs -- in a LINKED worktree (`--git-dir` differs from `--git-common-dir`), or when `loop_lock.sh check` shows
+# a live QUEUED waiter. It always runs with --full-suite, and inside the merged chain: the chain's marker in this
+# tree (logs/.merged_chain.running, scripts/parity/merged_chain.sh) names this very holding (`held=$LOOP_LOCK_HELD`).
+# A branch's bar is the C++ tests plus the module tests its change touched (`python -m unittest <modules>`). Prints
+# the skip line, or nothing when the suite runs; tools_py/tests/test_build_sh_lock.py (TestBuildShSuiteGuard).
+python_suite_skip() {
+  local marker="$ROOT/logs/.merged_chain.running" gdir gcommon queued
+  [ "$FULL_SUITE" = 1 ] && return 0
+  if [ -n "${LOOP_LOCK_HELD:-}" ] && [ -f "$marker" ] && grep -qxF "held=$LOOP_LOCK_HELD" "$marker"; then
+    return 0
+  fi
+  gdir="$(git -C "$ROOT" rev-parse --path-format=absolute --git-dir 2>/dev/null || true)"
+  gcommon="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [ -n "$gdir" ] && [ -n "$gcommon" ] && [ "$gdir" != "$gcommon" ]; then
+    echo "tests: Python suite skipped (linked worktree; the merged chain runs it -- --full-suite to force)"
+    return 0
+  fi
+  if [ -f "$ROOT/scripts/loop_lock.sh" ]; then
+    # a STALE ticket is a dead waiter's, dropped at the next grant: it does not count
+    queued="$(bash "$ROOT/scripts/loop_lock.sh" check 2>/dev/null | grep '^QUEUED:' | grep -vc '^QUEUED: STALE' || true)"
+    if [ "${queued:-0}" -gt 0 ] 2>/dev/null; then
+      echo "tests: Python suite skipped ($queued waiter(s) queued on the loop lock; the merged chain runs it -- --full-suite to force)"
+    fi
+  fi
+}
+SUITE_SKIP=""
+[ "$STEP" = test ] && SUITE_SKIP="$(python_suite_skip)"
 # --dry-run prints the plan and builds nothing; it exits before the toolchain check, so it works on a machine with
 # no tools/.
 if [ "$DRY_RUN" = 1 ]; then
@@ -71,7 +106,9 @@ if [ "$DRY_RUN" = 1 ]; then
       recomp)    echo "  would run: recomp -- overlay ELF, fixed function map, tools, ps2_recomp into recomp/output" ;;
       runtime)   echo "  would run: runtime -- third_party/ps2recomp/build-clang: $([ "$NO_RUNNER" = 1 ] && echo "ps2_runtime (no generated code)" || echo ps2EntryRunner), the launcher, into dist/" ;;
       release)   echo "  would run: release (${PS2X_RELEASE_KIND:-player}) -- third_party/ps2recomp/build-release[-dev], stripped, into dist-release[-dev]/" ;;
-      test_step) echo "  would run: test -- the quiet gate, the Python suite, the C++ tests" ;;
+      test_step)
+        if [ -n "$SUITE_SKIP" ]; then echo "  would run: test -- the quiet gate, the C++ tests"; echo "  $SUITE_SKIP"
+        else echo "  would run: test -- the quiet gate, the Python suite, the C++ tests"; fi ;;
     esac
   done
   exit 0
@@ -222,9 +259,16 @@ test_step() {
   fi
   # Python tests first: no build needed, and the whole parity gate's scorers live here. The one runner is
   # unittest (no pytest); tools_py/tests/test_test_hygiene.py fails on a test file this line would miss.
-  socom_require_python build.sh
-  ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v )
-  cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$(nproc)"
+  # Skipped, with one line, in a linked worktree or behind a queue (python_suite_skip above; --full-suite forces it).
+  if [ -n "$SUITE_SKIP" ]; then
+    echo "$SUITE_SKIP"
+  else
+    socom_require_python build.sh
+    ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v )
+  fi
+  # gs_replay_bench (Sprint 17 F) is built here so every test run links it; it runs by hand, on a recording
+  # (python -m tools_py.parity.replay_bench), never in this step: it needs a desktop session and a recording.
+  cmake --build "$RTBUILD" --target ps2x_tests vu1_replay gs_replay_bench -j "$(nproc)"
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
   local ps2x_test_repeat="${PS2X_TEST_REPEAT:-1}"
   ( cd "$RTBUILD/ps2xTest" && for i in $(seq 1 "$ps2x_test_repeat"); do
@@ -236,6 +280,7 @@ test_step() {
     done )
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
+  cp "$RTBUILD/ps2xRuntime/gs_replay_bench.exe" "$ROOT/dist/gs_replay_bench.exe"
   # Four verify runs over the two fixture sets, then the two host-draw checks. The native registry is ON by default
   # (kVu1NativeDefault), so the path a run takes has to be selected explicitly: --no-native forces
   # the generated/interpreted path, --native forces the registry. Both flags must follow the golden

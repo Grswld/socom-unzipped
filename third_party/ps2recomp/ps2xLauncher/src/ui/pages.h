@@ -107,6 +107,17 @@ namespace ui
         launcher::personas::Cards personas;
         int personaScroll = 0;
         long long personasNow = 0;
+        // The persona-card plan: NEW PERSONA's creator. The name typed beside it (the password typed is
+        // Config::loginPassword); CREATE ON CARD raises requestCreatePersona and main.cpp writes the card. A record
+        // picked raises requestPersonaFirst (its row index) and main.cpp puts it first on its card (R-C). A creation
+        // that failed leaves its one line in personaNote, shown at the PERSONAS heading's right end until the next try.
+        std::string personaNameTyped;
+        std::string personaNote;
+        bool requestCreatePersona = false;
+        int requestPersonaFirst = -1;
+        // The review, finding 4: a pick made while the game runs (the game holds the card) is held here and main.cpp
+        // puts it first at the next LAUNCH, before the game starts (personas::applyPendingFirst).
+        launcher::personas::PendingFirst pendingFirst;
 
         std::string activeField;   // the text field holding the keyboard, by node id
         Nav nav;

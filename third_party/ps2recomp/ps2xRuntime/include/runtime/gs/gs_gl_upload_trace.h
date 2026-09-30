@@ -202,6 +202,51 @@ namespace GsGlUploadTrace
 
     inline void reset(Accum &a) { a = Accum{}; }
 
+    // Sprint 17 F: the replay bench's total over a whole recording. The stats cadence resets the live accumulator
+    // every 60 command buffers once its lines are printed; the bench adds each interval into its own total first.
+    inline void accumulate(Accum &into, const Accum &a)
+    {
+        for (int b = 0; b < kBuckets; ++b)
+            into.sizes[b] += a.sizes[b];
+        into.uploads += a.uploads;
+        into.rectsMarked += a.rectsMarked;
+        into.glCalls += a.glCalls;
+        into.shadowUs += a.shadowUs;
+        into.markUs += a.markUs;
+        into.recordUs += a.recordUs;
+        into.convertUs += a.convertUs;
+        into.glUs += a.glUs;
+        for (uint32_t t : a.dstTextures)
+            noteDst(into, t);
+        into.transfers += a.transfers;
+        for (int d = 0; d < 4; ++d)
+            into.transfersByDir[d] += a.transfersByDir[d];
+        into.flushUs += a.flushUs;
+        into.transferBodyUs += a.transferBodyUs;
+        into.dirtyRowsUs += a.dirtyRowsUs;
+        into.decodeUs += a.decodeUs;
+        into.drawUs += a.drawUs;
+        into.flushesEmpty += a.flushesEmpty;
+        into.flushesReal += a.flushesReal;
+        into.decodes += a.decodes;
+        into.cacheInvalidations += a.cacheInvalidations;
+        into.uploadsWhole += a.uploadsWhole;
+        into.uploadsChunked += a.uploadsChunked;
+        into.uploadsIdentical += a.uploadsIdentical;
+        into.revalidated += a.revalidated;
+        into.revalidateUs += a.revalidateUs;
+        into.submitFlushes += a.submitFlushes;
+        into.submitSetupUs += a.submitSetupUs;
+        into.submitRowsUs += a.submitRowsUs;
+        into.submitResolveUs += a.submitResolveUs;
+        into.submitDrawUs += a.submitDrawUs;
+        into.readbacks += a.readbacks;
+        into.readbackRows += a.readbackRows;
+        into.readbackPixels += a.readbackPixels;
+        into.readbackUs += a.readbackUs;
+        into.rtDirect += a.rtDirect;
+    }
+
     // The render thread's live accumulator (defined in gs_gl_backend.cpp). For ps2x_tests, which
     // replay on the calling thread and read the work counts after hostRenderFrame; never written
     // through, never read from another thread.

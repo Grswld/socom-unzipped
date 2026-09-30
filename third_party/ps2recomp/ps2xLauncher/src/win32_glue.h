@@ -38,6 +38,12 @@ namespace win32glue
     // <dir>/socom2_r0004.exe <dir>/socom2_game_r0004.elf for r0004) with the config's environment on top of the current one,
     // stdout+stderr to <dir>/logs/run_<stamp>.log. False with `error` set when it cannot.
     bool startGame(const std::string &dir, const launcher::Config &config, GameProcess &out);
+    // The persona-card review, finding 5: is a game running from `dir` (any revision's executable in that folder,
+    // launcher::isGameImage) -- the headless --create-persona's stand-in for the window's GameProcess::running(),
+    // since that process has no game of its own to ask. True with `which` naming the image and its pid. Windows: a
+    // Toolhelp snapshot and QueryFullProcessImageNameW; POSIX: /proc/<pid>/exe. A process this user cannot open is
+    // not counted.
+    bool gameRunningFrom(const std::string &dir, std::string &which);
 
 
     // Sprint 8 Goal 9, third pass: the custom title bar. The window keeps the system's borders, snap and

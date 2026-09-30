@@ -109,7 +109,8 @@ class EnvPin(unittest.TestCase):
         self.assertEqual(current["env"].detail, [
             "PS2X_HOST_GAMEPAD=0",
             "PS2X_PC_SAMPLER=1",
-            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={}, default_ok=True)["PS2X_PEEK"]])
+            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={}, default_ok=True)["PS2X_PEEK"],
+            "PS2X_VU_STATS=1"])   # Sprint 17 F0: the [vu1-stats] line the SYNCV line reads
         drifted = gate.collect_pins(base={"PS2X_GS_STATS": "1"})
         self.assertNotEqual(drifted["env"].sha256, current["env"].sha256)
         self.assertIn("PS2X_GS_STATS=1", drifted["env"].detail)

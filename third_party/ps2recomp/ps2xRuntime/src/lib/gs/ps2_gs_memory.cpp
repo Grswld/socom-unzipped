@@ -355,6 +355,33 @@ namespace GSMem
         }
     }
 
+    template<PixelStorageMode psm, typename Table>
+    static void WholeBlockOfT(const Table& table, u32 bp, u32 bw, u32 x, u32 y, u32& blockByteAddr, u32& blockW, u32& blockH)
+    {
+        using Traits = PixelStorageTraits<psm>;
+        const u32 bits = Traits::Address(table, bp, bw, x, y) * static_cast<u32>(UnpackedBitWidth(psm));
+        blockByteAddr = (bits / 8u) & static_cast<u32>(MEMORY_SIZE - 1u) & ~0xFFu;
+        blockW = static_cast<u32>(Traits::ColumnExtent().x);   // ColumnExtent is one block's extent in pixels
+        blockH = static_cast<u32>(Traits::ColumnExtent().y);
+    }
+
+    bool WholeBlockOf(u32 psm, u32 bp, u32 bw, u32 x, u32 y, u32& blockByteAddr, u32& blockW, u32& blockH)
+    {
+        switch (psm)
+        {
+        case 0x00: WholeBlockOfT<C32>(PageTableC32, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;    // CT32
+        case 0x02: WholeBlockOfT<C16>(PageTableC16, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;    // CT16
+        case 0x0A: WholeBlockOfT<C16S>(PageTableC16S, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;  // CT16S
+        case 0x13: WholeBlockOfT<P8>(PageTableP8, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;      // T8
+        case 0x14: WholeBlockOfT<P4>(PageTableP4, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;      // T4
+        case 0x30: WholeBlockOfT<Z32>(PageTableZ32, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;    // Z32
+        case 0x32: WholeBlockOfT<Z16>(PageTableZ16, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;    // Z16
+        case 0x3A: WholeBlockOfT<Z16S>(PageTableZ16S, bp, bw, x, y, blockByteAddr, blockW, blockH); return true;  // Z16S
+        default:
+            return false;
+        }
+    }
+
     bool WriteSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, const u8* src, u32 nibble)
     {
         switch (psm)

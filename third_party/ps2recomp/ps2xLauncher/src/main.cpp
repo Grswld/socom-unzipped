@@ -12,6 +12,9 @@
 //   socom_unzipped_launcher.exe --diagnostics <out.zip> [dir]   write the diagnostics zip for <dir> (default: this folder), no window
 //   socom_unzipped_launcher.exe --report-bug <form.json> [dir]   send one bug report for <dir>, print the reply, no window
 //                                                                (a PROOF unless the form says "test": false)
+//   socom_unzipped_launcher.exe --create-persona <name> <password> [profile] [dir]   write the persona to the card
+//                                                                <dir>/cards/<profile>/ as NEW PERSONA's CREATE ON CARD
+//                                                                does (<dir>/config.json's server), print the file, no window
 //   socom_unzipped_launcher.exe --server-status                  print the hosted server's status line, no window
 //   socom_unzipped_launcher.exe --fetch-patch <dest> <bytes> <sha256>   download the r0004 package and check it,
 //                                                                no window (loopback tests only until R2: R293)
@@ -418,6 +421,32 @@ namespace
         if (!outcome.savedPath.empty())
             std::printf("%s\n", br::savedLocallyLine(outcome.savedPath).c_str());
         return exitCodeFor(outcome.reply);
+    }
+
+    // --create-persona <name> <password> [profile] [dir]: the persona-card plan's creator without the window -- the
+    // same createPersona the ONLINE page's CREATE ON CARD calls, on <dir>/config.json (the profile given replaces its
+    // own). Prints the note (the file written, or why nothing was); 0 written, 1 not, 2 refused because a game runs
+    // from <dir> -- it holds the card and its next save would overwrite the new persona (the review, finding 5; the
+    // window refuses the same case through GameProcess::running(), which this process has no game to ask).
+    int createPersonaHeadless(const std::string &name, const std::string &password, const char *profile, const fs::path &home)
+    {
+        std::string running;
+        if (win32glue::gameRunningFrom(home.string(), running))
+        {
+            std::printf("the game is running (%s): it holds the card and would save over the new persona; nothing "
+                        "written -- quit the game, then create the persona\n", running.c_str());
+            return 2;
+        }
+        launcher::Config config;
+        const std::string text = readText(home / "config.json");
+        if (!text.empty() && !launcher::fromJson(text, config))
+            std::fprintf(stderr, "config.json is malformed; using the defaults\n");
+        if (profile != nullptr)
+            config.profile = profile;
+        std::string note;
+        const bool ok = launcher::personas::createPersona(home.string(), config, name, password, note);
+        std::printf("%s\n", note.c_str());
+        return ok ? 0 : 1;
     }
 
     // --fetch-patch <dest> <bytes> <sha256>: Sprint 16 R2a (#71), the r0004 package download and its check, for
@@ -1000,8 +1029,9 @@ namespace
     };
 
     // (Re)loads the cues from the cache, building it from the ISO when it is not there. Sets the page's line.
-    // Sprint 16 L1b (#73, R295): every card's persona ledger (cards/<profile>.personas.json, beside the card), read at
-    // start and after each run -- a login in the run may have added a record. A ledger skipped is one line here.
+    // Sprint 16 L1b (#73, R295), the persona-card plan (R-A): every card's personas, read off the card's own save file
+    // (the ledger beside it dates them) at start, after each run and after CREATE ON CARD. A card or ledger skipped is
+    // one line here.
     void readPersonas(ui::App &app, const fs::path &home)
     {
         app.personas = launcher::personas::readCards((home / "cards").string());
@@ -1084,6 +1114,8 @@ int main(int argc, char **argv)
 
     if (argc > 2 && std::strcmp(argv[1], "--report-bug") == 0)
         return reportBugHeadless(fs::path(argv[2]), argc > 3 ? fs::path(argv[3]) : dir);
+    if (argc > 3 && std::strcmp(argv[1], "--create-persona") == 0)
+        return createPersonaHeadless(argv[2], argv[3], argc > 4 ? argv[4] : nullptr, argc > 5 ? fs::path(argv[5]) : dir);
     if (argc > 4 && std::strcmp(argv[1], "--fetch-patch") == 0)
         return fetchPatchHeadless(fs::path(argv[2]), argv[3], argv[4]);
     if (argc > 1 && std::strcmp(argv[1], "--server-status") == 0)
@@ -1924,6 +1956,62 @@ int main(int argc, char **argv)
             }
             if (app.requestMenuSounds)
                 refreshMenuSounds(menu, app, dir);
+            // The persona-card plan: CREATE ON CARD writes the typed persona into the selected card; the list is read
+            // again and the new row picked, and both typed strings go (the card holds the password now, R-B).
+            // A running game holds the card and saves over it: neither write happens under it (the button is dead
+            // then too; a pad press that raced the launch lands here). A pick's reorder is held, not dropped: the next
+            // LAUNCH makes it before the game starts (the review, finding 4).
+            if (app.running && (app.requestCreatePersona || app.requestPersonaFirst >= 0))
+            {
+                if (app.requestCreatePersona)
+                    app.personaNote = "the game is running: CREATE ON CARD waits until it exits";
+                if (app.requestPersonaFirst >= 0 && app.requestPersonaFirst < static_cast<int>(app.personas.rows.size()))
+                    launcher::personas::holdFirst(app.pendingFirst, app.personas.rows[static_cast<size_t>(app.requestPersonaFirst)]);
+                app.requestCreatePersona = false;
+                app.requestPersonaFirst = -1;
+            }
+            if (app.requestCreatePersona)
+            {
+                namespace ps = launcher::personas;
+                std::string note;
+                if (ps::createPersona(dir.string(), app.config, app.personaNameTyped, app.config.loginPassword, note))
+                {
+                    const std::string name = launcher::normalizeLoginName(app.personaNameTyped);
+                    const std::string leaf = ps::cardLeaf(app.config);
+                    app.personaNameTyped.clear();
+                    app.config.loginPassword.clear();
+                    readPersonas(app, dir);
+                    const auto &rows = app.personas.rows;
+                    for (size_t i = 0; i < rows.size(); ++i)
+                        if (rows[i].card == leaf && rows[i].name == name && ps::counts(rows[i], app.config))
+                        {
+                            ps::pick(app.config, rows[i]);   // first on its card already: createPersona put it there
+                            // The creator's nodes go with NEW PERSONA's selection: the focus lands on the new row.
+                            if (app.nav.focus.rfind("online.persona.", 0) == 0)
+                                app.nav.focus = ui::personaRowId(static_cast<int>(i), static_cast<int>(rows.size()));
+                            break;
+                        }
+                    if (app.activeField == "online.persona.name" || app.activeField == "online.persona.password")
+                        app.activeField.clear();
+                    app.personaNote.clear();
+                    app.dirty = true;
+                    app.setStatus(note);
+                }
+                else
+                    app.personaNote = note;
+                std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+            }
+            // R-C: a picked record goes first on its card, so the game's login form arrives with it. Silent unless it
+            // fails, and then one line in the log: the pick itself (the name, the card) has already happened.
+            if (app.requestPersonaFirst >= 0 &&
+                app.requestPersonaFirst < static_cast<int>(app.personas.rows.size()))
+            {
+                app.pendingFirst = launcher::personas::PendingFirst{};   // a later pick, made now, supersedes a held one
+                std::string note;
+                if (!launcher::personas::moveFirst((dir / "cards").string(),
+                                                   app.personas.rows[static_cast<size_t>(app.requestPersonaFirst)], note))
+                    std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+            }
             if (app.requestMicRescan)
             {
                 app.micLabels = launcher::micLabels(*mic);
@@ -2052,6 +2140,15 @@ int main(int argc, char **argv)
             }
             if (app.requestLaunch && !app.running && app.discOk)
             {
+                // The review, finding 4: a pick made while the last game ran goes first on its card now, before this
+                // game opens the card -- moveFirst, the pick's own path; silent unless it fails, as a pick is.
+                if (app.pendingFirst.held)
+                {
+                    std::string note;
+                    if (!launcher::personas::applyPendingFirst(app.pendingFirst, app.config, (dir / "cards").string(), note))
+                        std::fprintf(stderr, "[launcher] personas: %s\n", note.c_str());
+                    readPersonas(app, dir);   // the rows' order is the card's
+                }
                 writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
                 mic->stopMeter();   // Review F8: two processes must not hold the same microphone
@@ -2092,6 +2189,8 @@ int main(int argc, char **argv)
         app.requestBrowse = app.requestVerify = app.requestLaunch = app.requestSave = false;
         app.requestDiagnostics = app.requestOpenLogs = app.requestMenuSounds = false;
         app.requestMicChanged = app.requestMicRescan = false;
+        app.requestCreatePersona = false;
+        app.requestPersonaFirst = -1;
 
         // PS2X_LAUNCHER_SHOT=<file>: the REAL window, with its own chrome, at whatever size it opened at --
         // a GDI or BitBlt grab of a GL window comes back white on this machine, so the launcher takes it.

@@ -1,5 +1,9 @@
 #!/bin/sh
-# The leak check over what this commit is about to take: each staged file's staged content, a staged path the
+# First the chain guard (Sprint 17 G1, tools_py/hooks/precommit.py): no commit in a tree whose
+# logs/.merged_chain.running names a live pid -- the merged chain running there goes red on "HEAD moved". It refuses
+# with one sentence; commit when the chain ends, or in another tree.
+#
+# Then the leak check over what this commit is about to take: each staged file's staged content, a staged path the
 # .gitignore says is ignored (a `git add -f`), a staged path shaped like key material. Refuses the commit on
 # any hit. Installed by scripts/install_hooks.sh (git config core.hooksPath scripts/hooks).
 #
@@ -10,6 +14,11 @@ cd "$(git rev-parse --show-toplevel)" || exit 2
 . scripts/python_env.sh            # $PYTHON, resolved once for every script
 socom_require_python pre-commit
 py="$PYTHON"
+# core.hooksPath may name the MAIN tree's hooks from every worktree: a tree whose branch predates the guard has no
+# module to run, and must not have its every commit refused for that.
+if [ -f tools_py/hooks/precommit.py ]; then
+  "$py" -m tools_py.hooks.precommit || exit 1
+fi
 "$py" -m tools_py.release.leakcheck staged
 code=$?
 if [ "$code" -ne 0 ]; then

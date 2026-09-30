@@ -84,6 +84,10 @@ namespace launcher
         std::string elf;
     };
     GameFiles gameFilesFor(const std::string &gameRevision, const std::string &defaultExe);
+    // The persona-card review, finding 5: is `image` (a running process's full executable path) one of the game's
+    // executables -- any revision's gameFilesFor(...).exe -- in the folder `dir`? A game started from `dir` writes
+    // <dir>/cards, so it is the one a card write there races. Names compare ignoring ASCII case on Windows.
+    bool isGameImage(const std::string &dir, const std::string &image, const std::string &defaultExe);
     // The row whose elfName is `elfName` (a bare file name, compared ignoring ASCII case), or nullptr. The
     // runner's "this is SOCOM II" question (its disc preflight) asks this, not one literal name (issue #69).
     const GameRevision *gameRevisionForElfName(const std::string &elfName);
@@ -174,6 +178,12 @@ namespace launcher
         std::string gameRevision = "r0001";
         std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
         std::string server = "127.0.0.1";
+        // The persona-card review, finding 1: a Custom server's MUIS `Endpoint` (server/config/muis.json), when it is
+        // not the address above -- a self-hosted server reached at 127.0.0.1 whose muis.json names its LAN address.
+        // The game connects to the Endpoint and the card's HOST holds it, so a persona made here must be written with
+        // it (personas::cardHost). "" = the address above is the Endpoint (the hosted presets). Custom only; set by
+        // hand in config.json -- the launcher has no way to ask MUIS.
+        std::string serverEndpoint;
         std::string profile = "player";
         // Sprint 10 Goal 9: the persona the game logs in as and its password, typed once here and handed to
         // the game's keyboards already filled (PS2X_SOCOM2_LOGIN_NAME / _PASS; R179: stored plain in this

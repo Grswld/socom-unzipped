@@ -19,7 +19,10 @@ before it is pointed at.
 
 - The launcher and the game runner: anything that lets a file a player might be *sent* -- a `config.json`, a
   memory-card folder, a diagnostics zip, a saved bug report -- read or write outside the portable folder, run code, or
-  leak credentials. (One such path was found and fixed: a profile name that was really a path, `f5809c84`.)
+  leak credentials. (One such path was found and fixed: a profile name that was really a path, `f5809c84`.) The
+  memory-card folder holds each online persona's password in plain text because that is the game's own save
+  format (`docs/research/80-persona-card-format.md`), the same as on a console's card; the folder is the player's
+  and is never sent by the launcher.
   *(Superseded 2026-09-25, Sprint 13 R2: this cited `c81b17a`, a copy of the same commit (same subject and date) that no
   branch or tag contains; `f5809c84` is the one on `main` -- documents audit row 58, stranger audit S44.)*
 - The runner's translation of guest file paths into host files (`translatePs2Path`, which serves the EE fio calls,

@@ -661,6 +661,10 @@ def launch_env(name, card_dir, base=None, default_ok=False):
         # s6_blockptr's mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)". One row per second
         # is the ladder's cadence and costs nothing measurable.
         env.setdefault("PS2X_PC_SAMPLER", "1")
+        # Sprint 17 F0: the [vu1-stats] line a second, whose syncv/s is the game's own frame rate -- the SYNCV
+        # line beside FRAME (frame_time.read_syncv_stamp). A new knob in the env pin: the first gate after it
+        # accepts the env pin's drift.
+        env.setdefault("PS2X_VU_STATS", "1")
     return env
 
 
@@ -750,6 +754,7 @@ def score_baseline(stamp, revision=None):
         failed += 0 if ok else 1
         if name == "mission":
             print(frame_time.line(*frame_time.read_stamp(out_root)), flush=True)   # informational (S13-R3)
+            print(frame_time.syncv_line(*frame_time.read_syncv_stamp(out_root)), flush=True)
     print("GATE %s (%d/%d) [baseline %s]" % ("FAIL" if failed else "PASS", len(results) - failed, len(results), out_root))
     return 1 if failed else 0
 
@@ -1602,7 +1607,9 @@ def main(argv=None):
         frame_lines, info = [], None
         if "mission" in wanted:
             ft, why = frame_time.read_stamp(out_root)
-            frame_lines, info = [frame_time.line(ft, why)], pins.frame_info(ft, why)
+            sv, sv_why = frame_time.read_syncv_stamp(out_root)
+            frame_lines = [frame_time.line(ft, why), frame_time.syncv_line(sv, sv_why)]
+            info = pins.frame_info(ft, why, syncv=sv)
         pin_lines, verdict = write_summary([line for _, line in results], all_drifts, frame_lines, info)
         for line in frame_lines:
             print(line)

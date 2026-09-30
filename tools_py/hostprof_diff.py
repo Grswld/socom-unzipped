@@ -21,7 +21,7 @@ import sys
 from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hostprof_symbolize import image_base, symbols, demangle  # noqa: E402
+from hostprof_symbolize import image_base, symbols, demangle, read_histogram  # noqa: E402
 
 _SUFFIX = re.compile(r"_0x([0-9A-Fa-f]+)$")
 _PLACEHOLDER = re.compile(r"^_?(?:FUN|sub)_([0-9A-Fa-f]{8})$")
@@ -44,21 +44,18 @@ def guest_key(sym: str) -> Optional[int]:
     return int(m.group(1), 16) if m else None
 
 
+def load_counted(path):
+    """The flat samples of one histogram, (counts, ext, stack_lines): the symboliser's parser (issue #116), so
+    the "stack ..." lines of a PS2X_HOST_PROF_STACKS=1 file are skipped and counted, not parsed as samples."""
+    hist = read_histogram(path)
+    counts, ext = {}, {}
+    for rva, n, module in hist.samples:
+        (ext if module is not None else counts)[rva] = n
+    return counts, ext, hist.stack_lines
+
+
 def load(path):
-    counts = {}
-    ext = {}
-    with open(path) as f:
-        f.readline()
-        for line in f:
-            parts = line.split()
-            if len(parts) < 2 or parts[0] == "thread":
-                continue
-            rva = int(parts[0], 16)
-            n = int(parts[1])
-            if len(parts) > 2 and parts[2] == "ext":
-                ext[rva] = n
-            else:
-                counts[rva] = n
+    counts, ext, _ = load_counted(path)
     return counts, ext
 
 
@@ -109,8 +106,8 @@ def main():
     ap.add_argument("--exe", default=os.path.join("dist", "socom2.exe"), help="the exe the end file came from")
     ap.add_argument("--start-exe", help="the exe the start file came from (default: --exe)")
     a = ap.parse_args()
-    c0, e0 = load(a.start)
-    c1, e1 = load(a.end)
+    c0, e0, s0 = load_counted(a.start)
+    c1, e1, s1 = load_counted(a.end)
     start_exe = a.start_exe or a.exe
     f1 = per_function(c1, image_base(a.exe), symbols(a.exe))
     f0 = per_function(c0, image_base(start_exe), symbols(start_exe))
@@ -120,7 +117,8 @@ def main():
     per_fn["<other module (system DLL / GL driver)>"] += extd
     names = [k for k, _ in per_fn.most_common(a.top)]
     dm = demangle(names)
-    print(f"samples in phase {total} (other modules {extd}, generated EE functions {gen})")
+    skipped = f", stack lines skipped {s0} + {s1} (fold them with tools_py/hostprof_stacks.py)" if s0 or s1 else ""
+    print(f"samples in phase {total} (other modules {extd}, generated EE functions {gen}{skipped})")
     for name, n in per_fn.most_common(a.top):
         print(f"{100.0 * n / max(1, total):6.2f}%  {n:7d}  {dm.get(name, name)}")
 

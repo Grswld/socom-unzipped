@@ -45,6 +45,7 @@ struct Vu1NativeProgram;
 class VU1Interpreter
 {
     friend struct Vu1Gen; // generated known-program code (src/lib/vu/ps2_vu1_ops.h)
+    friend struct Vu1FlagRingProbe; // ps2xTest vu1_ops_tests.cpp: drives the fast flag ring (S17 F C2)
 public:
     enum class Unit : uint8_t
     {
@@ -331,6 +332,14 @@ private:
     void runFast(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
                  GS &gs, PS2Memory *memory, uint64_t budgetEnd, bool &programEnded);
     void fastCommit();
+    // fastCommit with the flag ring's drain fixed (ps2_vu1_core.cpp, its invariants block): Batch =
+    // false lands entry by entry (the old path), true folds the ready run in locals and writes the
+    // state, head and count once. fastCommit picks one by PS2X_VU1_COMMIT_BATCH (read once), which
+    // run() passes to setFastCommitBatch: one process-wide choice, for VU0's fast path as well.
+    template <bool Batch>
+    void fastCommitWith();
+    static bool fastCommitBatchKnob();
+    static void setFastCommitBatch(bool on);
     void fastFlush();
     __attribute__((always_inline)) uint64_t fastReadyCycle(const DecodedInstructionPair &decoded) const;
     void fastPushOverflow();
@@ -463,12 +472,16 @@ private:
 // microcode at m_state.pc with every live register set as the microcode would have them.
 // execute() resets the scheduler before the native call, but resume() (MSCNT) does not: a
 // program registered at a mid-program entry pc that hands back must expect in-flight FMAC
-// results to commit after it returns. Entry pcs that are program starts (0, 0x1b50) are safe.
+// results to commit after it returns. Entry pcs that are program starts (0, 0x1b50, and 0x33c8,
+// which the EE MSCALs) are safe.
+// `enabled`, when set, is asked after (hash, pc) match and before the program is taken: false leaves
+// the entry exactly as if it were not in the table (the knob-gated 0x33c8 program, research/82).
 struct Vu1NativeProgram
 {
     uint64_t hash;
     uint32_t entryPc;
     VU1Interpreter::KnownProgramFn fn;
+    bool (*enabled)() = nullptr;
 };
 
 #endif

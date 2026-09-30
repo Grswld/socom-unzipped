@@ -2,6 +2,9 @@
 #include "Thread.h"
 #include "runtime/ee_scheduler.h"
 #include "ps2x/exit_codes.h"
+#include "launcher/launcher_config.h"   // Sprint 17 Q2: every SOCOM II ELF the launcher knows is the disc's SCUS_972.75
+
+#include <filesystem>
 
 namespace ps2_syscalls
 {
@@ -176,14 +179,56 @@ namespace ps2_syscalls
         setReturnS32(ctx, KE_OK);
     }
 
+    bool loadExecTargetsLoadedElf(const std::string &requestPath, const std::string &loadedElfName)
+    {
+        if (requestPath.empty() || loadedElfName.empty())
+        {
+            return false;
+        }
+        // "cdrom0:\SCUS_972.75;1" -> "SCUS_972.75": the ISO version after ';', the device and the directories
+        // before the last separator (':' too: "rom0:OSDSYS" has no slash).
+        std::string name = requestPath.substr(0, requestPath.find(';'));
+        const size_t separator = name.find_last_of("\\/:");
+        if (separator != std::string::npos)
+        {
+            name.erase(0, separator + 1u);
+        }
+        if (name.empty())
+        {
+            return false;
+        }
+        auto equalsIgnoreCase = [](const std::string &a, const std::string &b)
+        {
+            if (a.size() != b.size())
+                return false;
+            for (size_t i = 0; i < a.size(); ++i)
+            {
+                if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i])))
+                    return false;
+            }
+            return true;
+        };
+        if (equalsIgnoreCase(name, loadedElfName))
+        {
+            return true;
+        }
+        // Any revision's ELF name is SOCOM II (issue #69), and SOCOM II's boot file is the disc's SCUS_972.75.
+        return launcher::gameRevisionForElfName(loadedElfName) != nullptr &&
+               equalsIgnoreCase(name, launcher::kSocom2ElfName);
+    }
+
     // LoadExecPS2(const char *filename, int argc, char **argv): the game asks the kernel to
     // replace itself with another ELF (self-relaunch with arguments, or the network GUI).
-    // This runtime cannot re-exec, so the honest answer is to say so loudly and leave with a code
-    // of its own (74, reboot-requested). Reaching here is the game's own decision -- SOCOM II's
-    // FUN_0022ed10 tears the sound system and the SIF RPCs down and reboots into
-    // "--menu_state dlgAfterErrorReboot.rdr" after an internal error -- so a log that states the
-    // decision beats a process that dies further downstream (Sprint 11 Task 19).
-    void LoadExecPS2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    // Reaching here is the game's own decision -- SOCOM II's FUN_0022ed10 tears the sound system
+    // and the SIF RPCs down and reboots into "--menu_state dlgAfterErrorReboot.rdr"; that is how
+    // leaving SOCOM Online returns to the main menu (docs/research/78-back-to-the-main-menu.md).
+    //
+    // Sprint 17 Q2 (D3): a request naming the ELF this runtime booted is an in-process restart --
+    // PS2Runtime::requestGuestRestart records it and stops the scheduler, the loop thread reloads
+    // the guest with the arguments, and this thread never returns from the syscall (the kernel's
+    // LoadExecPS2 does not either). Any other ELF this runtime cannot run, so the honest answer
+    // stays: say so loudly and leave with a code of its own (74, reboot-requested; Sprint 11 Task 19).
+    void LoadExecPS2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t pathAddr = getRegU32(ctx, 4);
         const uint32_t argc = getRegU32(ctx, 5);
@@ -204,6 +249,7 @@ namespace ps2_syscalls
         const std::string path = cstr(pathAddr);
         std::cerr << "[LoadExecPS2] path=\"" << path << "\" argc=" << argc;
         std::string argvLine;
+        std::vector<std::string> args;
         for (uint32_t i = 0; i < argc && i < 16; ++i)
         {
             const std::string arg = cstr(u32(argvAddr + i * 4));
@@ -211,12 +257,27 @@ namespace ps2_syscalls
             if (!argvLine.empty())
                 argvLine.push_back(' ');
             argvLine += arg;
+            args.push_back(arg);
         }
         std::cerr << std::endl;
+
+        const std::filesystem::path booted = PS2Runtime::getIoPaths().elfPath;
+        if (runtime && !booted.empty() && loadExecTargetsLoadedElf(path, booted.filename().string()))
+        {
+            EeScheduler &ee = scheduler(rdram, ctx, runtime);
+            if (!runtime->requestGuestRestart(booted.string(), std::move(args), path))
+            {
+                std::cerr << "[LoadExecPS2] a restart is already pending; this thread stops with it" << std::endl;
+            }
+            // The requesting thread is done: the kernel never returns from LoadExecPS2. exitCurrent unwinds
+            // to the dispatcher, whose loop then sees the scheduler's stop and returns to run().
+            ee.exitCurrent(false);
+        }
+
         const ExitCodes::Entry *code = ExitCodes::find(ExitCodes::kRebootRequested);
         std::cerr << "[LoadExecPS2] REBOOT requested: " << path
                   << (argvLine.empty() ? "" : " ") << argvLine
-                  << " -- this build cannot re-exec; exiting with "
+                  << " -- not the ELF this runtime booted, and this build runs no other; exiting with "
                   << ExitCodes::kRebootRequested << " ("
                   << (code ? code->slug : "reboot-requested") << ")." << std::endl;
         std::cerr.flush();

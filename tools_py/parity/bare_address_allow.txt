@@ -78,3 +78,5 @@ tools_py/parity/find_dialog_ptr.py 0x4c0000 bound: the default high end of the s
 
 # -- notguest
 tools_py/parity/winshot.py 0x00CC0020 notguest: Win32 SRCCOPY, the BitBlt raster operation
+scripts/parity/pcsx2/0F6FC6CF.clientB.pnach 0x2cf330 console: the `comment=` header's prose naming the r0004 DNAS-bypass site (dnasCheck relocated 0x2CC670 -> 0x2CF330, research/43; #112); the guarded patch lines (E00327BD ... 202CF330, no 0x) are keyed to disc CRC 0F6FC6CF
+scripts/parity/pcsx2/0F6FC6CF.pnach 0x2cf330 console: the `comment=` header's prose naming the r0004 DNAS-bypass site (dnasCheck relocated 0x2CC670 -> 0x2CF330, research/43; #112); the guarded patch lines (E00327BD ... 202CF330, no 0x) are keyed to disc CRC 0F6FC6CF

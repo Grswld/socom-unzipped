@@ -79,4 +79,44 @@ namespace GsGlTextureIdentity
             h = mix(h, clut256[i]);
         return h == kUnhashable ? 1u : h;
     }
+
+    // Sprint 17 F1 attempt 1, the hash fold (KNOWN section 2, the Sprint 8 review's (a)): a texture
+    // that really changed paid three walks of its source -- the revalidation's hash, the decode, and
+    // textureSourceHash again inside the decode for entry.sourceHash. decodeTexture now walks once:
+    // walkTexels reads each row exactly as hashTexels does, mixes it into the same running hash in
+    // the same order, and hands the row to the decode's conversion. The value is hashTexels' own, bit
+    // for bit (ps2_gs_tests.cpp pins it), so an entry decoded here revalidates against
+    // textureSourceHash exactly as before. The revalidation itself still calls hashTexels.
+    struct DecodeWalk
+    {
+        uint64_t sourceHash = kUnhashable;   // hashTexels' value; kUnhashable when the source was not walked
+        uint32_t sourceWalks = 0u;           // complete walks of the texel source this decode took
+    };
+
+    // `rowScratch` must hold `width` uint32_t; `rowSink(y, rowScratch)` is called once per row, in
+    // order, with the texel values GSMem::ReadSpan read. When GSMem has no span reader for the format
+    // (or the extent is empty) nothing is walked: {kUnhashable, 0}, and the caller decodes its own way.
+    template <typename RowSink>
+    inline DecodeWalk walkTexels(const uint8_t *vram, uint32_t psm, uint32_t tbp0, uint32_t tbw,
+                                 uint32_t width, uint32_t height, uint32_t *rowScratch, uint64_t h,
+                                 RowSink &&rowSink)
+    {
+        DecodeWalk walk;
+        if (vram == nullptr || rowScratch == nullptr || width == 0u || height == 0u)
+            return walk;
+        if (!GSMem::ReadSpan(psm, const_cast<uint8_t *>(vram), tbp0, tbw, 0u, 0u, 0u, rowScratch))
+            return walk;
+        h = mix(h, (static_cast<uint64_t>(width) << 32) | height);
+        h = mix(h, (static_cast<uint64_t>(psm) << 32) | tbw);
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            GSMem::ReadSpan(psm, const_cast<uint8_t *>(vram), tbp0, tbw, 0u, y, width, rowScratch);
+            for (uint32_t x = 0; x < width; ++x)
+                h = mix(h, rowScratch[x]);
+            rowSink(y, static_cast<const uint32_t *>(rowScratch));
+        }
+        walk.sourceHash = h == kUnhashable ? 1u : h;    // hashTexels' sentinel rule
+        walk.sourceWalks = 1u;
+        return walk;
+    }
 }

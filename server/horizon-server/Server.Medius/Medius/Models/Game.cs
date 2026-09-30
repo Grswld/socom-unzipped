@@ -306,13 +306,13 @@ namespace Server.Medius.Models
                 return;
         }
 
-        public virtual async Task OnWorldReport(MediusWorldReport report)
+        public virtual async Task OnWorldReport(MediusWorldReport report, ClientObject reporter)
         {
             // Ensure report is for correct game world
             if (report.MediusWorldID != Id)
                 return;
 
-            GameName = report.GameName;
+            GameName = ReportedGameName(report.GameName, reporter);
             MinPlayers = report.MinPlayers;
             MaxPlayers = report.MaxPlayers;
             GameLevel = report.GameLevel;
@@ -345,18 +345,33 @@ namespace Server.Medius.Models
             }
         }
 
+        // LOCAL (socom_pc): true once this game has logged an ignored non-host rename; the warning is logged once per game.
+        public bool NonHostRenameWarned { get; private set; }
+
+        // LOCAL (socom_pc): only the host renames the game; the name is clamped like chat (MediusText).
+        public string ReportedGameName(string reported, ClientObject reporter)
+        {
+            bool fromHost = reporter != null && reporter == Host;
+            if (!fromHost && reported != GameName && !NonHostRenameWarned)
+            {
+                NonHostRenameWarned = true;
+                Logger.Warn($"Game {Id}:{GameName}: game-name update from {reporter}, not the host, ignored (logged once per game)");
+            }
+            return MediusText.ReportedGameName(GameName, reported, fromHost);
+        }
+
         public virtual Task GameCreated()
         {
             return Task.CompletedTask;
         }
 
-        public void OnWorldReport(MediusWorldReport0 report)
+        public void OnWorldReport(MediusWorldReport0 report, ClientObject reporter)
         {
             // Ensure report is for correct game world
             if (report.MediusWorldID != Id)
                 return;
 
-            GameName = report.GameName;
+            GameName = ReportedGameName(report.GameName, reporter);
             MinPlayers = report.MinPlayers;
             MaxPlayers = report.MaxPlayers;
             GameLevel = report.GameLevel;

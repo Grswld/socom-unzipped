@@ -1,0 +1,54 @@
+{
+  "tool": "gs_replay_bench",
+  "recording": "mission_hud.gsr",
+  "per": "60frames",
+  "frames": 570,
+  "warmup": 30,
+  "batches": 540,
+  "elapsed_ms": 24000.0,
+  "fps": 23.75,
+  "fields": {
+    "ms_per_frame": 42.1,
+    "flushes": 220000.0,
+    "setup": 160.0,
+    "dirty_rows": 8.0,
+    "resolve": 50.0,
+    "draw": 300.0,
+    "readback": 5.0,
+    "readbacks": 18.0,
+    "rt_direct": 72.5,
+    "submit": 520.0,
+    "transfer": 6.5,
+    "upload": 104.0,
+    "present": 14.0,
+    "only_after": 1.0
+  },
+  "ms_fields": [
+    "ms_per_frame",
+    "setup",
+    "dirty_rows",
+    "resolve",
+    "draw",
+    "readback",
+    "submit",
+    "transfer",
+    "upload",
+    "present"
+  ],
+  "hist": {
+    "n": 569,
+    "le17": 0,
+    "le20": 0,
+    "le25": 0,
+    "le33": 100,
+    "le50": 400,
+    "le100": 69,
+    "over": 0,
+    "longest_ms": 90.0
+  },
+  "knobs": {
+    "PS2X_GS_UPLOAD_TRACE": "1",
+    "PS2X_GS_SCALE": "1",
+    "PS2X_GS_SETUP_FORMAT": "0"
+  }
+}

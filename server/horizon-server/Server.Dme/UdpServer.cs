@@ -118,7 +118,7 @@ namespace Server.Dme
 
                     pipeline.AddLast(new ScertDatagramEncoder(Constants.MEDIUS_UDP_MESSAGE_MAXLEN));
                     pipeline.AddLast(new ScertDatagramIEnumerableEncoder(Constants.MEDIUS_UDP_MESSAGE_MAXLEN));
-                    pipeline.AddLast(new ScertDatagramDecoder());
+                    pipeline.AddLast(new ScertDatagramDecoder() { MaxDatagramLength = Server.Pipeline.RelayCaps.InboundUdpMax }); // LOCAL (socom_pc): inbound cap
                     //pipeline.AddLast(new ScertDecoder());
                     pipeline.AddLast(new ScertDatagramMultiAppDecoder());
                     pipeline.AddLast(_scertHandler);

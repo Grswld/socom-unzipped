@@ -54,6 +54,28 @@ def cd_image_env(env, resolve=None):
     return env
 
 
+LATEST_FRAME_ENV = "PS2X_HOST_SCREENSHOT_LATEST"
+# Sprint 17 F0: the player-condition knob. The frame file costs the GL thread a readback and a PNG encode every
+# ~150 ms (research/73: 169 ms/s; docs/LATER.md row 43) that no player's run pays; with this set to 1 the drive
+# leaves LATEST_FRAME_ENV unset and captures through PrintWindow instead.
+NO_LATEST_FRAME_ENV = "SOCOM_DRIVE_NO_LATEST_FRAME"
+
+
+def child_env(environ=None):
+    """The environment launch() gives our exe, built from `environ` (default os.environ).
+
+    The exe rewrites its current frame to LATEST_FRAME_ENV's file and grab() reads it instead of PrintWindow, so the
+    default is set in `environ` itself (grab() looks there), an operator's own path winning. With
+    NO_LATEST_FRAME_ENV=1 the variable is removed from `environ` -- an exported one too -- and so is absent from the
+    child: the runtime writes no frame file and grab() falls back to PrintWindow."""
+    environ = os.environ if environ is None else environ
+    if environ.get(NO_LATEST_FRAME_ENV) == "1":
+        environ.pop(LATEST_FRAME_ENV, None)
+    else:
+        environ.setdefault(LATEST_FRAME_ENV, os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
+    return hostplatform.dev_env(cd_image_env(dict(environ, PS2X_SOCOM2_PAD="1")))
+
+
 def launch(target, seconds):
     # Resolved before anything is started: no disc is a launch failure naming the three places it
     # looked, not a black boot (the VM's title stage, twice, with no image under game/).
@@ -61,9 +83,7 @@ def launch(target, seconds):
     if target == "pcsx2":
         return subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", iso],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # The exe rewrites its current frame to this file; grab() reads it instead of PrintWindow.
-    os.environ.setdefault("PS2X_HOST_SCREENSHOT_LATEST", os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
-    env = hostplatform.dev_env(cd_image_env(dict(os.environ, PS2X_SOCOM2_PAD="1")))
+    env = child_env()
     if not hostplatform.is_windows():
         # Linux: press() injects through the runtime's latched pad file rather than X key events,
         # which the VM's ~3 fps poll drops (x11shot.press). The file must exist and be neutral
@@ -405,6 +425,115 @@ def wait_capturer(out_dir, hwnd, step, period=1.0):
     return on_frame
 
 
+def process_tree_pids(root_pid):
+    """`root_pid` first, then its descendants. On Linux launch() starts `timeout` -> the exe, and the exe is a
+    descendant; PCSX2 is launched directly and owns its window. On Windows it is NOT: launch() runs `bash ./run.sh`,
+    and Git Bash's fork leaves `timeout.exe` -> socom2.exe with no Windows parent chain back to the launched bash
+    (probed 2026-09-30: `process_tree_pids(<bash pid>) == [<bash pid>]` with PING.EXE alive under timeout.exe) --
+    find_game_window's exe-name leg covers that. psutil where it is installed (requirements.txt pins it on
+    Windows), else /proc on Linux; a process that is gone, or a host with neither, is just the root."""
+    pids = [root_pid]
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+    if psutil is not None:
+        try:
+            return pids + [c.pid for c in psutil.Process(root_pid).children(recursive=True)]
+        except Exception:                                   # noqa: BLE001 - gone, denied: the root alone
+            return pids
+    if not os.path.isdir("/proc"):
+        return pids
+    children = collections.defaultdict(list)
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(os.path.join("/proc", entry, "stat"), encoding="utf-8", errors="replace") as fh:
+                stat = fh.read()
+            children[int(stat.rsplit(")", 1)[1].split()[1])].append(int(entry))
+        except (OSError, IndexError, ValueError):
+            continue
+    queue = [root_pid]
+    while queue:
+        for child in sorted(children.get(queue.pop(0), ())):
+            if child not in pids:
+                pids.append(child)
+                queue.append(child)
+    return pids
+
+
+# A process's create_time is read back at a coarser grain than time.time(); the exe-name leg accepts a process
+# created this much before the launch stamp. The drive refuses to start while any socom2 is up, so nothing older
+# than the launch can carry the name anyway -- this is the second lock on that door, not the first.
+LAUNCH_CLOCK_SLACK_S = 1.0
+
+
+def launched_exe_pids(exe_name, since, slack=LAUNCH_CLOCK_SLACK_S):
+    """Pids of the processes whose image name is `exe_name` (case-insensitive) created at or after `since` (epoch
+    seconds, less `slack`), oldest first; [] without psutil. The Windows launch's game is found here: run.sh's
+    `timeout` orphans it from the launched bash (process_tree_pids)."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    want = exe_name.lower()
+    found = []
+    for proc in psutil.process_iter(["name", "create_time"]):
+        info = getattr(proc, "info", {}) or {}
+        name, created = info.get("name"), info.get("create_time")
+        if name and created is not None and name.lower() == want and created >= since - slack:
+            found.append((created, proc.pid))
+    return [pid for _created, pid in sorted(found)]
+
+
+def find_game_window(title, launched_pid=None, tree=None, exe_name=None, launched_at=None, exe_pids=None):
+    """(hwnd, pid, how) of the game's window, or (None, None, how) while there is none yet.
+
+    Issue #118: `winshot.find_window` alone returns the FIRST visible window whose title contains the substring,
+    and a browser tab on the site ends in the same `-- SOCOM Unzipped` -- seven walks on 2026-09-30 captured the
+    browser. So when drive.py launched the game (`launched_pid`), every lookup is restricted to a process that is
+    the game's:
+
+    1. the launched process or one of its descendants (`tree`, default process_tree_pids): how "pid";
+    2. else, with `exe_name` and `launched_at`, a process whose image is the runtime exe's name created after the
+       launch (`exe_pids`, default launched_exe_pids): how "exe". This is the Windows launch, where run.sh's
+       `timeout` leaves the exe with no parent chain to the launched bash. A browser is never either.
+
+    Nothing found is (None, None, "pid") -- never a bare title match. Only a caller that did not launch the game
+    (launched_pid None: attach-only) uses the title alone, and how is then "title"."""
+    if launched_pid is None:
+        hwnd = winshot.find_window(title)
+        return hwnd, (winshot.window_pid(hwnd) if hwnd else None), "title"
+    for pid in (tree or process_tree_pids)(launched_pid):
+        hwnd = winshot.find_window(title, pid=pid)
+        if hwnd:
+            return hwnd, pid, "pid"
+    if exe_name and launched_at is not None:
+        for pid in (exe_pids or launched_exe_pids)(exe_name, launched_at):
+            hwnd = winshot.find_window(title, pid=pid)
+            if hwnd:
+                return hwnd, pid, "exe"
+    return None, None, "pid"
+
+
+def settle_attach(hwnd, pid, how):
+    """Log the window the drive settled on -- hwnd, pid, client size and how it was found -- and refuse one whose
+    client area is not the game's 640x448, naming its title, at attach rather than at s00's capture (issue #118:
+    a 1913x1229 browser client area failed every walk at `s00_CROSS.png`). A 0x0 or unreadable client area passes,
+    as in capture_step: it says nothing about the frame."""
+    size = winshot.client_size(hwnd)
+    shown = "unknown" if size is None else f"{size[0]}x{size[1]}"
+    print(f"attach: hwnd={int(hwnd):#x} pid={pid} client={shown} found_by={how}", flush=True)
+    if size is not None and size != (0, 0) and size != (FRAME_W, FRAME_H):
+        try:
+            name = winshot.window_title(hwnd)
+        except Exception:                                   # noqa: BLE001 - the refusal must still be made
+            name = "?"
+        raise SystemExit(f"refusing window {int(hwnd):#x} {name!r} (pid {pid}, found by {how}): its client area is "
+                         f"{shown}, not {FRAME_W}x{FRAME_H} -- not the game's window, or a resized one (issue #118)")
+
+
 def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=("pcsx2", "ours"), required=True)
@@ -428,19 +557,28 @@ def main():
                              "refusing to start a second game instance")
     os.makedirs(a.out, exist_ok=True)
     steps = parse(open(a.script).read())
+    launched_at = time.time()
     proc = launch(a.target, a.seconds)
     t0 = time.time()
     # Every step line's t= is measured from this t0, which falls after the process checks and the launch -- 1.3-1.5 s
     # after a caller's own "drive started" stamp. The epoch lets an audio capture lay its WAV against the steps
     # (tools_py/parity/capture_offset.py, LATER row 37); no reader of this stdout takes it for a step.
     print(f"drive_t0_epoch={t0:.3f}", flush=True)
-    hwnd = None
+    # The driver launched the game, so the window is looked up by the launched process tree, never by the title
+    # alone: a browser tab on the site carries the same title (issue #118).
+    title = keys.WINDOW_TITLES[a.target]
+    # Our exe on Windows is orphaned from the launched bash (find_game_window's leg 2); PCSX2 is the launched process.
+    lookup = dict(launched_pid=proc.pid, launched_at=launched_at,
+                  exe_name=os.path.basename(hostplatform.runtime_exe()) if a.target == "ours" else None)
+    hwnd = pid = None
+    how = "pid"
     while hwnd is None and time.time() - t0 < 60:
-        hwnd = winshot.find_window(keys.WINDOW_TITLES[a.target])
+        hwnd, pid, how = find_game_window(title, **lookup)
         time.sleep(0.5)
     if hwnd is None:
         proc.terminate()
-        raise SystemExit("game window not found")
+        raise SystemExit(f"game window not found (no window titled {title!r} owned by the launched process tree "
+                         f"or by a {lookup['exe_name'] or '(no exe name)'} started after the launch)")
     winshot.keep_on_top(hwnd)
     manifest = []
     # The window can be found while it is still being created (empty client area); wait it out.
@@ -450,10 +588,18 @@ def main():
             last = frame(hwnd)
         except RuntimeError:
             time.sleep(0.5)
-            hwnd = winshot.find_window(keys.WINDOW_TITLES[a.target]) or hwnd
+            again = find_game_window(title, **lookup)
+            if again[0] is not None:
+                hwnd, pid, how = again
     if last is None:
         proc.terminate()
         raise SystemExit("game window never showed a client area")
+    try:
+        settle_attach(hwnd, pid, how)
+    except SystemExit:
+        proc.terminate()
+        hostplatform.kill_process_by_name("pcsx2-qt" if a.target == "pcsx2" else "socom2")
+        raise
     try:
         run_steps(a, steps, proc, hwnd, t0, last, manifest)
     finally:

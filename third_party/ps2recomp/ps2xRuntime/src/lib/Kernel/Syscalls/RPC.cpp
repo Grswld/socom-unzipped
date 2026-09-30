@@ -266,6 +266,28 @@ namespace ps2_syscalls
         g_rpc_initialized = false;
     }
 
+    void SifResetModuleState()
+    {
+        std::lock_guard<std::mutex> lock(g_sif_module_mutex);
+        g_sif_modules_by_id.clear();
+        g_sif_module_id_by_path.clear();
+        g_next_sif_module_id = 1;
+    }
+
+    size_t SifLoadedModuleCount()
+    {
+        std::lock_guard<std::mutex> lock(g_sif_module_mutex);
+        size_t count = 0u;
+        for (const auto &entry : g_sif_modules_by_id)
+        {
+            if (entry.second.loaded)
+            {
+                ++count;
+            }
+        }
+        return count;
+    }
+
     void SifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         uint32_t clientPtr = getRegU32(ctx, 4);

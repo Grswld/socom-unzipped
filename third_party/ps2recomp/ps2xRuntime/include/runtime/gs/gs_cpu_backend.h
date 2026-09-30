@@ -21,6 +21,15 @@ public:
     // Sprint 13 V2 (#32): end an open host->local transfer as its last pixel would have, without
     // writing: the GL backend's shadow, when the upload gate found the bytes already in place.
     void CompleteImageTransfer();
+    // Sprint 17 F1 attempt 3 (the double swizzle): UploadImage for a host->local transfer this one call opens and
+    // completes, whose rectangle is whole 256-byte blocks of a format that owns its bytes (GSMem::WholeBlockOf).
+    // Under the same lock it then copies the swizzled blocks out: `payload` = n block byte addresses (uint32 each)
+    // followed by the n blocks' 256 bytes, in row-major block order. Returns false, having written nothing, for
+    // any other upload; the caller takes UploadImage.
+    bool UploadImageAsBlocks(const uint8_t *data, uint32_t sizeBytes, std::vector<uint8_t> &payload);
+    // The replay's half: copy a payload UploadImageAsBlocks built into this VRAM, and end the open transfer as its
+    // last pixel would have. No swizzle.
+    bool WriteUploadBlocks(const uint8_t *payload, size_t sizeBytes);
 
     void Flush() override;
     void TextureFlush() override;
@@ -38,6 +47,7 @@ public:
 
 private:
     void ResetUnlocked();
+    void UploadImageUnlocked(const uint8_t *data, uint32_t sizeBytes);
     uint32_t ReadVramUnlocked(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const;
     void WriteVramUnlocked(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value);
 

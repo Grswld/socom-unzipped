@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -269,6 +271,120 @@ namespace
     long long elapsedMs(const ParkRun &run)
     {
         return std::chrono::duration_cast<std::chrono::milliseconds>(run.end - run.start).count();
+    }
+}
+
+namespace
+{
+    // ---- the receive path's bounds (socom2_libnetb.cpp) -----------------------------------------------------------
+    // Guest RAM plus a watched margin past its end: a receive that stays inside RAM leaves the margin as it was.
+    constexpr uint32_t kGuardBytes = 0x1000u;
+    constexpr uint8_t kGuardByte = 0xA5u;
+    constexpr int32_t kErrInvalidBuffer = -0x200;
+    constexpr uint32_t kBoundRa = 0x00171000u;
+    constexpr uint32_t kHandleAddr = 0x5000u;   // a libnetb_ex platform handle; +8 holds the cid
+
+    struct GuardedRam
+    {
+        std::vector<uint8_t> bytes = std::vector<uint8_t>(PS2_RAM_SIZE + kGuardBytes, 0u);
+        GuardedRam() { std::memset(bytes.data() + PS2_RAM_SIZE, kGuardByte, kGuardBytes); }
+        uint8_t *data() { return bytes.data(); }
+        bool marginUntouched() const
+        {
+            for (uint32_t i = 0; i < kGuardBytes; ++i)
+                if (bytes[PS2_RAM_SIZE + i] != kGuardByte)
+                    return false;
+            return true;
+        }
+        int32_t word(uint32_t at) const
+        {
+            int32_t v = 0;
+            std::memcpy(&v, bytes.data() + at, sizeof(v));
+            return v;
+        }
+    };
+
+    uint8_t payloadByte(uint32_t i) { return static_cast<uint8_t>(0x30u + (i % 64u)); }
+
+    // A loopback datagram cid with one datagram of `n` bytes waiting on it (cid <= 0 on failure).
+    int32_t cidWithDatagram(std::vector<uint8_t> &ram, uint32_t n)
+    {
+        socom2_hostnet::Endpoint local{};
+        const int32_t cid = openLoopbackCid(ram, &local);
+        if (cid <= 0)
+            return cid;
+        std::vector<uint8_t> payload(n);
+        for (uint32_t i = 0; i < n; ++i)
+            payload[i] = payloadByte(i);
+        const int tx = socom2_hostnet::createSocket(socom2_hostnet::Proto::Udp);
+        const int sent = tx >= 0 ? socom2_hostnet::sendTo(tx, payload.data(), n, local) : -1;
+        if (tx >= 0)
+            socom2_hostnet::closeSocket(tx);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (socom2_hostnet::readable(cid - 1) <= 0 && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        return sent == static_cast<int>(n) ? cid : -1;
+    }
+
+    bool payloadAt(const GuardedRam &ram, uint32_t at, uint32_t n)
+    {
+        for (uint32_t i = 0; i < n; ++i)
+            if (ram.bytes[at + i] != payloadByte(i))
+                return false;
+        return true;
+    }
+
+    // sceInetRecv (fno 4) or sceInetRecvFrom (fno 0xd) with timeout 0: SEND p[0] cid, p[1] flags, p[2] len, p[3]
+    // timeout at kSendAddr; the receive buffer is the caller's (recv, recvSize).
+    void recvRpc(GuardedRam &ram, uint32_t fno, int32_t cid, uint32_t len, uint32_t recv, uint32_t recvSize)
+    {
+        const uint32_t send[4] = {static_cast<uint32_t>(cid), 0u, len, 0u};
+        std::memcpy(ram.data() + kSendAddr, send, sizeof(send));
+        socom2_libnetb::call(ram.data(), fno, kSendAddr, sizeof(send), recv, recvSize);
+    }
+
+    // exTcpRecv(cd, buf, handle, dst, len, flagsOut) / exUdpRecv(handle, dst, maxlen, flags*, addr*, port*, len*,
+    // result*) through their register ABI; returns v0.
+    uint32_t exTcp(GuardedRam &ram, int32_t cid, uint32_t dst, uint32_t len)
+    {
+        const uint32_t handle[4] = {1u, 0u, static_cast<uint32_t>(cid), 0u};
+        std::memcpy(ram.data() + kHandleAddr, handle, sizeof(handle));
+        R5900Context ctx{};
+        setGpr(&ctx, 6, kHandleAddr);
+        setGpr(&ctx, 7, dst);
+        setGpr(&ctx, 8, len);
+        setGpr(&ctx, 9, 0x5100u);
+        setGpr(&ctx, 31, kBoundRa);
+        socom2_libnetb::exTcpRecv(ram.data(), &ctx, nullptr);
+        return static_cast<uint32_t>(_mm_extract_epi32(ctx.r[2], 0));
+    }
+
+    uint32_t exUdp(GuardedRam &ram, int32_t cid, uint32_t dst, uint32_t maxlen)
+    {
+        const uint32_t handle[4] = {0u, 0u, static_cast<uint32_t>(cid), 0u};
+        std::memcpy(ram.data() + kHandleAddr, handle, sizeof(handle));
+        R5900Context ctx{};
+        setGpr(&ctx, 4, kHandleAddr);
+        setGpr(&ctx, 5, dst);
+        setGpr(&ctx, 6, maxlen);
+        setGpr(&ctx, 7, 0x5100u);
+        setGpr(&ctx, 8, 0x5110u);
+        setGpr(&ctx, 9, 0x5120u);
+        setGpr(&ctx, 10, 0x5124u);
+        setGpr(&ctx, 11, 0x5128u);
+        setGpr(&ctx, 31, kBoundRa);
+        socom2_libnetb::exUdpRecv(ram.data(), &ctx, nullptr);
+        return static_cast<uint32_t>(_mm_extract_epi32(ctx.r[2], 0));
+    }
+
+    template <typename Body>
+    std::string captureStdout(Body body)
+    {
+        std::ostringstream sink;
+        std::streambuf *old = std::cout.rdbuf(sink.rdbuf());
+        body();
+        std::cout.rdbuf(old);
+        return sink.str();
     }
 }
 
@@ -582,6 +698,125 @@ void register_socom2_libnetb_tests()
                      "returned when the data came, not at the 5 s deadline: " + std::to_string(elapsedMs(g_park)) + " ms");
             t.IsTrue(ticksDuringWait(g_park) >= 5,
                      "the other guest threads ran while it waited; ticker ran " + std::to_string(ticksDuringWait(g_park)) + " times");
+        });
+    });
+
+    // Every receive into guest RAM is bounded: by the end of guest RAM, and for the two RPCs by the receive buffer the
+    // call states. A receive outside either is refused whole (nothing copied) with one log line.
+    MiniTest::Case("SOCOM2LibnetbBounds", [](TestCase &tc)
+    {
+        // fno 4 carries its data at recv + 8, fno 0xd at recv + 0x1c (docs/research/10-libnetb-rpc.md).
+        struct Rpc { uint32_t fno; uint32_t header; const char *name; };
+        const Rpc rpcs[] = {{4u, 8u, "sceInetRecv"}, {0xdu, 0x1cu, "sceInetRecvFrom"}};
+
+        tc.Run("the two receive RPCs refuse a range past the end of guest RAM", [rpcs](TestCase &t)
+        {
+            for (const Rpc &rpc : rpcs)
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, std::string(rpc.name) + ": a loopback cid with a datagram waiting");
+                const uint32_t recv = PS2_RAM_SIZE - 0x40u;
+                const uint32_t before = socom2_libnetb::receivesRefused();
+                const std::string out = captureStdout([&] { recvRpc(ram, rpc.fno, cid, 0x100u, recv, 0x140u); });
+                t.IsTrue(ram.marginUntouched(), std::string(rpc.name) + ": nothing is written past the end of guest RAM");
+                t.Equals(ram.word(recv), kErrInvalidBuffer, std::string(rpc.name) + ": the result is the bad-buffer error");
+                t.Equals(socom2_libnetb::receivesRefused(), before + 1u, std::string(rpc.name) + ": the refusal is counted");
+                t.IsTrue(out.find(std::string(rpc.name) + " bounded") != std::string::npos && out.find("256") != std::string::npos,
+                         std::string(rpc.name) + ": one line names the function and the length: " + out);
+                closeCid(ram.bytes, cid);
+            }
+        });
+
+        tc.Run("the two receive RPCs refuse a length larger than the buffer they state", [rpcs](TestCase &t)
+        {
+            for (const Rpc &rpc : rpcs)
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, std::string(rpc.name) + ": a loopback cid with a datagram waiting");
+                const uint32_t recv = 0x2000u, stated = 0x40u;
+                std::memset(ram.data() + recv + stated, 0x5A, 0x100u);
+                const std::string out = captureStdout([&] { recvRpc(ram, rpc.fno, cid, 0x100u, recv, stated); });
+                bool untouched = true;
+                for (uint32_t i = 0; i < 0x100u; ++i)
+                    untouched = untouched && ram.bytes[recv + stated + i] == 0x5A;
+                t.IsTrue(untouched, std::string(rpc.name) + ": nothing is written past the stated buffer");
+                t.Equals(ram.word(recv), kErrInvalidBuffer, std::string(rpc.name) + ": the result is the bad-buffer error");
+                t.IsTrue(out.find(std::string(rpc.name) + " bounded") != std::string::npos,
+                         std::string(rpc.name) + ": one line names the function: " + out);
+                closeCid(ram.bytes, cid);
+            }
+        });
+
+        tc.Run("a receive inside its buffer still delivers the same bytes", [rpcs](TestCase &t)
+        {
+            for (const Rpc &rpc : rpcs)
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, std::string(rpc.name) + ": a loopback cid with a datagram waiting");
+                const uint32_t recv = 0x2000u;
+                const uint32_t before = socom2_libnetb::receivesRefused();
+                recvRpc(ram, rpc.fno, cid, 0x100u, recv, 0x140u);
+                t.Equals(ram.word(recv), 0x80, std::string(rpc.name) + ": the datagram's length");
+                t.IsTrue(payloadAt(ram, recv + rpc.header, 0x80u), std::string(rpc.name) + ": the datagram's bytes");
+                t.Equals(socom2_libnetb::receivesRefused(), before, std::string(rpc.name) + ": nothing refused");
+                t.IsTrue(ram.marginUntouched(), std::string(rpc.name) + ": the margin is untouched");
+                closeCid(ram.bytes, cid);
+            }
+        });
+
+        tc.Run("the ring-buffer receives refuse a range past the end of guest RAM", [](TestCase &t)
+        {
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, "exTcpRecv: a loopback cid with data waiting");
+                std::string out;
+                uint32_t v0 = 0;
+                out = captureStdout([&] { v0 = exTcp(ram, cid, PS2_RAM_SIZE - 0x20u, 0x100u); });
+                t.IsTrue(ram.marginUntouched(), "exTcpRecv: nothing is written past the end of guest RAM");
+                t.Equals(v0, static_cast<uint32_t>(kErrInvalidBuffer), "exTcpRecv: the bad-buffer error");
+                t.IsTrue(out.find("netbExTcpRecv bounded") != std::string::npos && out.find("256") != std::string::npos,
+                         "exTcpRecv: one line names the function and the length: " + out);
+                closeCid(ram.bytes, cid);
+            }
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, "exUdpRecv: a loopback cid with a datagram waiting");
+                std::string out;
+                uint32_t v0 = 0;
+                out = captureStdout([&] { v0 = exUdp(ram, cid, PS2_RAM_SIZE - 0x20u, 0x248u); });
+                t.IsTrue(ram.marginUntouched(), "exUdpRecv: nothing is written past the end of guest RAM");
+                t.Equals(v0, 2u, "exUdpRecv: its own failure code");
+                t.Equals(ram.word(0x5124u), 0, "exUdpRecv: no length reported");
+                t.IsTrue(out.find("netbExUdpRecv bounded") != std::string::npos && out.find("584") != std::string::npos,
+                         "exUdpRecv: one line names the function and the length: " + out);
+                closeCid(ram.bytes, cid);
+            }
+        });
+
+        tc.Run("the ring-buffer receives inside guest RAM still deliver the same bytes", [](TestCase &t)
+        {
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, "exTcpRecv: a loopback cid with data waiting");
+                t.Equals(exTcp(ram, cid, 0x6000u, 0x100u), 0x80u, "exTcpRecv: the byte count");
+                t.IsTrue(payloadAt(ram, 0x6000u, 0x80u), "exTcpRecv: the bytes");
+                closeCid(ram.bytes, cid);
+            }
+            {
+                GuardedRam ram;
+                const int32_t cid = cidWithDatagram(ram.bytes, 0x80u);
+                t.IsTrue(cid > 0, "exUdpRecv: a loopback cid with a datagram waiting");
+                t.Equals(exUdp(ram, cid, 0x6000u, 0x248u), 0u, "exUdpRecv: success");
+                t.Equals(ram.word(0x5124u), 0x80, "exUdpRecv: the length reported");
+                t.IsTrue(payloadAt(ram, 0x6000u, 0x80u), "exUdpRecv: the bytes");
+                closeCid(ram.bytes, cid);
+            }
         });
     });
 }

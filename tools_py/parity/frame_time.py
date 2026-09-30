@@ -12,11 +12,18 @@ between presents:
 which is 16.67 at the console's 60. It is NOT the present rate: HostRenderFrame replays every guest frame
 recorded since the last replay in one present, so presents can be fewer than VBlanks. docs/KNOWN.md §1's
 two-instance clock row keeps the three apart -- the guest VBlank rate (this), the GL presents (`[gs-gl stats]`
-`present=`) and the game's own draw rate (`[vu1-stats]` syncv/s) -- and the gate's log carries only the first.
-Not used: `ee=` (the guest EE clock, which counts wall time since research/34's fix and so reads ~1.00x
+`present=`) and the game's own draw rate (`[vu1-stats]` syncv/s). The FRAME line is the first.
+Not used here: `ee=` (the guest EE clock, which counts wall time since research/34's fix and so reads ~1.00x
 however many VBlanks are delivered), `seq=` (the kernel snapshot's sequence, a staleness marker, not a frame
-count), the `[gs-gl present]` lines (every 600th frame, no timestamp) and `[vu1-stats]` (the gate does not set
-PS2X_VU_STATS).
+count) and the `[gs-gl present]` lines (every 600th frame, no timestamp).
+
+The third, the game's own frame rate (Sprint 17 F0): the gate's mission stage sets PS2X_VU_STATS=1, and the
+runtime prints a `[vu1-stats]` line a second whose `syncv/s=` field (ps2_vu1_core.cpp, the print after
+`s_lastSyncV`) counts the game's own sync calls -- the frames it drew. The line carries no clock, so each one is
+attributed to the `[pc-sampler]` row before it (a line before the first row has no time and is not counted), and
+the SYNCV line is the mean of the lines whose row falls inside the same scripted walk:
+
+    SYNCV mean=<syncv/s>/s n=<lines>
 
 The stretch is the scripted walk: sampler rows with `t=` from the drive log's step that follows the HUD
 untilref match (s28 in gameplay_probe.txt) to the drive's last step (s48). The stage's unscripted tail after
@@ -32,7 +39,7 @@ into the tail.
                second: a single frame shorter than that is not resolved -- this is the worst one-second mean)
     n        = VBlanks over the stretch
 
-    python -m tools_py.parity.frame_time <stamp dir> [<stamp dir> ...]     # the walk, and the tail beside it
+    python -m tools_py.parity.frame_time <stamp dir> [<stamp dir> ...]     # the walk, SYNCV, and the tail
 """
 import os
 import re
@@ -42,8 +49,10 @@ from collections import namedtuple
 HUD_REF_NAME = "ref_hud_ours.png"        # gate.HUD_REF_NAME; a test holds the two equal
 SAMPLER_RE = re.compile(r"\[pc-sampler\].*?\bt=([0-9]+(?:\.[0-9]+)?) vsync=([0-9]+)\b")
 STEP_RE = re.compile(r"^s\d\d_\S+\s+t=\s*([0-9]+(?:\.[0-9]+)?)s", re.M)
+SYNCV_RE = re.compile(r"\[vu1-stats\].*?\bsyncv/s=([0-9]+(?:\.[0-9]+)?)")
 
 FrameTime = namedtuple("FrameTime", "mean_ms worst_ms n windows start_t end_t")
+SyncV = namedtuple("SyncV", "mean n")
 
 
 def hud_walk(drive_text, hud_ref=HUD_REF_NAME):
@@ -129,6 +138,38 @@ def read_tail(drive_log, game_log):
     return (ft, None) if ft else (None, "no moving [pc-sampler] rows after t=%.1f s" % end)
 
 
+def syncv_samples(lines):
+    """[(t, syncv/s)]: each `[vu1-stats]` line's syncv/s with the `t=` of the `[pc-sampler]` row before it, in log
+    order; a line before the first row has no time and is left out."""
+    out, t = [], None
+    for line in lines:
+        m = SAMPLER_RE.search(line)
+        if m:
+            t = float(m.group(1))
+            continue
+        m = SYNCV_RE.search(line)
+        if m and t is not None:
+            out.append((t, float(m.group(1))))
+    return out
+
+
+def syncv(game_log_path, t_from, t_to):
+    """SyncV(mean, n) over the `[vu1-stats]` lines attributed to t_from <= t <= t_to, or None when there is none
+    (or no game log)."""
+    try:
+        with open(game_log_path, encoding="utf-8", errors="replace") as f:
+            values = [v for t, v in syncv_samples(f) if t_from <= t <= t_to]
+    except (OSError, TypeError):
+        return None
+    return SyncV(sum(values) / len(values), len(values)) if values else None
+
+
+def read_syncv(game_log_path, t_from, t_to):
+    """The mean syncv/s of the `[vu1-stats]` lines inside [t_from, t_to] (sampler seconds), or None."""
+    sv = syncv(game_log_path, t_from, t_to)
+    return sv.mean if sv else None
+
+
 def _stamp_logs(stamp_dir):
     return os.path.join(stamp_dir, "mission.drive.log"), os.path.join(stamp_dir, "mission.game.log")
 
@@ -136,6 +177,32 @@ def _stamp_logs(stamp_dir):
 def read_stamp(stamp_dir):
     """read() over a gate stamp's mission.drive.log and mission.game.log."""
     return read(*_stamp_logs(stamp_dir))
+
+
+def read_syncv_stamp(stamp_dir):
+    """(SyncV, None) or (None, why): the `[vu1-stats]` syncv/s over a gate stamp's scripted walk -- the same walk,
+    the HUD step to the last step, as the FRAME line's."""
+    drive_log, game_log = _stamp_logs(stamp_dir)
+    try:
+        with open(drive_log, encoding="utf-8", errors="replace") as f:
+            walk = hud_walk(f.read())
+    except (OSError, TypeError) as e:
+        return None, "no drive log (%s)" % e
+    if walk is None:
+        return None, "HUD not reached in the drive log"
+    sv = syncv(game_log, *walk)
+    if sv is None:
+        return None, ("no [vu1-stats] syncv/s line in the walk (t %.1f-%.1f s; PS2X_VU_STATS unset, or no "
+                      "[pc-sampler] row before the lines)" % walk)
+    return sv, None
+
+
+def syncv_line(sv, why=None):
+    """The summary's SYNCV line, printed next to FRAME (informational, like it)."""
+    if sv is None:
+        return "SYNCV NO-DATA (%s)" % why
+    return "SYNCV mean=%.1f/s n=%d (the game's own frame rate: [vu1-stats] syncv/s over the scripted walk)" % (
+        sv.mean, sv.n)
 
 
 def line(ft, why=None):
@@ -157,6 +224,7 @@ def main(argv=None):
         name = os.path.basename(os.path.normpath(stamp))
         ft, why = read_stamp(stamp)
         print("%s %s" % (name, line(ft, why)))
+        print("%s %s" % (name, syncv_line(*read_syncv_stamp(stamp))))
         tail, why = read_tail(*_stamp_logs(stamp))
         if tail:
             print("%s TAIL mean=%.2f worst1s=%.2f n=%d (not the gate's number: sampler t=%.1f-%.1f s, %d windows)"
