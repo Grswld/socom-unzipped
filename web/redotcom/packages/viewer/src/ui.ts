@@ -663,23 +663,22 @@ export class Ui {
   }
 
   /**
-   * The mouse's look (round 2; `./look`): the law (raw or the game's stick curve), the sensitivity, invert pitch and the
-   * game's or a uniform pitch, in the panel's Mouse look section (walk mode's, so on the page only on Play: `data-play`). Remembered like the
-   * sound. `handler` gets the whole option set (the four the panel owns; `throttle` is the game's own and stays off) at
-   * the start and on every change.
+   * The mouse's look (round 2; `./look`): the sensitivity, invert pitch and the game's or a uniform pitch, in the
+   * panel's Mouse look section (walk mode's, so on the page only on Play: `data-play`). Remembered like the sound. The
+   * mouse's law is always raw (owner hotfix, 2026-09-30: "make raw the default for mouse & keyboard and stick for
+   * controller, and remove the setting"): there is no law switch, and a stored `mouse: 'stick'` from before is read as
+   * raw. The pad's look is the stick curve in `Look.frame`, untouched here. `handler` gets the whole option set (`throttle`
+   * is the game's own and stays off) at the start and on every change.
    */
   onLookControls(handler: (opts: Pick<LookOptions, 'mouse' | 'sensitivity' | 'pitchRatio' | 'invertPitch'>) => void): void {
-    const group = document.getElementById('mouselaw');
     const slider = document.getElementById('sensitivity') as HTMLInputElement | null;
     const out = document.getElementById('sensitivity-out');
     const invert = document.getElementById('invertpitch') as HTMLInputElement | null;
     const uniform = document.getElementById('uniformpitch') as HTMLInputElement | null;
-    if (!group || !slider || !out || !invert || !uniform) return;
-    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>('button[data-law]'));
-    let mouse: LookOptions['mouse'] = 'raw';
+    if (!slider || !out || !invert || !uniform) return;
+    const mouse: LookOptions['mouse'] = 'raw';
     try {
       const stored = JSON.parse(read(MOUSE_LOOK_KEY) ?? 'null') as Partial<LookOptions> | null;
-      if (stored && (stored.mouse === 'raw' || stored.mouse === 'stick')) mouse = stored.mouse;
       if (stored && typeof stored.sensitivity === 'number' && Number.isFinite(stored.sensitivity)) {
         slider.value = String(Math.min(Number(slider.max), Math.max(Number(slider.min), stored.sensitivity)));
       }
@@ -690,18 +689,9 @@ export class Ui {
       mouse, sensitivity: Number(slider.value), pitchRatio: uniform.checked ? 'uniform' : 'game', invertPitch: invert.checked,
     });
     const show = (): void => {
-      for (const b of buttons) b.setAttribute('aria-pressed', b.dataset['law'] === mouse ? 'true' : 'false');
       out.textContent = `${Number(slider.value).toFixed(2)}×`;
     };
     const changed = (): void => { show(); write(MOUSE_LOOK_KEY, JSON.stringify(options())); handler(options()); };
-    for (const b of buttons) {
-      b.addEventListener('click', () => {
-        const law = b.dataset['law'] === 'stick' ? 'stick' : 'raw';
-        if (law === mouse) return;
-        mouse = law;
-        changed();
-      });
-    }
     slider.addEventListener('input', changed);
     invert.addEventListener('change', changed);
     uniform.addEventListener('change', changed);

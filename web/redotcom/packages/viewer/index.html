@@ -154,16 +154,13 @@
         </div>
       </section>
       <!--
-        The mouse's look (`./src/look.ts`; `FlyCamera.setLookOptions`), Play's (`data-play`). Raw is the default (owner,
-        2026-09-29), the stick curve kept beside it. Remembered in this browser only (`./src/ui.ts`, `onLookControls`).
+        The mouse's look (`./src/look.ts`; `FlyCamera.setLookOptions`), Play's (`data-play`). The mouse is always raw and a
+        controller always the game's stick curve: there is no law choice (owner hotfix, 2026-09-30). Remembered in this
+        browser only (`./src/ui.ts`, `onLookControls`).
       -->
       <section class="section" id="look-section" data-play aria-labelledby="look-label">
         <h2 class="s2u-field__label" id="look-label">Mouse look</h2>
-        <p class="s2u-field__note" id="look-note">How far the mouse turns you. Raw is the default.</p>
-        <div id="mouselaw" class="s2u-tabs" role="group" aria-labelledby="look-label" aria-describedby="look-note">
-          <button type="button" class="s2u-tab" data-law="raw" aria-pressed="true" title="The same turn for the same movement, however fast you move the mouse. The default.">Raw<span class="s2u-tab__what">steady turn</span></button>
-          <button type="button" class="s2u-tab" data-law="stick" aria-pressed="false" title="The mouse runs through the game&rsquo;s own stick curve: slow movements turn less, fast ones more.">Stick curve<span class="s2u-tab__what">the game&rsquo;s feel</span></button>
-        </div>
+        <p class="s2u-field__note" id="look-note">How far the mouse turns you. A controller keeps the game&rsquo;s stick curve.</p>
         <label class="s2u-range" title="1&times; is the default; 2&times; turns twice as far for the same movement."><span>sensitivity</span>
           <input type="range" id="sensitivity" min="0.05" max="4" step="0.01" value="1" /><output id="sensitivity-out" for="sensitivity"></output></label>
         <div class="checks">

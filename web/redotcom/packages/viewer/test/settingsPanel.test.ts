@@ -52,7 +52,7 @@ describe('the settings panel: one control per kind, named, defaults said', () =>
   beforeEach(load);
 
   it('every few-options choice is a segmented switch named by its heading and described by its help line', () => {
-    for (const id of ['recom', 'look', 'mouselaw', 'online']) {
+    for (const id of ['recom', 'look', 'online']) {
       const g = document.getElementById(id)!;
       expect(g.getAttribute('role'), id).toBe('group');
       const label = document.getElementById(g.getAttribute('aria-labelledby') ?? '');
@@ -63,7 +63,7 @@ describe('the settings panel: one control per kind, named, defaults said', () =>
   });
 
   it('each switch says which option is the default, and the markup presses it', () => {
-    for (const id of ['recom', 'look', 'mouselaw', 'online']) {
+    for (const id of ['recom', 'look', 'online']) {
       const pressed = document.querySelector<HTMLElement>(`#${id} [aria-pressed="true"]`)!;
       expect(pressed.getAttribute('title'), id).toMatch(/The default\./);
       const others = [...document.querySelectorAll<HTMLElement>(`#${id} [aria-pressed="false"]`)];
