@@ -11,7 +11,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 2. Where it stands
 
 - **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1) and PROVED by the batch-5 chain on 1fd3cfdb with everything merged before it. No close date (R338); one controller in the main tree (owner).**
-  Now: the refused capture read: two last-bone shapes (L the 0x02 loop family 59 %, A 66 06 08 54 18 28 42 41 %); the linear half merged (285761ed); N1c-shapes dispatched; the suite for the push; #110 parked (O27).
+  Now: N1c (both shapes) merged caa149d9, built, fenced clean on all 2,000 captured lists; the reading and rung two wait for the owner's launcher to close; #110 parked (O27).
 - **Next free ruling number: R339** (R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
