@@ -2366,6 +2366,15 @@ namespace
     // earlier produced. Four pairs is exactly the FMAC latency, so the interpreter has that entry
     // committed at the FMAND and no other FMAC is in flight -- this file's immediate flag commit
     // reads the same value.
+    // That holds whatever ran before 0x1638 (entry 0x33c8's repack or 0x66, research/82 "N1b", as
+    // well as 0x1b50's 0x70), because it depends on nothing outside this loop: the pairs between the
+    // MADDz.w at 0x16f8 and the FMAND at 0x1718 are a NOP, an ITOF15 and a NOP, none of which queues
+    // a flag entry (the interpreter pushes one only for an FMAC with a dest; ITOF/FTOI/MR32 push
+    // none); every pair advances m_cycle by at least one, so the FMAND issues at least kFmacLatency
+    // (4) cycles after the MADDz.w, whose entry is then ready; and flag entries land in issue order,
+    // so every older one -- the previous command's last FMAC is 20+ pairs back, behind the
+    // dispatcher and this prologue -- has landed before it. MAC at the FMAND is therefore the
+    // MADDz.w's in both models, on the first pass and every later one.
     namespace cull
     {
         constexpr uint8_t kEye = 26;     // data qword 30
@@ -3570,10 +3579,13 @@ namespace
     }
 
     // The resumed list's commands, walked from vi14 to its 0x42 as the dispatcher will run them (the pre-scan has
-    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the three commands the
-    // corpus's 0x33c8 lists hold are admitted, because only their store ranges are derived here:
+    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the four commands whose
+    // store ranges are derived here are admitted -- the corpus's three and the walk's 0x06 (research/82 N1b):
     //   0x66  index record [1] of every triangle, TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1) (the body runs once
     //         before its IBGTZ);
+    //   0x06  index record [0] of every triangle, TOP+TOP+2.x+2k for k < max(TOP+2.w, 1): its one store, the
+    //         ISW.w of the flag word at 0x1738 (proven as the whole qword), also once before its IBGTZ at 0x1750.
+    //         Its loads (the eye q30, the records' .x and .w, the normals, the vertices) write nothing;
     //   0x08  the staging triples from q40, three a vertex, max(TOP+2.z, 1) of them (likewise);
     //   0x40  (0x28's body from 0x1790) the tag qwords 290 and 300, the packets' nine qwords after each of the
     //         two pointers at q329.x and q329.y, and q329 itself -- rewritten with the same pair, swapped, so the
@@ -3598,6 +3610,10 @@ namespace
                 return true;
             case kCmdFaceNormals:
                 if (!writeRangeClear(top, indexBase + 1, 2 * facePasses - 1))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdCull:
+                if (!writeRangeClear(top, indexBase, 2 * facePasses - 1))
                     return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
                 break;
             case kCmdTransform:
@@ -3827,8 +3843,8 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     else if (isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex)))
     {
         // No handler clamp may fire after the repack has stored: the handler-side ceilings (lowered only by the
-        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x08 and 0x40 --
-        // all proveResumedWrites admits -- loop on these two counts and nothing else.
+        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x06, 0x08 and 0x40
+        // -- all proveResumedWrites admits -- loop on these two counts and nothing else.
         if (c.loadWord(top + 2, 2) > vertexCeiling())
             refuse(refusal, Vu1Refusals::Reason::HeaderVertices);
         else if (c.loadWord(top + 2, 3) > triangleCeiling())

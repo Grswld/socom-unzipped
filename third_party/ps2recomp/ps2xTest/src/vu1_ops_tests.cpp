@@ -1163,6 +1163,28 @@ void register_vu1_ops_tests()
                     setFloat(41u + 2u * k, 3u, 0.0f);
                 }
             }
+            // The list at qword 340 as `52 <resumed...>`, vi14 = 1 still naming the first resumed command.
+            void setResumedList(const std::vector<uint32_t> &resumed)
+            {
+                setWord(340u, 0u, 0x52);
+                uint32_t k = 1u;
+                for (uint32_t command : resumed)
+                    setWord(340u + k++, 0u, static_cast<int32_t>(command));
+            }
+            // Triangles whose index record [0].w has bit 0 (0x40's draw gate, 0x06's output) set.
+            uint32_t visibleTriangles(const std::vector<uint8_t> &mem) const
+            {
+                const int32_t base = static_cast<int32_t>(top) + static_cast<int16_t>(word(top + 2u, 0u) & 0xFFFF);
+                const int32_t n = static_cast<int16_t>(word(top + 2u, 3u) & 0xFFFF);
+                uint32_t visible = 0u;
+                for (int32_t k = 0; k < n; ++k)
+                {
+                    int32_t w;
+                    std::memcpy(&w, mem.data() + (((base + 2 * k) * 16) & 0x3FFF) + 12, 4u);
+                    visible += (w & 1) != 0 ? 1u : 0u;
+                }
+                return visible;
+            }
 
             struct End
             {
@@ -1203,7 +1225,12 @@ void register_vu1_ops_tests()
                 }
                 return current().nativeEnded;
             }
-            static bool dispatcher(VU1Interpreter &vu, uint64_t budgetEnd) { return RefusalRig::dispatcher(vu, budgetEnd); }
+            static bool dispatcher(VU1Interpreter &vu, uint64_t budgetEnd)
+            {
+                current().nativeRan = true;
+                current().nativeEnded = RefusalRig::dispatcher(vu, budgetEnd);
+                return current().nativeEnded;
+            }
             // Runs the program from `startPc` with the native table {hash, nativePc, fn}; fn == nullptr runs the
             // interpreter alone (a table whose one row matches nothing).
             End run(uint32_t startPc, uint32_t nativePc, VU1Interpreter::KnownProgramFn fn, uint32_t budget = 1u << 28) const
@@ -1368,12 +1395,77 @@ void register_vu1_ops_tests()
             t.IsTrue(why.empty(), "the fallback is the microcode's own run:" + why);
         });
 
+        // ---- Sprint 17 F N1b (docs/research/82 "N1b"): the backface cull 0x06 in the resumed list ---------------------
+        // The walk's last-bone lists hold 0x06 (1.78 M `resume_command cmd=0x6` refusals with N1 on). Its only stores are
+        // the flag words, record [0].w of every triangle; its one flag read, `FMAND vi13, vi5` at 0x1718, reads the
+        // MADDz.w four pairs before it in its own loop, whatever ran before 0x1638. Each shape runs natively against the
+        // interpreter on the real image, and the cull must have split the triangles (some drawn, some not) so both
+        // outcomes of that FMAND are compared.
+        {
+            struct Shape
+            {
+                const char *what;
+                std::vector<uint32_t> resumed;
+                int32_t triangles; // -1: the fixture's 38
+            };
+            static const Shape shapes[] = {
+                {"06 08 40 42 (the cull on the fixture's normals)", {0x06u, 0x08u, 0x40u, 0x42u}, -1},
+                {"66 06 08 40 42 (normals rebuilt from the skinned positions, then culled)", {0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, -1},
+                {"66 06 08 40 42 with a zero triangle count (0x66 and 0x06 each run their body once)",
+                 {0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 0},
+            };
+            for (const Shape &shape : shapes)
+            {
+                tc.Run(std::string("native 0x33c8: a last-bone ") + shape.what + " is taken natively, bit-exact", [&shape](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.load(), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    rig.makeLastBone();
+                    rig.setResumedList(shape.resumed);
+                    if (shape.triangles >= 0)
+                        rig.setWord(rig.top + 2u, 3u, shape.triangles);
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file and VU data memory:" + why);
+                    if (shape.triangles < 0)
+                    {
+                        const uint32_t visible = rig.visibleTriangles(oracle.data);
+                        const uint32_t all = static_cast<uint32_t>(static_cast<int16_t>(rig.word(rig.top + 2u, 3u) & 0xFFFF));
+                        t.IsTrue(visible > 0u && visible < all,
+                                 "the cull split the triangles (" + std::to_string(visible) + " of " + std::to_string(all) +
+                                     " drawn): both outcomes of the FMAND at 0x1718 are compared");
+                        if (Entry33c8Rig::packetsComparable())
+                            t.IsTrue(!native.packets.empty(), "the list drew (0x40 kicks one packet per drawn triangle)");
+                    }
+                });
+            }
+        }
+
+        tc.Run("native 0x1b50 is unchanged: the fixture's own 70 06 08 40 42 runs natively, bit-exact", [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcher);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "the 0x1b50 dispatcher took the list whole");
+            const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
         tc.Run("native 0x33c8: a state whose writes it cannot bound is refused before anything is touched", [](TestCase &t)
         {
             // Every write range of the program is proven before the repack's first store: the repack's records, 0x66's
             // index records, 0x08's staging triples and 0x40's packets must not wrap VU memory or land on what the
             // proof itself read (the list's 64 qwords, the header TOP+2, the packet pointers at q329); the resumed
-            // list may hold only 0x66, 0x08, 0x40 and its 0x42; and no handler clamp may be able to fire after the
+            // list may hold only 0x66, 0x06, 0x08, 0x40 and its 0x42 (0x06's flag words, record [0] of every
+            // triangle, proven like 0x66's record [1]: N1b); and no handler clamp may be able to fire after the
             // repack. Each refusal leaves the register file and VU data memory exactly as the entry found them.
             using R = Vu1Refusals::Reason;
             struct Case
@@ -1401,11 +1493,19 @@ void register_vu1_ops_tests()
                  [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 2u, 101); }, -1},
                 {"q329.x = 335: 0x40's packet would overwrite the list", R::WriteRange, 0x40u,
                  [](Entry33c8Rig &r) { r.setWord(329u, 0u, 335); }, -1},
-                {"a 0x06 in the resumed list", R::ResumeCommand, 0x06u,
+                {"a 0x28 in the resumed list (no store range derived for it)", R::ResumeCommand, 0x28u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x66u, 0x06u, 0x08u, 0x28u, 0x42u}); }, -1},
+                {"06 08 40 42, TOP+2.x = -84: 0x06's flag words from q340 would overwrite the list", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, -84); }, -1},
+                {"06 08 40 42, TOP+2.x = -10: 0x06's seventh flag word (q426) would overwrite the header TOP+2", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, -10); }, -1},
+                {"06 08 40 42, TOP+2.x = 600: 0x06's flag words would wrap past the end of VU memory", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, 600); }, -1},
+                {"06 08 40 42, one triangle, TOP+2.x = -21: 0x06's one flag word is q403, the list's last qword", R::WriteRange, 0x06u,
                  [](Entry33c8Rig &r) {
-                     const uint32_t list[6] = {0x52u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u};
-                     for (uint32_t k = 0; k < 6u; ++k)
-                         r.setWord(340u + k, 0u, static_cast<int32_t>(list[k]));
+                     r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u});
+                     r.setWord(r.top + 2u, 0u, -21);
+                     r.setWord(r.top + 2u, 3u, 1);
                  }, -1},
                 {"the handler vertex ceiling at 10 (0x08's clamp would fire after the repack)", R::HeaderVertices, 0u,
                  [](Entry33c8Rig &) {}, 10},

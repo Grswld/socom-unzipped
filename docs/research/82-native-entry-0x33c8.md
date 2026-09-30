@@ -30,6 +30,8 @@ microcode (`python tools_py/vu1dis.py --start 0x3100 --count 80 logs/vu1dump3/vu
    ms / 68.7 s. Native is not free: in a scratch harness on the three (B) dumps its `execute()` took 54-70 % of
    the generated code's time (§5), so (B) native saves an estimated 30-45 % of (B)'s, **about 23-45 ms/s** of the
    game thread's VU1 time -- if the walk's (B) lists behave like the corpus's three. The walk (rung two) decides.
+   **They do not (N1b, §8):** the walk's (B) lists hold the backface cull `0x06`, which N1 refused whole; with
+   `0x06` admitted the stake is about 30-39 ms/s. **[estimate]**
 
 ## 1. The microcode
 
@@ -93,7 +95,8 @@ header or the packet pointers at q329, but nothing in the microcode guarantees i
   and not to touch those three (`writeRangeClear`): the repack's records; `0x66`'s index records [1],
   TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1); `0x08`'s staging triples, q40 + 3 max(TOP+2.z, 1); `0x40`'s tag qwords
   290 and 300 and the nine packet qwords after each of q329.x and q329.y (its own rewrite of q329 keeps the pair).
-  Only those three commands are admitted after the resume, because only their ranges are derived. The handler-side
+  Only those three commands are admitted after the resume, because only their ranges are derived (N1b, §8, adds
+  `0x06`). The handler-side
   ceilings (lowered only by the test knobs) are checked there too, so no clamp can hand back mid-list after the
   repack has stored: the program is accepted with every write proven, or refused before the first write.
 - The gate: `Vu1NativeProgram` gained an optional `enabled()`, asked after the (hash, pc) match (`ps2_vu1.h`,
@@ -105,7 +108,7 @@ header or the packet pointers at q329, but nothing in the microcode guarantees i
 
 - **The fence is three real programs.** Every (B) dump of the corpus is `66 08 40 42` from index 1 with 15-46
   vertices; the walk's (B) entries run two to two and a half times the corpus's cycles (§0 item 2's estimate), so
-  bigger meshes, same code path. Any command other than `0x66`, `0x08`, `0x40` and `0x42` in the resumed list is refused (`resume_command`); a list made only of those, in any order or count, is accepted with every write proven (the review of 7e894298, 2026-09-30).
+  bigger meshes, same code path. Any command other than `0x66`, `0x06` (N1b, §8), `0x08`, `0x40` and `0x42` in the resumed list is refused (`resume_command`); a list made only of those, in any order or count, is accepted with every write proven (the review of 7e894298, 2026-09-30).
 - The handlers' known caveats carry over unchanged (the file's header): FMAC flags committed immediately (no FMAND
   in `0x66` or the repack), `m_cycle` not advanced (VU cycles/s under-reports by what these lists cost), the
   immediate XGKICK model required.
@@ -117,7 +120,7 @@ header or the packet pointers at q329, but nothing in the microcode guarantees i
 - `ps2xTest/src/vu1_ops_tests.cpp`, six cases on the real image (the fixture `vu1dump3_prog_31.bin` with a last-bone
   state written over it): the gate; (B) against the interpreter (register file and VU data memory; packets too under
   the immediate XGKICK model); a zero triangle count; (A) refused as `skin_pass` with the microcode's own end state;
-  thirteen unprovable states (the repack's, `0x66`'s, `0x08`'s and `0x40`'s ranges, the resume index, a `0x06` in
+  thirteen unprovable states (the repack's, `0x66`'s, `0x08`'s and `0x40`'s ranges, the resume index, a `0x28` (N1b: was `0x06`) in
   the list, a lowered vertex ceiling) each refused under its reason with the register file and VU data memory
   unchanged against a snapshot taken as the program was entered; `0x1b50` unchanged. RED on a stub, GREEN on the code, and
   three planted mutations (no `MR32.w`, `OPMSUB` operands swapped, `SQ.xyz` for `SQ.xyzw` in `0x66`) each fail.
@@ -174,3 +177,123 @@ same stores, so every handler native runs stays exact; the proof is what breaks 
 then hold a command, or a `0x30`/`0x32`/`0x34` block, the scan never checked. No corpus list comes near (maxima 78
 vertices, TOP 424/724, q329 = 300/290). The fix would be `0x33c8`'s: derive each admitted command's store range
 and refuse whole, a pre-scan change to the most-covered entry, so it waits for its own task and fence.
+
+## 8. N1b -- the backface cull `0x06` in the resumed list (2026-09-30, branch `agent/s17-n1b-cull`)
+
+**Why.** The walk with N1 on (`logs/parity/ab/vu1refuse/n1on`, 09:34Z, the same 68 s window) refused
+`entry=0x33c8 resume_command cmd=0x6` 270,898 times: 5,876 ms of fallback host time, 85.5 ms/s, 71 % of the
+fallback's VU cycles, about 21.7 µs a list against 9.5 µs for the corpus's largest (B). The refusal names the first
+command the write proof has no range for, so the walk's last-bone lists hold `0x06`, after any `0x66`. No dump in
+`logs/vu1dump`, `vu1dump2`, `vu1dump3` or `vu1dump4` holds one: every skinned list on disk is `52 66 08 40 42`.
+**[verified]**
+
+**The shapes.** The dispatcher at `0x1b60` runs whatever the list holds from the live-in `vi14`. Nothing in the
+microcode fixes what follows `0x52`. The repack leaves the vertex block in the float layout `0x70` leaves: position,
+UV, colour. So every family-A consumer can follow. The 42-dump mix gives the order: `0x06` sits after the unpack and
+before `0x08` (`70 06 08 40 42`, 30 lists), and it reads the normals `0x66` rebuilds. The likely walk shape is
+therefore `66 06 08 40 42`. **[inferred]** The proof walks the resumed list in order and admits `0x66`, `0x06`,
+`0x08` and `0x40` in any order or count, so `06 08 40 42` is taken too. Any other command is still refused before
+anything is written. If the walk's lists hold one after the `0x06`, the next walk's refusal lines name it (§8.4).
+
+### 8.1 What `0x06` does (`0x1638-0x1768`, `cmdBackfaceCull`)
+
+- **Reads.** `TOP+2.x` (the index list), `TOP+2.w` (the triangle count), the eye at q30 and each index record's
+  `[0].x` (the reference vertex) and `[0].w` (the flag word). It also reads `[1]`, the normal as 1.15 integers,
+  converted by `ITOF15`, and the reference vertex's position at `TOP+4+[0].x`. Software-pipelined: the next
+  record's `.x`, normal and vertex are loaded before the test, one record past the end.
+- **Stores: one per triangle,** `ISW.w vi12, 0(vi4)` at `0x1738`: record `[0].w` = flag word & 32766, or'd with 1
+  unless the dot product `(eye - vertex) . normal` is negative. The body runs before the `IBGTZ vi9` at `0x1750`, so
+  the store set is qwords `TOP + TOP+2.x + 2k` for `k < max(TOP+2.w, 1)`. It does not store anything else.
+- **Leaves** `vi3` = TOP+4, `vi4` past the last record, `vi5` = 16, `vi8` = 1, `vi9` = 0 (or -1 for a zero count),
+  `vi11`, `vi12`, `vi13`; `vf26` (the eye) to `vf30`; `ACC.w`; MAC/STATUS from its last `SUB.xyzw` at `0x1740`.
+  `0x08` next reads none of the registers (research/15 §2.3: its live-in is `vf1-vf4`). `0x40` reads the flag words.
+  **[verified]** disassembly (`vu1dis --start 0x1638 --count 40`), the handler, the tests below.
+
+### 8.2 The flag read at `0x1718`, after the repack or `0x66`
+
+`FMAND vi13, vi5` reads the MAC sign bit of the w lane that `MADDz.w vf30` at `0x16f8` wrote, four pairs before.
+Native commits flags immediately, so it reads the newest FMAC's MAC. The interpreter reads the newest *landed* entry.
+The two agree whatever ran before `0x1638`:
+
+1. **No newer flag writer.** The pairs between are `0x1700` (NOP), `0x1708` (`ITOF15`) and `0x1710` (NOP). The
+   interpreter pushes a flag entry only for an FMAC with a dest (`ps2_vu1_upper.cpp`: `pushFmacFlags` after
+   `fmacArith`). `ITOF`, `FTOI` and `MR32` push none.
+2. **It has landed.** An entry is ready at issue + `kFmacLatency` (4). Every pair advances `m_cycle` by at least one,
+   and a stall only adds cycles. So the FMAND issues at least 4 cycles after the `MADDz.w`, and `fastCommit` or
+   `commitReadyPipelines` runs before it.
+3. **Nothing older is still in flight.** Entries land in issue order. The previous command's last FMAC is 23 or more
+   pairs back: the repack's `ADDy.z` at `0x3438`, then the dispatcher (8 pairs) and the prologue to `0x16a8`
+   (15 pairs); or `0x66`'s `OPMSUB` at `0x2ed8`. Every older entry has landed.
+
+So the FMAND reads the `MADDz.w`'s flags in both models, on the first pass and every later one. The reasoning at the
+file's line ~392 holds after N1's repack as it does after `0x70`. **[verified]** by reading and by test: in the
+bit-exact cases below the cull splits the fixture's 38 triangles (16 drawn under `66 06`), so both outcomes of the
+FMAND are compared, on the exact (`PS2X_VU1_FAST=0`) and the fast interpreter path. Nothing hands back mid-list, so
+the E bit's in-order flush leaves the same flags in both.
+
+### 8.3 What changed
+
+- `socom2_dispatch_0x1b50.cpp`: `proveResumedWrites` admits `0x06` (`kCmdCull`). Its range is
+  `writeRangeClear(top, indexBase, 2 * max(TOP+2.w, 1) - 1)`, the flag words as whole qwords, checked before the
+  repack's first store like the others. The entry's ceiling check already covers `0x06`'s triangle clamp (`TOP+2.w`
+  against `triangleCeiling()`), so no clamp can fire after the repack. `cmdBackfaceCull`'s comment carries §8.2. No
+  knob, reason or registry row changed. `PS2X_VU1_NATIVE_33C8` still gates it, and its one-line description in
+  `knobs.h` ("its 66 08 40 42 list") now undersells it: left as is, since `docs/KNOBS.md` is generated from it.
+- `vu1_ops_tests.cpp`:
+  - three cases on the real image: `06 08 40 42`, `66 06 08 40 42`, and the latter with a zero triangle count.
+    Each is native and bit-exact against the interpreter, with packets compared under the immediate model.
+  - `0x1b50` taking the fixture's own `70 06 08 40 42`, bit-exact.
+  - four new unprovable-`0x06` states refused before any write: the flag words on the list, on `TOP+2` and wrapping
+    VU memory, and a one-triangle list whose only flag word is q403.
+  - The old "a `0x06` in the resumed list" refusal now uses `0x28`, still refused.
+
+  RED on the base: the three shapes handed back and the four `0x06` states counted as `resume_command`. GREEN: 35 of
+  35 under the test binary's defaults, with `PS2X_VU1_XGKICK_CYCLE_EXACT=0`, and with that plus `PS2X_VU1_FAST=1`.
+  Two planted mutations each fail: the proof starting one qword late fails the q403 case, and the inverted sign test
+  fails all three shapes and the `0x1b50` case.
+- Scratch, not committed: the 25-dump differential is unchanged, `PASS: 0 of 25 differ, 3 taken natively`, against
+  the interpreter and the generated code. The rig's three states as dumps: `execute()` over 1,000 runs, generated
+  against native, `66 08 40 42` 9.54 against 6.23 µs, `06 08 40 42` 8.05 against 4.75, `66 06 08 40 42` 9.69 against
+  5.75. Native is 59-65 % of the generated time. **[measured]** on the loaded host, not rung one.
+
+**The stake, corrected.** The bound is the walk's `0x06` last-bone fallback, 85.5 ms/s. At 35-45 % saved it is
+**about 30-39 ms/s** of game-thread time, if no command beyond these four hides behind the `0x06`. **[estimate]**
+The walk (rung two) decides. `skin_pass` (1,089 ms, 16 ms/s) is (A), still N2's.
+
+### 8.4 The fence: a real `0x06` last-bone dump (the controller's, a game run under the lock)
+
+The dumper (`VU1Interpreter::run`, `ps2_vu1_core.cpp`) saves each VU1 program's *entry* state before the native
+lookup. It saves every program, with no filter by start pc, the next `<count>` after it arms
+(`PS2X_VU1_DUMP=<dir>:<count>`, default 150), about 33 KB each. `PS2X_VU1_DUMP_AFTER` counts seconds from the first
+VU1 run, near boot. The walk runs about 87k programs/s, and one in ten is a `0x06` last-bone list. So 4,000 dumps
+(about 130 MB, 1.4 frames) inside the sampler window hold a few hundred. Capture on one exe, knob off:
+
+```
+bash scripts/loop_lock.sh run <owner> --purpose n1b-dump -- bash logs/s17_controller/f1_stats_walk_ab.sh vu1dump n1b PS2X_VU1_DUMP=logs/vu1dump5:4000 PS2X_VU1_DUMP_AFTER=290
+```
+
+Pick the `0x33c8` last-bone dumps whose resumed list holds `0x06`. This prints each path and its resumed list:
+
+```
+python -c "import glob,struct,sys
+for p in sorted(glob.glob(sys.argv[1]+'/vu1_prog_*.bin'),key=lambda s:int(s.rsplit('_',1)[1][:-4])):
+    b=open(p,'rb').read(); vi=struct.unpack_from('<16i',b,32784); cmds=[]
+    if struct.unpack_from('<I',b,0)[0]!=0x33C8 or not vi[5]&4: continue
+    for k in range(vi[14]&0xFFFF,64):
+        cmds.append(struct.unpack_from('<I',b,16400+(340+k)*16)[0]&0xFFFF)
+        if cmds[-1]==0x42: break
+    if 0x06 in cmds: print(p,' '.join('%02x'%c for c in cmds))" logs/vu1dump5
+```
+
+On `logs/vu1dump3` it prints nothing; with `0x66` for `0x06` it prints `vu1_prog_128`, `141` and `144`. Take the
+picked set (all, or the first 50) as `<P>`. Then, under the lock:
+
+1. Goldens, interpreted, native off: `PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch
+   logs/vu1golden/n1b_cull --no-native <P>`.
+2. Knob on: `PS2X_VU1_NATIVE_33C8=1 PS2X_VU1_NATIVE_REFUSALS=1 dist/vu1_replay.exe --verify
+   logs/vu1golden/n1b_cull/state.txt --native --regs all <P>`. Expect every `OK`, `PASS: 0 mismatching field(s)`,
+   and no `entry=0x33c8` refusal line. A `resume_command cmd=<c>` line names a command the walk's lists hold beyond
+   `0x06`, and that is the next derivation. A `write_range cmd=0x6` line is a real list the proof is too strict for.
+3. Knob off: the same without `PS2X_VU1_NATIVE_33C8`: every `OK`, and `entry=0x33c8 reason=no_native_entry n=<|P|>`.
+4. The 25 `vu1dump3` dumps as §6 item 2, unchanged. Then rung two: the mission walk, knob off then on, one exe. With
+   `PS2X_VU1_NATIVE_REFUSALS=1` the `resume_command cmd=0x6` row should be gone.
