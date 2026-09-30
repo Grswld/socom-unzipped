@@ -37,7 +37,7 @@ namespace Vu1Refusals
     {
         None = 0,
         // VU1Interpreter::run (ps2_vu1_core.cpp): native never entered.
-        NoNativeEntry,     // the image has a native program, but not at this entry pc (0x0000, the 0x33c8 follow-ons)
+        NoNativeEntry,     // the image has a native program, but not at this entry pc (0x0000; 0x33c8 unless its knob)
         StateGuard,        // native registered at this pc, but a D/T bit, E bit, halt or branch is pending
         // The dispatcher's whole-list refusals: pc stays at the entry, nothing touched.
         NoDataMemory,      // no active VU data memory, or under 16 KB
@@ -59,6 +59,12 @@ namespace Vu1Refusals
         MidUnknownCommand, // runCommand's default: a command the pre-scan let through with no handler
         // VU1Interpreter::run: a native program handed back without naming a reason (a test table's program).
         UnnamedHandBack,
+        // Sprint 17 F N1 (research/82): the native program at entry 0x33c8, whole-program refusals, pc left there.
+        SkinPass,          // vi5 bit 2 clear: the microcode's `B 0x3100`, another 0x52 bone pass (no native 0x52)
+        RepackRange,       // vi9 outside 1..256, or the repack's records wrap VU memory or overlap the command list
+        ResumeIndex,       // the live-in vi14 the dispatcher resumes at is outside the list's 64 qwords
+        WriteRange,        // cmd='s stores would wrap VU memory or land on the list, TOP+2 or q329 (0x66, 0x08, 0x40)
+        ResumeCommand,     // the resumed list holds a command outside 0x66 0x08 0x40 (write ranges unproven): cmd=
         kCount
     };
 
@@ -86,6 +92,11 @@ namespace Vu1Refusals
         case Reason::HandlerClamp: return "handler_clamp";
         case Reason::MidUnknownCommand: return "mid_unknown_command";
         case Reason::UnnamedHandBack: return "unnamed_handback";
+        case Reason::SkinPass: return "skin_pass";
+        case Reason::RepackRange: return "repack_range";
+        case Reason::ResumeIndex: return "resume_index";
+        case Reason::WriteRange: return "write_range";
+        case Reason::ResumeCommand: return "resume_command";
         default: return "unknown";
         }
     }
@@ -95,7 +106,8 @@ namespace Vu1Refusals
     {
         return r == Reason::UnknownCommand || r == Reason::ClipBeforeWorld || r == Reason::ZeroBlockCount ||
                r == Reason::SphereBlockCount || r == Reason::BlockPastList || r == Reason::BlockNotOnePacket ||
-               r == Reason::HandlerClamp || r == Reason::MidUnknownCommand;
+               r == Reason::HandlerClamp || r == Reason::MidUnknownCommand || r == Reason::WriteRange ||
+               r == Reason::ResumeCommand;
     }
 
     // A refusal as a site reports it.

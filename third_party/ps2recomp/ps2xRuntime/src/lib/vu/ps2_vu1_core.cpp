@@ -2623,7 +2623,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         const Vu1NativeProgram *table = m_nativeTable ? m_nativeTable : g_vu1NativePrograms;
         const uint32_t count = m_nativeTable ? m_nativeCount : g_vu1NativeProgramCount;
         for (uint32_t i = 0; i < count; ++i)
-            if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn)
+            if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn &&
+                (!table[i].enabled || table[i].enabled()))
                 m_nativeFn = table[i].fn;
         // A fresh program in an image with a native program, entered where it has none (0x0000, 0x33c8).
         if (refusalsOn && !m_nativeFn && !m_programPending &&
