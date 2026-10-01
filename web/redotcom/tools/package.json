@@ -6,6 +6,7 @@
     "@s2u/archive": "*",
     "@s2u/gs": "*",
     "@s2u/mesh": "*",
-    "@s2u/sound": "*"
+    "@s2u/sound": "*",
+    "vitest": "^4.1.11"
   }
 }
