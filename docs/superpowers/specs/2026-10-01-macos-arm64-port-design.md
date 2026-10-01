@@ -36,8 +36,14 @@ notarized `.app`, a Metal renderer, macOS CI. Each is listed under "Later phases
   (4.5), which is probed at runtime and falls back to the existing `GsGlDepth::Mode::Legacy` path.
 - Threads: the window, event pump and presentation run on the main thread (`PS2Runtime::run`), the guest on a
   spawned thread -- the shape Cocoa requires. No change.
-- SIMD: the runtime uses SSE intrinsics; the top-level CMake already fetches `sse2neon` on ARM.
-- No JIT, no `PROT_EXEC`, no inline asm in the runtime or the recompiler output.
+- SIMD: the runtime uses SSE intrinsics; the top-level CMake already fetches `sse2neon` on ARM and defines
+  `USE_SSE2NEON`. Five later files include `<emmintrin.h>`/`<xmmintrin.h>` directly, bypassing that switch --
+  the cause of nearly every arm64 compile error (probe build, 2026-10-01).
+- No JIT, no `PROT_EXEC`. One inline-asm site: the x87 rounding scope (section 5).
+- Probe build (2026-10-01, a scratch copy with the section 2/5 fixes applied): the runtime library, the tools,
+  the launcher and `ps2x_tests` all compile and link on arm64; the C++ suite ran 865 passes, 5 fixture-path
+  failures from the out-of-tree probe layout, 1 real gap (`ExeDir::platformName`), and a crash in the 989snd
+  conductor test to be triaged in the real tree.
 
 ## Approach
 
@@ -53,8 +59,8 @@ Darwin equivalent. No new abstraction layers.
 
 ### 1. Build chain
 
-**`scripts/build_macos.sh`** -- modelled on `scripts/build_linux.sh`, same steps plus `recomp`:
-`tools | recomp | runtime | release | test | all`.
+**`scripts/build_macos.sh`** -- modelled on `scripts/build_linux.sh`, its steps plus `recomp`, minus `release`
+(phase 2): `tools | recomp | runtime | test | all`.
 
 - `PATH` puts `/opt/homebrew/bin` first; `CC=clang CXX=clang++` (AppleClang); `CMAKE_OSX_ARCHITECTURES=arm64`;
   `CMAKE_OSX_DEPLOYMENT_TARGET=13.0`.
@@ -64,8 +70,11 @@ Darwin equivalent. No new abstraction layers.
   `ps2_recomp`, ...). No `.exe` suffix anywhere.
 - `recomp` reuses `build.sh`'s recomp body (`make_overlay_elf.py`, `fix_ghidra_csv.py`, `ps2_recomp socom2.toml`);
   where `build.sh` hard-codes `ps2_recomp.exe`, the macOS script uses the suffix-less name.
-- The loop lock (`scripts/loop_lock.sh`) is consulted the way `build.sh` does when the script exists; it is the
-  repository's convention and costs nothing.
+- The loop lock (`scripts/loop_lock.sh`) is not consulted, as `build_linux.sh` does not: it guards the
+  maintainer's shared Windows host, and a single-developer Mac has nothing to collide with.
+- The VU1 replay goldens (`build.sh` test step, runs 1-9) move into `scripts/vu1_goldens.sh <vu1_replay>` for the
+  macOS script; `build.sh` keeps its inline copy in phase 1 (its Python test copies `build.sh` alone into a
+  temp tree), and adopting the shared script there is an upstream-phase change.
 
 **FFmpeg** -- a new `elseif(APPLE)` branch in `ps2xRuntime/CMakeLists.txt` beside the Windows prebuilt one:
 FFmpeg **7.1.5 from source** (the Windows pin's version), `ExternalProject_Add`, URL pinned by sha256, configured
@@ -120,13 +129,17 @@ bound.
   GLFW GUID -- same SDL-style layout on macOS; verify with whatever pad the owner uses.
 - Keyboard: raylib, unchanged.
 
-### 5. Arithmetic: `long double`
+### 5. Arithmetic: `long double` and the rounding mode
 
-On Apple arm64 `long double` is `double` (53-bit mantissa), not x87's 64-bit. `ps2_vu1_ops.h` uses it to compute
-"exact" FMAC results for overflow/rounding flags. A float product and a float sum are exact in `double`; the fused
-`c - a*b` is not always. Plan: run the VU1 replay goldens; if any differ, replace the `long double` path with an
-exact computation that does not depend on the platform (`std::fma` on `double` for the fused case, which is exact
-for float inputs to the needed precision), so every platform gets the same answer. Never special-case the goldens.
+On Apple arm64 `long double` is `double` (53-bit mantissa), not x87's 64-bit. `ps2_vu1_core.cpp` uses it to
+compute "exact" FMAC results, inside `VuRoundingScope`, which sets **round toward zero** on the x87 control word
+(`fnstcw`/`fldcw` inline asm -- x86 only, and the one thing that stops `vu1_replay` linking on arm64) and on
+MXCSR. Under round-toward-zero the narrower type does not change the answer: chopping the exact value to double
+and then to float equals chopping it straight to float, because every float is a double and truncation is
+monotone toward zero. So on arm64 the x87 lines are compiled out and the MXCSR half stays: sse2neon's
+`_mm_setcsr` maps the rounding bits onto FPCR via `fesetround`, and FPCR governs scalar double, `long double`
+and NEON alike. The VU1 replay goldens confirm it; if any differ, the cause is found, never the golden
+special-cased.
 
 ### 6. Verification
 
