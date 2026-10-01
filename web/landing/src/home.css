@@ -1,0 +1,142 @@
+/* the design system first (tokens, fonts, base, components, in cascade layers); this file's own rules stay unlayered and win every tie */
+@import '../../shared/ds/index.css';
+
+/* this page's own tokens. First the hero-shade gradient stops, five at most, each --s2u-ground at an alpha (the
+   colour-literal guard exempts this block only, by ruling: docs/superpowers/sdd/2026-09-27-s2u-design-system-phase-2).
+   Then the page rhythm: defined once here from the space tokens and applied to every section below (the owner's
+   review of the live site, 2026-09-28: the spacing read as inconsistent everywhere but the bar). */
+:root {
+  --pg-shade-1: rgba(0, 14, 17, 0.92);
+  --pg-shade-2: rgba(0, 14, 17, 0.75);
+  --pg-shade-3: rgba(0, 14, 17, 0.35);
+  --pg-shade-4: rgba(0, 14, 17, 0.2);
+  --pg-shade-5: rgba(0, 14, 17, 0.95);
+  --pg-section-pad: var(--s2u-space-12); /* a section's padding-block */
+  --pg-head-gap: var(--s2u-space-6);     /* the header block (kicker, title, lede) to its content */
+  --pg-block-gap: var(--s2u-space-4);    /* sibling blocks inside a section: grids, panels, notices, forms */
+  --pg-group-above: var(--s2u-space-8);  /* a group label in the credits (THE GAME, BUILT ON ...): above ... */
+  --pg-group-below: var(--s2u-space-3);  /* ... and below */
+  --pg-fine-gap: var(--s2u-space-3);     /* a fine line or a status line above */
+}
+@media (max-width: 720px) {
+  :root { --pg-section-pad: var(--s2u-space-8); }
+}
+
+/* the rhythm, applied: a section, its head, every block after the head, the group labels, the fine lines. The
+   first block sits on the head's own gap; a group label's gap below stands alone (the grid after it takes no top). */
+.s2u-section { padding-top: var(--pg-section-pad); padding-bottom: var(--pg-section-pad); }
+.s2u-section > .s2u-head { margin-bottom: var(--pg-head-gap); }
+.s2u-section > .s2u-head ~ * { margin-top: var(--pg-block-gap); margin-bottom: 0; }
+.s2u-section > .s2u-head + * { margin-top: 0; }
+.s2u-section > .s2u-fine, .s2u-section > .s2u-status { margin-top: var(--pg-fine-gap); }
+.s2u-section > .credits-h { margin-top: var(--pg-group-above); margin-bottom: var(--pg-group-below); }
+.s2u-section > .s2u-head + .credits-h, .s2u-section > .credits-h + * { margin-top: 0; }
+/* the server: the stat tiles and the panels are two blocks (the GAMES head on the tiles read as a third row of them) */
+#stats-status + .s2u-panel { margin-top: var(--s2u-space-6); }
+
+/* hero */
+.hero { position: relative; min-height: min(92vh, 900px); display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; overflow: hidden; padding: calc(2 * var(--s2u-space-12)) var(--s2u-gutter); }
+.hero-video {
+  position: absolute; inset: -6%; width: 112%; height: 112%; object-fit: cover; z-index: -2;
+  filter: saturate(0.85) brightness(0.55) blur(1px);
+  transform: scale(1.02);
+}
+.hero-shade {
+  position: absolute; inset: 0; z-index: -1;
+  background:
+    linear-gradient(90deg, var(--pg-shade-1) 0%, var(--pg-shade-2) 45%, var(--pg-shade-3) 100%),
+    linear-gradient(180deg, var(--pg-shade-4) 0%, transparent 30%, var(--pg-shade-5) 100%);
+}
+.hero-inner { max-width: var(--s2u-max); margin: 0 auto; width: 100%; min-width: 0; text-align: center; } /* the hero, logo to server lamp, sits centred (owner, 2026-09-20) */
+/* the logo keeps its own shape at every width (its height attribute held while only the width was styled: squashed on a phone, owner 2026-09-28) */
+.hero-inner .logo { display: block; margin-left: auto; margin-right: auto; max-width: 100%; height: auto; }
+.hero-head { width: fit-content; max-width: 100%; margin: var(--s2u-space-3) auto 0; text-align: center; }
+.hero-head .s2u-lede { margin-left: auto; margin-right: auto; }
+.wheel-row { margin: var(--s2u-space-6) 0 0; }
+.hero-status { display: inline-flex; align-items: center; gap: var(--s2u-space-2); margin: var(--s2u-space-6) 0 0; padding: var(--s2u-space-2) var(--s2u-space-3); background: var(--s2u-tab); box-shadow: var(--s2u-panel-inset); font: var(--s2u-type-nav); letter-spacing: var(--s2u-tracking-nav); text-transform: uppercase; color: var(--s2u-text-strong); }
+.hero-status span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.hero-note { margin: var(--s2u-space-4) auto 0; color: var(--s2u-text-dim); }
+.hero-note a { color: var(--s2u-text-strong); text-decoration: none; border-bottom: 1px solid var(--s2u-panel-edge); }
+.hero-note a:hover { color: var(--s2u-gold); border-color: var(--s2u-gold); }
+
+/* the sound button's drawing: a filled speaker, the waves when the sound is on, the warn-coloured cross when off
+   (the system's .s2u-iconbtn strokes every path in currentColor; the three parts need their own fill and stroke) */
+#sound .spk { fill: currentColor; stroke: none; }
+#sound .wave { fill: none; stroke: currentColor; stroke-width: 1.8; }
+#sound .x { fill: none; stroke: var(--s2u-warn); stroke-width: 1.8; }
+#sound[aria-pressed="true"] .x { display: none; }
+#sound[aria-pressed="false"] .wave { display: none; }
+
+/* the button hints the game keeps bottom-right, placed over the hero (the button and glyph styling is the system's) */
+.hints-row { position: absolute; right: var(--s2u-gutter); bottom: var(--s2u-space-6); }
+
+/* a video tile's play mark, in the corner of its .s2u-tile__frame (the frame itself is the system's); the 3px and
+   20px are the mark's own drawing (the arrow's reserve and its optical baseline), not rhythm */
+.tile-play { position: absolute; right: var(--s2u-space-2); bottom: var(--s2u-space-2); z-index: 1; padding: var(--s2u-space-1) var(--s2u-space-2) 3px 20px; font: var(--s2u-type-readout-caption); letter-spacing: var(--s2u-tracking-stat-caption); color: var(--s2u-text-strong); background: var(--s2u-ground); box-shadow: var(--s2u-panel-inset); }
+.tile-play::before { content: ''; position: absolute; left: var(--s2u-space-2); top: 50%; width: 7px; height: 8px; margin-top: -4px; background: var(--s2u-gold); clip-path: polygon(0% 0%, 100% 50%, 0% 100%); }
+
+/* the server's games list: a title/map/players row and its state line, the system's stat tiles carry the rest */
+.game-row { display: grid; grid-template-columns: 1fr 110px 50px; column-gap: var(--s2u-space-2); align-items: baseline; font: var(--s2u-type-body); }
+.game-row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--s2u-text-strong); }
+.game-row .m { color: var(--s2u-glyph-cross); }
+.game-row .p { color: var(--s2u-gold); text-align: right; }
+.game-sub { margin: 0 0 var(--s2u-space-2); font: var(--s2u-type-body-small); color: var(--s2u-text-dim); }
+
+/* the one page-load moment (spec 11): the wheel's items step in, staggered; nothing else animates on load */
+@media (prefers-reduced-motion: no-preference) {
+  #wheel > li { animation: wheel-in var(--s2u-dur-slow) var(--s2u-ease) both; }
+  #wheel > li:nth-child(n) { animation-delay: calc(var(--i, 0) * 60ms); }
+  @keyframes wheel-in { from { opacity: 0; transform: translateY(8px); } }
+}
+
+/* the notify list: a callout under the setup title, one row: the text at its measure, the button flush right
+   (the dead space right of NOTIFY ME read wrong: owner, 2026-09-28); on a phone the text takes the row and the
+   button follows on its own line, still right */
+.callout { display: flex; align-items: center; gap: var(--s2u-space-4); flex-wrap: wrap; }
+.callout-text { flex: 1 1 auto; margin: 0; max-width: var(--s2u-measure); }
+.callout .s2u-tab { flex: none; margin-left: auto; align-self: center; }
+/* the open form takes a lit-tab fill as its selection mark (a gold box-shadow frame would widen an edge in a
+   token colour the shadow guard does not allow at 1px; this reads the same as "selected" without one) */
+#tester-panel { display: grid; gap: var(--s2u-space-2); max-width: 720px; background: var(--s2u-tab-lit); }
+#tester-panel[hidden] { display: none; }
+/* the report form's measure: a page measure, so the literal stays (the tester panel above reads the same width) */
+#report-form { max-width: 720px; }
+#tester-panel.is-done input, #tester-panel.is-done textarea, #tester-panel.is-done #tester-send { opacity: var(--s2u-disabled); }
+/* a form's footer: the hint (a status line the script rewrites) left, the button(s) right, centred on each other;
+   the hint wraps beside the button, and on a phone takes the row so the button follows right-aligned */
+.form-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2u-space-2) var(--s2u-space-4); margin-top: var(--s2u-space-4); }
+.form-foot .s2u-status { flex: 1 1 0; min-width: 0; margin: 0; }
+.form-foot .s2u-tab, .form-foot .s2u-tabs { flex: none; margin-left: auto; }
+#tester-panel .form-foot { margin-top: var(--s2u-space-2); } /* with the grid's own gap, the same step as the report's */
+
+/* the credits: page-own grid and role line around the system's panels; a row's panels share its height (the
+   system's panel body grows) */
+.credits-h { font: var(--s2u-type-nav); letter-spacing: var(--s2u-tracking-nav); text-transform: uppercase; color: var(--s2u-gold); }
+.credits { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2u-space-3); align-items: stretch; }
+@media (max-width: 860px) { .credits { grid-template-columns: 1fr; } }
+.role { display: block; margin-bottom: var(--s2u-space-2); font: var(--s2u-type-body-small); color: var(--s2u-gold); overflow-wrap: anywhere; }
+
+/* on a phone (owner, 2026-09-28: a full pass at portrait): the hero is the console's, one composition from the
+   logo to the note; the wheel's links and the hints are a thumb's height; the status one line; the boxes one
+   step tighter; a stat value wraps whole instead of clipping; the callout and the form footers stack */
+@media (max-width: 720px) {
+  .hero { min-height: 0; padding: calc(2 * var(--s2u-space-12)) var(--s2u-gutter) var(--s2u-space-8); }
+  .hero-inner .logo { width: min(240px, 62vw); }
+  #wheel { gap: var(--s2u-space-3); }
+  #wheel a { padding: var(--s2u-space-3) var(--s2u-space-4); }
+  .hero-status { margin-top: var(--s2u-space-4); padding: var(--s2u-space-1) var(--s2u-space-2); font: var(--s2u-type-stat-caption); letter-spacing: var(--s2u-tracking-stat-caption); white-space: nowrap; }
+  .hero-status span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .hero-note { font: var(--s2u-type-body-small); text-wrap: balance; }
+  .hints-row { position: static; display: flex; justify-content: center; margin-top: var(--s2u-space-6); }
+  .hints-row .s2u-hint { padding: var(--s2u-space-3) 0; }
+  .s2u-panel__head, .s2u-card > h3, .s2u-panel__body, .s2u-card__body, .s2u-notice, .s2u-stat { padding: var(--s2u-space-3); }
+  #stats-status .s2u-stat { align-content: start; }
+  #stats-status .s2u-stat__v { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .callout-text, .form-foot .s2u-status { flex-basis: 100%; }
+  .s2u-foot nav a { display: flex; align-items: center; min-height: 44px; } /* a thumb's target; 44px is the target size, not rhythm */
+}
+
+/* motion, for what is only this page's */
+@media (prefers-reduced-motion: reduce) {
+  .hero-video { display: none; }
+}

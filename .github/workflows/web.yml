@@ -1,11 +1,13 @@
 name: web
-# The browser map viewer under web/, on its own: typecheck, the unit suite (the fixture-backed tests
-# skip without game data) and a build. Runs only when web/ changes; the recomp's workflow is linux.yml.
+# The web half on its own -- one npm workspace at web/: redotcom (the map viewer and its local demo), the landing site
+# (socomunzipped.com) and the design system they share. Typecheck, the unit suites (the fixture-backed tests skip
+# without game data) and both builds. The landing site's story is generated from docs/STORY.md and docs/story by
+# tools_py/story at build and test time, so those paths trigger it too; the recomp's workflow is linux.yml.
 on:
   push:
-    paths: ['web/**']
+    paths: ['web/**', 'docs/STORY.md', 'docs/story/**', 'tools_py/story/**', '.github/workflows/web.yml']
   pull_request:
-    paths: ['web/**']
+    paths: ['web/**', 'docs/STORY.md', 'docs/story/**', 'tools_py/story/**', '.github/workflows/web.yml']
 jobs:
   test:
     runs-on: ubuntu-latest

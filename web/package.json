@@ -1,39 +1,28 @@
 {
-  "name": "socom-unzipped-map-viewer",
+  "name": "socom-unzipped-web",
   "version": "0.1.0",
-  "description": "SOCOM II's multiplayer maps decoded from the disc and drawn in a browser -- a spin-off of SOCOM Unzipped",
+  "private": true,
+  "type": "module",
   "license": "GPL-3.0",
+  "description": "The web half of SOCOM Unzipped: redotcom (the map viewer and its single-player local demo), the landing site socomunzipped.com, and the design system they share",
   "repository": {
     "type": "git",
     "url": "https://github.com/Scotho/socom-unzipped.git",
     "directory": "web"
   },
-  "homepage": "https://socomunzipped.com/map-viewer/",
-  "private": true,
-  "type": "module",
   "workspaces": [
-    "packages/*",
-    "tools"
+    "redotcom",
+    "redotcom/packages/*",
+    "redotcom/tools",
+    "landing",
+    "shared"
   ],
   "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc -b packages/archive packages/gs packages/mesh packages/scene && tsc --noEmit -p packages/viewer && tsc --noEmit -p tools",
-    "ds:sync": "tsx tools/ds-sync.ts",
-    "extract-maps": "tsx tools/extract-maps.ts",
-    "dump-textures": "tsx tools/dump-textures.ts",
-    "export-gltf": "tsx tools/export-gltf.ts",
-    "dev": "vite --config packages/viewer/vite.config.ts",
-    "build": "vite build --config packages/viewer/vite.config.ts",
-    "e2e": "playwright test"
-  },
-  "devDependencies": {
-    "@playwright/test": "^1.55.0",
-    "@types/jsdom": "^30.0.0",
-    "@types/node": "^24.13.6",
-    "jsdom": "^29.1.1",
-    "tsx": "^4.19.0",
-    "typescript": "^5.6.0",
-    "vite": "^7.0.0",
-    "vitest": "^3.2.0"
+    "typecheck": "npm run typecheck -w @s2u/redotcom && npm run typecheck -w landing && npm run typecheck -w shared",
+    "test": "npm test -w @s2u/redotcom && npm test -w shared && npm test -w landing",
+    "build": "npm run build -w @s2u/redotcom && npm run build -w landing",
+    "dev": "npm run dev -w @s2u/redotcom",
+    "dev:landing": "npm run dev -w landing",
+    "extract-maps": "npm run extract-maps -w @s2u/redotcom"
   }
 }

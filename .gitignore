@@ -101,11 +101,27 @@ id_dsa*
 /server/horizon-docker/
 /server/horizon-server-database-middleware/
 
-# web (browser map viewer): dependencies, builds, and game data extracted from the owner's disc
-/web/node_modules/
+# web: web/redotcom (the map viewer and its server), web/landing (socomunzipped.com), web/shared (the design
+# system). Dependencies, builds, and game data extracted from the owner's disc or rendered from it -- no SOCOM II
+# asset is ever committed; the landing build makes its game-derived files from the disc and docs/story at build time.
 /web/**/node_modules/
 /web/**/dist/
-/web/public/maps/
-/web/test-fixtures/
+/web/**/public/maps/
+/web/redotcom/test-fixtures/
 /web/**/playwright-report/
 /web/**/test-results/
+/web/**/release.tgz
+/web/landing/public/media/
+/web/landing/public/story/
+/web/landing/public/sfx/
+/web/landing/public/img/logo.webp
+/web/landing/public/img/intel.jpg
+/web/landing/public/img/share.jpg
+/web/landing/story.html
+/web/landing/map-viewer/
+/web/landing/art/
+/web/landing/e2e/goldens/home-*
+/web/landing/e2e/goldens/story-*
+# the layout before 2026-09-29 (everything under web/ directly): a tree that still holds its maps there cannot stage them
+/web/public/maps/
+/web/test-fixtures/

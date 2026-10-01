@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>SOCOM II Unzipped: SOCOM II recompiled for PC, online</title>
+  <meta name="description" content="SOCOM II: U.S. Navy SEALs, the 2003 PlayStation 2 game, recompiled to run as a native PC program from your own disc, with online play. A community project, work in progress." />
+  <meta name="theme-color" content="#000e11" />
+  <link rel="canonical" href="https://socomunzipped.com/" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SOCOM II Unzipped" />
+  <meta property="og:title" content="SOCOM II Unzipped: SOCOM II recompiled for PC, online" />
+  <meta property="og:description" content="SOCOM II: U.S. Navy SEALs, the 2003 PlayStation 2 game, recompiled to run as a native PC program from your own disc, with online play. A community project, work in progress." />
+  <meta property="og:url" content="https://socomunzipped.com/" />
+  <meta property="og:image" content="https://socomunzipped.com/img/share.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="The SOCOM II Unzipped logo over the game's mission-briefing art" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="SOCOM II Unzipped: SOCOM II recompiled for PC, online" />
+  <meta name="twitter:description" content="SOCOM II: U.S. Navy SEALs, the 2003 PlayStation 2 game, recompiled to run as a native PC program from your own disc, with online play. A community project, work in progress." />
+  <meta name="twitter:image" content="https://socomunzipped.com/img/share.jpg" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://socomunzipped.com/#website",
+        "url": "https://socomunzipped.com/",
+        "name": "SOCOM II Unzipped",
+        "description": "SOCOM II: U.S. Navy SEALs, the 2003 PlayStation 2 game, recompiled to run as a native PC program from your own disc, with online play. A community project, work in progress.",
+        "inLanguage": "en"
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://socomunzipped.com/#source",
+        "name": "SOCOM II Unzipped",
+        "description": "SOCOM II: U.S. Navy SEALs statically recompiled from the player's own disc to a native PC program, with online play.",
+        "url": "https://socomunzipped.com/",
+        "codeRepository": "https://github.com/Scotho/socom-unzipped",
+        "programmingLanguage": ["C++", "Python"],
+        "runtimePlatform": "Windows",
+        "targetProduct": {
+          "@type": "SoftwareApplication",
+          "name": "SOCOM II Unzipped",
+          "applicationCategory": "GameApplication",
+          "operatingSystem": "Windows"
+        },
+        "isBasedOn": {
+          "@type": "VideoGame",
+          "name": "SOCOM II: U.S. Navy SEALs",
+          "gamePlatform": "PlayStation 2",
+          "datePublished": "2003"
+        }
+      }
+    ]
+  }
+  </script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%23000%27/%3E%3Ctext x=%278%27 y=%2712%27 font-size=%2711%27 font-family=%27Arial%27 font-weight=%27bold%27 fill=%27%2335d6de%27 text-anchor=%27middle%27%3EII%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/src/home.css" />
+</head>
+<body class="s2u-crt">
+  <a class="s2u-skip" href="#what">Skip to content</a>
+  <div class="s2u-scan" aria-hidden="true"></div>
+  <div id="progress" class="s2u-progress" aria-hidden="true"></div>
+
+  <header id="bar" class="s2u-bar">
+    <a class="s2u-bar__brand" href="#top" aria-label="SOCOM Unzipped, top of page"><span class="s2u-bar__ii">II</span><span class="s2u-bar__word">Unzipped</span></a>
+    <nav class="s2u-bar__nav" aria-label="Sections">
+      <a href="#what">What</a>
+      <a href="#state">State</a>
+      <a href="#story">Story</a>
+      <a href="#server">Server</a>
+      <a href="#setup">Setup</a>
+      <a href="#report">Report</a>
+      <a href="#credits">Credits</a>
+    </nav>
+    <div class="s2u-bar__end">
+      <span class="s2u-lamp s2u-lamp--small" id="bar-lamp" role="img" aria-label="Server: contacting"></span>
+      <a class="s2u-tab s2u-tab--nav" href="/classic.html" title="The original console-menu version of this site">Classic</a>
+      <button id="sound" class="s2u-iconbtn" type="button" aria-pressed="false" aria-label="Sound: off. Click for menu sounds.">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="spk" d="M4 9v6h4l5 4V5L8 9H4z"/><path class="wave" d="M16 8.5a4 4 0 0 1 0 7M18.5 6a7.5 7.5 0 0 1 0 12" stroke-linecap="round"/><path class="x" d="M16 9l5 6M21 9l-5 6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO: the game's own menu loop behind the logo, the wheel as the way in -->
+    <section class="hero" aria-labelledby="hero-title">
+      <video id="bg" class="hero-video" src="/media/menuloop.mp4" loop muted playsinline autoplay preload="metadata" disablepictureinpicture aria-hidden="true"></video>
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-inner">
+        <img id="logo" class="logo" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async" />
+        <header class="s2u-head hero-head">
+          <h1 id="hero-title" class="s2u-title">SOCOM II, recompiled for PC</h1>
+          <p class="s2u-kicker">The 2003 PlayStation&nbsp;2 game as a native Windows and Linux program</p>
+          <p class="s2u-lede">The game's own code, rebuilt to run on a PC from your own disc. Online play is headed for the community's servers; the project's own server is where builds are tested. Work in progress, source on GitHub.</p>
+        </header>
+        <ul class="s2u-wheel wheel-row" id="wheel" aria-label="Main menu">
+          <li><a href="#setup" data-sfx><span class="s2u-wheel__w">Setup guide</span></a></li>
+          <li><a href="/story.html" data-sfx><span class="s2u-wheel__w">The story</span></a></li>
+          <li><a href="#server" data-sfx><span class="s2u-wheel__w">Server</span></a></li>
+          <li><a href="/redotcom/" data-sfx><span class="s2u-wheel__w">redotcom</span></a></li>
+          <li><a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener" data-sfx><span class="s2u-wheel__w">GitHub</span></a></li>
+        </ul>
+        <p class="hero-status s2u-status" id="hero-status" aria-live="polite">
+          <span class="s2u-lamp s2u-lamp--small" id="hero-lamp" role="img" aria-label="Server: contacting"></span><span id="hero-status-text">CONTACTING SERVER</span>
+        </p>
+        <p class="hero-note">No download yet. <a href="#setup" data-signup>Leave an email</a> for when a build is ready.</p>
+      </div>
+      <ul class="s2u-hints hints-row" aria-label="Controls">
+        <li><a class="s2u-hint" href="/classic.html" data-sfx><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 L12.5 12 H1.5 Z"/></svg>Classic menu</a></li>
+        <li><button class="s2u-hint" id="hint-select" type="button" data-sfx><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2 L12 12 M12 2 L2 12"/></svg>Select</button></li>
+      </ul>
+    </section>
+
+    <!-- WHAT IT IS -->
+    <section id="what" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Mission overview</p>
+        <h2 class="s2u-title">What this is</h2>
+      </header>
+      <div class="s2u-cards--3">
+        <article class="s2u-card">
+          <h3>Native, not emulated</h3>
+          <div class="s2u-card__body">
+            <p>The game's MIPS code was statically recompiled to C++ and built as a normal executable. The PS2's graphics chip, vector units and sound driver are reimplemented on the host. No emulator runs underneath.</p>
+            <p class="s2u-card__how"><span class="s2u-label">How</span>a fork of PS2Recomp for the CPU side, OpenGL for the drawing, a 989snd reimplementation for the sound.</p>
+          </div>
+        </article>
+        <article class="s2u-card">
+          <h3>Your disc, always</h3>
+          <div class="s2u-card__body">
+            <p>Nothing from the game ships with the download. You point the launcher at your own NTSC r0001 ISO; it verifies the disc and keeps Launch off until it matches. Saves are plain files in a folder.</p>
+            <p class="s2u-card__how"><span class="s2u-label">How</span>the launcher hashes SCUS_972.75 inside the image against the digest this recompilation was made from.</p>
+          </div>
+        </article>
+        <article class="s2u-card">
+          <h3>Online, on the community's servers</h3>
+          <div class="s2u-card__body">
+            <p>Sony's service is long gone; the community runs its own servers, on a later revision of the game than the disc holds. That is where players will play, once the launcher can install that revision. Until then the project's own server is the test box: builds are checked against something known.</p>
+            <p class="s2u-card__how"><span class="s2u-label">How</span>the game's network layer runs on host sockets; the launcher points at the project's Horizon server by default, and the community preset stays greyed until the r0004 update installs.</p>
+          </div>
+        </article>
+      </div>
+      <div class="s2u-notice">
+        <p><b>How it was built.</b> Most of the repository was produced by AI agents (Claude, through Claude Code) working in sprints under a human owner: specs and plans, numbered rulings, a "known / believed / retracted" ledger, and a gate that has to go green before a sprint closes. <a href="/story.html">The story page</a> tells that story with its evidence; <a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener">the repository</a> keeps the sprint plans as they were written.</p>
+      </div>
+      <div class="s2u-notice">
+        <p><b>redotcom, experimental.</b> <a href="/redotcom/">Fly around the online maps in your browser.</a> A separate WebGL program reading the disc's map archives, not the port's own rendering.</p>
+      </div>
+    </section>
+
+    <!-- STATE OF THE PROJECT -->
+    <section id="state" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Objectives, as of 2026-09-27</p>
+        <h2 class="s2u-title">Where it stands</h2>
+        <p class="s2u-lede">From the project's own ledger of what is proven, what is only believed and what was retracted. It is playable and it is not finished. Version 0.15.0 is the latest; the sprint open now is named for its bar: a stranger, their own disc, a round against another stranger, inside ten minutes.</p>
+      </header>
+      <div class="s2u-cards--2">
+        <article class="s2u-card">
+          <h3>Validated</h3>
+          <div class="s2u-card__body">
+            <ul class="s2u-list--check is-done">
+              <li><b>It boots your disc and plays.</b> Logos, intro, title loop with its music, the menus, the single-player missions, saving. The parity gate boots the build beside PCSX2 and passes 3 of 3, the last time on 2026-09-27, with twelve held-out captures matching too.</li>
+              <li><b>Online rounds happen on the test server.</b> Full rounds with kills; a control round on all 20 online maps; a console client and this build in one game, each side hosting in turn. A scheduled robot match has run clean 8 times in a row; over all its runs the lobby was reached in 80 percent and a kill landed in 56 percent. The community's r0004 revision, rebuilt from its own package, passes the same gate and has played a round on the test server; r0001 and r0004 cannot join each other's games, by the game's own rule.</li>
+              <li><b>Dragging the window no longer freezes the game.</b> Reported by the owner on 2026-09-26, fixed the same evening, proven with a scripted ten-second drag in a mission on 2026-09-27.</li>
+              <li><b>Windows and Linux,</b> from one tree. Windows from a fresh clone in CI; Linux builds and boots in a virtual machine on software rendering, never yet on a real GPU, and the VM's own test suites still have a handful of failures.</li>
+              <li><b>Disc image to executable in one command,</b> proven from an empty clone in 29 minutes on Windows, on one disc. On Linux, or on anyone else's dump, it is believed, not shown.</li>
+              <li><b>The launcher.</b> Any pad the mapping database knows, hold a button to remap it, a crouch shortcut, tooltips on the controller page, the disc verified before Launch lights, failures that say why, a bug report with an id. Its ONLINE page lists the personas your card has made, from a record the game itself writes on every login; a saved password never sits in a settings file once the card holds it.</li>
+              <li><b>Sound, mostly.</b> The reimplemented sound driver agrees with the real one on 1,775 of 1,794 calls; the intro and briefing dropouts are fixed; the mission music's pauses turned out to be the game's own design. Since 2026-09-26 the real driver, run under an emulated console, is the reference the audio work is measured against.</li>
+              <li><b>The tests.</b> 969 C++ tests (2026-09-27) and 3,530 Python tests (2026-09-26) on the last counted runs. Version 0.15.0 went to the main branch on 2026-09-27.</li>
+            </ul>
+          </div>
+        </article>
+        <article class="s2u-card">
+          <h3>Still needs work</h3>
+          <div class="s2u-card__body">
+            <ul class="s2u-list--check is-todo">
+              <li><b>Multiplayer is not audited.</b> SOCOM II's original network code has known, exploitable vulnerabilities, and this project runs it recompiled as-is, as a native program on your PC, so a successful exploit is code running on your machine. One chat hole that allowed code execution was closed on client and server on 2026-09-23, and since 2026-09-25 the client refuses the two server messages that could write or read its memory. Others are believed to exist and nothing else has been checked. Until it is audited: only play online with people you trust, with a build you compiled or verified yourself, and not yet on a community server.</li>
+              <li><b>The mission music still drops out, and the mission's ambient bed is too quiet.</b> Nine 50 ms gaps in eleven minutes on the last capture (2026-09-27), all in the menus and the briefing, none in the mission; the cause is the port's and has not been found. Found the same day: the ambient sound bed in missions plays about 11 dB under the console's, and has since 2026-09-20. Neither is fixed.</li>
+              <li><b>Frame rate.</b> About 27 ms a frame in missions on a quiet machine, measured three times on one build (2026-09-27), against the console's 16.7. Measured, profiled, and not yet given a bar.</li>
+              <li><b>Voice chat does not work.</b> The microphone meter moves, but nothing you say reaches anyone.</li>
+              <li><b>Nobody has played a stranger.</b> Every online match so far was two copies on one machine, or one of us and a console client. No two people on two homes have met yet, and no public download exists for that to happen.</li>
+              <li><b>Playing on the community's servers.</b> They run the game's r0004 revision. The build exists and passes the gate; what remains is the launcher installing it on your machine: the update's address is known, the package opens with the disc's own key, and the launcher's download of it has been tested only against a stand-in server. Until that lands the community preset stays greyed, and this build should not be pointed at a community server.</li>
+              <li><b>The download.</b> There is no public download. The plan is a program-only archive that builds the game's image from your own disc the first time it runs; the first player archive was built on 2026-09-27 (67 MB) and the first-run build of the image is still a spike, not a feature. Nothing is signed until there is a release.</li>
+              <li><b>Rendering.</b> Texture uploads still run hot in the menus: measured, not yet fixed.</li>
+              <li><b>Keyboard.</b> Menus and typing only; playing needs a pad, and the mouse was removed.</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+      <p class="s2u-fine">Sources: the project's KNOWN.md (proven, believed, retracted), CURRENT_SPRINT.md and LADDER.md as of 2026-09-27; the story page cites the runs.</p>
+    </section>
+
+    <!-- THE STORY -->
+    <section id="story" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Mission log</p>
+        <h2 class="s2u-title">The story so far</h2>
+        <p class="s2u-lede">First commit to today, as a timeline. Every entry carries its evidence.</p>
+      </header>
+      <ol id="story-latest" class="s2u-tiles" aria-label="Latest entries"></ol>
+      <p class="s2u-tabs"><a class="s2u-tab" href="/story.html" data-sfx>Read the whole story</a><a class="s2u-tab s2u-tab--ghost" href="/story.html#from-the-creator" data-sfx>From the creator</a></p>
+    </section>
+
+    <!-- SERVER -->
+    <section id="server" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">The test box, US East (Ohio)</p>
+        <h2 class="s2u-title">Server</h2>
+        <p class="s2u-lede">This is the project's own server, and it exists so builds can be tested against something known. It is not where players will play: that is the community's servers, which run the game's r0004 revision, once the launcher can install that update. What is on the box right now is below.</p>
+      </header>
+      <ul id="stats-status" class="s2u-stats"></ul>
+      <section class="s2u-panel">
+        <h3 id="stats-games-head" class="s2u-panel__head">Games</h3>
+        <div id="stats-games" class="s2u-panel__body"></div>
+      </section>
+      <section class="s2u-panel">
+        <h3 class="s2u-panel__head">Operatives online</h3>
+        <div id="stats-players" class="s2u-panel__body"></div>
+      </section>
+      <p id="stats-updated" class="s2u-status"></p>
+    </section>
+
+    <!-- SETUP -->
+    <section id="setup" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Setup guide</p>
+        <h2 class="s2u-title">From your disc to the lobby</h2>
+      </header>
+      <div class="s2u-notice callout" id="tester-callout">
+        <p class="callout-text"><b>No download yet.</b> The source is <a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener">on GitHub</a>. Leave an email and you'll get one message when a build is ready to try.</p>
+        <button type="button" class="s2u-tab" id="tester-open" aria-expanded="false" aria-controls="tester-panel" data-sfx>Notify me</button>
+      </div>
+      <form id="tester-panel" class="s2u-panel__body" autocomplete="off" novalidate hidden>
+        <div class="s2u-field"><label class="s2u-field__label" for="tester-email">Email</label><input id="tester-email" type="email" maxlength="254" spellcheck="false" autocomplete="email" placeholder="you@example.com" /></div>
+        <div class="s2u-field s2u-field--area"><label class="s2u-field__label" for="tester-note">Anything else (optional)</label><textarea id="tester-note" maxlength="1000" spellcheck="false" placeholder="Windows or Linux, which pad, whether you have the disc, etc."></textarea></div>
+        <input id="tester-website" type="text" name="website" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px" />
+        <div class="form-foot">
+          <p id="tester-note-line" class="s2u-status" aria-live="polite">ONE EMAIL PER PERSON. USED ONLY TO SAY A BUILD IS READY. NOT PASSED ON.</p>
+          <div class="s2u-tabs">
+            <button id="tester-send" class="s2u-tab" type="submit" data-sfx>Notify me</button>
+            <button id="tester-cancel" class="s2u-tab s2u-tab--ghost" type="button" data-sfx>Cancel</button>
+          </div>
+        </div>
+      </form>
+      <div class="s2u-cards--2">
+        <article class="s2u-card">
+          <h3>Before you deploy</h3>
+          <div class="s2u-card__body">
+            <ul class="s2u-list--plain">
+              <li><b>Disc:</b> your own SOCOM II: U.S. Navy SEALs, NTSC, SCUS-97275, release r0001, dumped to an ISO.</li>
+              <li><b>PC:</b> Windows 10/11 64-bit, or 64-bit Linux (Ubuntu 24.04 tested). A GPU with OpenGL 3.3; without one, a slow CPU renderer.</li>
+              <li><b>Space:</b> about 300 MB, plus your ISO.</li>
+              <li><b>Controls:</b> Xbox, PlayStation or generic pad; keyboard for menus.</li>
+              <li><b>Online:</b> outbound TCP 10071-10078, UDP 10070 and 50000-50100.</li>
+            </ul>
+          </div>
+        </article>
+        <article class="s2u-card">
+          <h3>Unzip, point, launch</h3>
+          <div class="s2u-card__body">
+            <ol class="s2u-list--steps">
+              <li>Unzip the portable folder anywhere you can write. Delete it to uninstall.</li>
+              <li>Run <code>socom_unzipped_launcher</code>. On the DISC page, browse to your ISO; READY appears once it's verified.</li>
+              <li>VIDEO for render scale and window, AUDIO for volume, CONTROLLER to see exactly what the game will read from your pad.</li>
+              <li>ONLINE: the project's test server is preselected; the community preset is greyed until the r0004 update installs. Pick a persona, or NEW PERSONA.</li>
+              <li>LAUNCH. First login online asks for a name and a password; any free name works, use a throwaway password.</li>
+            </ol>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section id="report" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Field report</p>
+        <h2 class="s2u-title">Report a bug</h2>
+        <p class="s2u-lede">What broke, and what you did just before. Plain text, no account, nothing leaves the page until you press SEND. No build yet? <a href="#setup" data-signup>Leave an email</a> to hear when there is one.</p>
+      </header>
+      <form id="report-form" class="s2u-panel__body" autocomplete="off" novalidate>
+        <div class="s2u-field"><label class="s2u-field__label" for="report-title">Title</label><input id="report-title" type="text" maxlength="120" spellcheck="false" /></div>
+        <div class="s2u-field s2u-field--area"><label class="s2u-field__label" for="report-description">What happened</label><textarea id="report-description" maxlength="4000" spellcheck="false"></textarea></div>
+        <div class="s2u-field"><label class="s2u-field__label" for="report-contact">Contact (optional)</label><input id="report-contact" type="text" maxlength="120" spellcheck="false" placeholder="Discord or email, only if you want a reply" /></div>
+        <input id="report-website" type="text" name="website" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px" />
+        <div class="form-foot">
+          <p id="report-note" class="s2u-status" aria-live="polite">DO NOT INCLUDE PASSWORDS.</p>
+          <button id="report-send" class="s2u-tab" type="submit" data-sfx>Send report</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+    <!-- CREDITS -->
+    <section id="credits" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Intel</p>
+        <h2 class="s2u-title">Credits, sources and references</h2>
+        <p class="s2u-lede">What this port is built on, what it learned from, and how each was used. The port and its download ship nothing from the game. This site does: it plays the game's own menu movie and HUD sounds, cut from the owner's disc, and for now it serves the map archives redotcom's development mode reads, by the owner's choice; redotcom itself reads your own disc. No code was taken from the community references: their offsets and names were treated as facts and re-derived against our own binary, and Sony's proprietary SDKs were left alone.</p>
+      </header>
+      <h3 class="credits-h">The game</h3>
+      <ul class="credits">
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head">SOCOM II: U.S. Navy SEALs</h4>
+          <div class="s2u-panel__body"><span class="role">Zipper Interactive, Inc. / Sony Computer Entertainment America, 2003</span><p>The game. The port runs the US retail disc you supply, SCUS_972.75 at revision r0001, and its download distributes nothing from it; the menu movie and sounds on this site are the game's, from the owner's disc. This project is not affiliated with or endorsed by Sony or Zipper.</p></div>
+        </li>
+      </ul>
+      <h3 class="credits-h">Built on</h3>
+      <ul class="credits">
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/ran-j/PS2Recomp" target="_blank" rel="noopener">PS2Recomp</a></h4>
+          <div class="s2u-panel__body"><span class="role">ran-j / GPL-3.0 / vendored fork</span><p>The static recompiler. Our fork turns the game's MIPS R5900 code into C++, and its runtime supplies the EE kernel, DMAC, VIF and GIF, the VU1 path, a GS drawn through OpenGL and the IOP services at the SIF-RPC level. It is why the port is GPL-3.0.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/Horizon-Private-Server/horizon-server" target="_blank" rel="noopener">Horizon Private Server</a></h4>
+          <div class="s2u-panel__body"><span class="role">MIT</span><p>The Medius server the online play runs on, configured for SOCOM II's app id 10472 and hosted in US East (Ohio), standing in for Sony's long-gone service.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/NationalSecurityAgency/ghidra" target="_blank" rel="noopener">Ghidra</a></h4>
+          <div class="s2u-panel__body"><span class="role">NSA / Apache-2.0 / with ghidra-emotionengine-reloaded</span><p>Mapped the game's functions and decompiled them. The function map it exported is what the recompiler works from; its decompilation is what every offset on this site was checked against.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/unicorn-engine/unicorn" target="_blank" rel="noopener">Unicorn Engine</a></h4>
+          <div class="s2u-panel__body"><span class="role">GPL-2.0</span><p>Drove the recovery of the game's two encrypted overlays from the retail loader, and the EE harness that checks how instructions really behave.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://pcsx2.net/" target="_blank" rel="noopener">PCSX2</a></h4>
+          <div class="s2u-panel__body"><span class="role">2.8.1 / the reference</span><p>The parity gate boots the real game beside our build and scores the frames, title to mission. Every visual claim here was checked against it.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/mstorsjo/llvm-mingw" target="_blank" rel="noopener">llvm-mingw, CMake and Ninja</a></h4>
+          <div class="s2u-panel__body"><span class="role">the toolchain</span><p>Clang builds the generated C++ and the runtime into the Windows and Linux executables.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://ffmpeg.org/" target="_blank" rel="noopener">FFmpeg</a></h4>
+          <div class="s2u-panel__body"><span class="role">LGPL/GPL</span><p>Decodes the disc's MPEG movies behind the sceMpeg reimplementation, including the menu loop this site plays.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://www.raylib.com/" target="_blank" rel="noopener">raylib and miniaudio</a></h4>
+          <div class="s2u-panel__body"><span class="role">zlib / MIT-0</span><p>The window, the pads (any controller GLFW's mapping database knows, in the right layout) and the audio output.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://playwright.dev/" target="_blank" rel="noopener">Python 3 and Playwright</a></h4>
+          <div class="s2u-panel__body"><span class="role">the harness</span><p>Drive PCSX2 and the build side by side for the parity gate, and carry the project's second test suite.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://www.anthropic.com/claude" target="_blank" rel="noopener">Claude</a></h4>
+          <div class="s2u-panel__body"><span class="role">Anthropic / the agents</span><p>Claude Code sessions wrote the code in a test-first loop: agents change it, the gates score it, the owner plays it and says what is off. The story page is that loop's diary.</p></div>
+        </li>
+      </ul>
+      <h3 class="credits-h">Learned from</h3>
+      <ul class="credits">
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/NotEnoughPhotons/reCOM" target="_blank" rel="noopener">reCOM</a></h4>
+          <div class="s2u-panel__body"><span class="role">NotEnoughPhotons / names only</span><p>A reconstruction of the first SOCOM's engine. Its type names and enums, the round states and the network game object, are the vocabulary the online work used to read this game's memory. No code was copied.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://psrewired.com/guides/socom2" target="_blank" rel="noopener">PS Rewired</a></h4>
+          <div class="s2u-panel__body"><span class="role">the SOCOM II community server, with SOCOM Community (Harry62)</span><p>The live community service. Its guide, the r0004 patch and the published DNAS bypass gave the app ids, the hostnames the game resolves and the client revisions.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/Zero1UP/Socom2StreamData" target="_blank" rel="noopener">Socom2StreamData</a></h4>
+          <div class="s2u-panel__body"><span class="role">Zero1UP / facts, re-derived</span><p>Player-structure offsets, health and life state, for the r0004 client. Treated as facts and re-derived against our own r0001 binary before use.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/NightFyre/SOCOM-ARCHIVES" target="_blank" rel="noopener">SOCOM-ARCHIVES</a></h4>
+          <div class="s2u-panel__body"><span class="role">NightFyre and bismofunyuns / facts, re-derived</span><p>r0001 offsets and patch bytes. Their restore bytes matched our ELF byte for byte, which is how the disc's revision was confirmed.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/mattias800/prosper" target="_blank" rel="noopener">prosper</a></h4>
+          <div class="s2u-panel__body"><span class="role">mattias800 / method</span><p>Its stub-contract auditing, classifying every consumer of a stubbed call, is the method our HLE audit borrowed.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/InitialDad/PS2Recomp-WoS-Findings" target="_blank" rel="noopener">PS2Recomp WoS findings</a></h4>
+          <div class="s2u-panel__body"><span class="role">InitialDad / CC0</span><p>Findings from another PS2Recomp port: the schema our own findings follow.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/unknownbrackets/ps2autotests" target="_blank" rel="noopener">ps2autotests</a></h4>
+          <div class="s2u-panel__body"><span class="role">unknownbrackets / ISC</span><p>Kernel expectations, used as fixtures for the EE-kernel stubs.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/LostTemplarRH/sce-symbol-scanner" target="_blank" rel="noopener">sce-symbol-scanner</a></h4>
+          <div class="s2u-panel__body"><span class="role">LostTemplarRH</span><p>Recovers Sony library symbols in a retail binary; run as a tool, not vendored.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/hedge-dev/XenonRecomp" target="_blank" rel="noopener">XenonRecomp and N64Recomp</a></h4>
+          <div class="s2u-panel__body"><span class="role">hedge-dev / N64Recomp</span><p>The static-recompilation lineage. Their differential tests and validation habits shaped ours.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/ps2dev/ps2sdk" target="_blank" rel="noopener">ps2sdk</a></h4>
+          <div class="s2u-panel__body"><span class="role">ps2dev</span><p>The open PlayStation 2 SDK: the kernel and hardware references behind the runtime's reimplementations.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/hashsploit/medius-wireshark" target="_blank" rel="noopener">Medius protocol notes</a></h4>
+          <div class="s2u-panel__body"><span class="role">hashsploit / reference</span><p>The wiki and the Wireshark dissector that explained the lobby traffic the server work had to speak.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/PCSX2/pcsx2_patches" target="_blank" rel="noopener">PCSX2 patches</a></h4>
+          <div class="s2u-panel__body"><span class="role">PCSX2 community</span><p>The published SCUS-97275 patch file, read to learn what the community already knew about the disc.</p></div>
+        </li>
+      </ul>
+      <h3 class="credits-h">This site</h3>
+      <ul class="credits">
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head">This site</h4>
+          <div class="s2u-panel__body"><span class="role">Vite and TypeScript / Oswald, Saira and JetBrains Mono, self-hosted</span><p>The menu movie, the sounds and the typewriter are the game's own, as stand-ins. Hosted on AWS Lightsail behind a Cloudflare tunnel.</p></div>
+        </li>
+        <li class="s2u-panel">
+          <h4 class="s2u-panel__head"><a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener">The repository</a></h4>
+          <div class="s2u-panel__body"><span class="role">GitHub / Scotho/socom-unzipped / GPL-3.0</span><p>The full research notes, with what each source was checked against and what may be reused under which licence, are in the repository's docs/research folder.</p></div>
+        </li>
+      </ul>
+      <p class="s2u-fine">Licences named are those published by each project as of 2026-09-20. If yours is missing or misdescribed, the bug form above reaches the owner.</p>
+    </section>
+
+  <footer class="s2u-foot">
+    <div class="s2u-foot__inner">
+      <div>
+        <div class="s2u-foot__brand"><span class="s2u-bar__ii">II</span> SOCOM Unzipped</div>
+        <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. &copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>
+      </div>
+      <nav aria-label="Footer">
+        <a href="/story.html">The story</a>
+        <a href="/classic.html">Classic menu</a>
+        <a href="/redotcom/">redotcom (experimental)</a>
+        <a href="https://github.com/Scotho/socom-unzipped" target="_blank" rel="noopener">GitHub</a>
+        <a href="#report">Report a bug</a>
+        <a href="/data.html">Your data</a>
+        <a href="#setup" data-signup>Notify me of a build</a>
+      </nav>
+    </div>
+    <p class="s2u-fine" id="foot-fine"></p>
+  </footer>
+
+  <script type="module" src="/src/home.ts"></script>
+</body>
+</html>

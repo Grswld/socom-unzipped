@@ -1,0 +1,412 @@
+/*
+ * The viewer's own layer, over the vendored s2u design system (./ds/index.css, loaded first in
+ * index.html). Everything the system already draws -- the bar, the overlay, the fab, the loading
+ * bar, the fields, tabs, checks, ranges, the colour swatch, disclosures, labels, notices, fine print
+ * -- lives there now; this file is the canvas, the touch sticks (no system component), the placement and sizing
+ * of the touch buttons (the system's fab and tab), and the placement of the fixed chrome over a full-bleed 3D view (the
+ * system's own bar/overlay assume a scrolling page, not a canvas underneath). It speaks the system's tokens: every
+ * colour, type, tracking, radius and duration is a `--s2u-*` (`test/chrome_classes.test.ts` refuses a stray one); the
+ * two stick rings and the flashbang's white are the picture's, not the chrome's.
+ */
+:root { font-family: var(--s2u-font-mono); }
+html, body { margin: 0; height: 100%; background: var(--s2u-ground); color: var(--s2u-text); overflow: hidden; overscroll-behavior: none; }
+
+/*
+ * `100dvh` where the browser has it: on a phone `100vh` is the height *with the browser bar gone*, so a
+ * canvas that size is taller than what is visible and the picture's centre sits below the screen's.
+ * The site's scanlines and streaked backdrop are deliberately not here: the map picture stays untouched.
+ */
+#view { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; cursor: grab; }
+#view:active { cursor: grabbing; }
+/*
+ * The PS2 picture: the 640x448 frame on a 4:3 box, the biggest that fits, letterboxed in black. The
+ * browser's own bilinear upscale stands in for the television.
+ */
+body.ps2-look { background: var(--s2u-ground-deep); }
+body.ps2-look #view {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(100vw, calc(100vh * 4 / 3)); height: min(100vh, calc(100vw * 3 / 4));
+  width: min(100vw, calc(100dvh * 4 / 3)); height: min(100dvh, calc(100vw * 3 / 4));
+}
+
+/*
+ * The disc control (W1.7): the system's label, made a thing you press. The file input inside it stays in
+ * the accessibility tree and the tab order but out of sight. Lit when no maps are served, and while a
+ * file is dragged over the page.
+ */
+#disc { cursor: pointer; }
+#disc:hover, #disc:focus-within, body.no-served #disc, body.disc-over #disc {
+  color: var(--s2u-gold); box-shadow: inset 0 0 0 1px var(--s2u-glyph-cross);
+}
+#disc-file, #disc-page-file { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/*
+ * The disc page (owner, 2026-09-29; `index.html` `#disc-page`): the system's section, head, card and notice, full-window
+ * over the canvas and under the bar and the panel, scrolling inside itself on a short screen. While a file is dragged
+ * over the window (`body.disc-over`, the whole window is the drop target) its edge and its card light up; while it is up
+ * (`body.no-served`) the frame counter, the fullscreen button and the touch layer are not drawn over it.
+ */
+#disc-page {
+  position: fixed; inset: 0; z-index: 3; box-sizing: border-box; overflow-y: auto; max-width: none;
+  padding: calc(72px + env(safe-area-inset-top, 0px)) max(var(--s2u-gutter), calc((100vw - 720px) / 2)) var(--s2u-space-8);
+  background: var(--s2u-ground); transition: box-shadow var(--s2u-dur-fast);
+}
+#disc-page[hidden] { display: none; }
+#disc-page .s2u-card__body { display: grid; gap: var(--s2u-space-3); justify-items: start; transition: background-color var(--s2u-dur-fast); }
+#disc-page .s2u-card__body p { margin: 0; }
+#disc-pick { position: relative; cursor: pointer; }
+#disc-pick:focus-within { outline: 2px solid var(--s2u-focus); outline-offset: 2px; }
+body.disc-over #disc-page { box-shadow: inset 0 0 0 3px var(--s2u-gold); }
+body.disc-over #disc-page .s2u-card__body { background: var(--s2u-tab-lit); }
+body.no-served #fps, body.no-served #fullscreen, body.no-served #touch { display: none; }
+@media (max-width: 480px) {
+  #disc-page { padding: calc(60px + env(safe-area-inset-top, 0px)) var(--s2u-space-4) var(--s2u-space-6); }
+}
+
+/* The backtick hides the chrome for a clean look at the map. `#site-links` (and the cog in it) and
+   `#loading` are not chrome. */
+body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscreen { display: none; }
+
+/*
+ * Site navigation: the system's bar is a full-width top strip; here it floats as a pill in the
+ * corner instead, clear of the panel below it.
+ */
+#site-links { position: fixed; top: 12px; left: 12px; z-index: 5; height: auto; padding: 4px 8px; right: auto; box-shadow: var(--s2u-panel-inset); border-radius: var(--s2u-radius-viewer); }
+
+#panel { top: 56px; left: 12px; }
+/* Folded behind the cog in the site bar (W2.0): nothing of the panel shows, not even a strip. */
+#panel.is-folded { display: none; }
+/* The overlay's overflow: hidden clips a ring drawn outside a control; drawn inside, it is whole. */
+#panel :focus-visible { outline-offset: -2px; }
+/*
+ * The kicker (the product's name), the system's, as the panel's first line. The kicker is ordered after a head's title
+ * (order 1); the panel body is a grid, where that would send it to the foot, so it is put back first.
+ */
+#panel-kicker { margin: 0; order: 0; }
+/*
+ * The panel's rhythm (the polish pass, owner 2026-09-29): the body's grid gap between sections, a hairline over each
+ * section after the first, 8px inside one; each section's heading the system's field label, its one line of help the
+ * system's field note, both flush. The status under the map picker is one dim two-line readout (its whole text is its
+ * tooltip, `Ui.setStatus`); an error shows in full. The switches sit two to a row; the sliders' names share one width,
+ * so the tracks line up section to section.
+ */
+#status { margin: 0; font: var(--s2u-type-readout-caption); color: var(--s2u-text-dim); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#status.is-bad { display: block; font: var(--s2u-type-readout); color: var(--s2u-warn); }
+.section { display: grid; gap: var(--s2u-space-2); min-width: 0; margin: 0; }
+.section + .section { padding-top: var(--s2u-space-3); box-shadow: inset 0 1px 0 var(--s2u-panel-edge); }
+.section .s2u-field__label, .section .s2u-field__note { margin: 0; }
+.section .s2u-range > span:first-child { flex: none; min-width: 11ch; }
+#disc { justify-self: start; }
+#disc:focus-within { outline: 2px solid var(--s2u-focus); outline-offset: 2px; }
+.section .row { gap: var(--s2u-space-4); }
+.section .row .s2u-range { flex: 1; min-width: 0; margin-top: 0; }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2u-space-2) var(--s2u-space-3); margin: var(--s2u-space-2) 0; }
+.checks .s2u-check { min-width: 0; }
+.s2u-overlay .s2u-notice--warn { font: var(--s2u-type-readout-caption); }
+.s2u-overlay .s2u-disclosure { margin: 0; }
+.s2u-overlay .s2u-disclosure .s2u-disclosure { margin-left: 0; margin-top: var(--s2u-space-2); }
+.s2u-overlay .s2u-range { margin-top: var(--s2u-space-1); }
+/*
+ * The bar's three tabs (Controls, the settings cog, GitHub) are one class of system tab and here one size: the same
+ * height and horizontal padding, an icon and its word on one centre line with one gap, one gap between tabs (the
+ * bar's end group), the brand on the same centre line as they are. Open, a tab is lit (`is-on`, the system's own state).
+ */
+.s2u-bar__end .s2u-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; box-sizing: border-box; height: 30px; padding: 0 12px; }
+.s2u-bar__end .s2u-tab svg { flex: none; width: 16px; height: 16px; }
+/* The GitHub mark: a filled shape, where the other two icons stroke. */
+#source svg { fill: currentColor; }
+
+/*
+ * The Controls popover: the system's overlay, hung under the bar's Controls tab (`./ui.ts`, `onControlsPopover`, which
+ * sets `left` to the tab's on a wide screen). It draws over the panel, so it is the later of the two overlays in the page.
+ */
+#controls { top: 56px; left: 12px; width: min(380px, calc(100vw - 24px)); }
+#controls .s2u-overlay__body { max-height: calc(100dvh - 80px); }
+#controls .s2u-fine { margin: 0; }
+/* The popover's two tabs (Controller, Mouse & Keyboard): the system's tab pair, over the list it shows. */
+#controls-tabs { margin-bottom: var(--s2u-space-2); }
+#controls-tabs .s2u-tab { text-align: center; }
+#controls [role="tabpanel"][hidden] { display: none; }
+
+/*
+ * One segmented toggle for the panel's choices (Mode, View, Fly / Walk, Mouse look), each a
+ * `role="group"` of `aria-pressed` toggle buttons (WAI-ARIA: a radio group would owe `role="radio"` children): a dark track, the chosen segment
+ * filled and lifted, the other flat and dim, a hover fill on the unchosen one, the focus ring inside. The system's
+ * tabs are the segments; only their arrangement is the viewer's.
+ */
+.s2u-overlay .s2u-tabs[role="group"] {
+  /* As many equal columns as the switch has options, never the
+     system's fixed pair; a segment may shrink and wrap its caption rather than push the track wider than the panel. */
+  display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; padding: 3px;
+  background: var(--s2u-ground-deep); box-shadow: inset 0 0 0 1px var(--s2u-panel); border-radius: var(--s2u-radius-viewer);
+}
+.s2u-overlay .s2u-tabs[role="group"] .s2u-tab {
+  min-width: 0; overflow-wrap: anywhere;
+  align-content: center; justify-items: center; text-align: center; padding: 8px 10px;
+  background: transparent; box-shadow: none; color: var(--s2u-text-dim); border-radius: calc(var(--s2u-radius-viewer) - 2px);
+}
+.s2u-overlay .s2u-tabs[role="group"] .s2u-tab:hover { background: var(--s2u-tab); color: var(--s2u-text-strong); }
+.s2u-overlay .s2u-tabs[role="group"] .s2u-tab[aria-pressed="true"] {
+  background: var(--s2u-highlight); color: var(--s2u-gold-display);
+  box-shadow: inset 0 0 0 1px var(--s2u-glyph-cross), 0 2px 0 var(--s2u-ground);
+}
+.s2u-overlay .s2u-tabs[role="group"] .s2u-tab .s2u-tab__what { color: var(--s2u-text-dim); }
+.s2u-overlay .s2u-tabs[role="group"] .s2u-tab[aria-pressed="true"] .s2u-tab__what { color: var(--s2u-text-strong); }
+.s2u-overlay .s2u-tabs[role="group"] .s2u-tab:active { background: var(--s2u-highlight-pressed); }
+
+/*
+ * The panel's checkboxes as toggle switches, the same language as the segmented toggle: a dark track, a knob that
+ * slides to the right and lights when on, a hover edge, the focus ring. Still a checkbox to the keyboard, a screen
+ * reader and every test; only the box is redrawn. The hidden state checkboxes are untouched (`hidden`).
+ */
+.s2u-overlay .s2u-check input {
+  position: relative; display: block; width: 30px; height: 16px; border-radius: var(--s2u-radius-pill);
+  background: var(--s2u-ground-deep); box-shadow: inset 0 0 0 1px var(--s2u-text-dim);
+  transition: background-color var(--s2u-dur-fast), box-shadow var(--s2u-dur-fast);
+}
+.s2u-overlay .s2u-check input::before {
+  content: ''; position: absolute; left: 3px; top: 3px; width: 10px; height: 10px; border-radius: 50%; clip-path: none;
+  background: var(--s2u-text-dim); transition: transform var(--s2u-dur-fast), background-color var(--s2u-dur-fast);
+}
+.s2u-overlay .s2u-check input:checked { background: var(--s2u-highlight); box-shadow: inset 0 0 0 1px var(--s2u-glyph-cross); }
+.s2u-overlay .s2u-check input:checked::before { width: 10px; height: 10px; clip-path: none; background: var(--s2u-gold-display); transform: translateX(14px); }
+.s2u-overlay .s2u-check:hover input { box-shadow: inset 0 0 0 1px var(--s2u-gold); }
+.s2u-overlay .s2u-check input:focus-visible { outline: 2px solid var(--s2u-focus); outline-offset: 2px; }
+
+/*
+ * The flashbang's white-out (`./flash.ts`, research 85): the game's own full-screen white, part of the picture and not
+ * the chrome, so it is the one colour here the design system does not name. Its opacity is written frame by frame.
+ */
+#whiteout { position: absolute; inset: 0; z-index: 5; background: #fff; opacity: 0; pointer-events: none; }
+
+/* A readout, not a control: a drag that starts on it must reach the canvas underneath. */
+#fps { top: 12px; right: 12px; pointer-events: none; }
+
+#fullscreen { position: fixed; right: 24px; bottom: 24px; z-index: 5; }
+
+/* The loading overlay, centred as the system does. */
+#loading { pointer-events: none; }
+
+.row { display: flex; gap: var(--s2u-space-2); align-items: center; flex-wrap: wrap; }
+#diagnostics { max-height: 30vh; }
+
+/*
+ * The controller (W2.7). The toast is the system's status pill -- the frame counter's -- moved to the top centre:
+ * fixed, so showing it shifts nothing, and a readout, so a drag that starts on it reaches the canvas. The backtick's
+ * clean look takes it with the rest of the chrome. The layout table under the hint line is set in the panel's
+ * readout type; its assumed rows carry the system's warn label.
+ */
+#toast {
+  left: 50%; right: auto; transform: translateX(-50%); pointer-events: none;
+  max-width: min(560px, calc(100vw - 24px)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--s2u-gold);
+}
+#toast[hidden], body.chrome-hidden #toast { display: none; }
+/* The Controls popover's two grouped tables: a heading row a group, the key or the pad's button first. */
+#keys-list, #pad-list { border-collapse: collapse; margin-top: var(--s2u-space-1); font: var(--s2u-type-readout-caption); color: var(--s2u-text); }
+#keys-list td, #pad-list td { padding: 2px var(--s2u-space-3) 2px 0; vertical-align: top; }
+#keys-list td:first-child, #pad-list td:first-child { white-space: nowrap; color: var(--s2u-text-strong); }
+.pad-group th { padding: var(--s2u-space-2) 0 2px; text-align: left; font: var(--s2u-type-stat-caption); letter-spacing: var(--s2u-tracking-stat-caption); text-transform: uppercase; color: var(--s2u-gold); }
+#pad-list .s2u-hint__glyph { vertical-align: -2px; margin-right: var(--s2u-space-1); }
+@media (max-width: 480px), (pointer: coarse) {
+  #toast { top: 8px; max-width: calc(100vw - 16px); }
+}
+
+/*
+ * The touch layer. Nothing here exists until `body.touch` is set: on a mouse these would only be things in the way; and
+ * a pad connected hides it (`body.pad-on`, owner 2026-09-29: the pad then works as on a desktop). Flying, the move stick
+ * takes the left half's bottom -- the part of a phone a thumb reaches -- and the right half is left to the look drag;
+ * walking, the two sticks take a half each below the bar (the look stick's zone is walking's alone). The sticks are the
+ * viewer's own (no touchstick anywhere else on the site); the buttons are the system's fab (round) and tab (the pills),
+ * sized and placed here.
+ */
+#touch { display: none; }
+body.touch #touch { display: block; }
+body.touch.pad-on #touch { display: none; }
+#stick-zone {
+  /* The bottom 45vh of the left half: the part of a phone a thumb reaches, and clear of the panel,
+     whose body is capped at 45vh below the site bar in the top strip. */
+  position: fixed; left: 0; bottom: 0; width: 50vw; height: 45vh; z-index: 4;
+  touch-action: none;
+}
+#aim-zone { display: none; position: fixed; right: 0; bottom: 0; width: 50vw; z-index: 4; touch-action: none; }
+body.touch.is-walking #stick-zone, body.touch.is-walking #aim-zone { display: block; top: calc(56px + env(safe-area-inset-top, 0px)); height: auto; }
+#stick-base, #aim-base {
+  position: fixed; z-index: 4; width: 116px; height: 116px; margin: -58px 0 0 -58px;
+  border: 1px solid var(--s2u-glyph-cross); border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06); /* the stick's own translucent white ring over the canvas, not a panel */
+  pointer-events: none;
+}
+#stick-base[hidden], #aim-base[hidden] { display: none; }
+#stick-knob, #aim-knob {
+  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px;
+  border: 1px solid var(--s2u-gold); border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14); /* the stick's own translucent white knob over the canvas, not a panel */
+  transform: translate(-50%, -50%);
+}
+#touch-lift {
+  /* Above the browser's own bottom bar on a phone, which `env()` measures and which is 0 everywhere else. */
+  position: fixed; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 4; display: flex; flex-direction: column; gap: 10px;
+}
+/* The walk's stance (W2.2b), beside the lower lift button: the fab sits over the column, so not in it. */
+#touch-stance {
+  position: fixed; right: 78px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+}
+/* The trigger (W2.5), above the stance button: held, the rifle fires at its rate. */
+#touch-fire {
+  position: fixed; right: 78px; bottom: calc(16px + 66px + env(safe-area-inset-bottom, 0px)); z-index: 4;
+}
+#touch-lift button, #touch-stance, #touch-fire {
+  width: 56px; height: 56px; border-radius: 50%; touch-action: none;
+  border: 1px solid var(--s2u-panel-edge); background: var(--s2u-tab); backdrop-filter: blur(4px);
+  color: var(--s2u-gold); font: var(--s2u-type-hint); letter-spacing: var(--s2u-tracking-hint); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* The touch C's hint (owner, 2026-09-29: tap stands or crouches, hold goes prone), a small line under the letter. */
+#touch-stance { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; }
+#touch-stance > span { font: var(--s2u-type-stat-caption); letter-spacing: 0; color: var(--s2u-text-dim); white-space: nowrap; }
+#touch-stance.is-down { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
+#touch-lift button:active, #touch-stance:active, #touch-fire:active { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
+
+@media (max-width: 480px), (pointer: coarse) {
+  #site-links { top: 8px; left: 8px; }
+  #panel { top: 60px; left: var(--s2u-space-4); width: calc(100vw - 2 * var(--s2u-space-4)); }
+  #controls { top: 60px; }
+  #fps { top: 8px; right: 8px; }
+  /* Above the two 56px touch-lift buttons (10px apart), which the fullscreen fab's default
+     right/bottom 24px placement would otherwise sit on top of on a coarse pointer. */
+  #fullscreen { right: 12px; bottom: calc(16px + 2 * 66px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Under 480px the bar's tabs are their marks alone, and the frame counter keeps its number alone, so the two clear each
+   other on a phone; `aria-label` and `title` still name every tab. The popover fills the width as the panel does. */
+@media (max-width: 480px) {
+  #source-word, #settings-word, #controls-word { display: none; }
+  .s2u-bar__end .s2u-tab { padding: 0 10px; }
+  #controls { left: var(--s2u-space-4); width: calc(100vw - 2 * var(--s2u-space-4)); }
+  /* The panel now has the Sound and Mouse look sections: on a phone it takes the height the bar leaves, and scrolls inside. */
+  #panel .s2u-overlay__body { max-height: calc(100dvh - 76px); }
+}
+@media (max-width: 480px) {
+  #fps-rest { display: none; }
+}
+
+/*
+ * Walk mode's touch layout (owner, 2026-09-29: what a player needs, tidied; `index.html` `#touch-walk`, `./touch.ts`
+ * `attachWalkTouch`), for a phone held sideways: under the right thumb the large SHOOT at the edge and JUMP beside it,
+ * the stance (Triangle) over JUMP and the action (Cross) over SHOOT; a row of pills under the compass (reload at the edge,
+ * the next item, the zoom out and in). It shows while walking on a touch screen only (`body.touch.is-walking`; the fly
+ * camera keeps the lift buttons). The HUD keeps its corners: the ammo box bottom left, the compass top right, and the
+ * range and timer strip along the bottom right, which the cluster clears by `--tw-floor`. The safe-area insets are added
+ * to every edge. No two buttons overlap (`e2e/touch.spec.ts`, `e2e/phonePanel.spec.ts`, at 812x375, 667x375, 915x412).
+ */
+#touch-walk, #rotate-hint { display: none; }
+body.touch.is-walking #touch-walk { display: block; }
+body.touch.is-walking #touch-lift, body.touch.is-walking #touch-stance, body.touch.is-walking #touch-fire { display: none; }
+#touch-walk {
+  --tw-fire: 84px; --tw-jump: 64px; --tw-btn: 48px; --tw-small: 36px; --tw-gap: 10px;
+  /* What the HUD's bottom strip (the range and the timer) takes, so no button sits over it. */
+  --tw-floor: 44px;
+  --tw-right: env(safe-area-inset-right, 0px); --tw-bottom: env(safe-area-inset-bottom, 0px);
+}
+#touch-walk button {
+  z-index: 5; margin: 0; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--s2u-panel-edge); background: var(--s2u-tab); backdrop-filter: blur(4px);
+  color: var(--s2u-gold); font: var(--s2u-type-nav); letter-spacing: var(--s2u-tracking-nav);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: background-color var(--s2u-dur-fast), border-color var(--s2u-dur-fast);
+}
+#touch-walk button.is-down { background: var(--s2u-tab-lit); border-color: var(--s2u-glyph-cross); color: var(--s2u-gold-display); }
+#touch-walk button svg { width: 22px; height: 22px; pointer-events: none; }
+/* The face buttons' glyphs keep the system's own glyph colours over the fab's currentColor stroke. */
+#touch-walk .s2u-hint__glyph { fill: none; stroke-width: 2.2; }
+#touch-walk .s2u-hint__glyph--square { stroke: var(--s2u-glyph-square); }
+#touch-walk .s2u-hint__glyph--triangle { stroke: var(--s2u-glyph-triangle); }
+#touch-walk .s2u-hint__glyph--cross { stroke: var(--s2u-glyph-cross); }
+#tw-actions { display: contents; }
+#tw-fire, #tw-jump, #tw-stance, #tw-action { position: fixed; border-radius: 50%; }
+/* SHOOT, the largest, at the right edge. */
+#tw-fire {
+  width: var(--tw-fire); height: var(--tw-fire); font: var(--s2u-type-hint); letter-spacing: var(--s2u-tracking-hint); border-color: var(--s2u-gold);
+  right: calc(12px + var(--tw-right)); bottom: calc(var(--tw-floor) + 12px + var(--tw-bottom));
+}
+/* JUMP beside it, a gap to its left, on the floor. */
+#tw-jump {
+  width: var(--tw-jump); height: var(--tw-jump); font: var(--s2u-type-stat-caption); letter-spacing: var(--s2u-tracking-stat-caption); gap: 2px; align-content: center;
+  right: calc(12px + var(--tw-fire) + var(--tw-gap) + var(--tw-right)); bottom: calc(var(--tw-floor) + var(--tw-bottom));
+}
+#touch-walk #tw-jump svg { width: 16px; height: 16px; }
+/* The stance over JUMP, the action over SHOOT, each centred on the button under it. */
+#tw-stance {
+  width: var(--tw-btn); height: var(--tw-btn);
+  right: calc(12px + var(--tw-fire) + var(--tw-gap) + (var(--tw-jump) - var(--tw-btn)) / 2 + var(--tw-right));
+  bottom: calc(var(--tw-floor) + var(--tw-jump) + var(--tw-gap) + var(--tw-bottom));
+}
+#tw-action {
+  width: var(--tw-btn); height: var(--tw-btn);
+  right: calc(12px + (var(--tw-fire) - var(--tw-btn)) / 2 + var(--tw-right));
+  bottom: calc(var(--tw-floor) + 12px + var(--tw-fire) + var(--tw-gap) + var(--tw-bottom));
+}
+/* Under the compass, on the right: a row of pills, reload at the edge. */
+#tw-scope { position: fixed; z-index: 5; display: flex; flex-direction: row-reverse; gap: var(--s2u-space-2); top: 124px; right: calc(8px + var(--tw-right)); }
+#tw-scope button { position: static; height: var(--tw-small); min-width: var(--tw-small); padding: 0 var(--s2u-space-3); border-radius: var(--s2u-radius-pill); }
+/* The fullscreen button, while walking: the HUD owns the bottom right (the range strip), so it stands at the left edge. */
+body.is-walking #fullscreen { right: auto; bottom: auto; left: calc(8px + env(safe-area-inset-left, 0px)); top: 96px; width: 44px; height: 44px; }
+/* Held upright the layout has no room beside the HUD's tall bottom strip: it is asked to turn, and lifts the cluster. */
+@media (orientation: portrait) {
+  body.touch.is-walking #rotate-hint { display: block; top: 60px; left: 50%; right: auto; transform: translateX(-50%); max-width: calc(100vw - 16px); white-space: nowrap; pointer-events: none; color: var(--s2u-gold); }
+  #touch-walk { --tw-floor: 150px; }
+  #tw-scope { top: 250px; }
+}
+/* The tip says the same and more: while it is up, the turn line waits. */
+body.touch.is-walking.tip-on #rotate-hint { display: none; }
+
+/*
+ * The phone's tip (owner, 2026-09-29; `./mobileTip.ts`): the system's notice, top centre under the bar, its close button
+ * the system's icon control. Above the touch layer, under the popover and the panel.
+ */
+#mobile-tip {
+  position: fixed; z-index: 6; top: calc(56px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  box-sizing: border-box; width: min(460px, calc(100vw - 16px)); margin: 0; padding: var(--s2u-space-2) var(--s2u-space-3);
+  display: flex; align-items: center; gap: var(--s2u-space-3);
+}
+#mobile-tip[hidden], body.chrome-hidden #mobile-tip { display: none; }
+#mobile-tip p { flex: 1; font: var(--s2u-type-readout); }
+#mobile-tip .s2u-iconbtn { flex: none; width: 36px; height: 36px; }
+
+/*
+ * The panel on a phone held sideways: the full width under the bar would lie over every touch control, so it docks in the
+ * top middle band instead -- right of the left edge's fullscreen button (to 52px, with room to spare), left of the pill
+ * row under the compass (`--panel-right` keeps its width clear), and above the SHOOT / JUMP cluster -- and scrolls inside
+ * itself. It lies over the stick zones, which are open ground rather than buttons: a thumb on the panel is the panel's.
+ * Flying, the lift buttons and the fullscreen button are at the right edge, clear of the same band. Held upright the
+ * panel is as it was.
+ */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 500px) {
+  #panel {
+    --panel-left: calc(96px + env(safe-area-inset-left, 0px));
+    --panel-right: calc(264px + env(safe-area-inset-right, 0px));
+    left: var(--panel-left); width: min(400px, calc(100vw - var(--panel-left) - var(--panel-right)));
+  }
+  #panel .s2u-overlay__body { box-sizing: border-box; max-height: calc(55vh - 60px - 8px); }
+}
+
+/*
+ * Hit targets on a touch screen (the polish pass): every control of the panel and the Controls popover is at least
+ * 44 px tall, and so is the tip's close button. The bar's tabs keep their 30 px look and take a 44 px tall touch area
+ * (a transparent band over and under each, inside the gap to the page), so the bar and what hangs under it do not move.
+ */
+@media (pointer: coarse) {
+  #panel .s2u-tab, #controls .s2u-tab, #panel .s2u-check, #panel .s2u-range, #panel .s2u-disclosure > summary,
+  #panel .s2u-field select, #panel .s2u-field input, #disc { min-height: 44px; }
+  #panel .s2u-range input[type="range"] { height: 44px; }
+  #disc { display: inline-flex; align-items: center; }
+  .s2u-bar__end .s2u-tab { position: relative; }
+  .s2u-bar__end .s2u-tab::after { content: ''; position: absolute; left: 0; right: 0; top: -7px; bottom: -7px; }
+  #mobile-tip .s2u-iconbtn { width: 44px; height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #touch-lift button, #touch-stance, #touch-fire, #touch-walk button { transition: none; }
+}

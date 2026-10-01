@@ -450,6 +450,17 @@ class ThisRepository(unittest.TestCase):
         hits, _ = L.check_ignored(L.ROOT)
         self.assertEqual([h.render(True) for h in hits], [])
 
+    def test_the_landing_sites_game_derived_inputs_are_in_the_proof(self):
+        # web/.gitignore lists them under the landing's "Build inputs" (web/landing/README.md): the HUD sounds, the
+        # game-showing images, the owner's artwork and the home/story goldens. The gate re-proves only what this
+        # constant names, so a later .gitignore edit that un-ignored one would pass unseen (launch review, site
+        # minor). File samples for the goldens: e2e/goldens/gallery-* is tracked on purpose.
+        for path in ("web/landing/public/media/", "web/landing/public/sfx/", "web/landing/public/img/intel.jpg",
+                     "web/landing/public/img/share.jpg", "web/landing/art/", "web/landing/e2e/goldens/home-x.png",
+                     "web/landing/e2e/goldens/story-x.png"):
+            with self.subTest(path=path):
+                self.assertIn(path, L.SENSITIVE_IGNORED)
+
     def test_nothing_key_shaped_is_tracked(self):
         bad = [rel for rel in L.tracked_files(L.ROOT) if R.KEYNAME_PATH_RE.search(rel)]
         self.assertEqual(bad, [])

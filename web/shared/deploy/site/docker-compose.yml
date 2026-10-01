@@ -1,0 +1,43 @@
+# Runs on the site's box beside the stack that owns the shared compose network and the Cloudflare tunnel connector,
+# which publishes it as https://socomunzipped.com. nginx listens on the compose network only; no host ports.
+# Shipped and started by web/shared/deploy/site/deploy.sh.
+name: s2u
+
+services:
+  s2u:
+    build: .
+    image: s2u:local
+    container_name: s2u
+    restart: unless-stopped
+    volumes:
+      # redotcom's archives (deploy.sh maps), outside data/ so nginx's worker can read them.
+      - /opt/s2u/maps:/srv/redotcom/maps:ro
+    networks:
+      - claudescape_internal
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+
+  # The bug-report inbox (POST /api/bugs through the s2u nginx). Reports are files under /opt/s2u/data on the
+  # host -- outside src/, so a deploy never touches them. No host port; nothing reads them back over HTTP.
+  s2u-api:
+    build: ./api
+    image: s2u-api:local
+    container_name: s2u-api
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    volumes:
+      - /opt/s2u/data:/data
+    networks:
+      - claudescape_internal
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
+
+networks:
+  claudescape_internal:
+    external: true

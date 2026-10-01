@@ -1,0 +1,35 @@
+{
+  "name": "@s2u/redotcom",
+  "version": "0.1.0",
+  "description": "redotcom: SOCOM II's multiplayer maps decoded from the disc and drawn in a browser, walked and fought over as a SEAL (reCOM mode, single player: the local demo) -- a spin-off of SOCOM Unzipped",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Scotho/socom-unzipped.git",
+    "directory": "web/redotcom"
+  },
+  "homepage": "https://socomunzipped.com/redotcom/",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -b packages/archive packages/gs packages/mesh packages/scene packages/sound && tsc --noEmit -p packages/viewer && tsc --noEmit -p tools",
+    "extract-maps": "tsx tools/extract-maps.ts",
+    "dump-textures": "tsx tools/dump-textures.ts",
+    "export-gltf": "tsx tools/export-gltf.ts",
+    "dev": "vite --config packages/viewer/vite.config.ts",
+    "build": "vite build --config packages/viewer/vite.config.ts",
+    "e2e": "playwright test",
+    "dump-sounds": "tsx tools/dump-sounds.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^24.13.6",
+    "jsdom": "^29.1.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^7.0.0",
+    "vitest": "^3.2.0"
+  }
+}

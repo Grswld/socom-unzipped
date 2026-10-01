@@ -1,0 +1,30 @@
+<!-- @dsCard group="Briefing" height=300 subtitle="Stacked briefing tabs: rest, current, hover, focus, disabled" -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&display=swap">
+<style>
+  body{margin:0;background:var(--ground);padding:24px;font-family:var(--font-label)}
+  .tabs{display:flex;flex-direction:column;gap:var(--space-2);width:var(--tab-w)}
+  .tab{appearance:none;border:0;text-align:left;cursor:pointer;background:var(--tab);color:var(--text);
+    box-shadow:var(--panel-inset);border-radius:var(--radius-0);padding:var(--space-3) var(--space-4);
+    font:600 18px/24px var(--font-label);letter-spacing:.08em;text-transform:uppercase}
+  .tab:hover,.tab[aria-current="true"]{background:var(--tab-lit);color:var(--gold)}
+  .tab:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  .tab[aria-disabled="true"]{opacity:var(--disabled);cursor:default}
+  .tab[aria-disabled="true"]:hover{background:var(--tab);color:var(--text)}
+  .row{display:flex;gap:32px;align-items:flex-start}
+  .note{font:400 13px/18px var(--font-label);color:var(--text-dim);max-width:260px}
+</style>
+<div class="row">
+  <nav class="tabs" aria-label="Briefing">
+    <button class="tab" aria-current="true">Overview</button>
+    <button class="tab">Mission details</button>
+    <button class="tab" id="hov">Objectives</button>
+    <button class="tab" id="foc">Maps/Intel</button>
+    <button class="tab" aria-disabled="true">Server stats</button>
+  </nav>
+  <p class="note">Current and hover are the same state: <code>tab-lit</code> fill, <code>gold</code> label. The game's lit tab is dark, so the label carries the difference. Focus adds the ring on top.</p>
+</div>
+<script>
+  document.getElementById('hov').style.background='var(--tab-lit)';
+  document.getElementById('hov').style.color='var(--gold)';
+  var f=document.getElementById('foc');f.style.outline='2px solid var(--focus)';f.style.outlineOffset='2px';
+</script>
