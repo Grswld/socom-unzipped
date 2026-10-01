@@ -41,7 +41,9 @@
 # Environment: MERGED_CHAIN_DRY_RUN=1 prints the steps and runs none, checks no lock, writes nothing, and exits 3 --
 # never 0, so a leaked switch can never make a chain green. For tools_py/tests/test_merged_chain.py:
 # MERGED_CHAIN_LOCK_SH (the lock script asked for the live id), MERGED_CHAIN_LEG_REFS (the E2 references' directory,
-# default scripts/parity/refs/heldout/), MERGED_CHAIN_BASE (main). PYTHON as scripts/python_env.sh.
+# default scripts/parity/refs/heldout/), MERGED_CHAIN_BASE (main), BUILD_LAUNCHER_CHECK_CMD (the running-launcher
+# query, build.sh's: a running launcher is refused before step 1, exit 2, "done 2 refused-launcher-running"). PYTHON
+# as scripts/python_env.sh.
 set -u
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$ROOT" ] || { echo "merged_chain: $0 is not inside a git work tree"; exit 2; }
@@ -147,6 +149,27 @@ fi
 before="$(git status --porcelain --untracked-files=no)"
 if [ -n "$before" ]; then
   refuse dirty-tree "modified tracked files -- the chain proves a commit, and it stashes nothing:"$'\n'"$before"
+fi
+# The launcher (Sprint 17, three reds on 2026-09-30/10-01: step 2 went red at 06:13Z on 2026-10-01 after ~6 minutes):
+# runtime's copy of dist/socom_unzipped_launcher.exe fails "Device or resource busy" while the owner's launcher
+# window runs. build.sh refuses that itself (exit 3); this preflight refuses first, with build.sh's line, so no
+# recomp time is spent. The same query as build.sh's launcher_pids, and the same override, BUILD_LAUNCHER_CHECK_CMD
+# (its output's numbers are the pids; `true` means none), which the steps' build.sh then inherits.
+launcher_pids() {
+  local out=""
+  if [ -n "${BUILD_LAUNCHER_CHECK_CMD:-}" ]; then
+    out="$(eval "$BUILD_LAUNCHER_CHECK_CMD" 2>/dev/null)"
+  elif command -v tasklist >/dev/null 2>&1; then
+    out="$(MSYS_NO_PATHCONV=1 tasklist /FI "IMAGENAME eq socom_unzipped_launcher.exe" /FO CSV /NH 2>/dev/null | tr -d '\r' \
+      | awk -F'","' 'tolower($1) == "\"socom_unzipped_launcher.exe" { print $2 }')"
+  elif command -v pgrep >/dev/null 2>&1; then
+    out="$(pgrep -f '^([^ ]*/)?socom_unzipped_launcher(\.exe)?( |$)' 2>/dev/null)"
+  fi
+  printf '%s\n' "$out" | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) s = s (s == "" ? "" : ", ") $i } END { if (s != "") print s }'
+}
+running="$(launcher_pids)"
+if [ -n "$running" ]; then
+  refuse launcher-running "the launcher is running (pid $running): close the launcher window (socom_unzipped_launcher.exe) and run this again; the step's copy of the launcher fails 'Device or resource busy' while it runs"
 fi
 HEAD0="$(git rev-parse HEAD)"
 # The chain's tree is pinned while it runs (Sprint 17 G1): the hooks read this marker -- no commit here

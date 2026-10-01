@@ -969,8 +969,14 @@ close; `scripts/kill_stale_drivers.ps1` kills every `socom2*.exe`, so it runs on
 `scripts/run_detached.sh` refuses below `RUN_MIN_FREE_MEM_GB` (exit 3, test
 `test_memory_refusal_below_threshold_does_not_launch` in `tools_py/tests/test_loop_lock.py`), **default 3**, so a
 launch passes `RUN_MIN_FREE_MEM_GB=4`. **Gaps:** the default is not 4; `loop_lock.sh run` and `build.sh` check no
-memory; nothing refuses a start while the launcher runs. Home: R334, and `docs/HAZARDS.md`'s memory-floor
-hazard (2026-09-27: children failing `0xC0000142` at 3.3-3.6 GB free).
+memory. Home: R334, and `docs/HAZARDS.md`'s memory-floor
+hazard (2026-09-27: children failing `0xC0000142` at 3.3-3.6 GB free). **Guard, the launcher (Sprint 17):** while
+`socom_unzipped_launcher.exe` runs, `build.sh runtime|all|release` exits 3, the merged chain's preflight refuses
+before step 1 (exit 2, `done 2 refused-launcher-running`) and `run_detached.sh --purpose "merged chain"|"build*"`
+exits 3 (`exit=3 REFUSED: the launcher is running (pid ...)`), each naming the pid(s) and "close the launcher
+window"; tests `TestBuildShLauncherGuard` (`test_build_sh_lock`), `test_a_running_launcher_is_refused_before_any_step`
+(`test_merged_chain`), `TestRunDetachedLauncherFast` (`test_loop_lock`); overrides `BUILD_LAUNCHER_CHECK_CMD`,
+`RUN_LAUNCHER_CHECK_CMD`; home `docs/HAZARDS.md` harness. A game run is not refused (only the copy collides).
 
 **The suites.** At a merge: the module tests the brief names (`python -m unittest tools_py.tests.test_<module> ...`),
 lock-free, never beside a build or a game run. The full Python suite runs only inside the day's chain (its `test`

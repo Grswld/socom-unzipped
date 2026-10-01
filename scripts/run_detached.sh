@@ -11,6 +11,11 @@
 #   - refuses the same way (exit 3, "exit=3 REFUSED: only <n> GB memory free (< RUN_MIN_FREE_MEM_GB=<m>)" in
 #     <marker>, before touching the lock) when free physical memory is below RUN_MIN_FREE_MEM_GB (default 3)
 #     -- Sprint 14 G5. RUN_FREE_MEM_GB_OVERRIDE (a number) replaces the memory query for tests;
+#   - refuses the same way (exit 3, "exit=3 REFUSED: the launcher is running (pid <pid>[, ...]): close the
+#     launcher window ..." in <marker>, before touching the lock) when --purpose starts with "merged chain" or
+#     "build" and socom_unzipped_launcher.exe is running -- Sprint 17: a build's copy of the launcher fails
+#     "Device or resource busy" under it (three reds on 2026-09-30/10-01). RUN_LAUNCHER_CHECK_CMD (a command whose
+#     output's numbers are the pids; `true` means none) replaces the process query for tests;
 #   - takes the loop lock as <owner> (default "detached"); if it is BUSY, writes "exit=75 BUSY ..." to
 #     <marker> and exits 75 without launching. With --wait (Sprint 13 H2) it QUEUES instead
 #     (`loop_lock.sh wait`: a ticket, served in arrival order) for up to that long, in the foreground --
@@ -56,7 +61,7 @@
 # Poll the marker (`test -f <marker>`), never the caller. Inside the script, `loop_lock.sh take/release`
 # (gate.py's own included) are NESTED no-ops: LOOP_LOCK_HELD is exported to the job.
 # A pre-existing <marker> is deleted before launch. Environment: as loop_lock.sh (LOOP_LOCK_PATH, ...),
-# plus RUN_MIN_FREE_GB, RUN_FREE_GB_CMD, RUN_MIN_FREE_MEM_GB, RUN_FREE_MEM_GB_OVERRIDE, RUN_QUIET_MARKER,
+# plus RUN_MIN_FREE_GB, RUN_FREE_GB_CMD, RUN_MIN_FREE_MEM_GB, RUN_FREE_MEM_GB_OVERRIDE, RUN_LAUNCHER_CHECK_CMD, RUN_QUIET_MARKER,
 # RUN_CPU_SAMPLER above.
 #
 # KNOWN LIMITATIONS
@@ -102,6 +107,22 @@ _free_mem_gb() {
   else
     free -g 2>/dev/null | awk '/^Mem:/ { print $7 }'
   fi
+}
+
+# Sprint 17: the pids of a running socom_unzipped_launcher.exe, "<pid>[, <pid>...]" or nothing -- build.sh's
+# launcher_pids, by image name (tasklist on Windows, pgrep -f on Linux). RUN_LAUNCHER_CHECK_CMD (a shell command whose
+# output's numbers are the pids; `true` means none) replaces the query for tests.
+_launcher_pids() {
+  local out=""
+  if [ -n "${RUN_LAUNCHER_CHECK_CMD:-}" ]; then
+    out="$(eval "$RUN_LAUNCHER_CHECK_CMD" 2>/dev/null)"
+  elif command -v tasklist >/dev/null 2>&1; then
+    out="$(MSYS_NO_PATHCONV=1 tasklist /FI "IMAGENAME eq socom_unzipped_launcher.exe" /FO CSV /NH 2>/dev/null | tr -d '\r' \
+      | awk -F'","' 'tolower($1) == "\"socom_unzipped_launcher.exe" { print $2 }')"
+  elif command -v pgrep >/dev/null 2>&1; then
+    out="$(pgrep -f '^([^ ]*/)?socom_unzipped_launcher(\.exe)?( |$)' 2>/dev/null)"
+  fi
+  printf '%s\n' "$out" | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) s = s (s == "" ? "" : ", ") $i } END { if (s != "") print s }'
 }
 
 # Cheap host CPU sampler: one row/second to $1 (timestamp,total%,name=pct;name=pct) until killed.
@@ -280,6 +301,18 @@ if awk -v f="$free_mem_gb" -v m="$min_free_mem_gb" 'BEGIN{exit !(f<m)}'; then
 fi
 
 purpose="${purpose:-detached $(basename "$script")}"
+# The launcher guard (Sprint 17), the memory guard's shape: a build copies dist/socom_unzipped_launcher.exe, which
+# fails "Device or resource busy" while the owner's launcher window runs (three reds on 2026-09-30/10-01, the merged
+# chain's step 2 among them). A job whose purpose starts with "merged chain" or "build" is refused while it runs.
+case "$purpose" in
+  "merged chain"*|build*)
+    running="$(_launcher_pids)"
+    if [ -n "$running" ]; then
+      echo "run_detached: REFUSED -- the launcher is running (pid $running): close the launcher window (socom_unzipped_launcher.exe) and run this again; the step's copy of the launcher fails 'Device or resource busy' while it runs"
+      printf 'exit=3 REFUSED: the launcher is running (pid %s): close the launcher window (socom_unzipped_launcher.exe)\n' "$running" > "$marker"
+      exit 3
+    fi ;;
+esac
 want_quiet=$quiet_flag
 case "$purpose" in launch*) want_quiet=1;; esac
 

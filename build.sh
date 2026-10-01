@@ -60,6 +60,34 @@ if [ "$STEP" != tools ] && [ -f "$ROOT/scripts/loop_lock.sh" ]; then
       fi ;;
   esac
 fi
+# Sprint 17, three reds on 2026-09-30/10-01: runtime() copies the launcher into dist/ AFTER the game is built, and
+# while the owner's launcher window runs (dist/socom_unzipped_launcher.exe) that `cp` fails "Device or resource
+# busy": a lone build reads FAILED and the merged chain's step 2 goes red for a non-code reason. So `runtime`, `all`
+# and `release` (which copies the launcher too, into dist-release[-dev]/) refuse up front, exit 3, naming the pid(s)
+# and the fix; `tools`, `recomp` and `test` copy no launcher and do not look. The query is by image name
+# (tasklist on Windows, pgrep -f on Linux; neither present: nothing is found); BUILD_LAUNCHER_CHECK_CMD replaces it
+# for tests (its output's numbers are the pids; `true` means none). It runs for --dry-run too, like the lock
+# consult. Twins, the same line: scripts/parity/merged_chain.sh's preflight and scripts/run_detached.sh.
+launcher_pids() {   # prints "<pid>[, <pid>...]" or nothing
+  local out=""
+  if [ -n "${BUILD_LAUNCHER_CHECK_CMD:-}" ]; then
+    out="$(eval "$BUILD_LAUNCHER_CHECK_CMD" 2>/dev/null || true)"
+  elif command -v tasklist >/dev/null 2>&1; then
+    out="$(MSYS_NO_PATHCONV=1 tasklist /FI "IMAGENAME eq socom_unzipped_launcher.exe" /FO CSV /NH 2>/dev/null | tr -d '\r' \
+      | awk -F'","' 'tolower($1) == "\"socom_unzipped_launcher.exe" { print $2 }' || true)"
+  elif command -v pgrep >/dev/null 2>&1; then
+    out="$(pgrep -f '^([^ ]*/)?socom_unzipped_launcher(\.exe)?( |$)' 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$out" | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) s = s (s == "" ? "" : ", ") $i } END { if (s != "") print s }'
+}
+case "$STEP" in
+  runtime|all|release)
+    running="$(launcher_pids)"
+    if [ -n "$running" ]; then
+      echo "build.sh: REFUSED -- the launcher is running (pid $running): close the launcher window (socom_unzipped_launcher.exe) and run this again; the step's copy of the launcher fails 'Device or resource busy' while it runs" >&2
+      exit 3
+    fi ;;
+esac
 # Sprint 17, the owner's rule of 2026-09-28: the full Python suite is the merged chain's bar (and CI's, on
 # every push), not a branch build's. Twice that night one `./build.sh test --no-runner` in an agent's worktree ran the
 # whole discover under the lock with three holders queued behind it; starved, it held the lock 60-110 minutes and

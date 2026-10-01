@@ -145,7 +145,9 @@ class TestMergedChainRuns(unittest.TestCase):
             env.pop(k, None)
         env.update({"PYTHON": fwd(self.fake_py), "FAKE_LOG": fwd(self.log), "LOOP_LOCK_PATH": fwd(self.lock),
                     "LOOP_LOCK_HELD": "chain 100-1x1", "MERGED_CHAIN_LOCK_SH": fwd(LOCK_SH),
-                    "LOOP_LOCK_PS_CMD": "true"})
+                    "LOOP_LOCK_PS_CMD": "true",
+                    # the launcher preflight reads the host's processes; the owner's launcher may be open
+                    "BUILD_LAUNCHER_CHECK_CMD": "true"})
         env.update({k: str(v) for k, v in extra.items() if v is not None})
         for k, v in extra.items():
             if v is None:
@@ -260,6 +262,18 @@ class TestMergedChainRuns(unittest.TestCase):
         self.assertIn("tracked.txt", out)
         self.assertEqual(self.steps_printed(out), [])
         self.assertEqual(self.fake_log(), [])
+
+    def test_a_running_launcher_is_refused_before_any_step(self):
+        # Sprint 17: step 2's copy of the launcher fails 'Device or resource busy' while it runs (three reds,
+        # 2026-09-30/10-01); the preflight refuses first, with build.sh's line, so no recomp time is spent.
+        rc, out = self.run_chain(BUILD_LAUNCHER_CHECK_CMD="echo 4242")
+        self.assertEqual(rc, 2, out)
+        self.assertIn("merged_chain: REFUSED -- the launcher is running (pid 4242): close the launcher window", out)
+        self.assertEqual(self.steps_printed(out), [])
+        self.assertEqual(self.fake_log(), [])
+        with open(os.path.join(self.repo, "logs", "merged_chain.done")) as fh:      # logs/<script name>.done
+            self.assertEqual(fh.read().strip(), "done 2 refused-launcher-running")
+        self.assertFalse(os.path.exists(self.running_marker()))
 
     def test_it_refuses_to_run_outside_the_lock(self):
         rc, out = self.run_chain(LOOP_LOCK_HELD=None)
