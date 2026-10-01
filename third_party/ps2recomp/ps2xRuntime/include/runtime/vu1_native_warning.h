@@ -11,6 +11,8 @@
 // before the gameplay microcode arrives, and a match anywhere in the window means the table is fine
 // and rearms it. One second of nothing but misses is gameplay running on the interpreter.
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -85,5 +87,64 @@ namespace Vu1NativeWarning
                       " -- running the interpreter (supported disc: SOCOM II NTSC r0001, SCUS_972.75)",
                       static_cast<unsigned long long>(hash), static_cast<unsigned>(entryPc));
         return std::string(buffer);
+    }
+
+    // ---- the process's instance (VU1Interpreter::run), and its test seams -----------------------------------
+    // Sprint 17 F b1 (docs/research/83 section 3.2): run() reads the clock only for a lookup whose hash matched
+    // nothing -- shouldWarn(true, ...) never reads its nowNs -- so the supported disc pays no clock read per program.
+
+    // The one window the runtime keeps (VU1 runs on one thread). ps2x_tests resets it (live() = State{}).
+    inline State &live()
+    {
+        static State s_state;
+        return s_state;
+    }
+
+    // Every clock read the warning takes, counted (ps2x_tests: none on a matched run, one on an unmatched one).
+    inline std::atomic<uint64_t> &clockReads()
+    {
+        static std::atomic<uint64_t> s_reads{0};
+        return s_reads;
+    }
+
+    // ps2x_tests: a clock in nanoseconds in place of steady_clock (nullptr = steady_clock), for the cadence.
+    using ClockFn = uint64_t (*)();
+    inline ClockFn &clockForTest()
+    {
+        static ClockFn s_clock = nullptr;
+        return s_clock;
+    }
+
+    // The warning's clock: steady_clock in nanoseconds (or the test's), counted.
+    inline uint64_t nowNs()
+    {
+        clockReads().fetch_add(1u, std::memory_order_relaxed);
+        if (const ClockFn clock = clockForTest())
+            return clock();
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+    }
+
+    // The lines printed so far and the last one (ps2x_tests reads them; printed at most once per window state).
+    inline uint64_t &printedCount()
+    {
+        static uint64_t s_count = 0u;
+        return s_count;
+    }
+    inline std::string &lastPrinted()
+    {
+        static std::string s_line;
+        return s_line;
+    }
+
+    // Prints the line for (hash, entry pc) to stderr and remembers it. Unsynchronized on purpose: VU1 runs on one
+    // thread, and the worst a second one could do is print the same line twice.
+    inline void print(uint64_t hash, uint32_t entryPc)
+    {
+        lastPrinted() = line(hash, entryPc);
+        ++printedCount();
+        std::fprintf(stderr, "%s\n", lastPrinted().c_str());
+        std::fflush(stderr);
     }
 }

@@ -10,6 +10,9 @@
 //
 //   [vu1-refuse] elapsed=1002ms entry=0x1b50 reason=unknown_command cmd=0x52 n=37 cycles=412345 host_us=5120
 //
+// no_native_entry at entry 0 is split by the entry-0 program's path (research/83 section 3.1), `cmd=kick`, `matrix`,
+// `fade`, `list`, `fade+list` or `none` (Entry0Path below); every other no_native_entry key keeps `cmd=-`.
+//
 // one line per key with a count in the interval, once a second from the VU1 thread, sorted by n (the [gs-loop]
 // instrument's pattern: atomic accumulators, the interval taken by one printer). vu1_replay prints the same
 // fields as totals, `[vu1-refuse-total] ...`, at its end. tools_py/parity/vu1_refusals.py reads either into a
@@ -26,6 +29,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -126,6 +130,77 @@ namespace Vu1Refusals
                r == Reason::ResumeCommand || r == Reason::LoopShape;
     }
 
+    // ---- the entry-0 split (Sprint 17 F, docs/research/83 section 3.1) --------------------------------------------
+    // no_native_entry at entry 0 is the SOCOM II image's per-object setup program (research/83 section 1.1): it reads
+    // the header at TOP and takes one path. The key carries the path in its command field, so the reading is one row
+    // per path (`cmd=kick`), not one for the whole swarm. The microcode's own tests, in order: w bit 1 -> kick (0x40,
+    // two XGKICKs, and nothing else); else w bit 0 -> matrix (0x118); else w bit 3 -> fade (0x3f0), then, as without
+    // it, z != 0 -> list (0x458) -- so fade+list is one program. w and z are what ILW reads, the low 16 bits. The same
+    // rule as tools_py/parity/vu1_entry0_shapes.py's trace (every entry-0 dump of vu1dump4/vu1dump5 agrees).
+    enum class Entry0Path : uint32_t
+    {
+        Unsplit = 0, // not an entry-0 no_native_entry: cmd= stays `-`
+        Kick,
+        Matrix,
+        Fade,
+        List,
+        FadeList,
+        None,        // w and z both clear: straight to the end
+        kCount
+    };
+
+    inline Entry0Path entry0Path(uint32_t headerZ, uint32_t headerW)
+    {
+        const uint32_t w = headerW & 0xFFFFu;
+        if (w & 2u)
+            return Entry0Path::Kick;
+        if (w & 1u)
+            return Entry0Path::Matrix;
+        const bool fade = (w & 8u) != 0u;
+        const bool list = (headerZ & 0xFFFFu) != 0u;
+        return fade ? (list ? Entry0Path::FadeList : Entry0Path::Fade) : (list ? Entry0Path::List : Entry0Path::None);
+    }
+
+    // The path from VU data memory and TOP (qword index), as run() reads it; Unsplit when TOP's qword is out of range.
+    inline Entry0Path entry0Path(const uint8_t *vuData, uint32_t dataSize, uint32_t top)
+    {
+        const uint32_t off = (top & 0x3FFu) * 16u;
+        if (vuData == nullptr || off + 16u > dataSize)
+            return Entry0Path::Unsplit;
+        uint32_t z = 0u, w = 0u;
+        std::memcpy(&z, vuData + off + 8u, 4u);
+        std::memcpy(&w, vuData + off + 12u, 4u);
+        return entry0Path(z, w);
+    }
+
+    inline const char *pathName(Entry0Path p)
+    {
+        switch (p)
+        {
+        case Entry0Path::Kick: return "kick";
+        case Entry0Path::Matrix: return "matrix";
+        case Entry0Path::Fade: return "fade";
+        case Entry0Path::List: return "list";
+        case Entry0Path::FadeList: return "fade+list";
+        case Entry0Path::None: return "none";
+        default: return "-";
+        }
+    }
+
+    // Whether (reason, command) is an entry-0 path key: no_native_entry with a path code in its command field.
+    inline bool isPathKey(Reason r, uint32_t command)
+    {
+        return r == Reason::NoNativeEntry && command > static_cast<uint32_t>(Entry0Path::Unsplit) &&
+               command < static_cast<uint32_t>(Entry0Path::kCount);
+    }
+
+    // The command field a key keeps: the command word for a reason that names one, the path for an entry-0 split,
+    // else 0 (the command is not keyed).
+    inline uint32_t keyCommand(Reason r, uint32_t command)
+    {
+        return hasCommand(r) || isPathKey(r, command) ? (command & 0xFFFFu) : 0u;
+    }
+
     // A refusal as a site reports it.
     struct Refusal
     {
@@ -139,7 +214,7 @@ namespace Vu1Refusals
     inline uint64_t packKey(uint32_t entryPc, Reason reason, uint32_t command)
     {
         return (static_cast<uint64_t>(entryPc & 0xFFFFu) << 24) | (static_cast<uint64_t>(reason) << 16) |
-               (hasCommand(reason) ? (command & 0xFFFFu) : 0u);
+               keyCommand(reason, command);
     }
 
     struct Row
@@ -297,6 +372,8 @@ namespace Vu1Refusals
         char cmd[16];
         if (hasCommand(r.reason))
             std::snprintf(cmd, sizeof(cmd), "0x%x", r.command);
+        else if (isPathKey(r.reason, r.command))
+            std::snprintf(cmd, sizeof(cmd), "%s", pathName(static_cast<Entry0Path>(r.command)));
         else
             std::snprintf(cmd, sizeof(cmd), "-");
         char elapsed[32] = "";
