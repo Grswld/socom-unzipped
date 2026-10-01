@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-306 merges (54 on the first-parent line, 252 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+307 merges (55 on the first-parent line, 252 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-81 merges.
+82 merges.
 
+- 2026-09-30 `88b5f818` N2, the native 0x52 skinning pass behind PS2X_VU1_NATIVE_SKIN (Sprint 17 F) [agent/s17-n2-skin]
 - 2026-09-30 `07a2f64a` the 0x33c8 entry admits the walk's two last-bone shapes, A and the 0x02 loop (S17 F) [agent/s17-n1c-shapes]
 - 2026-09-30 `f630d5f1` the 0x33c8 entry admits 0x54 and 0x10 with their stores proven (Sprint 17 F, N1c) [agent/s17-n1c-linear]
 - 2026-09-30 `f739d873` PS2X_VU1_DUMP_REFUSED dumps the programs native refused; the picker (S17 F) [agent/s17-n1c-dump-refused]
