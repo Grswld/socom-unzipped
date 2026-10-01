@@ -109,3 +109,6 @@ id_dsa*
 /web/test-fixtures/
 /web/**/playwright-report/
 /web/**/test-results/
+
+# macOS port: the Python venv scripts/build_macos.sh uses (requirements.txt, pinned)
+/.venv/
