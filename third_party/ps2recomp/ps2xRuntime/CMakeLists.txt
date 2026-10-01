@@ -202,6 +202,81 @@ elseif(WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFfmpegDlls.cmake"
         CACHE INTERNAL
         "Script used to stage FFmpeg runtime DLLs beside executables")
+elseif(APPLE)
+    # macOS port, phase 1: FFmpeg 7.1.5 (the Windows pin's version) from source, static and LGPL, with only what
+    # Kernel/Stubs/MPEG.cpp opens -- the MPEG-2 video decoder and parser -- plus swscale and swresample. Nothing
+    # from Homebrew: an Intel Homebrew's dylibs are x86_64 and cannot link into an arm64 runner. The hash is the
+    # tarball's from ffmpeg.org, taken 2026-10-01.
+    include(ExternalProject)
+
+    set(FFMPEG_PREFIX_DIR "${CMAKE_BINARY_DIR}/ThirdParty/ffmpeg-prefix")
+    set(FFMPEG_INSTALL_DIR "${FFMPEG_PREFIX_DIR}/install")
+    set(FFMPEG_INCLUDE_DIR "${FFMPEG_INSTALL_DIR}/include")
+    set(FFMPEG_LIB_DIR "${FFMPEG_INSTALL_DIR}/lib")
+    # An imported target may not name an include directory that does not exist yet at configure time.
+    file(MAKE_DIRECTORY "${FFMPEG_INCLUDE_DIR}")
+
+    if(CMAKE_OSX_ARCHITECTURES)
+        set(PS2X_FFMPEG_OSX_ARCH "${CMAKE_OSX_ARCHITECTURES}")
+    else()
+        set(PS2X_FFMPEG_OSX_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    if(PS2X_FFMPEG_OSX_ARCH STREQUAL "arm64")
+        set(PS2X_FFMPEG_ARCH aarch64)
+    else()
+        set(PS2X_FFMPEG_ARCH x86_64)
+    endif()
+    set(PS2X_FFMPEG_FLAGS "-arch ${PS2X_FFMPEG_OSX_ARCH}")
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+        string(APPEND PS2X_FFMPEG_FLAGS " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    endif()
+
+    include(ProcessorCount)
+    ProcessorCount(PS2X_FFMPEG_JOBS)
+    if(PS2X_FFMPEG_JOBS EQUAL 0)
+        set(PS2X_FFMPEG_JOBS 4)
+    endif()
+
+    ExternalProject_Add(ffmpeg_external
+        URL "https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz"
+        URL_HASH SHA256=de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        PREFIX "${FFMPEG_PREFIX_DIR}"
+        CONFIGURE_COMMAND <SOURCE_DIR>/configure
+            --prefix=${FFMPEG_INSTALL_DIR}
+            --cc=/usr/bin/clang
+            --arch=${PS2X_FFMPEG_ARCH}
+            --extra-cflags=${PS2X_FFMPEG_FLAGS}
+            --extra-ldflags=${PS2X_FFMPEG_FLAGS}
+            --enable-static --disable-shared --enable-pic
+            --disable-programs --disable-doc --disable-network --disable-autodetect
+            --disable-everything
+            --enable-decoder=mpeg2video --enable-parser=mpegvideo
+            --enable-avcodec --enable-avformat --enable-avutil --enable-swscale --enable-swresample
+        BUILD_COMMAND make -j${PS2X_FFMPEG_JOBS}
+        INSTALL_COMMAND make install
+        BUILD_BYPRODUCTS
+        "${FFMPEG_LIB_DIR}/libavformat.a"
+        "${FFMPEG_LIB_DIR}/libavcodec.a"
+        "${FFMPEG_LIB_DIR}/libswscale.a"
+        "${FFMPEG_LIB_DIR}/libswresample.a"
+        "${FFMPEG_LIB_DIR}/libavutil.a"
+    )
+
+    # Static archives: the order is the dependency order (avformat -> avcodec -> swscale/swresample -> avutil).
+    set(PS2X_FFMPEG_TARGETS)
+    foreach(lib avformat avcodec swscale swresample avutil)
+        add_library(ffmpeg_${lib} STATIC IMPORTED GLOBAL)
+        set_target_properties(ffmpeg_${lib} PROPERTIES
+            IMPORTED_LOCATION "${FFMPEG_LIB_DIR}/lib${lib}.a"
+            INTERFACE_INCLUDE_DIRECTORIES "${FFMPEG_INCLUDE_DIR}"
+        )
+        add_dependencies(ffmpeg_${lib} ffmpeg_external)
+        list(APPEND PS2X_FFMPEG_TARGETS ffmpeg_${lib})
+    endforeach()
+
+    add_library(ffmpeg INTERFACE)
+    target_link_libraries(ffmpeg INTERFACE ${PS2X_FFMPEG_TARGETS})
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET GLOBAL
