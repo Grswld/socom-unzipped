@@ -77,6 +77,30 @@ class Vu1RefusalsTest(unittest.TestCase):
         self.assertIn("entry=0x33c8 no_native_entry cmd=-", labels)
         self.assertIn("entry=0x1b50 handler_clamp cmd=0x28", labels)
 
+    def test_the_entry_0_split_names_its_path(self):
+        # research/83 section 3.1: no_native_entry at entry 0 carries the entry-0 program's path, not a hex word.
+        text = walk_text() + "".join([
+            LINE % (1000, 0x0, "no_native_entry", "kick", 4, 148, 3),
+            LINE % (1000, 0x0, "no_native_entry", "matrix", 2, 166, 1),
+            LINE % (1000, 0x0, "no_native_entry", "fade+list", 1, 50, 0),
+            LINE % (1000, 0x0, "no_native_entry", "kick", 1, 37, 1),
+        ])
+        parsed = vu1_refusals.rows(text.splitlines())
+        self.assertEqual(len(parsed), 9, "every split line is read")
+        self.assertIn((0x0, "no_native_entry", "kick", 4, 148, 3), parsed, "the path stays a name")
+        self.assertIn((0x0, "no_native_entry", "fade+list", 1, 50, 0), parsed)
+        result = vu1_refusals.read(self.write("game.log", text), by="key")
+        by_label = {r[0]: r for r in result}
+        self.assertEqual(by_label["entry=0x0 no_native_entry cmd=kick"][1:2] +
+                         by_label["entry=0x0 no_native_entry cmd=kick"][3:4], (5, 185), "the kick path summed")
+        self.assertIn("entry=0x0 no_native_entry cmd=matrix", by_label)
+        self.assertIn("entry=0x0 no_native_entry cmd=fade+list", by_label)
+        self.assertIn("entry=0x33c8 no_native_entry cmd=-", by_label, "other entries keep cmd=-")
+        by_reason = {r[0]: r for r in vu1_refusals.read(self.write("game.log", text))}
+        self.assertEqual(by_reason["no_native_entry"][1], 4 + 8, "by reason the paths fold into one row")
+        self.assertEqual(vu1_refusals.rows([LINE % (1000, 0x0, "no_native_entry", "Kick!", 1, 1, 1)]), [],
+                         "a name is lower-case letters and '+' only")
+
     def test_window_by_sampler_t(self):
         result = vu1_refusals.read(self.write("game.log", walk_text()), t_from=15.0)
         self.assertEqual(sum(r[1] for r in result), 5, "only the lines after the t=20 row")

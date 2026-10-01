@@ -465,6 +465,22 @@ private:
     void recordViWriteForBranch(uint8_t reg, int32_t oldValue);
     void reportReservedInstruction(bool upper, uint32_t instruction);
     float broadcast(const float *vf, uint8_t bc);
+
+    // Sprint 17 F b2 (docs/research/83 section 3.2): the native lookup's answers, kept until the image is rehashed
+    // (a new MPG generation) or the table is overridden. m_nativeHashHas: whether any row carries m_knownHash (the
+    // foreign-disc warning's and no_native_entry's question). m_nativeSlots: the scan's answer for (m_knownHash, pc),
+    // direct-mapped by pc (the mission enters 0, 0x1b50 and 0x33c8: three slots of eight). A row's gate (`enabled`)
+    // is a read-once knob, so its answer is kept with the slot. Declared last: the layout of every member above is
+    // unchanged.
+    struct NativeSlot
+    {
+        uint32_t pc = ~0u; // ~0u = empty
+        KnownProgramFn fn = nullptr;
+    };
+    static constexpr uint32_t kNativeSlots = 8u;
+    bool m_nativeCacheValid = false;
+    bool m_nativeHashHas = false;
+    NativeSlot m_nativeSlots[kNativeSlots] = {};
 };
 
 // Selected when the 16 KB code image hashes to `hash` and the program is entered at `entryPc`.

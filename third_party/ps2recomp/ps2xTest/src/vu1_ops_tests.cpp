@@ -14,6 +14,7 @@
 #include "runtime/ps2_vu1.h"
 #include "runtime/vu1_native_refusals.h"   // Sprint 17 F: the native dispatcher's refusal count
 #include "runtime/vu1_dump_refused.h"      // Sprint 17 F N1c: PS2X_VU1_DUMP_REFUSED
+#include "runtime/vu1_native_warning.h"    // Sprint 17 F b1: the foreign-disc warning's clock
 
 #include <algorithm>
 #include <cfloat>
@@ -862,7 +863,7 @@ void register_vu1_ops_tests()
             static Vu1Refusals::Row row(uint32_t entry, Vu1Refusals::Reason reason, uint32_t command)
             {
                 for (const Vu1Refusals::Row &r : Vu1Refusals::live().totals())
-                    if (r.entryPc == entry && r.reason == reason && (!Vu1Refusals::hasCommand(reason) || r.command == command))
+                    if (r.entryPc == entry && r.reason == reason && r.command == Vu1Refusals::keyCommand(reason, command))
                         return r;
                 return Vu1Refusals::Row{};
             }
@@ -952,9 +953,11 @@ void register_vu1_ops_tests()
             RefusalRig rig;
             t.IsTrue(rig.init(), "rig should initialize");
             Vu1Refusals::setEnabledForTest(true);
-            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            // research/83 section 3.1: entry 0's key carries its path; the rig's header at TOP 0 is all zero, `none`.
+            const uint32_t none = static_cast<uint32_t>(Vu1Refusals::Entry0Path::None);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none);
             rig.run(8u);              // native registered at pc 8 only; the program is entered at 0
-            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none);
             Vu1Refusals::setEnabledForTest(false);
             t.Equals(after.n - before.n, 1ull, "no_native_entry at entry 0x0 +1");
             t.IsTrue(after.cycles > before.cycles, "the whole program's cycles are charged to it");
@@ -1091,6 +1094,292 @@ void register_vu1_ops_tests()
             t.Equals(after.n - before.n, 1ull, "handler_clamp cmd=0x68 at entry 0x0 +1");
             t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "and nothing else");
             t.IsTrue(after.cycles > before.cycles, "the microcode that resumed at 0x1b60 is charged to it");
+        });
+
+        // ---- Sprint 17 F (docs/research/83 section 3): run()'s head, paid by every VU1 program ------------------
+        // b1: the foreign-disc warning's clock is read only when the image's hash has no native entry at all (a
+        // matched hash makes shouldWarn throw the window away without looking at the time). b2: the native lookup's
+        // answers -- the program at (hash, pc), whether the hash has one anywhere -- are kept per image generation
+        // and table override, so a run does one probe: the same program taken and the same refusals noted as the
+        // scan, the registry's gate asked once per (generation, pc). The split: no_native_entry at entry 0 keyed by
+        // the entry-0 program's path. Every case drives VU1Interpreter::execute over RefusalRig's NOP image.
+        struct HeadRig
+        {
+            static int &calls(int which)   // 0..2: fnA..fnC entered; 3: the closed gate asked
+            {
+                static int s_calls[4] = {};
+                return s_calls[which];
+            }
+            static void resetCalls()
+            {
+                for (int i = 0; i < 4; ++i)
+                    calls(i) = 0;
+            }
+            static bool fnA(VU1Interpreter &, uint64_t) { ++calls(0); return true; }
+            static bool fnB(VU1Interpreter &, uint64_t) { ++calls(1); return true; }
+            static bool fnC(VU1Interpreter &, uint64_t) { ++calls(2); return true; }
+            static bool gateClosed() { ++calls(3); return false; }
+            static uint64_t &fakeNs()
+            {
+                static uint64_t s_ns = 0u;
+                return s_ns;
+            }
+            static uint64_t fakeClock() { return fakeNs(); }
+            // The scan run() did on every run before b2, uncached: the last row with (hash, pc), a fn and an open
+            // gate (the oracle; it asks no gate, so it does not move calls(3)).
+            static VU1Interpreter::KnownProgramFn scan(const Vu1NativeProgram *t, uint32_t n, uint64_t h, uint32_t pc,
+                                                       bool gateOpen)
+            {
+                VU1Interpreter::KnownProgramFn fn = nullptr;
+                for (uint32_t i = 0; i < n; ++i)
+                    if (t[i].hash == h && t[i].entryPc == pc && t[i].fn && (!t[i].enabled || gateOpen))
+                        fn = t[i].fn;
+                return fn;
+            }
+            static int which(VU1Interpreter::KnownProgramFn fn)
+            {
+                return fn == &fnA ? 0 : fn == &fnB ? 1 : fn == &fnC ? 2 : -1;
+            }
+            static void execute(VU1Interpreter &vu, RefusalRig &rig, uint32_t pc, uint32_t top = 0u)
+            {
+                vu.execute(rig.code, PS2_VU1_CODE_SIZE, rig.data, PS2_VU1_DATA_SIZE, rig.gs, &rig.mem, pc, top, 0u, 4096u);
+            }
+            // NOP+E programs at 0x20 and 0x40 besides the rig's at 0 and 8.
+            static void morePrograms(RefusalRig &rig)
+            {
+                const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
+                rig.pair(0x20u, lowerNop, upperNop | eBit);
+                rig.pair(0x28u, lowerNop, upperNop);
+                rig.pair(0x40u, lowerNop, upperNop | eBit);
+                rig.pair(0x48u, lowerNop, upperNop);
+            }
+        };
+
+        tc.Run("run() head b1: a matched image reads no clock for the foreign-disc warning; an unmatched one reads one a run",
+               [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            const uint64_t h = rig.hash();
+            // The supported disc: the hash has a native entry (at 8), none at the entry run (0) -- research/83's
+            // entry-0 swarm. Another disc: no entry carries its hash.
+            const Vu1NativeProgram matched[] = {{h, 8u, &HeadRig::fnB}};
+            const Vu1NativeProgram foreign[] = {{h ^ 1u, 8u, &HeadRig::fnB}};
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+            Vu1NativeWarning::clockForTest() = &HeadRig::fakeClock;
+            const uint64_t printedBefore = Vu1NativeWarning::printedCount();
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(matched, 1u);
+            uint64_t reads = Vu1NativeWarning::clockReads().load();
+            for (int i = 0; i < 5; ++i)
+                HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::clockReads().load() - reads, 0ull, "five matched runs read no clock (one each before b1)");
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 0ull, "and the supported disc never warns");
+
+            // The cadence, unchanged: armed on the first miss, quiet at half a second, out once past a full second.
+            vu.setNativeProgramsOverride(foreign, 1u);
+            reads = Vu1NativeWarning::clockReads().load();
+            HeadRig::fakeNs() = 0u;
+            HeadRig::execute(vu, rig, 0u);
+            HeadRig::fakeNs() = 500000000u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 0ull, "half a second of misses: quiet");
+            HeadRig::fakeNs() = 1000000001u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 1ull, "past a second of misses: one line");
+            t.Equals(Vu1NativeWarning::lastPrinted(),
+                     std::string("[vu1] no native program for code hash 0x") + [&] {
+                         char hex[17];
+                         std::snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(h));
+                         return std::string(hex);
+                     }() + " entry 0x0000 -- running the interpreter (supported disc: SOCOM II NTSC r0001, SCUS_972.75)",
+                     "the line's text, unchanged");
+            HeadRig::fakeNs() = 5000000000u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 1ull, "never a second line");
+            t.Equals(Vu1NativeWarning::clockReads().load() - reads, 4ull, "four unmatched runs, one clock read each");
+
+            // A match between misses still throws the window away, though it reads no clock.
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+            HeadRig::fakeNs() = 10000000000u;
+            HeadRig::execute(vu, rig, 0u);                 // arms at 10 s
+            vu.setNativeProgramsOverride(matched, 1u);
+            reads = Vu1NativeWarning::clockReads().load();
+            HeadRig::execute(vu, rig, 0u);                 // a match: the window is gone
+            t.Equals(Vu1NativeWarning::clockReads().load() - reads, 0ull, "the match reads no clock");
+            vu.setNativeProgramsOverride(foreign, 1u);
+            HeadRig::fakeNs() = 11500000000u;
+            HeadRig::execute(vu, rig, 0u);                 // a new window opens at 11.5 s
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 1ull, "1.5 s after the first miss, but a match between: quiet");
+            HeadRig::fakeNs() = 12600000000u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 2ull, "a full second of the new window: the line");
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            Vu1NativeWarning::clockForTest() = nullptr;
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+        });
+
+        tc.Run("run() head b2: the cached lookup takes the scan's program and notes its refusals, the gate asked once",
+               [](TestCase &t)
+        {
+            extern std::atomic<uint64_t> g_vu1NativeEntered;
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            HeadRig::morePrograms(rig);
+            const uint64_t h = rig.hash();
+            // Two rows taken (0, 0x20), one behind a closed gate (8, the 0x33c8 row's form); 0x40 has none.
+            const Vu1NativeProgram rows[] = {{h, 0u, &HeadRig::fnA}, {h, 0x20u, &HeadRig::fnC}, {h, 8u, &HeadRig::fnB, &HeadRig::gateClosed}};
+            const uint32_t pcs[] = {0u, 8u, 0x20u, 0x40u, 0u, 8u, 0u, 8u, 0x40u};
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(rows, 3u);
+            Vu1Refusals::setEnabledForTest(true);
+            HeadRig::resetCalls();
+            int expected[3] = {};
+            uint64_t expectedRefused[2] = {};   // pc 8, pc 0x40
+            for (uint32_t pc : pcs)
+            {
+                const int w = HeadRig::which(HeadRig::scan(rows, 3u, h, pc, false));
+                if (w >= 0)
+                    ++expected[w];
+                else
+                    ++expectedRefused[pc == 8u ? 0 : 1];
+            }
+            const Vu1Refusals::Row r8 = RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const Vu1Refusals::Row r40 = RefusalRig::row(0x40u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const uint64_t entered = g_vu1NativeEntered.load();
+            const uint64_t total = Vu1Refusals::live().totalCount();
+            for (uint32_t pc : pcs)
+                HeadRig::execute(vu, rig, pc);
+            t.IsTrue(HeadRig::calls(0) == expected[0] && HeadRig::calls(1) == expected[1] && HeadRig::calls(2) == expected[2],
+                     "the scan's program each run: fnA x" + std::to_string(HeadRig::calls(0)) + " (scan " +
+                         std::to_string(expected[0]) + "), fnB x" + std::to_string(HeadRig::calls(1)) + " (" +
+                         std::to_string(expected[1]) + "), fnC x" + std::to_string(HeadRig::calls(2)) + " (" +
+                         std::to_string(expected[2]) + ")");
+            t.Equals(g_vu1NativeEntered.load() - entered, 4ull, "native-entered counts the four runs taken");
+            t.Equals(RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u).n - r8.n, expectedRefused[0],
+                     "the gated row's pc: no_native_entry each run, as the scan");
+            t.Equals(RefusalRig::row(0x40u, Vu1Refusals::Reason::NoNativeEntry, 0u).n - r40.n, expectedRefused[1],
+                     "a pc with no row: no_native_entry each run");
+            t.Equals(Vu1Refusals::live().totalCount() - total, expectedRefused[0] + expectedRefused[1], "and no other refusal");
+            t.Equals(HeadRig::calls(3), 1, "the gate is asked once for the image's pc 8, not once a run (3)");
+
+            // A table override is a new generation: the next run scans the new table.
+            const Vu1NativeProgram bumped[] = {{h, 8u, &HeadRig::fnB}};
+            vu.setNativeProgramsOverride(bumped, 1u);
+            const uint32_t none = static_cast<uint32_t>(Vu1Refusals::Entry0Path::None);
+            const Vu1Refusals::Row r0 = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none);
+            HeadRig::execute(vu, rig, 8u);
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(HeadRig::calls(1), 1, "after the override, pc 8 takes the new table's fnB");
+            t.Equals(HeadRig::calls(0), expected[0], "and pc 0 no longer takes fnA");
+            t.Equals(RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none).n - r0.n, 1ull,
+                     "pc 0 is no_native_entry against the new table");
+
+            // New microcode (the VIF's MPG): the hash moves, the table no longer matches, nothing is taken or noted.
+            const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu;
+            rig.pair(0x80u, lowerNop, upperNop);
+            const uint64_t afterImage = Vu1Refusals::live().totalCount();
+            HeadRig::execute(vu, rig, 8u);
+            t.Equals(HeadRig::calls(1), 1, "a new image: fnB is not taken");
+            t.Equals(Vu1Refusals::live().totalCount() - afterImage, 0ull, "and nothing is noted (the hash has no entry)");
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            Vu1Refusals::takeNoted();   // leave no slot for the next case
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+        });
+
+        // The real entry-0 headers: the qword at TOP of five mission programs (logs/vu1dump5, the n1b capture of
+        // research/82 section 8.4), one per path vu1_entry0_shapes' trace names. The split reads only this qword,
+        // so the rest of each dump is not carried. Each is the x, y, z, w words.
+        struct Entry0Header
+        {
+            const char *dump;
+            uint32_t top;
+            uint32_t words[4];
+            Vu1Refusals::Entry0Path path;
+            const char *name;
+        };
+        static const Entry0Header kEntry0Headers[] = {
+            {"vu1_prog_1", 724u, {0u, 0u, 0u, 2u}, Vu1Refusals::Entry0Path::Kick, "kick"},
+            {"vu1_prog_0", 424u, {0u, 0u, 8u, 0u}, Vu1Refusals::Entry0Path::List, "list"},
+            {"vu1_prog_9", 724u, {0u, 0u, 0u, 1u}, Vu1Refusals::Entry0Path::Matrix, "matrix"},
+            {"vu1_prog_10", 424u, {0u, 0u, 0u, 8u}, Vu1Refusals::Entry0Path::Fade, "fade"},
+            {"vu1_prog_413", 724u, {0u, 0u, 5u, 8u}, Vu1Refusals::Entry0Path::FadeList, "fade+list"},
+        };
+
+        for (const Entry0Header &hdr : kEntry0Headers)
+        {
+            tc.Run(std::string("native refusals: entry 0's no_native_entry is split by path, vu1dump5/") + hdr.dump +
+                       " counts cmd=" + hdr.name,
+                   [&hdr](TestCase &t)
+            {
+                RefusalRig rig;
+                t.IsTrue(rig.init(), "rig should initialize");
+                std::memcpy(rig.data + hdr.top * 16u, hdr.words, sizeof(hdr.words));
+                const Vu1NativeProgram table[] = {{rig.hash(), 0x1b50u, &RefusalRig::dispatcher}};
+                const uint32_t code = static_cast<uint32_t>(hdr.path);
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, code);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                VU1Interpreter vu;
+                vu.setNativeProgramsOverride(table, 1u);
+                HeadRig::execute(vu, rig, 0u, hdr.top);
+                vu.setNativeProgramsOverride(nullptr, 0u);
+                const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, code);
+                Vu1Refusals::setEnabledForTest(false);
+                Vu1Refusals::takeNoted();   // leave no slot for the next case
+                t.Equals(after.n - before.n, 1ull, std::string("no_native_entry at entry 0x0, path ") + hdr.name + " +1");
+                t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "and under no other key");
+                t.IsTrue(after.cycles > before.cycles, "the program's cycles are charged to its path");
+                const std::string line = Vu1Refusals::formatRow("[vu1-refuse]", after, 1000.0);
+                t.IsTrue(line.find(std::string(" reason=no_native_entry cmd=") + hdr.name + " n=") != std::string::npos,
+                         "the line names the path: " + line);
+            });
+        }
+
+        tc.Run("native refusals: the entry-0 path rule -- the microcode's order, ILW's 16 bits; other entries stay cmd=-",
+               [](TestCase &t)
+        {
+            using P = Vu1Refusals::Entry0Path;
+            t.IsTrue(Vu1Refusals::entry0Path(0u, 3u) == P::Kick, "w bit 1 is kick, whatever else is set");
+            t.IsTrue(Vu1Refusals::entry0Path(7u, 0xBu) == P::Kick, "kick takes no list and no fade");
+            t.IsTrue(Vu1Refusals::entry0Path(7u, 9u) == P::Matrix, "w bit 0 (bit 1 clear) is matrix, its z unread");
+            t.IsTrue(Vu1Refusals::entry0Path(0u, 8u) == P::Fade, "w bit 3 alone is fade");
+            t.IsTrue(Vu1Refusals::entry0Path(5u, 8u) == P::FadeList, "fade falls into the list test: fade+list");
+            t.IsTrue(Vu1Refusals::entry0Path(0xFFFFu, 0u) == P::List, "a negative 16-bit z is non-zero: list");
+            t.IsTrue(Vu1Refusals::entry0Path(0x10000u, 0x20000u) == P::None, "bits above ILW's 16 are not read: none");
+            t.Equals(std::string(Vu1Refusals::pathName(P::FadeList)), std::string("fade+list"), "the printed name");
+            uint8_t data[64] = {};
+            t.IsTrue(Vu1Refusals::entry0Path(data, 64u, 4u) == P::Unsplit, "TOP past the data memory: unsplit");
+
+            // Entered at 8 (not 0) with a kick header at TOP: no_native_entry, but its key is not split.
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.header(0u, 3u, 2);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const Vu1NativeProgram table[] = {{rig.hash(), 0x1b50u, &RefusalRig::dispatcher}};
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(table, 1u);
+            HeadRig::execute(vu, rig, 8u);
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            const Vu1Refusals::Row after = RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            Vu1Refusals::takeNoted();   // leave no slot for the next case
+            t.Equals(after.n - before.n, 1ull, "no_native_entry at entry 0x8 +1, unsplit");
+            t.IsTrue(Vu1Refusals::formatRow("[vu1-refuse]", after, 1000.0).find(" cmd=- ") != std::string::npos,
+                     "its line keeps cmd=-");
+            Vu1Refusals::Table table2;
+            const int slot = table2.note(0u, Vu1Refusals::Reason::NoNativeEntry, static_cast<uint32_t>(P::Kick));
+            table2.note(0u, Vu1Refusals::Reason::NoNativeEntry, static_cast<uint32_t>(P::Matrix));
+            table2.addCost(slot, 37u, 650u);
+            const std::vector<Vu1Refusals::Row> rows = table2.totals();
+            t.Equals(rows.size(), size_t{2}, "kick and matrix are two keys");
+            bool kickLine = false;
+            for (const Vu1Refusals::Row &r : rows)
+                kickLine |= Vu1Refusals::formatRow("[vu1-refuse-total]", r, -1.0) ==
+                            "[vu1-refuse-total] entry=0x0 reason=no_native_entry cmd=kick n=1 cycles=37 host_us=0";
+            t.IsTrue(kickLine, "vu1_replay's total line for the kick path");
         });
 
         // ---- Sprint 17 F N1 (docs/research/82): the native program at entry 0x33c8 ------------------------------

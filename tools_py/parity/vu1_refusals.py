@@ -6,7 +6,9 @@ whose counters moved in the interval (runtime/vu1_native_refusals.h):
     [vu1-refuse] elapsed=1002ms entry=0x1b50 reason=unknown_command cmd=0x52 n=37 cycles=412345 host_us=5120
 
 n= refusals, cycles= the VU cycles the fallback (generated code or the interpreter) then ran for them, host_us= its
-host time, all deltas over the interval. vu1_replay prints the running totals once, at its end, in the same fields:
+host time, all deltas over the interval. cmd= is `-`, a command word, or for no_native_entry at entry 0 the
+entry-0 program's path (`kick`, `matrix`, `fade`, `list`, `fade+list`, `none`: research/83 section 3.1), so --by key
+gives one row per path. vu1_replay prints the running totals once, at its end, in the same fields:
 
     [vu1-refuse-total] entry=0x1b50 reason=unknown_command cmd=0x52 n=4 cycles=51234 host_us=610
 
@@ -30,10 +32,25 @@ from tools_py.parity import frame_time
 
 # Anchored at the line's end: a line that runs on into another (two writers, one stream) is not parsed short.
 LINE_RE = re.compile(r"\[vu1-refuse(-total)?\]"
-                     r"(?: elapsed=[0-9.]+ms)? entry=0x([0-9a-fA-F]+) reason=([a-z_]+) cmd=(-|0x[0-9a-fA-F]+)"
+                     r"(?: elapsed=[0-9.]+ms)? entry=0x([0-9a-fA-F]+) reason=([a-z_]+) cmd=(-|0x[0-9a-fA-F]+|[a-z][a-z+]*)"
                      r" n=([0-9]+) cycles=([0-9]+) host_us=([0-9]+)\s*$")
 # The refusals a full key table could not count (runtime: cumulative, once a second; vu1_replay: once, at its end).
 OVERFLOW_RE = re.compile(r"\[vu1-refuse(-total)?\] overflow=([0-9]+) ")
+
+
+def _command(text):
+    """cmd='s value: None for `-`, an int for a command word (`0x52`), the name itself for an entry-0 path."""
+    if text == "-":
+        return None
+    if text.startswith("0x"):
+        return int(text, 16)
+    return text
+
+
+def _command_text(cmd):
+    if cmd is None:
+        return "-"
+    return cmd if isinstance(cmd, str) else "0x%x" % cmd
 
 
 def _finished_lines(text):
@@ -62,7 +79,8 @@ def overflow(lines):
 
 def rows(lines, t_from=None, t_to=None):
     """[(entry, reason, cmd, n, cycles, host_us)] from one log: the total lines if there are any, else the interval
-    lines (inside the window when one is given). entry is an int, cmd an int or None."""
+    lines (inside the window when one is given). entry is an int, cmd an int, a path name (entry 0's split, "kick")
+    or None."""
     totals, intervals, t = [], [], None
     windowed = t_from is not None or t_to is not None
     for line in lines:
@@ -73,7 +91,7 @@ def rows(lines, t_from=None, t_to=None):
         m = LINE_RE.search(line)
         if not m:
             continue
-        cmd = None if m.group(4) == "-" else int(m.group(4), 16)
+        cmd = _command(m.group(4))
         row = (int(m.group(2), 16), m.group(3), cmd, int(m.group(5)), int(m.group(6)), int(m.group(7)))
         if m.group(1):
             totals.append(row)
@@ -90,7 +108,7 @@ def table(parsed, by="reason"):
     sums = {}
     for entry, reason, cmd, n, cycles, host_us in parsed:
         if by == "key":
-            label = "entry=0x%x %s cmd=%s" % (entry, reason, "-" if cmd is None else "0x%x" % cmd)
+            label = "entry=0x%x %s cmd=%s" % (entry, reason, _command_text(cmd))
         else:
             label = reason
         acc = sums.setdefault(label, [0, 0, 0])

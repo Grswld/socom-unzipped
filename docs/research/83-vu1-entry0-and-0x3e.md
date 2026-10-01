@@ -279,3 +279,51 @@ capture, then size the native handler against the measured list.
 - **No `vu1_replay` run** (the brief): the trace counts pairs and does not model stalls. The trace's 52.8 against
   the walk's measured 52.7 cycles shows the stalls are negligible. The menu's matrix-only seconds, at 83 cycles
   per program (`2490/30`) against the trace's 82 pairs, put them at about one cycle.
+
+## 6. Done: b1, b2 and the split (branch `agent/s17-vu1-dispatch`, 2026-10-01)
+
+b3 is left out: `vu1_replay` reads `g_vuInsnCount` for its pair totals and VU0 runs bump the same counters (the
+review of 0e1522bd). What changed in `VU1Interpreter::run`:
+
+- **b1.** The foreign-disc warning reads the clock only when the image's hash has no native entry
+  (`Vu1NativeWarning::nowNs()`). `shouldWarn(true, ...)` never looked at the time, so the warning's text, its
+  one-second window, its first line and its re-arm on a match are unchanged. A test counts the clock reads: none
+  on five matched runs (five before), one on each unmatched run, the line out once past a second.
+- **b2.** The native lookup's answers are kept per image and table. `m_nativeHashHas` holds whether any row has the
+  hash. Eight slots indexed by pc hold the scan's answer for (hash, pc), with the row's gate asked once. A new MPG
+  generation (the rehash) or `setNativeProgramsOverride` drops them. A test runs a three-row table (one row gated
+  shut) over nine runs at four pcs, then an override, then new microcode. It takes the same program as the
+  uncached scan on each run, counts the same `no_native_entry` rows and the same `native-entered`, and asks the
+  gate once, not three times. A planted mutation (no drop on the rehash) fails that test.
+- **The split.** Under `PS2X_VU1_NATIVE_REFUSALS=1` only, `no_native_entry` at entry 0 is keyed by the path the
+  header at `TOP` selects: `cmd=kick`, `matrix`, `fade`, `list`, `fade+list` or `none`
+  (`Vu1Refusals::entry0Path`). The tests are the microcode's own, in its order, on ILW's 16 bits. Every other
+  `no_native_entry` keeps `cmd=-`. Over all 2,712 entry-0 dumps of `vu1dump5` and 217 of `vu1dump4`, the rule names
+  the path `vu1_entry0_shapes`' trace names. `vu1_refusals` reads a path name as `cmd=`. **[verified]**
+
+**Per-run cost** (scratch harness, not committed): `execute()` back to back, 1,000 runs, best of 9, three
+rounds, `-O3`, the built-in registry (the image matches; entry 0 takes the head, then the generated code), knob off.
+Base and branch cores compiled alike:
+
+| program | base | branch | saving | the generated call alone (the floor) |
+|---|---|---|---|---|
+| kick (`vu1_prog_1`) | 146.5-148.5 ns | 130.0-130.3 ns | 16-18 ns | 58.6-58.9 ns |
+| matrix (`vu1_prog_9`) | 488.6-502.5 ns | 491.9-495.3 ns | within the noise | 405.2-407.4 ns |
+| fade (`vu1_prog_10`) | 120.9-126.3 ns | 103.5-104.7 ns | 17-22 ns | — |
+| list (`vu1_prog_0`) | 138.2-144.2 ns | 120.6-121.4 ns | 17-23 ns | — |
+
+`steady_clock::now()` measured 15.8-16.2 ns a read on this host. That replaces §5's 15-30 ns typical figure.
+**[measured]**, a scratch reading. On the short paths the saving is about one clock read. On the matrix path
+it does not show: one reading of that is that the read overlaps the program's 44-FMAC chain. **[inferred]** After
+the change, run()'s head and tail around the kick's generated call are about 71 ns (130 − 59).
+
+At research/83's rates (25,000 entry-0 programs a second, 79 % of them on the short paths), entry 0 saves about
+0.35-0.4 ms/s of its 17. The other 29,000 programs a second take the same head. Their saving cannot be read at
+this resolution (a 0x1b50 list is 15.7 µs), and it is at most 16 ns each. So b1 and b2 together come to roughly
+0.4-0.9 ms/s, below §3.2's 1.1-2.1 ms/s for these two. **[estimate]** The walk with the split
+(`PS2X_VU1_NATIVE_REFUSALS=1`) is the next reading. It also settles (a) against (c), §3.1.
+
+Differentials, unchanged against the base, with packets compared and `PS2X_VU1_FAST=0` and `=1`:
+- `0 of 25 differ, 3 taken natively`, `skin_pass` n=22 (the `vu1dump3` `0x33c8` dumps);
+- `0 of 51 differ, 51 taken natively` (`vu1dump5/lastbone.txt`);
+- `0 of 2000 differ, 2000 taken natively` (`vu1refused1`).
