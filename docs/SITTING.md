@@ -2,23 +2,25 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-30, for the sitting after the one of 2026-09-27: 7 open O rows (0 answered or struck); 41 active rulings since 2026-09-27 (40 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-10-01, for the sitting after the one of 2026-09-27: 9 open O rows (0 answered or struck); 48 active rulings since 2026-09-27 (47 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-7 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-09-30.
+9 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-10-01.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
-| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 4 |
-| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 3 |
-| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 2 |
-| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 3 |
-| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 3 |
-| O27 | A quiet hour for the slow lock suite, or the second machine | the fix stays uncommitted on its branch; the waiter starvation (#110) stands in HAZARDS | 2026-09-29 | 1 |
-| O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 2 |
+| O20 | Windows for game runs | no game run by a controller until you name a window; builds are announced as windows | 2026-09-26 | 5 |
+| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 4 |
+| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 3 |
+| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 4 |
+| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 4 |
+| O27 | A quiet hour for the slow lock suite, or the second machine | the fix stays uncommitted on its branch; the waiter starvation (#110) stands in HAZARDS | 2026-09-29 | 2 |
+| O29 | The PCSX2 client's first real round | the proof stops at this host's lobby; nothing in the loop waits on it | -- | -- |
+| O30 | The PCSX2 guide on the site | the guide lives in the repository only | -- | -- |
+| O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 3 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
@@ -26,7 +28,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-41 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 40 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+48 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 47 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
 - **R299** (2026-09-27) the loop builds and gates the release archives and writes the exact `gh release upload` and verify-half commands into the Log and O2, and stops short of the up… -- overturn by number
@@ -69,6 +71,13 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R336** (2026-09-29) the owner's words of 15:53Z ("lock is still yours") and 17:10Z ("The web agent needs the lock after this run for one task before you can take ownership back")… -- overturn by number
 - **R337** (2026-09-29) a candidate that reduces work on the GAME thread is picked on `[gs-loop] ee: work=` over the walk window, lower with the knob on in both orders inside one hold… -- overturn by number
 - **R338** (2026-09-29) Sprint 17 has no close date: the owner is in no rush and keeps it open to pursue the performance threads (C1, C2, C3, the native VU1 coverage) and to find new… -- overturn by number
+- **R339** (2026-10-01) two clients, one toggle, two files: a global NATIVE / PCSX2 client mode in the top bar, saved in `launcher.json`; the native client keeps `config.json` unchang… -- overturn by number
+- **R340** (2026-10-01) the community server stays "coming soon" in both views: the `community` preset keeps its placeholder address, its row is drawn greyed with the note… -- overturn by number
+- **R341** (2026-10-01) PCSX2 comes from its official GitHub release, verified by the API's sha256 and size, downloaded over https following redirects only from `github.com` to a… -- overturn by number
+- **R342** (2026-10-01) the hosted box answers SOCOM II's six retail host names on 53/udp with `muis.json`'s `Endpoint`, NXDOMAIN for every other name, rate-capped per source, as a fi… -- overturn by number
+- **R343** (2026-10-01) the PCSX2 client plays r0001 this sprint: its GAME VERSION row draws r0004 greyed with `kPcsx2RevisionNote`; r0004 on PCSX2 (the card package writer) is a… -- overturn by number
+- **R344** (2026-10-01) PCSX2 owns what PCSX2 owns: the launcher writes `[DEV9/Eth]` (merged key by key) and `patches/0F6FC6CF.pnach` (the guarded master, replaced only when different… -- overturn by number
+- **R345** (2026-10-01) when `SYNCV` itself is higher with the knob on in BOTH orders of a rung-two pair, the candidate is PICKED on `SYNCV` (R334's metric and the stack's adoption ba… -- overturn by number
 
 ## 3. The issues carried twice
 
@@ -85,8 +94,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 The build `docs/PLAYTEST.md` names, to play and to check against:
 
 ```
-build:    2026-09-29T10:54:43Z   commit 881c5a188935 (sprint-17)
+build:    2026-09-30T08:37:52Z   commit 1fd3cfdb373a (sprint-17)
 archive:  socom2-portable.zip   [player]   (dist-release/portable/socom2-portable.zip)
-sha256: 6b0f1aed712ce8f488e4efc1ef3d1ab86b482c45c26ac7c699b8394f015c70c1
-exe:      socom2.exe sha256: cf8a8a6ca82d4c2005c9ccbb0fa584f805a15a8a51cc73c12b7a0856facb02e5
+sha256: 12a9cfb6120a8ee09e49ba0d13f1df3fdaeb7c8de9bc3b261b6bb316b46a179c
+exe:      socom2.exe sha256: af538928edb9d0864a908317a81c5102985ebf965e3e20b659dcd599a2732ee8
 ```

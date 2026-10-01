@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-378 rulings (339 global, 39 sprint-local): 370 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+379 rulings (340 global, 39 sprint-local): 371 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-339 rulings.
+340 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R345 | 2026-10-01 | active | when `SYNCV` itself is higher with the knob on in BOTH orders of a rung-two pair, the candidate is PICKED on `SYNCV` (R334's metric and the stack's adoption ba… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R345** |
 | R344 | 2026-10-01 | active | PCSX2 owns what PCSX2 owns: the launcher writes `[DEV9/Eth]` (merged key by key) and `patches/0F6FC6CF.pnach` (the guarded master, replaced only when different… | `docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md` **R344** |
 | R343 | 2026-10-01 | active | the PCSX2 client plays r0001 this sprint: its GAME VERSION row draws r0004 greyed with `kPcsx2RevisionNote`; r0004 on PCSX2 (the card package writer) is a… | `docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md` **R343** |
 | R342 | 2026-10-01 | active | the hosted box answers SOCOM II's six retail host names on 53/udp with `muis.json`'s `Endpoint`, NXDOMAIN for every other name, rate-capped per source, as a fi… | `docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md` **R342** |
