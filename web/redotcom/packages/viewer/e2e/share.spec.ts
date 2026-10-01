@@ -67,10 +67,12 @@ test('an unknown value falls back silently, and the old ?redotcom and rules= lea
 
 test('the online match\'s online=, &server= and &mp leave the address on load, and nothing joins a server', async ({ page }) => {
   const asked: string[] = [];
-  // Any match server's address (the dev server's own HMR socket, `?token=`, is Vite's and not counted).
+  // Any match server's address, read off the request's host and path -- not its query, where this page's own address
+  // names one on purpose (the dev server's HMR socket, at `/` with a `?token=`, is Vite's and not counted).
   const match = /mp\.socomunzipped|:8787\b|\/rooms\b|\/ws\b/;
-  page.on('request', (r) => { if (match.test(r.url())) asked.push(r.url()); });
-  page.on('websocket', (ws) => { if (match.test(ws.url())) asked.push(ws.url()); });
+  const where = (u: string): string => { const x = new URL(u); return `${x.host}${x.pathname}`; };
+  page.on('request', (r) => { if (match.test(where(r.url()))) asked.push(r.url()); });
+  page.on('websocket', (ws) => { if (match.test(where(ws.url()))) asked.push(ws.url()); });
   await open(page, '?mode=explore&online=shared&server=ws://127.0.0.1:9/ws&mp&devmode');
   await expect.poll(() => params(page).has('server')).toBe(false);
   expect(params(page).has('online')).toBe(false);
