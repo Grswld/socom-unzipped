@@ -20,7 +20,12 @@ carries PyYAML, so the parsed layer runs there too.
 """
 import os
 import re
+import subprocess
+import tempfile
+import textwrap
 import unittest
+
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WF = os.path.join(ROOT, ".github", "workflows")
@@ -100,6 +105,59 @@ class PullRequestComparesBaseToHead(unittest.TestCase):
             self.assertNotIn('git diff --name-only "$BASE" "$HEAD"', changes, name)
             # No merge base (a forced push onto unrelated history) builds rather than reading as docs-only.
             self.assertIn('git merge-base "$BASE" "$HEAD"', changes, name)
+
+
+class ChangesStepSurvivesALongList(unittest.TestCase):
+    """The `changes` step must not fail on a long file list (2026-10-01: PR #130's 679 files reddened CI).
+
+    The step printed `echo "$changed" | head -50` under `set -euo pipefail`: with more than the pipe can hold, `head`
+    exits after 50 lines, the `echo` writer dies of SIGPIPE (or `write error: Broken pipe`), pipefail makes the
+    pipeline fail, set -e ends the step, and `build` is skipped -- the required check never runs. This runs each
+    workflow's real `run:` block under `bash -eo pipefail` (the runner's own flags) with `git` stubbed to a 1,000-line
+    diff of long paths, and asserts exit 0 and `code=true` in $GITHUB_OUTPUT.
+    """
+
+    LINES = 1000
+
+    def _run_block(self, name):
+        steps = _steps(_jobs(_text(name))["changes"])
+        diff = [s for s in steps if re.search(r"^\s+id: diff\s*$", s, re.M)]
+        self.assertEqual(len(diff), 1, name)
+        _, run = _block(diff[0], "run", 8)
+        self.assertTrue(run and run.strip(), name)
+        return textwrap.dedent(run)
+
+    def test_a_thousand_changed_files_still_build(self):
+        if not BASH:
+            self.skipTest("no bash")
+        # The runner's shell ignores SIGPIPE (its log read `echo: write error: Broken pipe`); a default shell dies of it
+        # (exit 141). Both are the same defect, so both are run.
+        for name, sigpipe in [(n, t) for n in BUILD_WORKFLOWS for t in ("default", "ignored")]:
+            with self.subTest(workflow=name, sigpipe=sigpipe), tempfile.TemporaryDirectory() as tmp:
+                # Everything goes in the script (no env, no absolute path): the same under Git Bash and Linux bash.
+                stub = "\n".join([
+                    "export EVENT=push BASE=1111111111111111111111111111111111111111 HEAD=2222222222222222222222222222222222222222",
+                    "export GITHUB_OUTPUT=out.txt",
+                    "trap '' PIPE" if sigpipe == "ignored" else "",
+                    "git() {",
+                    '  case "$1" in',
+                    "    cat-file|merge-base) return 0 ;;",
+                    f"    diff) for i in $(seq 1 {self.LINES}); do printf 'src/%0200d/file_%d.cpp\n' \"$i\" \"$i\"; done ;;",
+                    "    *) return 2 ;;",
+                    "  esac",
+                    "}",
+                    "",
+                ])
+                script = os.path.join(tmp, "step.sh")
+                with open(script, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(stub + self._run_block(name))
+                r = subprocess.run([BASH, "--noprofile", "--norc", "-eo", "pipefail", "step.sh"], cwd=tmp,
+                                   capture_output=True, text=True, timeout=120)
+                self.assertEqual(r.returncode, 0, f"{name}: exit {r.returncode}\n{r.stderr[-2000:]}")
+                with open(os.path.join(tmp, "out.txt"), encoding="utf-8") as f:
+                    self.assertIn("code=true", f.read().splitlines(), name)
+                self.assertIn(str(self.LINES), r.stdout, f"{name}: the total count is not printed")
+                self.assertEqual(r.stdout.count("/file_"), 50, f"{name}: not exactly the first 50 listed")
 
 
 class DocsWorkflowChecksDocsOnlyPushes(unittest.TestCase):

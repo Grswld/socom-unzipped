@@ -65,7 +65,11 @@ jobs:
           files=$(git diff --name-only "$BASE...$HEAD")
           changed=$(echo "$files" | grep -v -e '^docs/' -e '^$' || true)
           if [ -n "$changed" ]; then
-            echo "code changed:"; echo "$changed" | head -50; echo "code=true" >> "$GITHUB_OUTPUT"
+            # Here-strings, not `echo "$changed" | head -50`: with a long list head exits after 50 lines, the echo writer
+            # dies of SIGPIPE (or `write error: Broken pipe`) and pipefail failed the step (PR #130, 679 files). A
+            # here-string has no writer process to kill. The count says when the list below it is truncated.
+            echo "code changed: $(wc -l <<<"$changed") files (the first 50 listed):"; head -n 50 <<<"$changed"
+            echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "docs/ only: the build job is skipped (its required check reads skipped; this run reads success)"; echo "code=false" >> "$GITHUB_OUTPUT"
           fi
