@@ -40,7 +40,7 @@ walk's log; **[inferred]** from reading the code; **[estimate]** a number derive
      native-table answers per image, and drop the lock-prefixed counters. This touches no VU semantics and helps
      all 54,000 programs a second. About 1.5-3 ms/s. **GO.** [estimate]
    - **(a) A native entry-0 program.** It needs four paths, the matrix path bit-exact in its flags and in the vf
-     registers it hands to `0x1b50`, and about 150-200 lines. It saves 1-5 ms/s of the 17, because run()'s head
+     registers it hands to `0x1b50`, and about 150-200 lines. It saves about 1.5-5 ms/s of the 17, because run()'s head
      and the GS work stay. **NO-GO for now:** take it again after the split measurement. [estimate]
    - **(c) The GS work of the kick path is the game's own work.** It is a render-state change per object, and
      30 % of entry-0 programs carry one.
@@ -65,7 +65,7 @@ bit 1. **[verified]**
 | path | header | pairs | what it reads | what it writes | XGKICK |
 |---|---|---|---|---|---|
 | **kick** (`0x40-0x110`) | `w` bit 1 | 37 | `TOP+1..TOP+8` | qwords 330-337; `vf17`,`vf18`,`vf20`,`vf21` (left = `TOP+5..8`); `vi2`=330, `vi6`=423, `vi8`, `vi9` | `423`, then `330` |
-| **matrix** (`0x118-0x378`, `0x490`) | `w` bit 0 | 82 | `TOP+1..TOP+13`; resident qwords 4-11, 16-23 | qwords 0-3 (local→clip), 30-36 (eye, near point, five plane normals), 327-328 (`TOP+12/13`); `vf1`-`vf28`; ACC, MAC, STATUS (48 FMACs); `vi7`, `vi8`, `vi9`, `vi11` | none |
+| **matrix** (`0x118-0x378`, `0x490`) | `w` bit 0 | 82 | `TOP+1..TOP+13`; resident qwords 4-11, 16-23 | qwords 0-3 (local→clip), 30-36 (eye, near point, five plane normals), 327-328 (`TOP+12/13`); `vf1`-`vf28`; ACC, MAC, STATUS (44 FMACs); `vi7`, `vi8`, `vi9`, `vi11` | none |
 | **fade** (`0x3c8-0x430`) | `w` bit 3 | 34 | `TOP+1..TOP+4` | qwords 27, 38, 28, 29 (research/13's dead clip mask, lighting scales, the rounding bias, fade point and scale); `vf20`-`vf23`; `vi4`, `vi7`, `vi8`, `vi9` | none |
 | **list** (`0x438-0x488`) | `w` = 0, `z` > 0 | 48 for z = 6, 53 for z = 7 | `TOP+1..TOP+z` (and one qword past it, an odd `z`) | qwords 340 … 340+z-1, the command list and its inline blocks; `vf17`, `vf18`; `vi4`, `vi5`, `vi7`, `vi8` | none |
 
@@ -132,8 +132,8 @@ run()'s head, and the others do not. In order, inside the clock:
 | the image check: the generation compare (a rehash only on an MPG upload) | `:2584-2600` | a load and a compare | [inferred] |
 | the native table scan by (hash, pc), then `hashHasNativeEntry` twice, three walks of the two-entry table | `:2619-2628`, `:2640`; `vu1_native_warning.h:70-76` | a few ns | [inferred] |
 | **a `steady_clock::now()` for the foreign-disc warning on every run**, though `shouldWarn` returns at once when the hash matched | `:2635-2640`; `vu1_native_warning.h:30-36` | one QueryPerformanceCounter, about 15-30 ns | [inferred] |
-| `Vu1Refusals::note` (instrumentation, Dev only): one hash probe and one `lock xadd` | `vu1_native_refusals.h:161-183` | about 10-20 ns | [inferred] |
-| the generated function: `vf` copied in (512 bytes) and out, ACC, the computed-goto entry, `g_vuInsnCount.fetch_add` | `vu1_d418194495c25213.cpp:530-541`, `:16441-16445` | about 20-40 ns | [inferred] |
+| `Vu1Refusals::note` (instrumentation, Dev only): one hash probe and one `lock xadd` | `vu1_native_refusals.h:161-183` | about 10-20 ns | [estimate: a typical figure, not measured on this host] |
+| the generated function: `vf` copied in (512 bytes) and out, ACC, the computed-goto entry, `g_vuInsnCount.fetch_add` | `vu1_d418194495c25213.cpp:530-541`, `:16441-16445` | about 20-40 ns | [estimate: a typical figure, not measured on this host] |
 | **the program: 53 pairs at the generated rate**, with `setVi`/`markVi`/`loadVf`/`markVf` bookkeeping per pair | `vu1_d418194495c25213.cpp:543ff` | 0.23-0.30 µs at 4.3-5.6 ns/cycle (§2.2) | [estimate] |
 | **the kick path's two XGKICKs.** Each is a direct submit, and the arbiter calls the GS with the queue empty (`ps2_gif_arbiter.cpp:30-42`). The GS then takes `GS::processGIFPacket`'s recursive mutex (`gs_frontend.cpp:858-860`), parses the GIFtag and writes 5 or 6 A+D registers. `TEX0_1` runs `loadClutIfNeeded` (`:1464-1481`). | `ps2_vu1_core.cpp:1062-1125` | unmeasured. It is paid by 30 % of entries: 0.6 kicks per entry | — |
 | `fastFlush` (the flag ring's last ready cycle, then `fastCommit`) and the rounding restore | `:2946`, `:2964`; `:2078-2091`, `:2152-2170` | small: the tail fit in §2.2 bounds the whole tail | [inferred] |
@@ -186,7 +186,7 @@ the rest:
 |---|---|---|---|
 | b1 | compute `nativeNowNs` only when `hashHasNativeEntry` is false (`:2635-2640`), so the matched image never reads the clock | one QPC per program: about 15-30 ns × 54k = 0.8-1.6 ms/s | none: the warning's state machine sees the same calls when unmatched |
 | b2 | cache the (hash → has-native, (pc → fn)) answers per `m_knownGeneration` (`:2584-2628`) | about 5-10 ns per program: 0.3-0.5 ms/s | low: invalidated with the hash |
-| b3 | `g_vuInsnCount` (the generated `end:`), `g_vuProgramsAtZero`/`KickBit` (`:2547-2549`), `g_xgkickDecoded`/`g_xgkickCount`: VU1 runs on one thread, so make them plain or thread-local counters that the stats line sums | 3-5 `lock xadd` per entry-0 run, about 5-8 ns each: 0.4-1 ms/s | low: the readers are the stats and debug lines |
+| b3 | `g_vuInsnCount` (the generated `end:`), `g_vuProgramsAtZero`/`KickBit` (`:2547-2549`), `g_xgkickDecoded`/`g_xgkickCount`: VU1 runs on one thread, so make them plain or thread-local counters that the stats line sums | 3-5 `lock xadd` per entry-0 run, about 5-8 ns each: 0.4-1 ms/s | low: the readers are the stats and debug lines, AND `vu1_replay.cpp:1209-1218` reads `g_vuInsnCount` for its pair totals, AND VU0 runs bump the same counters (`ps2_vu1_core.cpp:2384`, `:2752`) -- a per-thread or plain counter is safe only if both are settled first (the review of 0e1522bd) |
 | b4 | the generated code's 1 KB `vf` copy in and out (`vu1_d418194495c25213.cpp:537`, `:16441-16443`): copy only the registers the reachable code touches, or work in `m_state` | at most the tail §2.2 bounds, ≤ 0.05 µs × 54k ≤ 2.7 ms/s | medium: a regenerated image, the whole VU1 path, the fence |
 
 b1-b3 come to about 1.5-3 ms/s in all. One A/B on one exe measures them by `[vu1-stats] host=` and SYNCV, under
@@ -200,14 +200,14 @@ As one shape it is four paths and about 150-200 lines.
 - **kick, fade, list** are copies and kicks: 79 % of the entries and 65 % of the pairs. They are bit-exact by
   construction. They have no FMAC, so MAC, STATUS and ACC are untouched, and they leave the same `vi` and the same
   last-loaded `vf`. That includes the list path's read one qword past an odd `z` into `vf18`. About 60 lines.
-- **matrix** is 48 FMACs (MULA/MADDA/MADD) through `ps2_vu1_ops.h`'s flag-exact ops, plus the live-out `vf1`-`vf28`
+- **matrix** is 44 FMACs (MULA/MADDA/MADD; the review of 0e1522bd counted 44 on any one path, not 48) through `ps2_vu1_ops.h`'s flag-exact ops, plus the live-out `vf1`-`vf28`
   and the dispatcher's live-ins (§1.1). About 80 lines, and the proof that the 0x1b50 fixtures still pass after it.
 
 What it saves is the VU-work part only. run()'s head, the kicks' GS work and the warmth stay, because a native
 program is entered from the same run(). On copy code, the generated per-pair bookkeeping is a larger share than on
 the FMAC code research/82 timed (native 83-91 % of generated there). Take 25-75 % of 0.23-0.30 µs, plus the
 `vf` copy that native skips: about 0.06-0.2 µs per entry, × 25k, is **1.5-5 ms/s of the 17**. **[estimate]**
-The risk: a fifth native entry in the registry, whose matrix path carries flags into the next program. Research/82
+The risk: a third native entry in the registry (two today, `vu1_native_programs.cpp`), whose matrix path carries flags into the next program. Research/82
 §10.4 notes that only the last MAC and the OR of the sticky bits survive into the next program. Reconsider
 after §3.1: if the kick path is mostly GS work, the native win shrinks to the matrix and list paths.
 
