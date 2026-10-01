@@ -11,7 +11,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 2. Where it stands
 
 - **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1) and PROVED by the batch-5 chain on 1fd3cfdb with everything merged before it. No close date (R338); one controller in the main tree (owner).**
-  Now: N1c PICKED (R345), its default flip in review; N2 NOT picked; next the chain (N1c's adoption gate), then slice 2 to main; #110 parked (O27).
+  Now: N1c adopted (default 1, f8a9d4c3); the batch-6 chain RED at the launcher copy (O31: close the windows), a guard in work; then the chain and slice 2; #110 parked (O27).
 - **Sprint 18 OPEN 2026-10-01 02:40Z** (`sprint-18` off `sprint-17`; CURRENT_SPRINT's `branch (2):`; its plan's Log).
 - **Next free ruling number: R346** (R345 Sprint 17's; R339-R344 Sprint 18's open; R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
