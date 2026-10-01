@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOCOM II Unzipped: the classic menu</title>
+  <meta name="description" content="The SOCOM II main menu rebuilt in the browser, with its movie, music and menu sounds: the classic front of the SOCOM II Unzipped site, the project that recompiles SOCOM II for PC." />
+  <link rel="canonical" href="https://socomunzipped.com/classic.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="SOCOM II Unzipped" />
+  <meta property="og:title" content="SOCOM II Unzipped: the classic menu" />
+  <meta property="og:description" content="The SOCOM II main menu rebuilt in the browser, with its movie, music and menu sounds: the classic front of the SOCOM II Unzipped site, the project that recompiles SOCOM II for PC." />
+  <meta property="og:url" content="https://socomunzipped.com/classic.html" />
+  <meta property="og:image" content="https://socomunzipped.com/img/share.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%23000%27/%3E%3Ctext x=%278%27 y=%2712%27 font-size=%2711%27 font-family=%27Arial%27 font-weight=%27bold%27 fill=%27%2335d6de%27 text-anchor=%27middle%27%3EII%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,800&family=Oswald:ital,wght@0,500;0,600;0,700;1,700&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="backdrop" width="32" height="24"></canvas>
+  <div id="stage">
+    <section id="boot" class="screen">
+      <pre id="boot-text"></pre>
+    </section>
+
+    <section id="menu" class="screen hidden">
+      <video id="bg" src="/media/menuloop.mp4" loop playsinline preload="auto" disablepictureinpicture disableremoteplayback controlslist="nodownload noplaybackrate nofullscreen"></video>
+      <img id="logo" alt="SOCOM II U.S. Navy SEALs" draggable="false" />
+      <div id="roller">
+        <div class="arrow up"></div>
+        <div id="items"></div>
+        <div class="arrow down"></div>
+      </div>
+      <footer id="footer">
+        <div>Community PC port, licensed GPL-3.0</div>
+        <div>Developed by Zipper Interactive, Inc.</div>
+        <div>&copy;2003 Sony Computer Entertainment America Inc.</div>
+      </footer>
+    </section>
+
+    <section id="about" class="screen hidden">
+      <h1 id="brief-title" class="brief-title">MISSION BRIEFING</h1>
+      <div id="brief-sub" class="brief-sub">OPERATION UNZIPPED: SOCOM II ON PC</div>
+      <nav id="tabs"></nav>
+      <div id="tab-story" class="tab story">DEVELOPMENT STORY</div>
+      <div id="tab-github" class="tab github">GITHUB</div>
+      <div id="tab-deploy" class="tab deploy">DEPLOY</div>
+      <div class="panel">
+        <div id="panel-head" class="panel-head"></div>
+        <div id="panel-body" class="panel-body"></div>
+        <div id="panel-photo" class="panel-photo"><img alt="" draggable="false" /></div>
+      </div>
+      <div class="hints"><button type="button" class="hint" id="hint-back"><span class="btn tri"></span>BACK</button><button type="button" class="hint" id="hint-select"><span class="btn cross"></span>SELECT</button></div>
+    </section>
+
+    <section id="stats" class="screen hidden">
+      <h1 class="brief-title">SERVER</h1>
+      <div id="stats-sub" class="brief-sub">SOCOM UNZIPPED: LIVE FROM THE HOSTED SERVER</div>
+      <div id="stats-status" class="stats-status"></div>
+      <div class="panel stats-panel">
+        <div id="stats-games-head" class="panel-head">GAMES</div>
+        <div id="stats-games" class="panel-body stats-games"></div>
+        <div class="panel-head stats-gap">OPERATIVES ONLINE</div>
+        <div id="stats-players" class="panel-body stats-players"></div>
+      </div>
+      <div id="stats-updated" class="stats-updated"></div>
+      <div class="hints"><button type="button" class="hint" id="stats-back"><span class="btn tri"></span>BACK</button></div>
+    </section>
+
+    <section id="report" class="screen hidden">
+      <h1 class="brief-title">BUG REPORT</h1>
+      <div class="brief-sub">FIELD REPORT: WHAT BROKE, AND WHAT YOU DID JUST BEFORE</div>
+      <form id="report-form" class="report-form" autocomplete="off" novalidate>
+        <label class="report-label" for="report-title">TITLE</label>
+        <input id="report-title" class="report-input" type="text" maxlength="120" spellcheck="false" />
+        <label class="report-label" for="report-description">WHAT HAPPENED</label>
+        <textarea id="report-description" class="report-input report-text" maxlength="4000" spellcheck="false"></textarea>
+        <label class="report-label" for="report-contact">CONTACT (OPTIONAL)</label>
+        <input id="report-contact" class="report-input" type="text" maxlength="120" spellcheck="false" placeholder="DISCORD OR EMAIL, ONLY IF YOU WANT A REPLY" />
+        <input id="report-website" class="report-hp" type="text" name="website" tabindex="-1" aria-hidden="true" />
+        <button id="report-send" class="tab report-send" type="submit">SEND REPORT</button>
+        <div id="report-note" class="report-note">PLAIN TEXT ONLY. NO ACCOUNT NEEDED. DO NOT INCLUDE PASSWORDS.</div>
+      </form>
+      <div class="hints"><button type="button" class="hint" id="report-back"><span class="btn tri"></span>BACK</button></div>
+    </section>
+
+    <div id="scanlines"></div>
+    <div id="fade"></div>
+    <a id="webui" href="/" title="Switch to the web site">WEB</a>
+    <div id="audio">
+      <input id="volume" type="range" min="0" max="100" step="1" value="70" aria-label="Volume" />
+      <button id="mute" type="button" title="Mute (M)" aria-label="Mute">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path class="spk" d="M4 9v6h4l5 4V5L8 9H4z"/>
+          <path class="wave" d="M16 8.5a4 4 0 0 1 0 7M18.5 6a7.5 7.5 0 0 1 0 12" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+          <path class="x" d="M16 9l5 6M21 9l-5 6" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

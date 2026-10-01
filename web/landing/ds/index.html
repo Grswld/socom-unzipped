@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>s2u design system</title>
+  <meta name="theme-color" content="#000e11" />
+  <link rel="stylesheet" href="/src/ds/index.css" />
+  <style>
+    /* the gallery's own placement; nothing here is a component */
+    body { padding-top: 64px; }
+    .gallery-row { display: flex; flex-wrap: wrap; gap: var(--s2u-space-3); align-items: center; margin: var(--s2u-space-3) 0; }
+    .gallery-on-panel { padding: var(--s2u-space-4); background: var(--s2u-panel); box-shadow: var(--s2u-panel-inset); margin: var(--s2u-space-3) 0; overflow-x: auto; }
+    .gallery-bright { position: relative; height: 560px; background: linear-gradient(135deg, #e8e4dc, #6f7a6f); margin: var(--s2u-space-3) 0; overflow: hidden; }
+    .gallery-bright .s2u-overlay, .gallery-bright .s2u-status--pill, .gallery-bright .s2u-fab, .gallery-bright .s2u-loading { position: absolute; }
+    .gallery-bright .s2u-overlay { top: 12px; left: 12px; }
+    .gallery-bright .s2u-fab { right: 24px; bottom: 24px; }
+    .gallery-bright .s2u-loading { left: auto; right: 24px; top: 70px; transform: none; }
+    /* at phone width the overlay opens to near-full width and would sit under the loading badge in this
+       corner; move the badge clear of it and of the fab (page placement only, components.css untouched) */
+    @media (max-width: 480px) {
+      .gallery-bright .s2u-loading { left: 12px; right: auto; top: auto; bottom: 12px; width: min(220px, calc(100% - 24px)); }
+      .gallery-bright .s2u-overlay { width: calc(100% - 24px); }
+    }
+    .gallery-contrast { border-collapse: collapse; font: var(--s2u-type-readout); }
+    .gallery-contrast td, .gallery-contrast th { padding: 4px 10px; box-shadow: inset 0 -1px 0 var(--s2u-panel-edge); text-align: left; }
+    .gallery-contrast tr[data-pass="false"] td { color: var(--s2u-warn); }
+    .swatch { display: inline-block; width: 14px; height: 14px; box-shadow: var(--s2u-panel-inset); vertical-align: -2px; margin-right: 6px; }
+    .gallery-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+    .gallery-swatches div { padding: 8px; box-shadow: var(--s2u-panel-inset); font: var(--s2u-type-readout); color: var(--s2u-text); }
+    .gallery-swatches i { display: block; height: 28px; margin-bottom: 4px; }
+    .gallery-briefing-img { aspect-ratio: 16 / 9; background: var(--s2u-tab); display: grid; place-items: center; color: var(--s2u-text-dim); font: var(--s2u-type-readout); }
+  </style>
+</head>
+<body>
+  <a class="s2u-skip" href="#main">Skip to content</a>
+  <div class="s2u-scan" aria-hidden="true"></div>
+  <div class="s2u-progress" aria-hidden="true" style="--s2u-progress: 0.33"></div>
+
+  <header class="s2u-bar">
+    <a class="s2u-bar__brand" href="#top" aria-label="SOCOM Unzipped, top of page"><span class="s2u-bar__ii">II</span><span class="s2u-bar__word">Unzipped</span></a>
+    <nav class="s2u-bar__nav" aria-label="Sections">
+      <a href="#tokens" class="is-on" aria-current="page">Tokens</a>
+      <a href="#type">Type</a>
+      <a href="#briefing">Briefing</a>
+      <a href="#containers">Containers</a>
+      <a href="#controls">Controls</a>
+      <a href="#status">Status</a>
+      <a href="#viewer">Viewer</a>
+      <a href="#extremes">Extremes</a>
+    </nav>
+    <div class="s2u-bar__end">
+      <label class="s2u-check"><input type="checkbox" id="crt" /> <span>CRT</span></label>
+      <span class="s2u-lamp is-up" role="img" aria-label="server up"></span>
+      <a class="s2u-tab s2u-tab--nav" href="/classic.html">Classic</a>
+    </div>
+  </header>
+
+  <main id="main" class="s2u-crt-text">
+    <section id="tokens" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker"><span class="s2u-blink"></span>Operation Unzipped: design system 1.0.0</p>
+        <h1 class="s2u-title">Mission briefing</h1>
+        <p class="s2u-lede">Every colour the site and redotcom may use, and the contrast each pair holds. The table is computed from the stylesheet on this page, not written down.</p>
+      </header>
+      <div class="gallery-swatches">
+        <div><i style="background: var(--s2u-ground)"></i>ground</div>
+        <div><i style="background: var(--s2u-ground-deep)"></i>ground-deep</div>
+        <div><i style="background: var(--s2u-panel)"></i>panel</div>
+        <div><i style="background: var(--s2u-panel-edge)"></i>panel-edge</div>
+        <div><i style="background: var(--s2u-tab)"></i>tab</div>
+        <div><i style="background: var(--s2u-tab-lit)"></i>tab-lit</div>
+        <div><i style="background: var(--s2u-highlight)"></i>highlight</div>
+        <div><i style="background: var(--s2u-highlight-pressed)"></i>highlight-pressed</div>
+        <div><i style="background: var(--s2u-gold)"></i>gold</div>
+        <div><i style="background: var(--s2u-gold-display)"></i>gold-display</div>
+        <div aria-hidden="true"><i style="background: var(--s2u-gold-source)"></i>gold-source (refused)</div>
+        <div><i style="background: var(--s2u-text)"></i>text</div>
+        <div><i style="background: var(--s2u-text-strong)"></i>text-strong</div>
+        <div><i style="background: var(--s2u-text-dim)"></i>text-dim</div>
+        <div><i style="background: var(--s2u-caret)"></i>caret</div>
+        <div><i style="background: var(--s2u-cyan-boot)"></i>cyan-boot</div>
+        <div><i style="background: var(--s2u-glyph-square)"></i>glyph-square</div>
+        <div><i style="background: var(--s2u-glyph-triangle)"></i>glyph-triangle</div>
+        <div><i style="background: var(--s2u-glyph-cross)"></i>glyph-cross</div>
+        <div><i style="background: var(--s2u-warn)"></i>warn</div>
+        <div><i style="background: var(--s2u-focus)"></i>focus</div>
+      </div>
+      <div id="contrast" class="gallery-on-panel"></div>
+    </section>
+
+    <section id="type" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Seeding chaos mission overview</p>
+        <h2 class="s2u-title">What this is</h2>
+        <p class="s2u-lede">The game's own code, rebuilt to run on a PC from your own disc. Work in progress, source on GitHub.</p>
+      </header>
+      <h2 class="s2u-title s2u-title--story">the story so far</h2>
+      <p>The game's MIPS code was statically recompiled to C++ and built as a normal executable. The PS2's graphics chip, vector units and sound driver are reimplemented on the host. No emulator runs underneath. <a href="#type">A link in the body</a> and <code>a code span</code>.</p>
+      <p class="s2u-fine">Fine print: licences named are those published by each project as of 2026-09-20. If yours is missing or misdescribed, the bug form reaches the owner.</p>
+      <p class="s2u-status">FROSTFIRE (MP2) · webgl2 · 16,931 triangles · 453 draws</p>
+      <ul class="s2u-wheel" aria-label="Main menu">
+        <li><a href="#type"><span class="s2u-wheel__w">Setup guide</span></a></li>
+        <li class="is-lit"><a href="#type"><span class="s2u-wheel__w">The story</span></a></li>
+        <li><a href="#type"><span class="s2u-wheel__w">Server</span></a></li>
+        <li><a href="#type"><span class="s2u-wheel__w">redotcom</span></a></li>
+      </ul>
+      <p class="s2u-typed" style="margin-top: 24px"><span id="typed-text" data-text="US Special Operations Command has been called upon to assist in quelling the illegal arms trafficking of an organization known as the Sesseri Syndicate."></span><span class="s2u-typed__caret" aria-hidden="true"></span></p>
+      <p class="s2u-typed s2u-typed--boot" style="margin-top: 12px">Developed by<br>Zipper Interactive, Inc.<span class="s2u-typed__caret" aria-hidden="true"></span></p>
+    </section>
+
+    <section id="briefing" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Operation Unzipped: SOCOM II on PC</p>
+        <h2 class="s2u-title">The briefing grid</h2>
+      </header>
+      <div class="s2u-briefing">
+        <nav class="s2u-briefing__tabs" aria-label="Briefing">
+          <a class="s2u-tab is-on" href="#briefing" aria-current="true">Overview</a>
+          <a class="s2u-tab" href="#briefing">Mission details</a>
+          <a class="s2u-tab" href="#briefing">Objectives</a>
+          <a class="s2u-tab" href="#briefing">Maps/Intel</a>
+          <a class="s2u-tab" href="#briefing" aria-disabled="true">Server stats</a>
+          <div class="s2u-briefing__tabs-end">
+            <a class="s2u-tab" href="#briefing">Development story</a>
+            <a class="s2u-tab" href="#briefing">GitHub</a>
+            <a class="s2u-tab" href="#briefing">Deploy</a>
+          </div>
+        </nav>
+        <div class="s2u-briefing__panel">
+          <section class="s2u-panel">
+            <h3 class="s2u-panel__head">SOCOM Unzipped mission overview</h3>
+            <div class="s2u-panel__body"><p>SOCOM 2 Unzipped brings SOCOM II: U.S. Navy SEALs, the 2003 PlayStation 2 classic, to modern PCs. A faithful native port: the game's MIPS code, statically recompiled into C++ and built as a native Windows or Linux program.</p></div>
+          </section>
+          <div class="s2u-panel s2u-panel--image"><div class="s2u-panel__body"><div class="gallery-briefing-img">the panel's image</div></div></div>
+        </div>
+      </div>
+      <ul class="s2u-hints" style="margin-top: 16px" aria-label="Actions">
+        <li><button class="s2u-hint" type="button"><svg class="s2u-hint__glyph s2u-hint__glyph--square" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="2" width="10" height="10"/></svg>Career stats</button></li>
+        <li><a class="s2u-hint" href="#briefing"><svg class="s2u-hint__glyph s2u-hint__glyph--triangle" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 L12.5 12 H1.5 Z"/></svg>Back</a></li>
+        <li><button class="s2u-hint" type="button"><svg class="s2u-hint__glyph s2u-hint__glyph--cross" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2 L12 12 M12 2 L2 12"/></svg>Select</button></li>
+        <li><button class="s2u-hint" type="button"><svg class="s2u-hint__glyph s2u-hint__glyph--circle" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5"/></svg>Cancel</button></li>
+      </ul>
+    </section>
+
+    <section id="containers" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Containers</p>
+        <h2 class="s2u-title">Panels, cards, tiles, notices, lists</h2>
+      </header>
+      <a class="s2u-panel is-link" href="#containers">
+        <div class="s2u-panel__head">A panel that is a link</div>
+        <div class="s2u-panel__body">Pointed at, its body lights like a tab. A panel that is not a link does nothing on hover.</div>
+      </a>
+      <div class="s2u-cards--3" style="margin-top: 16px">
+        <article class="s2u-card"><h3>Native, not emulated</h3><div class="s2u-card__body"><p>The game's MIPS code was statically recompiled to C++ and built as a normal executable.</p><p class="s2u-card__how"><span class="s2u-label">How</span>a fork of PS2Recomp for the CPU side, OpenGL for the drawing, a 989snd reimplementation for the sound.</p></div></article>
+        <article class="s2u-card"><h3>Your disc, always</h3><div class="s2u-card__body"><p>Nothing from the game ships with the download. You point the launcher at your own NTSC r0001 ISO.</p></div></article>
+        <article class="s2u-card"><span class="s2u-card__num">3</span><h3>Online, on a community server</h3><div class="s2u-card__body"><p>The community's servers stand in for Sony's long-gone service.</p></div></article>
+      </div>
+      <ol class="s2u-tiles" style="margin-top: 16px" aria-label="Latest entries">
+        <li class="s2u-tile is-latest"><div class="s2u-tile__frame is-blank"><span>2026-09-25</span></div><div class="s2u-tile__text"><time datetime="2026-09-25">2026-09-25</time><h3><a href="#containers">The debts, paid in one day</a></h3><p>The saved password was never lost. A nightly match launched itself, first time, through a queue that did not exist the day before.</p><span class="s2u-tile__read">Read the entry</span></div></li>
+        <li class="s2u-tile"><div class="s2u-tile__frame"><img src="/img/logo.webp?v=3" alt="" /></div><div class="s2u-tile__text"><time datetime="2026-09-25">2026-09-25</time><h3><a href="#containers">The names come home, and both editions still pass</a></h3><p>What the cloud claimed, the machine with the disc proved.</p><span class="s2u-tile__read">Read the entry</span></div></li>
+      </ol>
+      <div class="s2u-notice"><p><b>How it was built.</b> Most of the repository was produced by AI agents working in sprints under a human owner.</p></div>
+      <div class="s2u-cards--2" style="margin-top: 16px">
+        <div><ul class="s2u-list--plain"><li><b>Disc:</b> your own SOCOM II: U.S. Navy SEALs, NTSC, SCUS-97275, release r0001, dumped to an ISO.</li><li><b>PC:</b> Windows 10/11 64-bit, or 64-bit Linux.</li></ul></div>
+        <div><ol class="s2u-list--steps"><li>Unzip the portable folder anywhere you can write.</li><li>Run the launcher. On the DISC page, browse to your ISO.</li></ol></div>
+      </div>
+      <div class="s2u-cards--2" style="margin-top: 16px">
+        <ul class="s2u-list--check is-done"><li><b>It boots your disc and plays.</b> Logos, intro, title loop with its music, the menus, the single-player missions, saving.</li></ul>
+        <ul class="s2u-list--check is-todo"><li><b>Multiplayer is not audited.</b> SOCOM II's original network code has known, exploitable vulnerabilities.</li></ul>
+      </div>
+    </section>
+
+    <section id="controls" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Controls</p>
+        <h2 class="s2u-title">Tabs, fields, ranges, checks, disclosures</h2>
+      </header>
+      <div class="gallery-row">
+        <a class="s2u-tab" href="#controls" data-state="rest">Read the whole story</a>
+        <a class="s2u-tab" href="#controls" data-state="hover" style="background: var(--s2u-tab-lit); color: var(--s2u-gold)">Hovered</a>
+        <a class="s2u-tab" href="#controls" data-state="focus" style="outline: 2px solid var(--s2u-focus); outline-offset: 2px">Focused</a>
+        <a class="s2u-tab" href="#controls" data-state="active" inert style="background: var(--s2u-highlight-pressed)">Pressed down</a>
+        <button class="s2u-tab" type="button" disabled data-state="disabled">Send report</button>
+        <button class="s2u-tab is-busy" type="button" aria-disabled="true" data-state="busy">Sending</button>
+        <button class="s2u-tab" type="button" aria-pressed="true" data-state="pressed">PS2 look</button>
+        <a class="s2u-tab s2u-tab--ghost" href="#controls">From the creator</a>
+        <button class="s2u-iconbtn" type="button" aria-label="mute"><svg viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2z"/></svg></button>
+      </div>
+      <div class="s2u-tabs s2u-tabs--column" style="margin-top: 12px">
+        <a class="s2u-tab is-on" href="#controls">Overview</a>
+        <a class="s2u-tab" href="#controls">Mission details</a>
+        <a class="s2u-tab" href="#controls">Objectives</a>
+      </div>
+      <form class="s2u-cards--2" style="margin-top: 18px" onsubmit="return false">
+        <div class="s2u-field"><label class="s2u-field__label" for="g-title">Title</label><input id="g-title" type="text" placeholder="What broke, in a line" /></div>
+        <div class="s2u-field"><label class="s2u-field__label" for="g-map">Map</label><select id="g-map"><option>FROSTFIRE / Suppression (MP2)</option><option>ABANDONED / Demolition (MP1)</option></select></div>
+        <div class="s2u-field s2u-field--area" style="grid-column: 1 / -1"><label class="s2u-field__label" for="g-what">What happened</label><textarea id="g-what" placeholder="What broke, and what you did just before."></textarea></div>
+        <div class="s2u-field is-ok"><label class="s2u-field__label" for="g-ok">Contact (optional)</label><input id="g-ok" type="text" value="you@example.com" /><p class="s2u-field__note">Sent. Your id is 7f3a-2c. Contributors can also open an issue and quote it.</p></div>
+        <div class="s2u-field is-bad"><label class="s2u-field__label" for="g-bad">Contact (optional)</label><input id="g-bad" type="text" value="not an address" aria-invalid="true" aria-describedby="g-bad-note" /><p class="s2u-field__note" id="g-bad-note">The title needs at least four characters.</p></div>
+      </form>
+      <div class="gallery-row">
+        <label class="s2u-range">Brighten <input type="range" min="0" max="2" step="0.05" value="1" /> <output>1.00</output></label>
+        <label class="s2u-colour">Fog <input type="color" value="#5fb3bf" /></label>
+      </div>
+      <div class="gallery-row">
+        <label class="s2u-check"><input type="checkbox" checked /> <span>Grid</span></label>
+        <label class="s2u-check"><input type="checkbox" /> <span>Collision</span></label>
+        <label class="s2u-check"><input type="checkbox" disabled /> <span>Spawns</span></label>
+        <label class="s2u-check"><input type="radio" name="r" checked /> <span>Modern</span></label>
+        <label class="s2u-check"><input type="radio" name="r" /> <span>PS2</span></label>
+      </div>
+      <details class="s2u-disclosure" open><summary>Advanced</summary><p>The things behind the advanced fold.</p></details>
+      <details class="s2u-disclosure"><summary>Fog</summary><p>Closed until opened.</p></details>
+    </section>
+
+    <section id="status" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Status</p>
+        <h2 class="s2u-title">Stats, lamps, labels, status lines</h2>
+      </header>
+      <ul class="s2u-stats">
+        <li class="s2u-stat is-up"><b class="s2u-stat__v">Online</b><span class="s2u-stat__k">Status</span></li>
+        <li class="s2u-stat"><b class="s2u-stat__v">59</b><span class="s2u-stat__k">Entries</span></li>
+        <li class="s2u-stat"><b class="s2u-stat__v">300</b><span class="s2u-stat__k">Commits cited</span></li>
+        <li class="s2u-stat is-down"><b class="s2u-stat__v">Offline</b><span class="s2u-stat__k">Status</span></li>
+      </ul>
+      <div class="gallery-row">
+        <span class="s2u-lamp" role="img" aria-label="server unknown"></span>
+        <span class="s2u-lamp is-up" role="img" aria-label="server up"></span>
+        <span class="s2u-lamp is-down" role="img" aria-label="server down"></span>
+        <span class="s2u-lamp s2u-lamp--small is-up" role="img" aria-label="server up"></span>
+        <span class="s2u-label">New</span><span class="s2u-label s2u-label--warn">dev build</span>
+      </div>
+      <p class="s2u-status" aria-live="polite">FROSTFIRE (MP2) · webgl2 · 16,931 triangles · 453 draws</p>
+      <p class="s2u-status is-ok">ISO source: milestone M5</p>
+      <p class="s2u-status is-bad">The archive could not be read: MP2_GEO.ZED is 0 bytes. Point the launcher at a fresh dump.</p>
+      <ul class="s2u-status is-warn"><li>texture 0x1a4 falls outside the palette: drawn untextured</li><li>node 88 has no matrix: placed at the origin</li></ul>
+      <p class="s2u-notice s2u-notice--warn"><strong>EXPERIMENTAL</strong> — a work in progress.</p>
+    </section>
+
+    <section id="viewer" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Viewer</p>
+        <h2 class="s2u-title">The floating panel, compact, over a bright map</h2>
+      </header>
+      <div class="gallery-bright">
+        <p class="s2u-status s2u-status--pill" aria-live="off">60 fps · 16.6 ms</p>
+        <div class="s2u-overlay" data-density="compact">
+          <button class="s2u-overlay__toggle" type="button" aria-expanded="true" aria-controls="g-panel">Settings · Frostfire (MP2)</button>
+          <div class="s2u-overlay__body" id="g-panel">
+            <div class="s2u-field"><label class="s2u-field__label" for="g-maps">Map</label><select id="g-maps"><option>FROSTFIRE · Suppression (MP2)</option></select></div>
+            <span class="s2u-label">ISO source: milestone M5</span>
+            <p class="s2u-status">FROSTFIRE (MP2) · webgl2 · 16,931 triangles · 453 draws · 3,338 collision polys · 14,922 ms load</p>
+            <div class="s2u-tabs" role="group" aria-label="Look">
+              <button class="s2u-tab" type="button" aria-pressed="true">Modern<span class="s2u-tab__what">your screen's size and shape</span></button>
+              <button class="s2u-tab" type="button" aria-pressed="false">PS2<span class="s2u-tab__what">640×448 on 4:3, as the console drew it</span></button>
+            </div>
+            <details class="s2u-disclosure"><summary>redotcom <span class="s2u-label s2u-label--warn">dev build</span></summary></details>
+            <details class="s2u-disclosure"><summary>Advanced</summary><div class="gallery-row"><label class="s2u-check"><input type="checkbox" /> <span>Grid</span></label><label class="s2u-check"><input type="checkbox" /> <span>Wireframe</span></label></div></details>
+            <label class="s2u-range">Brighten <input type="range" min="0" max="2" step="0.05" value="1" /> <output>1.00</output></label>
+            <p class="s2u-notice s2u-notice--warn"><strong>EXPERIMENTAL</strong> — a work in progress.</p>
+            <p class="s2u-fine">SOCOM II: U.S. Navy SEALs and all of its assets are the property of Sony Interactive Entertainment, developed by Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive Entertainment.</p>
+            <p class="s2u-fine">click to look · WASD fly · space/shift up/down · F fullscreen · ` hides this</p>
+          </div>
+        </div>
+        <div class="s2u-loading" aria-live="polite" style="--s2u-progress: 0.6"><p class="s2u-status">loading MP2_GEO.ZED</p><div class="s2u-loading__bar"></div></div>
+        <button class="s2u-fab" type="button" aria-label="Fullscreen"><svg viewBox="0 0 16 16"><path d="M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"/></svg></button>
+      </div>
+      <div class="s2u-overlay is-folded" data-density="compact" style="position: static; margin-top: 12px">
+        <button class="s2u-overlay__toggle" type="button" aria-expanded="false" aria-controls="g-panel-2">Settings · folded</button>
+        <div class="s2u-overlay__body" id="g-panel-2"></div>
+      </div>
+    </section>
+
+    <section id="extremes" class="s2u-section">
+      <header class="s2u-head">
+        <p class="s2u-kicker">Content extremes</p>
+        <h2 class="s2u-title">Empty, one, the maximum, a long word, a two-line title</h2>
+      </header>
+      <ol class="s2u-tiles" data-extreme="empty" aria-label="No entries"><li class="s2u-tile"><div class="s2u-tile__frame is-blank"><span>NO ENTRIES</span></div><div class="s2u-tile__text"><h3>Nothing here yet</h3><p>The story page fills this strip as entries land.</p></div></li></ol>
+      <ul class="s2u-stats" data-extreme="one" style="margin-top: 16px"><li class="s2u-stat"><b class="s2u-stat__v">1</b><span class="s2u-stat__k">Games hosted</span></li></ul>
+      <ul class="s2u-stats" data-extreme="max" style="margin-top: 16px">
+        <li class="s2u-stat"><b class="s2u-stat__v">2,147,483,647</b><span class="s2u-stat__k">Peak players</span></li>
+        <li class="s2u-stat"><b class="s2u-stat__v">999d 23h 59m</b><span class="s2u-stat__k">Uptime</span></li>
+        <li class="s2u-stat"><b class="s2u-stat__v">Asia Pacific (Osaka), a very long region name</b><span class="s2u-stat__k">Location</span></li>
+        <li class="s2u-stat"><b class="s2u-stat__v">Online</b><span class="s2u-stat__k">Status</span></li>
+      </ul>
+      <div class="s2u-cards--2" data-extreme="long-word" style="margin-top: 16px">
+        <article class="s2u-card"><h3>Averyverylongmapnamewithoutanybreakopportunityatallinit</h3><div class="s2u-card__body"><p>https://github.com/Scotho/socom-unzipped/blob/main/docs/research/72-mp-map-archive-anatomy.md</p></div></article>
+        <article class="s2u-card"><h3>A title that runs to two lines on a phone and on a narrow card</h3><div class="s2u-card__body"><p>Body under a two-line head.</p></div></article>
+      </div>
+      <ol class="s2u-tiles" data-extreme="two-line" style="margin-top: 16px"><li class="s2u-tile"><div class="s2u-tile__frame is-blank"><span>2026-09-24</span></div><div class="s2u-tile__text"><time datetime="2026-09-24">2026-09-24</time><h3><a href="#extremes">The update plays, and cannot meet the original, and this title is two lines long</a></h3><p>The r0004 build passed the same three-stage check as the disc's own edition.</p><span class="s2u-tile__read">Read the entry</span></div></li></ol>
+    </section>
+
+    <footer class="s2u-foot">
+      <div class="s2u-foot__inner">
+        <div>
+          <div class="s2u-foot__brand"><span class="s2u-bar__ii">II</span> SOCOM Unzipped</div>
+          <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. &copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>
+        </div>
+        <nav aria-label="Footer"><a href="#top">The story</a><a href="#top">Classic menu</a><a href="#top">GitHub</a><a href="#top">Report a bug</a></nav>
+      </div>
+      <p class="s2u-fine">s2u 0.5.0 / built 2026-09-27 / the numbers on this page are cited on the story page</p>
+    </footer>
+  </main>
+  <script type="module" src="/ds/gallery.ts"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<!-- @dsCard group="Briefing" height=120 subtitle="Face-button legend, right-aligned" -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&display=swap">
+<style>
+  body{margin:0;background:var(--ground);padding:24px;font-family:var(--font-label)}
+  .hints{display:flex;justify-content:flex-end;gap:28px;list-style:none;margin:0;padding:0;max-width:640px}
+  .hint{display:flex;align-items:center;gap:var(--space-2);color:var(--text-strong);
+    font:600 16px/20px var(--font-label);letter-spacing:.1em;text-transform:uppercase}
+  .hint svg{width:14px;height:14px;fill:none;stroke-width:2.2}
+  .sq{stroke:var(--glyph-square)} .tri{stroke:var(--glyph-triangle)} .x{stroke:var(--glyph-cross)}
+  .hint button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:var(--space-2)}
+  .hint button:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+</style>
+<ul class="hints" aria-label="Actions">
+  <li class="hint"><button><svg class="sq" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="2" width="10" height="10"/></svg>Career stats</button></li>
+  <li class="hint"><button><svg class="tri" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2 L12.5 12 H1.5 Z"/></svg>Back</button></li>
+  <li class="hint"><button><svg class="x" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2 L12 12 M12 2 L2 12"/></svg>Select</button></li>
+</ul>

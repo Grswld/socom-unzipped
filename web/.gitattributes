@@ -5,3 +5,14 @@
 *.woff binary
 *.ttf binary
 *.otf binary
+# The same for every other binary under web/: the landing site's tracked goldens and any picture, sound or movie
+# (the game-derived ones are ignored, but a binary must never be normalised if one is ever tracked).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.ogg binary
+*.mp4 binary
+*.wav binary

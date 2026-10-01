@@ -59,7 +59,7 @@ pointing here, and HANDOFF's item is renamed "Third-person camera height".
 ## 1. The measured numbers (both sides)
 
 > **Superseded in its reading, 2026-09-28** (web sprint 2 W2.3, ruling W2.R9;
-> `web/docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md` §7, "The SEAL is 19.6 units tall, and
+> `web/redotcom/docs/specs/2026-09-28-web-sprint-2-the-seal-in-the-world-design.md` §7, "The SEAL is 19.6 units tall, and
 > the console's spawn dump holds a crouched player"). The numbers below stand; what changes is what they are of.
 > The console's root Y `5.50391`, read here and in §4.2 as the console's rest (resting) value, is the **crouched**
 > spawn's root: it is under the game's own stance test `node[0].y < 9.0` (§8) and the player's right knee is on the

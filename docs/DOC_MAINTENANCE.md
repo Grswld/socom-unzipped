@@ -127,6 +127,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
 | `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
 | `docs/story/release-entry.template.md` | **C** | story | A template |
+| `docs/story/UPDATING.md` | **C** | story | The procedure for a new story entry, end to end: write, picture, witnesses, cite, then the site built from this directory |
 | `docs/parity/REPORT.md` | **S** | — | One parity run from 2026-09-07. Banded 2026-09-22 — it had read as the project's parity status for fifteen days |
 | `docs/parity/NOTES.md` | **S** | — | Dated spike notes, append-only |
 | `docs/archive/README.md` | **A** | — | |

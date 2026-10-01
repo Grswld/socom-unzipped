@@ -118,7 +118,7 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 | `server/` | Horizon Private Server sources and the SOCOM II configuration |
 | `docs/` | Player pages `docs/INSTALL.md` and `docs/FAQ.md`; the developer reference `docs/DEVELOPING.md`; the record `docs/KNOWN.md` |
 | `tests/` | Fixtures for the C++ suite |
-| `web/` | The experimental browser map viewer, a separate project that lives here: its own npm workspace, tests, README, docs and CI (`web.yml`). It decodes the disc's map archives and needs nothing from the recompilation, which needs nothing from it. Working on the recomp? Skip it. |
+| `web/` | The web half, a separate project that lives here: one npm workspace, its own tests, READMEs, docs and CI (`web.yml`). `web/redotcom` is the experimental browser map viewer and reCOM mode (served at socomunzipped.com/redotcom/), `web/landing` the site socomunzipped.com, `web/shared` the design system and the site's deploy ([`web/README.md`](web/README.md)). It decodes the disc's map archives and needs nothing from the recompilation, which needs nothing from it. Working on the recomp? Skip it. |
 
 ### How it was built
 
