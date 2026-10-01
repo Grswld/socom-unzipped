@@ -10,7 +10,7 @@ import { DEAD_LINES, NetPage } from '../src/netPage';
 import { Hud } from '../src/hud';
 import { roundScreenLayout } from '../src/roundScreens';
 import type { RemotePlayers } from '../src/remotePlayers';
-import { ENGINE_READ_S, ROUND_COMPLETE_S } from '../../server/src/room';
+import { ENGINE_READ_S, ROUND_COMPLETE_S } from '../src/net/room';
 
 const M67 = { explosionRadius: 150 };
 import { DEATH_EYE_REACH, DEATH_ORBIT_RATE, DEATH_TILT_MAX, deathEye, newDeathCamera } from '../src/deathCamera';

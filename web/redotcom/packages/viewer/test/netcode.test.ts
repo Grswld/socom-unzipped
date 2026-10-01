@@ -1,10 +1,11 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
 import {
   Button, cameraLook, centreClaim, faceToward, groundGrid, MoverSim, packGround, PROBE_LIFT, quantiseCommand, Walker, type Command, type SimMap,
-} from '../../viewer/src/sim';
-import { NetClient, type NetWalk, type WebSocketLike } from '../../viewer/src/net/client';
-import { Room } from '../src/room';
+} from '../src/sim';
+import { NetClient, type NetWalk, type WebSocketLike } from '../src/net/client';
+import { Room } from '../src/net/room';
 
 /**
  * The netcode end to end (web sprint 3, M4; the bar's item 1): the page's `NetClient` against the server's `Room`

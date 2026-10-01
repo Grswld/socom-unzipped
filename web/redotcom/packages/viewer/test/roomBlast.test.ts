@@ -1,9 +1,10 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
 import {
   groundGrid, packGround, PROTOCOL_VERSION, ROUND_WATCH_S, TICK_HZ, type ServerEvent, type SimMap,
-} from '../../viewer/src/sim';
-import { Room, type Conn } from '../src/room';
+} from '../src/sim';
+import { Room, type Conn } from '../src/net/room';
 
 /**
  * The room's blasts (web research 85 section 7, 91 section 5; `../../viewer/src/net/blast`) and its single-player match

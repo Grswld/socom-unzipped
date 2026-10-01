@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * are held in step.
  *
  * - A value no source gives is a `*_PLACEHOLDER` constant, and a reading the viewer had to choose a `*_READING`
- *   (docs/DATA_SOURCES.md, "Rules read from the game's code"). Every such name in the viewer, server, scene and sound
+ *   (docs/DATA_SOURCES.md, "Rules read from the game's code"). Every such name in the viewer (the room with it), scene and sound
  *   sources must be listed in a research note's placeholder section -- a section whose heading, after its number,
  *   opens on "placeholder(s)" or "reading(s)" (an optional "the" before it), down to the next heading of the same or a
  *   higher level. A heading that only mentions them in passing ("Shaded, with two placeholders", "the feel's last
@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const root = resolve(import.meta.dirname, '../..');
-const SOURCES = ['viewer', 'server', 'scene', 'sound'].map((p) => join(root, 'packages', p, 'src'));
+const SOURCES = ['viewer', 'scene', 'sound'].map((p) => join(root, 'packages', p, 'src'));
 const NOTES = join(root, 'docs', 'research');
 const NAME = /\b[A-Z][A-Z0-9_]*_(?:PLACEHOLDER|READING)\b/g;
 /** A heading whose text, its number (`7.`, `6b.`, `19.1`) aside, opens on the word: a ledger section, not a mention. */
@@ -108,7 +108,7 @@ describe('the placeholder ledger: the code\'s named stand-ins and the research n
     ]);
   });
 
-  it('lists every placeholder and reading the viewer, server, scene and sound sources name', () => {
+  it('lists every placeholder and reading the viewer (the room with it), scene and sound sources name', () => {
     const code = codeNames();
     expect(code.size).toBeGreaterThan(40);
     const listed = new Set(notes().map((l) => l.name));

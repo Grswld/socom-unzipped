@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,8 +9,8 @@ import {
   bulletDamage, Button, cameraLook, centreClaim, decodeSnapshot, encodeCommands, EYE_HEIGHT, faceToward, fireInterval, groundGrid, groundPolygons,
   loadSimMap, MoverSim, packGround, PROBE_LIFT, PROTOCOL_VERSION, quantiseCommand, RELOAD_CLIPS, PISTOL_RELOAD_CLIPS, RELOAD_SECONDS_PLACEHOLDER,
   TICK_HZ, Walker, type ClientEvent, type Command, type DoorSpec, type MotionEntry, type ServerEvent, type SimClips, type SimMap,
-} from '../../viewer/src/sim';
-import { MAX_BATCH, Room, type Conn } from '../src/room';
+} from '../src/sim';
+import { MAX_BATCH, Room, type Conn } from '../src/net/room';
 
 type V3 = [number, number, number];
 const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../test-fixtures');

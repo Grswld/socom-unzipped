@@ -10,16 +10,21 @@ import {
   EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, ShotCone, targetHeight,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
-} from '../../viewer/src/sim';
-import { bodyVolumes, rayBody, stanceVolumes, BODY_REACH, BODY_TOP, type StanceVolumes, type V3 } from '../../viewer/src/net/hitVolumes';
-import { deathClip } from '../../viewer/src/net/deaths';
-import { applyKnock, BLAST_RING_SECONDS, BLAST_RING_VOLUME, resolveBlast } from '../../viewer/src/net/blast';
+} from '../sim';
+import { bodyVolumes, rayBody, stanceVolumes, BODY_REACH, BODY_TOP, type StanceVolumes, type V3 } from './hitVolumes';
+import { deathClip } from './deaths';
+import { applyKnock, BLAST_RING_SECONDS, BLAST_RING_VOLUME, resolveBlast } from './blast';
 
 /**
  * One map's match (web sprint 3, M3/M6; rulings W3.R8-R13): the lobby, every player's mover run from its command
  * stream at the game's 60 Hz, the rounds on the original's clock, the game's damage, deaths, respawns, kills and
- * scores, and a snapshot to each client at 30 Hz. It knows nothing of sockets: a `Conn` sends frames, and the server
- * (`./server`) feeds it what arrives, so the tests drive it tick by tick.
+ * scores, and a snapshot to each client at 30 Hz. It knows nothing of sockets: a `Conn` sends frames, and the page's
+ * offline match (`./loopback`) feeds it what arrives, so the tests drive it tick by tick.
+ *
+ * The local demo (owner, 2026-10-01): this repository's redotcom is the teaser as deployed -- single player. The room
+ * was the network match server's (`packages/server`) and now lives here, run only by `./loopback` inside the page;
+ * the online match, its server and its transport live in the separate redotcom project. "The server" in the comments
+ * below is this room, the authority the page's `NetClient` predicts against.
  */
 
 export interface Conn { send(frame: Uint8Array | string): void; close(code: number, reason: string): void }
@@ -33,14 +38,14 @@ export interface RoomOptions {
   /** W3.R11: the round and the match (the create-game defaults: 6 minutes, 11 rounds). */
   roundSeconds: number;
   /**
-   * `mp_max_rounds` (the create-game default 11, `../../viewer/src/net/rules` `MAX_ROUNDS`): classic's match, and the
+   * `mp_max_rounds` (the create-game default 11, `./rules` `MAX_ROUNDS`): classic's match, and the
    * round-start banner's count under both rules (a respawn match is one round whatever it says: `isMatchOver`).
    */
   maxRounds: number;
   /** The room's rules: `respawn` (W3.R11) or `classic` (respawn off, the create-game default). */
   rules: Rules;
   /**
-   * The page's single-player match (`../../viewer/src/net/loopback`, offline): the one player is the host, a SEAL
+   * The page's single-player match (`./loopback`, offline): the one player is the host, a SEAL
    * (`FUN_002c5450` L166238-166262); no idle kick; classic's round starts with one side seated and runs to its clock,
    * a side with nobody on it never eliminated (SOLO_ROUND_PLACEHOLDER: the game launches only with both sides seated,
    * `FUN_002c3cf0` L165325-165352, so it has no one-player round of its own).
@@ -690,7 +695,7 @@ export class Room {
   }
 
   /**
-   * A blast (`../../viewer/src/net/blast` `resolveBlast`; research 85 section 7, 91 section 5): each living SEAL it
+   * A blast (`./blast` `resolveBlast`; research 85 section 7, 91 section 5): each living SEAL it
    * reaches -- the thrower too; friendly fire off spares the thrower's team -- rings, takes its fragments, and is knocked
    * (its mover here, and the page's prediction by the `blast` event). A SEAL killed by it is thrown too, as the game
    * throws the dead (`FUN_0057e770` L440981, state 8 at L441001; `blastKnock` with `died`): the knock is laid and sent

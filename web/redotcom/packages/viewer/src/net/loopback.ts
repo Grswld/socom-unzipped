@@ -1,4 +1,4 @@
-import { Room, type Conn, type RoomOptions } from '../../../server/src/room';
+import { Room, type Conn, type RoomOptions } from './room';
 import type { SpawnSlot } from '@s2u/scene';
 import { actionRoots, groundGrid, type GroundData } from '../mover';
 import type { MotionClip } from '@s2u/scene';

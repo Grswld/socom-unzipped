@@ -107,7 +107,7 @@ constant (`*_PLACEHOLDER`) stands in. Code and test paths are relative to `web/r
 ### net
 
 - `net.sim-boundary` (proven): What code do the page and the server share?
-- `net.transport` (proven): How do the page and the server talk?
+- `net.transport` (proven): How do the page and the match talk?
 - `net.authority` (reading): Who decided hits in the original, and who decides them in the port?
 
 ### platform
