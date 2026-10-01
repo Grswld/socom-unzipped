@@ -49,6 +49,17 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    // pipe2(fds, O_CLOEXEC), which Darwin does not have (macOS port): both ends close on exec. The two fcntl
+    // calls leave a window a concurrent fork could inherit through; the launcher forks only from this thread.
+    bool pipeCloexec(int fds[2])
+    {
+        if (::pipe(fds) != 0)
+            return false;
+        ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+        ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+        return true;
+    }
+
     // Is `name` an executable file in one of PATH's directories? access(2) over the entries, so no shell
     // is started merely to find out whether a program exists.
     bool onPath(const char *name)
@@ -504,12 +515,12 @@ namespace win32glue
         }
 
         int toChild[2] = {-1, -1}, fromChild[2] = {-1, -1};
-        if (::pipe2(toChild, O_CLOEXEC) != 0)
+        if (!pipeCloexec(toChild))
         {
             out.error = "pipe failed";
             return out;
         }
-        if (::pipe2(fromChild, O_CLOEXEC) != 0)
+        if (!pipeCloexec(fromChild))
         {
             ::close(toChild[0]);
             ::close(toChild[1]);
@@ -570,9 +581,13 @@ namespace win32glue
         }
         ::close(toChild[1]);
         {
-            const struct timespec none = {0, 0};
-            while (::sigtimedwait(&pipeSet, nullptr, &none) > 0)
+            // Consume a SIGPIPE the write raised while it was blocked. sigpending + sigwait rather than
+            // sigtimedwait, which Darwin does not have (macOS port); sigwait returns at once for a pending one.
+            sigset_t pending;
+            while (::sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE))
             {
+                int sig = 0;
+                ::sigwait(&pipeSet, &sig);
             }
         }
         ::pthread_sigmask(SIG_SETMASK, &oldSet, nullptr);
@@ -667,7 +682,7 @@ namespace win32glue
         fs::remove(temp, ec);
 
         int fromChild[2] = {-1, -1};
-        if (::pipe2(fromChild, O_CLOEXEC) != 0)
+        if (!pipeCloexec(fromChild))
         {
             out.error = "pipe failed";
             return out;
