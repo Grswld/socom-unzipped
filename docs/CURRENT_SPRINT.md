@@ -15,6 +15,13 @@ branch:       sprint-17 -- OPEN 2026-09-28 03:05Z, cut off main at d77b58c5 (the
               reviews from .claude/worktrees/mission-frame-drops-7e50ea and hands each branch to the controller, who
               alone merges, chains, pushes). Agents work in worktrees on agent/s17-* branches. Sprint 16 CLOSED
               2026-09-28 01:24Z: see "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
+branch (2):   sprint-18 -- OPEN 2026-10-01 02:40Z beside the open sprint-17 (the Sprint 12 precedent: a second branch beside an
+              open one), cut off sprint-17 at the Sprint 18 opening commit ("the PCSX2 door", the owner's word of 2026-10-01
+              ~02:00Z, approved ~02:35Z). Launcher, server/linux and docs only -- no runtime, recomp or parity change;
+              it merges sprint-17 forward and goes to main by PR after Sprint 17 or with it. Spec
+              docs/superpowers/specs/2026-10-01-sprint-18-the-pcsx2-door-design.md (APPROVED); plan
+              docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md (R339-R344, the table, the Log); task book
+              docs/superpowers/plans/2026-10-01-sprint-18-tasks.md; GitHub milestone 8. Agents on agent/s18-* worktrees.
 spec:         docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md (four milestones F, Q, A, H in the
               owner's order; approved by the owner 2026-09-27 ~23:00Z). The Sprint 16, 15, 14, 13, 12 and 11 specs closed
               with v0.16.0 down to v0.11.0.
@@ -22,7 +29,7 @@ plans:        docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, th
               Outcome, the Log newest first -- its entries before 2026-09-29 in docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md and those to 2026-09-30 ~10Z in docs/archive/2026-09-27-sprint-17-log-to-2026-09-30.md; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
               The Sprint 16 plan (R299-R321, R314 vacant; docs/superpowers/plans/2026-09-27-sprint-16.md) and the Sprint 15
               plan (R282-R289; R298 the close's window, superseded) with the owner's sitting (R290-R297,
-              docs/superpowers/plans/2026-09-26-owner-sitting.md) are closed, their blocks below; the Sprint 14 plan
+              docs/superpowers/plans/2026-09-26-owner-sitting.md) are closed, Sprint 16's block below and Sprint 15's in docs/archive/CURRENT_SPRINT-closed-sprint-15.md (moved 2026-10-01); the Sprint 14 plan
               (R269-R281) too, its block in docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the
               Sprint 13 plan's block is in docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12
               and 11 in docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
@@ -53,7 +60,7 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 18 — PROPOSED 2026-10-01 02:10Z ("the PCSX2 door"; opens on `sprint-18` off `sprint-17`, beside the open Sprint 17)
+## Sprint 18 — OPEN 2026-10-01 02:40Z ("the PCSX2 door"; `sprint-18` off `sprint-17`, beside the open Sprint 17; milestone 8; R339-R344)
 
 The owner's word of 2026-10-01 ~02:00Z: a global NATIVE / PCSX2 client toggle in the launcher with entirely separate
 saved settings; in the PCSX2 client, SELECT your PCSX2 or INSTALL the official release (one button, a tooltip); our
@@ -101,37 +108,7 @@ section 4; no regression (D6, R304). Before the open, on the owner's word: L2 as
 re-scoped, X1 reviewed, X5 merged (`d84ffbde`). The plan's Log is the live state; this block gains its table at the
 close.
 
-## Sprint 15 — CLOSED 2026-09-27 (merged to `main` as `v0.15.0` at `10650369`, PR #81, 06:52Z; closed without its play test on the owner's word -- the legs are Sprint 16's V0; the record of the sprint is the block below)
-
-**Close-out (the PR body).** Opened 2026-09-26 16:57Z, closed 2026-09-27 06:27Z: one loop day, every task reviewed by a fresh
-agent. Adopted #254's LLE IOP as an out-of-tree audio oracle on the owner's word (the disc's own 989SND.IRX with our provider
-disagrees with our HLE on 832 of 13,044 mission answers against 12,643 on the old oracle; the harness under
-`docs/research/assets/70-lle-oracle/`); the audio register (five rows, the bar 6 dips) and the survey (#254 cannot load a bank
-as it stands); merged #67's fix (the back-pressure stands aside for the window's move loop) and the AutoVol integer step
-schedule; R280 (stable held-out stamps), R281 (an orphaned working-copy change stashed around chains), R298 (superseded by the
-owner's correction). Issues since the open at 16:57Z: opened 6 (#70-#75, none on the stack), closed 0, carried 0; the highest
-is #75. The §5 review fixed 23 stale claims (the header's `plans:` line the blocking one) and archived Sprint 13's block; the
-§7 read found the audit clean, commented #67 and the three carried-twice issues, regenerated the backlog. The play test (the
-close chain, T2's drag proof, T1b's capture) is carried to Sprint 16 on the owner's word of 06:16Z; T3 and T4 unstarted. The
-Outcome in the plan has the bar row by row and the carried legs with their bars.
-
-**As it stood while open:**
-
-
-Opened by the Sprint 14 controller off `main` at `200f3287` (the Sprint 14 merge, `v0.14.0`) on the owner's word of
-2026-09-26: the first proposal ("a week of planned work") was cut to what a player runs into and what the owner named --
-**audio first** (the register and the survey for the audio rows only; the LLE IOP of upstream PR #254 answered as a candidate;
-one trial on #42/#28 with the dip count as its measurement and a stop rule), **#67 the drag freeze beside it** (the modal move
-loop on the presenting thread; the bar is the issue's), then **#59 a frame-rate bar and #32 the atlas re-upload if time
-allows**. VU1 and every other replaced subsystem wait in `docs/LATER.md` with a confidence and a trigger, or a dismissal the
-owner confirms. Four days (R286). The defaults D1-D8 are ruled R282-R289 in the plan; the bar is the spec's §4 as re-cut: the
-audio rows with numbers, #254 answered, T1 to a recorded outcome, T2 to its bar, no regression (the gate 3/3, the fourth leg
-green, audio parity not below 31/48, the dip count not above the register's number), LATER complete, the ceilings held. The
-plan's Log is the live state; this block gains its table at the close.
-
-*Sprint 14's CLOSED block moved verbatim on 2026-09-28 (the Sprint 16 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprint-14.md`.*
-
-*Sprint 13's CLOSED block moved verbatim on 2026-09-27 (the Sprint 15 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprint-13.md`.*
+*Sprint 15's CLOSED block (v0.15.0 at `10650369`, PR #81) is in `docs/archive/CURRENT_SPRINT-closed-sprint-15.md` (moved 2026-10-01 at the Sprint 18 open, the ceiling rule).*
 
 *Sprint 12's and Sprint 11's CLOSED blocks -- with Sprint 11's rulings ledger R245-R263 and the table of Sprint 12's `S12-Rn` rulings that touch Sprint 11 -- moved verbatim on 2026-09-26 (the Sprint 14 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`.*
 

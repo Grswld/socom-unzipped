@@ -1,4 +1,4 @@
-# Sprint 18 Implementation Plan — "the PCSX2 door" (PROPOSED 2026-10-01 02:10Z; opens on `sprint-18` off `sprint-17`)
+# Sprint 18 Implementation Plan — "the PCSX2 door" (OPEN 2026-10-01 02:40Z on `sprint-18` off `sprint-17` at the opening commit; proposed 02:10Z; GitHub milestone 8)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: the project's `loop-iteration` skill runs this plan (one task at a time,
 > a failing test first, a fresh reviewer per task, the lock for every build and run, every lock-bound step a window);
@@ -30,7 +30,7 @@ WinHTTP, `C:\Windows\System32\tar.exe` (bsdtar), systemd, `aws lightsail`, `vm/l
 - **Order:** T0 (spike, a window) and T1 (box, lock-free) first and in parallel; T2 → T3 → T4 pure, lock-free, each in
   its own agent worktree on `agent/s18-*`; T5 → T6 UI (a launcher build under the lock each); T7 the proof (a window the
   owner names, O20); T8 the documents. A task out of order needs a ruling.
-- **Rulings R-A…R-F** of the spec §2.2 bind every task; the controller numbers them from HANDOFF §2's counter line in the opening commit.
+- **Rulings R339–R344** (the spec §2.2's R-A…R-F, numbered at the open) bind every task.
 - **Nothing of the native client changes behaviour:** `config.json`'s keys, `Config`, `environmentFor`, the nine native
   pages' layout tests all pass unchanged except where a test names the rail or `kPageCount` (T5 updates those).
 - **No file of a player's own PCSX2 is rewritten whole** (R-F): the ini is merged key by key inside `[DEV9/Eth]`; the
@@ -75,17 +75,21 @@ Inputs the spec implies that a task's own tests must pin (each line names its ow
 | T7 | The proof: INSTALL → BIOS → LAUNCH → wizard → our lobby, from this host, against the public box | lock-bound, a window (O20) | main tree | `logs/s18_proof/` (the emulog, the launcher log, the lobby shot); a KNOWN row | open |
 | T8 | The documents: DEVELOPING (launcher files, the box's DNS), `server/README.md`, `docs/PCSX2_PLAY.md`, LATER rows, HUMAN_TASKS rows, CURRENT_SPRINT | lock-free | main tree | `python -m unittest tools_py.tests.test_doc_maintenance`; the ceilings | open | <!-- docmaint: future -->
 
+GitHub issues, milestone 8: T0 #121, T1 #122, T2 #123, T3 #124, T4 #125, T5 #126, T6 #127, T7 #128, T8 #129.
+
 Owner's rows this sprint adds to `docs/HUMAN_TASKS.md` (T1 and T8 write them): **O28** the firewall rule if the AWS
 session is not live when T1 runs; **O29** the two-home hosted round (two players, two routers, one hosts) and the
 first run with the player group; **O30** the guide's copy on the site (`From your disc to the lobby`, a PCSX2
 subsection) once the scotho design system lands.
 
-## Rulings this plan proposes (the controller numbers them)
+## Rulings (numbered at the open from HANDOFF §2's counter; the full text and the reasons are the spec §2.2)
 
-R-A two clients, one toggle, two files · R-B community "coming soon" in both views · R-C PCSX2 from its official
-release, verified, never from us · R-D the box answers the six names on 53/udp, those only · R-E the PCSX2 client
-plays r0001 this sprint · R-F PCSX2 owns what PCSX2 owns (the launcher writes `[DEV9/Eth]` and the pnach, nothing
-else in a selected install). The full text and the reasons: the spec §2.2.
+- **R339 (2026-10-01 02:40Z, Sprint 18 open, the spec's R-A) — two clients, one toggle, two files: a global NATIVE / PCSX2 client mode in the top bar, saved in `launcher.json`; the native client keeps `config.json` unchanged; the PCSX2 client has `config.pcsx2.json` and its own struct; no key shared, no value copied, switching never writes the other file.** Owner: "the global settings/saved settings for the two should be entirely unique."
+- **R340 (2026-10-01 02:40Z, Sprint 18 open, R-B) — the community server stays "coming soon" in both views: the `community` preset keeps its placeholder address, its row is drawn greyed with the note `kPresetComingSoonNote` = "coming soon"; our server and Custom are live in both.** Owner: "Continue to block the community server as coming soon but prepare everything required to connect to our server or an arbitrary dns."
+- **R341 (2026-10-01 02:40Z, Sprint 18 open, R-C) — PCSX2 comes from its official GitHub release, verified by the API's sha256 and size, downloaded over https following redirects only from `github.com` to a `*.githubusercontent.com` host, extracted by the system's `tar.exe`; nothing of PCSX2 ships in our repository or archives; SELECT names a player's own `pcsx2-qt.exe` instead.** Owner: "a single install button that obtains it from their official repo."
+- **R342 (2026-10-01 02:40Z, Sprint 18 open, R-D) — the hosted box answers SOCOM II's six retail host names on 53/udp with `muis.json`'s `Endpoint`, NXDOMAIN for every other name, rate-capped per source, as a fifth systemd unit installed by `server/linux/install.sh`; the firewall gains 53/udp by `open-instance-public-ports` (adds), never `put-`.** Owner: "I grant you authority to make the dns changes on the lightsail machine if you have access in the sprint; if not the agent doing it can request them from me." An expired AWS session is the owner's row (O28), never a login by the loop.
+- **R343 (2026-10-01 02:40Z, Sprint 18 open, R-E) — the PCSX2 client plays r0001 this sprint: its GAME VERSION row draws r0004 greyed with `kPcsx2RevisionNote`; r0004 on PCSX2 (the card package writer) is a `docs/LATER.md` row.** Why: everyone on the plain disc is one revision, so everyone can join everyone (KNOWN: the two revisions cannot join each other's games).
+- **R344 (2026-10-01 02:40Z, Sprint 18 open, R-F) — PCSX2 owns what PCSX2 owns: the launcher writes `[DEV9/Eth]` (merged key by key) and `patches/0F6FC6CF.pnach` (the guarded master, replaced only when different, the old copy kept once as `.bak-<stamp>`) and nothing else in a PCSX2 the player selected; in the one it installed it may also lay out the folders; video, audio, controller, microphone and the BIOS are PCSX2's own pages, so the PCSX2 view has none of ours.** Owner: "everything else pcsx takes over"; "filter out what cannot be used."
 
 ## Outcome
 
@@ -94,5 +98,9 @@ rows left)
 
 ## Log (newest first)
 
+- **2026-10-01 02:40Z** — OPEN. The owner approved the write-up ("excellent. write this up as a formal sprint 18"):
+  the spec to APPROVED, rulings R339–R344 numbered (HANDOFF §2's counter bumped past them, `docs/RULINGS.md` regenerated),
+  GitHub milestone 8 with one issue per task, `sprint-18` cut off `sprint-17` at the opening commit, CURRENT_SPRINT's
+  header carries the second open branch. First items: T0 (a window) and T1 (lock-free), in parallel.
 - **2026-10-01 02:10Z** — spec and plan written in the main tree on `sprint-17` at `caa149d9` by the controller
   session, on the owner's word of this hour; the branch `sprint-18` is not cut yet; T0 and T1 are the first items.

@@ -1,7 +1,9 @@
 # Sprint 18 design — "the PCSX2 door": the launcher gets a second client, PCSX2, that plays the retail disc on our server
 
-Date: 2026-10-01 02:10Z (by `date -u`). Status: **PROPOSED**, written in the main tree on `sprint-17` at `caa149d9` on
-the owner's word of this hour, verbatim in substance: *"Write this up as a sprint and make a global toggle for the
+Date: 2026-10-01 02:10Z (by `date -u`). Status: **APPROVED** by the owner 2026-10-01 ~02:35Z ("excellent. write this
+up as a formal sprint 18"); the sprint is OPEN on `sprint-18` off `sprint-17` (GitHub milestone 8), its rulings
+R339–R344 are the plan's. Written in the main tree on `sprint-17` at `caa149d9` on the owner's word of this hour,
+verbatim in substance: *"Write this up as a sprint and make a global toggle for the
 client (pcsx2 / native). Continue to block the community server as coming soon but prepare everything required to
 connect to our server or an arbitrary dns. Offer the option to select your pcsx2 instance, and beside it, a single
 install button that obtains it from their official repo with a little tooltip ui. Use the existing components of our
@@ -83,7 +85,7 @@ in the folder the page names, presses LAUNCH, runs the game's network wizard on 
 our lobby — without editing a file. The box answers SOCOM II's host names for anyone on the internet. The native
 client is untouched: its pages, its `config.json`, its behaviour.
 
-### 2.2 The six decisions (rulings proposed; the controller numbers them from HANDOFF §2's counter)
+### 2.2 The six decisions (rulings R339–R344, numbered at the open; R-A = R339 … R-F = R344)
 
 - **R-A — two clients, one toggle, two files.** The launcher has a global client mode, NATIVE or PCSX2, in the top bar
   on every page, saved in its own file `launcher.json` (`{"client": "native"}`). The native client keeps

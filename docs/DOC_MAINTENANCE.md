@@ -142,6 +142,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` | **A** | — | Cut 2026-09-26 (the Sprint 14 close, §5 step 5): the Sprint 12 and Sprint 11 CLOSED blocks with Sprint 11's rulings ledger R245-R263 and the `S12-Rn` table, verbatim. The ruling counter and check 10 read it |
 | `docs/archive/CURRENT_SPRINT-closed-sprint-13.md` | **A** | — | Cut 2026-09-27 (the Sprint 15 close, §5 step 5): the Sprint 13 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
 | `docs/archive/CURRENT_SPRINT-closed-sprint-14.md` | **A** | — | Cut 2026-09-28 (the Sprint 16 close, §5 step 5): the Sprint 14 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
+| `docs/archive/CURRENT_SPRINT-closed-sprint-15.md` | **A** | — | Cut 2026-10-01 (the Sprint 18 open; §5 step 5, the ceiling rule): the Sprint 15 CLOSED block, verbatim, moved when the live file passed its 33,000-byte ceiling with the second open branch in its header; the live file keeps one CLOSED block (Sprint 16). The rulings R282-R297 stay in their plans. |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
