@@ -2,16 +2,33 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-355 rulings (316 global, 39 sprint-local): 347 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+372 rulings (333 global, 39 sprint-local): 364 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-316 rulings.
+333 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R338 | 2026-09-29 | active | Sprint 17 has no close date: the owner is in no rush and keeps it open to pursue the performance threads (C1, C2, C3, the native VU1 coverage) and to find new… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R338** |
+| R337 | 2026-09-29 | active | a candidate that reduces work on the GAME thread is picked on `[gs-loop] ee: work=` over the walk window, lower with the knob on in both orders inside one hold… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R337** |
+| R336 | 2026-09-29 | active | the owner's words of 15:53Z ("lock is still yours") and 17:10Z ("The web agent needs the lock after this run for one task before you can take ownership back")… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R336** |
+| R335 | 2026-09-29 | active | the owner's word, "You have the next 10ish hours, a web agent is working but should never collide with you", names a third window: builds and game runs may run… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R335** |
+| R334 | 2026-09-28 | active | the owner's word after the controller's estimate of five to six more loop days: "proceed with your suggestions and make these options known to future testers a… (amended: see the ledger) | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R334** |
+| R333 | 2026-09-28 | active | the cloud branch's web sprint 2 "the player" (`claude/web-sprint-cloud-8wa72q` at 3ecd4720, tagged `web-sprint-2-cloud-close`) is merged onto `main` and releas… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R333** |
+| R332 | 2026-09-28 | active | the owner's word after the listen, "go ahead now i'll interrupt if need be": a second window opens at 15:53Z with no end named; builds and game runs may run th… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R332** |
+| R331 | 2026-09-28 | active | the owner's word at 03:20Z, "i'm going to sleep, you have all of the next 12-13h", names the window: builds and game runs may run on this machine from 03:20Z t… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R331** |
+| R330 | 2026-09-28 | active | the release rows on milestone 7 (#70, #71, #57) are Milestone R at the tail, after F, Q and A. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R330** |
+| R329 | 2026-09-28 | active | a frame-rate bar reached short is recorded as the number, the ranked residual and the next lever; #59 stays open with that trigger. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R329** |
+| R328 | 2026-09-28 | active | the online menus' harness is scoped in a note this sprint and built only if time remains; the microphone row marked cannot-pass-yet. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R328** |
+| R327 | 2026-09-28 | active | 3x scale's frame rate is recorded beside 1x, not fenced; the launcher's DETAIL wording names the cost. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R327** |
+| R326 | 2026-09-28 | active | A1 runs regardless of the owner's listen; A2–A4 wait for A0's word or A1's count. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R326** |
+| R325 | 2026-09-28 | active | the long announcement runs on the local Horizon stack; the hosted server's configuration is the owner's hand. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R325** |
+| R324 | 2026-09-28 | active | `LoadExecPS2` is an in-process restart first; the launcher-relaunch fallback with the argv in a sidecar if the reset proves wider than the box. | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R324** |
+| R323 | 2026-09-28 | active | structural pacing changes are allowed once F1–F3 leave the guest waiting over 100 ms/s, one design, one attempt, one stop rule, the fence each; paraLLEl-GS onl… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R323** |
+| R322 | 2026-09-28 | active | "60" is `FRAME mean=` ≤ 17.0 ms and `worst1s=` ≤ 20.0 ms over the gate's walk on three quiet gates on one exe, with the screenshot cost named beside the number… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R322** |
 | R321 | 2026-09-27 | active | O2, O4, O5, O7, O8, O10 and O15 stood through the sittings of 2026-09-26 and 2026-09-27 without an answer; each closes by default on the default it carried (O8… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R321** |
 | R320 | 2026-09-27 | active | revise, do not append: a fact has one row, rewritten to what is true now with its newest dated artefact; the old text is git's. | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R320** |
 | R319 | 2026-09-27 | active | Discussions' Announcements stand in for patch notes for now, human-gated: a dated draft under `docs/announcements/` from its template, a `docs/HUMAN_TASKS.md`… | `docs/superpowers/plans/2026-09-27-sprint-16.md` **R319** |

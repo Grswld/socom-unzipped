@@ -294,6 +294,8 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `gate.py` | The three-stage gate (title, transition, mission): PASS/FAIL, stamps under `logs/parity/gate/` |
 | `pins.py` | What a measurement was computed against, and the refusal when it drifted |
 | `frame_time.py` | The mission stage's `FRAME` line: VBlank pacing (host ms per guest VBlank, a lower bound on the time between presents) over the scripted walk, from the `[pc-sampler]` rows (informational, S13-R3). Run it on saved stamps as: `python -m tools_py.parity.frame_time <stamp dir> ...` |
+| `submit_split.py` | The draw path's split (Sprint 17 F1): every `[gs-submit]` field (`setup`, `dirty_rows`, `resolve`, `draw`, `readback` ms/s; `flushes`, `readbacks`, `readback_rows`, `readback_px`, `rt_direct` /s), elapsed-weighted over the lines attributed to the `[pc-sampler]` rows in a `t=` window, so an attempt's before/after is one command (`PS2X_GS_STATS=1`). Run it as: `python -m tools_py.parity.submit_split <game log> [--from <t>] [--to <t>]` |
+| `replay_bench.py` | The draw-path bench's reader (Sprint 17 F): runs `dist/gs_replay_bench.exe` on a recording a game run wrote with `PS2X_GS_RECORD=<file>[:<present>\|t<seconds>\|trig[:<presents>]]` (the GL thread's replayed command stream, the shadow VRAM and palettes at its start; `gs_gl_replay_file.h`), which replays it through the GL backend on a hidden window -- no game, no lock, a desktop session -- and prints one `[gs-replay-bench]` line (the `[gs-submit]` split and the `[gs-gl stats]` buckets per 60 replayed presents, the present-interval histogram) with a JSON beside it; the recording's `PS2X_GS_*` knobs are re-applied (`--knob NAME=VALUE` overrides one); `compare` puts two runs side by side in percent and warns when their knobs differ. Run it as: `python -m tools_py.parity.replay_bench run <recording> [--json <out>] [--warmup N] [--frames N]` and `python -m tools_py.parity.replay_bench compare <before.json> <after.json>` |
 | `window_drag.py` | Issue #67 (closed): a scripted title-bar drag of the game window, and the readout of what the guest clock (`[pc-sampler]` `t=`/`vsync=`) and the `[audio-trace]` counters did through it -- FROZEN / SLOWED / ADVANCING. Run it as: `python -m tools_py.parity.window_drag drag --log <game log> --seconds 10 --stamps <file>`, then `python -m tools_py.parity.window_drag readout <game log> --stamps <file>` |
 | `compare.py` | Score screens against the golden set and write `docs/parity/REPORT.md` |
 | `guest_probe.py` | The gate's guest-value probe against console numbers on disk |
@@ -432,7 +434,8 @@ by design:
                        # their goldens, native path on and off, plus a --vram-diff equivalence check
                        # (checked=15 skipped=0; a [vu1_replay] WARNING about a texture inside the
                        # replay's blanked framebuffer/z region fails the suite). PS2X_TEST_REPEAT=N runs
-                       # the C++ unit suite N times (determinism check).
+                       # the C++ unit suite N times (determinism check). In a linked worktree or
+                       # behind a queue it skips the Python suite (--full-suite forces it; Guards).
 python -m tools_py.parity.gate   # in-game gate: title / transition / mission, PASS or FAIL.
                        # Run `./build.sh runtime` first -- the gate launches dist/socom2.exe and
                        # `./build.sh test` does NOT rebuild it.
@@ -678,8 +681,8 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 |---|---|---|
 | 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1871 display names from socom2_names.csv` (2026-09-25, after Sprint 13 N1; r0004's reads `Loaded 1736`; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 1025` / `Passed: 1025` / `Failed: 0` (2026-09-27 19:5xZ, the batch-3 merged chain `s16_b3` on `aa030d1a`; before it 969 on the `build-windows` run 36305306914 of #74's merge ref, the tree `main` became at `bb675dbd`; its Linux count was 971 — the Linux build runs two platform-guarded cases more, so a Linux count two above this is not a mismatch. Before: 967 on `8b65501` (run 36305304109); 966 on `9bb8511` (run 36303145546); 964 on `6168f2e` (run 36300160191); 940 on 2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3766 tests, `OK` with 161 skipped (2026-09-28 10:36Z, this machine, the tree at `69be57cc`, web sprint 2's tip with its speed probe's two modules, 85 tests; 3530 with 93 skipped at `3bdf80e8` on 2026-09-26). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
+| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 1159` / `Passed: 1158` / `Failed: 0` (one case skips itself; 2026-09-30 08:12Z, the batch-5 merged chain `s17_b5` on `1fd3cfdb`; before it 1025 on 2026-09-27 19:5xZ, the batch-3 merged chain `s16_b3` on `aa030d1a`; before it 969 on the `build-windows` run 36305306914 of #74's merge ref, the tree `main` became at `bb675dbd`; its Linux count was 971 — the Linux build runs two platform-guarded cases more, so a Linux count two above this is not a mismatch. Before: 967 on `8b65501` (run 36305304109); 966 on `9bb8511` (run 36303145546); 964 on `6168f2e` (run 36300160191); 940 on 2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3939 tests, `OK` with 94 skipped (2026-09-30 08:12Z, the batch-5 chain `s17_b5` on `1fd3cfdb`; 3766 with 161 skipped on 2026-09-28 10:36Z, this machine, the tree at `69be57cc`, web sprint 2's tip with its speed probe's two modules, 85 tests; 3530 with 93 skipped at `3bdf80e8` on 2026-09-26). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (15 to 17 minutes: three gates on 2026-09-25 took about 15, 17 and 16 — `s12_names_gate`, `s11_close_gate`, `s12_names_r0004_gate`, from the first file each wrote under `logs/parity/gate/<stamp>/` to its `summary.txt`; the game window opens and closes three times; do not touch the keyboard) |
 
 > Superseded 2026-09-25 (Sprint 13 R2, fix round 1): rows 1, 3 and 4 carried every earlier count (881, 880, 876 and
@@ -854,6 +857,146 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   over the repository's issues labelled `known-issue`, one milestone per sprint. `audit` exits 0 or names the row,
   citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
 - **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
+
+## Measuring a change without a chain
+
+*(Owner's word 2026-09-28 ~21:00Z, ruled as this sprint's defaults in R334; the plan's Global Constraints cite this
+section. It goes between "Instruments and diagnostics" and "Knobs".)* A performance attempt is measured on the
+cheapest rung that can decide it, and only adoption and the day's proof pay for the dear ones. Each rung below says
+what it decides, its metric, its command and what enforces it; **gap** marks a rule that nothing refuses yet.
+
+**The ladder, cheapest first.**
+
+| Rung | Cost | Decides | Metric |
+|---|---|---|---|
+| 1. The replay bench | minutes, no game | a draw-path change's first read: worth an exe or not | the bench's own time per replayed frame |
+| 2. One mission walk, knob off then on, one exe | ~25 min, one holding | **the attempt pick** | `SYNCV mean=` (the game's own frame rate); the phase's ms/s beside it |
+| 3. The full gate | ~17 min + the build of the new default | **adoption** (the default flipped) | 3/3 `PINS MATCH`, and the fence of the plan's "A failing test first" bullet |
+| 4. The merged chain | ~90 min | **the day's proof** of everything merged that day | all green, `logs/merged_chain.last_green` |
+| (close) Three quiet gates, one exe | three gates | the sprint's frame-rate bar (R322, F6) | `FRAME mean=` / `worst1s=` |
+
+- **Rung 1, the replay bench** (landed 2026-09-29, `agent/s17-replay-bench`): a headless replay of a recorded GS
+  stream through the draw path, no game. Record one mission walk with `PS2X_GS_RECORD=logs/bench/<name>.gsr:t<sec>:600`
+  beside `PS2X_GS_STATS=1` (600 presents from the HUD window; 599 MB; record with `PS2X_GS_DOUBLE_SWIZZLE=1` so the
+  uploads are raw and the bench times the render-thread swizzle); then `python -m tools_py.parity.replay_bench run
+  [--exe dist/gs_replay_bench.exe] --json <out>.json [--knob NAME=VALUE] <recording>` twice per arm
+  and `replay_bench compare <before>.json <after>.json`. The metric is `elapsed_ms`/`fps` over the replay (570
+  presents in ~11.5 s on 2026-09-29; the spread between two identical runs ~0.8 %, so a pick needs more than that in
+  both pairs); the histogram rows say where the frames went. A relative `--exe` (and the default) is taken against
+  the repository root, and a missing one is refused naming that path (#117). The bench reads the replay alone: the
+  recorder's swizzle and the game thread are outside it (F3's `[gs-loop]` line is the game-thread instrument).
+- **SYNCV decides a pick, host-ms decides only the close.** `FRAME` is host ms per guest VBlank and drifts with host
+  load (about 20 % between single gates: the controller's estimate on 2026-09-28, no `docs/KNOWN.md` row); `SYNCV`
+  counts the frames the game drew (`[vu1-stats] syncv/s` over the same walk, `tools_py/parity/frame_time.py`). A
+  pick compares knob off and knob on **inside one holding**, back to back; a difference near the attempt's stop rule
+  is run again in the reverse order before it is ruled. The phase's ms/s (`python -m tools_py.parity.submit_split`,
+  `PS2X_GS_STATS=1`) says why SYNCV moved; it is not the decision. Home: R334. **Gap:** nothing refuses a pick made
+  on host-ms or across two holdings.
+
+**An attempt is a knob on one exe, not a build.** An attempt lands behind a Dev knob in
+`third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h` whose default is the old behaviour (the precedent: Sprint 16
+F2's `PS2X_GS_RT_TEXTURE`); `python -m tools_py.knobs write` regenerates `docs/KNOBS.md`, and
+`tools_py/tests/test_knobs_registry.py` fails on a read with no row. With the default off, the attempt changes
+nothing, so it merges on its review and module tests, and every pending attempt shares the one exe the day's chain
+builds; each rung-2 run flips one knob. Adoption is a one-line commit flipping the default, then rung 3 on the exe
+built with it. A second attempt on the same phase waits for the first's ruling (one knob per run, never two).
+
+**The gate cannot take a knob today.** The gate pins the `PS2X_*` environment of its mission stage
+(`tools_py/parity/pins.py` `env_pin`, standard `scripts/parity/pins.json`), so
+`PS2X_GS_STATS=1 python -m tools_py.parity.gate --only mission` refuses with exit 7 (`pins drifted: env`) before it
+launches, and `--accept-pins` would rewrite the shared standard (a ruling, never a reflex). **Gap:** no gate flag
+declares an attempt knob as recorded-not-compared. Until one exists, rung 2 is the gate's own mission drive with
+the gate's mission environment, laid out as a stamp so `frame_time` reads it (the shape of Sprint 16's
+`logs/s16_controller/s16_f2_ab.sh`). A copy under `logs/`, never edited while it runs:
+
+```
+#!/usr/bin/env bash
+# logs/<seat>/<attempt>_ab.sh -- rung 2: the mission walk with <KNOB> off, then on, on ONE exe, one holding
+set -u; cd /c/Projects/socom_pc || exit 2
+A=logs/parity/ab/<attempt>
+kill_drivers() { powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1; }
+walk() {   # <side> [KNOB=value]
+  local out="$A/$1"; shift
+  rm -rf "$out"; mkdir -p "$out"; cp -r game/disc/mc0_parity "$out/mc0"; kill_drivers
+  env "$@" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 PS2X_VU_STATS=1 PS2X_GS_STATS=1 PS2X_GS_UPLOAD_TRACE=1 \
+      PS2X_RUN_LOG="$out/mission.game.log" \
+      python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_probe.txt \
+      --out "$out/mission" --seconds 480 --tail 170 > "$out/mission.drive.log" 2>&1
+}
+walk off; walk on <KNOB>=<attempt value>; kill_drivers
+python -m tools_py.parity.frame_time "$A/off" "$A/on"
+```
+
+`PS2X_GS_UPLOAD_TRACE=1` is what feeds the `[gs-submit]` line (`gs_gl_backend.cpp`, the upload trace's accumulator);
+`PS2X_GS_STATS=1` alone prints `[gs-gl stats]` and `[vu1-stats]` but no split, and `submit_split` then answers "No
+[gs-submit] line" (the first four walks of 2026-09-29 ran without it: SYNCV decided, the why was not read).
+
+launched as `RUN_MIN_FREE_MEM_GB=4 bash scripts/run_detached.sh --owner <seat> --purpose "launch: <attempt> A/B"
+--wait 60 logs/<seat>/<attempt>_ab.sh logs/<seat>/<attempt>_ab.detached` (a `launch` purpose writes the quiet
+marker). The readout is `frame_time`'s `SYNCV` line per side, then
+`python -m tools_py.parity.submit_split $A/<side>/mission.game.log --from <HUD t> --to <last step t>` for the
+phase. The Log line names the exe hash, the knob, both SYNCV means and the stop rule's verdict; TRIED, NOT ADOPTED
+is an outcome. A game run still needs a window the owner named (O20, R297).
+
+**Profile before designing the next attempt.** The next attempt is designed from a sampled profile of the GL thread
+over the walk, so attempts are ranked by measured cost, not by guess (F1 Step 1's ranking, 2026-09-28, moved
+`setup` above `resolve` that way). The same walk, the profiler on the main (GL) thread; the histogram
+(`PS2X_HOST_PROF_OUT`) is rewritten every 10 s, so a copy taken at the HUD step isolates the walk:
+
+```
+out=logs/parity/prof/<name>; rm -rf "$out"; mkdir -p "$out"; cp -r game/disc/mc0_parity "$out/mc0"
+( until grep -q '^s28_' "$out/mission.drive.log" 2>/dev/null; do sleep 5; done
+  cp "$out/hostprof.txt" "$out/hostprof_pre.txt" ) & snap=$!
+PYTHONUNBUFFERED=1 PS2X_HOST_PROF=1 PS2X_HOST_PROF_MAIN=1 PS2X_HOST_PROF_STACKS=1 \
+    PS2X_HOST_PROF_OUT="$out/hostprof.txt" PS2X_MC_DIR="$out/mc0" PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 \
+    PS2X_VU_STATS=1 PS2X_GS_STATS=1 PS2X_GS_UPLOAD_TRACE=1 PS2X_RUN_LOG="$out/mission.game.log" \
+    python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_probe.txt \
+    --out "$out/mission" --seconds 480 --tail 170 > "$out/mission.drive.log" 2>&1
+kill "$snap" 2>/dev/null
+python -m tools_py.hostprof_diff "$out/hostprof_pre.txt" "$out/hostprof.txt" --top 40 --exe dist/socom2.exe
+python -m tools_py.hostprof_stacks "$out/hostprof.txt" --exe dist/socom2.exe --top 40
+```
+
+in a `logs/` script launched like rung 2. The profiler suspends the thread it samples, so a profiled walk's SYNCV
+and FRAME are not measurements. Home: R334. **Gap:** nothing refuses an attempt designed without a profile, and the
+walk-only snapshot is the script's `until` loop above, not a tool.
+
+**Preflight: memory, and the owner's game closed.** Nothing lock-bound starts under 4 GB free physical memory:
+`powershell.exe -NoProfile -Command "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,2)"`.
+Before a chain or a game run, `tasklist | grep -i -E 'socom_unzipped_launcher|socom2'` prints nothing: two chains
+died on 2026-09-28 with the launcher and the game open. If they are open they are the owner's -- wait for them to
+close; `scripts/kill_stale_drivers.ps1` kills every `socom2*.exe`, so it runs only after this check. Guard:
+`scripts/run_detached.sh` refuses below `RUN_MIN_FREE_MEM_GB` (exit 3, test
+`test_memory_refusal_below_threshold_does_not_launch` in `tools_py/tests/test_loop_lock.py`), **default 3**, so a
+launch passes `RUN_MIN_FREE_MEM_GB=4`. **Gaps:** the default is not 4; `loop_lock.sh run` and `build.sh` check no
+memory; nothing refuses a start while the launcher runs. Home: R334, and `docs/HAZARDS.md`'s memory-floor
+hazard (2026-09-27: children failing `0xC0000142` at 3.3-3.6 GB free).
+
+**The suites.** At a merge: the module tests the brief names (`python -m unittest tools_py.tests.test_<module> ...`),
+lock-free, never beside a build or a game run. The full Python suite runs only inside the day's chain (its `test`
+step, `./build.sh test`) and on CI on every push (`linux` and `windows` when anything outside `docs/` moved), never
+under the lock outside a chain and never beside a build. Guard: `build.sh test` refuses under the quiet marker of a
+running launch (exit 3, `FORCE_QUIET=1` overrides). Home: R334. **Gap:** nothing refuses a full
+`python -m unittest discover` beside a build or outside the chain.
+
+**One merged chain a day.** The merge bar is a clean review plus the module tests; the chain proves the day: one
+`scripts/parity/merged_chain.sh` copy over everything merged since `logs/merged_chain.last_green`, once a day, in a
+window. A red chain bisects by branch and evicts by `docs/GIT_STRATEGY.md` "Slices", as before. Home: R334 (it
+replaces "per batch" and "the full Python suite after every merge" in the `loop-iteration` skill's step 4 for this
+sprint). **Gap:** nothing refuses a second chain in a day.
+
+**Builds a fresh worktree does not need.** Attempts share the day's exe, so no rung needs a worktree build of its
+own; a worktree keeps its `third_party/ps2recomp/build-clang/` for its whole life (a re-recomp rebuilds only what
+changed, issue #57). **Gap:** there is no compiler cache and no shared build directory, so a fresh worktree's first
+`./build.sh runtime` is a full build (624-983 s from an empty tree, 2026-09-21; about an hour with the recomp and a
+loaded host).
+
+**When a second machine exists.** It takes the builds and the CPU-side suites (`./build.sh recomp|runtime`, the
+module tests, `./build.sh test`); game runs, the gate and the chain's gate step stay on the machine that holds the
+disc image and the exe. The lock is per machine already: `scripts/loop_lock.sh` lives beside a clone's git common
+dir, so each machine serialises its own work. Nothing derived from the disc enters the tree on either machine.
+**Gap:** the chain runs all its steps in one tree under one holding, so it cannot yet split its build from its gate
+across two machines; until it can, the chain runs whole on the gate's machine.
 
 ## Knobs
 
@@ -1062,6 +1205,18 @@ scheduled form was `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_l
 the schedule is retired (R294, R296 -- the Task Scheduler entry stays disabled) and a run is started by hand when a
 task needs it.
 
+**The PCSX2 patch masters are conditional (issue #112, since the commit that added
+`tools_py/tests/test_pcsx2_masters.py`).** `scripts/parity/pcsx2/0F6FC6CF.pnach` (instance A) and
+`0F6FC6CF.clientB.pnach` (instance B, whose `cheats/` is empty, so this is its only bypass) are copied by hand into
+`tools/pcsx2/patches/` and `tools/pcsx2_b/patches/`. Each writes the DNAS bypass (`jr ra; nop`) only behind a pnach `E`
+guard on `dnasCheck`'s first word, `27BDFFC0`: at `0x2CC670` on the r0001 layout and at `0x2CF330` on r0004 -- the word
+Harry62's PSRewired cheat tests (`tools/pcsx2/cheats/0F6FC6CF.pnach` lines 4-19); B's port shift (3658 -> 3660) is
+guarded on `li a0,0xE4A` at each image's own site, `0x620678` on r0001 and `0x627F68` on r0004, so B leaves 3658 to A
+on either image. A card holding the r0004 package boots r0004 after the r0001 disc's loading screen, and both
+instances' cards hold it (`docs/HAZARDS.md` harness); the masters are now safe on either image, but which image ran is
+the card's choice, not the pnach's. The test models PCSX2's `E` and
+32-bit write codes over the words both images hold at those addresses and refuses an unguarded `0x2CC670` write.
+
 ## The loop lock
 
 `scripts/loop_lock.sh` serialises every build and every game run on the machine (its header is the reference and the
@@ -1087,8 +1242,8 @@ and every ticket carries a class, `build` or `run` (`--class` overrides).
 
 ## Guards
 
-Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
-wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
+Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash (and, since
+Sprint 17 G1, PowerShell) tool call, wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
 home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `gh pr`, `loop_lock` and `logs/`
 exits 0 in the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
 `|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
@@ -1168,6 +1323,35 @@ The subject cap (Sprint 14 S2): git's `commit-msg` hook, `scripts/hooks/commit-m
 live in every clone that ran `scripts/install_hooks.sh`), refuses a subject (git's first paragraph, joined as `%s`
 shows it) over 120 characters with one sentence (a default merge, revert or reapply subject with a body is exempt;
 `fixup!`/`squash!` judge the subject they wrap); test `CommitMsgTest` and `CommitMsgWiringTest` in `tools_py/tests/test_hooks.py`; home `docs/GIT_STRATEGY.md` section 3.
+
+The chain's tree (Sprint 17 G1): `scripts/parity/merged_chain.sh` reds on a tracked file changed in its tree, then on
+HEAD moved, so a peer's edit or commit there costs a 90-minute rerun (five on 2026-09-27/28; the multi-session
+collisions audit of 2026-09-28, sections 3.1 and 5). The chain writes `logs/.merged_chain.running`
+in its own tree after it fixes HEAD0 (`pid`, `start`, `head`, `stamp`, `root`, `held`; the pid is the Windows one under
+Git Bash) and removes it in an EXIT trap; `tools_py/hooks/chainmark.py` judges it live when the pid is alive and was
+created no later than the write -- in-process, no child, and the lock's state is not consulted. Two refusals key on
+it: git's `pre-commit` hook runs `tools_py/hooks/precommit.py` before the leak check, and
+`scripts/hooks/pre-merge-commit` runs the same, so they refuse `git commit` and a non-fast-forward `git merge` in that
+tree (cherry-pick, revert, rebase, am, a fast-forward, reset and checkout move HEAD unguarded -- the audit's 3.1(b),
+not this task); the Edit/Write entry refuses an edit of a TRACKED file in it (untracked files, `logs/` and other trees pass --
+an agent worktree never refuses). The shell fast path starts Python for an editing call only while a marker exists in
+the hook's own tree or the main tree (`PRETOOL_CHAIN_TREE` replaces both for tests). Test `ChainMarkerTest`,
+`PrecommitChainGuardTest`, `PrecommitWiringTest`, `PinnedTreeEditTest`, `PinnedTreeWiringTest` in
+`tools_py/tests/test_hooks.py`, and the marker's lifetime (green, red, refused, dry) in `tools_py/tests/test_merged_chain.py`;
+home this section. Limits: a tree without `tools_py/hooks/precommit.py` (a branch older than G1, whose commits run
+the main tree's hooks through an absolute `core.hooksPath`) is skipped, not refused; a hard kill (`taskkill /F`)
+skips the trap and leaves the marker behind -- it pins nothing once its pid is gone, or is reused (a process
+created after the marker, or one we may not open, is not the chain), and every refusal names the marker and says
+to delete it if no chain runs (`bash scripts/loop_lock.sh check` FREE); an
+edit through Bash or PowerShell (`sed -i`, `Set-Content`) is not seen; a chain in a third tree is judged only when the
+call reaches Python for another reason.
+
+The Python suite's place (Sprint 17, the owner's rule of 2026-09-28): `./build.sh test` skips the full Python suite (`unittest discover`) with one line, `tests: python suite skipped (...; the merged chain runs it -- --full-suite to force)`, in a linked worktree (`--git-dir` differs from `--git-common-dir`) or while `loop_lock.sh check` shows a live `QUEUED` waiter, and still runs the C++ tests, whose exit code is the step's; `--full-suite` forces it, and so does the merged chain (its `logs/.merged_chain.running` in the tree names `held=$LOOP_LOCK_HELD`); the full suite is the chain's bar and CI's, a branch's is the C++ tests plus the modules its change touched -- two starved worktree suites held the lock 60-110 minutes on 2026-09-28, and the chain's own suite starves the same way beside queued waiters and any other test process, so nothing runs a suite (`unittest`, `build.sh test`) while `loop_lock.sh check` shows a chain HELD; home `build.sh`'s test step (`python_suite_skip`); test `TestBuildShSuiteGuard` in `tools_py/tests/test_build_sh_lock.py`.
+
+The PowerShell tool (Sprint 17 G1): the PreToolUse matcher is `Bash|PowerShell`, and a PowerShell `command` is judged by
+every Bash rule above (`Set-Location`/`sl`/`chdir`, `Push-Location`, `Pop-Location` followed as `cd`/`pushd`/`popd`);
+until then each rule was a sentence for that tool (the audit's 3.2). Test `PowerShellToolTest` in
+`tools_py/tests/test_hooks.py`.
 
 The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
 `python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or

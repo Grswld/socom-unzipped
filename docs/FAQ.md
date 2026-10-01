@@ -119,13 +119,16 @@ point the launcher at your ISO once more.
 
 Where you meet it: at boot, from either path, before the title screen.
 
-### 74 — the game asked to restart
+### 74 — the game tried to start another program
 
-> The game asked to restart itself after an error. This build cannot restart, so it stopped; the log says why.
+> The game tried to start a PS2 program this build cannot run (network setup, the console menu). Press SAVE DIAGNOSTICS.
 
-SOCOM II reboots itself when it hits certain internal errors. On a console that is invisible; here there is nothing
-to reboot into, so the run ends instead. The real failure is the one written just above the reboot line in the run
-log — send that log with the report.
+SOCOM II sometimes hands the console over to another program. When it restarts itself — leaving SOCOM Online (the
+logoff) does this on the way back to the main menu — this build carries the restart out in-process, and you land on
+the main menu as on a console. What it cannot run is a different program: the PS2's own menu (`rom0:OSDSYS`) or
+the network setup program. When the game asks for one of those, the run ends with this code; the run log names the
+program it asked for on its `[LoadExecPS2]` line. The same code ends a restart that could not reload the game's own
+files. Either way, press SAVE DIAGNOSTICS and send the zip with a line on what you did just before.
 
 Where you meet it: in the middle of a run, from either path.
 

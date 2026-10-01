@@ -430,6 +430,41 @@ void PS2Memory::resetEeTimers() noexcept
     m_eeTimers = {};
 }
 
+void PS2Memory::resetHardwareState()
+{
+    m_ioRegisters.clear();
+
+    memset(&gs_regs, 0, sizeof(gs_regs));
+    gs_regs.csr.store(0);   // the explicit atomic store initialize() makes (memset alone is not one)
+    gs_regs.dispfb1 = (0ULL << 0) | (10ULL << 9) | (0ULL << 15) | (0ULL << 32) | (0ULL << 43);
+    gs_regs.display1 = (0ULL << 0) | (0ULL << 12) | (0ULL << 23) | (0ULL << 27) | (639ULL << 32) | (447ULL << 44);
+    gs_regs.dispfb2 = gs_regs.dispfb1;
+    gs_regs.display2 = gs_regs.display1;
+
+    memset(&vif0_regs, 0, sizeof(vif0_regs));
+    memset(&vif1_regs, 0, sizeof(vif1_regs));
+    memset(dma_regs, 0, sizeof(dma_regs));
+
+    m_path3Masked = false;
+    m_vif1PendingPath2ImageQwc = 0u;
+    m_vif1PendingPath2DirectHl = false;
+    m_path3MaskedFifo.clear();
+    m_pendingGifTransfers.clear();
+    m_pendingVif0Transfers.clear();
+    m_pendingVif1Transfers.clear();
+    m_mfifoStalled = false;
+    m_mfifoStalledChannel = 0u;
+    resetEeTimers();
+    {
+        std::lock_guard<std::mutex> lock(m_pendingIntcMutex);
+        m_pendingIntcCauses.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_completedDmacMutex);
+        m_completedDmacCauses.clear();
+    }
+}
+
 uint32_t PS2Memory::advanceEeTimers(uint64_t eeCycles) noexcept
 {
     if (eeCycles == 0u)

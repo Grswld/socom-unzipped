@@ -9,25 +9,26 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-16 -- CLOSED 2026-09-28 01:24Z (the PR to `main` and the tag `v0.16.0` follow the owner's one push of the branch (O24); opened 2026-09-27 07:00Z off main at
-              d84ffbde above the Sprint 15 merge 10650369, v0.15.0). No sprint branch is open until Sprint 17 opens off
-              main (its own seat; the spec agreed 2026-09-27); until then a change goes on a topic branch
-              (docs/GIT_STRATEGY.md section 2). See "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
-spec:         docs/superpowers/specs/2026-09-27-sprint-16-ten-minutes-to-the-server-design.md (four milestones R, F, L, X
-              with a bar each; the acceptance bar is its section 4; six sentences superseded at the open, the plan's
-              Task 0 Step 5). The Sprint 15, 14, 13, 12 and 11 specs closed with v0.15.0 down to v0.11.0.
-plans:        docs/superpowers/plans/2026-09-27-sprint-16.md (the task table, the Log newest first, the rulings R299-R321 (R314 vacant)
-              from the global counter; its task book 2026-09-27-sprint-16-tasks.md and the readers' facts
-              2026-09-27-sprint-16-tree-facts.md beside it). The Sprint 15 plan (R282-R289; R298 the close's window,
-              superseded) and the owner's sitting (R290-R297, docs/superpowers/plans/2026-09-26-owner-sitting.md) are
-              closed, listed in the block below; the Sprint 14 plan (R269-R281) too, its block in
-              docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the Sprint 13 plan's block is in
-              docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12 and 11 in
-              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
+branch:       sprint-17 -- OPEN 2026-09-28 03:05Z, cut off main at d77b58c5 (the Sprint 16 merge, PR #97, tagged v0.16.0) by the
+              main-tree controller socom-pc-e0 (the owner's ruling of 2026-09-28: one controller seated in C:\Projects\socom_pc,
+              every other session in its own worktree; the Sprint 17 seat "Mission frame drop causes" plans, briefs and
+              reviews from .claude/worktrees/mission-frame-drops-7e50ea and hands each branch to the controller, who
+              alone merges, chains, pushes). Agents work in worktrees on agent/s17-* branches. Sprint 16 CLOSED
+              2026-09-28 01:24Z: see "Sprint 16 -- CLOSED" below, then the Sprint 15 CLOSED block.
+spec:         docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md (four milestones F, Q, A, H in the
+              owner's order; approved by the owner 2026-09-27 ~23:00Z). The Sprint 16, 15, 14, 13, 12 and 11 specs closed
+              with v0.16.0 down to v0.11.0.
+plans:        docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, the rulings R322-R335 from the global counter, the
+              Outcome, the Log newest first -- its entries before 2026-09-29 in docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
+              The Sprint 16 plan (R299-R321, R314 vacant; docs/superpowers/plans/2026-09-27-sprint-16.md) and the Sprint 15
+              plan (R282-R289; R298 the close's window, superseded) with the owner's sitting (R290-R297,
+              docs/superpowers/plans/2026-09-26-owner-sitting.md) are closed, their blocks below; the Sprint 14 plan
+              (R269-R281) too, its block in docs/archive/CURRENT_SPRINT-closed-sprint-14.md (moved 2026-09-28); the
+              Sprint 13 plan's block is in docs/archive/CURRENT_SPRINT-closed-sprint-13.md (moved 2026-09-27); Sprints 12
+              and 11 in docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md; Sprint 10's and older in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 17 "sixty and the way back" -- its spec docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md
-              agreed by the owner 2026-09-27, its plan drafted by its own seat (branch claude/mission-frame-drops-7e50ea),
-              GitHub milestone 7; it opens off main after the v0.16.0 merge. #70, #71, #57, #59 and #94 are its.
+issues:       milestone 7 -- #59, #70, #71, #57 (Milestone R, R330), #32, #41, #28, #42, #91, #94, #26 (named by H1, not
+              taken).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
@@ -36,7 +37,7 @@ rulings:      indexed in docs/RULINGS.md (generated: every ruling with its statu
 baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last green chain: Sprint 17's batch-5 chain `s17_b5` on `1fd3cfdb` (2026-09-30 07:37Z-08:38Z: the Python suite 3939 `OK`, `ps2x_tests` 1159/1158/0, gate PINS MATCH 13, FRAME mean 16.72 worst1s 17.24, SYNCV 23.3/s -- C1's adoption gate; C2, the refusal count, N1 and #116-#118 behind it); before it Sprint 17's batch-4 chain `s17_b4d` on `881c5a18` (2026-09-29 10:03Z-10:55Z: gate 3/3 PINS MATCH, FRAME mean 16.90 worst1s 17.86, SYNCV 23.4/s; the quiet gates on that exe 16.67-16.92 ms, the VBlank cap); before it Sprint 16's batch-3 chain `s16_b3` on `aa030d1a` (2026-09-27 18:57Z-19:56Z: gate 3/3 PINS MATCH, HELDOUT 12/12,
               the player archive); the close gate `s16_b4g` by hand on the batch-4 exe `2430919f…` (2026-09-28 01:00Z-01:16Z: 3/3 PINS MATCH,
               HELDOUT 12/12, FRAME mean 28.82; the chain itself red on HEAD moving under other sessions' commits); the quiet baseline F0's three gates on `4cbbb14f` (median 27.09 ms, spread 7.0 %); before them the Sprint 14
               close chain `s14_close1` on `352fed01` (2026-09-26 15:29Z-16:19Z: gate 3/3 PINS MATCH, HELDOUT 12/12; the
@@ -52,7 +53,7 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 16 — CLOSED 2026-09-28 (the PR to `main` and the tag `v0.16.0` follow the owner's push; the merge hash and the PR number are written here when it lands; the record of the sprint is the block below)
+## Sprint 16 — CLOSED 2026-09-28 (merged to `main` as `v0.16.0` at `d77b58c5`, PR #97, 02:53Z; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-27 07:00Z, closed 2026-09-28 01:24Z: one loop day, every merged branch reviewed by a
 fresh agent. Landed -- **L**: #73 closed (the persona ledger written on a real login against our Horizon box: a per-descriptor RT

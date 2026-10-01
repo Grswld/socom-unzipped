@@ -27,8 +27,8 @@ void register_exit_codes_tests()
                 t.IsTrue(!s.empty() && s.back() == '.', std::string(e.name) + ": ends with a full stop");
                 t.IsTrue(s.find('"') == std::string::npos, std::string(e.name) + ": no double quote (tools_py/exit_codes.py reads the table with a regex)");
             }
-            // Thirteen since Sprint 11 Task 19 added 73, the revision guard's refusal, and 74,
-            // the reboot LoadExecPS2 cannot carry out. (Sprint 13 V8 added 75 for a server name that does not
+            // Thirteen since Sprint 11 Task 19 added 73, the revision guard's refusal, and 74, a LoadExecPS2
+            // this build cannot carry out -- since Sprint 17 Q2 only an ELF other than its own (Sprint 13 V8 added 75 for a server name that does not
             // resolve and review round 1 took it out again: ruling S13-R9 makes that a notice.)
             t.Equals(ExitCodes::kTableSize, 13, "thirteen codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, 73 and 74");
         });
@@ -50,9 +50,10 @@ void register_exit_codes_tests()
             // Sprint 11 Task 19: the generated code and the overlay image name different pressings of the
             // game. Its own code, not 67's: the disc is beside the point, it is the ELF that disagrees.
             t.Equals(ExitCodes::kRevisionMismatch, 73, "the executable and the image are different revisions");
-            // Sprint 11 Task 19: LoadExecPS2 is the game asking to restart itself, a decision it made;
-            // this build cannot re-exec, and 3 ("stopped itself after an internal error") hid that.
-            t.Equals(ExitCodes::kRebootRequested, 74, "the game asked for a reboot this build cannot carry out");
+            // Sprint 11 Task 19: LoadExecPS2 is the game's own decision, and 3 ("stopped itself after an internal
+            // error") hid that. Since Sprint 17 Q2 a LoadExecPS2 of the game's own ELF restarts in-process (the
+            // online logoff reaches the main menu); 74 is left for a foreign ELF and a restart that cannot reload.
+            t.Equals(ExitCodes::kRebootRequested, 74, "the game asked to load an ELF this build cannot run (rom0:OSDSYS, the network GUI); its own ELF restarts in-process since Sprint 17 Q2");
             t.IsNull(ExitCodes::find(64), "64 is not ours");
             t.IsNull(ExitCodes::find(75), "and 75 is not a code: a server that does not resolve is a notice (S13-R9)");
             t.IsNotNull(ExitCodes::find(73), "73 is");

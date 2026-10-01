@@ -1,0 +1,14 @@
+#!/bin/sh
+# The chain guard for a merge commit (Sprint 17 G1): a `git merge` that makes a commit without stopping runs this
+# hook, not pre-commit, so without it a merge in a tree whose logs/.merged_chain.running names a live pid would land
+# under the running chain (the multi-session collisions audit of 2026-09-28: collision 1(c) was a merge). The policy is
+# tools_py/hooks/precommit.py, the same as pre-commit's first step; the leak check is not run here (pre-push and CI
+# re-check every pushed commit). A merge that stops on a conflict is concluded by `git commit`, which runs pre-commit.
+# A fast-forward makes no commit and runs no hook: it is not seen. Installed by scripts/install_hooks.sh
+# (git config core.hooksPath scripts/hooks).
+cd "$(git rev-parse --show-toplevel)" || exit 2
+. scripts/python_env.sh            # $PYTHON, resolved once for every script
+socom_require_python pre-merge-commit
+# a tree whose branch predates the guard (core.hooksPath may name the main tree's hooks) merges unguarded, not refused
+[ -f tools_py/hooks/precommit.py ] || exit 0
+exec "$PYTHON" -m tools_py.hooks.precommit

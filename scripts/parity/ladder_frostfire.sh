@@ -37,7 +37,8 @@
 #
 # Instruments: scripts/parity/online_match_frostfire.sh's (MoveScale + NetIdle at EVERY=10; the actor block, +0x420,
 # +0x174, the +0xF7A alive byte (inside the +0xF78 peek), +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks
-# 0x4365c0 and 0x408f10) plus PS2X_GS_STATS=1 for rung 0's back-pressure waits (A4).
+# 0x4365c0 and 0x408f10) plus PS2X_GS_STATS=1 for rung 0's back-pressure waits (A4) and PS2X_VU_STATS=1 for the
+# game's own frame rate (Sprint 17 F0).
 #
 # Knobs (environment): ROUTE (default: the SNAPSHOT's tools_py/parity/routes/frostfire_v2.json; the live tree's for an
 # unpinned --dry-run), ROUNDS (4), MOVER (A), --auto-swap always (R66: a SWAP-MOVER continues with the other mover),
@@ -167,9 +168,10 @@ else
   PY=("$PYTHON" -m tools_py.parity.online_match_ours)
 fi
 
-# Instruments come from scripts/parity/env.sh (sourced above); these two are this script's own.
+# Instruments come from scripts/parity/env.sh (sourced above); these three are this script's own.
 export PS2X_SOCOM2_RSA_KEY_B=b
 export PS2X_GS_STATS=1       # rung 0's back-pressure waits (A4)
+export PS2X_VU_STATS=1       # the game's own frame rate, [vu1-stats] syncv/s (Sprint 17 F0)
 
 ARGS=(--existing-b --hold 30 --until-kill --map frostfire --route "$ROUTE" --rounds "$ROUNDS" --mover "$MOVER"
       --auto-swap --fight-seconds 150 --kill-timeout 470 --out "$OUT" --seconds "$SECONDS_RUN")

@@ -25,16 +25,14 @@ gameplay-state-probe | R265 | Held to R265's bar: declined as a gate leg (the la
 render-believed-rows | R265 | Held to R265's bar: three gates and three ladder runs on the renamed tree without a sighting of the transition strip or the intro-cinematic freeze retire both rows to KNOWN section 3. | audit D14; carry C115; KNOWN section 2
 invocation-stack-pool | no issue | A counter of distinct keys; if the number is small and flat, the warning line is the whole fix. | audit D14; carry C103; the Sprint 10 Q7 plan section 3
 display-env-darker | no issue | A Sprint 6 A/B of the display environment, PMODE and zbp against a console image (ROADMAP calls it dropped; KNOWN section 2 keeps it as the settling experiment). | audit D14; carry C109; research/26
-gs-local-host-readback | no issue | No closing bar written; the `socom2_LumReadPixel` stub (a constant grey exposure) goes when the GS local-to-host readback exists. | audit D14; carry C108; research/20
 research25-outstanding | no issue | No closing bar written: gate and fixture coverage of the fixed paths, section 8.2's three clip-header byte differences, and the console's `+0x2c` on a live turn. | audit D14; carry C110; research/25
-q7-render-performance | no issue | Decode microseconds per texture before and after the re-hash is folded into the decode, then the gate's title stage and a movie (and a readback PBO ring). | audit D14 (its source range); carry C102; the Sprint 10 Q7 plan section 3
 r207-path-knobs | R207 | Settled 2026-09-25 (Sprint 13 R2): outside developer mode a Path knob's value must lie under the game folder (`knobs.cpp`) and `PS2X_MC_DIR_SLOT1` is a Dev knob, so R207's "not in this pass" and Q2's row no longer disagree with the tree. | audit D14 (its source range); carry C105; KNOWN section 2 (c)
 research20-hygiene | no issue | No closing bar written: `strcmp`/`strncmp` return the byte difference, and the `sceSifSendCmd` argument ABI. | audit D14 (its source range); carry C111; research/20
 lto-os-release | no issue | Two candidates, cheapest first, each with a cap of T_compile + 1800 seconds (the release-build plan's Step 8). | audit D15; carry C107; KNOWN section 2
 release-size-number | no issue | No closing bar written; the owner was promised the megabytes that compiling out the dump and trace families and imgui would save. | audit D15; carry C106; PLAYTEST's decisions
 
 # G. Audio and voice
-audio-level-residuals | no issue | No closing bar written: the mission bed 7-12 dB under the console, the title ring -4 to -6.5 dB, and the movie audio about 18 dB low at the source. | audit G2; carry C62; docs/HAZARDS.md audio
+audio-level-residuals | no issue | No closing bar written: the title ring -4 to -6.5 dB and the movie audio about 18 dB low at the source (the mission bed 7-12 dB under became issue #91 on 2026-09-27). | audit G2; carry C62; docs/HAZARDS.md audio
 cue4-held-silent | no issue | No closing bar written; why the console holds cue 4 in state 1 for 120 s or more with its audio silent is unexplained (a PCSX2 poll). | audit G2; carry C63
 emitters-at-volume-zero | no issue | No closing bar written; whether the console also gives five positioned emitters volume 0 from the EE's attenuation is unmeasured. | audit G2; carry C64
 concurrency-cap | R172 | Declined until Q1's instrument (built 2026-09-20) is read against it; the play call's `flags` word is still dropped in `ps2_audio.cpp`. | audit G2; carry C65

@@ -142,19 +142,18 @@ and `server/start-servers.ps1` will not start until you give it this machine's a
 
 **GAME VERSION** is the same row as on the PLAY page (§7).
 
-**PERSONAS** lists every persona your memory cards have logged in with through this build, newest first: its name,
-the server it was made on and when it last played. Pick one, press **LAUNCH**, then pick the same persona in the
-game's own list. The last row, **NEW PERSONA**, is for one you have not made yet: *"the game asks for a name on its
-own keyboard"*, keeps it on the memory card, and it joins the list after its first login. The cards live in
-`cards/<profile>/` (`cards/player/` unless you name another `profile` in `config.json` by hand).
+**PERSONAS** lists every persona on your memory cards, as the game itself keeps them: its name, the server it was
+made on and, once it has logged in through this launcher, when it last played. Pick one and press **LAUNCH**: the
+launcher puts that persona first on the card, which is the one the game's login form arrives with. The last row,
+**NEW PERSONA**, is the creator: type a **NAME** (up to 14 characters) and a **PASSWORD** (up to 12) and press
+**CREATE ON CARD** -- the persona is written to the card exactly as the game writes one, with SAVE PASSWORD on, and
+appears in the list. The cards live in `cards/<profile>/` (`cards/player/` unless you name another `profile` in
+`config.json` by hand); a card that does not exist yet is created.
 
-Beside the selected row sits a masked **PASSWORD** field, shown only while the card does not hold that persona's
-password: for NEW PERSONA, for a persona made on another server, and for one whose card has no password saved. A
-password typed there opens the game's password keyboard already typed, and it is kept in plain text in `config.json`
-beside the exe, only until the game remembers it. Every login that goes through writes a record beside the card
-(`cards/<profile>.personas.json`: the name, the server, when, and whether the card holds the password -- never the
-password itself); once a login goes through with nothing typed, the card holds the password, the launcher empties
-that key and the field goes. Until then, hand `config.json` to nobody.
+A persona made on another server shows a masked **PASSWORD** field beside it: the game keeps personas per server, so
+your first login there is a create-persona login, and a password typed there opens the game's password keyboard
+already typed. That typed password is kept in plain text in `config.json` beside the exe until the card holds it;
+until then, hand `config.json` to nobody. The card itself holds each persona's password the way the game saves it.
 
 Two things to expect on your first round:
 
@@ -172,8 +171,8 @@ Everything is inside the game's folder, beside the executables:
 |---|---|
 | `cards/<profile>/` | Your simulated memory card — every in-game save. A second instance uses `cards/<profile>_b/`. |
 | `logs/run_<stamp>.log` | One log per run of the game. The newest is the one to send with a report. |
-| `config.json` | Every launcher setting: the ISO path, video, pad, server, profile — and a password typed on the ONLINE page, in plain text, until the card holds it. |
-| `cards/<profile>.personas.json` | The PERSONAS list's record, beside the card, written on each login that goes through: name, server, when, and whether the card holds the password (never the password). |
+| `config.json` | Every launcher setting: the ISO path, video, pad, server, profile — and a password typed on the ONLINE page for a persona made on another server, in plain text, until the card holds it. |
+| `cards/<profile>.personas.json` | When each persona last logged in through this launcher, beside the card; the personas themselves are on the card. |
 | `diagnostics/` | The zips SAVE DIAGNOSTICS writes (created when you first press it). |
 
 The launcher's **ABOUT** page shows the real paths for the first two, with an **OPEN LOGS** button, and repeats the

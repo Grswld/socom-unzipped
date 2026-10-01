@@ -66,20 +66,6 @@ commit-author    "<git metadata>"  "dependabot[bot] <49699333+dependabot[bot]@us
 *  tools_py/release/leakrules.py         # the rules spell out the shapes they recognise, in comments and names
 *  tools_py/release/leak_allow.txt       # this file names what it allows (a literal here is never a real secret)
 key-file-name  .gitignore                # the patterns that refuse key files are spelled like key files
-# -- web sprint 3's server deploy (33649f95) names its settings file `deploy/.env` -- the name only: no value is in
-#    the tree (the file is excluded from the rsync, the image and git). Reviewed 2026-09-29, 19 history hits.
-key-file-name  web/deploy/deploy.sh               .env   # copies, chmods and greps the host's deploy/.env by name
-key-file-name  web/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages
-key-file-name  web/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
-key-file-name  web/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
-key-file-name  web/deploy/env.example             .env   # the template's header: copy it to .env, never commit that
-# the same five files since 2026-09-29 under web/redotcom/ (the web/ split: redotcom, landing, shared); the rows above
-# stay for the history leg, which scans the old commits at the old paths
-key-file-name  web/redotcom/deploy/deploy.sh               .env   # copies, chmods and greps the host's deploy/.env by name
-key-file-name  web/redotcom/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages
-key-file-name  web/redotcom/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
-key-file-name  web/redotcom/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
-key-file-name  web/redotcom/deploy/env.example             .env   # the template's header: copy it to .env, never commit that
 secret-assignment  docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md  persona   # a ternary's string literals, quoted from code
 secret-assignment  docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md  persona   # the same file at its pre-2026-09-25 path, for the history leg (moved by Sprint 13 R1)
 secret-assignment  .gitleaks.toml  0x1122334455667788   # gitleaks's allowance for the same fixed test token, spelled out
@@ -129,3 +115,17 @@ private-ip         *story/timeline.json                         # the landing bu
 secret-assignment  *assets/index-*.js  'credentials="include'   # Vite's modulepreload polyfill sets fetch's credentials mode; not a credential
 postcode           *assets/index-*.js  RG16UI                   # three.js's WebGL texture format names (R16UI, RG16UI) in the minified bundle, not postcodes
 postcode           *assets/index-*.js  R16UI                    # same
+
+# -- web sprint 3's server deploy (33649f95, the cloud branch web-sprint-3-multiplayer) names its settings file
+#    `deploy/.env` -- the name only: no value is in the tree (the file is excluded from the rsync, the image and
+#    git). Each of the 19 history hits read by the web session and the controller, 2026-09-29.
+key-file-name  web/deploy/deploy.sh               .env   # copies, chmods and greps the host's deploy/.env by name
+key-file-name  web/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages
+key-file-name  web/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it
+key-file-name  web/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image
+key-file-name  web/deploy/env.example             .env   # the template's header: copy it to .env, never commit that (39e4d689; placeholders only)
+key-file-name  web/redotcom/deploy/deploy.sh               .env   # copies, chmods, greps and moves the host's settings file by name (moved from web/deploy/, 2026-09-29)
+key-file-name  web/redotcom/deploy/compose.yaml            .env   # `env_file: .env` and the `set X in .env` messages (moved from web/deploy/)
+key-file-name  web/redotcom/deploy/README.md               .env   # the owner's steps: `cp env.example .env`, never commit it (moved from web/deploy/)
+key-file-name  web/redotcom/deploy/Dockerfile.dockerignore .env   # the ignore patterns that keep .env out of the image (moved from web/deploy/)
+key-file-name  web/redotcom/deploy/env.example             .env   # the template's header: copy it to .env, never commit that (moved from web/deploy/)

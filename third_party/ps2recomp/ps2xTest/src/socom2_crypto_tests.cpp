@@ -25,6 +25,9 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -36,7 +39,9 @@ namespace
 
     struct Guest
     {
-        std::vector<uint8_t> rdram = std::vector<uint8_t>(PS2_RAM_SIZE, 0u);
+        // Guest RAM plus a watched margin past its end (the span bounds' cases fill it and check it).
+        static constexpr uint32_t kMargin = 0x1000u;
+        std::vector<uint8_t> rdram = std::vector<uint8_t>(PS2_RAM_SIZE + kMargin, 0u);
         R5900Context ctx{};
 
         void call(Handler fn, uint32_t a0, uint32_t a1, uint32_t a2 = 0u, uint32_t a3 = 0u)
@@ -252,6 +257,85 @@ void register_socom2_crypto_tests()
             t.Equals(g.ctx.pc, kRa, "pc = $ra");
             t.IsTrue(std::memcmp(g.rdram.data() + kNAddr, kSocom2RsaN, sizeof(kSocom2RsaN)) == 0, "N = key A's (PS2X_SOCOM2_RSA_KEY unset)");
             t.IsTrue(std::memcmp(g.rdram.data() + kDAddr, kSocom2RsaD, sizeof(kSocom2RsaD)) == 0, "D = key A's");
+        });
+    });
+
+    // The RC4 and SHA-1 hooks work on guest RAM in place, over a length the caller's register gives. A span that does not
+    // lie inside guest RAM is refused: nothing is read, nothing written, one log line.
+    MiniTest::Case("SOCOM2CryptoBounds", [](TestCase &tc)
+    {
+        auto fillMargin = [](Guest &g) { std::memset(g.rdram.data() + PS2_RAM_SIZE, 0xA5, Guest::kMargin); };
+        auto marginUntouched = [](const Guest &g)
+        {
+            for (uint32_t i = 0; i < Guest::kMargin; ++i)
+                if (g.rdram[PS2_RAM_SIZE + i] != 0xA5)
+                    return false;
+            return true;
+        };
+        auto capture = [](const std::function<void()> &body)
+        {
+            std::ostringstream sink;
+            std::streambuf *old = std::cout.rdbuf(sink.rdbuf());
+            body();
+            std::cout.rdbuf(old);
+            return sink.str();
+        };
+
+        tc.Run("RC4 refuses a span past the end of guest RAM", [=](TestCase &t)
+        {
+            const Handler fns[] = {socom2_crypto::rc4EncryptFn, socom2_crypto::rc4DecryptFn};
+            for (Handler fn : fns)
+            {
+                Guest g;
+                keyUp(g, true);
+                fillMargin(g);
+                const std::vector<uint8_t> state = g.get(kState, 0x10c);
+                const uint32_t before = socom2_crypto::spansRefused();
+                const std::string out = capture([&] { g.call(fn, kState, PS2_RAM_SIZE - 0x10u, 0x40u); });
+                t.IsTrue(marginUntouched(g), "nothing is written past the end of guest RAM");
+                t.IsTrue(g.get(PS2_RAM_SIZE - 0x10u, 0x10) == std::vector<uint8_t>(0x10, 0u), "the bytes inside RAM are untouched too");
+                t.IsTrue(g.get(kState, 0x10c) == state, "the cipher state does not advance");
+                t.Equals(g.ctx.pc, kRa, "pc = $ra");
+                t.Equals(socom2_crypto::spansRefused(), before + 1u, "the refusal is counted");
+                t.IsTrue(out.find("bounded") != std::string::npos && out.find("64") != std::string::npos,
+                         "one line names the hook and the length: " + out);
+            }
+        });
+
+        tc.Run("SHA-1 refuses a span past the end of guest RAM", [=](TestCase &t)
+        {
+            Guest g;
+            fillMargin(g);
+            constexpr uint32_t kOut = 0x00001000u;
+            std::memset(g.rdram.data() + kOut, 0xCC, 32);
+            const std::string out = capture([&] { g.call(socom2_crypto::sha1Hash, PS2_RAM_SIZE - 0x10u, 0x40u, kOut, 4u); });
+            t.IsTrue(g.get(kOut, 4) == std::vector<uint8_t>(4, 0xCC), "no digest is written");
+            t.Equals(g.ctx.pc, kRa, "pc = $ra");
+            t.IsTrue(out.find("sha1Hash bounded") != std::string::npos && out.find("64") != std::string::npos,
+                     "one line names the hook and the length: " + out);
+            Guest h;
+            fillMargin(h);
+            capture([&] { h.call(socom2_crypto::sha1Hash, 0x00100000u, 4u, PS2_RAM_SIZE - 2u, 20u); });
+            t.IsTrue(marginUntouched(h), "a digest that would land past the end of guest RAM is not written");
+        });
+
+        tc.Run("RC4 and SHA-1 on a span that ends exactly at the end of guest RAM still run", [=](TestCase &t)
+        {
+            Guest g;
+            keyUp(g, true);
+            fillMargin(g);
+            const uint32_t at = PS2_RAM_SIZE - 32u;
+            g.put(at, kPlain.data(), kPlain.size());
+            const uint32_t before = socom2_crypto::spansRefused();
+            g.call(socom2_crypto::rc4EncryptFn, kState, at, 32u);
+            t.IsTrue(g.get(at, 32) == fromHex(kCipherHash), "the same ciphertext as anywhere else in RAM");
+            t.IsTrue(marginUntouched(g), "and nothing past the end");
+            Guest h;
+            const std::string abc = "abc";
+            h.put(PS2_RAM_SIZE - 3u, abc.data(), 3);
+            h.call(socom2_crypto::sha1Hash, PS2_RAM_SIZE - 3u, 3u, 0x00001000u, 20u);
+            t.IsTrue(h.get(0x00001000u, 20) == fromHex("a9993e364706816aba3e25717850c26c9cd0d89d"), "SHA-1 of abc at the top of RAM");
+            t.Equals(socom2_crypto::spansRefused(), before, "nothing refused");
         });
     });
 }

@@ -408,7 +408,20 @@ namespace snd989
             // the chunk-pair grid: the producer reads whole chunks, so a repeat resumes at the chunk that
             // carried the mark (its first block for mono, its left chunk for stereo).
             uint32_t loopStart = 0;
+            // Issue #94: snd_PlayVAGStreamByLoc flag 4, the IRX's 0x400 "loop the file". Where the data ends --
+            // its end block, or no whole block left -- the IRX's FUN_0001446c re-arms the stream at the top of the
+            // data (bytes_remaining = bytes_total, the read offset back to the first data sector) instead of
+            // deactivating the handler, so the stream never ends by itself. Written once by playStream.
+            bool loopFile = false;
             std::vector<int16_t> s1, s2;             // per channel ADPCM history
+
+            // Issue #94: back to the top of the data. The ADPCM history carries over: the IRX splices the top of
+            // the file into the same SPU buffer behind the last block, clearing that block's end flag, and never
+            // re-keys the voice (989SND.IRX around decomp line 12069-12132), so the decoder runs straight on.
+            void rewindToTop()
+            {
+                consumed = 0;
+            }
 
             // --- shared ---
             uint32_t rate = 32000;                   // written once by playStream, read-only after
@@ -447,6 +460,15 @@ namespace snd989
             {
                 if (ended.load(std::memory_order_relaxed) || !file)
                     return false;
+                if (loopFile && consumed != 0u)
+                {
+                    // Issue #94: no whole block left for a channel is the end of the data; a looping file goes
+                    // back to the top instead of ending (below, perChannel < 16 would end it).
+                    const uint32_t left = dataSize > consumed ? dataSize - consumed : 0u;
+                    const uint32_t leftPerChannel = channels > 1 ? (left / channels) & ~15u : left;
+                    if (leftPerChannel < 16u)
+                        rewindToTop();
+                }
                 const uint32_t chunkPairStart = consumed;
                 const uint32_t remaining = dataSize > consumed ? dataSize - consumed : 0u;
                 // research/36 item 10: `interleave` is the per-channel stride (a two-channel file: header word 3 /
@@ -459,6 +481,7 @@ namespace snd989
                 std::vector<uint8_t> raw(std::max<size_t>(perChannel, 16u));
                 bool any = false;
                 bool repeat = false;              // R171: this chunk pair ended a run that says it repeats
+                bool wrapToTop = false;           // issue #94: it ended the data of a file played looping
                 for (uint32_t ch = 0; ch < channels; ++ch)
                 {
                     std::vector<int16_t> &pcmCh = out[ch];
@@ -519,6 +542,8 @@ namespace snd989
                             // a bank sample). Only a run that does NOT repeat is the end of the stream.
                             if (block[1] & 0x02)
                                 repeat = true;
+                            else if (loopFile)
+                                wrapToTop = true;         // issue #94: the IRX's 0x400 branch, not the end
                             else
                                 ended.store(true, std::memory_order_release);
                             break;
@@ -530,6 +555,8 @@ namespace snd989
                 consumed = chunkPairStart + static_cast<uint32_t>(static_cast<size_t>(channels) * perChannel);
                 if (repeat && !ended.load(std::memory_order_relaxed))
                     consumed = loopStart;   // R171: back to the mark (0 = the top of the data) and keep playing
+                else if (wrapToTop && !ended.load(std::memory_order_relaxed))
+                    rewindToTop();          // issue #94: the whole file again, as FUN_0001446c re-arms it
                 return any;
             }
         };
@@ -2179,7 +2206,7 @@ namespace snd989
 namespace snd989
 {
     bool Mixer::playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group,
-                           bool queueBehind)
+                           bool queueBehind, bool loopFile)
     {
         (void)queueBehind;   // Sprint 9 Goal 10 (R169): honoured below once its RED test is watched failing
         FILE *fp = std::fopen(path.c_str(), "rb");
@@ -2237,6 +2264,9 @@ namespace snd989
         // closing it -- the refusal's fclose and then ~Stream's, a double free (ASan, Linux, 2026-09-18).
         st.file = fp;
         st.group = group;
+        // Issue #94: before the pre-fill below, the first decode of the file. A file under one chunk per channel
+        // plays once instead: looped, each pump yields a sliver and the ring starves (an underrun every render).
+        st.loopFile = loopFile && st.dataSize >= st.interleave * st.channels;
         st.step = static_cast<double>(st.rate) / static_cast<double>(kSampleRate);
         st.s1.assign(st.channels, 0);
         st.s2.assign(st.channels, 0);

@@ -604,3 +604,11 @@ target_link_libraries(vu1_replay PRIVATE ps2_runtime)
 if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
     target_compile_options(vu1_replay PRIVATE -msse4.1)
 endif()
+
+# Sprint 17 F: the draw-path bench -- a PS2X_GS_RECORD recording replayed through the GL backend on a hidden
+# window, the [gs-submit] split per 60 presents (src/tools/gs_replay_bench.cpp); no generated code needed.
+add_executable(gs_replay_bench src/tools/gs_replay_bench.cpp)
+target_link_libraries(gs_replay_bench PRIVATE ps2_runtime)
+if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
+    target_compile_options(gs_replay_bench PRIVATE -msse4.1)
+endif()

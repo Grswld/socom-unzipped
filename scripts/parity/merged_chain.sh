@@ -33,7 +33,10 @@
 # its author.
 #
 # Records: logs/<this script's name>.done -- "done 0 all-green", "done <rc> <step>" or "done 2 refused-<why>";
-# logs/merged_chain.last_green -- the commit a green chain proved.
+# logs/merged_chain.last_green -- the commit a green chain proved; logs/.merged_chain.running -- present exactly while
+# the steps run (written after the tree and HEAD0 are fixed, removed by an EXIT trap; never on a refusal or a dry
+# run): the hooks refuse a commit, and an Edit/Write of a tracked file, in this tree while it names a live pid
+# (Sprint 17 G1; tools_py/hooks/chainmark.py).
 #
 # Environment: MERGED_CHAIN_DRY_RUN=1 prints the steps and runs none, checks no lock, writes nothing, and exits 3 --
 # never 0, so a leaked switch can never make a chain green. For tools_py/tests/test_merged_chain.py:
@@ -146,6 +149,19 @@ if [ -n "$before" ]; then
   refuse dirty-tree "modified tracked files -- the chain proves a commit, and it stashes nothing:"$'\n'"$before"
 fi
 HEAD0="$(git rev-parse HEAD)"
+# The chain's tree is pinned while it runs (Sprint 17 G1): the hooks read this marker -- no commit here
+# (tools_py/hooks/precommit.py), no Edit/Write of a tracked file here (tools_py/hooks/pretool.py); the format and the
+# liveness test are tools_py/hooks/chainmark.py's. The EXIT trap removes it on every exit a trap sees (a red, a green,
+# TERM/HUP/INT); a hard kill leaves it naming a dead pid, which the hooks judge not running.
+RUNNING="$ROOT/logs/.merged_chain.running"
+if [ -z "$DRY" ]; then
+  pid=""
+  { [ -r "/proc/$$/winpid" ] && IFS= read -r pid < "/proc/$$/winpid"; } 2>/dev/null   # Git Bash: the Windows pid
+  [ -n "$pid" ] || pid=$$
+  trap 'rm -f "$RUNNING" "$RUNNING.tmp"' EXIT
+  printf 'pid=%s\nstart=%s\nhead=%s\nstamp=%s\nroot=%s\nheld=%s\n' "$pid" "$(date +%s)" "$HEAD0" "$STAMP" "$ROOT" \
+    "$LOOP_LOCK_HELD" > "$RUNNING.tmp" && mv -f "$RUNNING.tmp" "$RUNNING"
+fi
 echo "=== merged chain $NAME: $(git log --oneline -1) on $(git rev-parse --abbrev-ref HEAD), stamp $STAMP, $(date -u +%FT%TZ)"
 echo "git status before: clean (tracked files); lock: ${LOOP_LOCK_HELD:-<dry run>}; exe: $EXE"
 echo "last green chain: $(cat "$LAST_GREEN" 2>/dev/null || echo "none recorded")"

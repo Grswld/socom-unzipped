@@ -1478,6 +1478,9 @@ namespace Server.Medius
                             if (!data.ClientObject.IsLoggedIn)
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {createClanRequest} without a being logged in.");
 
+                            // LOCAL (socom_pc): the clan name is clamped like chat (MediusText)
+                            createClanRequest.ClanName = MediusText.ClanName(createClanRequest.ClanName);
+
                             // validate name
                             if (!Program.PassTextFilter(data.ApplicationId, Config.TextFilterContext.CLAN_NAME, createClanRequest.ClanName))
                             {
@@ -1642,9 +1645,9 @@ namespace Server.Medius
                                                 StatusCode = MediusCallbackStatus.MediusSuccess,
                                                 ClanID = r.Result.ClanId,
                                                 ApplicationID = r.Result.AppId,
-                                                ClanName = r.Result.ClanName,
+                                                ClanName = MediusText.ClanName(r.Result.ClanName),
                                                 LeaderAccountID = r.Result.ClanLeaderAccount.AccountId,
-                                                LeaderAccountName = r.Result.ClanLeaderAccount.AccountName,
+                                                LeaderAccountName = MediusText.AccountName(r.Result.ClanLeaderAccount.AccountName),
                                                 Stats = Convert.FromBase64String(r.Result.ClanMediusStats),
                                                 Status = r.Result.IsDisbanded ? MediusClanStatus.ClanDisbanded : MediusClanStatus.ClanActive,
                                                 EndOfList = true
@@ -1691,7 +1694,7 @@ namespace Server.Medius
                                             MessageID = getClanMemberList_ExtraInfoRequest.MessageID,
                                             StatusCode = MediusCallbackStatus.MediusSuccess,
                                             AccountID = x.AccountId,
-                                            AccountName = x.AccountName,
+                                            AccountName = MediusText.AccountName(x.AccountName),
                                             LadderPosition = 1,
                                             LadderStat = getClanMemberList_ExtraInfoRequest.LadderStatIndex,
                                             OnlineState = new MediusPlayerOnlineState()
@@ -1792,9 +1795,9 @@ namespace Server.Medius
                                         MessageID = getClanByIdRequest.MessageID,
                                         StatusCode = MediusCallbackStatus.MediusSuccess,
                                         ApplicationID = r.Result.AppId,
-                                        ClanName = r.Result.ClanName,
+                                        ClanName = MediusText.ClanName(r.Result.ClanName),
                                         LeaderAccountID = r.Result.ClanLeaderAccount.AccountId,
-                                        LeaderAccountName = r.Result.ClanLeaderAccount.AccountName,
+                                        LeaderAccountName = MediusText.AccountName(r.Result.ClanLeaderAccount.AccountName),
                                         Stats = Convert.FromBase64String(r.Result.ClanMediusStats),
                                         Status = r.Result.IsDisbanded ? MediusClanStatus.ClanDisbanded : MediusClanStatus.ClanActive
                                     });
@@ -1831,7 +1834,7 @@ namespace Server.Medius
                                         StatusCode = MediusCallbackStatus.MediusSuccess,
                                         ClanID = r.Result.ClanId,
                                         LeaderAccountID = r.Result.ClanLeaderAccount.AccountId,
-                                        LeaderAccountName = r.Result.ClanLeaderAccount.AccountName,
+                                        LeaderAccountName = MediusText.AccountName(r.Result.ClanLeaderAccount.AccountName),
                                         Stats = Convert.FromBase64String(r.Result.ClanMediusStats),
                                         Status = r.Result.IsDisbanded ? MediusClanStatus.ClanDisbanded : MediusClanStatus.ClanActive
                                     });
@@ -2101,7 +2104,7 @@ namespace Server.Medius
                                         {
                                             MessageID = getMyClanMessagesRequest.MessageID,
                                             StatusCode = MediusCallbackStatus.MediusSuccess,
-                                            Message = x.Message,
+                                            Message = MediusText.ClanMessage(x.Message),
                                             ClanID = data.ClientObject.ClanId.Value
                                         }))
                                         ;
@@ -2150,7 +2153,7 @@ namespace Server.Medius
                                             MessageID = getAllClanMessagesRequest.MessageID,
                                             StatusCode = MediusCallbackStatus.MediusSuccess,
                                             ClanMessageID = x.Id,
-                                            Message = x.Message,
+                                            Message = MediusText.ClanMessage(x.Message),
                                             Status = MediusClanMessageStatus.ClanMessageRead
                                         }))
                                         ;
@@ -2188,6 +2191,9 @@ namespace Server.Medius
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {sendClanMessageRequest} without having a clan.");
 
                             // validate message
+                            // LOCAL (socom_pc): the clan message is clamped like chat (MediusText)
+                            sendClanMessageRequest.Message = MediusText.ClanMessage(sendClanMessageRequest.Message);
+
                             if (!Program.PassTextFilter(data.ApplicationId, Config.TextFilterContext.CLAN_MESSAGE, sendClanMessageRequest.Message))
                             {
                                 data.ClientObject.Queue(new MediusSendClanMessageResponse()
@@ -2239,6 +2245,9 @@ namespace Server.Medius
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {modifyClanMessageRequest} without having a clan.");
 
                             // validate message
+                            // LOCAL (socom_pc): the clan message is clamped like chat (MediusText)
+                            modifyClanMessageRequest.NewMessage = MediusText.ClanMessage(modifyClanMessageRequest.NewMessage);
+
                             if (!Program.PassTextFilter(data.ApplicationId, Config.TextFilterContext.CLAN_MESSAGE, modifyClanMessageRequest.NewMessage))
                             {
                                 data.ClientObject.Queue(new MediusModifyClanMessageResponse()
@@ -2769,6 +2778,9 @@ namespace Server.Medius
                             if (!data.ClientObject.IsLoggedIn)
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {createGameRequest} without a being logged in.");
 
+                            // LOCAL (socom_pc): the game name is clamped like chat (MediusText)
+                            createGameRequest.GameName = MediusText.GameName(createGameRequest.GameName);
+
                             // validate name
                             if (!Program.PassTextFilter(data.ApplicationId, Config.TextFilterContext.GAME_NAME, createGameRequest.GameName))
                             {
@@ -2796,6 +2808,9 @@ namespace Server.Medius
                             // ERROR -- Need to be logged in
                             if (!data.ClientObject.IsLoggedIn)
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {createGameRequest1} without a being logged in.");
+
+                            // LOCAL (socom_pc): the game name is clamped like chat (MediusText)
+                            createGameRequest1.GameName = MediusText.GameName(createGameRequest1.GameName);
 
                             // validate name
                             if (!Program.PassTextFilter(data.ApplicationId, Config.TextFilterContext.GAME_NAME, createGameRequest1.GameName))
@@ -2874,7 +2889,7 @@ namespace Server.Medius
                                 await Program.Plugins.OnEvent(PluginEvent.MEDIUS_PLAYER_ON_WORLD_REPORT0, new OnWorldReport0Args() { Request = worldReport0 });
                             }
 
-                            data.ClientObject.CurrentGame?.OnWorldReport(worldReport0);
+                            data.ClientObject.CurrentGame?.OnWorldReport(worldReport0, data.ClientObject);
 
 
                             break;
@@ -2891,7 +2906,7 @@ namespace Server.Medius
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {worldReport} without a being logged in.");
 
                             if (data.ClientObject.CurrentGame != null)
-                                await data.ClientObject.CurrentGame.OnWorldReport(worldReport);
+                                await data.ClientObject.CurrentGame.OnWorldReport(worldReport, data.ClientObject);
 
                             break;
                         }
@@ -3083,6 +3098,9 @@ namespace Server.Medius
                             // ERROR -- Need to be logged in
                             if (!data.ClientObject.IsLoggedIn)
                                 throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {createChannelRequest} without a being logged in.");
+
+                            // LOCAL (socom_pc): the lobby name is clamped like chat (MediusText)
+                            createChannelRequest.LobbyName = MediusText.LobbyName(createChannelRequest.LobbyName);
 
                             // Check for channel with same name
                             var existingChannel = Program.Manager.GetChannelByChannelName(createChannelRequest.LobbyName, createChannelRequest.ApplicationID);

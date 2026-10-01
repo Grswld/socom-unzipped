@@ -11,8 +11,10 @@
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
+#include "runtime/socom2_net_bounds.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -347,8 +349,36 @@ namespace socom2_crypto
         ctx->pc = GPR_U32(ctx, 31);
     }
 
+    namespace
+    {
+        // The hooks below work on guest RAM in place over a length the caller's register gives: every span they touch
+        // lies inside guest RAM, or the call is refused -- nothing read, nothing written, one log line.
+        std::atomic<uint32_t> g_spansRefused{0};
+        constexpr uint32_t kRc4StateBytes = 0x0c + 256;   // three words, then S[256]
+
+        bool spansFit(const char *hook, uint32_t a, uint32_t aLen, uint32_t b, uint32_t bLen, uint32_t len)
+        {
+            if (socom2_net_bounds::ramSpanFits(a, aLen) && socom2_net_bounds::ramSpanFits(b, bLen))
+                return true;
+            if (socom2_net_bounds::countRefusal(g_spansRefused))
+                std::cout << "[socom2] " << hook << " bounded: length " << len << " refused (past the end of guest RAM; "
+                          << g_spansRefused.load() << " refused so far)" << std::endl;
+            return false;
+        }
+    }
+
+    uint32_t spansRefused()
+    {
+        return g_spansRefused.load();
+    }
+
     void rc4EncryptFn(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)     // FUN_0062a720(state, data, len)
     {
+        if (!spansFit("rc4Encrypt", GPR_U32(ctx, 4), kRc4StateBytes, GPR_U32(ctx, 5), GPR_U32(ctx, 6), GPR_U32(ctx, 6)))
+        {
+            ctx->pc = GPR_U32(ctx, 31);
+            return;
+        }
         const uint32_t stateAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
         Rc4 st{rdram + stateAddr};
         uint8_t *data = rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK);
@@ -362,6 +392,11 @@ namespace socom2_crypto
 
     void rc4DecryptFn(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)     // FUN_0062a7c8(state, data, len)
     {
+        if (!spansFit("rc4Decrypt", GPR_U32(ctx, 4), kRc4StateBytes, GPR_U32(ctx, 5), GPR_U32(ctx, 6), GPR_U32(ctx, 6)))
+        {
+            ctx->pc = GPR_U32(ctx, 31);
+            return;
+        }
         const uint32_t stateAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
         Rc4 st{rdram + stateAddr};
         uint8_t *data = rdram + (GPR_U32(ctx, 5) & PS2_RAM_MASK);
@@ -381,6 +416,11 @@ namespace socom2_crypto
         const uint32_t len = GPR_U32(ctx, 5);
         const uint32_t out = GPR_U32(ctx, 6);
         const uint32_t outLen = GPR_U32(ctx, 7);
+        if (!spansFit("sha1Hash", data, len, out, outLen > 20u ? 20u : outLen, len))
+        {
+            ctx->pc = GPR_U32(ctx, 31);
+            return;
+        }
         uint8_t digest[20];
         sha1(rdram + (data & PS2_RAM_MASK), len, digest);
         std::memcpy(rdram + (out & PS2_RAM_MASK), digest, outLen > 20u ? 20u : outLen);

@@ -80,6 +80,7 @@
     X("PS2X_GS_BACKEND", Dev, Text, "gpu", "cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65).") \
     X("PS2X_GS_DEPTH_LEGACY", Dev, Int, "0", "1 forces the legacy depth mapping instead of clip control.") \
     X("PS2X_GS_DISABLE_EARLY_DEPTH", Dev, Presence, "", "CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B).") \
+    X("PS2X_GS_DOUBLE_SWIZZLE", Dev, Flag, "1", "1 (default): tiles swizzled again into the shadow; 0: S17 F1 attempt 3's one swizzle, which froze the intro.") \
     X("PS2X_GS_DUMP_DISPLAY", Dev, Spec, "", "<dir>:<t0>:<t1>: every ~2 s write the displayed buffer three ways (gpu, shadow, cpu).") \
     X("PS2X_GS_DUMP_TEX", Dev, Path, "", "Directory: write every decoded texture as PPM + PGM, and the CLUT diagnostic.") \
     X("PS2X_GS_DUMP_TEX_EVERY", Dev, Int, "1", "With GS_DUMP_TEX: keep one decode in n.") \
@@ -95,12 +96,14 @@
     X("PS2X_GS_NO_ZTEST", Dev, Flag, "0", "Every draw passes the depth test (A/B).") \
     X("PS2X_GS_PENDING_CAP_MB", Dev, Int, "64", "Soft ceiling on pending render bytes.") \
     X("PS2X_GS_PENDING_HARD_CAP_MB", Dev, Int, "1024", "Hard ceiling on pending render bytes (R124).") \
+    X("PS2X_GS_RECORD", Dev, Spec, "", "<file>[:<present>|t<sec>|trig[:<presents>]]: record the GL replay stream for gs_replay_bench.") \
     X("PS2X_GS_RT_TEXTURE", Dev, Int, "1", "0 restores the readback + decode for render targets used as textures.") \
     X("PS2X_GS_SCALE", Shipping, Int, "1", "The GL backend's internal render scale, clamped to 1-4 (the CPU rasteriser ignores it).") /* read: ps2xRuntime/src/lib/gs/gs_gl_backend.cpp:renderScale */ \
     X("PS2X_GS_SCALE_FILTER", Dev, Text, "", "box = box-filter the resolve of a scaled target.") \
     X("PS2X_GS_SCALE_SELFTEST", Dev, Int, "0", "1 checks the native mirror of a scaled target against a fresh resolve each frame.") \
+    X("PS2X_GS_SETUP_FORMAT", Dev, Flag, "", "S17 F1 attempt 2 A/B: 1 formats the stats tags every draw, 0 never; unset = only with PS2X_GS_STATS.") \
     X("PS2X_GS_SKIP_TBP0", Dev, Spec, "", "Drop every textured draw binding one of these texture blocks (a bisect).") \
-    X("PS2X_GS_STATS", Dev, Presence, "", "The [gs-gl stats] line every 60 command buffers.") \
+    X("PS2X_GS_STATS", Dev, Presence, "", "The [gs-gl stats] line every 60 command buffers, and the [gs-loop] frame hand-off split (S17 F3) with it.") \
     X("PS2X_GS_TRACE_CMDS", Dev, Int, "", "Presents to skip (or trig), then print the replayed GS commands.") \
     X("PS2X_GS_TRACE_CMDS_BOX", Dev, Spec, "", "With GS_TRACE_CMDS: only draws touching this screen box.") \
     X("PS2X_GS_TRACE_CMDS_FROM", Dev, Int, "-1", "With GS_TRACE_CMDS: start at this frame.") \
@@ -185,13 +188,17 @@
     X("PS2X_VIF1_NO_IRQ_STALL", Dev, Flag, "0", "Restore VIF1 without the i-bit stall (A/B).") \
     X("PS2X_VU0_FAST", Dev, Int, "1", "0 keeps VU0 micro programs on the cycle-exact scheduler.") \
     X("PS2X_VU1_BAILHIST", Dev, Presence, "", "Histogram of where generated VU1 code bails to the interpreter.") \
+    X("PS2X_VU1_COMMIT_BATCH", Dev, Flag, "0", "S17 F C2 A/B: 1 drains the ready flag ring in one step (fastCommit), bit-exact; VU1 and VU0 alike.") \
     X("PS2X_VU1_DUMP", Dev, Path, "", "Dump VU1 program state at each run for vu1_replay (armed by TRIGGER or VU1_DUMP_AFTER).") \
     X("PS2X_VU1_DUMP_AFTER", Dev, Float, "0", "With VU1_DUMP: arm after this many seconds.") \
     X("PS2X_VU1_FAST", Dev, Int, "1", "0 selects the cycle-exact VU1 scheduler.") \
     X("PS2X_VU1_FMAC_CHECK", Dev, Flag, "0", "Cross-check the SIMD MAC-flag classifier against the long double path.") \
+    X("PS2X_VU1_FMAC_ZERO_FAST", Dev, Flag, "1", "C1 adopted (R337): 1 = exact-zero product-sum lanes take the fast path (bit-exact); 0 = the old slow path.") \
     X("PS2X_VU1_GEN", Dev, Int, "1", "0 disables the generated VU1 programs.") \
     X("PS2X_VU1_HOST_DRAW", Dev, Int, "0", "1 draws the native dispatcher triangles in host space instead of kicking GIF packets.") \
     X("PS2X_VU1_NATIVE", Dev, Int, "1", "0 reverts the hand-written native VU1 programs to the generated/interpreted path.") \
+    X("PS2X_VU1_NATIVE_33C8", Dev, Flag, "0", "1 runs VU1 entry 0x33c8's last-bone repack and its 66 08 40 42 list natively; 0 = generated.") \
+    X("PS2X_VU1_NATIVE_REFUSALS", Dev, Flag, "0", "1 counts native VU1 dispatcher refusals by reason, entry and command, with the fallback cycles ([vu1-refuse]).") \
     X("PS2X_VU1_NATIVE_TEST_CEILING", Dev, Int, "", "Test hook: lower the native dispatcher vertex and triangle ceilings.") \
     X("PS2X_VU1_NATIVE_TEST_CLIP_CEILING", Dev, Int, "", "Test hook: lower the native dispatcher clipped-vertex ceiling.") \
     X("PS2X_VU1_XGKICK_CYCLE_EXACT", Dev, Flag, "0", "Restore the per-cycle XGKICK transfer model (drops SOCOM II object geometry).") \

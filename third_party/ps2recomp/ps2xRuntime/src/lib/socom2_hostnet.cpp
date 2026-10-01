@@ -443,6 +443,36 @@ namespace socom2_hostnet
         g_initialized = false;
     }
 
+    int closeAllSockets()
+    {
+        std::vector<int> closed;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            for (int i = 0; i < kMaxSockets; ++i)
+            {
+                Entry &e = g_table[i];
+                if (!e.used)
+                    continue;
+                if (e.s != kInvalidSocket)
+                    hostnetClose(e.s);
+                e = Entry{};   // the frame walk's carries go with it, as closeSocket's do
+                closed.push_back(i);
+            }
+        }
+        for (const int fd : closed)
+            socom2_persona::onSocketClosed(fd);   // outside the lock, as closeSocket does
+        return static_cast<int>(closed.size());
+    }
+
+    int openSocketCount()
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        int count = 0;
+        for (const Entry &e : g_table)
+            count += e.used ? 1 : 0;
+        return count;
+    }
+
     int createSocket(Proto proto)
     {
         std::lock_guard<std::mutex> lock(g_mutex);
