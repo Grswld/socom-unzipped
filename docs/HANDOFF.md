@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1) and PROVED by the batch-5 chain on 1fd3cfdb with everything merged before it. No close date (R338); one controller in the main tree (owner).**
-  Now: N1c adopted; the guard, research/83 and the cheaper dispatch (b1, b2) merged; the chain waits on O31 (the launcher windows); then slice 2; #110 parked (O27).
+- **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batches 4 and 5 PROVED (C1 adopted); Q2, F3, A1 (#94), #111, #112 done on our side; N1c adopted (default 1), its chain owed. No close date (R338); one controller in the main tree (owner).**
+  Now: #130 merged (main's web/ = the teaser demo), main merged back; the chain RED only at release (the guard fired; the gate PASS, loaded): rerun quiet, then slice 2; #110 parked.
 - **Sprint 18 OPEN 2026-10-01 02:40Z** (`sprint-18` off `sprint-17`; CURRENT_SPRINT's `branch (2):`; its plan's Log).
 - **Next free ruling number: R346** (R345 Sprint 17's; R339-R344 Sprint 18's open; R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
