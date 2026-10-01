@@ -1,20 +1,26 @@
 # redotcom: SOCOM Unzipped for the browser, the map viewer and reCOM mode
 
 SOCOM II: U.S. Navy SEALs' multiplayer maps, read byte for byte out of **your own copy of the disc** and drawn again in
-a browser with three.js -- and, in reCOM mode, walked, fought over and played online as a SEAL, with every speed,
-jump, reticle, round, sound, effect and rule read from the game's own data or its decompiled code. Nothing is
+a browser with three.js -- and, in reCOM mode, walked and fought over as a SEAL in a match of your own, with every
+speed, jump, reticle, round, sound, effect and rule read from the game's own data or its decompiled code. Nothing is
 pre-baked and no game asset is in this repository. It runs at
 [socomunzipped.com/redotcom](https://socomunzipped.com/redotcom/) (it was `/map-viewer/` until 2026-09-29, and the old
 address redirects; the owner named the project redotcom everywhere that day).
 
 It is a spin-off of [**SOCOM Unzipped**](../../README.md), the static recompilation of the game for PC, and lives in that
 repository's `web/redotcom/` directory as **a separate project**: its own tests, docs and CI, building alone and
-deploying as a static site plus an optional multiplayer server. `web/` is one npm workspace for three parts: this,
+deploying as a static site. `web/` is one npm workspace for three parts: this,
 [`../landing`](../landing/README.md) (the site socomunzipped.com) and `../shared` (the design system both use, in
 [`../shared/ds`](../shared/ds/README.md), and the site's deploy). It needs nothing from the recompilation and the
 recompilation needs nothing from it (see
 [What the viewer takes from the rest of the repository](#what-the-viewer-takes-from-the-rest-of-the-repository)).
 An agent working on the recomp can skip this directory entirely.
+
+**This is the local demo** (owner, 2026-10-01): the teaser the site serves at `/redotcom/`, single player. Its one match
+is the offline match, the round's room run inside the page ([Offline match](#offline-match)). The online match -- the
+match server, its WebSocket transport and deploy, the Online setting and the players-online count -- was extracted
+from this repository and lives in the separate redotcom project; the page here joins no server and asks none for
+anything.
 
 ## What it is
 
@@ -25,19 +31,17 @@ An agent working on the recomp can skip this directory entirely.
   motion clips, jumps, stances, ladders, climbing, peeking and wading, the M4A1 SD and the Mark 23 with the game's
   accuracy and recoil, grenades, the game's HUD, sounds and effects. The views are third person and the scope; there is
   no first person (the owner's ruling). reCOM mode is the settings' **Mode** switch's **Play**, on every page, and opens
-  on foot. Offline it plays a match on its own -- the match server's room run in the page
-  ([Offline match](#offline-match)); `&nomatch` keeps the free walk.
-- **Multiplayer.** Classic matches (respawn off, the game's create-game default: 11 rounds, first to 6) of up to 16
-  players plus spectators on a Node server, one match per map, the round's damage, death, teams, scoring and scoreboard
-  read from the game
-  ([Multiplayer server](#multiplayer-server-web-sprint-3)).
+  on foot. It plays a match on its own -- the round's room run in the page, classic (respawn off, the game's
+  create-game default), with the round's damage, death, scoring and scoreboard read from the game
+  ([The match](#the-match-web-sprint-3)); `&nomatch` keeps the free walk.
 - **A worked example of recreating a PS2 game in the browser** from its own data: see
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for which parts are general PS2 and where to start with another game.
 
 ## What it is not
 
 - **Not an emulator.** No PS2 code runs; the engine's data paths and rules are re-implemented in TypeScript.
-- **Not the game.** No campaign, no AI, no original online service. It does not connect to anyone else's server.
+- **Not the game.** No campaign, no AI, no online play (that is the separate redotcom project's). It connects to no
+  server.
 - **Not a source of game data.** You supply your own disc (the page opens your `.iso` in the browser; nothing is
   uploaded). The repository ships no archives, textures, models, sounds or code from the game.
 - **Not affiliated** with Sony Interactive Entertainment or Zipper Interactive.
@@ -47,7 +51,7 @@ An agent working on the recomp can skip this directory entirely.
 | read | for |
 |---|---|
 | this README | running it, the controls, what the picture is made of, the known gaps |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the packages, their boundaries, the sim shared by page and server, adapting it to another PS2 game |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the packages, their boundaries, the sim shared by the page and its room, adapting it to another PS2 game |
 | [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md) | every kind of data: where it comes from, the code that reads it, how it was verified; the legal stance |
 | [`docs/PROCESS.md`](docs/PROCESS.md) | the stack and the development process: ground truth, research notes, rulings, AI agents |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | the web project's conventions (the repository's rules are [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md)) |
@@ -120,14 +124,13 @@ Run from `web/redotcom/` (npm finds the workspace root, `web/`, itself; from `we
 
 | command | what it does |
 |---|---|
-| `npm install` | workspace install (redotcom's seven packages plus `tools`, and the landing site and `shared`) |
+| `npm install` | workspace install (redotcom's six packages plus `tools`, and the landing site and `shared`) |
 | `SOCOM_DISC=/path/to/disc npm run extract-maps` | disc tree → `public/maps/RUN/*.ZDB`, the shared archives beside them (`COMMON_ARCHIVES`: `READERC.ZAR`, `ZWEAPON.ZAR`, the motion packs, and the sound's `SOUNDRDR.ZAR`, `SOUNDS/BNKSTORE.ZAR` and `IRX/LIBSD.IRX`), `index.json`, and three test fixtures. **Run this first.** (`SOCOM_DISC` defaults to the repository's `game/disc`, two levels above `web/redotcom/`.) |
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
-| `npm run typecheck` | `tsc` over the six packages, the viewer and `tools` |
+| `npm run typecheck` | `tsc` over the five library packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
 | `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `VIEWER_BASE=/redotcom/ npm run build` | the same, to be served under a path prefix (the site's, `/redotcom/`) |
-| `VITE_S2U_MULTIPLAYER=off npm run build` | the same, single player: multiplayer off in this build (the site's release build; see **Multiplayer off** below) |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, toggles the overlays, writes screenshots |
 
 **For developers: `?devmode`.** Opened by its plain address the viewer reads only the visitor's own disc image: it shows
@@ -155,15 +158,13 @@ wrote from your own disc (`maps/index.json`, `maps/RUN/*.ZDB`, and since web spr
 the box (`docker-compose.yml`) and uploaded by `web/shared/deploy/site/deploy.sh maps`; the plan is to take it down
 and leave the site disc-only. The landing's credits say so (`web/landing/src/claims.test.ts` pins the wording).
 
-**Multiplayer off: `VITE_S2U_MULTIPLAYER=off`** (owner, 2026-09-30: redotcom goes out on the site "in its current
-state with multiplayer disabled"; `packages/viewer/src/multiplayer.ts`). One build-time switch, on unless it says `off`
-(`0`, `false` and `no` too): `npm run dev` and a plain build keep multiplayer; the site's release build
-(`web/shared/deploy/site/deploy.sh`) sets it off. **Multiplayer is off in that build**: the settings' **Online** section
-(the switch, its line, the name) is not in the page; the panel's kicker is the plain title `redotcom`, with no PLAYERS
-ONLINE count; the `/rooms` poll never starts, so the page asks nothing of `mp.socomunzipped.com` or of a local server;
-`online=`, `mp` and `server=` in the address are ignored and taken out of it; no match server is ever joined; and both
-Controls lists end with "Multiplayer · off in this build". The **offline match** (reCOM mode against yourself, the match
-server's room run in the page, `packages/viewer/src/net/loopback.ts`) stays: it is single player and needs no network.
+**Single player, always** (the local demo, owner 2026-10-01; before it the site's build switched multiplayer off with
+`VITE_S2U_MULTIPLAYER=off`, 2026-09-30). There is no build switch: every build is the page the site serves. It has no
+**Online** section and no players-online count; it asks nothing of any match server; `online=`, `mp` and `server=` in
+an old link are ignored and taken out of the address; and both Controls lists end with "Multiplayer · off in this
+build". The **offline match** (reCOM mode against yourself, the room run in the page,
+`packages/viewer/src/net/loopback.ts`) is single player and needs no network.
+`packages/viewer/test/localDemo.test.ts` holds the sources to it.
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -180,11 +181,9 @@ Everything below is relative to `web/redotcom/`.
 | `packages/mesh` | the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData` and `LineStrip`; `SEMANTICS.md` is the authority |
 | `packages/sound` | the sound (`docs/research/81-sounds.md`): 989snd banks out of `BNKSTORE.ZAR`, SPU ADPCM, the grain sequencer and voices rendered at the game's volume and pan, `sounds.rdr`, the `SOILS` materials' step sounds, the weapons' and zAnim callbacks' sounds, and the rules for when a step, a landing or a round sounds |
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table, the SEAL's tuning off `READERC.ZAR` (`tuning.ts`), the weapon table off `ZWEAPON.ZAR` (`weapons.ts`), the engine's segment test (`segment.ts`), the zAnim effect commands, the thrown casing's flight, the particle sources and the effect models (`effects.ts`, `effectMotion.ts`, `effectParticles.ts`, `effectModels.ts`) |
-| `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
-| `packages/server` | the multiplayer match server (Node, `ws`): one classic room per map (the respawn rooms are switched off, `RESPAWN_RULES_ENABLED`) running the viewer's shared sim (`packages/viewer/src/sim.ts`) |
-| `tools/` | the extractor, the dump/export tools, the comparison instruments, the release sweep, the bot load test, `build-corpus.ts` |
+| `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the offline match (the round's room, `src/net/room.ts`, run in the page by `src/net/loopback.ts` on the shared sim, `src/sim.ts`), the Playwright e2e |
+| `tools/` | the extractor, the dump/export tools, the comparison instruments, the release sweep, `build-corpus.ts` |
 | `docs/research/`, `docs/corpus/` | the research notes (71-91) and the AI-readable corpus built from them (`llms.txt`, `records.jsonl`, `sections.jsonl`) |
-| `deploy/` | the multiplayer server's Docker image, Compose with Caddy, systemd unit and `deploy.sh` |
 | `docs/specs/`, `docs/plans/` | the viewer's own design specs and plan, kept here rather than in the repository's `docs/superpowers/` so the recomp's agents do not have to read past them |
 | `public/maps/`, `test-fixtures/` (ignored) | your extracted game data; never committed |
 
@@ -220,26 +219,14 @@ folds the panel away and back, and the choice is remembered. A failed load unfol
 
 The panel (polished 2026-09-29 at the owner's ask, for usability and readability) is one column of sections in the
 order a player reaches for them -- **Mode** first, since it decides which sections follow, then **Map**, **Picture**,
-**Mouse look** and **Sound** (Play's own), **Online**, and the developer's **Advanced** -- each a heading and at most a
+**Mouse look** and **Sound** (Play's own), and the developer's **Advanced** -- each a heading and at most a
 line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
 a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
 control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
-Weapons, General; the fly lists are Move and General). In a build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the
-site's; **Multiplayer off** under **Deploying**) there is no **Online** section, and both lists' General group ends with
-"Multiplayer · off in this build".
+Weapons, General; the fly lists are Move and General); both lists' General group ends with "Multiplayer · off in this
+build" -- the local demo has no online match.
 
-The panel's first line is **PLAYERS ONLINE** (owner, 2026-09-29; `packages/viewer/src/playersOnline.ts`): the players --
-not the watchers, the Explore pages that only look on -- in the classic matches on the shared server
-(`https://mp.socomunzipped.com/rooms`), or on the local server (`http://localhost:8787/rooms`) when Online is Local. It
-shows a dash while the count is not known (the server not answering), never 0. The **Map** picker says the same count
-after a map's name when anyone is on it (`FROSTFIRE · Suppression (MP2) · 3 playing`; nothing for none), in the option's
-own text, so a screen reader hears it with the map. The page asks about every 20 s while it is visible, not at all while
-it is hidden (once at once when shown again, if one fell due), never two requests at a time, backing off to 2 minutes
-while the server does not answer, and stops when the page goes. The request is a plain cross-origin GET with
-`cache: 'no-cache'`: the browser revalidates with the server's ETag, so an unchanged list is a 304. A build with
-`VITE_S2U_ROOMS=off` reads no shared list (the e2e run's, `playwright.config.ts`, while the shared server is not live);
-a URL there replaces the shared one. A build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the site's) has no count
-and no poll at all: the kicker is the plain title `redotcom`.
+The panel's first line is the product's name, `redotcom` (the design system's kicker): no players-online count.
 
 The settings, in the panel's order:
 
@@ -250,35 +237,19 @@ The settings, in the panel's order:
 | **Picture** | Modern (fits your screen) · PS2 (640x448 on 4:3) | `view=modern` · `view=ps2` | `s2u.viewer.look` |
 | **Mouse look** (Play) | sensitivity 0.05-4x (1x); invert up / down (off); equal up / down (off) | -- | `s2u.viewer.mouseLook` |
 | **Sound** (Play) | volume 0-100% (100%); mute (off) | -- | `s2u.viewer.volume`, `s2u.viewer.muted` |
-| **Online** | Off · Shared (`wss://mp.socomunzipped.com/ws`) · Local (`ws://localhost:8787/ws`, `npm start -w @s2u/server`; offered only on a local page) | `online=off` · `shared` · `local` | `s2u.viewer.online` |
-| **Your name** (Online) | up to 30 characters; blank is the game's `Player####` guest name | -- | `s2u.mp.name` |
 | **Advanced** | the developer's diagnostic switches, lighting and fog | -- | not remembered |
 
-The Sound, Mouse look and name choices are kept in this browser only (`localStorage`) and start from the defaults on a
+The Sound and Mouse look choices are kept in this browser only (`localStorage`) and start from the defaults on a
 first visit. The fold of the panel itself is remembered (`s2u.viewer.panelOpen`), and so is the Controls tab
 (`s2u.viewer.controlsTab`).
 
 **Shareable links** (owner, 2026-09-29; `viewer/src/shareUrl.ts`). The page's state lives in its address and follows every
 change (`history.replaceState`: no reload, no history entries), so copying the address bar gives a friend the same setup:
-`mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`, `online=off`, `shared` or `local`, `rules=respawn`
-or `rules=classic`. On load the
-address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
-written in. A value the page does not know is ignored. `devmode`, `mp`, `server=`, `lag=` and `loss=` work as before
-and pass through untouched (never added), and so does `fly` with `devmode` (without it `fly` is ignored and taken out);
-`server=` (or `mp`) beats `online=` and implies it. The retired `redotcom` and `rules=` have no effect and are taken out.
-A link with `online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with
-`mode=explore`.
-
-**Online** joins the map's match on that server: in reCOM mode as a player, in the map viewer as a spectator who watches
-(Space follows the next player, V the free camera) and never takes a player's place. The line under it says what the
-connection is doing -- connecting, online and the number of players, or "server unreachable" and when it retries (2, 4,
-8 ... 60 s to a server never reached; 1, 2, 4 ... 10 s after a drop) -- and a toast says when it comes up or goes
-away. `&mp` and `&server=` in the address still override it (`viewer/src/online.ts`).
-
-**Local is offered only on a local page** (owner, 2026-09-29): a page served from `localhost`, `127.0.0.1`, `[::1]` or a
-`.localhost` name shows Off · Shared · Local; anywhere else -- the deployed site -- the Local option is not rendered at
-all, the switch shows Off · Shared, and an `online=local` link or a remembered Local falls back to Off (written back
-into the address as `online=off`).
+`mode=play` or `mode=explore`, `map=MP2`, `view=modern` or `view=ps2`. On load the address beats what the browser
+remembers; a setting the address leaves out takes the remembered choice, which is then written in. A value the page
+does not know is ignored. `devmode`, `lag=` and the developer's other parameters pass through untouched (never added),
+and so does `fly` with `devmode` (without it `fly` is ignored and taken out). The retired `redotcom` and `rules=`, and
+the online match's `online=`, `mp` and `server=`, have no effect and are taken out.
 
 ### Flying (Explore; in Play only with `?devmode`)
 
@@ -728,69 +699,41 @@ GPL-3.0, the repository's ([`LICENSE`](../../LICENSE)); contributions are accept
 code and documentation only, never the game or its data. CI for this directory is
 [`.github/workflows/web.yml`](../../.github/workflows/web.yml), which runs only when `web/` changes.
 
-## Multiplayer server (web sprint 3)
+## The match (web sprint 3)
 
-`packages/server` is the match server behind the viewer's **Online** setting (and `&mp`): a classic match per map, HTTP
-`/health`, `/metrics` (host only) and
-`/rooms` (each room's map, rules, players, spectators and round: anonymous counts, public by the owner's ruling, with
-an ETag answered by 304 and `Cache-Control: public, max-age=10` for the viewer's PLAYERS ONLINE poll) and a WebSocket
-on `/ws`, all on one port. It reads `RUN/` (`MP*.ZDB`, `MOTION_P.ZAR`,
-`READERC.ZAR`) from `SOCOM_DISC`, your own copy of the disc, which it never serves.
-
-```
-SOCOM_DISC=/path/to/disc npm start -w @s2u/server        # PORT 8787; MAPS, IDLE_KICK_MS, ROUND_SECONDS, MAX_ROUNDS, RULES, TRUST_PROXY
-```
+The round, as the page plays it on its own ([Offline match](#offline-match)): the game's classic match, its rules read
+from the game (research 91). The online match of web sprint 3 -- the Node match server, its `/ws` transport, `/rooms`
+and `/health`, its deploy, the Online setting, joining as a player or a watcher -- was extracted from this repository
+on 2026-10-01 (the owner: "with multiplayer extracted and it just being a local demo") and lives in the separate
+redotcom project. Its research stays here (research 91, the round; the dated web sprint 3 spec and plan under
+`docs/specs/` and `docs/plans/` are the record of their day and still describe it).
 
 **Classic only** (owner ruling, 2026-09-29: "Remove the respawn option entirely for the time being. No mode
-selection."). Every room is classic: a join asking for respawn, or naming no rules, joins the map's classic room, and
-`RULES` (classic by default) is served classic even when set to `respawn`. The respawn ruleset's code stays in the tree
-behind one switch, `RESPAWN_RULES_ENABLED` in `packages/viewer/src/net/protocol.ts`; its tests turn it on. `MAX_ROUNDS`
-is the game's `mp_max_rounds` (11, the create-game default): the match length and the count the round-start banner shows.
-
-Join from the viewer with Settings > Online > **Local** (this server on its default port), or with
-`?mode=play&mp&server=ws://localhost:8787/ws` (`wss://` behind TLS). A hello with `watch: true` (the map viewer's) joins
-as a spectator outside the queue: never promoted, sharing the spectators' room with it.
-
-To run it on a host, `deploy/` holds a Dockerfile (an esbuild bundle in a slim Node 22 image, build context `web/`), a
-compose file with Caddy for HTTPS, a systemd unit for the no-Docker case, and `deploy.sh`. The owner's steps, the
-Lightsail size and the firewall are in [`deploy/README.md`](deploy/README.md). The disc is mounted read-only at run
-time and is never part of an image.
-
-### Playing a match
-
-Choose Settings > Online (Shared, or Local on a local page) in reCOM mode, or open the viewer with `?mode=play&mp` (the
-server at this page's host, `/ws`) or `?mode=play&mp&server=wss://host/ws`, on the map you want: each map is its own match. The page joins as a SEAL or a Terrorist by the game's join rule (research 91
-§7); past 16 players it spectates, and is moved in, first come first served, when a place frees up.
+selection."). The respawn ruleset's code stays in the tree behind one switch, `RESPAWN_RULES_ENABLED` in
+`packages/viewer/src/net/protocol.ts`; its tests turn it on. The match length is the game's `mp_max_rounds` (11, the
+create-game default), the count the round-start banner shows.
 
 | key | in the match |
 |---|---|
-| the walk's keys | as in single play: the page predicts its own SEAL and the server agrees (W3.R8) |
-| Tab / Select | the scoreboard: every player, the game's sort, the dead dimmed, the spectators |
-| K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
-| Space / V | spectating: the next living player / the free camera |
-| Space (classic, dead) | the next living teammate to watch until the next round |
-| Settings > Online > name | your name, 30 characters at most; blank is the game's `Player####` |
+| the walk's keys | as in the free walk: the page predicts its own SEAL and the room agrees (W3.R8) |
+| Tab / Select | the scoreboard: the game's sort, the dead dimmed |
 
-A match is **classic** (respawn off, the game's create-game default), online and in the offline match alike; there is
-no Rules choice, and an old link's `rules=` is ignored and taken out of the address. The match starts once both sides
-have a player: 11 rounds, first to 6. A round
+A match is **classic** (respawn off, the game's create-game default); there is no Rules choice, and an old link's
+`rules=` is ignored and taken out of the address. In the game a match starts once both sides have a player: 11
+rounds, first to 6. A round
 ends when a side has no living player (tested from 15 s in; "ALL TERRORISTS ELIMINATED" / "SEALS VICTORIOUS!", 23 s
-more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died." and watch their
-living teammates (Space) until the next round. A player who joins mid-round is a ghost until then. Level after round
+more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died." and wait for the
+next round. Level after round
 11 plays a tiebreaker ("PLAYING TIEBREAKER ROUND"), and another while it is drawn. Every round starts everyone at the
 side's start slots with a full kit. Scoring: +2 a kill, +1 alive at the end, +5 each on the winning side. The rules and their sources are in research 91 section 19.
 
 ### Offline match
 
-Offline (Online off), reCOM mode plays the match on its own: the page runs the match server's own `Room`
-(`packages/server/src/room.ts`, imported as it is) behind a socket that never leaves the page
-(`viewer/src/net/loopback.ts`), and joins it with the same client a match uses -- so the round's clock and banners,
-the game's damage (rounds, falls, grenades), deaths, respawns, scores and the scoreboard are the online match's, one
-implementation. The player is the host's side, the SEALs; nobody is kicked for idling; under classic the round starts
-with the one player and runs to its clock (`SOLO_ROUND_PLACEHOLDER`: the game launches only with both sides seated).
+reCOM mode plays the match on its own: the page runs the round's `Room` (`packages/viewer/src/net/room.ts`, once the
+match server's, moved into the page on 2026-10-01) behind a socket that never leaves the page
+(`viewer/src/net/loopback.ts`), and joins it with the match client (`viewer/src/net/client.ts`, which opens no
+connection of its own) -- so the round's clock and banners, the game's damage (rounds, falls, grenades), deaths,
+respawns, scores and the scoreboard come from one implementation. The player is the host's side, the SEALs; nobody
+is kicked for idling; under classic the round starts with the one player and runs to its clock (`SOLO_ROUND_PLACEHOLDER`: the game launches only with both sides seated).
 `&nomatch` keeps the free walk of before, and so does `&fly` (the tests' and the tools' opening). The rules and their
 sources: [research 91](docs/research/91-the-round.md) section 20.
-
-`?lag=100&loss=2` runs the page's latency and
-loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a
-server under 16 bots and 8 spectators.

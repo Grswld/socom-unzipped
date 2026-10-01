@@ -28,7 +28,7 @@ to `web/redotcom/` (the landing site's own notes are `../landing/README.md`).
   editing a note's headings, rebuild the corpus: `npx tsx tools/build-corpus.ts`.
 - **Tests first.** A behaviour change starts with a failing test; say in the pull request what it failed with. Pure
   logic goes in a package's `test/`; what only a browser shows goes in `packages/viewer/e2e/`.
-- **Keep the sim headless.** Anything the multiplayer server runs is reached from `packages/viewer/src/sim.ts` and must
+- **Keep the sim headless.** Anything the match's room (`packages/viewer/src/net/room.ts`) runs is reached from `packages/viewer/src/sim.ts` and must
   not import three.js, the DOM or Web Audio; `test/simBoundary.test.ts` enforces it.
 - **Keep the package boundaries** described in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): `archive` reads bytes,
   `gs`/`mesh`/`sound` decode, `scene` models the engine's world, `viewer` draws and plays.

@@ -1,7 +1,7 @@
 {
   "name": "@s2u/redotcom",
   "version": "0.1.0",
-  "description": "redotcom: SOCOM II's multiplayer maps decoded from the disc and drawn in a browser, walked and played online (reCOM mode) -- a spin-off of SOCOM Unzipped",
+  "description": "redotcom: SOCOM II's multiplayer maps decoded from the disc and drawn in a browser, walked and fought over as a SEAL (reCOM mode, single player: the local demo) -- a spin-off of SOCOM Unzipped",
   "license": "GPL-3.0",
   "repository": {
     "type": "git",

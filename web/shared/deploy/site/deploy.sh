@@ -43,11 +43,11 @@ for f in public/media/menuloop.mp4 public/sfx/dink.ogg public/sfx/thunk.ogg publ
 done
 
 # Both sites, built here from this tree: the landing site into web/landing/dist, redotcom for its /redotcom/ prefix into
-# web/redotcom/dist/viewer. No copy of either comes from outside the repository. redotcom ships single player (owner,
-# 2026-09-30: "in its current state with multiplayer disabled"): VITE_S2U_MULTIPLAYER=off takes out its Online section,
-# its PLAYERS ONLINE count and every request to a match server (web/redotcom/packages/viewer/src/multiplayer.ts).
+# web/redotcom/dist/viewer. No copy of either comes from outside the repository. redotcom is the local demo (owner,
+# 2026-10-01): single player, its only match the offline one in the page; the online match lives in the separate
+# redotcom project, so there is no multiplayer flag to set (web/redotcom/packages/viewer/test/localDemo.test.ts).
 (cd "$WEB" && npm run build -w landing)
-(cd "$WEB" && VIEWER_BASE=/redotcom/ VITE_S2U_MULTIPLAYER=off npm run build -w @s2u/redotcom)
+(cd "$WEB" && VIEWER_BASE=/redotcom/ npm run build -w @s2u/redotcom)
 [ -f "$REDOTCOM/dist/viewer/index.html" ] || { echo "no redotcom build at web/redotcom/dist/viewer"; exit 2; }
 
 # The release, staged outside the source tree.

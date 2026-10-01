@@ -17,8 +17,9 @@ this repository that reads it, and how it was checked. The same facts, as machin
 - **The research notes cite, they do not copy.** They name files, give counts, offsets and the few short constants a
   rule needs, and cite decompiled functions by address and line. The decompiled text itself is never quoted into the
   tree.
-- **The multiplayer server reads the disc files it needs from a private directory** and never serves them
-  ([`../deploy/README.md`](../deploy/README.md)).
+- **No server reads the disc here.** The online match server (which read the disc files it needed from a private
+  directory and never served them) lives in the separate redotcom project since 2026-10-01; the local demo's match
+  runs in the page on the visitor's own disc.
 - **A development build can serve extracted files from your machine** for your own testing (`?devmode`); that path
   is for development only and is not how the page is meant to be used. **socomunzipped.com serves such a tree today,
   by the owner's choice and for now** (`/redotcom/maps/`, the development mode's reads; the site also plays the game's
@@ -104,14 +105,14 @@ decompilation is silent.
 | Accuracy, recoil, fire modes, zoom, magazines | 84 | `viewer/test/accuracy.test.ts`, `zoom.test.ts`, `magazines.test.ts`, `e2e/accuracy.spec.ts` |
 | Grenades: throw, flight, fuse, blast, arc | 85 | `scene/test/projectile.test.ts`, `throwArc.test.ts`, `viewer/test/grenade.test.ts` |
 | Ladders, climbs, peek, water | 86 | `viewer/test/traversal.test.ts`, `e2e/traversal.spec.ts` |
-| Damage, death, respawn, teams, score, names | 91 | `viewer/test/netDamage.test.ts`, `netLobby.test.ts`, `server/test/room.test.ts` |
+| Damage, death, respawn, teams, score, names | 91 | `viewer/test/netDamage.test.ts`, `netLobby.test.ts`, `room.test.ts` |
 | The blast on the player (reach, fragments, knock, ringing ears); the offline match | 85 §12, 91 §20 | `viewer/test/netBlast.test.ts`, `knock.test.ts`, `loopback.test.ts`, `ringingEars.test.ts`, `server/test/roomBlast.test.ts` |
-| The server's fire and reload checks (rate, cone, reload lock) | 84 §18, 91 §16 | `server/test/room.test.ts`, `viewer/test/shotCone.test.ts`, `weapon.test.ts` |
+| The room's fire and reload checks (rate, cone, reload lock) | 84 §18, 91 §16 | `viewer/test/room.test.ts`, `viewer/test/shotCone.test.ts`, `weapon.test.ts` |
 
 A value no source gives is a named `*_PLACEHOLDER` constant with a comment saying what was searched, and a reading
 the viewer had to choose is a named `*_READING`; each note lists its own by name in a section whose heading says
-placeholders or readings. `tools/test/placeholderLedger.test.ts` holds the two in step: every such name in the viewer,
-server, scene and sound sources is in a note's section, and a name a note lists that no source holds any more is marked
+placeholders or readings. `tools/test/placeholderLedger.test.ts` holds the two in step: every such name in the viewer
+(the match's room with it), scene and sound sources is in a note's section, and a name a note lists that no source holds any more is marked
 there as resolved, retired or note only.
 
 ### The look, checked against the console

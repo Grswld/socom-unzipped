@@ -5,7 +5,7 @@ the recompilation, and the recompilation needs nothing from here.
 
 | Part | What | Served at |
 |---|---|---|
-| [`redotcom/`](redotcom/README.md) | **redotcom**: SOCOM II's multiplayer maps decoded from your own disc and drawn in the browser (the map viewer), reCOM mode (walk, fight and play online as a SEAL), and the match server (`redotcom/packages/server`, its deploy in `redotcom/deploy/`) | socomunzipped.com/redotcom/ (`/map-viewer/` redirects there) |
+| [`redotcom/`](redotcom/README.md) | **redotcom**: SOCOM II's multiplayer maps decoded from your own disc and drawn in the browser (the map viewer), and reCOM mode (walk and fight as a SEAL in a match of your own) -- the local demo the site serves; the online match lives in the separate redotcom project | socomunzipped.com/redotcom/ (`/map-viewer/` redirects there) |
 | [`landing/`](landing/README.md) | **the landing site**, socomunzipped.com: the scrolling page, the console menu (`classic.html`), the development story (generated from `docs/STORY.md` at build time), the data page, the design-system gallery (`/ds/`) and the bug and tester inbox (`landing/api/`) | socomunzipped.com |
 | `shared/` | what both use: the s2u design system ([`shared/ds/`](shared/ds/README.md), with its spec and briefing under `shared/ds/docs/`), the self-hosted fonts (`shared/fonts/`), the token and font tools (`shared/tools/`), the Vite glue (`shared/vite.ts`) and the site's deploy (`shared/deploy/site/`) | -- |
 

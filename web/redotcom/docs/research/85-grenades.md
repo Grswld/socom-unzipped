@@ -675,8 +675,8 @@ distance (research 83, `explosionShake`) was the only reaction, offline and on.
 For an M67 standing 20 units off: `f` from the root (11.48 up) is 0.976, the push 13.0 u/s away and **48.8 u/s up** --
 the knock is mostly a hop (about 0.4 s in the air) and the fall clip, not a throw across the map.
 
-**What the viewer does now** (`packages/viewer/src/net/blast.ts`, behind the shared sim; `packages/server/src/room.ts`
-`blast`):
+**What the viewer does now** (`packages/viewer/src/net/blast.ts`, behind the shared sim; `packages/viewer/src/net/room.ts`
+`blast`, the match server's `room.ts` until 2026-10-01):
 - `resolveBlast`: the reach, the line (the room's `segmentHit` to the head, as before), the factor, the ringing, the
   fragments on `fragmentPart`'s table, the knock. `blastKnock`: `FUN_0057e770` as above. `applyKnock`: lays it on a
   `Walker` (`Walker.knock` in `mover.ts`: off the ground at the velocity in the fall clip; the landing plays `Land

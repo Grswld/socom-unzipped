@@ -16,13 +16,12 @@ measurement or a console frame.
 
 | part | what | why |
 |---|---|---|
-| Language | TypeScript (strict), one npm workspace (`web/package.json`: redotcom, the landing site, the shared design system) | one language for the page, the tools and the server, so the rules run the same in both |
+| Language | TypeScript (strict), one npm workspace (`web/package.json`: redotcom, the landing site, the shared design system) | one language for the page and the tools, so the walk and the match's room run the same rules |
 | Rendering | three.js with `WebGPURenderer`, falling back to its WebGL2 backend; node materials (TSL) | the GS's arithmetic expressed once as a node graph runs on both backends |
 | App | Vite (dev server and static build), a Web Worker for decoding, Web Audio for sound, the Gamepad API | a static site: the page needs no server of its own |
 | Unit tests | Vitest (with jsdom where a DOM is needed) | fast, per package (`packages/*/vitest.config.ts`, `tools/vitest.config.ts`) |
-| Browser tests | Playwright (`packages/viewer/e2e/`), against real maps from your own disc | the picture, the HUD, the walk and multiplayer checked in a real browser |
-| Server | Node, `ws` (WebSocket), bundled with esbuild | one authoritative process, one room per map |
-| Deploy | a Docker image (non-root, health-checked), Compose with Caddy for HTTPS/WSS, a systemd unit for hosts without Docker, `deploy.sh` | [`../deploy/README.md`](../deploy/README.md) |
+| Browser tests | Playwright (`packages/viewer/e2e/`), against real maps from your own disc | the picture, the HUD, the walk and the offline match checked in a real browser |
+| Match | the round's room (`packages/viewer/src/net/room.ts`) run in the page, joined through an in-page socket | the local demo is single player; the online match server (Node, `ws`) and its deploy live in the separate redotcom project since 2026-10-01 |
 | CI | GitHub Actions `.github/workflows/web.yml`: `npm ci`, typecheck, the unit tests, the build, on changes under `web/` | the fixture-backed tests skip in CI, which has no disc |
 
 ## Ground truth
@@ -55,7 +54,8 @@ settle it, and the placeholders by name. Code comments cite the note and section
 
 Each web sprint has a design spec and a plan (under [`specs/`](specs/) and [`plans/`](plans/)): sprint 1, the engine's
 world (the maps as the engine drew them); sprint 2, the SEAL in the world (the player: camera, speeds, clips, weapons,
-HUD, sound, effects); sprint 3, the round (respawn multiplayer on a central server). A plan's `## Log` is its live
+HUD, sound, effects); sprint 3, the round (respawn multiplayer on a central server; since 2026-10-01 its online half is
+the separate redotcom project's, and this repository keeps the round as the page's offline match). A plan's `## Log` is its live
 record. Decisions are numbered rulings (`W3.R1` ...), dated and reasoned, and the owner can overturn any by number.
 
 ## Play-tests become rulings and research
@@ -86,7 +86,6 @@ compare the port with the game:
   (research 88).
 - `tools/release-sweep.ts` and `tools/playtest.ts`: every map, both presentations, both GPU backends: load times,
   a walk, stance, zoom, weapons, fire, a grenade, errors and screenshot statistics (research 90 §9).
-- `tools/mp-bots.ts`: a server under 16 bots and 8 spectators, measuring tick time and prediction corrections.
 - The `dump-*` tools: each format printed or rendered (textures to PNG, sounds to WAV, motion, effects, characters).
 
 ## Before anything is public

@@ -846,8 +846,10 @@ or reCOM, and what cannot be sourced is a named placeholder.
 
 The code is in these files:
 - `packages/viewer/src/net/rules.ts`: the shared rules.
-- `packages/server/src/room.ts`: the room. The `rules` option is `respawn` or `classic`.
-- `packages/server/src/server.ts`: rooms keyed by map and rules; `/rooms`.
+- `packages/viewer/src/net/room.ts` (`packages/server/src/room.ts` until 2026-10-01): the room. The `rules` option is
+  `respawn` or `classic`.
+- The match server's rooms keyed by map and rules, and `/rooms`, were `packages/server/src/server.ts`; since 2026-10-01
+  the online match lives in the separate redotcom project, and this repository keeps the room for the offline match.
 - `packages/viewer/src/netPage.ts`: the page's side.
 - `packages/viewer/src/rules.ts` and `shareUrl.ts`: the Rules setting and the `rules=` link parameter.
 
@@ -905,7 +907,8 @@ The owner, 2026-09-29: "should grenades be doing damage? they do not appear to b
 and "let's make offline tick rounds etc too". Offline, the page had no match: no health, no deaths, no rounds.
 
 **The design** (`packages/viewer/src/net/loopback.ts`): offline, in reCOM mode, the page runs the match server's own
-`Room` (`packages/server/src/room.ts` -- no socket, no Node in it; imported as it is, not moved) inside the page, behind
+`Room` (then `packages/server/src/room.ts` -- no socket, no Node in it -- imported as it was; `packages/viewer/src/net/room.ts`
+since 2026-10-01, when the online match left this repository) inside the page, behind
 a socket that never leaves it (`LoopbackMatch.socket`), and joins it with the same `NetClient` and `NetPage` a match uses.
 One implementation, online and off: the round's clock and banner ("STARTING ROUND 1 OF 11"), the round and match
 screens, the game's damage (bullets, falls, blasts), deaths and death clips, respawns (the press after the fade, at the

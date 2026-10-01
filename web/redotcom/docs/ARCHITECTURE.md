@@ -21,12 +21,12 @@ research notes (`docs/research/`); the notes are cited by number.
           |               |              |          projectiles
           +---------------+------+-------+--------------+
                                  |                      |
-                          @s2u/viewer               @s2u/server
-      three.js (WebGPU, WebGL2 fallback), a        Node + ws: one authoritative
-      decode worker, the GS-arithmetic shading,    room per map and rules at 60 Hz, fed by
-      the walk, HUD, audio, effects, the net page  the SAME sim modules the page runs
-                                 \                      /
-                                  +--- src/sim.ts -----+   headless: no three, no DOM, no Web Audio
+                          @s2u/viewer
+      three.js (WebGPU, WebGL2 fallback), a decode worker, the GS-arithmetic shading,
+      the walk, HUD, audio, effects, and the offline match: the round's room
+      (src/net/room.ts) run in the page at 60 Hz, fed by the SAME sim modules the walk runs
+                                 |
+                                 +--- src/sim.ts   headless: no three, no DOM, no Web Audio
 ```
 
 Everything is TypeScript in one npm workspace (`web/package.json`, whose members are `redotcom`, `redotcom/packages/*`,
@@ -42,18 +42,18 @@ not published to a registry; each exports its `src/index.ts` directly and Vite/`
 | `@s2u/mesh` | archive | Geometry as the PS2 sent it: the DMA-chain walk, VIF1 `UNPACK`/`STCYCL`/`MSCAL`, and the interpretation of each VU1 program's vertex lanes into `MeshData`, `LineStrip` and skinned batches. [`packages/mesh/SEMANTICS.md`](../packages/mesh/SEMANTICS.md) is the authority for every lane | know where a model is placed |
 | `@s2u/sound` | archive | 989snd `SBlk` banks, headerless SPU ADPCM, the grain sequencer rendered at the game's volume and pan, the SPU2 reverb presets, `sounds.rdr`, the surface-material step table and the rules for when a sound plays | play audio (the viewer does, through Web Audio) |
 | `@s2u/scene` | archive, mesh | The engine's world: the world root, the scene graph and its matrices, the engine's walk order and grid, clutter, the collision hull and the ground probe, `AIMAPS.MPS` spawns, LOD bands, the character skeleton and gear, motion clips, the SEAL's tuning, the weapon table, zAnim effect scripts, grenade flight | draw anything |
-| `@s2u/viewer` | all of the above, `three` | The Vite app: decoding in a worker, the three.js scene, a shading graph that repeats the GS's arithmetic, the fly camera, the walk (mover, camera, clips, gunplay, grenades, traversal), the HUD, audio, effects, touch and pad input, the multiplayer page | run on the server, except through `src/sim.ts` |
-| `@s2u/server` | archive, scene, `ws`, and `viewer/src/sim.ts` by path | One match per map and rules (respawn, classic; the two share the map's parse): the lobby, every player's mover run from its command stream, the shot cone and the round re-run, lag-compensated hits, deaths, respawns, scores, 30 Hz snapshots; HTTP `/health`, `/rooms` (public, CORS `*`: each room's map, rules, player and spectator counts, round) and `/metrics` (host only behind Caddy). The page imports its `Room` too, for the offline match (`viewer/src/net/loopback.ts`) | serve the disc's files |
-| `tools/` | archive, gs, mesh, sound | `extract-maps` and the `dump-*` readers, `export-gltf`, the console-frame and feel-parity instruments, the release sweep, the multiplayer bot load test, `build-corpus` | ship in the page |
+| `@s2u/viewer` | all of the above, `three` | The Vite app: decoding in a worker, the three.js scene, a shading graph that repeats the GS's arithmetic, the fly camera, the walk (mover, camera, clips, gunplay, grenades, traversal), the HUD, audio, effects, touch and pad input, the offline match (`src/net/room.ts`, the round's authority, run in the page by `src/net/loopback.ts`; the online match lives in the separate redotcom project) | reach the room's rules except through `src/sim.ts` |
+| `tools/` | archive, gs, mesh, sound | `extract-maps` and the `dump-*` readers, `export-gltf`, the console-frame and feel-parity instruments, the release sweep, `build-corpus` | ship in the page |
 
 ### The sim boundary
 
-`packages/viewer/src/sim.ts` is the one module the server imports from the viewer. It re-exports what a match needs to
+`packages/viewer/src/sim.ts` is the one module the match's room (`src/net/room.ts`) imports the rules through. It re-exports what a match needs to
 decide: the mover (`mover.ts`, the `Walker`), traversal, the motion table and clip timings, the tuning and stature, the
 round and its accuracy and penetration, the rifle kick, the magazines, and the net protocol, codec, damage, lobby and
 deaths. Grenades are already headless in `@s2u/scene` (`projectile.ts`). The page predicts its own SEAL with these
-modules and the server runs the same modules authoritatively (spec ruling W3.R2), so there is one implementation of
-the rules, not two.
+modules and the room runs the same modules authoritatively (spec ruling W3.R2), so there is one implementation of
+the rules, not two. (Until 2026-10-01 the room was the Node match server's, `@s2u/server`; the local demo keeps the
+room and the separate redotcom project keeps the server.)
 
 The boundary is enforced, not advised: [`test/simBoundary.test.ts`](../packages/viewer/test/simBoundary.test.ts) walks
 every value import reachable from `sim.ts` and fails on `three`, the DOM or Web Audio. A change that makes the mover
@@ -82,7 +82,7 @@ touch the renderer fails the suite.
 | Shading | the GS's modulate `(texel x vertex) >> 7`, `COLCLAMP`, linear fog, alpha test, the blend equations, the 640x448 frame stretched to 4:3 | which post-process a round runs, lighting flags, detail textures, facades, LOD records |
 | Sound | SPU ADPCM, SPU2 reverb; 989snd banks are Sony's 989 Studios library, used by other first-party titles | `sounds.rdr`, `BNKSTORE.ZAR`, the material step table, when a step or a round sounds |
 | Animation | -- | the clip format in `MOTION_*.ZAR`, `motion.rdr`, the zAnim command numbering |
-| Rules | a fixed-step authoritative server with client prediction | every number: speeds, jumps, accuracy, damage, respawn, scoring (research 80-91) |
+| Rules | a fixed-step authoritative room with client prediction | every number: speeds, jumps, accuracy, damage, respawn, scoring (research 80-91) |
 
 ## Adapting it to another PS2 game
 
@@ -103,7 +103,7 @@ approach and several modules that do not care which game made the bytes. A path 
 6. **Compare with the console early.** `tools/console-compare.ts` (research 82) puts the page beside a console frame at
    the console's own camera; most of the picture's real defects were found this way, not by eye.
 7. **Rules last, and shared.** If the game is to be played, keep the rules headless behind a boundary like `sim.ts` so
-   a server can run them unchanged.
+   an authority -- a room in the page, or a server -- can run them unchanged.
 
 ## Further reading
 

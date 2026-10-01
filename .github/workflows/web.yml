@@ -1,5 +1,5 @@
 name: web
-# The web half on its own -- one npm workspace at web/: redotcom (the map viewer and its server), the landing site
+# The web half on its own -- one npm workspace at web/: redotcom (the map viewer and its local demo), the landing site
 # (socomunzipped.com) and the design system they share. Typecheck, the unit suites (the fixture-backed tests skip
 # without game data) and both builds. The landing site's story is generated from docs/STORY.md and docs/story by
 # tools_py/story at build and test time, so those paths trigger it too; the recomp's workflow is linux.yml.

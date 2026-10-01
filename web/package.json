@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "GPL-3.0",
-  "description": "The web half of SOCOM Unzipped: redotcom (the map viewer and its match server), the landing site socomunzipped.com, and the design system they share",
+  "description": "The web half of SOCOM Unzipped: redotcom (the map viewer and its single-player local demo), the landing site socomunzipped.com, and the design system they share",
   "repository": {
     "type": "git",
     "url": "https://github.com/Scotho/socom-unzipped.git",
