@@ -5,7 +5,7 @@ import { CROUCH_HEIGHT, HEAD_HEIGHT, PRONE_HEIGHT, STANDING_HEIGHT } from './sta
  * The third-person camera's geometry, headless (moved out of `./playerCamera` for the shared sim, OWNER-3 of the launch
  * review): where `FUN_0029a950` puts the look-at target and the eye in the actor's space, where `FUN_00297410` aims
  * (the far point, `CAM_FAR` along the pitched look), and the scope's eye over the feet. The page's `PlayerCamera`
- * runs these every tick; the match server (`@s2u/server`, through `./sim`) reads the same numbers to check that a
+ * runs these every tick; the match's room (`./net/room`, through `./sim`) reads the same numbers to check that a
  * round's eye and aim are where this camera could have put them (`./net/shotCone`). The derivations are in
  * `./playerCamera`'s header; nothing here reads the hull (the pass, `cameraPass`, stays with the page's camera).
  */

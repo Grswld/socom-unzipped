@@ -5,20 +5,19 @@
  * - `mode=play` (reCOM, on foot) or `mode=explore` (the free camera). Absent, the remembered choice, else Explore.
  * - `map=MP2` -- the archive's stem.
  * - `view=modern` or `view=ps2` -- the picture switch.
- * - `online=off`, `shared` or `local` -- the Online setting. `&server=` and `&mp` still override it (`./online`).
  *
  * `redotcom` (the old flag that gated the play, owner 2026-09-29: "&redotcom can die now. The mode replaces it") has no
  * effect and is taken out of the address the next time the page writes it. `rules=` (the match's rules, web sprint 3) is
  * retired while classic is the only ruleset (owner ruling, 2026-09-29;
- * `./net/protocol` `RESPAWN_RULES_ENABLED`): never read, and taken out of the address the next time it is written.
+ * `./net/protocol` `RESPAWN_RULES_ENABLED`): never read, and taken out of the address the next time it is written. So
+ * are the online match's `online`, `mp` and `server` (`MULTIPLAYER_PARAMS`): the local demo (owner, 2026-10-01) joins
+ * no server, as the deployed teaser joins none; the online match lives in the separate redotcom project.
  *
  * On load the address beats the remembered choice; with a parameter absent the remembered choice applies, and the page
  * writes it into the address (`history.replaceState`: no reload, no history entries). A value this page does not know
- * reads as absent. The developer's parameters (`devmode`, `fly`, `mp`, `server`, `lag`, `loss`, anything else) pass
- * through as they were, a bare one kept bare, and are never added -- but an Online choice the visitor makes takes
- * `server` and `mp` out (`onlineChoiceAddress`): the choice replaces the server they named, so the link must too.
+ * reads as absent. The developer's parameters (`devmode`, `fly`, anything else) pass through as they were, a bare one
+ * kept bare, and are never added.
  */
-import type { OnlineChoice } from './online';
 import { RESPAWN_RULES_ENABLED } from './net/protocol';
 
 export type ShareView = 'modern' | 'ps2';
@@ -28,7 +27,6 @@ export interface ShareState {
   play?: boolean | null;
   map?: string | null;
   view?: ShareView | null;
-  online?: OnlineChoice | null;
   /** Other parameters to take out of the address (a developer's, which are otherwise always kept). */
   drop?: readonly string[];
 }
@@ -38,21 +36,22 @@ export interface ShareRead {
   play: boolean | null;
   map: string | null;
   view: ShareView | null;
-  online: OnlineChoice | null;
 }
 
 /** The parameters this module owns, in the order it writes them. */
-const KEYS = ['mode', 'map', 'view', 'online'] as const;
+const KEYS = ['mode', 'map', 'view'] as const;
+/** The online match's parameters (the Online setting's `online`, `&mp`, `&server=`): the local demo has no online match. */
+export const MULTIPLAYER_PARAMS: readonly string[] = ['online', 'mp', 'server'];
 /**
  * Parameters the page no longer understands, never read and taken out whenever it writes its address: the old
- * `redotcom` flag, and `rules` while respawn is off.
+ * `redotcom` flag, `rules` while respawn is off, and the online match's (`MULTIPLAYER_PARAMS`).
  */
-export const RETIRED_PARAMS: readonly string[] = RESPAWN_RULES_ENABLED ? ['redotcom'] : ['redotcom', 'rules'];
+export const RETIRED_PARAMS: readonly string[] = [...(RESPAWN_RULES_ENABLED ? ['redotcom'] : ['redotcom', 'rules']), ...MULTIPLAYER_PARAMS];
 /** A map's archive stem: letters, digits and underscores (`MP2`, `MP71`). */
 const MAP_STEM = /^[A-Za-z0-9_]{1,16}$/;
 
 export function readShare(search: string): ShareRead {
-  const out: ShareRead = { play: null, map: null, view: null, online: null };
+  const out: ShareRead = { play: null, map: null, view: null };
   let q: URLSearchParams;
   try { q = new URLSearchParams(search); } catch { return out; }
   const get = (key: string): string | null => q.get(key)?.toLowerCase() ?? null;
@@ -63,8 +62,6 @@ export function readShare(search: string): ShareRead {
   if (map && MAP_STEM.test(map)) out.map = map.toUpperCase();
   const view = get('view');
   if (view === 'modern' || view === 'ps2') out.view = view;
-  const online = get('online');
-  if (online === 'off' || online === 'shared' || online === 'local') out.online = online;
   return out;
 }
 
@@ -92,7 +89,6 @@ export function writeShare(search: string, state: ShareState): string {
     mode: state.play === undefined ? undefined : state.play === null ? null : state.play ? 'play' : 'explore',
     map: state.map === undefined ? undefined : state.map === null ? null : state.map,
     view: state.view,
-    online: state.online,
   };
   const ours: string[] = [];
   for (const key of KEYS) {
@@ -103,17 +99,6 @@ export function writeShare(search: string, state: ShareState): string {
   }
   const all = [...ours, ...rest];
   return all.length ? `?${all.join('&')}` : '';
-}
-
-/** The parameters that beat `online=` on load (`./online` `resolveOnline`, `./netPage` `netSettings`). */
-export const ONLINE_OVERRIDES: readonly string[] = ['server', 'mp'];
-
-/**
- * The address after the visitor picks an Online choice: the choice written, and the `server=` / `mp` that beat it on
- * load taken out, so a reload and the copied link join what the visitor chose, not the server the link had named.
- */
-export function onlineChoiceAddress(choice: OnlineChoice): ShareState {
-  return { online: choice, drop: ONLINE_OVERRIDES };
 }
 
 /** Writes `state` into the page's address without a reload or a history entry; best-effort (a `file:` page has none). */

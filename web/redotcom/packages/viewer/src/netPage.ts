@@ -1,7 +1,7 @@
 import type { PerspectiveCamera } from 'three';
 import type { WeaponRecord } from '@s2u/scene';
 import type { FireEvent, FireWeapon } from './fire';
-import { NetClient, type Simulate, type WebSocketLike } from './net/client';
+import { NetClient, type WebSocketLike } from './net/client';
 import type { Rules, ScoreRow, ServerEvent, Team } from './net/protocol';
 import { eliminationLines, MAX_ROUNDS, nextFollow, objectiveOf } from './net/rules';
 import { deathPose, type RemotePlayers } from './remotePlayers';
@@ -11,14 +11,16 @@ import type { PlayClips } from './play';
 import type { ScoreRowInfo } from './scoreboard';
 import type { RoundScreen } from './roundScreens';
 import type { WalkMode } from './walk';
-import type { OnlineStatus } from './online';
 import type { RoundInfo } from './hud';
 
 /**
  * The page in a match (web sprint 3, M4-M8): the net client on the walk, the other players drawn (`./remotePlayers`),
  * their rounds' muzzles, impacts and sounds, the page's own rounds and reloads sent up, the game's kill lines in the
  * message window (research 91 section 10: "%s fragged %s with %s", "%s commits suicide with %s", "%s falls to their
- * death"), "TIME EXPIRED" and the round's clock (section 18), the scoreboard's rows. Behind `?redotcom&mp` (W3.R7).
+ * death"), "TIME EXPIRED" and the round's clock (section 18), the scoreboard's rows.
+ *
+ * The local demo (owner, 2026-10-01): the match is always the page's own (`./net/loopback`, the room run in the page);
+ * there is no server to join, reconnect to or watch. The online match lives in the separate redotcom project.
  */
 
 export interface NetPageDeps {
@@ -48,10 +50,8 @@ export interface NetPageDeps {
   respawned(): void;
   /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
   weapons: readonly [WeaponRecord, WeaponRecord];
-  /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default -- or the single-player room's. */
-  socket?: (url: string) => WebSocketLike;
-  /** The offline match (`./net/loopback`): the panel reads "offline match", no reconnecting. */
-  solo?: boolean;
+  /** The socket onto the room: the offline match's (`./net/loopback` `LoopbackMatch.socket`) or a test's. */
+  socket: () => WebSocketLike;
   /** A blast's ringing ears (`./net/blast`, `FUN_005a0e70` L459221-459227): every channel at `volume` for `seconds`. */
   ring?(seconds: number, volume: number): void;
 }
@@ -82,15 +82,6 @@ export const GHOST_LINES: readonly string[] = [
   `weapons.  ${HELP_LEAD} directional`, 'buttons to cycle through living teammates.',
 ];
 
-/** `?mp` turns the match on; `?server=wss://host/ws` names the server (the page's own host at `/ws` by default). */
-export function netSettings(search: string, location: { protocol: string; host: string }): { url: string; simulate?: Simulate } | null {
-  const q = new URLSearchParams(search);
-  if (!q.has('mp') && !q.has('server')) return null;
-  const url = q.get('server') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
-  const lag = Number(q.get('lag') ?? '0'), loss = Number(q.get('loss') ?? '0');
-  return { url, ...(lag > 0 || loss > 0 ? { simulate: { latencyMs: lag, jitterMs: lag / 5, loss: loss / 100 } } : {}) };
-}
-
 export function fireWeaponOf(r: WeaponRecord): FireWeapon {
   const s = r.sounds;
   return { name: r.name, id: r.id, fireAnim: r.fireAnim ?? null, sounds: s ? { ...s } : { close: null, med: null, far: null, reload: null } };
@@ -111,19 +102,11 @@ export function queueLine(position: number): string {
   return `SPECTATING: YOU ARE NUMBER ${position} IN LINE`;
 }
 
-/**
- * The wait before the next attempt to join, ms: after a match was reached, 1, 2, 4 ... 10 s (M9); to a server never
- * reached, 2, 4, 8 ... 60 s.
- */
-export function retryDelayMs(attempts: number, reached: boolean): number {
-  return reached ? Math.min(10_000, 1000 * 2 ** attempts) : Math.min(60_000, 2000 * 2 ** attempts);
-}
-
 /** The engine reads the round's result this long after the script ends it (`FUN_002a9b30` L150612-150672). */
 const ENGINE_READ_S = 3;
 
 export class NetPage {
-  client: NetClient;
+  readonly client: NetClient;
   private readonly names = new Map<number, string>();
   private readonly teams = new Map<number, Team>();
   /** The round's end, in `performance.now()` ms, or null between rounds. */
@@ -185,16 +168,7 @@ export class NetPage {
     if (e.code === 'Space') { this.nextTarget(); e.preventDefault(); }
     else if (e.code === 'KeyV') { this.spectating.follow = !this.spectating.follow; if (!this.spectating.follow) this.deps.spectate(null); }
   };
-  private unsubscribe: () => void;
-  /**
-   * M9: a dropped socket (a server restart, the network) is joined again after 1, 2, 4 ... 10 s; a kick or a refusal
-   * is not. The match gives a rejoiner a new place, as the game's lobby would.
-   */
-  private reconnect = { attempts: 0, at: 0, stopped: false };
-  /** Whether a socket of this page has ever opened: a server never reached is retried more slowly and silently. */
-  private reached = false;
-  /** The server's reason, when it refused. */
-  private refusal: string | null = null;
+  private readonly unsubscribe: () => void;
   /**
    * The round's end on the game's screens (research 91 section 18; `./roundScreens`): after the engine reads the result
    * (3 s), each screen the server named for its seconds, counting down; cleared when the next round starts.
@@ -202,67 +176,15 @@ export class NetPage {
   private screens: { start: number; list: { screen: RoundScreen['kind']; seconds: number }[]; winner: Team | null; wins: { seal: number; terrorist: number } } | null = null;
   private readonly joinedAt = performance.now();
 
-  /**
-   * `watch` (the map viewer's Online setting): join as a spectator that never plays -- the walk is not driven, the
-   * camera follows the living players (Space the next, V the free camera) as a queued spectator's does.
-   */
-  constructor(private readonly deps: NetPageDeps, private readonly url: string, private readonly map: string, private name: string, private readonly simulate?: Simulate, private readonly watch = false, rules: Rules = 'respawn') {
+  /** Joins the room behind `deps.socket` as `name`, asking for `rules`. */
+  constructor(private readonly deps: NetPageDeps, map: string, name: string, rules: Rules = 'respawn') {
     this.rules = rules;
-    this.asked = rules;
-    this.client = this.open();
+    this.client = new NetClient({ map, name, rules, socket: deps.socket }, deps.walk);
     this.unsubscribe = this.client.on((ev) => this.event(ev));
     globalThis.addEventListener?.('keydown', this.onKey);
   }
 
-  /** The rules this page asked for (the hello's). */
-  private readonly asked: Rules;
-
-  private open(): NetClient {
-    return new NetClient({
-      url: this.url, map: this.map, name: this.name, rules: this.asked, ...(this.simulate ? { simulate: this.simulate } : {}), ...(this.watch ? { watch: true } : {}),
-      ...(this.deps.socket ? { socket: this.deps.socket } : {}),
-    }, this.deps.walk);
-  }
-
-  /**
-   * Joins again after a drop, with the backoff: 1, 2, 4 ... 10 s after a match that was reached (with the HUD's line),
-   * and 2, 4, 8 ... 60 s, without a word in the HUD, to a server never reached (the shared one before it is up: a
-   * browser logs each refused socket itself, so the attempts are kept few).
-   */
-  private retry(): void {
-    const now = performance.now();
-    if (this.client.state === 'open') this.reached = true;
-    if (this.reconnect.stopped || this.client.state !== 'closed') return;
-    if (this.reconnect.at === 0) {
-      this.reconnect.at = now + retryDelayMs(this.reconnect.attempts, this.reached);
-      if (this.reached) this.deps.hud.postMessage('CONNECTION LOST. RECONNECTING. . .');
-      return;
-    }
-    if (now < this.reconnect.at) return;
-    this.reconnect.attempts++;
-    this.reconnect.at = 0;
-    this.unsubscribe();
-    this.deps.remote.clear();
-    this.client = this.open();
-    this.unsubscribe = this.client.on((ev) => this.event(ev));
-  }
-
-  /** The connection as the panel's Online line shows it (`./online` `onlineLine`). */
-  status(): OnlineStatus {
-    const c = this.client;
-    const base = { players: this.rows.length, retryIn: 0, watching: this.watch };
-    if (this.deps.solo) return { ...base, state: 'offline' };
-    if (c.state === 'refused' || (this.reconnect.stopped && c.state === 'closed')) return { ...base, state: 'refused', reason: this.refusal ?? 'closed by the server' };
-    if (c.state === 'open' && c.id !== 0) return { ...base, state: 'online' };
-    if (c.state === 'closed') {
-      const wait = this.reconnect.at > 0 ? (this.reconnect.at - performance.now()) / 1000 : retryDelayMs(this.reconnect.attempts, this.reached) / 1000;
-      return { ...base, state: 'retrying', retryIn: Math.max(0, wait) };
-    }
-    return { ...base, state: 'connecting' };
-  }
-
   close(): void {
-    this.reconnect.stopped = true;
     this.deps.hud.setRoundScreen(null);
     this.deps.hud.setScoreRows(null, []);
     globalThis.removeEventListener?.('keydown', this.onKey);
@@ -323,7 +245,6 @@ export class NetPage {
   }
 
   frame(dt: number, camera: PerspectiveCamera, trigger: boolean): void {
-    this.retry();
     this.deps.hud.setRoundScreen(this.roundScreen());
     this.deps.walk.setTrigger(trigger);
     this.deps.remote.frame(dt, this.client.bodies(), camera);
@@ -405,8 +326,6 @@ export class NetPage {
     const { remote, hud } = this.deps;
     switch (ev.type) {
       case 'welcome':
-        this.reconnect.attempts = 0;
-        this.reached = true;
         this.names.set(ev.id, ev.name);
         if (ev.role === 'spectator') this.spectatorWelcome(ev.queue);
         for (const p of ev.players) { this.names.set(p.id, p.name); this.teams.set(p.id, p.team); remote.setTeam(p.id, p.team); }
@@ -486,9 +405,9 @@ export class NetPage {
         break;
       // Protocol 5 (PL-8): moved out for idling (W3.R13) -- a spectator's view and the queue's line.
       case 'demoted': this.spectatorWelcome(ev.position); break;
-      case 'refused': this.reconnect.stopped = true; this.refusal = ev.reason; hud.postMessage(ev.reason); break;
+      case 'refused': hud.postMessage(ev.reason); break;
       case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
-      case 'kicked': this.reconnect.stopped = true; this.refusal = ev.reason === 'vote' ? 'kicked by a vote' : 'kicked for inactivity';
+      case 'kicked':
         hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
       default: break;
     }

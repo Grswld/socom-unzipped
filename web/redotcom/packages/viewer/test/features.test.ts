@@ -25,7 +25,7 @@ const load = (): void => { document.body.innerHTML = new DOMParser().parseFromSt
  */
 describe('the segmented switches', () => {
   beforeEach(load);
-  const SWITCHES = ['recom', 'look', 'mode', 'online'];
+  const SWITCHES = ['recom', 'look', 'mode'];
 
   it('are role=group with a name, each child a button with aria-pressed, exactly one pressed', () => {
     for (const id of SWITCHES) {
@@ -107,7 +107,7 @@ describe('removePlayUi: the play markup is taken out, not hidden', () => {
       expect(keys).toMatch(/Ffullscreen/);
       expect(keys).not.toMatch(/walk|jump|stance|fire|reload|peek|grenade|zoom/i);
       const rows = [...document.querySelectorAll('#pad-list tbody tr:not(.pad-group)')].map((r) => r.querySelector('td')!.textContent);
-      expect(rows).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle', 'Circle']);
+      expect(rows).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle', 'Circle', 'Multiplayer']);
       for (const id of ['sound-section', 'look-section', 'mute', 'volume', 'sensitivity']) expect(document.getElementById(id), id).toBeNull();
     });
   });

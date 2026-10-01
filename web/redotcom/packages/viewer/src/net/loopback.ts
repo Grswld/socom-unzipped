@@ -9,16 +9,15 @@ import { offeredRules, RESPAWN_RULES_ENABLED, TICK_HZ, type ClientEvent } from '
 import type { WebSocketLike } from './client';
 
 /**
- * The page's single-player match (owner, 2026-09-29: "let's make offline tick rounds etc too"). Offline, reCOM mode
- * runs the match server's own `Room` (`@s2u/server` `room.ts`: no socket, no Node in it) inside the page, behind a
- * socket that never leaves it (`LoopbackMatch.socket`), and joins it with the same `NetClient` and `NetPage` a match
- * uses: the round's clock and banner, the round and match screens, the game's damage -- a grenade's blast on the
- * player included -- deaths, respawns and scores come from one implementation, online and off. The room runs
- * `solo` (`RoomOptions.solo`: the player is the host's SEAL, no idle kick, classic's round runs alone to its clock).
+ * The page's single-player match (owner, 2026-09-29: "let's make offline tick rounds etc too"). reCOM mode runs the
+ * match's `Room` (`./room`: no socket, no Node in it) inside the page, behind a socket that never leaves it
+ * (`LoopbackMatch.socket`), and joins it with `NetClient` and `NetPage`: the round's clock and banner, the round and
+ * match screens, the game's damage -- a grenade's blast on the player included -- deaths, respawns and scores. The room
+ * runs `solo` (`RoomOptions.solo`: the player is the host's SEAL, no idle kick, classic's round runs alone to its clock).
+ * This is the local demo's only match (owner, 2026-10-01): the online match lives in the separate redotcom project.
  *
- * The room is stepped at the game's 60 Hz by the same drift-corrected clock as the server's (`../../../server/src/server`
- * `loop`): at most five steps a wake, a longer stall dropped rather than replayed. Frames cross on a microtask, in order,
- * as a socket's would.
+ * The room is stepped at the game's 60 Hz by a drift-corrected clock (the match server's, as it was): at most five
+ * steps a wake, a longer stall dropped rather than replayed. Frames cross on a microtask, in order, as a socket's would.
  */
 
 /** What of a loaded map the room needs (`../loadMap` `LoadedMap`). */
@@ -32,8 +31,8 @@ export interface LoadedForMatch {
 }
 
 /**
- * The room's map from the page's: the hull copied -- the room's doors turn its polygons as the server's do, and the
- * page's own hull follows them from the snapshots, as online -- its grid, the slots and their respawn twins.
+ * The room's map from the page's: the hull copied -- the room's doors turn its polygons, and the
+ * page's own hull follows them from the snapshots -- its grid, the slots and their respawn twins.
  */
 export function simMapOfLoaded(map: LoadedForMatch): SimMap {
   if (!map.ground) throw new Error('no hull: the map has no ground to play on');
@@ -49,8 +48,8 @@ export function simMapOfLoaded(map: LoadedForMatch): SimMap {
 }
 
 /**
- * The room's clips from the page's (`../play` `PlayClips`, the worker's): the same clips and `motion.rdr` table the
- * server loads (`loadSimClips`), so the room's movers run the page's action root motion. Null without them.
+ * The room's clips from the page's (`../play` `PlayClips`, the worker's): the same clips and `motion.rdr` table
+ * `loadSimClips` reads, so the room's movers run the page's action root motion. Null without them.
  */
 export function simClipsOfPlay(play: { clips: MotionClip[]; table: [string, MotionEntry][] | null } | null): SimClips | null {
   if (!play || !play.clips.length) return null;
@@ -85,7 +84,7 @@ export class LoopbackMatch {
   }
 
   /** `NetOptions.socket`: a socket onto this room. */
-  readonly socket = (_url: string): WebSocketLike => new LoopbackSocket(this.room, SOLO_ID);
+  readonly socket = (): WebSocketLike => new LoopbackSocket(this.room, SOLO_ID);
 
   /** One 60 Hz step of the room (the tests; the page's clock calls it). */
   step(): void {
@@ -98,7 +97,7 @@ export class LoopbackMatch {
     this.timer = null;
   }
 
-  /** The server's clock (`MatchServer.loop`), in the page. */
+  /** The room's clock, in the page. */
   private loop(): void {
     const period = 1000 / TICK_HZ;
     let next = performance.now();

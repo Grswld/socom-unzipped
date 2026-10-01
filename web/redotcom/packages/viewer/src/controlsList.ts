@@ -29,20 +29,20 @@ export const GROUP_GENERAL = 'General';
 /**
  * The keyboard and mouse for a mode. `toggle` is whether `G` switches walk and fly: only in Play, and only with the
  * developer's `?devmode` (owner, 2026-09-29: the fly camera is not a player's in Play; `./flyAccess`). Without it
- * neither list names `G`. `multiplayer` false (a build with it off, `./multiplayer`) adds `MULTIPLAYER_OFF_ROW` to General.
+ * neither list names `G`. General ends on `MULTIPLAYER_OFF_ROW`.
  */
-export function controlGroups(mode: ControlMode, toggle: boolean, multiplayer = true): ControlGroup[] {
-  return withMultiplayerNote(keyGroups(mode, toggle), multiplayer);
+export function controlGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
+  return withMultiplayerNote(keyGroups(mode, toggle));
 }
 
 /**
- * The row a build with multiplayer off (`./multiplayer`, `VITE_S2U_MULTIPLAYER=off`) adds to both lists' General group:
- * no key or button joins a match there, and the list says so rather than leave a player looking for one.
+ * The row both lists' General group ends on (the local demo, owner 2026-10-01: this repository's redotcom is single
+ * player, as the deployed teaser is; the online match lives in the separate redotcom project): no key or button joins
+ * a match, and the list says so rather than leave a player looking for one.
  */
 export const MULTIPLAYER_OFF_ROW: ControlRow = { keys: 'Multiplayer', does: 'off in this build' };
 
-function withMultiplayerNote(groups: ControlGroup[], multiplayer: boolean): ControlGroup[] {
-  if (multiplayer) return groups;
+function withMultiplayerNote(groups: ControlGroup[]): ControlGroup[] {
   const general = groups.find((g) => g.name === GROUP_GENERAL);
   if (general) general.rows.push(MULTIPLAYER_OFF_ROW);
   else groups.push({ name: GROUP_GENERAL, rows: [MULTIPLAYER_OFF_ROW] });
@@ -122,10 +122,10 @@ function keyGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
 
 /**
  * The controller for a mode, by the PS2 pad's names (the Gamepad API's standard layout, by position); Start as `G`.
- * `multiplayer` false (a build with it off) adds `MULTIPLAYER_OFF_ROW`, as `controlGroups` does.
+ * General ends on `MULTIPLAYER_OFF_ROW`, as `controlGroups`'s does.
  */
-export function padControlGroups(mode: ControlMode, toggle: boolean, multiplayer = true): ControlGroup[] {
-  return withMultiplayerNote(padGroups(mode, toggle), multiplayer);
+export function padControlGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
+  return withMultiplayerNote(padGroups(mode, toggle));
 }
 
 function padGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {

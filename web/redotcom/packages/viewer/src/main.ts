@@ -52,12 +52,9 @@ import { hotkey, Kit, type Firearm } from './kit';
 import { Play, playActions, StanceButton } from './play';
 import { PlayUi, readPlayChoice, writePlayChoice } from './features';
 import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
-import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
+import { readShare, updateAddress } from './shareUrl';
 import { startSource } from './source';
-import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
-import { roomsUrl } from './playersOnline';
-import { multiplayerEnabled, onlineTarget, playersPoller, singlePlayerAddress, stripMultiplayerUi } from './multiplayer';
 import type { Rules } from './net/protocol';
 import { PLAY_CLIPS } from './animator';
 import { TRAVERSAL_CLIPS } from './traversal';
@@ -105,22 +102,14 @@ if (!canvas) throw new Error('the page has no #view canvas');
 /** The page's query string, read once. */
 const SEARCH = globalThis.location?.search ?? '';
 /**
- * The shareable settings the address carries (owner, 2026-09-29; `./shareUrl`): `mode`, `map`, `view`, `online`. On load
- * they beat the remembered choices; each is written back into the address as it changes, so the address is a link to
- * this setup. The retired `redotcom` and `rules` are ignored and rewritten out (`RETIRED_PARAMS`).
+ * The shareable settings the address carries (owner, 2026-09-29; `./shareUrl`): `mode`, `map`, `view`. On load they
+ * beat the remembered choices; each is written back into the address as it changes, so the address is a link to this
+ * setup. The retired `redotcom` and `rules`, and the online match's `online`, `mp` and `server`, are ignored and
+ * rewritten out at once (`RETIRED_PARAMS`): the local demo (owner, 2026-10-01) is single player, as the deployed teaser
+ * is -- no Online setting, no players-online count, no request to any match server. The offline match stays.
  */
 const SHARE = readShare(SEARCH);
-/**
- * MULTIPLAYER, the build's switch (owner, 2026-09-30: the site's redotcom ships "with multiplayer disabled";
- * `./multiplayer`): `VITE_S2U_MULTIPLAYER=off` (the site's release build, `web/shared/deploy/site/deploy.sh`) takes the
- * Online section out and makes the kicker the product's name, before `Ui` reads the page; the address's `online`, `mp`
- * and `server` are taken out; no server is joined and no `/rooms` is asked. The offline match stays. On by default.
- */
-const MULTIPLAYER = multiplayerEnabled(import.meta.env.VITE_S2U_MULTIPLAYER as string | undefined);
-if (!MULTIPLAYER) {
-  stripMultiplayerUi();
-  updateAddress(singlePlayerAddress());
-}
+updateAddress({});
 /**
  * Playing as a SEAL (walk mode, the body, the rifle, the HUD) is reCOM mode (`./features`; the owner 2026-09-28 and
  * 2026-09-29): the settings' Mode switch, always on the page ("&redotcom can die now. The mode replaces it"), remembered,
@@ -626,14 +615,11 @@ function askIndex(from: SourceRequest): void {
  * the body stands in its bind pose; the W2.1 body switch shows it in fly mode.
  */
 const play = new Play();
-// MULTIPLAYER (web sprint 3): the other players and the match -- the settings' Online (owner, 2026-09-29; `./online`), or
-// the URL's `&mp` / `&server=` over it. reCOM mode joins as a player, the map viewer as a watcher (`connectNet`).
+// The match's other bodies (the room's; in the offline match the player is alone in it; web sprint 3).
 const remote = new RemotePlayers(scene);
-const PAGE_LOCATION = globalThis.location ?? { protocol: 'http:', host: 'localhost' };
-let NET: OnlineTarget = onlineTarget(MULTIPLAYER, SEARCH, () => SHARE.online ?? readOnline(), PAGE_LOCATION);   // none with multiplayer off
 /**
  * The match's rules (`./rules`): classic, the only ruleset while respawn is off (owner ruling, 2026-09-29;
- * `./net/protocol` `RESPAWN_RULES_ENABLED`), online and in the offline match alike.
+ * `./net/protocol` `RESPAWN_RULES_ENABLED`).
  */
 const RULES: Rules = resolveRules(SEARCH, readRules()).rules;
 let net: NetPage | null = null;
@@ -647,23 +633,6 @@ let solo: LoopbackMatch | null = null;
 const ears = new RingingEars(audio);
 /** The clips the worker sent (the death clips among them, for the page's own death). */
 let playClips: PlayClips | null = null;
-/** The name the player set (`s2u.mp.name`), or '' for the server's guest name (W3.R12). */
-function playerName(): string {
-  try { return globalThis.localStorage?.getItem('s2u.mp.name') ?? ''; } catch { return ''; }
-}
-// W3.R12: the settings' name field -- printable ASCII, 30 at most (the server cleans it again), sent to the match.
-{
-  const field = document.getElementById('mp-name') as HTMLInputElement | null;
-  if (field) {
-    field.value = playerName();
-    field.addEventListener('change', () => {
-      const name = field.value.replace(/[^\x20-\x7e]/g, '').replace(/\s+/g, ' ').trim().slice(0, 30);
-      field.value = name;
-      try { globalThis.localStorage?.setItem('s2u.mp.name', name); } catch { /* no storage */ }
-      if (name) net?.client.send({ type: 'name', name });
-    });
-  }
-}
 play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locomotion (`./throwPose`)
 // WEAPON: the trigger raises the rifle (`./weaponRaise`), a reload plays its clip; `fire.subscribe` is also the
 // audio's hook (`FireEvent`: every round, every reload's start and end).
@@ -714,7 +683,7 @@ function askSound(from: SourceRequest, path: string, archive: string): void {
 }
 function askPlay(from: SourceRequest): void {
   wantedPlay = ++requests;
-  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS, ...DEATH_CLIPS] });   // the deaths: Online can come on at any time
+  ask({ kind: 'play', id: wantedPlay, source: from, clips: [...PLAY_CLIPS, ...WEAPON_CLIPS, ...TRAVERSAL_CLIPS, ...THROW_CLIPS, ...DEATH_CLIPS] });   // the deaths: the offline match can start at any time
 }
 
 // ---- W2.6: the scope and the pad's lanes in play (`./play`, `./walk`) ---------------------------------------------
@@ -1010,8 +979,8 @@ const revision = ui.showRevision();
 /**
  * reCOM mode on or off (the settings' Mode switch, owner 2026-09-29), at run time and both ways: the play's markup in or
  * out of the page (`PlayUi`), its keys bound or not, the lists in the Controls popover, the body switch let go, the walk
- * left for the fly camera -- and entered when it comes on, as a reCOM visit opens on foot -- and the match joined again
- * in the new role (a player, or a watcher). `remember` is the visitor's choice (not the page's start): it is stored, and
+ * left for the fly camera -- and entered when it comes on, as a reCOM visit opens on foot -- and the offline match
+ * started or left (`connectNet`). `remember` is the visitor's choice (not the page's start): it is stored, and
  * the address says the mode so a reload keeps it.
  */
 function setPlayMode(on: boolean, remember: boolean): void {
@@ -1039,52 +1008,6 @@ function setPlayMode(on: boolean, remember: boolean): void {
 setPlayMode(playOn, false);
 ui.onRecomSwitch((on) => setPlayMode(on, true));
 
-/**
- * The Online setting (owner, 2026-09-29; `./online`): the choice remembered, the match joined again at the new server or
- * left. A server the URL named is replaced by the choice.
- */
-if (MULTIPLAYER) {
-  ui.offerLocal(pageIsLocal(PAGE_LOCATION));    // Local is a developer's: never on the deployed site
-  ui.setOnline(NET.choice);
-  // The link says the choice; a server the address named (`&server=`, which beats it) is not rewritten on load -- only a
-  // choice the visitor makes below takes it out.
-  if (NET.choice !== 'url') updateAddress({ online: NET.choice });
-}
-/**
- * PLAYERS ONLINE (owner, 2026-09-29; `./playersOnline`): the panel's kicker and the picker's per-map counts, from the
- * shared server's `/rooms` -- the local server's when Online is Local. `VITE_S2U_ROOMS` replaces the shared list at
- * build time (`off`: none; the e2e run sets it, `playwright.config.ts`, while the shared server is not live). Polled
- * about every 20 s while the page shows, paused while it is hidden, stopped when the page goes (and started again if
- * the browser brings it back from its back-forward cache). None at all with multiplayer off (`./multiplayer`).
- */
-const ROOMS_OVERRIDE = import.meta.env.VITE_S2U_ROOMS as string | undefined;
-const rooms = playersPoller(MULTIPLAYER, NET.choice, ROOMS_OVERRIDE, (c) => ui.setPlayerCounts(c));
-if (rooms) {
-  rooms.start();
-  globalThis.addEventListener?.('pagehide', () => rooms.stop());
-  globalThis.addEventListener?.('pageshow', (e) => { if ((e as PageTransitionEvent).persisted) rooms.start(); });
-  ui.onOnline((choice: OnlineChoice) => {
-    writeOnline(choice);
-    updateAddress(onlineChoiceAddress(choice));   // the choice replaces a named server: `server=` / `mp` leave the link
-    NET = resolveOnline('', choice, PAGE_LOCATION);
-    rooms.setUrl(roomsUrl(NET.choice, ROOMS_OVERRIDE));
-    if (loaded) connectNet(loaded);
-    showOnline();
-  });
-}
-/** The connection's line under the setting, and a toast when it comes up or goes unreachable (not at every retry). */
-let onlineShown = '';
-function showOnline(): void {
-  const status = net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn };
-  const line = onlineLine(status);
-  ui.setOnlineState(line.text, line.lamp);
-  const headline = status.state === 'retrying' ? 'unreachable' : status.state;
-  if (headline === onlineShown) return;
-  if (headline === 'online') ui.toast(status.watching ? 'Online: watching the match' : 'Online: in the match');
-  else if (headline === 'unreachable') ui.toast('Online: the match server is unreachable; retrying');
-  onlineShown = headline;
-}
-showOnline();
 
 /**
  * The map a visitor asked for: `?map=MP7` in the URL first, then the one remembered from last time,
@@ -1262,7 +1185,7 @@ async function boot(): Promise<void> {
     play.frame(dt, walk, fly.camera);   // W2.2b: the body at the drawn feet in its clip; hidden in the scope
     // DEAD: the dead's controller (`FUN_00592560` L451642-451730) takes the respawn press alone -- a held trigger lets go.
     if (walk.isDead() && fire.triggerHeld()) fire.release();
-    net?.frame(dt, fly.camera, fire.triggerHeld());   // MULTIPLAYER: the others at the view tick, the clock
+    net?.frame(dt, fly.camera, fire.triggerHeld());   // the match: the others at the view tick, the clock
     doors.frame(dt);                // DOORS: the swings (the server's, in a match)
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
@@ -1338,7 +1261,6 @@ async function boot(): Promise<void> {
         lastShown = now;
         ui.setFps(1000 / smoothedMs, smoothedMs);
         adapt(now);
-        showOnline();                               // the Online line: connecting, online and the players, the retry
       }
     }
     requestAnimationFrame(frame);
@@ -1384,9 +1306,9 @@ function showMaps(maps: MapInfo[]): void {
 }
 
 /**
- * The match for the map on screen (a new map is a new match: each map its own, W3.R11): the Online setting's server, or
- * the URL's, joined as a player in reCOM mode and as a watcher in the map viewer; none when Online is off. Any earlier
- * connection is closed first.
+ * The match for the map on screen (a new map is a new match: each map its own, W3.R11): the offline match, the room run
+ * in the page (`./net/loopback`; owner, 2026-09-29), in reCOM mode on a map with a hull; none in the map viewer. The
+ * local demo has no other (owner, 2026-10-01). Any earlier match is closed first.
  */
 function connectNet(map: LoadedMap): void {
   net?.close();
@@ -1394,8 +1316,10 @@ function connectNet(map: LoadedMap): void {
   solo?.stop();
   solo = null;
   ears.stop();
+  if (!(playOn && SOLO_MATCH && map.ground)) return;
+  solo = new LoopbackMatch(simMapOfLoaded(map), simClipsOfPlay(playClips), { rules: RULES });
   const deps: NetPageDeps = {
-    walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+    socket: solo.socket, walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
     spectate: (pose) => { if (pose) fly.setPose(pose); },
     remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
     roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
@@ -1405,20 +1329,7 @@ function connectNet(map: LoadedMap): void {
     respawned: () => { kit.reset(); fire.refill(); grenade.refill(); showFireMode(); },
   };
   const stem = map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase();
-  if (NET.url) {
-    try {
-      net = new NetPage(deps, NET.url, stem, playerName(), NET.simulate, !playOn, RULES);
-    } catch (e) {
-      // A socket the browser refuses outright (a `server=` it will not open) must not stop `show` half-way: no match.
-      net = null;
-      ui.setStatus(`the match could not be joined: ${e instanceof Error ? e.message : String(e)}`, 'error');
-    }
-  } else if (playOn && SOLO_MATCH && map.ground) {
-    // Offline in reCOM mode: the match server's own room, in the page (`./net/loopback`; owner, 2026-09-29).
-    solo = new LoopbackMatch(simMapOfLoaded(map), simClipsOfPlay(playClips), { rules: RULES });
-    net = new NetPage({ ...deps, socket: solo.socket, solo: true }, 'loopback:', stem, playerName(), undefined, false, RULES);
-  }
-  showOnline();
+  net = new NetPage(deps, stem, '', RULES);   // '': the room's guest name (W3.R12)
 }
 
 /**
@@ -1516,7 +1427,7 @@ function show(map: LoadedMap): void {
     warmedAt['walk'] = performance.now();
     startInWalk(map.name);
   });
-  // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
+  // The match: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
     built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);
   connectNet(map);
@@ -1672,11 +1583,6 @@ window.__viewer = {
   setMode: (mode) => (mayEnter(mode, playOn, FLY) ? walk.setMode(mode) : false),
   recom: (on) => { if (on !== undefined) setPlayMode(on, true); return playOn; },
   discPage: () => ui.discPageShown(),
-  playersOnline: () => {
-    const c = rooms?.counts();
-    return c ? { total: c.total, byMap: Object.fromEntries(c.byMap) } : null;
-  },
-  online: () => ({ ...(net ? net.status() : { state: 'off' as const, players: 0, retryIn: 0, watching: !playOn }), choice: NET.choice, url: NET.url }),
   walkFor: (seconds, input) => walk.walkFor(seconds, { forward: input?.forward ?? 1, right: input?.right ?? 0, boost: false }),
   feet: () => walk.feet(),
   floorUnder: (x, z, y, from = y) => {

@@ -1,7 +1,7 @@
 /**
- * The shared sim (web sprint 3, M2; spec W3.R2): everything the multiplayer server runs of the walk, headless -- no
+ * The shared sim (web sprint 3, M2; spec W3.R2): everything the match's room runs of the walk, headless -- no
  * three.js, no DOM, no Web Audio anywhere under it (`test/simBoundary.test.ts` walks the imports and refuses them). The
- * page imports these same modules; the server (`@s2u/server`) imports them through here, so both predict and
+ * page imports these same modules; the room (`./net/room`) imports them through here, so both predict and
  * decide with one code path.
  *
  * - the mover (`./mover`): the stick law, stances, jumps, landings, action root motion, the probe on the hull;

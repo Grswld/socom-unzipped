@@ -46,7 +46,7 @@ import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type Mar
  *   reloads over the reload clip's length when the source knows it (`FireSource.reloadSeconds`: `motion.rdr`'s
  *   `playback` of `seal_reload` 1.6, `seal_crouch_reload` 1.9, `seal_prone_reload` 1.7, `seal_mv_reload` 1.2 -- the
  *   M4A1's record has no `ReloadTime`, so the game's reload is its animation's), else over `RELOAD_SECONDS`
- *   [estimate]. The multiplayer server counts with the same ring (`packages/server/src/room.ts`).
+ *   [estimate]. The match's room counts with the same ring (`./net/room`).
  * - **The range** is `Maximum_Range` x `UNITS_PER_METRE` (10): the file's ranges are metres (research 84 §2).
  * - **The gun** (`setGun`, `./accuracy` through `main.ts`; research 84): the eye's ray leaves off the view's centre
  *   line by the reticle's cone and knock (`FUN_005bd100` / `FUN_00592260`), so the point it finds -- the one the

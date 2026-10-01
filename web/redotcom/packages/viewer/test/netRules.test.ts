@@ -12,7 +12,7 @@ import { HELD_RIFLE, HELD_SIDEARM } from '@s2u/scene';
  * classic round's messages and the dead's follow camera. A fake socket stands in for the server.
  */
 
-function page(rules: Rules, solo = false) {
+function page(rules: Rules) {
   const sent: string[] = [];
   let socket: WebSocketLike | null = null;
   const hud = new Hud();
@@ -36,7 +36,7 @@ function page(rules: Rules, solo = false) {
       return socket;
     },
   };
-  const net = new NetPage(solo ? { ...deps, solo } : deps, 'ws://test/ws', 'MP2', 'Tester', undefined, false, rules);
+  const net = new NetPage(deps, 'MP2', 'Tester', rules);
   socket!.onopen?.({} as Event);
   const server = (ev: ServerEvent): void => { socket!.onmessage?.({ data: JSON.stringify(ev) } as MessageEvent); };
   // The client reads the bodies from its snapshots; the tests hand them in directly.
@@ -134,12 +134,5 @@ describe('the kit of the page at a spawn (research 91 §4.3: FUN_00598b90 -> FUN
     server({ type: 'spawn', id: 1, at: [0, 0, 0], yaw: 0, after: 0 });
     expect(respawns).toHaveLength(2);                           // a classic round's start is a spawn too
     net.close();
-  });
-});
-
-describe('the Online line while the offline match runs (wave-3 carry-over: it read "single player: no server")', () => {
-  it('the offline match (`./net/loopback`) reports offline, not off; a server match reports its connection', () => {
-    expect(page('respawn', true).net.status().state).toBe('offline');
-    expect(page('respawn').net.status().state).not.toMatch(/^off/);
   });
 });

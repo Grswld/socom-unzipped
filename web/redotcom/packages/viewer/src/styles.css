@@ -79,12 +79,10 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 /* The overlay's overflow: hidden clips a ring drawn outside a control; drawn inside, it is whole. */
 #panel :focus-visible { outline-offset: -2px; }
 /*
- * PLAYERS ONLINE: the system's kicker as the panel's first line. The kicker is ordered after a head's title (order 1);
- * the panel body is a grid, where that would send it to the foot, so it is put back first. The figure is the gold,
- * tabular, so a count that changes does not shift the line.
+ * The kicker (the product's name), the system's, as the panel's first line. The kicker is ordered after a head's title
+ * (order 1); the panel body is a grid, where that would send it to the foot, so it is put back first.
  */
 #panel-kicker { margin: 0; order: 0; }
-#players-online { color: var(--s2u-gold); font-variant-numeric: tabular-nums; }
 /*
  * The panel's rhythm (the polish pass, owner 2026-09-29): the body's grid gap between sections, a hairline over each
  * section after the first, 8px inside one; each section's heading the system's field label, its one line of help the
@@ -131,13 +129,13 @@ body.chrome-hidden #panel, body.chrome-hidden #fps, body.chrome-hidden #fullscre
 #controls [role="tabpanel"][hidden] { display: none; }
 
 /*
- * One segmented toggle for the panel's choices (Mode, View, Fly / Walk, Online, Rules, Mouse look), each a
+ * One segmented toggle for the panel's choices (Mode, View, Fly / Walk, Mouse look), each a
  * `role="group"` of `aria-pressed` toggle buttons (WAI-ARIA: a radio group would owe `role="radio"` children): a dark track, the chosen segment
  * filled and lifted, the other flat and dim, a hover fill on the unchosen one, the focus ring inside. The system's
  * tabs are the segments; only their arrangement is the viewer's.
  */
 .s2u-overlay .s2u-tabs[role="group"] {
-  /* As many equal columns as the switch has options (two or three: Online's Local is on a local page only), never the
+  /* As many equal columns as the switch has options, never the
      system's fixed pair; a segment may shrink and wrap its caption rather than push the track wider than the panel. */
   display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; padding: 3px;
   background: var(--s2u-ground-deep); box-shadow: inset 0 0 0 1px var(--s2u-panel); border-radius: var(--s2u-radius-viewer);

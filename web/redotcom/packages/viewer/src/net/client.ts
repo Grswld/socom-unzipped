@@ -9,9 +9,12 @@ import {
 /**
  * The page's end of the match (web sprint 3, M4; W3.R8-R10): the socket, the commands numbered and sent every tick
  * with the last `COMMAND_REDUNDANCY` repeated, the prediction checked against each snapshot's own state (smoothed
- * under `SNAP_DISTANCE`, snapped past it), the respawns replayed, the server's clock, and the other players' bodies
- * held `INTERP_DELAY_MS` behind it and drawn between two snapshots. A latency/loss injector (`simulate`) sits under
- * the socket for the tests and the playtest's network matrix (the bar's 0-150 ms, 1-2 % loss).
+ * under `SNAP_DISTANCE`, snapped past it), the respawns replayed, the room's clock, and the other players' bodies
+ * held `INTERP_DELAY_MS` behind it and drawn between two snapshots.
+ *
+ * The local demo (owner, 2026-10-01): the socket is always one the caller hands in -- the offline match's
+ * (`./loopback`, the room in the page) or a test's. The client opens no network connection; the online match, its
+ * `WebSocket` and the latency injector live in the separate redotcom project.
  */
 
 /** What the net client drives on the page (`./walk` `WalkMode`). */
@@ -26,25 +29,13 @@ export interface NetWalk {
   setDead?(on: boolean): void;
 }
 
-export interface Simulate {
-  /** One-way delay each way, ms, and its jitter (uniform +-). */
-  latencyMs: number; jitterMs?: number;
-  /** The share of frames lost each way (commands and snapshots; the JSON events ride a reliable socket). */
-  loss?: number;
-}
-
 export interface NetOptions {
-  url: string;
   map: string;
   name: string;
-  simulate?: Simulate;
-  /** Join as a watcher (the map viewer's Online setting): a spectator that never plays, so the walk is not driven. */
-  watch?: boolean;
-  /** Protocol 4: the rules of the room to join (the server's default when absent). */
+  /** Protocol 4: the rules of the room to join (the room's default when absent). */
   rules?: Rules;
-  random?: () => number;
-  /** A socket for the tests (a `WebSocket`-alike); the page's own by default. */
-  socket?: (url: string) => WebSocketLike;
+  /** The socket onto the room: the offline match's (`./loopback` `LoopbackMatch.socket`) or a test's. */
+  socket: () => WebSocketLike;
 }
 
 export interface WebSocketLike {
@@ -66,16 +57,6 @@ export const SNAP_DISTANCE = 24;
 export const CORRECTION_FLOOR = 0.001;
 /** Ticks over which a small correction is spread (100 ms). */
 export const SMOOTH_TICKS = 6;
-/**
- * The socket a constructor that threw leaves behind (closed, `readyState` 3): nothing is sent on it, closing it is a
- * no-op, and the client reads 'closed', so `NetPage` backs off and retries as after a refused connect.
- */
-const deadSocket = (): WebSocketLike => ({
-  binaryType: 'arraybuffer', readyState: 3,
-  send: () => undefined, close: () => undefined,
-  onopen: null, onclose: null, onmessage: null, onerror: null,
-});
-
 /** Commands kept for replay and reconciliation: 10 s. */
 const HISTORY = 10 * TICK_HZ;
 /** Snapshots kept for the others' interpolation. */
@@ -103,37 +84,24 @@ export class NetClient {
   private correction: [number, number, number] = [0, 0, 0];
   private correctionTicks = 0;
   private readonly listeners = new Set<(ev: ServerEvent) => void>();
-  private readonly random: () => number;
   private lastPing = 0;
   private alive = false;
 
-  constructor(private readonly opts: NetOptions, private readonly walk: NetWalk) {
-    this.random = opts.random ?? Math.random;
-    const factory = opts.socket ?? ((url: string) => new WebSocket(url) as unknown as WebSocketLike);
-    try {
-      this.socket = factory(opts.url);
-    } catch {
-      // The WebSocket constructor throws for a bad scheme or a fragment (SyntaxError) and for ws:// from an https page
-      // (SecurityError): the connection failed, as a refused one does -- never the page's show() half-way.
-      this.socket = deadSocket();
-      this.state = 'closed';
-      return;
-    }
+  constructor(opts: NetOptions, private readonly walk: NetWalk) {
+    this.socket = opts.socket();
     this.socket.binaryType = 'arraybuffer';
     this.socket.onopen = () => {
       this.state = 'open';
-      this.out(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name: opts.name, map: opts.map, ...(opts.watch ? { watch: true } : {}), ...(opts.rules ? { rules: opts.rules } : {}) } satisfies ClientEvent), true);
+      this.out(JSON.stringify({ type: 'hello', version: PROTOCOL_VERSION, name: opts.name, map: opts.map, ...(opts.rules ? { rules: opts.rules } : {}) } satisfies ClientEvent));
     };
     this.socket.onclose = () => {
       if (this.state !== 'refused') this.state = 'closed';
-      if (!opts.watch) { this.walk.setNetTap(null); this.walk.setLocked(false); }
+      this.walk.setNetTap(null); this.walk.setLocked(false);
     };
     this.socket.onerror = () => undefined;
-    this.socket.onmessage = (ev) => this.delayed(() => this.receive(ev.data), false);
-    if (!opts.watch) {
-      walk.setNetTap((cmd, feet) => this.tick(cmd, feet));
-      walk.setLocked(true);                                    // until the server stands the mover somewhere
-    }
+    this.socket.onmessage = (ev) => this.receive(ev.data);
+    walk.setNetTap((cmd, feet) => this.tick(cmd, feet));
+    walk.setLocked(true);                                      // until the room stands the mover somewhere
   }
 
   /** Listens for the server's events (the HUD, the kill lines, the scoreboard); returns the unsubscribe. */
@@ -143,11 +111,11 @@ export class NetClient {
   }
 
   send(ev: ClientEvent): void {
-    this.out(JSON.stringify(ev), true);
+    this.out(JSON.stringify(ev));
   }
 
   close(): void {
-    if (!this.opts.watch) { this.walk.setNetTap(null); this.walk.setLocked(false); }
+    this.walk.setNetTap(null); this.walk.setLocked(false);
     this.socket.close(1000, 'left');
   }
 
@@ -168,22 +136,13 @@ export class NetClient {
     this.applyCorrection();
     if (this.state !== 'open' || this.role !== 'player') return;
     const batch = this.history.slice(-COMMAND_REDUNDANCY).map((h) => h.cmd);
-    this.out(encodeCommands({ viewTick: this.viewTick(), commands: batch }), false);
+    this.out(encodeCommands({ viewTick: this.viewTick(), commands: batch }));
     const now = performance.now();
     if (now - this.lastPing > 2000) { this.lastPing = now; this.send({ type: 'ping', t: now }); }
   }
 
-  private out(frame: string | Uint8Array, reliable: boolean): void {
-    this.delayed(() => { if (this.socket.readyState === 1) this.socket.send(frame); }, !reliable);
-  }
-
-  /** The injector: a delay each way, and a lost frame (never a JSON event: those ride TCP in the real world too). */
-  private delayed(run: () => void, lossy: boolean): void {
-    const sim = this.opts.simulate;
-    if (!sim) { run(); return; }
-    if (lossy && sim.loss && this.random() < sim.loss) return;
-    const ms = Math.max(0, sim.latencyMs + (sim.jitterMs ? (this.random() * 2 - 1) * sim.jitterMs : 0));
-    if (ms === 0) run(); else setTimeout(run, ms);
+  private out(frame: string | Uint8Array): void {
+    if (this.socket.readyState === 1) this.socket.send(frame);
   }
 
   // ---- down ----
@@ -192,7 +151,6 @@ export class NetClient {
     if (typeof data === 'string') { this.event(JSON.parse(data) as ServerEvent); return; }
     const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data instanceof Uint8Array ? data : null;
     if (!bytes || frameKind(bytes) !== Frame.Snapshot) return;
-    if (this.opts.simulate?.loss && this.random() < this.opts.simulate.loss) return;
     let snap: Snapshot;
     try { snap = decodeSnapshot(bytes); } catch { return; }
     this.snaps.push({ snap, at: performance.now() });

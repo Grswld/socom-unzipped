@@ -88,7 +88,7 @@ async function offline(respawnRules = RESPAWN_RULES_ENABLED) {
   const match = new LoopbackMatch(simMapOfLoaded(LOADED()), null, { auto: false, random, respawnRules });
   const rig = walkRig();
   const events: ServerEvent[] = [];
-  const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, rig.walk);
+  const client = new NetClient({ map: 'MP99', name: 'Solo', socket: match.socket }, rig.walk);
   client.on((ev) => events.push(ev));
   await flush();
   /** `n` page frames at 60 Hz, the room stepped once after each. */
@@ -116,8 +116,8 @@ async function offlinePage() {
   const net = new NetPage({
     walk: rig.walk, remote, hud, clips: () => null, remoteGrenade: () => undefined, spectate: () => undefined,
     respawned: () => { respawned.push(clock); }, roundEffects: () => undefined, weapons: [HELD_RIFLE, HELD_SIDEARM],
-    socket: match.socket, solo: true,
-  }, 'loopback:', 'MP99', 'Solo', undefined, false, 'classic');
+    socket: match.socket,
+  }, 'MP99', 'Solo', 'classic');
   const events: ServerEvent[] = [];
   net.client.on((ev) => events.push(ev));
   await flush();
@@ -370,7 +370,7 @@ describe('the page\'s own death by a blast, online (the server\'s events through
   it('the blast\'s knock, then the kill: thrown, landed and held down; the spawn brings a standing SEAL', async () => {
     const rig = walkRig();
     const socket = fakeSocket();
-    const client = new NetClient({ url: 'mem', map: 'MP1', name: 'A', socket: () => socket }, rig.walk);
+    const client = new NetClient({ map: 'MP1', name: 'A', socket: () => socket }, rig.walk);
     await flush();
     socket.server({ type: 'welcome', id: 3, version: 0, map: 'MP1', tick: 0, role: 'player', team: 'seal', queue: 0 } as unknown as ServerEvent);
     socket.server({ type: 'spawn', id: 3, at: [-100, 0, 0], yaw: 0, after: 0 });

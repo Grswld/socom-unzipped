@@ -83,7 +83,7 @@
       state -- none of it shows: the cog in #site-links is the only trace (W2.0). Open, it is one column of sections, each
       a heading (`s2u-field__label`), at most one line of plain help (`s2u-field__note`) and its controls, in the order a
       player reaches for them: the Mode first (it decides which sections follow, so choosing it never moves the switch
-      under the pointer), then the map, the picture, the mouse and the sound (Play's own), Online, and the developer's
+      under the pointer), then the map, the picture, the mouse and the sound (Play's own), and the developer's
       Advanced. Every choice of a few options is one segmented switch (a `role="group"` of `aria-pressed` buttons); every
       on / off is a switch-drawn checkbox; every amount is a slider with its value beside it. On a touch screen each
       control is at least 44 px tall (`styles.css`). What each setting does, and where it is kept, is README's settings
@@ -92,15 +92,10 @@
     <div id="panel" class="s2u-overlay is-folded" data-density="compact">
       <div id="panel-body" class="s2u-overlay__body">
       <!--
-        PLAYERS ONLINE (owner, 2026-09-29: "At the top just remove 'redotcom · SOCOM II multiplayer' and replace it with a
-        PLAYERS ONLINE count"; `./src/playersOnline.ts`): the players -- not the watchers -- in the shared server's
-        matches (the local server's when Online is Local), read from its public `/rooms` about every 20 s while the page
-        is visible. A dash while the count is not known (the server not answering), never 0. The system's kicker (upper
-        case by its type); the figure is the system gold, tabular. Not live: a figure that ticks every 20 s would talk
-        over the page for a screen reader, and it is read with the panel. A build with multiplayer off
-        (`VITE_S2U_MULTIPLAYER=off`, the site's; `./src/multiplayer.ts`) makes it the plain title `redotcom`, no count.
+        The panel's kicker: the product's name (the design system's kicker, upper case by its type). The local demo
+        (owner, 2026-10-01) is single player, as the deployed teaser is: no players-online count, no match server asked.
       -->
-      <p id="panel-kicker" class="s2u-kicker" title="Players in a match on the match server right now: the shared one, or this machine&rsquo;s when Online is Local. Watchers are not counted. Updates every 20 seconds.">Players online <span id="players-online">&ndash;</span></p>
+      <p id="panel-kicker" class="s2u-kicker">redotcom</p>
       <!--
         The page's mode (owner, 2026-09-29; `./src/features.ts`): Explore, the map viewer and its free camera, or Play --
         on the map as a SEAL: the walk, the rifle, the HUD, the Mouse look and Sound sections and the touch buttons (every
@@ -128,8 +123,7 @@
         <input type="checkbox" id="walk" hidden aria-hidden="true" data-play />
       </section>
       <!--
-        The map: the picker (named from each archive's own mission.rdr; a map with players in a match on the server says so
-        after its name, "· 3 playing", from the same `/rooms` as the kicker above), the player's own disc (W1.7: a plain file input,
+        The map: the picker (named from each archive's own mission.rdr), the player's own disc (W1.7: a plain file input,
         and a drop anywhere on the page, `./src/ui.ts` `onDisc`; read in the browser by range, never uploaded) and the
         status, one dim two-line readout whose full text is its tooltip.
       -->
@@ -179,34 +173,6 @@
           <input type="range" id="volume" min="0" max="1" step="0.05" value="1" /><output id="volume-out" for="volume"></output></label>
         <div class="checks">
           <label class="s2u-check" title="Silences the game; the volume is kept for when you turn it back on."><input type="checkbox" id="mute" /> <span>mute</span></label>
-        </div>
-      </section>
-      <!--
-        Online (owner, 2026-09-29; `./src/online.ts`): Off, the single page; Shared, the public match server; Local, the
-        server `npm start -w @s2u/server` runs on this machine -- offered on a local page only (`Ui.offerLocal` removes it
-        elsewhere, owner 2026-09-29). In Play the page joins as a player, in Explore as a spectator (Space the next
-        player, V the free camera). The URL's `mp` / `server=` override it on load, until the visitor picks a choice here,
-        which takes them out of the address (`onlineChoiceAddress`). The line under it is the connection. Remembered in
-        this browser (`s2u.viewer.online`). Every match is classic: there is no Rules choice (owner ruling, 2026-09-29:
-        "Remove the respawn option entirely for the time being. No mode selection."; `./src/rules.ts`).
-        The match's name (W3.R12): at most 30 printable ASCII characters; blank takes the game's "Player" guest default.
-        Sent to the match on change, remembered in this browser only (`s2u.mp.name`).
-        A build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the site's; `./src/multiplayer.ts`) takes this whole
-        section out of the page before anything reads it.
-      -->
-      <section class="section" id="mp-section" aria-labelledby="online-label">
-        <h2 class="s2u-field__label" id="online-label">Online</h2>
-        <p class="s2u-field__note" id="online-note">Join the map&rsquo;s match on a server. Off plays on your own.</p>
-        <div id="online" class="s2u-tabs" role="group" aria-labelledby="online-label" aria-describedby="online-note">
-          <button type="button" class="s2u-tab" data-online="off" aria-pressed="true" title="No server: this page on its own. The default.">Off<span class="s2u-tab__what">on your own</span></button>
-          <button type="button" class="s2u-tab" data-online="shared" aria-pressed="false" title="The public match server, mp.socomunzipped.com.">Shared<span class="s2u-tab__what">public server</span></button>
-          <button type="button" class="s2u-tab" data-online="local" aria-pressed="false" title="A match server on this machine (npm start -w @s2u/server, port 8787).">Local<span class="s2u-tab__what">this machine</span></button>
-        </div>
-        <p id="online-state" class="s2u-status" role="status" aria-live="polite"><span id="online-lamp" class="s2u-lamp s2u-lamp--small" aria-hidden="true"></span> <span id="online-text">single player: no server</span></p>
-        <div class="s2u-field">
-          <label class="s2u-field__label" for="mp-name">Your name</label>
-          <input type="text" id="mp-name" maxlength="30" autocomplete="off" spellcheck="false" placeholder="Player####" aria-describedby="mp-name-note" />
-          <p class="s2u-field__note" id="mp-name-note">Up to 30 letters, digits or symbols. Blank: a guest name.</p>
         </div>
       </section>
       <!-- Advanced: the developer's diagnostic switches, folded; the long explanations are tooltips. -->

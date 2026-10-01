@@ -1,4 +1,3 @@
-import type { OnlineChoice, OnlineStatus } from './online';
 import type { EffectStats } from './effects';
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
@@ -107,10 +106,6 @@ export interface ViewerHook {
   recom?(on?: boolean): boolean;
   /** Whether the disc page (`#disc-page`, `./source`) stands over the canvas. */
   discPage?(): boolean;
-  /** PLAYERS ONLINE (`./playersOnline`): the last reading of the server's rooms -- players by map archive -- or null (not known). */
-  playersOnline?(): { total: number; byMap: Record<string, number> } | null;
-  /** The Online setting and the connection (`./online`): the choice, the server, and `NetPage.status`'s line. */
-  online?(): OnlineStatus & { choice: OnlineChoice | 'url'; url: string | null };
   /**
    * Walk mode: `seconds` of 60 Hz ticks run at once with this stick (forward 1 by default), facing the camera's
    * yaw, then the camera at the eye; the pose after. Frame-rate proof, for the route test (`e2e/walk.spec.ts`).

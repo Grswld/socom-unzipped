@@ -41,11 +41,5 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: 'pipe',
-    // PLAYERS ONLINE (`packages/viewer/src/playersOnline.ts`): the page polls the shared server's `/rooms`, and while
-    // that server is not live each poll is a failed request the browser writes to the console, which the specs'
-    // console checks would catch. The run turns the shared list off; Online = Local still reads the local server's
-    // (`e2e/playersOnline.spec.ts` routes it). A server reused from outside this run (`reuseExistingServer`) has not
-    // been told: start it with VITE_S2U_ROOMS=off too.
-    env: { VITE_S2U_ROOMS: 'off' },
   },
 });

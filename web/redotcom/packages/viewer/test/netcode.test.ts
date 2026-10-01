@@ -8,10 +8,11 @@ import { NetClient, type NetWalk, type WebSocketLike } from '../src/net/client';
 import { Room } from '../src/net/room';
 
 /**
- * The netcode end to end (web sprint 3, M4; the bar's item 1): the page's `NetClient` against the server's `Room`
- * over an in-memory socket, under the injector's latency and loss, the page's mover driven as `WalkMode` drives it
- * networked -- presses applied at once, each tick on the quantised command. The prediction must agree with the server
- * with no correction at all, at every latency; and the others must be drawn between snapshots, behind the server.
+ * The netcode end to end (web sprint 3, M4; the bar's item 1): the page's `NetClient` against the `Room` over an
+ * in-memory socket -- as the offline match runs it (`../src/net/loopback`) -- the page's mover driven as `WalkMode`
+ * drives it in a match: presses applied at once, each tick on the quantised command. The prediction must agree with the
+ * room with no correction at all; and the others must be drawn between snapshots, behind the room. (The local demo,
+ * owner 2026-10-01: the latency and loss cases of the online match went with it to the separate redotcom project.)
  */
 
 function map(): SimMap {
@@ -57,7 +58,7 @@ class PageWalk implements NetWalk {
 }
 
 /** A socket pair: the page's end (`WebSocketLike`) and the server's `Conn`. */
-function pair(room: Room, id: number): (url: string) => WebSocketLike {
+function pair(room: Room, id: number): () => WebSocketLike {
   return () => {
     const page: WebSocketLike = {
       binaryType: 'arraybuffer', readyState: 0, onopen: null, onclose: null, onmessage: null, onerror: null,
@@ -88,17 +89,13 @@ function script(t: number, yaw: number): Omit<Command, 'seq'> {
   };
 }
 
-describe.each([0, 50, 100, 150])('the netcode at %i ms each way, 2 %% loss (bar 1)', (latency) => {
+describe('the netcode in the page (bar 1)', () => {
   it('predicts the local SEAL exactly as the server runs it: no correction, the same feet at the same command', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
     const m = map();
     const room = new Room(m, null, { now: () => Date.now() });
     const page = new PageWalk(m.grid);
-    let seed = 42;
-    const client = new NetClient({
-      url: 'mem', map: 'MP99', name: 'Pred', socket: pair(room, 1), simulate: { latencyMs: latency, jitterMs: latency / 5, loss: 0.02 },
-      random: () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; },
-    }, page);
+    const client = new NetClient({ map: 'MP99', name: 'Pred', socket: pair(room, 1) }, page);
     let yaw = 0;
     client.on((ev) => { if (ev.type === 'spawn') yaw = ev.yaw; });
     for (let t = 0; t < 600; t++) {
@@ -124,8 +121,8 @@ describe('the others, drawn behind the server (M4)', () => {
     const m = map();
     const room = new Room(m, null, { now: () => Date.now() });
     const a = new PageWalk(m.grid), b = new PageWalk(m.grid);
-    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1), simulate: { latencyMs: 50 } }, a);
-    const cb = new NetClient({ url: 'mem', map: 'MP99', name: 'B', socket: pair(room, 2) }, b);
+    const ca = new NetClient({ map: 'MP99', name: 'A', socket: pair(room, 1) }, a);
+    const cb = new NetClient({ map: 'MP99', name: 'B', socket: pair(room, 2) }, b);
     const xs: number[] = [];
     for (let t = 0; t < 240; t++) {
       a.play({ forward: 0, right: 0, yaw: 0, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
@@ -139,7 +136,7 @@ describe('the others, drawn behind the server (M4)', () => {
     for (let i = 1; i < xs.length; i++) expect(xs[i]!).toBeGreaterThan(xs[i - 1]!);
     const steps = xs.slice(1).map((x, i) => x - xs[i]!);
     expect(Math.max(...steps) / Math.min(...steps)).toBeLessThan(1.6);
-    // Drawn behind B's own mover by about the delay and the latency.
+    // Drawn behind B's own mover by about the interpolation delay.
     const lag = b.sim!.walker.state.x - xs[xs.length - 1]!;
     expect(lag).toBeGreaterThan(0);
     expect(ca.snapshotRate()).toBeGreaterThan(25);
@@ -154,8 +151,8 @@ describe('a death and a respawn in the stream (M6)', () => {
     m.respawns.push(...m.slots.map((s) => ({ ...s })));
     const room = new Room(m, null, { now: () => Date.now() });
     const a = new PageWalk(m.grid), b = new PageWalk(m.grid);
-    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1), simulate: { latencyMs: 40 } }, a);
-    const cb = new NetClient({ url: 'mem', map: 'MP99', name: 'B', socket: pair(room, 2), simulate: { latencyMs: 40 } }, b);
+    const ca = new NetClient({ map: 'MP99', name: 'A', socket: pair(room, 1) }, a);
+    const cb = new NetClient({ map: 'MP99', name: 'B', socket: pair(room, 2) }, b);
     let look = { yaw: 0, pitch: 0 };
     for (let t = 0; t < 14 * 60; t++) {
       const firing = t >= 60 && t < 100 && a.sim !== null && room.player(2) !== undefined;
@@ -192,7 +189,7 @@ describe('a new match stands everyone at the start (M6, W3.R11)', () => {
     const m = map();
     const room = new Room(m, null, { now: () => Date.now(), roundSeconds: 2 });
     const a = new PageWalk(m.grid);
-    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1), simulate: { latencyMs: 30 } }, a);
+    const ca = new NetClient({ map: 'MP99', name: 'A', socket: pair(room, 1) }, a);
     let spawns = 0;
     ca.on((ev) => { if (ev.type === 'spawn') spawns++; });
     for (let t = 0; t < (2 + 16 + 23 + 3) * 60; t++) {
@@ -206,46 +203,6 @@ describe('a new match stands everyone at the start (M6, W3.R11)', () => {
   });
 });
 
-describe('a watcher (the map viewer Online setting, 2026-09-29)', () => {
-  it('joins as a spectator outside the queue, drives no walk, sees the players, and is never promoted', () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
-    const m = map();
-    const room = new Room(m, null, { now: () => Date.now() });
-    const a = new PageWalk(m.grid), w = new PageWalk(m.grid);
-    w.locked = false;
-    const hellos: unknown[] = [];
-    const watchSocket = (url: string): WebSocketLike => {
-      const s = pair(room, 2)(url);
-      const send = s.send.bind(s);
-      s.send = (data) => { if (typeof data === 'string') hellos.push(JSON.parse(data)); send(data); };
-      return s;
-    };
-    const ca = new NetClient({ url: 'mem', map: 'MP99', name: 'A', socket: pair(room, 1) }, a);
-    const cw = new NetClient({ url: 'mem', map: 'MP99', name: 'W', socket: watchSocket, watch: true }, w);
-    expect(w.tap).toBeNull();                                        // the walk is not driven
-    expect(w.locked).toBe(false);
-    for (let t = 0; t < 120; t++) {
-      a.play({ forward: t > 30 ? 1 : 0, right: 0, yaw: 270, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0 });
-      room.step();
-      vi.advanceTimersByTime(1000 / 60);
-    }
-    expect(hellos[0]).toMatchObject({ type: 'hello', watch: true });
-    expect(cw.role).toBe('spectator');
-    expect(cw.queue).toBe(0);
-    expect(ca.role).toBe('player');
-    expect(cw.bodies().map((b) => b.id)).toEqual([1]);              // it sees the player
-    expect(room.lobby.watching(2)).toBe(true);
-    expect(room.lobby.spectators().map((s) => s.id)).toEqual([2]);
-    ca.close();                                                     // the only player leaves: the watcher stays one
-    room.step();
-    expect(room.lobby.member(2)?.role).toBe('spectator');
-    expect(room.lobby.players()).toEqual([]);
-    cw.close();
-    expect(w.tap).toBeNull();
-    expect(w.locked).toBe(false);
-  });
-});
-
 describe('PL-8: the client of an idler moved out (protocol 5 `demoted`)', () => {
   it('turns spectator: no commands go up after it, the mover is held', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance', 'Date'] });
@@ -253,7 +210,7 @@ describe('PL-8: the client of an idler moved out (protocol 5 `demoted`)', () => 
     let page: WebSocketLike | null = null;
     const walk = new PageWalk(map().grid);
     const client = new NetClient({
-      url: 'mem', map: 'MP99', name: 'Idle', socket: () => {
+      map: 'MP99', name: 'Idle', socket: () => {
         page = {
           binaryType: 'arraybuffer', readyState: 1, onopen: null, onclose: null, onmessage: null, onerror: null,
           send: (d) => { sent.push(d); }, close: () => undefined,

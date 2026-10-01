@@ -10,7 +10,7 @@ import { Ui } from '../src/ui';
  * and readability"): sections in the order a player reaches for them, each with a heading and at most a line of plain
  * help, one control type per kind of setting, the defaults said, every control named and reachable by the keyboard in
  * the order it is drawn, and 44 px touch targets. Behaviour and persistence are the other tests' (features, modes,
- * online, shareUrl); this pins the shape.
+ * shareUrl); this pins the shape.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(resolve(here, '../index.html'), 'utf-8');
@@ -21,9 +21,9 @@ const panel = (): HTMLElement => document.getElementById('panel-body')!;
 describe('the settings panel: order and headings', () => {
   beforeEach(load);
 
-  it('reads Mode, Map, Picture, Mouse look, Sound, Online, then Advanced, the notice and About', () => {
+  it('reads Mode, Map, Picture, Mouse look, Sound, then Advanced, the notice and About (no Online: the local demo)', () => {
     const order = [...panel().children].map((e) => e.id).filter(Boolean);
-    expect(order).toEqual(['panel-kicker', 'recom-section', 'map-section', 'view-section', 'look-section', 'sound-section', 'mp-section', 'advanced', 'warning', 'about']);
+    expect(order).toEqual(['panel-kicker', 'recom-section', 'map-section', 'view-section', 'look-section', 'sound-section', 'advanced', 'warning', 'about']);
   });
 
   it('each section is a named region: a heading the section points at, in the system\'s field label', () => {
@@ -35,12 +35,12 @@ describe('the settings panel: order and headings', () => {
       expect(heading!.textContent!.trim().length, section.id).toBeGreaterThan(0);
     }
     const names = [...panel().querySelectorAll(':scope > section')].map((s) => document.getElementById(s.getAttribute('aria-labelledby')!)!.textContent);
-    expect(names).toEqual(['Mode', 'Map', 'Picture', 'Mouse look', 'Sound', 'Online']);
+    expect(names).toEqual(['Mode', 'Map', 'Picture', 'Mouse look', 'Sound']);
   });
 
   it('the help lines are short and plain: one sentence or two, no research references, dates or file names', () => {
     const notes = [...panel().querySelectorAll<HTMLElement>(':scope > section .s2u-field__note')];
-    expect(notes.length).toBeGreaterThanOrEqual(5);
+    expect(notes.length).toBeGreaterThanOrEqual(3);
     for (const n of notes) expect(n.textContent!.length, n.id).toBeLessThanOrEqual(90);
     // Everything a player reads outside Advanced (text, tooltips), in plain words.
     const words = [...panel().querySelectorAll(':scope > section')].map((s) => `${s.textContent} ${[...s.querySelectorAll('[title]')].map((e) => e.getAttribute('title')).join(' ')}`).join(' ');
@@ -52,7 +52,7 @@ describe('the settings panel: one control per kind, named, defaults said', () =>
   beforeEach(load);
 
   it('every few-options choice is a segmented switch named by its heading and described by its help line', () => {
-    for (const id of ['recom', 'look', 'online']) {
+    for (const id of ['recom', 'look']) {
       const g = document.getElementById(id)!;
       expect(g.getAttribute('role'), id).toBe('group');
       const label = document.getElementById(g.getAttribute('aria-labelledby') ?? '');
@@ -63,7 +63,7 @@ describe('the settings panel: one control per kind, named, defaults said', () =>
   });
 
   it('each switch says which option is the default, and the markup presses it', () => {
-    for (const id of ['recom', 'look', 'online']) {
+    for (const id of ['recom', 'look']) {
       const pressed = document.querySelector<HTMLElement>(`#${id} [aria-pressed="true"]`)!;
       expect(pressed.getAttribute('title'), id).toMatch(/The default\./);
       const others = [...document.querySelectorAll<HTMLElement>(`#${id} [aria-pressed="false"]`)];
@@ -82,15 +82,6 @@ describe('the settings panel: one control per kind, named, defaults said', () =>
       expect((document.getElementById(id) as HTMLInputElement).type).toBe('checkbox');
       expect(document.getElementById(id)!.closest('label')!.classList.contains('s2u-check'), id).toBe(true);
     }
-  });
-
-  it('the name is a system field with its own label and help', () => {
-    const name = document.getElementById('mp-name') as HTMLInputElement;
-    const field = name.closest('.s2u-field')!;
-    expect(field).not.toBeNull();
-    expect(field.querySelector('label.s2u-field__label[for="mp-name"]')!.textContent).toBe('Your name');
-    expect(document.getElementById(name.getAttribute('aria-describedby')!)!.classList.contains('s2u-field__note')).toBe(true);
-    expect(name.maxLength).toBe(30);
   });
 
   it('every control a player can reach has a name', () => {
@@ -148,6 +139,6 @@ describe('the settings panel: touch and narrow screens', () => {
     load();
     new PlayUi().detach();
     const order = [...panel().children].map((e) => e.id).filter(Boolean);
-    expect(order).toEqual(['panel-kicker', 'recom-section', 'map-section', 'view-section', 'mp-section', 'advanced', 'warning', 'about']);
+    expect(order).toEqual(['panel-kicker', 'recom-section', 'map-section', 'view-section', 'advanced', 'warning', 'about']);
   });
 });

@@ -83,9 +83,9 @@ for (const size of [{ width: 812, height: 375 }, { width: 667, height: 375 }, { 
       await expect(page.locator('#panel')).toBeHidden();
     });
 
-    test('the Mode and Online settings, the Controls popover and the bar all fit', async ({ page }) => {
+    test('the Mode setting, the Controls popover and the bar all fit', async ({ page }) => {
       await openPanel(page, size);
-      for (const id of ['#recom', '#online', '#site-links']) {
+      for (const id of ['#recom', '#site-links']) {
         await page.locator(id).scrollIntoViewIfNeeded();
         await onScreen(page, id, size);
       }
@@ -122,7 +122,7 @@ test.describe('the panel on a phone held upright', () => {
     expect(panel.x).toBeCloseTo(8, 0);
     expect(panel.y).toBeCloseTo(60, 0);
     expect(panel.width).toBeCloseTo(size.width - 16, 0);
-    for (const id of ['#recom', '#online']) {
+    for (const id of ['#recom']) {
       await page.locator(id).scrollIntoViewIfNeeded();
       await onScreen(page, id, size);
     }

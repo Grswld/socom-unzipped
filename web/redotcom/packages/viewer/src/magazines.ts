@@ -1,6 +1,6 @@
 /**
  * The kit's magazines as SOCOM II keeps them -- one ring a weapon, each magazine keeping its own rounds -- shared by the
- * page's `Fire` (`./fire`) and the multiplayer server's room (`packages/server/src/room.ts`), so the two count alike.
+ * page's `Fire` (`./fire`) and the match's room (`./net/room`), so the two count alike.
  * No imports: it runs in Node (the shared sim's boundary) and in the page.
  *
  * What the game does (research 84 §18 has the citations in full):

@@ -53,7 +53,7 @@ async function join(rules: 'respawn' | 'classic' = 'respawn', respawnRules = tru
   const match = new LoopbackMatch(simMapOfLoaded(loaded()), null, { rules, auto: false, respawnRules });
   const walk = new Walk();
   const events: ServerEvent[] = [];
-  const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, walk);
+  const client = new NetClient({ map: 'MP99', name: 'Solo', socket: match.socket }, walk);
   client.on((ev) => events.push(ev));
   await flush();
   return { match, walk, events, client };

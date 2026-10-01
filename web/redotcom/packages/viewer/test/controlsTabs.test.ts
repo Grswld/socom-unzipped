@@ -51,9 +51,9 @@ describe('the lists', () => {
     expect(pad).toMatch(/Left stick = fly/);
   });
 
-  it('reCOM mode, flying: the five fly rows and Start = walk (Start is G; e2e pad.spec counts the same six)', () => {
+  it('reCOM mode, flying: the five fly rows, Start = walk and the multiplayer-off row (Start is G; e2e pad.spec counts the same seven)', () => {
     const g = padControlGroups('fly', true);
-    expect(g.flatMap((x) => x.rows)).toHaveLength(6);
+    expect(g.flatMap((x) => x.rows)).toHaveLength(7);
     expect(rows(g)).toContain('Start = walk');
     expect(rows(controlGroups('fly', true))).toContain('G = walk');
   });

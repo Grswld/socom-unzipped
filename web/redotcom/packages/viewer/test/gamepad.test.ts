@@ -450,7 +450,7 @@ describe('the page: the toast and the layout table', () => {
     const groups = (): string[] => [...document.querySelectorAll('#pad-list tbody tr.pad-group')].map((r) => r.textContent ?? '');
 
     it('lists only the flying controls in fly mode, the face buttons with their glyphs, and no sources', () => {
-      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle', 'Circle', 'Start']);
+      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'Triangle', 'Circle', 'Start', 'Multiplayer']);
       expect(groups()).toEqual(['Move', 'General']);
       expect(document.querySelector('#pad-list svg.s2u-hint__glyph--square')).not.toBeNull();
       expect(table().find((r) => r[0] === 'Square')![1]).toBe('up');
@@ -460,7 +460,7 @@ describe('the page: the toast and the layout table', () => {
     it('lists only the walking controls in walk mode: fire, reload on R3, the stance, the zoom, the action, the peek and the slots', () => {
       ui.setWalk(true);
       expect(groups()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
-      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'R1', 'D-pad Up / Down', 'R3', 'L3', 'Triangle', 'Cross', 'D-pad Left / Right', 'L1', 'L2', 'R2', 'Select (hold)', 'Start']);
+      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'R1', 'D-pad Up / Down', 'R3', 'L3', 'Triangle', 'Cross', 'D-pad Left / Right', 'L1', 'L2', 'R2', 'Select (hold)', 'Start', 'Multiplayer']);
       expect(table().find((r) => r[0] === 'R3')![1]).toBe('reload');
       expect(table().find((r) => r[0] === 'R1')![1]).toBe('fire');
       expect(table().flat().join(' ')).not.toMatch(/boost/);

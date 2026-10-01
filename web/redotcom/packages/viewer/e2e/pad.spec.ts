@@ -109,9 +109,9 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect(page.locator('#controls-tab-pad')).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Escape');
   await page.mouse.move(700, 500);
-  // The flying controls: five flying rows, and (the play flag is on under ?fly&devmode) General's `Start = walk`
-  // (`padControlGroups('fly', true)`, pinned in test/controlsTabs.test.ts).
-  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(6);
+  // The flying controls: five flying rows, and (the play flag is on under ?fly&devmode) General's `Start = walk` and
+  // its multiplayer-off row (`padControlGroups('fly', true)`, pinned in test/controlsTabs.test.ts).
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(7);
   await expect(padRow(page, 'Start').locator('td').nth(1)).toHaveText('walk');
   await expect(page.locator('#pad-list tbody')).toContainText('up');
   await expect(page.locator('#pad-list tbody')).not.toContainText('fire');
@@ -133,8 +133,8 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   expect(walked[1]).toBeCloseTo(100, 3);
 
   // On foot the list names the walking controls: R1's fire, the zoom, R3's reload, the fire mode, Cross's action, the
-  // d-pad's peek, the weapon slots (L1, L2, R2), Select's scoreboard, no boost.
-  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(15);
+  // d-pad's peek, the weapon slots (L1, L2, R2), Select's scoreboard, the multiplayer-off row, no boost.
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(16);
   await expect(page.locator('#pad-list tbody')).toContainText('scoreboard');
   await expect(page.locator('#pad-list tbody')).toContainText('action: doors, climb, ladders');
   await expect(page.locator('#pad-list tbody')).toContainText('R3reload');
@@ -233,7 +233,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await setPad(page, {});
   await expect(page.locator('#walk')).not.toBeChecked();
   await expect(page.locator('#mode button[data-mode="fly"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(6);           // and the list is the flying controls again
+  await expect(page.locator('#pad-list tbody tr:not(.pad-group)')).toHaveCount(7);           // and the list is the flying controls again
   await expect(padRow(page, 'Start').locator('td').nth(1)).toHaveText('walk');
 
   // Fly: the same stick flies along the look (yaw 0 looks down -z) and does not turn it.

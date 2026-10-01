@@ -78,16 +78,17 @@ describe('PlayUi: the play markup out and back in, at run time', () => {
     expect(heard).toBe(1);
   });
 
-  it('the panel kicker is the PLAYERS ONLINE count in both modes, a dash until it is known (owner, 2026-09-29: it replaces "redotcom · SOCOM II multiplayer")', () => {
-    const kicker = (): string | null | undefined => document.getElementById('panel-kicker')?.textContent;
-    expect(kicker()).toBe('Players online –');
-    expect(kicker()).not.toMatch(/redotcom|SOCOM II multiplayer/);
+  it('the panel kicker is the product\'s name in both modes, with no players-online count (the local demo, owner 2026-10-01)', () => {
+    const kicker = (): HTMLElement | null => document.getElementById('panel-kicker');
+    expect(kicker()!.textContent).toBe('redotcom');
+    expect(kicker()!.hasAttribute('title')).toBe(false);
+    expect(document.getElementById('players-online')).toBeNull();
     const ui = new PlayUi();
     ui.detach();
-    expect(kicker()).toBe('Players online –');
+    expect(kicker()!.textContent).toBe('redotcom');
   });
 
-  it('with the markup out, no word about walking is left in the page text or tooltips (the mode and online switches included)', () => {
+  it('with the markup out, no word about walking is left in the page text or tooltips (the mode switch included)', () => {
     new PlayUi().detach();
     const words = (document.body.textContent ?? '') + [...document.querySelectorAll('[title],[aria-label]')]
       .map((e) => `${e.getAttribute('title')} ${e.getAttribute('aria-label')}`).join(' ');
@@ -115,7 +116,7 @@ describe('the Mode switch in the panel', () => {
   it('the Play-only settings follow the mode: in on Play, out on Explore, the rest stays', () => {
     const play = new PlayUi();
     const PLAY_ONLY = ['sound-section', 'look-section', 'body-row'];
-    const ALWAYS = ['recom', 'look', 'online', 'maps', 'advanced'];
+    const ALWAYS = ['recom', 'look', 'maps', 'advanced'];
     play.set(false);
     for (const id of PLAY_ONLY) expect(document.getElementById(id), id).toBeNull();
     for (const id of ALWAYS) expect(document.getElementById(id), id).not.toBeNull();
@@ -164,75 +165,24 @@ describe('the Mode switch in the panel', () => {
   });
 });
 
-describe('the Online setting in the panel', () => {
-  let ui: Ui;
-  beforeEach(() => { load(); ui = new Ui(); });
+describe('no Online setting: the local demo is single player (owner, 2026-10-01; the deployed teaser)', () => {
+  beforeEach(() => { load(); new Ui(); });
 
-  it('is Off / Shared / Local in the picture switch markup, with a connection line, outside the play', () => {
-    const online = document.getElementById('online')!;
-    expect(online.className).toBe(document.getElementById('look')!.className);
-    expect(online.getAttribute('role')).toBe('group');
-    expect([...online.querySelectorAll('button')].map((b) => b.dataset['online'])).toEqual(['off', 'shared', 'local']);
-    expect(online.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
-    expect(document.getElementById('mp-name')!.closest(`[${PLAY_ATTRIBUTE}]`)).toBeNull();
-    expect(document.getElementById('online-lamp')!.classList.contains('s2u-lamp')).toBe(true);
-    expect(document.getElementById('online-state')!.classList.contains('s2u-status')).toBe(true);
+  it('has no Online section, switch, connection line or name field in the page', () => {
+    for (const id of ['mp-section', 'online', 'online-state', 'online-lamp', 'online-text', 'mp-name', 'players-online']) {
+      expect(document.getElementById(id), id).toBeNull();
+    }
+    expect(document.querySelector('[data-online]')).toBeNull();
+    expect(document.body.innerHTML).not.toMatch(/mp\.socomunzipped|wss?:\/\/|Players online/i);
   });
 
-  it('hands a new choice on, shows it, and a URL server presses none', () => {
-    const heard: string[] = [];
-    ui.onOnline((c) => heard.push(c));
-    const button = (c: string): HTMLButtonElement => document.querySelector<HTMLButtonElement>(`#online [data-online="${c}"]`)!;
-    button('off').click();
-    button('local').click();
-    button('shared').click();
-    expect(heard).toEqual(['local', 'shared']);
-    expect(button('shared').getAttribute('aria-pressed')).toBe('true');
-    expect(button('local').getAttribute('aria-pressed')).toBe('false');
-    ui.setOnline('url');
-    expect([...document.querySelectorAll('#online [aria-pressed="true"]')]).toHaveLength(0);
-  });
-
-  it('on a local page keeps all three options', () => {
-    ui.offerLocal(true);
-    expect([...document.querySelectorAll('#online button')].map((b) => (b as HTMLElement).dataset['online'])).toEqual(['off', 'shared', 'local']);
-  });
-
-  it('on the deployed site Local is not rendered at all: two options, one pressed, both working', () => {
-    ui.offerLocal(false);
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('#online button')];
-    expect(buttons.map((b) => b.dataset['online'])).toEqual(['off', 'shared']);
-    expect(document.querySelector('[data-online="local"]')).toBeNull();
-    expect(document.getElementById('online')!.textContent).not.toMatch(/localhost|Local/);
-    const heard: string[] = [];
-    ui.onOnline((c) => heard.push(c));
-    ui.setOnline('off');
-    buttons[1]!.click();
-    expect(heard).toEqual(['shared']);
-    expect(buttons.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.dataset['online'])).toEqual(['shared']);
-    ui.setOnline('local');                                        // a server=ws://localhost link: nothing pressed
-    expect(buttons.filter((b) => b.getAttribute('aria-pressed') === 'true')).toHaveLength(0);
-  });
-
-  it('the switch lays out two options as it does three: its columns follow its children, and a segment may shrink', () => {
+  it('a segmented switch lays out its options by its children: the columns follow them, and a segment may shrink', () => {
     const css = readFileSync(resolve(here, '../src/styles.css'), 'utf-8');
     const rule = css.match(/\.s2u-overlay \.s2u-tabs\[role="group"\]\s*{([^}]*)}/)![1]!;
     expect(rule).toMatch(/grid-template-columns:\s*none/);          // not the system's fixed 1fr 1fr
     expect(rule).toMatch(/grid-auto-flow:\s*column/);
     expect(rule).toMatch(/grid-auto-columns:\s*minmax\(0, 1fr\)/);
     expect(css).toMatch(/\.s2u-overlay \.s2u-tabs\[role="group"\] \.s2u-tab\s*{[^}]*min-width:\s*0/);
-  });
-
-  it('writes the connection line and lights the lamp up or down', () => {
-    const lamp = document.getElementById('online-lamp')!;
-    ui.setOnlineState('online · 3 players', 'up');
-    expect(document.getElementById('online-text')!.textContent).toBe('online · 3 players');
-    expect(lamp.classList.contains('is-up')).toBe(true);
-    ui.setOnlineState('server unreachable · retrying in 4 s', 'down');
-    expect(lamp.classList.contains('is-up')).toBe(false);
-    expect(lamp.classList.contains('is-down')).toBe(true);
-    ui.setOnlineState('single player: no server', null);
-    expect(lamp.className).toBe('s2u-lamp s2u-lamp--small');
   });
 });
 
