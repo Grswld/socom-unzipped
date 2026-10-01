@@ -134,7 +134,9 @@ namespace Vu1Refusals
     // no_native_entry at entry 0 is the SOCOM II image's per-object setup program (research/83 section 1.1): it reads
     // the header at TOP and takes one path. The key carries the path in its command field, so the reading is one row
     // per path (`cmd=kick`), not one for the whole swarm. The microcode's own tests, in order: w bit 1 -> kick (0x40,
-    // two XGKICKs, and nothing else); else w bit 0 -> matrix (0x118); else w bit 3 -> fade (0x3f0), then, as without
+    // two XGKICKs, and nothing else); else w bit 0 -> matrix (the test at 0x118, the block from 0x140; a matrix
+    // program with y != 0 also runs the verts loop at 0x380 and may fall into the fade/list test -- no captured dump
+    // does, so it is labelled matrix alone); else w bit 3 -> fade (0x3f0), then, as without
     // it, z != 0 -> list (0x458) -- so fade+list is one program. w and z are what ILW reads, the low 16 bits. The same
     // rule as tools_py/parity/vu1_entry0_shapes.py's trace (every entry-0 dump of vu1dump4/vu1dump5 agrees).
     enum class Entry0Path : uint32_t

@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-310 merges (58 on the first-parent line, 252 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+311 merges (59 on the first-parent line, 252 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-85 merges.
+86 merges.
 
+- 2026-10-01 `8a5b8b87` no warning clock on a matched image, the native lookup cached, entry-0 split by path [agent/s17-vu1-dispatch]
 - 2026-10-01 `9083afd0` research/83 the entry-0 swarm and 0x3e; the entry-0 shape scorer (Sprint 17 F) [agent/s17-entry0-swarm]
 - 2026-10-01 `4912bcff` build.sh, the chain and run_detached refuse while the launcher runs (three reds) [agent/s17-launcher-busy]
 - 2026-10-01 `65a1cda0` PS2X_VU1_NATIVE_33C8 defaults to 1, N1c adopted (Sprint 17 F, R345) [agent/s17-n1c-default]
