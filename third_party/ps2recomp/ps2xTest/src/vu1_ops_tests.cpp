@@ -429,6 +429,8 @@ namespace
 
     // Sprint 17 F N1c, the real shapes: RealDump, and last-bone 0x33c8 entry states from the walk's refused capture.
 #include "vu1_33c8_real_dumps.inc"
+    // Sprint 17 F N2: 0x52 bone passes, 0x52 lists and one mesh's MSCAL chain from logs/vu1dump3.
+#include "vu1_52_real_dumps.inc"
 }
 
 void register_vu1_ops_tests()
@@ -1276,6 +1278,23 @@ void register_vu1_ops_tests()
                 current().nativeEnded = RefusalRig::dispatcher(vu, budgetEnd);
                 return current().nativeEnded;
             }
+            // The 0x1b50 dispatcher with entry()'s snapshot: a refusal must leave the entry's state untouched.
+            static bool dispatcherChecked(VU1Interpreter &vu, uint64_t budgetEnd)
+            {
+                End before;
+                before.s = vu.state();
+                before.data.assign(activeData(), activeData() + PS2_VU1_DATA_SIZE);
+                current().nativeRan = true;
+                current().nativeEnded = RefusalRig::dispatcher(vu, budgetEnd);
+                if (!current().nativeEnded)
+                {
+                    End after;
+                    after.s = vu.state();
+                    after.data.assign(activeData(), activeData() + PS2_VU1_DATA_SIZE);
+                    current().touchedBeforeHandBack = diff(before, after, false);
+                }
+                return current().nativeEnded;
+            }
             // Runs the program from `startPc` with the native table {hash, nativePc, fn}; fn == nullptr runs the
             // interpreter alone (a table whose one row matches nothing).
             End run(uint32_t startPc, uint32_t nativePc, VU1Interpreter::KnownProgramFn fn, uint32_t budget = 1u << 28) const
@@ -1947,6 +1966,372 @@ void register_vu1_ops_tests()
             const Vu1Refusals::Row after = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x66u);
             Vu1Refusals::setEnabledForTest(false);
             t.Equals(after.n - before.n, 1ull, "unknown_command cmd=0x66 at entry 0x1b50 +1: 0x66 is admitted only at 0x33c8");
+        });
+
+        // ---- Sprint 17 F N2 (docs/research/82 section 10): the skinning pass 0x52 (0x3100-0x33c0) --------------------
+        // Both of 0x52's entries run the same pass: at 0x1b50 as the list's first command (`52 66 08 40 42`: the pass
+        // ends the program at its E bit, pc 0x33c8, and the rest of the list runs in a later MSCAL), and at 0x33c8 when
+        // the live-in vi5 (the previous chunk's flags) has bit 2 clear, the microcode's `B 0x3100` -- (A), another bone.
+        // Behind PS2X_VU1_NATIVE_SKIN (Dev, default 0), forced here through vu1native_socom2_forceSkinForTest. The pass
+        // emits nothing, so what is compared is the register file and VU data memory whole. Its stores -- q37.x on the
+        // first pass, then xyz of the staging pair base + dst, base + dst + 1 of each vertex -- are proven before the
+        // first write: inside VU memory without wrapping, clear of the bone chunk it reads (TOP .. TOP + 6 + 2n, the
+        // read-ahead vertex included) and of q37. The states are real dumps (vu1_52_real_dumps.inc).
+        struct SkinScope
+        {
+            static void force(int state)   // -1 = PS2X_VU1_NATIVE_SKIN as latched, 0 = off, 1 = on
+            {
+                void vu1native_socom2_forceSkinForTest(int state);
+                vu1native_socom2_forceSkinForTest(state);
+            }
+            explicit SkinScope(int state) { force(state); }
+            ~SkinScope() { force(-1); }
+            SkinScope(const SkinScope &) = delete;
+            SkinScope &operator=(const SkinScope &) = delete;
+        };
+
+        tc.Run("PS2X_VU1_NATIVE_SKIN is a Dev Flag defaulting to 0 (off: both 0x52 entries as before)", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_NATIVE_SKIN");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
+                         std::string(e->dflt) == "0",
+                     "a Dev Flag, default 0 (measured apart from PS2X_VU1_NATIVE_33C8)");
+            t.IsTrue(e != nullptr && std::string(e->meaning).size() <= 110u, "its meaning fits the registry's 110 characters");
+        });
+
+        {
+            struct SkinCase
+            {
+                const char *what;
+                const RealDump *dump;
+                uint32_t entry;
+            };
+            static const SkinCase skinCases[] = {
+                {"a bone pass at 0x33c8, vi5 2, flags 1 (accumulate), 12 vertices, TOP 724 (vu1dump3 prog 122)", &kB122, 0x33c8u},
+                {"a bone pass at 0x33c8, vi5 1, flags 5 (accumulate, last), 1 vertex, TOP 424 (vu1dump3 prog 127)", &kB127, 0x33c8u},
+                {"a bone pass at 0x33c8, vi5 1, flags 1, 9 vertices, destinations 44-90, TOP 424 (vu1dump3 prog 135)", &kB135, 0x33c8u},
+                {"52 66 08 40 42 at 0x1b50, flags 2 (the first pass), 29 vertices (vu1dump3 prog 121)", &kS121, 0x1b50u},
+                {"52 66 08 40 42 at 0x1b50, flags 2, 46 vertices (vu1dump3 prog 129)", &kS129, 0x1b50u},
+                {"52 66 08 40 42 at 0x1b50, flags 2, 49 vertices, destinations to 96 (vu1dump3 prog 145)", &kS145, 0x1b50u},
+            };
+            for (const SkinCase &k : skinCases)
+            {
+                tc.Run(std::string("native 0x52: ") + k.what + ": taken natively, bit-exact", [&k](TestCase &t)
+                {
+                    SkinScope on(1);
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*k.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    if (k.entry == 0x33c8u)
+                        t.Equals(rig.vi[5] & 4, 0, "the live-in vi5 has bit 2 clear: the microcode's B 0x3100");
+                    else
+                        t.Equals(rig.word(340u, 0u) & 0xFFFF, 0x52, "the list starts with 0x52");
+                    const Entry33c8Rig::End oracle = rig.run(k.entry, k.entry, nullptr);
+                    t.Equals(oracle.s.pc, 0x33c8u, "the oracle ended at 0x52's E bit (pc 0x33c8)");
+                    const Entry33c8Rig::End native =
+                        rig.run(k.entry, k.entry, k.entry == 0x33c8u ? &Entry33c8Rig::entry : &Entry33c8Rig::dispatcherChecked);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native pass ran and ended the program");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, true);
+                    t.IsTrue(why.empty(), "native = interpreter, register file and VU data memory (and no packet):" + why);
+                });
+            }
+        }
+
+        tc.Run("native 0x52: one mesh's three MSCALs -- 0x1b50's first pass, a bone pass, the last bone's list -- bit-exact end to end",
+               [](TestCase &t)
+        {
+            // vu1dump3 prog 142, 143 and 144: `52 66 08 40 42` at 0x1b50 (the first bone, TOP 724), then 0x33c8 with vi5 =
+            // 2 (another bone, TOP 424, flags 5), then 0x33c8 with vi5 = 5 (the repack and `66 08 40 42`, TOP 724). One
+            // interpreter and one VU data memory across the three, the VIF's uploads written between them, as the game
+            // runs them: the register file each program leaves is the next one's live-in (vi5, vi9, vi14, q37, the
+            // staging array), so every step is compared, the oracle's chain against the native one.
+            SkinScope on(1);
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadReal(kChain142), "fixture present");
+            if (rig.code.empty())
+                return;
+            struct Step
+            {
+                uint32_t startPc, top;
+                const RealDumpSpan *uploads;
+                size_t uploadCount;
+                uint32_t endPc;
+            };
+            const Step steps[] = {
+                {0x1b50u, 724u, nullptr, 0u, 0x33c8u},
+                {0x33c8u, 424u, kChain143UploadsSpans, sizeof(kChain143UploadsSpans) / sizeof(kChain143UploadsSpans[0]), 0x33c8u},
+                {0x33c8u, 724u, kChain144UploadsSpans, sizeof(kChain144UploadsSpans) / sizeof(kChain144UploadsSpans[0]), 0x1b50u},
+            };
+            struct Chain
+            {
+                std::vector<Entry33c8Rig::End> ends;
+                uint32_t nativeEnded = 0u;
+            };
+            static uint32_t s_nativeEnded = 0u;
+            auto runChain = [&](bool native) {
+                Chain chain;
+                s_nativeEnded = 0u;
+                PS2Memory mem;
+                GS gs;
+                if (!mem.initialize())
+                    return chain;
+                gs.init(mem.getGSVRAM(), static_cast<uint32_t>(PS2_GS_VRAM_SIZE), &mem.gs());
+                uint8_t *vuCode = mem.getVU1Code();
+                uint8_t *vuData = mem.getVU1Data();
+                std::memcpy(vuCode, rig.code.data(), PS2_VU1_CODE_SIZE);
+                mem.markVU1CodeModified();
+                std::memcpy(vuData, rig.data.data(), PS2_VU1_DATA_SIZE);
+                std::vector<uint8_t> packets;
+                mem.setGifPacketCallback([&packets](const uint8_t *p, uint32_t n) {
+                    const uint32_t len = n;
+                    packets.insert(packets.end(), reinterpret_cast<const uint8_t *>(&len), reinterpret_cast<const uint8_t *>(&len) + 4);
+                    packets.insert(packets.end(), p, p + n);
+                });
+                uint64_t h = 1469598103934665603ull;
+                for (uint32_t i = 0; i < PS2_VU1_CODE_SIZE; ++i)
+                {
+                    h ^= rig.code[i];
+                    h *= 1099511628211ull;
+                }
+                const auto at1b50 = +[](VU1Interpreter &vu, uint64_t b) {
+                    bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t budgetEnd);
+                    const bool ended = vu1native_socom2_dispatch(vu, b);
+                    s_nativeEnded += ended ? 1u : 0u;
+                    return ended;
+                };
+                const auto at33c8 = +[](VU1Interpreter &vu, uint64_t b) {
+                    bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t budgetEnd);
+                    const bool ended = vu1native_socom2_entry_0x33c8(vu, b);
+                    s_nativeEnded += ended ? 1u : 0u;
+                    return ended;
+                };
+                const Vu1NativeProgram table[] = {{native ? h : 0u, 0x1b50u, at1b50}, {native ? h : 0u, 0x33c8u, at33c8}};
+                VU1Interpreter vu;
+                vu.reset();
+                std::memcpy(vu.state().vi, rig.vi, sizeof(rig.vi));
+                std::memcpy(vu.state().vf, rig.vf, sizeof(rig.vf));
+                vu.setNativeProgramsOverride(table, 2u);
+                for (const Step &s : steps)
+                {
+                    for (size_t k = 0; k < s.uploadCount; ++k)
+                    {
+                        const std::string hex = s.uploads[k].hex;
+                        for (size_t w = 0; w + 8u <= hex.size(); w += 8u)
+                        {
+                            const uint32_t q = s.uploads[k].first + static_cast<uint32_t>(w / 32u);
+                            const uint32_t v = static_cast<uint32_t>(std::stoul(hex.substr(w, 8u), nullptr, 16));
+                            std::memcpy(vuData + ((q * 16u) & 0x3FFFu) + ((w / 8u) % 4u) * 4u, &v, 4u);
+                        }
+                    }
+                    packets.clear();
+                    vu.execute(vuCode, PS2_VU1_CODE_SIZE, vuData, PS2_VU1_DATA_SIZE, gs, &mem, s.startPc, s.top, 0u, 1u << 28);
+                    Entry33c8Rig::End end;
+                    end.s = vu.state();
+                    end.data.assign(vuData, vuData + PS2_VU1_DATA_SIZE);
+                    end.packets = packets;
+                    chain.ends.push_back(end);
+                }
+                vu.setNativeProgramsOverride(nullptr, 0u);
+                mem.setGifPacketCallback(nullptr);
+                chain.nativeEnded = s_nativeEnded;
+                return chain;
+            };
+            t.Equals(rig.top, 724u, "the chain starts at prog 142's TOP");
+            const Chain oracle = runChain(false);
+            const Chain native = runChain(true);
+            t.IsTrue(oracle.ends.size() == 3u && native.ends.size() == 3u, "three MSCALs each");
+            if (oracle.ends.size() != 3u || native.ends.size() != 3u)
+                return;
+            t.Equals(native.nativeEnded, 3u, "all three taken natively (0x1b50's 0x52, the bone pass, the last bone's list)");
+            for (size_t k = 0; k < 3u; ++k)
+            {
+                t.Equals(oracle.ends[k].s.pc, steps[k].endPc, "MSCAL " + std::to_string(k + 1) + ": the oracle's end pc");
+                const std::string why = Entry33c8Rig::diff(oracle.ends[k], native.ends[k], Entry33c8Rig::packetsComparable());
+                t.IsTrue(why.empty(), "MSCAL " + std::to_string(k + 1) + ": native = interpreter:" + why);
+            }
+            if (Entry33c8Rig::packetsComparable())
+                t.IsTrue(!native.ends[2].packets.empty(), "the last bone's list drew");
+        });
+
+        tc.Run("native 0x52: pairs at the edge of the proof are taken, bit-exact", [](TestCase &t)
+        {
+            // kB122 (TOP 724, 12 vertices: the chunk q724-754, the staging base q37.x = 40): vertex 3 to q722-723, just
+            // below the chunk, and the last vertex to q755-756, just past its read-ahead qword -- each clear, so taken.
+            SkinScope on(1);
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadReal(kB122), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.setWord(rig.top + 5u + 6u, 3u, 682);
+            rig.setWord(rig.top + 5u + 22u, 3u, 715);
+            const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "taken natively");
+            const std::string why = Entry33c8Rig::diff(oracle, native, true);
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
+        tc.Run("native 0x52: at 0x1b50 the first pass persists the staging base, q37.x = 40, bit-exact", [](TestCase &t)
+        {
+            // Every dump already holds q37.x = 40 from the mesh before; cleared, the first pass's ISW.x at 0x3178 is seen.
+            SkinScope on(1);
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadReal(kS121), "fixture present");
+            if (rig.code.empty())
+                return;
+            for (uint32_t lane = 0; lane < 4u; ++lane)
+                rig.setWord(37u, lane, 0);
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcherChecked);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "taken natively");
+            int32_t base = 0;
+            std::memcpy(&base, oracle.data.data() + 37u * 16u, 4u);
+            t.Equals(base, 40, "the oracle's q37.x is 40");
+            const std::string why = Entry33c8Rig::diff(oracle, native, true);
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
+        tc.Run("native 0x52: knob off, a bone pass is still skin_pass and a 0x52 list still unknown_command 0x52", [](TestCase &t)
+        {
+            SkinScope off(0);
+            {
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(kB122), "fixture present");
+                if (rig.code.empty())
+                    return;
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(0x33c8u, Vu1Refusals::Reason::SkinPass, 0u);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                const Vu1Refusals::Row after = RefusalRig::row(0x33c8u, Vu1Refusals::Reason::SkinPass, 0u);
+                const uint64_t totalAfter = Vu1Refusals::live().totalCount();
+                Vu1Refusals::setEnabledForTest(false);
+                const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                t.IsTrue(native.nativeRan && !native.nativeEnded, "0x33c8: handed back");
+                t.IsTrue(native.touchedBeforeHandBack.empty(), "0x33c8: nothing touched:" + native.touchedBeforeHandBack);
+                t.Equals(after.n - before.n, 1ull, "skin_pass at entry 0x33c8 +1");
+                t.Equals(totalAfter - total, 1ull, "and nothing else");
+                const std::string why = Entry33c8Rig::diff(oracle, native, true);
+                t.IsTrue(why.empty(), "0x33c8: the fallback is the microcode's own run:" + why);
+            }
+            {
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(kS121), "fixture present");
+                if (rig.code.empty())
+                    return;
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcherChecked);
+                const Vu1Refusals::Row after = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+                const uint64_t totalAfter = Vu1Refusals::live().totalCount();
+                Vu1Refusals::setEnabledForTest(false);
+                const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+                t.IsTrue(native.nativeRan && !native.nativeEnded, "0x1b50: handed back");
+                t.IsTrue(native.touchedBeforeHandBack.empty(), "0x1b50: nothing touched:" + native.touchedBeforeHandBack);
+                t.Equals(after.n - before.n, 1ull, "unknown_command cmd=0x52 at entry 0x1b50 +1");
+                t.Equals(totalAfter - total, 1ull, "and nothing else");
+                const std::string why = Entry33c8Rig::diff(oracle, native, true);
+                t.IsTrue(why.empty(), "0x1b50: the fallback is the microcode's own run:" + why);
+            }
+        });
+
+        tc.Run("native 0x52: a pass whose stores it cannot bound is refused before anything is touched", [](TestCase &t)
+        {
+            // Before the first write: the vertex count TOP+4.w in 1..the vertex ceiling (the loop is an IBNE after a
+            // decrement: 0 is 65536 passes), the bone chunk TOP .. TOP + 6 + 2n inside VU memory, and each vertex's pair
+            // base + dst, base + dst + 1 inside VU memory without wrapping and clear of that chunk and of q37 (base = 40 on
+            // the first pass, q37.x on an accumulate one). At 0x1b50 the 0x52 must be the list's first command. Each
+            // refusal leaves the register file and VU data memory exactly as the entry found them.
+            using R = Vu1Refusals::Reason;
+            struct Case
+            {
+                const char *what;
+                const RealDump *dump;
+                uint32_t entry;
+                R reason;
+                uint32_t cmd;
+                void (*setup)(Entry33c8Rig &);
+                int32_t vertexCeiling;
+            };
+            // kB122: TOP 724, accumulate, 12 vertices, destinations 0-46 on base q37.x = 40. kS121: TOP 424, first pass,
+            // 29 vertices.
+            const Case cases[] = {
+                {"0x33c8, TOP+4.w = 0 (65536 passes)", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 0); }, -1},
+                {"0x33c8, TOP+4.w = 257 (over the vertex ceiling)", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 257); }, -1},
+                {"0x33c8, TOP+4.w = -3 (a 16-bit count the loop reads as 65533 passes)", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 0xFFFD); }, -1},
+                {"0x33c8, 12 vertices over a vertex ceiling lowered to 8", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &) {}, 8},
+                {"0x33c8, vertex 3's destination 683: its pair q723-724 reaches the chunk's first qword", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 6u, 3u, 683); }, -1},
+                {"0x33c8, the last vertex's destination 714: its pair starts on q754, the read-ahead vertex's normal", &kB122,
+                 0x33c8u, R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 22u, 3u, 714); }, -1},
+                {"0x33c8, vertex 1's destination -4: its pair q36-37 would overwrite the staging base q37", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 2u, 3u, 0xFFFC); }, -1},
+                {"0x33c8, vertex 0's destination -41: its pair would wrap below q0", &kB122, 0x33c8u, R::SkinRange, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 5u, 3u, 0xFFD7); }, -1},
+                {"0x33c8, vertex 5's destination 983: its pair q1023-1024 would wrap past the end", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 10u, 3u, 983); }, -1},
+                {"0x33c8, the accumulate base q37.x = 1000: the pairs would wrap past the end", &kB122, 0x33c8u, R::SkinRange,
+                 0u, [](Entry33c8Rig &r) { r.setWord(37u, 0u, 1000); }, -1},
+                {"0x33c8, the accumulate base q37.x = 700: vertex pairs from q700 reach the chunk at q724", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(37u, 0u, 700); }, -1},
+                {"0x33c8, TOP 1010 with 12 vertices: the chunk q1010-1040 wraps past the end", &kB122, 0x33c8u, R::SkinRange,
+                 0u,
+                 [](Entry33c8Rig &r) {
+                     r.top = 1010u;
+                     r.setWord(1014u, 0u, 1);
+                     r.setWord(1014u, 3u, 12);
+                 }, -1},
+                {"0x1b50, TOP+4.w = 0", &kS121, 0x1b50u, R::SkinCount, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 0); }, -1},
+                {"0x1b50, vertex 2's destination 384: its pair q424-425 is the bone matrix", &kS121, 0x1b50u, R::SkinRange, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 4u, 3u, 384); }, -1},
+                {"0x1b50, TOP 30 with one vertex: the first pass's ISW.x of q37 lands inside the chunk q30-38", &kS121, 0x1b50u,
+                 R::SkinRange, 0u,
+                 [](Entry33c8Rig &r) {
+                     r.top = 30u;
+                     r.setWord(34u, 0u, 2);
+                     r.setWord(34u, 3u, 1);
+                     r.setWord(35u, 3u, 60);
+                 }, -1},
+                {"0x1b50, 70 52 42: the 0x52 after another command", &kS121, 0x1b50u, R::SkinNotFirst, 0x52u,
+                 [](Entry33c8Rig &r) {
+                     r.setWord(340u, 0u, 0x70);
+                     r.setWord(341u, 0u, 0x52);
+                     r.setWord(342u, 0u, 0x42);
+                 }, -1},
+            };
+            for (const Case &k : cases)
+            {
+                SkinScope on(1);
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(*k.dump), "fixture present");
+                if (rig.code.empty())
+                    return;
+                k.setup(rig);
+                if (k.vertexCeiling >= 0)
+                    RefusalRig::forceVertexCeiling(k.vertexCeiling);
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(k.entry, k.reason, k.cmd);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                // Budget-bounded: the fallback is the microcode on a state it was never meant to see (a zero count is its
+                // own 65536 passes); the refusal and the untouched state are what is checked.
+                const Entry33c8Rig::End native =
+                    rig.run(k.entry, k.entry, k.entry == 0x33c8u ? &Entry33c8Rig::entry : &Entry33c8Rig::dispatcherChecked, 64u);
+                const Vu1Refusals::Row after = RefusalRig::row(k.entry, k.reason, k.cmd);
+                const uint64_t totalAfter = Vu1Refusals::live().totalCount();
+                Vu1Refusals::setEnabledForTest(false);
+                RefusalRig::forceVertexCeiling(-1);
+                t.IsTrue(native.nativeRan && !native.nativeEnded, std::string(k.what) + ": handed back");
+                t.Equals(after.n - before.n, 1ull, std::string(k.what) + ": counted under its reason");
+                t.Equals(totalAfter - total, 1ull, std::string(k.what) + ": and under no other");
+                t.IsTrue(native.touchedBeforeHandBack.empty(),
+                         std::string(k.what) + ": nothing touched before the hand-back:" + native.touchedBeforeHandBack);
+            }
         });
 
         // ---- Sprint 17 F N1c (docs/research/82 section 9): PS2X_VU1_DUMP_REFUSED -------------------------------------
