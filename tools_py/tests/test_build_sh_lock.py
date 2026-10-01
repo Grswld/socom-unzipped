@@ -55,6 +55,9 @@ class TestBuildShLockConsult(unittest.TestCase):
             env.pop(k, None)     # this suite may itself run under `loop_lock.sh run`
         env["LOOP_LOCK_PATH"] = fwd(self.lock)
         env["LOOP_LOCK_PS_CMD"] = "cat '%s'" % fwd(self.procs)
+        # the launcher guard (TestBuildShLauncherGuard) reads the host's processes, and the owner's launcher may be
+        # open while this suite runs: pinned to "none running" unless a test plants one
+        env["BUILD_LAUNCHER_CHECK_CMD"] = "true"
         env.update({k: str(v) for k, v in extra.items()})
         return env
 
@@ -133,6 +136,52 @@ class TestBuildShLockConsult(unittest.TestCase):
         with open(os.path.join(ROOT, "build.sh")) as f:
             text = f.read()
         self.assertLess(text.index('if [ "$DRY_RUN" = 1 ]'), text.index("no toolchain under tools/"))
+
+
+LAUNCHER_LINE = "the launcher is running (pid 4242): close the launcher window"
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class TestBuildShLauncherGuard(unittest.TestCase):
+    """Sprint 17 (three reds on 2026-09-30/10-01): `runtime` copies dist/socom_unzipped_launcher.exe over the running
+    launcher's file and fails 'Device or resource busy' AFTER the game is built, so a chain's step 2 went red for a
+    non-code reason. `runtime`, `all` and `release` (which copies the launcher too) refuse up front, exit 3, naming
+    the pid(s) and the fix; BUILD_LAUNCHER_CHECK_CMD plants the process query (its output names the pids). The
+    refusal precedes --dry-run's plan, so these tests build nothing."""
+    setUp, tearDown, env, hold, build = (TestBuildShLockConsult.setUp, TestBuildShLockConsult.tearDown,
+                                         TestBuildShLockConsult.env, TestBuildShLockConsult.hold,
+                                         TestBuildShLockConsult.build)
+
+    def test_a_running_launcher_refuses_the_steps_that_copy_it(self):
+        for step in ("runtime", "all", "release"):
+            rc, out = self.build(step, "--dry-run", env=self.env(BUILD_LAUNCHER_CHECK_CMD="echo 4242"))
+            self.assertEqual(rc, 3, "%s: %s" % (step, out))
+            self.assertIn("build.sh: REFUSED -- " + LAUNCHER_LINE, out)
+            self.assertNotIn("would run", out, "a refused build prints no plan")
+
+    def test_the_default_step_is_refused_too_and_every_pid_is_named(self):
+        rc, out = self.build("--dry-run", env=self.env(BUILD_LAUNCHER_CHECK_CMD="echo 4242; echo 71404"))
+        self.assertEqual(rc, 3, out)
+        self.assertIn("the launcher is running (pid 4242, 71404)", out)
+
+    def test_steps_that_do_not_copy_the_launcher_proceed(self):
+        for step in ("tools", "recomp", "test"):
+            rc, out = self.build(step, "--dry-run", env=self.env(BUILD_LAUNCHER_CHECK_CMD="echo 4242"))
+            self.assertEqual(rc, 0, "%s: %s" % (step, out))
+            self.assertNotIn("launcher is running", out)
+
+    def test_no_launcher_proceeds_as_before(self):
+        for step in ("runtime", "all", "release"):
+            rc, out = self.build(step, "--dry-run")
+            self.assertEqual(rc, 0, "%s: %s" % (step, out))
+            self.assertIn("would run", out)
+            self.assertNotIn("launcher is running", out)
+
+    def test_the_lock_refusal_still_comes_first(self):
+        self.hold()
+        rc, out = self.build("runtime", "--dry-run", env=self.env(BUILD_LAUNCHER_CHECK_CMD="echo 4242"))
+        self.assertEqual(rc, 3, out)
+        self.assertIn("lock held by other-holder", out)
 
 
 SKIP_LINKED = "tests: Python suite skipped (linked worktree; the merged chain runs it -- --full-suite to force)"
