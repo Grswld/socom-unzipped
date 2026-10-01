@@ -66,8 +66,20 @@ build_tools() {
 }
 
 recomp() {
-  echo "build_macos: recomp is added in Task 9" >&2
-  return 2
+  # build.sh's recomp step, with this platform's recompiler binary (no .exe).
+  local lte
+  lte="$(cat "$ROOT/recomp/loader_text_end.txt")"
+  "$PYTHON" "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$lte" \
+      "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/SCUS_972.75" \
+      "$ROOT/game/overlays/ftscore.bin" "$ROOT/game/overlays/zsealetc.bin"
+  cp "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/socom2_game.elf"
+  "$PYTHON" "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt" \
+      --out "$ROOT/recomp/build/socom2_ghidra.fixed.csv"
+  build_tools   # incremental; the recompiler embeds the runtime call list, keep it in sync
+  (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp" socom2.toml > recomp_run.log 2>&1) \
+      || { tail -20 "$ROOT/recomp/recomp_run.log"; exit 1; }
+  echo "recomp: $(ls "$GEN" | wc -l | tr -d ' ') files, unhandled=$(grep -c unhandled-instruction "$ROOT/recomp/recomp_run.log" || true), unmapped=$(grep -c unmapped-continuation "$ROOT/recomp/recomp_run.log" || true)"
+  grep -E '^ *\[(info|warning)\] names - ' "$ROOT/recomp/recomp_run.log" | sed -e 's/^ *\[warning\] names - /WARNING: names: /' -e 's/^ *\[info\] names - /recomp: names: /' || true
 }
 
 configure_runtime() {
