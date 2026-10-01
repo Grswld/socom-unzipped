@@ -16,9 +16,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# The venv holds requirements.txt's pins; scripts/python_env.sh honours $PYTHON.
-if [ -z "${PYTHON:-}" ] && [ -x "$ROOT/.venv/bin/python" ]; then
-  export PYTHON="$ROOT/.venv/bin/python"
+# The venv holds requirements.txt's pins. Its bin/ goes first on PATH -- what activating it does -- so
+# scripts/python_env.sh, the one place an interpreter is chosen, finds it, and so do the scripts the suite runs.
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  export PATH="$ROOT/.venv/bin:$PATH"
 fi
 . "$ROOT/scripts/python_env.sh"
 socom_require_python build_macos
@@ -104,6 +105,16 @@ verdict() {   # $1 = what ran, $2 = its exit code
 test_step() {
   # Every suite runs and every verdict prints (build_linux.sh's shape); non-zero if any failed.
   local py_rc=0 cxx_rc=0 vu_rc=0
+  # The harness scripts the Python suite drives (the loop lock, the launch templates, the server box's ops)
+  # assume what Git Bash and Linux CI provide: bash >= 4.4 and GNU coreutils (stat -c, date -d). macOS ships
+  # bash 3.2 and BSD tools; the arm64 Homebrew's bash (first on PATH above) and coreutils' unprefixed names
+  # stand in, for this step only: brew install bash coreutils.
+  local gnubin=/opt/homebrew/opt/coreutils/libexec/gnubin
+  if [ ! -x /opt/homebrew/bin/bash ] || [ ! -d "$gnubin" ]; then
+    echo "build_macos: the Python suite needs the arm64 Homebrew's bash and coreutils: brew install bash coreutils" >&2
+    return 2
+  fi
+  export PATH="$gnubin:$PATH"
   ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v ) || py_rc=$?
   if configure_runtime && cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$JOBS"; then
     # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
