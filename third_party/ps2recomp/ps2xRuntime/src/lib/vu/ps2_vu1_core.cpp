@@ -15,7 +15,11 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 
 #include <algorithm>
 #include <cfenv>
+#if defined(USE_SSE2NEON)
+#include "sse2neon.h"
+#else
 #include <xmmintrin.h>
+#endif
 #include <cmath>
 #include <cstdio>
 #include <chrono>
@@ -2148,21 +2152,27 @@ namespace
 {
     // Saves the x87 control word and MXCSR, sets both rounding controls to "toward zero"
     // (x87 RC = 11b at bits 10-11, MXCSR RC = 11b at bits 13-14) and restores them on request.
+    // arm64 (macOS port): there is no x87; long double is double, and sse2neon's _mm_setcsr sets FPCR's
+    // rounding mode, which governs scalar and NEON math alike -- so the MXCSR half alone is the whole scope.
     struct VuRoundingScope
     {
         uint16_t x87 = 0;
         uint32_t mxcsr = 0;
         VuRoundingScope()
         {
+#if defined(__x86_64__) || defined(__i386__)
             __asm__ __volatile__("fnstcw %0" : "=m"(x87));
-            mxcsr = _mm_getcsr();
             const uint16_t x87Tz = static_cast<uint16_t>(x87 | 0x0C00u);
             __asm__ __volatile__("fldcw %0" : : "m"(x87Tz));
+#endif
+            mxcsr = _mm_getcsr();
             _mm_setcsr(mxcsr | 0x6000u);
         }
         void restore() const
         {
+#if defined(__x86_64__) || defined(__i386__)
             __asm__ __volatile__("fldcw %0" : : "m"(x87));
+#endif
             _mm_setcsr(mxcsr);
         }
     };

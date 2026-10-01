@@ -5,7 +5,11 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#if defined(USE_SSE2NEON)
+#include "sse2neon.h"
+#else
 #include <emmintrin.h>
+#endif
 
 class GS;
 class PS2Memory;

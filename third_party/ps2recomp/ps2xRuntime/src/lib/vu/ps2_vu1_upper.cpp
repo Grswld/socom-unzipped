@@ -7,7 +7,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(USE_SSE2NEON)
+#include "sse2neon.h"
+#else
 #include <emmintrin.h>
+#endif
 #include <limits>
 
 namespace
