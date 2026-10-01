@@ -53,6 +53,19 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
+## Sprint 18 — PROPOSED 2026-10-01 02:10Z ("the PCSX2 door"; opens on `sprint-18` off `sprint-17`, beside the open Sprint 17)
+
+The owner's word of 2026-10-01 ~02:00Z: a global NATIVE / PCSX2 client toggle in the launcher with entirely separate
+saved settings; in the PCSX2 client, SELECT your PCSX2 or INSTALL the official release (one button, a tooltip); our
+server or a custom address, the community server still "coming soon"; the hosted box answers SOCOM II's host names on
+53/udp (the owner granted the DNS changes on the Lightsail box; an agent without a live AWS session asks for the
+firewall rule). Spec `docs/superpowers/specs/2026-10-01-sprint-18-the-pcsx2-door-design.md`; plan
+`docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md` (the table, rulings R-A…R-F to be numbered, the Log);
+task book `docs/superpowers/plans/2026-10-01-sprint-18-tasks.md` (T0 the spike and T1 the box first). Launcher-only
+on our side: no runtime, recomp or parity change; its builds take the lock, its PCSX2 boots a window (O20).
+
+---
+
 ## Sprint 16 — CLOSED 2026-09-28 (merged to `main` as `v0.16.0` at `d77b58c5`, PR #97, 02:53Z; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-27 07:00Z, closed 2026-09-28 01:24Z: one loop day, every merged branch reviewed by a
