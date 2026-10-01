@@ -1390,12 +1390,13 @@ void register_vu1_ops_tests()
             }
         };
 
-        tc.Run("PS2X_VU1_NATIVE_33C8 is a Dev Flag defaulting to 0; off, the registry's 0x33c8 entry is as if absent", [](TestCase &t)
+        tc.Run("PS2X_VU1_NATIVE_33C8 is a Dev Flag defaulting to 1 (N1c adopted): unset, the registry's 0x33c8 entry is present; 0, absent", [](TestCase &t)
         {
             const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_NATIVE_33C8");
             t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
-                         std::string(e->dflt) == "0",
-                     "a Dev Flag, default 0 (the generated code keeps entry 0x33c8 unless asked)");
+                         std::string(e->dflt) == "1",
+                     "a Dev Flag, default 1 (N1c picked 2026-10-01, the native entry adopted; 0 = the generated code)");
+            t.IsTrue(e != nullptr && std::string(e->meaning).size() <= 110u, "its meaning fits the registry's 110 characters");
             extern const Vu1NativeProgram g_vu1NativePrograms[];
             extern const uint32_t g_vu1NativeProgramCount;
             const Vu1NativeProgram *row = nullptr;
@@ -1404,8 +1405,13 @@ void register_vu1_ops_tests()
                     row = &g_vu1NativePrograms[i];
             t.IsTrue(row != nullptr && row->fn != nullptr && row->enabled != nullptr,
                      "the SOCOM II image registers entry 0x33c8, gated");
-            if (row && row->enabled && ps2x::knob("PS2X_VU1_NATIVE_33C8") == nullptr)
-                t.IsTrue(!row->enabled(), "unset: the gate is closed, run() does not take the entry");
+            // The gate reads once per process, so a run covers the environment it was started with:
+            // ps2x_tests unset (the default), and PS2X_VU1_NATIVE_33C8=0 (the developer's fallback).
+            const char *v = ps2x::knob("PS2X_VU1_NATIVE_33C8");
+            if (row && row->enabled && v == nullptr)
+                t.IsTrue(row->enabled(), "unset: the gate is open (the registry's default), run() takes the entry");
+            if (row && row->enabled && v != nullptr && !ps2x::knobs::flagValue(v, true))
+                t.IsTrue(!row->enabled(), "=0: the gate is closed, run() does not take the entry");
         });
 
         tc.Run("native 0x33c8: a last-bone entry repacks, resumes at vi14 and ends bit-exact with the interpreter", [](TestCase &t)

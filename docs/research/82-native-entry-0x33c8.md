@@ -9,6 +9,8 @@ microcode (`python tools_py/vu1dis.py --start 0x3100 --count 80 logs/vu1dump3/vu
 
 ## 0. Headline
 
+**ADOPTED 2026-10-01 (default 1):** N1c (§9) picked at rung two in both orders, SYNCV 24.4 → 25.5 and 22.5 → 25.3.
+
 1. **`0x33c8` is not the dispatcher behind a prologue: it is a six-pair test choosing between two programs.**
    `XTOP vi1`, then `vi7 = vi5 & 4` on a LIVE-IN `vi5` (the previous chunk's flags word, left by the program that
    ended at `0x33c8`), then `IBEQ vi7, vi0, 0x3100`. **(A) not the last bone:** the branch goes to `0x3100`, the
@@ -25,7 +27,7 @@ microcode (`python tools_py/vu1dis.py --start 0x3100 --count 80 logs/vu1dump3/vu
 3. **Decision: GO for (B), done here; NO-GO for (A) this sprint.** (B) is the brief's case: the same dispatcher
    entered at another pc after 27 pairs of prologue (the test, the setup, the loop, the branch), needing one
    handler native lacked (`0x66`, 33 pairs) beside `0x08`, `0x40` and `0x42`, which it has. (A) is a different program -- the `0x52` body -- and belongs with the
-   `0x52` lists native refuses at `0x1b50` (N2, §7). Implemented behind `PS2X_VU1_NATIVE_33C8` (Dev, default 0).
+   `0x52` lists native refuses at `0x1b50` (N2, §7). Implemented behind `PS2X_VU1_NATIVE_33C8` (Dev, default 0 until adopted).
 4. **The stake is below the 108 ms/s bound.** The bound is the `0x33c8` fallback's host time over the walk, 7,452
    ms / 68.7 s. Native is not free: in a scratch harness on the three (B) dumps its `execute()` took 54-70 % of
    the generated code's time (§5), so (B) native saves an estimated 30-45 % of (B)'s, **about 23-45 ms/s** of the

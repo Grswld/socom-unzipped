@@ -45,7 +45,7 @@
 // live-in vi14 -- the `66 08 40 42` tail of the `52 66 08 40 42` list -- so 0x66 has a handler
 // here, admitted by that entry's pre-scan only (cmdFaceNormals). Otherwise the microcode branches
 // to 0x3100 for another bone pass, which is refused whole as skin_pass. Behind
-// PS2X_VU1_NATIVE_33C8 (Dev, default 0): off, the registry leaves the entry to the generated code.
+// PS2X_VU1_NATIVE_33C8 (Dev, default 1 since N1c was adopted): 0, the registry leaves the entry to the generated code.
 // The resumed list may hold only commands whose stores that entry proves before its first write
 // (proveResumedWrites): the walk's two last-bone shapes, `66 06 08 54 18 28 42` and the 0x02 loop
 // `66 06 02 [0a 56 1a 2a 4c]`, are among them (research/82 section 9.7).
@@ -4264,9 +4264,11 @@ void vu1native_socom2_forceSkinForTest(int state)
 
 // Sprint 17 F N1 (docs/research/82): registered for (image d418194495c25213, entry pc 0x33c8) behind
 // PS2X_VU1_NATIVE_33C8 (the registry asks this gate after the (hash, pc) match; read once, after developer mode).
+// Default 1 since N1c was adopted (2026-10-01): the registry row's default is honoured (knobOrDefault), so a
+// player -- the Dev knob hidden -- runs the native entry; a developer's =0 is the generated fallback.
 bool vu1native_socom2_entry_0x33c8_enabled()
 {
-    static const bool s_on = ps2x::knobOn("PS2X_VU1_NATIVE_33C8");
+    static const bool s_on = ps2x::knobs::flagValue(ps2x::knobOrDefault("PS2X_VU1_NATIVE_33C8"), false);
     return s_on;
 }
 

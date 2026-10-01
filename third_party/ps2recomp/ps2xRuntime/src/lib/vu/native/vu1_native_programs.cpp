@@ -20,7 +20,7 @@ extern const Vu1NativeProgram g_vu1NativePrograms[] = {
     {0xd418194495c25213ull, 0x1b50u, &vu1native_socom2_dispatch},
     // SOCOM II: the skinned meshes' follow-on MSCAL (same file, docs/research/82): the last-bone
     // repack and the dispatcher resumed at 0x1b60; a bone pass (`B 0x3100`) is refused as skin_pass.
-    // Behind PS2X_VU1_NATIVE_33C8 (Dev, default 0): off, the entry is as if absent.
+    // Behind PS2X_VU1_NATIVE_33C8 (Dev, default 1 since N1c was adopted): at 0 the entry is as if absent.
     {0xd418194495c25213ull, 0x33c8u, &vu1native_socom2_entry_0x33c8, &vu1native_socom2_entry_0x33c8_enabled},
 };
 extern const uint32_t g_vu1NativeProgramCount = 2u;
