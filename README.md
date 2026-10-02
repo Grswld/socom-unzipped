@@ -42,7 +42,7 @@ As of 2026-10-02, on an M2 Pro running macOS 15, with the US retail disc (`SCUS-
 
 For the upstream project's own status on Windows and Linux, see `docs/KNOWN.md` and the upstream README.
 
-## Changelog (this fork)
+## Recent Changes
 
 **2026-10-01: the macOS port (phase 1)**
 SOCOM Unzipped built for Windows, with Linux in progress; there was no way to play it on a Mac.
