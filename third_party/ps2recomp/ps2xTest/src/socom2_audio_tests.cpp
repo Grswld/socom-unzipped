@@ -175,7 +175,7 @@ namespace
         std::vector<uint8_t> file(0x800, 0u);
         auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(file.data(), " KPV", 4);
-        put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
+        put32(4, static_cast<uint32_t>(chunkPairs * 0x800));   // per channel
         put32(8, 0x800);
         put32(12, 0x1000);
         put32(16, 32000);
@@ -197,7 +197,9 @@ namespace
     }
 
     // A VPK laid out as every one of the disc's 210 music files is (2026-10-02, validated over VAGSTORE.ZAR):
-    // " KPV" | data size (both channels' bytes) | 0x800, the header size -- the data STARTS here | the streaming
+    // " KPV" | data size PER CHANNEL (each file ends within one buffer of the next cue only so; the bytes past a
+    // total-size reading are the rest of the track, which fades out there) | 0x800, the header size -- the data
+    // STARTS here | the streaming
     // buffer (0xb000 on the disc) | rate | channels. Each buffer is half the left channel, then half the right; the
     // last, partial buffer keeps that layout -- left at +0, right at +half -- with rem/2 bytes in each and the rest
     // of the buffer padding. Every left chunk is a constant +(k+1) level (filter 0, so a block decodes to exactly
@@ -217,7 +219,7 @@ namespace
         std::vector<uint8_t> file(0x800, 0u);
         auto put32 = [&](size_t at, uint32_t x) { file[at] = static_cast<uint8_t>(x); file[at + 1] = static_cast<uint8_t>(x >> 8); file[at + 2] = static_cast<uint8_t>(x >> 16); file[at + 3] = static_cast<uint8_t>(x >> 24); };
         std::memcpy(file.data(), " KPV", 4);
-        put32(4, v.dataSize());
+        put32(4, v.dataSize() / 2u);   // per channel
         put32(8, 0x800u);
         put32(12, v.buffer);
         put32(16, 32000u);
@@ -1506,7 +1508,7 @@ void register_socom2_audio_tests()
             std::vector<uint8_t> file(0x1000, 0u);   // research/36 item 10: word 3 = 0x1000 -> a per-channel stride of 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);   // the disc stores the magic as the little-endian word "VPK "
-            put32(4, static_cast<uint32_t>(chunksPerChannel * 2 * 0x800));
+            put32(4, static_cast<uint32_t>(chunksPerChannel * 0x800));   // per channel
             put32(8, 0x1000);   // the header size: this file's data starts at 0x1000
             put32(12, 0x1000);
             put32(16, 32000);
@@ -2316,7 +2318,7 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
             const int chunkPairs = 4;
-            put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
+            put32(4, static_cast<uint32_t>(chunkPairs * 0x800));   // per channel
             put32(8, 0x1000);   // the header size: this file's data starts at 0x1000
             put32(12, 0x1000);
             put32(16, 48000);
@@ -2383,7 +2385,7 @@ void register_socom2_audio_tests()
             std::vector<uint8_t> file(0x800, 0u);      // the header block: word 2 = 0x800, where the data starts (the disc's layout)
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
-            put32(4, static_cast<uint32_t>(fullBuffers) * kBuffer + 2u * tailPerChannel);
+            put32(4, static_cast<uint32_t>(fullBuffers) * kHalf + tailPerChannel);   // per channel
             put32(8, 0x800);
             put32(12, kBuffer);
             put32(16, 32000);
