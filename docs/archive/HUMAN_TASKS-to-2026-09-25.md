@@ -865,3 +865,10 @@ R290-R297 (`docs/superpowers/plans/2026-09-26-owner-sitting.md`) record the answ
 | O8 | **A PLAYTEST sitting on the current build** (`docs/PLAYTEST.md`), on a quiet machine. **Done 2026-09-27 (quick, the batch-3 build): the drag fixed, the audio much better, the personas OK superficially; the online screens' music is issue #94; a full persona pass still owed.** Its decision: R295 (2026-09-26). | the loop rewrites PLAYTEST for each build it can hand over; the report's log box stays OFF | carry C126; audit F10 | 2026-09-20 |
 | O10 | **Public actions upstream**: file the two PS2Recomp issues with their patches, the ten KEEP comments and the two BinExport issues from `docs/research/assets/63-upstream-drafts/` (its README orders them). | file later (owner, 2026-09-26): nothing filed; `docs/UPSTREAM.md` is the register | audit E5; external X9, X10, X20 | 2026-09-25 |
 | O15 | **Linux on real hardware** (a Linux PC or a Steam Deck): the tarball's launcher opens, the game boots with music and the pad, the first three `[gs-gl]` lines of the run log, and R107's title-loop correlation. | not yet (owner, 2026-09-26: no such machine at hand); CI and the VM stand in; the VM half is the loop's backlog | carry C123 | 2026-09-18 |
+
+## Moved 2026-10-02 from docs/HUMAN_TASKS.md (struck rows)
+
+| O | the decision or the hand | the default the loop is on | settles | first asked |
+|---|---|---|---|---|
+| ~~O31~~ | ~~**Close the two launcher windows** (2026-10-01): idle launchers held the exe open, three builds and the batch-6 chain failed at its copy~~ -- struck 2026-10-01 18:32Z: closed; the guard (8faf414d) now refuses a build or chain while one runs | -- | R334 | 2026-10-01 |
+| O20 | **Windows for game runs** (R297): the hours a controller may run a game here. The named windows' history is in the Sprint 17 rulings (R331-R336); since 2026-09-30 the standing word is "proceed autonomously, no rush" (R338), the launcher's state and free memory deciding each run. | the loop runs when the host allows | R297, R338 | 2026-09-28 |
