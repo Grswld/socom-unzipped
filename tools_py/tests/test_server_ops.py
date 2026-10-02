@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -291,6 +292,9 @@ class BoxScriptsMore(unittest.TestCase):
         return subprocess.run([BASH, os.path.join(OPS, script)], capture_output=True, text=True, cwd=ROOT,
                               env={**os.environ, "OPS_ENV": _posix(env)}, timeout=120)
 
+    # health.sh reads /proc/uptime and /proc/meminfo: the Linux server box's, which Git Bash emulates on Windows
+    # and macOS has no equivalent of (macOS port, phase 1).
+    @unittest.skipIf(sys.platform == "darwin", "health.sh reads /proc, which macOS does not have")
     def test_the_health_line_has_its_shape_and_names_an_unsettled_backup(self):
         stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         os.makedirs(os.path.join(self.backups, stamp))

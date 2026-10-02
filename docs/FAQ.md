@@ -132,6 +132,16 @@ files. Either way, press SAVE DIAGNOSTICS and send the zip with a line on what y
 
 Where you meet it: in the middle of a run, from either path.
 
+### 76 — no display awake
+
+> No display was awake to open the game window on. Wake the screen, or connect one, and launch again.
+
+macOS only, so far. A run started while every screen is asleep (a scheduled or remote launch, a closed laptop lid
+with no external display) has nowhere to open its window, and the window library would otherwise go on into an
+OpenGL that was never loaded and crash. The game checks first and leaves with this code instead.
+
+Where you meet it: at launch, before the window opens. What to do: wake the screen and launch again.
+
 *(Three more you may see: **0** is a normal exit; **1** means the game stopped on an error it did not name, and
 **3** that it stopped itself after an internal error — both ask you to press SAVE DIAGNOSTICS, and the end of the
 log says more. Any code not on this page reads "The game closed with code N. Press SAVE DIAGNOSTICS to collect the

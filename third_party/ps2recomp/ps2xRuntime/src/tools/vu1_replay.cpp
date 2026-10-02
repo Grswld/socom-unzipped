@@ -562,8 +562,13 @@ namespace
             command += " --vram-dump \"" + outDir + "\"";
             if (hostDraw)
                 command += " --host-draw";
-            // cmd.exe strips one layer of quotes from the whole command line.
+            // cmd.exe strips one layer of quotes from the whole command line; a POSIX sh does not, and would
+            // take the whole line for one program name (macOS port).
+#if defined(_WIN32)
             const int rc = std::system(("\"" + command + "\"").c_str());
+#else
+            const int rc = std::system(command.c_str());
+#endif
             if (rc != 0)
             {
                 std::fprintf(stderr, "--vram-diff: %s pass failed (%d): %s\n",

@@ -19,7 +19,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(USE_SSE2NEON)
+#include "sse2neon.h"
+#else
 #include <emmintrin.h>
+#endif
 #include <limits>
 #include <memory>
 #include <string>
@@ -429,6 +433,28 @@ void register_vu1_ops_tests()
 {
     MiniTest::Case("VU1Ops", [](TestCase &tc)
     {
+        tc.Run("_mm_setcsr's round-toward-zero bits chop scalar double math (and long double on arm64)", [](TestCase &t)
+        {
+            // FENV_ACCESS: without it the compiler may move the divisions across the mode switches.
+#pragma STDC FENV_ACCESS ON
+            const unsigned int saved = _mm_getcsr();
+            volatile double one = 1.0, ten = 10.0;
+            volatile long double ld1 = 1.0L, ld10 = 10.0L;
+            _mm_setcsr(saved | 0x6000u);
+            const volatile double q = one / ten;
+            const volatile long double lq = ld1 / ld10;
+            _mm_setcsr(saved);
+            const volatile double qNearest = one / ten;
+            // 0.1 rounds UP to nearest in binary64 (0x3FB999999999999A); chopped it is the value below (...99).
+            t.IsTrue(q < qNearest, "the scope's MXCSR bits chop a double division");
+#if defined(__aarch64__)
+            // arm64: long double is double, under the same FPCR -- the reason VuRoundingScope needs no x87 half.
+            t.IsTrue(lq < static_cast<long double>(qNearest), "and a long double one");
+#else
+            (void)lq;
+#endif
+        });
+
         tc.Run("product-sum: every exact-zero lane takes the fast path, bit-identical to the slow classifier", [](TestCase &t)
         {
             Tally taken, same;

@@ -750,6 +750,41 @@ the plan's Log why, `docs/KNOWN.md` what is proven and what is believed, `docs/H
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
 
+### macOS (Apple Silicon)
+
+Phase 1 of the macOS port (2026-10-01): the game from your own disc, offline, native arm64 -- boots, walks the menus by keyboard, plays
+the intro movie and a mission with sound. A mission runs at about 30 ms a frame on an M2 Pro (Windows: ~27; the
+console 16.7), so it is choppy. Not yet on macOS: the launcher flow, online, the microphone, an app bundle, macOS CI.
+
+Needs Xcode Command Line Tools (AppleClang) and the **arm64** Homebrew at `/opt/homebrew`:
+`brew install cmake ninja pkgconf bash coreutils` (bash and coreutils only for `test`). An Intel Homebrew under
+`/usr/local` is never used and cannot be: its libraries are x86_64. `build_macos.sh` pins `pkg-config` to
+`/opt/homebrew` for that reason -- its default search path reaches `/usr/local`.
+
+    python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+    PATH="$PWD/.venv/bin:$PATH" bash scripts/disc_to_elf.sh "<your ISO>"   # ~7 min on an M2 Pro
+    scripts/build_macos.sh            # tools, recomp, runtime -> dist-macos/socom2 (~6 min)
+    scripts/build_macos.sh test       # Python suite, ps2x_tests, VU1 replay goldens
+    PS2X_CD_IMAGE="<your ISO>" bash run.sh 60
+    # or: PS2X_CD_IMAGE="<your ISO>" dist-macos/socom2 game/disc/socom2_game.elf
+
+- **FFmpeg** is built from source by the CMake tree on first configure: 7.1.5 (the Windows pin's version), static,
+  LGPL, only the MPEG-2 decoder and parser `Kernel/Stubs/MPEG.cpp` opens.
+- **The generated runner** compiles with at most `PS2X_MACOS_RUNNER_JOBS` (default 6) jobs, which keeps a 16 GB
+  machine out of swap.
+- **The recompiler's output** does not depend on the host: the Mac's recomp matches the Windows numbers above
+  (14882 files, `unhandled=114399`, 1871 names).
+- **Rendering** is OpenGL 4.1, macOS's ceiling: `glClipControl` (4.5) is absent, so depth runs `GsGlDepth`'s
+  `Legacy` path. raylib's viewport is restored in framebuffer pixels, so a Retina window is not a quarter frame.
+- **Arithmetic:** sse2neon stands in for SSE. On arm64 `long double` is `double`; the VU's round-toward-zero scope
+  sets FPCR through `_mm_setcsr`, and chopping to double then float equals chopping to float, so the VU1 goldens
+  match bit for bit.
+- **The Python suite** outside `build_macos.sh test` needs what that step puts on `PATH`: the venv's `bin/`, the
+  arm64 Homebrew's bash (the harness scripts want bash >= 4.4) and `$(brew --prefix coreutils)/libexec/gnubin`
+  (GNU `stat`, `date`). `server/ops/health.sh`'s test is skipped on macOS: it reads `/proc`.
+- `run.sh` uses `timeout` or `gtimeout` when present, else kills the run itself after the given seconds, exiting
+  124 as `timeout` does.
+
 ## Recompiler reference
 
 Since Sprint 14 Task E3 the `linux` workflow's `recomp-ref` job re-derives a synthetic program on every code push:
@@ -801,7 +836,8 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 
 - **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
   Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
-  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Release kind: `PS2X_RELEASE_KIND=player`
+  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. macOS (Apple Silicon):
+  `scripts/build_macos.sh [tools|recomp|runtime|test|all] [--no-runner]` (below, "macOS (Apple Silicon)"). Release kind: `PS2X_RELEASE_KIND=player`
   (default; `dist-release/`) or `developer` (`dist-release-dev/`; `dist-linux-release[-dev]/` on Linux). Packaging:
   `scripts/make_portable.sh [--release]` (both kinds' archives when both are built), `scripts/make_server_zip.sh`.
 - **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score

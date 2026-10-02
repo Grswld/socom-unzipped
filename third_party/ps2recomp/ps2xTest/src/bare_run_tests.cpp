@@ -142,7 +142,13 @@ void register_bare_run_tests()
             t.Equals(s.size(), static_cast<size_t>(15), "YYYYMMDD_HHMMSS");
             t.IsTrue(s.size() == 15 && s[8] == '_', "with the underscore where the launcher's log names have it");
             t.IsTrue(fs::is_directory(ExeDir::get()), "ExeDir::get() is a directory that exists");
-            t.IsTrue(std::string(ExeDir::platformName()) == "windows" || std::string(ExeDir::platformName()) == "linux", "and the platform has a name on both hosts we build on");
+            const std::string platform = ExeDir::platformName();
+            t.IsTrue(platform == "windows" || platform == "linux" || platform == "macos", "and the platform has a name on every host we build on");
+#if defined(__APPLE__)
+            t.Equals(platform, std::string("macos"), "Darwin names itself");
+            // Review focus 3: the folder is the binary's, not the cwd -- the suite runs from build-macos/ps2xTest.
+            t.IsTrue(fs::exists(ExeDir::get() / "ps2x_tests"), "ExeDir::get() is the folder ps2x_tests itself is in");
+#endif
 #ifdef _WIN32
             const char *self = "ps2x_tests.exe";
 #else

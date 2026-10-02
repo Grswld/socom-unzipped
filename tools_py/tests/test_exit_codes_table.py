@@ -8,9 +8,9 @@ from tools_py import exit_codes
 
 
 class ExitCodeTableTest(unittest.TestCase):
-    def test_the_header_parses_into_thirteen_rows(self):
+    def test_the_header_parses_into_fourteen_rows(self):
         rows = exit_codes.table()
-        self.assertEqual([r["code"] for r in rows], [0, 1, 3, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74])
+        self.assertEqual([r["code"] for r in rows], [0, 1, 3, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 76])
         self.assertEqual(rows[3]["name"], "NoUsableGl")
         self.assertEqual(rows[3]["slug"], "no-usable-gl")
 

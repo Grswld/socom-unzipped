@@ -6,6 +6,6 @@
 namespace ExeDir
 {
     std::filesystem::path get();
-    // "windows", "linux" or "other": for the diagnostics zip's versions.txt, so the launcher needs no #ifdef.
+    // "windows", "linux", "macos" or "other": for the diagnostics zip's versions.txt, so the launcher needs no #ifdef.
     const char *platformName();
 }

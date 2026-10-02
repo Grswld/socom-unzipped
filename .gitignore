@@ -125,3 +125,6 @@ id_dsa*
 # the layout before 2026-09-29 (everything under web/ directly): a tree that still holds its maps there cannot stage them
 /web/public/maps/
 /web/test-fixtures/
+
+# macOS port: the Python venv scripts/build_macos.sh uses (requirements.txt, pinned)
+/.venv/
