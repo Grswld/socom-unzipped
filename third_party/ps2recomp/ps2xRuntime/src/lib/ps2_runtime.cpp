@@ -16,6 +16,7 @@
 #include "runtime/gs/gs_gl_backend.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_gl_caps.h"
+#include "runtime/host_display.h"
 #include "runtime/gs/gs_loop_phases.h"
 #include "runtime/ee_scheduler.h"
 #include "ThreadNaming.h"
@@ -819,6 +820,14 @@ bool PS2Runtime::initialize(const char *title)
         // PS2X_WINDOW_SIZE=<w>x<h> | fullscreen (the launcher's window-size choice, Task 8b); unset keeps the default
         // the parity gate depends on.
         const ps2_window::Size windowSize = ps2_window::parseWindowSize(ps2x::knob("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
+        // macOS port: with every display asleep GLFW finds no monitor and raylib's InitWindow carries on into a GL
+        // that was never loaded (a crash in rlglInit). Refuse first, with the table's code and sentence.
+        if (ps2_window::noDisplayToOpen(ps2x_host::awakeDisplayCount()))
+        {
+            const ExitCodes::Entry *e = ExitCodes::find(ExitCodes::kNoDisplay);
+            std::cout << "[window] exit " << ExitCodes::kNoDisplay << " " << e->slug << ": " << e->sentence << std::endl;
+            std::exit(ExitCodes::kNoDisplay);
+        }
         InitWindow(windowSize.width, windowSize.height, title);
         // Owner 2026-09-20: Escape must not close the game. raylib's default exit key is KEY_ESCAPE, which made
         // WindowShouldClose() true on a key a PC player presses by reflex; the window's own close button and

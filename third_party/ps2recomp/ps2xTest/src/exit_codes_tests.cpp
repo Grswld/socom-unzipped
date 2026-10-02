@@ -30,7 +30,8 @@ void register_exit_codes_tests()
             // Thirteen since Sprint 11 Task 19 added 73, the revision guard's refusal, and 74, a LoadExecPS2
             // this build cannot carry out -- since Sprint 17 Q2 only an ELF other than its own (Sprint 13 V8 added 75 for a server name that does not
             // resolve and review round 1 took it out again: ruling S13-R9 makes that a notice.)
-            t.Equals(ExitCodes::kTableSize, 13, "thirteen codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, 73 and 74");
+            // Fourteen since the macOS port's 76: no display awake to open the window on (75 stays retired).
+            t.Equals(ExitCodes::kTableSize, 14, "fourteen codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, 73, 74 and 76");
         });
 
         tc.Run("the codes themselves: 65 kept, 66-74 added, GsGlCaps agrees with the table", [](TestCase &t)
@@ -58,6 +59,9 @@ void register_exit_codes_tests()
             t.IsNull(ExitCodes::find(75), "and 75 is not a code: a server that does not resolve is a notice (S13-R9)");
             t.IsNotNull(ExitCodes::find(73), "73 is");
             t.IsNotNull(ExitCodes::find(74), "and so is 74");
+            // macOS port: with every display asleep GLFW finds no monitor and raylib's InitWindow goes on to call
+            // a GL that was never loaded; the runner refuses first, with its own code (75 is S13-R9's, retired).
+            t.Equals(ExitCodes::kNoDisplay, 76, "no display awake to open the game window on");
         });
 
         tc.Run("classify: a native crash status is 70 on both platforms, a plain code is itself", [](TestCase &t)

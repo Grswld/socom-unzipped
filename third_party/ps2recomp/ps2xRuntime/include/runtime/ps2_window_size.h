@@ -60,4 +60,12 @@ namespace ps2_window
         s.height = static_cast<int>(h);
         return s;
     }
+
+    // The macOS port: with every display asleep (or none attached) GLFW finds no monitor, raylib 5.5's InitWindow
+    // ignores the failure and calls a GL that was never loaded. `awakeDisplays` is ps2x_host::awakeDisplayCount():
+    // refuse only when it is known to be zero; -1 (no query on this platform) lets InitWindow try, as before.
+    inline bool noDisplayToOpen(int awakeDisplays)
+    {
+        return awakeDisplays == 0;
+    }
 }

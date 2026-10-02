@@ -2,6 +2,7 @@
 #include "MiniTest.h"
 #include "runtime/fps_overlay.h"
 #include "runtime/ps2_window_size.h"
+#include "runtime/host_display.h"
 #include "launcher/launcher_config.h"
 #include "ps2x/host_window.h"   // Sprint 10 Q4
 
@@ -42,6 +43,19 @@ void register_host_config_tests()
             t.IsTrue(std::find(env.begin(), env.end(), std::string("PS2X_WINDOW_SIZE=640x448")) != env.end(),
                      "and a 0x0 that reached a Config anyway never becomes PS2X_WINDOW_SIZE=0x0 -- it becomes "
                      "the launcher's default, 640x448 since R236 (2026-09-22)");
+        });
+
+        tc.Run("no display to open the window on: refused only when the count is known to be zero", [](TestCase &t)
+        {
+            t.IsTrue(ps2_window::noDisplayToOpen(0), "every display asleep or none attached: refuse, before raylib crashes");
+            t.IsTrue(!ps2_window::noDisplayToOpen(1), "one awake display: open the window");
+            t.IsTrue(!ps2_window::noDisplayToOpen(3), "several: open it");
+            t.IsTrue(!ps2_window::noDisplayToOpen(-1), "unknown (no query on this platform): let InitWindow try, as before");
+#if defined(__APPLE__)
+            t.IsTrue(ps2x_host::awakeDisplayCount() >= 0, "Darwin answers the question (CoreGraphics), never 'unknown'");
+#else
+            t.Equals(ps2x_host::awakeDisplayCount(), -1, "elsewhere the count is unknown, so nothing changes there");
+#endif
         });
 
         tc.Run("PS2X_WINDOW_SIZE: <w>x<h> sets the window, fullscreen is borderless, anything else keeps the default", [](TestCase &t)

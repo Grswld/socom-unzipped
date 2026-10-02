@@ -350,6 +350,7 @@ add_library(ps2_runtime STATIC
     # cannot share one).
     src/lib/host_window_chrome.cpp
     src/lib/host_window_chrome_win32.cpp
+    src/lib/host_display.cpp   # macOS port: the awake-display count asked before InitWindow
     src/lib/host_move_loop_win32.cpp   # issue #67: the modal move loop's two edges (windows.h, like the chrome's half)
     src/lib/gs/ps2_gs_memory.cpp
     src/lib/gs/gs_frontend.cpp
@@ -580,6 +581,9 @@ target_include_directories(ps2_runtime PUBLIC
 )
 
 target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop ps2x_shared ps2x_snd989)
+if(APPLE)
+    target_link_libraries(ps2_runtime PUBLIC "-framework CoreGraphics")   # host_display.cpp
+endif()
 if(UNIX AND NOT APPLE)
     # Sprint 8 Goal 1: dladdr (the crash handler and the sampler's module base), timer_create (glibc < 2.34 keeps it
     # in librt), pthreads -- on the library so the runner, the tests and the tools inherit them.
