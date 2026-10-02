@@ -680,6 +680,15 @@ def run_gate(name, out_root):
     cfg = GATES[name]
     out_dir = os.path.join(out_root, name)
     os.makedirs(out_dir, exist_ok=True)
+    # A reused stamp kept the previous run's frames under this one's: s17_b6, rerun three times on 2026-10-01,
+    # left 76 captures of the first run in transition/, fade_frames (mtime order) took a stale w04_011.png for
+    # the first briefing frame, and the stage FAILED twice on frames the game never showed in that run.
+    # Everything drive.py writes here -- the s/w/burst captures, final.png, manifest.json -- goes first.
+    stale = [n for n in os.listdir(out_dir) if CAPTURE_RE.match(n) or n in ("final.png", "manifest.json")]
+    for n in stale:
+        os.remove(os.path.join(out_dir, n))
+    if stale:
+        print("gate: %s: removed %d capture(s) of a previous run from %s" % (name, len(stale), out_dir), flush=True)
     for p in glob.glob(os.path.join("logs", "parity", "latest_frame.png*")):
         os.remove(p)
     drive_log = os.path.join(out_root, name + ".drive.log")
