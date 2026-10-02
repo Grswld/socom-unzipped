@@ -6,7 +6,7 @@
 # OPS_BACKUP_DIR, OPS_STATS_URL, OPS_DEPLOYED_COMMIT (may be empty). Nothing about the box is written here.
 #
 # Prints: HEALTH ok|WARN <reasons> | up <days> | disk <used>/<size> (<pct>) | mem avail <MB>
-#         | services <n>/4 active | ports <n>/5 listening | db <bytes> @ <mtime> | backup <newest stamp>
+#         | services <n>/5 active | ports <n>/5 listening | db <bytes> @ <mtime> | backup <newest stamp>
 #         | stats <online|OFFLINE> players=<n> since=<startedUtc> build=<id>
 # WARN when disk >= 80 %, memory available < 200 MB, a unit down, a public port not listening (TCP 10071 10073
 # 10075 10078, UDP 10070 -- the tracked configs' ports), no backup, one older than 48 h or one whose database never settled, the stats endpoint
@@ -38,8 +38,8 @@ mem_avail=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/nul
 [ -n "$mem_avail" ] && [ "$mem_avail" -lt 200 ] && warn+=("mem ${mem_avail}MB")
 
 active=0
-for u in horizon-nat horizon-muis horizon-medius horizon-dme; do systemctl is-active --quiet "$u" 2>/dev/null && active=$((active+1)); done
-[ "$active" -lt 4 ] && warn+=("services ${active}/4")
+for u in horizon-nat horizon-muis horizon-medius horizon-dme socom-dns; do systemctl is-active --quiet "$u" 2>/dev/null && active=$((active+1)); done
+[ "$active" -lt 5 ] && warn+=("services ${active}/5")
 
 listening=0; missing=()
 tcp_ports=$(ss -Hltn 2>/dev/null | awk '{print $4}')
@@ -76,7 +76,7 @@ fi
 
 state=ok
 [ "${#warn[@]}" -gt 0 ] && state="WARN ${warn[*]}"
-printf 'HEALTH %s | up %sd | disk %s/%s (%s) | mem avail %sMB | services %s/4 active | ports %s/5 listening | db %s @ %s | backup %s | %s\n' \
+printf 'HEALTH %s | up %sd | disk %s/%s (%s) | mem avail %sMB | services %s/5 active | ports %s/5 listening | db %s @ %s | backup %s | %s\n' \
   "$state" "$up_days" "$(numfmt --to=iec "$used")" "$(numfmt --to=iec "$size")" "$pct" "${mem_avail:-?}" "$active" \
   "$listening" "$db_bytes" "$db_mtime" "${newest:-none}" "$stats_line"
 [ "$state" = ok ]

@@ -4,7 +4,9 @@ It answers SOCOM II's six retail host names with muis.json's Endpoint and NXDOMA
 source's queries per second, and never sends more than the echoed question plus one 16-byte A record (it must not be
 an amplifier). The unit, its wrapper, install.sh and horizon-ctl.sh carry it beside the four Horizon units.
 """
-import importlib.util, pathlib, struct, unittest
+import importlib.util, os, pathlib, struct, subprocess, unittest
+
+from tools_py.tests.shell import BASH
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("socom_dns", ROOT / "server" / "linux" / "socom_dns.py")
@@ -58,6 +60,17 @@ class RateCapTests(unittest.TestCase):
         self.assertTrue(cap.allow("1.2.3.4", 101.5))            # the next second
         self.assertTrue(cap.allow("198.51.100.8", 100.1))            # another source is its own bucket
 
+    def test_a_flood_of_distinct_sources_prunes_at_most_once_a_second(self):
+        # T1 review: pruning on every call past 4096 sources cost 9.2 s of CPU for 20,000 spoofed sources in one
+        # second. It runs at most once a second; memory stays bounded by one second's sources.
+        cap = socom_dns.RateCap(per_second=20)
+        for i in range(5000):
+            self.assertTrue(cap.allow("10.%d.%d.1" % (i // 256, i % 256), 200.5))
+        self.assertLessEqual(cap.prunes, 1)
+        cap.allow("203.0.113.200", 201.2)                                  # the next second may prune again
+        self.assertLessEqual(cap.prunes, 2)
+        self.assertEqual(list(cap.buckets), ["203.0.113.200"])             # the old second's sources are forgotten
+
 
 class MuisEndpointTests(unittest.TestCase):
     def test_endpoint_read_from_muis_json(self):
@@ -88,6 +101,23 @@ class BoxWiringTests(unittest.TestCase):
         self.assertIn("socom_dns.py --bind", sh)
         self.assertIn("--muis /opt/socom-unzipped-server/config/muis.json", sh)
         self.assertNotIn("0.0.0.0", sh)
+
+    def dry_run(self, addrs):
+        env = {**os.environ, "SOCOM_DNS_HOST_ADDRS": addrs, "SOCOM_DNS_DRY_RUN": "1"}
+        return subprocess.run([BASH, str(LINUX / "socom-dns.sh")], capture_output=True, text=True, env=env,
+                              timeout=60)
+
+    @unittest.skipUnless(BASH, "no bash on this host")
+    def test_the_wrapper_binds_the_first_dotted_quad(self):
+        r = self.dry_run("fe80::1 192.0.2.4 198.51.100.9")
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "192.0.2.4"), r.stderr)
+
+    @unittest.skipUnless(BASH, "no bash on this host")
+    def test_the_wrapper_refuses_a_host_without_ipv4(self):
+        r = self.dry_run("fe80::1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(r.stdout, "")
+        self.assertIn("socom-dns", r.stderr)
 
     def test_install_sh_installs_and_enables_the_unit(self):
         sh = self.read("install.sh")

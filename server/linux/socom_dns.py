@@ -53,9 +53,13 @@ def respond(data, answer, names):
 class RateCap:
     """At most per_second queries from one source in one wall-clock second; every source is its own bucket."""
 
+    PRUNE_ABOVE = 4096
+
     def __init__(self, per_second):
         self.per_second = per_second
         self.buckets = {}   # source -> (second, count)
+        self.pruned_at = None   # the second of the last prune
+        self.prunes = 0
 
     def allow(self, source, now):
         second = int(now)
@@ -65,8 +69,13 @@ class RateCap:
         if n >= self.per_second:
             return False
         self.buckets[source] = (s, n + 1)
-        if len(self.buckets) > 4096:      # forget every source not seen this second: memory stays bounded
+        # Forget every source not seen this second, at most once a second: a flood of spoofed sources must not
+        # rebuild the dict on every datagram (T1 review: 20,000 sources in one second cost 9.2 s of CPU that way).
+        # Memory stays bounded by one second's distinct sources.
+        if len(self.buckets) > self.PRUNE_ABOVE and self.pruned_at != second:
             self.buckets = {k: v for k, v in self.buckets.items() if v[0] == second}
+            self.pruned_at = second
+            self.prunes += 1
         return True
 
 

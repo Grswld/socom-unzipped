@@ -299,7 +299,7 @@ class BoxScriptsMore(unittest.TestCase):
         lines = r.stdout.splitlines()
         self.assertEqual(len(lines), 1, r.stdout + r.stderr)
         self.assertRegex(lines[0], r"^HEALTH (ok|WARN [^|]+) \| up [\d.]+d \| disk \S+/\S+ \(\d+%\) \| mem avail \S+MB"
-                                   r" \| services [0-4]/4 active \| ports [0-5]/5 listening \| db 5 @ \S+"
+                                   r" \| services [0-5]/5 active \| ports [0-5]/5 listening \| db 5 @ \S+"
                                    r" \| backup " + stamp + r" \| stats OFFLINE$")
         self.assertIn("backup %s unsettled" % stamp, lines[0])
         self.assertIn("stats offline", lines[0])
