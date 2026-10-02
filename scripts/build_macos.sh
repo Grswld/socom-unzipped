@@ -16,6 +16,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Refused up front, as they would otherwise fail deep inside a build (final review, I5):
+# FFmpeg's configure cannot build out of tree from a path with whitespace;
+case "$ROOT" in
+  *[[:space:]]*) echo "build_macos: the checkout path has whitespace in it ($ROOT); FFmpeg's configure cannot build there -- move the checkout" >&2; exit 2 ;;
+esac
+# and an x86_64 shell, or no arm64 cmake, falls back to Rosetta and an Intel Homebrew's cmake, which never sees an
+# ARM target (no sse2neon) and fails on the first x86 intrinsics header.
+if [ "$(uname -m)" != arm64 ] || [ ! -x /opt/homebrew/bin/cmake ] || [ ! -x /opt/homebrew/bin/ninja ]; then
+  echo "build_macos: needs an arm64 shell (uname -m: $(uname -m)) and the arm64 Homebrew's cmake and ninja: /opt/homebrew/bin/brew install cmake ninja" >&2
+  exit 2
+fi
 # The venv holds requirements.txt's pins. Its bin/ goes first on PATH -- what activating it does -- so
 # scripts/python_env.sh, the one place an interpreter is chosen, finds it, and so do the scripts the suite runs.
 if [ -x "$ROOT/.venv/bin/python" ]; then
