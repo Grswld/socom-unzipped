@@ -1,13 +1,12 @@
-# SOCOM Unzipped
+# SOCOM Unzipped - MacOS
 
-**SOCOM II: U.S. Navy SEALs, statically recompiled from your own disc into a native PC program, with online play.**
+**A macOS port of [SOCOM Unzipped](https://github.com/Scotho/socom-unzipped)**, the project that statically recompiles
+SOCOM II: U.S. Navy SEALs from your own disc into a PC program. This fork builds and runs it on Apple Silicon Macs.
 
-[![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
-[![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
-[![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
-
-A green badge means everything that builds without the game built and passed its tests on a clean machine. The game
-itself is checked on the maintainer's machine, with a disc.
+> **All credit for SOCOM Unzipped goes to its original author, [Scotho](https://github.com/Scotho), and the project's
+> contributors**: the recompilation, the runtime, the disc tooling, the online server, the reverse engineering and
+> the research this fork stands on are theirs. This fork adds a macOS build, a few performance and audio fixes, and
+> notes; everything else is the upstream project, unchanged. Please direct your support and thanks there.
 
 > ## ⚠️ Multiplayer disclaimer
 >
@@ -17,86 +16,101 @@ itself is checked on the maintainer's machine, with a disc.
 > one you run yourself, never with a build you did not compile or verify, and not yet against a community server: the
 > launcher does not offer one until it can install the r0004 update (see [Status](#status)).
 
-> **Early stage.** This is a working prototype, not a finished port. It boots, plays the menus and the missions, and
-> two copies of the game have finished online rounds against each other on the project's test server, driven by the
-> project's own test harness on one machine. No two people have played each other yet, audio still has rough edges,
-> and things break between builds. Read [Status](#status) before you expect anything.
-
-## What it is, and what it is not
-
-- **A static recompilation.** The game's PS2 executable is translated to C++ once and compiled natively; the result runs
-  the game's own code as a normal Windows (and, in progress, Linux) program. There is no PS2 emulator underneath -- the
-  runtime provides the hardware the code expects (EE kernel, DMA, a software/OpenGL GS, VU1, the IOP services), and
-  SOCOM-specific hooks on top of that.
-- **Your own disc.** The game reads its assets from the ISO of the US retail release (`SCUS-97275`, disc revision
-  r0001); the launcher verifies the disc before it will launch. **No game code or game data is in this repository**:
-  not the executable, not the recompiled C++, not textures, audio, movies or saves -- the recompiled program is built
-  by each developer from their own disc. A contribution that adds any of it is closed unread (`CONTRIBUTING.md`); the
-  release will carry the program, never the disc's own files (#70).
-- **Online play, headed for the community's servers.** The game's original network (DNAS / Medius) is gone. The
-  community runs its own servers on the game's later r0004 revision, and that is where players will play once the
-  launcher can install that update on your machine (#71). Until then the project runs a
-  [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server) of its own as a test box, so
-  builds are checked against something known; the launcher points at it by default (`socom.scotho.com`).
-- **Not affiliated** with Sony Interactive Entertainment, Zipper Interactive, or the SOCOM community servers. SOCOM is
-  their trademark; this is a fan project for people who own the disc.
-
 ## Status
 
-As of 2026-09-27 the game boots from your own disc to the title, through the menus and into the missions, with a pad
-(the keyboard walks the menus), and renders through OpenGL at up to four times the console's resolution. Online login,
-the lobby and full rounds work on the project's test server, so far only between copies of the game driven by the test
-harness on one machine; a build of the community's r0004 revision passes the same checks and plays a round there too.
-The launcher lists the personas that have logged in from this launcher, from a record the game writes on each successful login. Version
-0.15.0 is the latest; the open sprint is working towards a program-only download that builds the game's image from
-your disc on first run, the launcher installing the community's r0004 update itself, and a frame-rate bar. Not yet:
-playing on a community server (the launcher's community preset stays greyed until the update installs), the console's
-full frame rate in missions (about 27 ms a frame on a quiet machine against the console's 16.7), a finished Linux
-client (it boots in a virtual machine, never yet on a real GPU), and any disc other than the NTSC r0001 release. The
-mission's ambient sound bed plays about 11 dB too quiet and the music still drops out in the menus. The game does not send your voice yet.
+As of 2026-10-02, on an M2 Pro running macOS 15, with the US retail disc (`SCUS-97275`, revision r0001):
 
-The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`.
+**What works**
+- The game builds on macOS from your own disc, and the recompiler's output matches the upstream Windows reference.
+- It boots to the title, plays the intro movie and walks the menus by keyboard.
+- Missions play, with picture, sound effects, voice and ambience.
+- The mission music plays correctly: each cue from its start to its composed ending, with the game's own fades
+  between cues (fixed 2026-10-02; see the changelog below).
+- Rendering is smooth most of the time: the window presents at about 55 frames a second in a mission.
 
-## For players: get it
+**What is rough**
+- **The game's own frame rate is low.** The game logic runs at about 15–29 frames a second in a mission (about 19
+  on average; upstream measured about 23 on Windows), so movement can feel heavy in busy scenes.
+- **Brief frame drops about every 2 seconds**, when the game uploads a large batch of textures and the renderer
+  reads frames back from the GPU in the same frame.
+- **Controls:** the keyboard works; there is no mouse support yet, and a gamepad has not been tested on macOS.
 
-**[`docs/INSTALL.md`](docs/INSTALL.md)** is the whole setup, in the order a first run happens, and
-**[`docs/FAQ.md`](docs/FAQ.md)** answers what goes wrong — every exit code, the disc revision, SmartScreen, ports,
-saves and audio.
+**Not available on macOS yet**
+- The launcher program (it builds, but it is not ported): the game is started from the command line.
+- Online play has not been tried on macOS.
+- An app bundle (`.app`), code signing, and Retina (2x) displays (a fix is in, but it has not been verified on one).
 
-There is no public download yet. When there is, it will be announced at <https://socomunzipped.com>, which also carries the
-setup guide and the server's live status. The shape of it: unzip a folder, run `socom_unzipped_launcher.exe`, point it
-at your SOCOM II ISO, pick video and controller settings, Launch. Nothing is installed; delete the folder to uninstall.
-The launcher refuses any disc that is not r0001 and says so.
+For the upstream project's own status on Windows and Linux, see `docs/KNOWN.md` and the upstream README.
 
-## For developers
+## Changelog (this fork)
 
-You need your own r0001 disc to build the game; without it you can still build and test the runtime, the tools, the
-launcher and the Python harness (that is what CI does, on Linux and on Windows). A fresh clone on Windows, in Git Bash
-with Python 3:
+**2026-10-01: the macOS port (phase 1)**
+*Why:* SOCOM Unzipped built for Windows, with Linux in progress; there was no way to play it on a Mac.
+*What:*
+- A macOS build script, `scripts/build_macos.sh`, with the arm64 Homebrew tools.
+- FFmpeg built from pinned source, for the movies.
+- The SSE vector code through sse2neon on Apple Silicon, and the x87 rounding control made x86-only.
+- macOS versions of the few Linux-only pieces.
+- A Retina-safe viewport, and a clean refusal (exit code 76) instead of a crash when the display is asleep.
+- `run.sh` working without GNU `timeout`.
+
+**2026-10-02: smoother rendering**
+*Why:* missions were choppy. A profile showed the render thread spending 42–49% of its time inside Apple's OpenGL
+driver, issuing about 4,000 draw calls a frame. 87% of those draws were split apart by a byte-for-byte comparison of
+the draw state that also compared the structures' padding bytes, so identical states looked different.
+*What:*
+- Draw batches are now compared by value: about 530 draws a frame instead of about 4,150, and half the render
+  thread's time per frame (21.5 ms to 11.0 ms on a recorded firefight).
+- Every frame of that firefight is pixel-identical before and after the fix.
+- Diagnostics behind knobs: why batches end, what makes a frame slow, frame-time percentiles.
+- A recording hotkey (`P`), and frame dumps in the replay bench for image comparisons.
+
+**2026-10-02: the mission music**
+*Why:* the music skipped about every 1.2 seconds, the start of every music cue was missing, and the music stopped
+dead halfway through.
+*What:* the music streamer misread three fields of the game's music file header:
+- where the audio starts (it skipped the first 1.1 s);
+- the size, which is per channel (only half of every track played);
+- where the right channel sits in the last buffer.
+
+All three were checked against all 210 music files on the disc. The bug affects every platform, not only macOS.
+
+The full, generated record of every merge, upstream's and this fork's, is `docs/CHANGELOG.md`.
+
+## Planned (or at least attempted)
+
+- **Fewer frame drops:** spread or avoid the texture-upload and GPU-readback bursts that cause the drops about every
+  2 seconds.
+- **A faster game thread:** speed up the vector-unit and runtime work that holds the game's own frame rate near 19.
+- **Fewer OpenGL calls:** skip the state and uniform calls that repeat what is already set.
+- **A Metal renderer**, keeping the OpenGL renderer as a reference so that both can render the same recorded frames
+  and any difference is caught automatically.
+- **Mouse look and mouse menu navigation.**
+- **Gamepad support verified on macOS.**
+- **The launcher on macOS**, and a proper `.app` bundle.
+- **Retina (2x) displays verified.**
+- **Online play on macOS.**
+- **Automated macOS builds and tests (CI).**
+- **Offer the fixes to the upstream project**, starting with the music fix (the branch `upstream-vpk-fix`).
+
+## Building it
+
+You need an Apple Silicon Mac, the Xcode Command Line Tools, the arm64 Homebrew at `/opt/homebrew`
+(`brew install cmake ninja pkgconf`, plus `bash coreutils` for the test suite) and **your own SOCOM II disc image**:
+the US release, `SCUS-97275`, revision r0001.
 
 ```
-bash scripts/install_hooks.sh          # the leak check before every commit and push (the repository is public)
-bash scripts/bootstrap_windows.sh      # llvm-mingw, CMake and Ninja into tools/, pinned by sha256 (~245 MB, once)
-python -m pip install -r requirements.txt   # the Python packages the tools and the suite import, pinned
-./build.sh runtime --no-runner         # the runtime library and the launcher, no game
-./build.sh test --no-runner            # both suites and the VU1 replay goldens
+python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+PATH="$PWD/.venv/bin:$PATH" bash scripts/disc_to_elf.sh "<your ISO>"
+scripts/build_macos.sh            # tools, recompile, runtime -> dist-macos/socom2
+scripts/build_macos.sh test       # the test suites
+PS2X_CD_IMAGE="<your ISO>" bash run.sh 60
 ```
 
-With your own ISO, the game itself:
+`docs/DEVELOPING.md`, section "macOS (Apple Silicon)", has the details. **No game code or game data is in this
+repository**, as upstream: the program is built by each person from their own disc.
 
-```
-bash scripts/disc_to_elf.sh "<your ISO>"   # the disc tree and the decrypted overlays (eight minutes, 4.2 GB)
-./build.sh recomp      # build the merged ELF from the disc and run the recompiler
-./build.sh runtime     # cmake + ninja + clang -> dist/socom2.exe and the launcher
-./build.sh test        # the Python suite, then the C++ suite and the VU1 replay goldens
-python -m tools_py.parity.gate --stamp first_run     # the in-game gate, 15 to 17 minutes
-```
-
-`docs/DEVELOPING.md` is the full developer reference: repository layout, the first hour on a clean checkout with the
-lines that say each step worked, every runtime knob (`PS2X_*`) and its exact effect, the online harness, and the
-launcher internals. `CONTRIBUTING.md` says what a pull request needs; `docs/GIT_STRATEGY.md` how branches are cut.
-
-### How it works, in one paragraph
+## How it works, in one paragraph (from upstream)
 
 The retail ELF is only a loader; the game itself is two encrypted overlays the loader decrypts from the disc. The
 tooling under `tools_py/` recovers the plaintext overlays from the player's disc, merges them with the loader into one
@@ -106,31 +120,10 @@ which emits C++. The fork's runtime supplies the PS2 the code expects; SOCOM's o
 `third_party/ps2recomp/ps2xIOP/src/modules/` (IOP services: sound, network, memory cards). The server under `server/`
 is Horizon configured for SOCOM II's app id, with a seed script for a local instance.
 
-### Where things are
-
-| Path | What |
-|---|---|
-| `build.sh`, `run.sh` | Build and run on Windows (Git Bash); `scripts/build_linux.sh` on Linux |
-| `recomp/` | Recompiler configuration, the function map, and the readable names with their provenance (`socom2_names.csv`; `docs/DEVELOPING.md` "Names in the generated code") |
-| `third_party/ps2recomp/` | The vendored PS2Recomp fork with this project's runtime changes (`git log -- third_party`) |
-| `tools_py/` | Python tooling: the disc-to-ELF chain, the recompiler's inputs, the naming levers, the parity gate and the online harness, tests (`docs/DEVELOPING.md` has a map of every module). |
-| `ghidra_scripts/` | Headless Ghidra scripts used for the reverse engineering |
-| `server/` | Horizon Private Server sources and the SOCOM II configuration |
-| `docs/` | Player pages `docs/INSTALL.md` and `docs/FAQ.md`; the developer reference `docs/DEVELOPING.md`; the record `docs/KNOWN.md` |
-| `tests/` | Fixtures for the C++ suite |
-| `web/` | The web half, a separate project that lives here: one npm workspace, its own tests, READMEs, docs and CI (`web.yml`). `web/redotcom` is the experimental browser map viewer and reCOM mode (served at socomunzipped.com/redotcom/), `web/landing` the site socomunzipped.com, `web/shared` the design system and the site's deploy ([`web/README.md`](web/README.md)). It decodes the disc's map archives and needs nothing from the recompilation, which needs nothing from it. Working on the recomp? Skip it. |
-
-### How it was built
-
-`docs/HOW_IT_WAS_BUILT.md` is the honest account: AI agents (Claude, through Claude Code) working in sprints under a
-human owner, what each side did, and what went wrong.
-
-## Contributing and security
-
-Issues and pull requests are welcome -- see `CONTRIBUTING.md` for what can be built without a disc and what a PR must
-not contain. Security problems go through GitHub's private vulnerability reporting, not a public issue: `SECURITY.md`.
-
 ## License and credits
+
+**SOCOM Unzipped is the work of [Scotho](https://github.com/Scotho) and its contributors**
+([upstream repository](https://github.com/Scotho/socom-unzipped)); this fork only adds to it, under the same terms.
 
 The port -- the runtime fork and everything that generates or drives it -- is **GPL-3.0**, because PS2Recomp is
 (`LICENSE`). The Horizon server is MIT (`server/horizon-server/LICENSE`). Every third-party component in the tree and
@@ -141,3 +134,6 @@ Built on [PS2Recomp](https://github.com/ran-j/PS2Recomp) and
 [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server), with
 [Ziemas's 989snd decompilation](https://github.com/Ziemas/989snd) as the reference for the sound driver, and the
 knowledge the SOCOM community has kept alive for twenty years.
+
+**Not affiliated** with Sony Interactive Entertainment, Zipper Interactive, or the SOCOM community servers. SOCOM is
+their trademark; this is a fan project for people who own the disc.
