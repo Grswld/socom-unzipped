@@ -14,7 +14,9 @@
 // would move every field whenever one got cheaper. A present's replay time is the hist_ histogram (edges in ms as
 // [gs-gl stats] frames; glFinish closes each batch, so the GPU's share is in it) and ms_per_frame= is its mean.
 //
-//   gs_replay_bench <recording.gsr> [--warmup N] [--frames N] [--json <out.json>] [--stats|--no-stats]
+//   gs_replay_bench <recording.gsr> [--warmup N] [--frames N] [--json <out.json>] [--stats|--no-stats] [--dump <dir>]
+// --dump <dir> (macOS perf): write every replayed present, warm-up included, as <dir>/frame_NNNNNN.ppm for a
+// bit-for-bit comparison of two replays; the readback costs time, so a timed run leaves it off.
 //                   [--knob NAME=VALUE]...
 //
 // --warmup N (default 30): presents replayed before the totals start (the recording starts with no render targets
@@ -45,6 +47,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
@@ -84,7 +87,7 @@ namespace
 int main(int argc, char **argv)
 {
     ps2x::knobs::setDevMode(true);   // the knobs below are Dev
-    std::string recording, jsonPath;
+    std::string recording, jsonPath, dumpDir;
     uint64_t warmup = 30u, frames = 0u;
     std::map<std::string, std::string> overrides;   // --knob / --stats / --no-stats
     for (int i = 1; i < argc; ++i)
@@ -95,6 +98,8 @@ int main(int argc, char **argv)
             frames = std::strtoull(argv[++i], nullptr, 10);
         else if (!std::strcmp(argv[i], "--json") && i + 1 < argc)
             jsonPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--dump") && i + 1 < argc)
+            dumpDir = argv[++i];
         else if (!std::strcmp(argv[i], "--no-stats"))
             overrides["PS2X_GS_STATS"] = "";
         else if (!std::strcmp(argv[i], "--stats"))
@@ -163,6 +168,12 @@ int main(int argc, char **argv)
     vram.resize(PS2_GS_VRAM_SIZE, 0u);
     GSGlBackend backend;
     backend.Initialize(vram.data(), static_cast<uint32_t>(vram.size()));   // seeds the render thread's shadow
+    if (!dumpDir.empty())
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(dumpDir, ec);
+        backend.BenchSetDump(dumpDir);
+    }
     if (!backend.BenchBegin(reader.cluts()))
     {
         std::fprintf(stderr, "[gs-replay-bench] the GL backend did not start: %s\n", GSGlBackend::glMissingForProcess().c_str());

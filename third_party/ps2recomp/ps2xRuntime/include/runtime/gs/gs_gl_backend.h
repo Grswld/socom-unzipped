@@ -118,6 +118,9 @@ public:
     bool BenchBegin(const std::vector<GSClutLoad> &cluts);
     uint64_t BenchReplay(const GsReplayFile::Batch &batch, const GsReplayFile::Reader &reader);
     void BenchResetTotals();
+    // gs_replay_bench --dump <dir>: every present reads its pixels back and is written as <dir>/frame_NNNNNN.ppm, so
+    // two replays of one recording can be compared bit for bit (macOS perf: batch-by-value's pixel identity).
+    void BenchSetDump(const std::string &dir) { m_benchDumpDir = dir; }
     BenchTotals BenchTotalsNow() const;
 
     // The replay file's guards (fix round). replayCmdLayoutHash: every Cmd field's offset and size, and the sizes of
@@ -509,6 +512,8 @@ private:
     uint32_t m_presentCopyFbo2 = 0;
     std::vector<uint8_t> m_presentPixels;   // filled only when a frame dump is requested
     bool m_presentPixelsRequested = false;
+    std::string m_benchDumpDir;   // BenchSetDump: set only by gs_replay_bench
+    uint64_t m_benchDumpIndex = 0u;
 
     // The transfer whose image data executeUpload is taking. RENDER THREAD ONLY: written by
     // executeTransfer, read by executeUpload, both on the render thread. The game thread must not

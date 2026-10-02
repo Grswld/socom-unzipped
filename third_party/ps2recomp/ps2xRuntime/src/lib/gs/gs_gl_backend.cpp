@@ -1803,7 +1803,7 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
     static const bool s_specOk = GsReplayFile::parseRecordSpec(s_env, s_spec);
     if (!s_specOk)
     {
-        std::fprintf(stderr, "[gs-record] PS2X_GS_RECORD=%s: not <file>[:<present>|t<seconds>|trig[:<presents>]]; nothing recorded\n", s_env);
+        std::fprintf(stderr, "[gs-record] PS2X_GS_RECORD=%s: not <file>[:<present>|t<seconds>|trig|key[:<presents>]]; nothing recorded\n", s_env);
         m_recDone = true;
         return;
     }
@@ -1824,6 +1824,14 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
         {
             extern std::atomic<bool> g_ps2xTraceArmed;
             due = g_ps2xTraceArmed.load();
+            break;
+        }
+        case GsReplayFile::StartMode::Key:
+        {
+            // macOS perf: F9 starts the recording (latched: the render thread replays several buffers a frame).
+            static bool s_pressed = false;
+            s_pressed = s_pressed || IsKeyDown(KEY_F9);
+            due = s_pressed;
             break;
         }
         }
@@ -2270,8 +2278,28 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             break;
         case CmdType::Present:
             flushBatch(GsGlFlushReasons::Cmd::Present);
-            m_presentPixelsRequested = cmd.args[0] != 0u;
+            m_presentPixelsRequested = cmd.args[0] != 0u || !m_benchDumpDir.empty();
             executePresent(cmd.present);
+            if (!m_benchDumpDir.empty() && !m_presentPixels.empty())
+            {
+                // gs_replay_bench --dump: the presented frame as a binary PPM (RGB; the buffer is RGBA rows).
+                char name[32];
+                std::snprintf(name, sizeof name, "/frame_%06llu.ppm", static_cast<unsigned long long>(m_benchDumpIndex++));
+                if (FILE *f = std::fopen((m_benchDumpDir + name).c_str(), "wb"))
+                {
+                    const size_t w = kHostFrameWidth, h = m_presentPixels.size() / (kHostFrameWidth * 4u);
+                    std::fprintf(f, "P6\n%zu %zu\n255\n", w, h);
+                    std::vector<uint8_t> rgb(w * h * 3u);
+                    for (size_t i = 0; i < w * h; ++i)
+                    {
+                        rgb[i * 3u + 0u] = m_presentPixels[i * 4u + 0u];
+                        rgb[i * 3u + 1u] = m_presentPixels[i * 4u + 1u];
+                        rgb[i * 3u + 2u] = m_presentPixels[i * 4u + 2u];
+                    }
+                    std::fwrite(rgb.data(), 1, rgb.size(), f);
+                    std::fclose(f);
+                }
+            }
             if (m_fsOn)
                 fsEndFrame();
             break;
@@ -4345,7 +4373,10 @@ void GSGlBackend::executeSubmit(const GSPrimitiveBatch &batch)
     key.fogR = state.fogR;
     key.fogG = state.fogG;
     key.fogB = state.fogB;
-    if (m_hasBatch && std::memcmp(&key, &m_batchKey, sizeof(DrawKey)) != 0)
+    // PS2X_GS_BATCH_BY_VALUE (macOS perf): join batches whose keys are equal in value; unset keeps the byte compare,
+    // under which padding alone split 86.8 % of a mission's batches (gs_gl_flush_reasons.h).
+    static const bool s_batchByValue = ps2x::knobOn("PS2X_GS_BATCH_BY_VALUE");
+    if (m_hasBatch && !GsGlFlushReasons::sameBatch(m_batchKey, key, s_batchByValue))
     {
         if (m_fsOn)
             m_flushMask = GsGlFlushReasons::diff(m_batchKey, key);

@@ -8,6 +8,7 @@
 // carried -- says which merges would pay. PipelineSet counts the distinct pipeline states a session meets: the
 // combinations Apple's driver builds a Metal pipeline for, and the size a Metal backend's pipeline cache needs.
 // Header-only, no GL: ps2x_tests drives it directly (gs_gl_flush_reasons_tests.cpp).
+#include "runtime/gs/gs_state_equal.h"
 #include "runtime/gs/gs_types.h"
 
 #include <algorithm>
@@ -59,28 +60,7 @@ namespace GsGlFlushReasons
         return i < kFields ? kFieldLabels[i] : "?";
     }
 
-    // Value equality per register: padding bytes never count (see kPadding).
-    inline bool eq(const GSFrameReg &a, const GSFrameReg &b)
-    { return a.fbp == b.fbp && a.fbw == b.fbw && a.psm == b.psm && a.fbmsk == b.fbmsk; }
-    inline bool eq(const GSScissorReg &a, const GSScissorReg &b)
-    { return a.x0 == b.x0 && a.x1 == b.x1 && a.y0 == b.y0 && a.y1 == b.y1; }
-    inline bool eq(const GSTex0Reg &a, const GSTex0Reg &b)
-    {
-        return a.tbp0 == b.tbp0 && a.tbw == b.tbw && a.psm == b.psm && a.tw == b.tw && a.th == b.th &&
-               a.tcc == b.tcc && a.tfx == b.tfx && a.cbp == b.cbp && a.cpsm == b.cpsm && a.csm == b.csm &&
-               a.csa == b.csa && a.cld == b.cld;
-    }
-    inline bool eq(const GSXYOffsetReg &a, const GSXYOffsetReg &b) { return a.ofx == b.ofx && a.ofy == b.ofy; }
-    inline bool eq(const GSZbufReg &a, const GSZbufReg &b)
-    { return a.zbp == b.zbp && a.psm == b.psm && a.zmask == b.zmask; }
-    inline bool eq(const GSPrimReg &a, const GSPrimReg &b)
-    {
-        return a.type == b.type && a.iip == b.iip && a.tme == b.tme && a.fge == b.fge && a.abe == b.abe &&
-               a.aa1 == b.aa1 && a.fst == b.fst && a.ctxt == b.ctxt && a.fix == b.fix;
-    }
-    inline bool eq(const GSTexaReg &a, const GSTexaReg &b) { return a.ta0 == b.ta0 && a.aem == b.aem && a.ta1 == b.ta1; }
-    inline bool eq(const GSTexClutReg &a, const GSTexClutReg &b)
-    { return a.cbw == b.cbw && a.cou == b.cou && a.cov == b.cov; }
+    using GsStateEqual::eq;   // value equality per register: padding bytes never count (see kPadding)
 
     // The fields a and b differ in, by value; kPadding alone when only their bytes do.
     inline uint32_t diff(const DrawKey &a, const DrawKey &b)
@@ -108,6 +88,15 @@ namespace GsGlFlushReasons
         if (a.fogR != b.fogR || a.fogG != b.fogG || a.fogB != b.fogB) m |= kFog;
         if (m == 0u && std::memcmp(&a, &b, sizeof(DrawKey)) != 0) m |= kPadding;
         return m;
+    }
+
+    // Does a primitive with key b join the open batch with key a? By value (PS2X_GS_BATCH_BY_VALUE): when no field
+    // differs -- padding is not state. By bytes (the original whole-key memcmp): padding alone splits the batch.
+    // Either way only separate triangles are ever joined: executeSubmit expands every GS primitive (sprites,
+    // points, lines, and each triangle of a strip or fan) into independent triangles drawn with GL_TRIANGLES.
+    inline bool sameBatch(const DrawKey &a, const DrawKey &b, bool byValue)
+    {
+        return byValue ? (diff(a, b) & ~kPadding) == 0u : std::memcmp(&a, &b, sizeof(DrawKey)) == 0;
     }
 
     // The commands that end a batch without a DrawKey change. EndOfBuffer: executeCommands' closing flush.

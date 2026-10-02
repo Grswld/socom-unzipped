@@ -6,8 +6,10 @@
 
 #include "runtime/gs/gs_gl_flush_reasons.h"
 #include "runtime/gs/gs_gl_frame_stats.h"
+#include "runtime/gs/gs_state_equal.h"
 
 #include <cstring>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -25,6 +27,34 @@ namespace
         k.textureWidth = 256;
         k.textureHeight = 256;
         return k;
+    }
+
+    // Copy v into k field by field, so k's padding keeps whatever bytes its storage held.
+    void assignByFields(DrawKey &k, const DrawKey &v)
+    {
+        k.context.frame = v.context.frame;
+        k.context.scissor = v.context.scissor;
+        k.context.tex0 = v.context.tex0;
+        k.context.xyoffset = v.context.xyoffset;
+        k.context.zbuf = v.context.zbuf;
+        k.context.tex1 = v.context.tex1;
+        k.context.miptbp1 = v.context.miptbp1;
+        k.context.miptbp2 = v.context.miptbp2;
+        k.context.clamp = v.context.clamp;
+        k.context.alpha = v.context.alpha;
+        k.context.test = v.context.test;
+        k.context.fba = v.context.fba;
+        k.context.clutId = v.context.clutId;
+        k.prim = v.prim;
+        k.texa = v.texa;
+        k.texclut = v.texclut;
+        k.pabe = v.pabe;
+        k.linearFilter = v.linearFilter;
+        k.textureWidth = v.textureWidth;
+        k.textureHeight = v.textureHeight;
+        k.fogR = v.fogR;
+        k.fogG = v.fogG;
+        k.fogB = v.fogB;
     }
 
     FrameCounts countsWith(uint32_t draws)
@@ -112,6 +142,37 @@ void register_gs_gl_flush_reasons_tests()
             t.IsTrue(std::memcmp(&a, &b, sizeof(DrawKey)) != 0, "the bytes differ (the padding)");
             t.Equals(diff(a, b), kPadding, "but no value does: kPadding alone");
             t.Equals(std::string(fieldLabel(kPadding)), std::string("padding"), "labelled padding");
+        });
+
+        tc.Run("batching by value joins keys that differ only in padding; by bytes it splits them, as before", [](TestCase &t)
+        {
+            alignas(DrawKey) unsigned char ra[sizeof(DrawKey)], rb[sizeof(DrawKey)];
+            std::memset(ra, 0xAA, sizeof ra);
+            std::memset(rb, 0x55, sizeof rb);
+            DrawKey &a = *reinterpret_cast<DrawKey *>(ra);
+            DrawKey &b = *reinterpret_cast<DrawKey *>(rb);
+            assignByFields(a, baseKey());
+            assignByFields(b, baseKey());
+            t.IsTrue(std::memcmp(&a, &b, sizeof(DrawKey)) != 0, "the pair differs in its padding bytes");
+            t.Equals(diff(a, b), kPadding, "and in no value");
+            t.IsTrue(sameBatch(a, b, true), "by value: one batch");
+            t.IsTrue(!sameBatch(a, b, false), "by bytes: split (the old behaviour, kept behind the knob)");
+            DrawKey c = baseKey();
+            c.context.tex0.tbp0 = 0x3000;
+            t.IsTrue(!sameBatch(baseKey(), c, true), "a real change still ends the batch by value");
+            t.IsTrue(!sameBatch(baseKey(), c, false), "and by bytes");
+        });
+
+        tc.Run("state comparisons used by the recorder are by value too", [](TestCase &t)
+        {
+            alignas(GSDrawState) unsigned char ra[sizeof(GSDrawState)], rb[sizeof(GSDrawState)];
+            std::memset(ra, 0xAA, sizeof ra);
+            std::memset(rb, 0x55, sizeof rb);
+            GSDrawState &a = *new (ra) GSDrawState();
+            GSDrawState &b = *new (rb) GSDrawState();
+            t.IsTrue(GsStateEqual::eq(a, b), "two default draw states are equal in value whatever their padding");
+            b.dthe = 1;
+            t.IsTrue(!GsStateEqual::eq(a, b), "and a field change is seen");
         });
 
         tc.Run("several fields at once set every one of their bits", [](TestCase &t)
