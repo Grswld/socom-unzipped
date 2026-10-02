@@ -45,8 +45,7 @@ For the upstream project's own status on Windows and Linux, see `docs/KNOWN.md` 
 ## Changelog (this fork)
 
 **2026-10-01: the macOS port (phase 1)**
-*Why:* SOCOM Unzipped built for Windows, with Linux in progress; there was no way to play it on a Mac.
-*What:*
+SOCOM Unzipped built for Windows, with Linux in progress; there was no way to play it on a Mac.
 - A macOS build script, `scripts/build_macos.sh`, with the arm64 Homebrew tools.
 - FFmpeg built from pinned source, for the movies.
 - The SSE vector code through sse2neon on Apple Silicon, and the x87 rounding control made x86-only.
@@ -55,7 +54,7 @@ For the upstream project's own status on Windows and Linux, see `docs/KNOWN.md` 
 - `run.sh` working without GNU `timeout`.
 
 **2026-10-02: smoother rendering**
-*Why:* missions were choppy. A profile showed the render thread spending 42–49% of its time inside Apple's OpenGL
+A profile showed the render thread spending 42–49% of its time inside Apple's OpenGL
 driver, issuing about 4,000 draw calls a frame. 87% of those draws were split apart by a byte-for-byte comparison of
 the draw state that also compared the structures' padding bytes, so identical states looked different.
 *What:*
@@ -66,9 +65,9 @@ the draw state that also compared the structures' padding bytes, so identical st
 - A recording hotkey (`P`), and frame dumps in the replay bench for image comparisons.
 
 **2026-10-02: the mission music**
-*Why:* the music skipped about every 1.2 seconds, the start of every music cue was missing, and the music stopped
+In-game music skipped about every 1.2 seconds, the start of every music cue was missing, and the music stopped
 dead halfway through.
-*What:* the music streamer misread three fields of the game's music file header:
+The music streamer misread three fields of the game's music file header:
 - where the audio starts (it skipped the first 1.1 s);
 - the size, which is per channel (only half of every track played);
 - where the right channel sits in the last buffer.
