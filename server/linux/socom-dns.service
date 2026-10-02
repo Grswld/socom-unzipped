@@ -1,0 +1,25 @@
+# SOCOM Unzipped hosted server (Sprint 18, R-D): answers SOCOM II's six retail host names on 53/udp with muis.json's
+# Endpoint, NXDOMAIN otherwise. A PCSX2 or a console pointed at this box as its DNS finds the lobby. Installed by
+# linux/install.sh. One journal line a minute with the counts, never one per query: journalctl -u socom-dns
+[Unit]
+Description=SOCOM II name service (six retail host names -> this server, 53/udp)
+After=network-online.target
+Wants=network-online.target
+PartOf=horizon.target
+
+[Service]
+User=horizon
+Group=horizon
+WorkingDirectory=/opt/socom-unzipped-server
+ExecStart=/bin/bash /opt/socom-unzipped-server/linux/socom-dns.sh
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=horizon.target

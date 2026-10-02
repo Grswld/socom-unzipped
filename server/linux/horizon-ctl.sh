@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# The hosted Horizon stack on Linux (Sprint 8 Goal 12): start-servers.ps1's verbs over four systemd units.
+# The hosted Horizon stack on Linux (Sprint 8 Goal 12): start-servers.ps1's verbs over the systemd units.
 #
-#   horizon-ctl.sh start | stop | restart        the four units (horizon.target), as root or with sudo
+#   horizon-ctl.sh start | stop | restart        the four units and socom-dns (horizon.target), as root or sudo
 #   horizon-ctl.sh status                        the units, the listeners against the port table, the advertised address
 #   horizon-ctl.sh show-ip                       the address clients are told to dial back on
 #   horizon-ctl.sh public-ip <ip or hostname>    rewrite that address; restart afterwards for it to take
@@ -19,7 +19,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$(dirname "$HERE")/config"
-UNITS=(horizon-nat horizon-muis horizon-medius horizon-dme)
+UNITS=(horizon-nat horizon-muis horizon-medius horizon-dme socom-dns)
 
 PY="$(command -v python3 || command -v python || true)"
 
@@ -141,11 +141,13 @@ PYEOF
 
 listeners() {
   local table=("tcp 10071 MUIS (universe info)" "tcp 10075 MAS  (authentication)" "tcp 10078 MLS  (lobby)"
-               "tcp 10077 MPS  (proxy; DME<->Medius, host-local)" "tcp 10073 DME  TCP" "udp 10070 NAT  (address echo)")
+               "tcp 10077 MPS  (proxy; DME<->Medius, host-local)" "tcp 10073 DME  TCP" "udp 10070 NAT  (address echo)"
+               "udp 53 DNS  (socom-dns, the six names)")
   local row proto port label
   for row in "${table[@]}"; do
     proto="${row%% *}"; row="${row#* }"; port="${row%% *}"; label="${row#* }"
-    if ss -H -ln"${proto:0:1}" "sport = :$port" 2>/dev/null | grep -q .; then
+    # 127.0.0.53/54:53 is systemd-resolved's own stub, not socom-dns: it never counts as ours.
+    if ss -H -ln"${proto:0:1}" "sport = :$port" 2>/dev/null | grep -v '127\.0\.0\.5[34]' | grep -q .; then
       printf '  %-4s %-6s %-40s LISTENING\n' "$proto" "$port" "$label"
     else
       printf '  %-4s %-6s %-40s not listening\n' "$proto" "$port" "$label"

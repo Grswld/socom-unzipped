@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Install the hosted Horizon stack on an Ubuntu 24.04 box (Sprint 8 Goal 12). Run as root from the unpacked
 # server folder:   sudo bash linux/install.sh
-# Idempotent: the .NET 9 runtime, a 'horizon' user, the folder under /opt/socom-unzipped-server, the four units
-# and their target, a logrotate rule. It does not start anything and does not set the advertised address:
+# Idempotent: the .NET 9 runtime, a 'horizon' user, the folder under /opt/socom-unzipped-server, the four units,
+# the socom-dns name service (53/udp, Sprint 18) and their target, a logrotate rule. It does not start anything
+# and does not set the advertised address:
 #   sudo /opt/socom-unzipped-server/linux/horizon-ctl.sh public-ip <public IP or hostname>
 #   sudo /opt/socom-unzipped-server/linux/horizon-ctl.sh start
 # config/simulated.db does not ship: seed one with seed-simulated-db.ps1 on a Windows machine and copy it to
@@ -34,10 +35,10 @@ if [ "$SRC" != "$DEST" ]; then
   for f in "$SRC"/config/*; do [ -e "$DEST/config/$(basename "$f")" ] || cp -p "$f" "$DEST/config/"; done
 fi
 mkdir -p "$DEST/logs" "$DEST/files" "$DEST/medius-plugins" "$DEST/dme-plugins"
-chmod +x "$DEST"/linux/*.sh
+chmod +x "$DEST"/linux/*.sh "$DEST"/linux/socom_dns.py
 chown -R horizon:horizon "$DEST"
 
-install -m 0644 "$DEST"/linux/horizon-*.service "$DEST"/linux/horizon.target /etc/systemd/system/
+install -m 0644 "$DEST"/linux/horizon-*.service "$DEST"/linux/socom-dns.service "$DEST"/linux/horizon.target /etc/systemd/system/
 cat > /etc/logrotate.d/horizon <<'ROT'
 /opt/socom-unzipped-server/logs/*.log {
     weekly
@@ -60,6 +61,6 @@ $nrconf{override_rc}{qr(^horizon-)} = 0;
 NR
 fi
 systemctl daemon-reload
-systemctl enable horizon.target horizon-nat.service horizon-muis.service horizon-medius.service horizon-dme.service
+systemctl enable horizon.target horizon-nat.service horizon-muis.service horizon-medius.service horizon-dme.service socom-dns.service
 [ -f "$DEST/config/simulated.db" ] || echo "NOTE: $DEST/config/simulated.db is missing -- seed one and copy it up before the first start."
 echo "installed. Next: $DEST/linux/horizon-ctl.sh public-ip <address> ; $DEST/linux/horizon-ctl.sh start ; ... status"
