@@ -93,7 +93,7 @@ namespace GsReplayFile
     // <start>: a present index (the backend's frame counter, from 0 at boot), t<seconds> (host time since the first
     // replayed frame), or trig (PS2X_TRIGGER's game-state trigger, as the trace knobs take it); default 0.
     // <frames>: presents to record, > 0; default kDefaultFrames. The file may carry a drive letter.
-    enum class StartMode { Frame, Seconds, Trigger, Key };   // Key: when F9 is pressed (macOS perf, the owner's cue)
+    enum class StartMode { Frame, Seconds, Trigger, Key };   // Key: when P is pressed (macOS perf, the owner's cue)
     struct RecordSpec
     {
         std::string file;

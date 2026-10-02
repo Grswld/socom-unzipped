@@ -1828,9 +1828,11 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
         }
         case GsReplayFile::StartMode::Key:
         {
-            // macOS perf: F9 starts the recording (latched: the render thread replays several buffers a frame).
+            // macOS perf: P starts the recording -- bound to nothing in the game (mapping.cpp's keyboard table, the
+            // ps2_pad keys), and not a media key on a Mac keyboard as F9 is. Latched: the render thread replays
+            // several buffers a frame.
             static bool s_pressed = false;
-            s_pressed = s_pressed || IsKeyDown(KEY_F9);
+            s_pressed = s_pressed || IsKeyDown(KEY_P);
             due = s_pressed;
             break;
         }
