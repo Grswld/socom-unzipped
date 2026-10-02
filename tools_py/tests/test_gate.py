@@ -532,6 +532,36 @@ class MissionSeeing(unittest.TestCase):
             self.assertEqual(drive_env()["PS2X_MC_DIR"], "C:/elsewhere")   # an operator's card wins
             os.environ.pop("PS2X_MC_DIR", None)
 
+    def test_run_gate_clears_a_previous_runs_captures_from_the_stage_dir(self):
+        """A reused stamp must not mix two runs' frames: s17_b6 was rerun three times on 2026-10-01, the
+        transition dir kept the first run's 76 captures, and fade_frames (mtime order) scored a stale
+        w04_011.png as the first briefing frame -- two false FAILs. run_gate clears the stage's captures,
+        final.png and manifest.json before the drive writes its own."""
+        with tempfile.TemporaryDirectory() as tmp:
+            stage_dir = os.path.join(tmp, "transition")
+            os.makedirs(stage_dir)
+            Image.new("RGB", (4, 4), (200, 200, 200)).save(os.path.join(stage_dir, "w04_011.png"))
+            Image.new("RGB", (4, 4), (200, 200, 200)).save(os.path.join(stage_dir, "final.png"))
+            with open(os.path.join(stage_dir, "manifest.json"), "w", encoding="utf-8") as f:
+                f.write("[]")
+            fresh = os.path.join(stage_dir, "w05_009.png")
+
+            def fake_run(cmd, **kw):
+                if "tools_py.parity.drive" in cmd:
+                    Image.new("RGB", (4, 4), (0, 0, 0)).save(fresh)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            out = io.StringIO()
+            with mock.patch.object(gate.subprocess, "run", fake_run), \
+                    mock.patch.object(gate.shutil, "copyfile"), \
+                    mock.patch.object(gate, "score_transition", return_value=(True, "stub")), \
+                    mock.patch.dict(os.environ, {"PS2X_MC_DIR": os.path.join(tmp, "card")}), \
+                    contextlib.redirect_stdout(out):
+                gate.run_gate("transition", tmp)
+            self.assertEqual(sorted(os.listdir(stage_dir)), ["w05_009.png"])
+            self.assertIn("gate: transition: removed 3 capture(s) of a previous run from %s" % stage_dir,
+                          out.getvalue())
+
 
 class GameplayBands(unittest.TestCase):
     """screen_bands.gameplay_band: the letterbox bands (rows 2-95 and 340-446 of the 640x448 frame) are
