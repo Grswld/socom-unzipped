@@ -76,11 +76,11 @@ All three were checked against all 210 music files on the disc. The bug affects 
 
 The full, generated record of every merge, upstream's and this fork's, is `docs/CHANGELOG.md`.
 
-## Planned (or at least attempted)
+## Upcoming Changes
 
 - **Fewer frame drops:** spread or avoid the texture-upload and GPU-readback bursts that cause the drops about every
   2 seconds.
-- **A faster game thread:** speed up the vector-unit and runtime work that holds the game's own frame rate near 19.
+- **Faster game thread:** speed up the vector-unit and runtime work that holds the game's own frame rate near 19.
 - **Fewer OpenGL calls:** skip the state and uniform calls that repeat what is already set.
 - **A Metal renderer**, keeping the OpenGL renderer as a reference so that both can render the same recorded frames
   and any difference is caught automatically.
