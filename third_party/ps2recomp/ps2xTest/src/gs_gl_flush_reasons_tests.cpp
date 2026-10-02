@@ -208,6 +208,19 @@ void register_gs_gl_flush_reasons_tests()
             t.IsTrue(!off.endFrame(500.0, countsWith(1), rec), "a threshold of 0 reports nothing");
         });
 
+        tc.Run("shutdown prints the session once, whatever the exit path (main ends in _Exit: no atexit)", [](TestCase &t)
+        {
+            // The runner leaves with std::_Exit, which runs no atexit handler: the summary must not depend on
+            // one. shutdown() stops the logger, drains it and prints [gs-summary]; a second call does nothing.
+            IntervalRecord r{};
+            r.seconds = 1.0;
+            r.batches = 10;
+            r.frames.add(20.0);
+            Logger::offerInterval(r);
+            t.IsTrue(Logger::shutdown(), "the first shutdown prints the summary");
+            t.IsTrue(!Logger::shutdown(), "a second one is a no-op");
+        });
+
         tc.Run("the ring never blocks its producer: full means dropped and counted", [](TestCase &t)
         {
             Ring<int, 4> r;

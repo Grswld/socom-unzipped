@@ -163,11 +163,14 @@ namespace GsGlFrameStats
     };
 
     // The logger thread (gs_gl_frame_stats.cpp). Started on first use and never destroyed, so a render thread
-    // still offering records at process exit writes into live memory; at exit it drains what is queued and
-    // prints the session summary.
+    // still offering records at process exit writes into live memory.
     namespace Logger
     {
         bool offerSlowFrame(const FrameRecord &r);     // false: the ring was full and the record was dropped
         bool offerInterval(const IntervalRecord &r);
+        // Stop the thread, drain what is queued and print the session summary. The runner calls it before its
+        // std::_Exit (which runs no atexit handler); an atexit hook calls it too for any other exit. True only
+        // for the call that printed: false when already done, or when the logger never started (knobs off).
+        bool shutdown();
     }
 }

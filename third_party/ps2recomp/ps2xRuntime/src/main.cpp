@@ -1,4 +1,5 @@
 #include "ps2_runtime.h"
+#include "runtime/gs/gs_gl_frame_stats.h"
 #include "games_database.h"
 #if defined(PS2X_ENABLE_DEBUG_UI) && !defined(PLATFORM_VITA)
 #include "ps2_debug_panel.h"
@@ -339,6 +340,8 @@ int main(int argc, char *argv[])
 #ifdef _DEBUG
         ps2_log::print_saved_location();
 #endif
+        // macOS perf step 1: the frame-stats logger's session summary, which an atexit hook would never print here.
+        GsGlFrameStats::Logger::shutdown();
         std::cout.flush();
         std::cerr.flush();
         // Task 1a: 0 normally; 65 when the GL probe fell back to the CPU rasterizer.

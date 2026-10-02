@@ -1,7 +1,7 @@
 // macOS performance work, step 1: the logger thread behind PS2X_GS_FLUSH_REASONS / PS2X_GS_SLOW_FRAME_MS
 // (runtime/gs/gs_gl_frame_stats.h). The render thread only offers fixed-size records to two rings that never
 // block it; this thread drains them every 50 ms, formats, and writes each line with one fputs (stdio locks per
-// call, so a line never interleaves with the game's own output). At exit it drains, then prints the session.
+// call, so a line never interleaves with the game's own output). Logger::shutdown drains, then prints the session.
 #include "runtime/gs/gs_gl_frame_stats.h"
 
 #include <algorithm>
@@ -43,6 +43,7 @@ namespace
 
     State *g_state = nullptr;
     std::once_flag g_once;
+    std::atomic<bool> g_shutDown{false};
 
     void emit(const std::string &line) { std::fputs(line.c_str(), stdout); }
 
@@ -184,7 +185,7 @@ namespace
         }
     }
 
-    void atExit()
+    void printSummary()
     {
         State &st = *g_state;
         st.stop.store(true, std::memory_order_release);
@@ -214,7 +215,7 @@ namespace
         std::call_once(g_once, [] {
             g_state = new State();   // never deleted: a late offer at exit must write into live memory
             g_state->thread = std::thread(run, g_state);
-            std::atexit(atExit);
+            std::atexit([] { Logger::shutdown(); });
         });
         return *g_state;
     }
@@ -224,5 +225,12 @@ namespace Logger
 {
     bool offerSlowFrame(const FrameRecord &r) { return state().slow.tryPush(r); }
     bool offerInterval(const IntervalRecord &r) { return state().intervals.tryPush(r); }
+    bool shutdown()
+    {
+        if (g_state == nullptr || g_shutDown.exchange(true))
+            return false;
+        printSummary();
+        return true;
+    }
 }
 }
