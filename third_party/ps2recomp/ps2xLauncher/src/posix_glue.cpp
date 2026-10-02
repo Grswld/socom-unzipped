@@ -49,8 +49,11 @@ namespace fs = std::filesystem;
 
 namespace
 {
-    // pipe2(fds, O_CLOEXEC), which Darwin does not have (macOS port): both ends close on exec. The two fcntl
-    // calls leave a window a concurrent fork could inherit through; the launcher forks only from this thread.
+#if defined(__APPLE__)
+    // pipe2(fds, O_CLOEXEC), which Darwin does not have (macOS port): pipe() then FD_CLOEXEC on both ends. Not
+    // atomic -- a child spawned from another thread between the two calls (httpRequest runs on Worker threads
+    // beside startGame and openFolder) could inherit an end; POSIX_SPAWN_CLOEXEC_DEFAULT on the launcher's spawns
+    // closes that when the launcher is ported (phase 2). Linux keeps the atomic pipe2.
     bool pipeCloexec(int fds[2])
     {
         if (::pipe(fds) != 0)
@@ -59,6 +62,12 @@ namespace
         ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
         return true;
     }
+#else
+    bool pipeCloexec(int fds[2])
+    {
+        return ::pipe2(fds, O_CLOEXEC) == 0;
+    }
+#endif
 
     // Is `name` an executable file in one of PATH's directories? access(2) over the entries, so no shell
     // is started merely to find out whether a program exists.
@@ -581,14 +590,21 @@ namespace win32glue
         }
         ::close(toChild[1]);
         {
-            // Consume a SIGPIPE the write raised while it was blocked. sigpending + sigwait rather than
-            // sigtimedwait, which Darwin does not have (macOS port); sigwait returns at once for a pending one.
+#if defined(__APPLE__)
+            // Consume a SIGPIPE the write raised while it was blocked. Darwin has no sigtimedwait (macOS port);
+            // the write's SIGPIPE is directed at this thread, which blocks it, so sigwait returns at once.
             sigset_t pending;
             while (::sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE))
             {
                 int sig = 0;
                 ::sigwait(&pipeSet, &sig);
             }
+#else
+            const struct timespec none = {0, 0};
+            while (::sigtimedwait(&pipeSet, nullptr, &none) > 0)
+            {
+            }
+#endif
         }
         ::pthread_sigmask(SIG_SETMASK, &oldSet, nullptr);
 
