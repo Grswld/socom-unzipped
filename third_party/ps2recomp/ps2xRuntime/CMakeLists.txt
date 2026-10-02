@@ -356,6 +356,7 @@ add_library(ps2_runtime STATIC
     src/lib/gs/gs_frontend.cpp
     src/lib/gs/gs_cpu_backend.cpp
     src/lib/gs/gs_gl_backend.cpp
+    src/lib/gs/gs_gl_frame_stats.cpp   # macOS perf step 1: the logger behind PS2X_GS_FLUSH_REASONS / _SLOW_FRAME_MS
     src/lib/gs/gs_frame_backpressure.cpp
     src/lib/gs/gs_stall_coalescer.cpp
     src/lib/ps2_iop_host.cpp

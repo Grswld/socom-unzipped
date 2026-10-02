@@ -41,6 +41,7 @@
 // padding that differs only costs a 'T' where an 'S' would do, never a wrong state. Each batch restarts the state
 // (its first Submit is a 'T'), so a batch reads on its own.
 
+#include "runtime/gs/gs_state_equal.h"
 #include "runtime/gs/gs_types.h"
 
 #include <cctype>
@@ -92,7 +93,7 @@ namespace GsReplayFile
     // <start>: a present index (the backend's frame counter, from 0 at boot), t<seconds> (host time since the first
     // replayed frame), or trig (PS2X_TRIGGER's game-state trigger, as the trace knobs take it); default 0.
     // <frames>: presents to record, > 0; default kDefaultFrames. The file may carry a drive letter.
-    enum class StartMode { Frame, Seconds, Trigger };
+    enum class StartMode { Frame, Seconds, Trigger, Key };   // Key: when P is pressed (macOS perf, the owner's cue)
     struct RecordSpec
     {
         std::string file;
@@ -131,6 +132,8 @@ namespace GsReplayFile
             unsigned long long v = 0;
             if (start == "trig")
                 r.mode = StartMode::Trigger;
+            else if (start == "key")
+                r.mode = StartMode::Key;
             else if (!start.empty() && start[0] == 't')
             {
                 char *end = nullptr;
@@ -296,7 +299,8 @@ namespace GsReplayFile
         void submit(const GSPrimitiveBatch &b)
         {
             const uint8_t n = b.vertexCount <= 3u ? b.vertexCount : 3u;
-            if (m_haveState && std::memcmp(&m_lastState, &b.state, sizeof(GSDrawState)) == 0)
+            // By value: GSDrawState's padding is not state (gs_state_equal.h); a memcmp wrote 'T' for equal states.
+            if (m_haveState && GsStateEqual::eq(m_lastState, b.state))
                 tag('S');
             else
             {

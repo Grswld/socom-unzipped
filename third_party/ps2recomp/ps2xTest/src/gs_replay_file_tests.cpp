@@ -267,6 +267,9 @@ void register_gs_replay_file_tests()
 
             t.IsTrue(GsReplayFile::parseRecordSpec("z.gsr:trig:50", s), "trig parses");
             t.IsTrue(s.mode == GsReplayFile::StartMode::Trigger && s.frames == 50u, "... armed by PS2X_TRIGGER, 50 presents");
+            // macOS perf: the owner's hotkey -- recording starts when P is pressed (a firefight, on cue).
+            t.IsTrue(GsReplayFile::parseRecordSpec("logs/fight.gsr:key:1500", s), "key parses");
+            t.IsTrue(s.mode == GsReplayFile::StartMode::Key && s.frames == 1500u, "as the hotkey start, with its presents");
 
             t.IsFalse(GsReplayFile::parseRecordSpec("z.gsr:soon", s), "a start that is none of the three is refused");
             t.IsFalse(GsReplayFile::parseRecordSpec("z.gsr:10:0", s), "zero presents is refused");

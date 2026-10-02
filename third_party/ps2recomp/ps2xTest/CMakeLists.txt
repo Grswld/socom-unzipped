@@ -55,6 +55,7 @@ add_library(ps2_test_lib STATIC
     src/ps2_vu1_tests.cpp
     src/vu1_native_tests.cpp
     src/vu1_ops_tests.cpp   # Sprint 17 F C1: the product-sum fast path against its slow classifier
+    src/gs_gl_flush_reasons_tests.cpp   # macOS perf step 1: flush reasons, pipeline states, frame percentiles
     src/ps2_vu_tests.cpp
     src/ps2_gs_tests.cpp
     src/gs_frame_backpressure_tests.cpp

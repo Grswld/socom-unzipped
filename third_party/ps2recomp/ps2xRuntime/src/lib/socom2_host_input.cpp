@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <type_traits>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -529,6 +530,9 @@ namespace ps2_stubs
             if (s_trace)
             {
                 static Socom2PadState s_last;
+                // A byte compare is only sound on a struct without padding; this fails the build if one appears.
+                static_assert(std::has_unique_object_representations_v<Socom2PadState>,
+                              "Socom2PadState gained padding: compare it field by field, not with memcmp");
                 if (std::memcmp(&s_last, &next, sizeof(next)) != 0)
                 {
                     unsigned mask = 0;

@@ -715,6 +715,14 @@ GSGlBackend::~GSGlBackend() = default;
 
 void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
 {
+    // macOS perf step 1: the flush-reason counter and the slow-frame breakdown, read once.
+    {
+        m_fsFlushLine = ps2x::knob("PS2X_GS_FLUSH_REASONS") != nullptr;
+        const char *slow = ps2x::knob("PS2X_GS_SLOW_FRAME_MS");
+        const double slowMs = slow ? std::atof(slow) : 0.0;
+        m_fsSlow = GsGlFrameStats::SlowFrameDetector(slowMs > 0.0 ? slowMs : 0.0);
+        m_fsOn = m_fsFlushLine || slowMs > 0.0;
+    }
     m_vram = vram;
     m_vramSize = vramSize;
     m_cpu->Initialize(vram, vramSize);
@@ -1379,6 +1387,11 @@ bool GSGlBackend::ensureGl()
     glBindFragDataLocationIndexed(m_program, 0, 0, "oColor");
     glBindFragDataLocationIndexed(m_program, 0, 1, "oBlendAlpha");
     glLinkProgram(m_program);
+    if (m_fsOn)
+    {
+        ++m_fsFrame.programsCreated;
+        ++m_fsProgramsInterval;
+    }
     GLint ok = 0;
     glGetProgramiv(m_program, GL_LINK_STATUS, &ok);
     glDeleteShader(vs);
@@ -1790,7 +1803,7 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
     static const bool s_specOk = GsReplayFile::parseRecordSpec(s_env, s_spec);
     if (!s_specOk)
     {
-        std::fprintf(stderr, "[gs-record] PS2X_GS_RECORD=%s: not <file>[:<present>|t<seconds>|trig[:<presents>]]; nothing recorded\n", s_env);
+        std::fprintf(stderr, "[gs-record] PS2X_GS_RECORD=%s: not <file>[:<present>|t<seconds>|trig|key[:<presents>]]; nothing recorded\n", s_env);
         m_recDone = true;
         return;
     }
@@ -1811,6 +1824,16 @@ void GSGlBackend::recordReplayBatch(const CommandBuffer &buffer)
         {
             extern std::atomic<bool> g_ps2xTraceArmed;
             due = g_ps2xTraceArmed.load();
+            break;
+        }
+        case GsReplayFile::StartMode::Key:
+        {
+            // macOS perf: P starts the recording -- bound to nothing in the game (mapping.cpp's keyboard table, the
+            // ps2_pad keys), and not a media key on a Mac keyboard as F9 is. Latched: the render thread replays
+            // several buffers a frame.
+            static bool s_pressed = false;
+            s_pressed = s_pressed || IsKeyDown(KEY_P);
+            due = s_pressed;
             break;
         }
         }
@@ -2027,6 +2050,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     static uint64_t s_bytes = 0;
     static auto s_lastReport = std::chrono::steady_clock::now();
     s_bytes += buffer.data.size();
+    if (m_fsOn)
+        m_fsBusyMark = std::chrono::steady_clock::now();
     // PS2X_GS_TRACE_CMDS=<presents to skip>: then print the next 4000 replayed commands.
     static const char *s_traceEnv = ps2x::knob("PS2X_GS_TRACE_CMDS");
     static const bool s_traceCmds = s_traceEnv != nullptr;
@@ -2215,7 +2240,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                 g_flushPhasesArmed = true;
             }
             const auto tFlush0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-            flushBatch();
+            flushBatch(GsGlFlushReasons::Cmd::Transfer);
             const auto tFlush1 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
             executeTransfer(cmd.transfer);
             if (s_uploadTrace)
@@ -2232,11 +2257,11 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             break;
         }
         case CmdType::Upload:
-            flushBatch();
+            flushBatch(GsGlFlushReasons::Cmd::Upload);
             executeUpload(buffer.data.data() + cmd.dataOffset, cmd.dataSize, cmd.swizzledByRecorder);
             break;
         case CmdType::WriteVram:
-            flushBatch();
+            flushBatch(GsGlFlushReasons::Cmd::VramWrite);
             m_shadow->WriteVram(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3] & 0xFFFFu, cmd.args[3] >> 16, cmd.args[4]);
             markShadowPages(cmd.args[1] >> 5, 1u);
             if (uploadGateOn())
@@ -2250,16 +2275,38 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             }
             break;
         case CmdType::Clear:
-            flushBatch();
+            flushBatch(GsGlFlushReasons::Cmd::Clear);
             executeClear(cmd.context, cmd.args[0]);
             break;
         case CmdType::Present:
-            flushBatch();
-            m_presentPixelsRequested = cmd.args[0] != 0u;
+            flushBatch(GsGlFlushReasons::Cmd::Present);
+            m_presentPixelsRequested = cmd.args[0] != 0u || !m_benchDumpDir.empty();
             executePresent(cmd.present);
+            if (!m_benchDumpDir.empty() && !m_presentPixels.empty())
+            {
+                // gs_replay_bench --dump: the presented frame as a binary PPM (RGB; the buffer is RGBA rows).
+                char name[32];
+                std::snprintf(name, sizeof name, "/frame_%06llu.ppm", static_cast<unsigned long long>(m_benchDumpIndex++));
+                if (FILE *f = std::fopen((m_benchDumpDir + name).c_str(), "wb"))
+                {
+                    const size_t w = kHostFrameWidth, h = m_presentPixels.size() / (kHostFrameWidth * 4u);
+                    std::fprintf(f, "P6\n%zu %zu\n255\n", w, h);
+                    std::vector<uint8_t> rgb(w * h * 3u);
+                    for (size_t i = 0; i < w * h; ++i)
+                    {
+                        rgb[i * 3u + 0u] = m_presentPixels[i * 4u + 0u];
+                        rgb[i * 3u + 1u] = m_presentPixels[i * 4u + 1u];
+                        rgb[i * 3u + 2u] = m_presentPixels[i * 4u + 2u];
+                    }
+                    std::fwrite(rgb.data(), 1, rgb.size(), f);
+                    std::fclose(f);
+                }
+            }
+            if (m_fsOn)
+                fsEndFrame();
             break;
         case CmdType::Readback:
-            flushBatch();
+            flushBatch(GsGlFlushReasons::Cmd::Readback);
             executeReadback();
             break;
         case CmdType::ClutLoad:
@@ -2271,6 +2318,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                 std::memcpy(&load, buffer.data.data() + cmd.dataOffset, sizeof(GSClutLoad));
                 m_cluts[load.id] = load;
                 m_clutUse[load.id] = ++m_clutLoadSeq;
+                if (m_fsOn)
+                    ++m_fsFrame.clutLoads;
                 // Ids are stable per palette content (GS::loadClutIfNeeded), so an id's age says nothing about
                 // whether draws still name it: evict by the last load or lookup instead.
                 if (m_cluts.size() > 512u)
@@ -2291,7 +2340,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             break;
         }
         case CmdType::Reset:
-            flushBatch();
+            flushBatch(GsGlFlushReasons::Cmd::Reset);
             for (auto &kv : m_textures)
                 glDeleteTextures(1, &kv.second.texture);
             m_textures.clear();
@@ -2335,6 +2384,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         }
     }
     flushBatch();
+    if (m_fsOn)
+        fsBusyUntilNow();
     if (clipZeroToOne)
         g_clipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
     m_queueCv.notify_all();
@@ -2645,6 +2696,11 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size, bool swizzledB
     // recorder swizzled (GSCpuBackend::UploadImageAsBlocks: 4 address bytes + 256 block bytes each), which the
     // recorder builds only for a transfer that one chunk completes. `pixelBytes` is what the transfer delivered.
     const size_t pixelBytes = swizzledByRecorder ? (size / (4u + 256u)) * 256u : size;
+    if (m_fsOn)
+    {
+        ++m_fsFrame.uploads;
+        m_fsFrame.uploadBytes += pixelBytes;
+    }
     // Sprint 8 Goal 2 Task 1: term (a) of the tile path, split -- the CPU swizzle into shadow VRAM,
     // and the page + rect marking. These two are the whole of the [gs-gl stats] upload= column.
     static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
@@ -3127,6 +3183,11 @@ bool GSGlBackend::ensureResolveProgram()
     glAttachShader(m_resolveProgram, vs);
     glAttachShader(m_resolveProgram, fs);
     glLinkProgram(m_resolveProgram);
+    if (m_fsOn)
+    {
+        ++m_fsFrame.programsCreated;
+        ++m_fsProgramsInterval;
+    }
     GLint ok = 0;
     glGetProgramiv(m_resolveProgram, GL_LINK_STATUS, &ok);
     glDeleteShader(vs);
@@ -3294,6 +3355,11 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
     glBindFramebuffer(GL_FRAMEBUFFER, nativeViewFbo(rt));
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, rt.nativeWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    if (m_fsOn)
+    {
+        ++m_fsFrame.readbacks;
+        m_fsFrame.readbackPixels += static_cast<uint64_t>(rt.nativeWidth) * h;
+    }
     const uint32_t base = rt.fbp << 5;
     // Only rows the GPU drew since the last sync (see noteGpuRows); nothing else is stale.
     const uint32_t yStart = rt.gpuRows ? std::min(h, rt.gpuRowFirst) : 0u;
@@ -3352,6 +3418,11 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
     glBindFramebuffer(GL_FRAMEBUFFER, nativeViewFbo(rt));
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, rt.nativeWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    if (m_fsOn)
+    {
+        ++m_fsFrame.readbacks;
+        m_fsFrame.readbackPixels += static_cast<uint64_t>(rt.nativeWidth) * h;
+    }
     const uint32_t base = rt.fbp << 5;
     const uint32_t yStart = rt.gpuRows ? std::min(h, rt.gpuRowFirst) : 0u;   // see downloadRenderTargetToShadow
     const uint32_t yEnd = rt.gpuRows ? std::min(h, rt.gpuRowLast) : 0u;
@@ -4127,6 +4198,11 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                                  (unsigned long long)m_frameCounter, tex.tbp0, rt.fbp, rt.nativeWidth, rt.nativeHeight);
                 if (uploadGateOn())
                     m_uploadGate.noteTex(GsGlUploadReasons::Tex::RtDirect);
+                    if (m_fsOn)
+                    {
+                        ++m_fsFrame.rtFeedback;
+                        ++m_fsRtFeedbackInterval;
+                    }
                 GsGlUploadTrace::noteRtDirect(g_uploadTrace);   // F2: served, not read back (unconditional)
                 return view;
             }
@@ -4238,6 +4314,8 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
         GsGlUploadTrace::noteDecode(g_uploadTrace, wasInvalidation);
     if (uploadGateOn())
         m_uploadGate.noteTex(wasInvalidation ? GsGlUploadReasons::Tex::Redecoded : GsGlUploadReasons::Tex::New);
+        if (m_fsOn)
+            ++(wasInvalidation ? m_fsFrame.texRedecoded : m_fsFrame.texNew);
     return decodeTexture(state, key, width, height, pageStart, pageCount);
 }
 
@@ -4297,8 +4375,17 @@ void GSGlBackend::executeSubmit(const GSPrimitiveBatch &batch)
     key.fogR = state.fogR;
     key.fogG = state.fogG;
     key.fogB = state.fogB;
-    if (m_hasBatch && std::memcmp(&key, &m_batchKey, sizeof(DrawKey)) != 0)
+    // PS2X_GS_BATCH_BY_VALUE (macOS perf, default on since 2026-10-02): join batches whose keys are equal in value;
+    // 0 restores the byte compare, under which padding alone split 86.8 % of a mission's batches
+    // (gs_gl_flush_reasons.h). Adopted on a firefight recording -- 1,500/1,500 presents bit-identical, render thread
+    // 21.5 -> 11.0 ms a frame -- and a mission walk: draws a frame 4,156 -> 530, p50 19.5 -> 17.25 ms.
+    static const bool s_batchByValue = ps2x::knobOn("PS2X_GS_BATCH_BY_VALUE", true);   // knobs.h's "1" is documentation: knobOn takes its default here
+    if (m_hasBatch && !GsGlFlushReasons::sameBatch(m_batchKey, key, s_batchByValue))
+    {
+        if (m_fsOn)
+            m_flushMask = GsGlFlushReasons::diff(m_batchKey, key);
         flushBatch();
+    }
     if (!m_hasBatch)
     {
         m_hasBatch = true;
@@ -4453,19 +4540,27 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     if (s_noZtest)
         ztst = 1u;
     glEnable(GL_DEPTH_TEST);
+    // macOS perf step 1: the state a Metal pipeline would bake in, gathered as it is set (PipelineKey).
+    GsGlFlushReasons::PipelineKey pipeline{};
+    pipeline.depthTest = true;
     switch (ztst)
     {
-    case 0: glDepthFunc(GL_NEVER); break;
-    case 1: glDepthFunc(GL_ALWAYS); break;
-    case 2: glDepthFunc(GL_GEQUAL); break;
-    default: glDepthFunc(GL_GREATER); break;
+    case 0: glDepthFunc(GL_NEVER); pipeline.depthFunc = GL_NEVER; break;
+    case 1: glDepthFunc(GL_ALWAYS); pipeline.depthFunc = GL_ALWAYS; break;
+    case 2: glDepthFunc(GL_GEQUAL); pipeline.depthFunc = GL_GEQUAL; break;
+    default: glDepthFunc(GL_GREATER); pipeline.depthFunc = GL_GREATER; break;
     }
     glDepthMask(ctx.zbuf.zmask ? GL_FALSE : GL_TRUE);
+    pipeline.depthWrite = !ctx.zbuf.zmask;
 
     // Colour mask from FBMSK (per-channel when whole bytes).
     const uint32_t mask = ctx.frame.fbmsk;
     glColorMask((mask & 0x000000FFu) != 0x000000FFu, (mask & 0x0000FF00u) != 0x0000FF00u,
                 (mask & 0x00FF0000u) != 0x00FF0000u, (mask & 0xFF000000u) != 0xFF000000u);
+    pipeline.colorMask = static_cast<uint8_t>(((mask & 0x000000FFu) != 0x000000FFu ? 1u : 0u) |
+                                              ((mask & 0x0000FF00u) != 0x0000FF00u ? 2u : 0u) |
+                                              ((mask & 0x00FF0000u) != 0x00FF0000u ? 4u : 0u) |
+                                              ((mask & 0xFF000000u) != 0xFF000000u ? 8u : 0u));
 
     // Alpha blending: out = (A - B) * C + D
     int srcMode = 0;
@@ -4536,10 +4631,20 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
         glEnable(GL_BLEND);
         glBlendEquationSeparate(eq, GL_FUNC_ADD);
         glBlendFuncSeparate(src, dst, GL_ONE, GL_ZERO);
+        pipeline.blend = true;
+        pipeline.blendEq = eq;
+        pipeline.blendSrc = src;
+        pipeline.blendDst = dst;
     }
     else
     {
         glDisable(GL_BLEND);
+    }
+    if (m_fsOn)
+    {
+        pipeline.targetPsm = ctx.frame.psm;
+        if (m_fsPipelines.firstUse(pipeline))
+            ++m_fsFrame.pipelineFirstUse;
     }
 
     glUseProgram(m_program);
@@ -4594,13 +4699,92 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     }
 }
 
-void GSGlBackend::flushBatch()
+// macOS perf step 1: render-thread time inside executeCommands since the last mark (the frame's busy share).
+void GSGlBackend::fsBusyUntilNow()
 {
+    const auto now = std::chrono::steady_clock::now();
+    m_fsFrame.busyMs += std::chrono::duration<double, std::milli>(now - m_fsBusyMark).count();
+    m_fsBusyMark = now;
+}
+
+// macOS perf step 1: a present ends a frame. The slow-frame record and, once a second, the interval record are
+// offered to the logger's rings, which drop rather than wait: nothing here formats, prints or blocks.
+void GSGlBackend::fsEndFrame()
+{
+    fsBusyUntilNow();
+    const auto now = m_fsBusyMark;
+    if (m_fsLastPresent != std::chrono::steady_clock::time_point{})
+    {
+        const double ms = std::chrono::duration<double, std::milli>(now - m_fsLastPresent).count();
+        m_fsHist.add(ms);
+        GsGlFrameStats::FrameRecord rec;
+        if (m_fsSlow.endFrame(ms, m_fsFrame, rec))
+            GsGlFrameStats::Logger::offerSlowFrame(rec);
+    }
+    else
+        m_fsIntervalStart = now;
+    m_fsLastPresent = now;
+    m_fsFrame = GsGlFrameStats::FrameCounts{};
+
+    const double seconds = std::chrono::duration<double>(now - m_fsIntervalStart).count();
+    if (seconds < 1.0)
+        return;
+    GsGlFrameStats::IntervalRecord &r = m_fsInterval;
+    r = GsGlFrameStats::IntervalRecord{};
+    r.seconds = seconds;
+    r.batches = m_fsCounter.batches;
+    r.vertices = m_fsCounter.vertices;
+    r.alphaBatches = m_fsCounter.alphaBatches;
+    r.rtFeedback = m_fsRtFeedbackInterval;
+    std::copy(std::begin(m_fsCounter.byField), std::end(m_fsCounter.byField), r.byField);
+    std::copy(std::begin(m_fsCounter.vertsByField), std::end(m_fsCounter.vertsByField), r.vertsByField);
+    std::copy(std::begin(m_fsCounter.byCmd), std::end(m_fsCounter.byCmd), r.byCmd);
+    std::copy(std::begin(m_fsCounter.vertsByCmd), std::end(m_fsCounter.vertsByCmd), r.vertsByCmd);
+    const std::vector<GsGlFlushReasons::MaskCount> top = m_fsCounter.topMasks(8);
+    r.topCount = static_cast<uint32_t>(top.size());
+    std::copy(top.begin(), top.end(), r.top);
+    r.pipelinesSession = m_fsPipelines.size();
+    r.pipelinesNew = r.pipelinesSession - m_fsPipelinesAtInterval;
+    r.programsCreated = m_fsProgramsInterval;
+    r.frames = m_fsHist;
+    r.flushLine = m_fsFlushLine;
+    GsGlFrameStats::Logger::offerInterval(r);
+    m_fsCounter.reset();
+    m_fsHist.reset();
+    m_fsPipelinesAtInterval = r.pipelinesSession;
+    m_fsProgramsInterval = 0u;
+    m_fsRtFeedbackInterval = 0u;
+    m_fsIntervalStart = now;
+}
+
+void GSGlBackend::flushBatch(GsGlFlushReasons::Cmd why)
+{
+    const uint32_t flushMask = m_flushMask;
+    m_flushMask = 0u;
     if (!m_hasBatch)
         return;
     m_hasBatch = false;
     if (m_vertices.empty())
         return;
+    if (m_fsOn)
+    {
+        // macOS perf step 1: what ended this batch, and what it carried.
+        const uint32_t verts = static_cast<uint32_t>(m_vertices.size());
+        if (flushMask != 0u)
+        {
+            m_fsCounter.noteKeyFlush(flushMask, verts);
+            for (int i = 0; i < GsGlFlushReasons::kFields; ++i)
+                if (flushMask & (1u << i))
+                    ++m_fsFrame.byField[i];
+        }
+        else
+        {
+            m_fsCounter.noteCmdFlush(why, verts);
+            ++m_fsFrame.byCmd[static_cast<int>(why)];
+        }
+        ++m_fsFrame.draws;
+        m_fsFrame.vertices += verts;
+    }
     // Sprint 8 Goal 2b Task 1: past both early returns, so this flush really drew. The two returns
     // above are the "empty" case the [gs-transfer] line counts as flush_empty.
     g_flushHadBatch = true;
