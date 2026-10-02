@@ -32,7 +32,10 @@ elif command -v gtimeout >/dev/null 2>&1; then
 else
   "$EXE" "$ELF" "$@" > "$LOG" 2>&1 &
   pid=$!
-  ( sleep "$SECS"; kill -TERM "$pid" 2>/dev/null && : > "$LOG.expired" ) &
+  # The watcher holds none of the caller's stdio and takes its sleep down with it, so a game that exits early
+  # never leaves an orphaned sleep keeping a caller's pipe open for the rest of the timeout.
+  ( exec >/dev/null 2>&1; sleep "$SECS" & s=$!; trap 'kill "$s" 2>/dev/null; exit 0' TERM; wait "$s"
+    kill -TERM "$pid" 2>/dev/null && : > "$LOG.expired" ) &
   watcher=$!
   wait "$pid" 2>/dev/null; rc=$?   # (no "Terminated" job notice: timeout(1) prints none)
   kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null
