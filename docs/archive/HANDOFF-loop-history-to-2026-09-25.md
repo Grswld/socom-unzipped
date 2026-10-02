@@ -185,3 +185,5 @@ eleven in the order they matter. Nothing was dropped.
   (socom-pc-42, the helper's link fix owed), the batch-2 chain on the main tree (`logs/s16_b2_chain.marker`; no
   fast-forward until it ends), LATER row 37 in `wt-s16-l37`. Next on the chain's exe: L1b Step 0, F0, R1b's chain, X2.
   The plan `docs/superpowers/plans/2026-09-27-sprint-16.md` (its Log) is the live state.
+
+- 2026-10-02 05:05Z (HANDOFF §2 "now" replaced): "#130 merged (main's web/ = the teaser demo), main merged back; the chain RED only at release (the guard fired; the gate PASS, loaded): rerun quiet, then slice 2; #110 parked."
