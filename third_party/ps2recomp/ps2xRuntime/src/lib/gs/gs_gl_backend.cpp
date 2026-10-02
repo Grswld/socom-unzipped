@@ -1531,7 +1531,10 @@ bool GSGlBackend::HostRenderFrame()
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glViewport(0, 0, GetScreenWidth(), GetScreenHeight());
+    // The default framebuffer is in pixels; GetScreenWidth/Height are in points, which differ under
+    // FLAG_WINDOW_HIGHDPI on a Retina (2x) display or a scaled Windows desktop (macOS port). raylib sets its own
+    // viewport from the render size, so this restores exactly what it expects.
+    glViewport(0, 0, GetRenderWidth(), GetRenderHeight());
     glUseProgram(0);
     glBindVertexArray(0);
     glActiveTexture(GL_TEXTURE0);
