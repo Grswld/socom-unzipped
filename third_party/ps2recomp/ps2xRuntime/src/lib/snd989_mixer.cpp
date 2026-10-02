@@ -2236,9 +2236,13 @@ namespace snd989
         }
         if (std::memcmp(header, " KPV", 4) == 0)
         {
-            st.dataSize = u32(4);
             st.rate = u32(16) ? u32(16) : 32000u;
             st.channels = std::clamp<uint32_t>(u32(20), 1u, 2u);
+            // Word 1 is the data size PER CHANNEL (macOS port, 2026-10-02): read as the total, every cue stopped
+            // at half its length, at full level, mid-music. On all 210 VPKs on the disc only channels x word 1
+            // ends each file within one streaming buffer of the next cue, and the bytes past the half are the rest
+            // of the track -- which fades to silence at that end (median RMS 1 over the last 100 ms).
+            st.dataSize = u32(4) * st.channels;
             // research/36 item 10 (2026-09-20): header word 3 is the streaming BUFFER the file was authored for
             // (0xb000 on every SOCOM stem; the IRX's FUN_00013334 refuses a file whose word 3 differs from its
             // stream buffer). A two-channel file is interleaved per buffer -- half of each buffer is the left
