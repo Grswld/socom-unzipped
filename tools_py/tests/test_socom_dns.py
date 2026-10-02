@@ -4,7 +4,7 @@ It answers SOCOM II's six retail host names with muis.json's Endpoint and NXDOMA
 source's queries per second, and never sends more than the echoed question plus one 16-byte A record (it must not be
 an amplifier). The unit, its wrapper, install.sh and horizon-ctl.sh carry it beside the four Horizon units.
 """
-import importlib.util, os, pathlib, struct, subprocess, unittest
+import importlib.util, json, os, pathlib, struct, subprocess, unittest
 
 from tools_py.tests.shell import BASH
 
@@ -80,6 +80,55 @@ class MuisEndpointTests(unittest.TestCase):
     def test_a_hostname_endpoint_is_refused(self):
         with self.assertRaises(SystemExit):
             socom_dns.endpoint_from_muis('{"Universes":[{"Endpoint":"socom.scotho.com"}]}')
+
+    @staticmethod
+    def universe(endpoint, enabled=True, name="SOCOM II Local"):
+        return {"Enabled": enabled, "Name": name, "Description": "d", "Endpoint": endpoint, "SvoURL": "",
+                "ExtendedInfo": "", "Port": 10075, "UniverseId": 1}
+
+    def muis(self, universes):
+        return json.dumps({"RefreshConfigInterval": 5000, "Ports": [10071], "EncryptMessages": True,
+                           "Universes": universes, "Logging": {"LogLevel": 1}})
+
+    def test_the_box_shape_a_dict_of_app_id_lists_is_read(self):
+        # The box's muis.json (2026-10-02, KeyError: 0 on deploy): Universes is the C# Dictionary<int, UniverseInfo[]>.
+        text = self.muis({"10472": [self.universe("3.143.65.100")],
+                          "0": [self.universe("3.143.65.100", name="Default Local")]})
+        self.assertEqual(socom_dns.endpoint_from_muis(text), "3.143.65.100")
+
+    def test_the_repo_config_shape_is_read(self):
+        text = (ROOT / "server" / "config" / "muis.json").read_text(encoding="utf-8")
+        self.assertEqual(socom_dns.endpoint_from_muis(text), "192.0.2.1")
+
+    def test_universes_disagreeing_on_the_endpoint_are_refused_naming_both(self):
+        text = self.muis({"10472": [self.universe("3.143.65.100")], "0": [self.universe("198.51.100.7")]})
+        with self.assertRaises(SystemExit) as cm:
+            socom_dns.endpoint_from_muis(text)
+        self.assertIn("3.143.65.100", str(cm.exception.code))
+        self.assertIn("198.51.100.7", str(cm.exception.code))
+
+    def test_a_disabled_universe_is_ignored(self):
+        text = self.muis({"10472": [self.universe("3.143.65.100")],
+                          "0": [self.universe("198.51.100.7", enabled=False)]})
+        self.assertEqual(socom_dns.endpoint_from_muis(text), "3.143.65.100")
+
+    def test_a_disabled_universe_with_a_hostname_is_ignored_too(self):
+        text = self.muis({"0": [self.universe("socom.scotho.com", enabled=False), self.universe("3.143.65.100")]})
+        self.assertEqual(socom_dns.endpoint_from_muis(text), "3.143.65.100")
+
+    def test_no_enabled_universe_is_refused(self):
+        with self.assertRaises(SystemExit):
+            socom_dns.endpoint_from_muis(self.muis({"10472": [self.universe("3.143.65.100", enabled=False)]}))
+        with self.assertRaises(SystemExit):
+            socom_dns.endpoint_from_muis(self.muis({}))
+
+    def test_a_single_object_value_is_accepted(self):
+        self.assertEqual(socom_dns.endpoint_from_muis(self.muis({"10472": self.universe("3.143.65.100")})),
+                         "3.143.65.100")
+
+    def test_an_octet_over_255_is_refused(self):
+        with self.assertRaises(SystemExit):
+            socom_dns.endpoint_from_muis(self.muis({"10472": [self.universe("3.143.65.256")]}))
 
 
 class BoxWiringTests(unittest.TestCase):

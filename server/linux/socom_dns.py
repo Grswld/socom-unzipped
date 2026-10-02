@@ -16,11 +16,38 @@ _IPV4 = re.compile(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
 LOG_EVERY = 60.0
 
 
+SOCOM_APP_ID = "10472"
+
+
 def endpoint_from_muis(text):
-    ep = json.loads(text)["Universes"][0]["Endpoint"]
-    if not _IPV4.match(ep) or any(int(x) > 255 for x in ep.split(".")):
-        sys.exit("socom-dns: muis.json Endpoint %r is not a dotted IPv4 address; the answer must be one" % ep)
-    return ep
+    """The one address every enabled universe in muis.json names; SystemExit when there is none, it is not a dotted
+    quad, or two disagree. Universes is the server's Dictionary<int, UniverseInfo[]> ({"10472": [{...}], "0": [...]});
+    a bare list of universe objects (and a single object in place of a list) is accepted too."""
+    universes = json.loads(text).get("Universes")
+    if isinstance(universes, dict):
+        groups = sorted(universes.items(), key=lambda kv: kv[0] != SOCOM_APP_ID)   # 10472 first, else file order
+    elif isinstance(universes, list):
+        groups = [(None, universes)]
+    else:
+        sys.exit("socom-dns: muis.json has no Universes dict or list")
+    found = []   # (where, endpoint), enabled universes only
+    for key, group in groups:
+        for u in (group if isinstance(group, list) else [group]):
+            if not isinstance(u, dict) or u.get("Enabled", True) is False:
+                continue
+            ep = u.get("Endpoint")
+            where = "Universes[%s] %r" % (key, u.get("Name", "?")) if key is not None else repr(u.get("Name", "?"))
+            if not isinstance(ep, str) or not _IPV4.match(ep) or any(int(x) > 255 for x in ep.split(".")):
+                sys.exit("socom-dns: muis.json %s Endpoint %r is not a dotted IPv4 address; the answer must be one"
+                         % (where, ep))
+            found.append((where, ep))
+    if not found:
+        sys.exit("socom-dns: muis.json has no enabled universe with an Endpoint")
+    others = [(w, e) for w, e in found if e != found[0][1]]
+    if others:
+        sys.exit("socom-dns: muis.json's enabled universes disagree: %s says %s but %s says %s; one DNS answer cannot"
+                 " serve two addresses" % (found[0][0], found[0][1], others[0][0], others[0][1]))
+    return found[0][1]
 
 
 def _parse_name(data, off):
@@ -83,7 +110,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="SOCOM II's six retail host names -> muis.json's Endpoint, on UDP")
     ap.add_argument("--bind", required=True, help="the address to bind (the box's private IPv4, never the wildcard)")
     ap.add_argument("--port", type=int, default=53)
-    ap.add_argument("--muis", required=True, help="muis.json; its first universe's Endpoint is the answer")
+    ap.add_argument("--muis", required=True, help="muis.json; the Endpoint its enabled universes share is the answer")
     ap.add_argument("--per-second", type=int, default=20, help="queries a second answered per source")
     a = ap.parse_args(argv)
     with open(a.muis, encoding="utf-8") as f:
