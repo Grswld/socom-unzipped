@@ -170,8 +170,9 @@ namespace
             down[i] = static_cast<int8_t>(-(i % 8));
         }
         // research/36 item 10: a two-channel VPK's per-channel stride is header word 3 / 2 (the streaming buffer's
-        // half), so a file of alternating 0x800-byte channel chunks declares word 3 = 0x1000 (data at 0x1000).
-        std::vector<uint8_t> file(0x1000, 0u);
+        // half), so a file of alternating 0x800-byte channel chunks declares word 3 = 0x1000. Its data starts at word
+        // 2, the header size (0x800) -- as on the disc; this fixture put it at word 3 and so agreed with the misread.
+        std::vector<uint8_t> file(0x800, 0u);
         auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(file.data(), " KPV", 4);
         put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
@@ -194,6 +195,77 @@ namespace
         std::fclose(fp);
         return true;
     }
+
+    // A VPK laid out as every one of the disc's 210 music files is (2026-10-02, validated over VAGSTORE.ZAR):
+    // " KPV" | data size (both channels' bytes) | 0x800, the header size -- the data STARTS here | the streaming
+    // buffer (0xb000 on the disc) | rate | channels. Each buffer is half the left channel, then half the right; the
+    // last, partial buffer keeps that layout -- left at +0, right at +half -- with rem/2 bytes in each and the rest
+    // of the buffer padding. Every left chunk is a constant +(k+1) level (filter 0, so a block decodes to exactly
+    // nibble << (12 - shift)), every right chunk -(k+1), k the buffer index, and the padding a loud +7: a read from
+    // the wrong place shows as a wrong level, not as a subtle waveform difference.
+    struct RealVpk
+    {
+        uint32_t buffer = 0x1000;     // per-channel stride: buffer / 2
+        uint32_t fullBuffers = 2;
+        uint32_t tailPerChannel = 0;  // bytes of each channel in the final, partial buffer (0: none)
+        uint32_t dataSize() const { return fullBuffers * buffer + 2u * tailPerChannel; }
+        // samples per channel at 32 kHz
+        uint32_t samples() const { return (dataSize() / 2u) / 16u * 28u; }
+    };
+    bool writeRealVpk(const std::string &path, const RealVpk &v)
+    {
+        std::vector<uint8_t> file(0x800, 0u);
+        auto put32 = [&](size_t at, uint32_t x) { file[at] = static_cast<uint8_t>(x); file[at + 1] = static_cast<uint8_t>(x >> 8); file[at + 2] = static_cast<uint8_t>(x >> 16); file[at + 3] = static_cast<uint8_t>(x >> 24); };
+        std::memcpy(file.data(), " KPV", 4);
+        put32(4, v.dataSize());
+        put32(8, 0x800u);
+        put32(12, v.buffer);
+        put32(16, 32000u);
+        put32(20, 2u);
+        auto chunk = [&](int8_t level, uint32_t bytes) {
+            int8_t n[28];
+            for (int i = 0; i < 28; ++i)
+                n[i] = level;
+            for (uint32_t b = 0; b < bytes / 16u; ++b)
+            {
+                const std::vector<uint8_t> blk = block(4, 0, 0x00, n);
+                file.insert(file.end(), blk.begin(), blk.end());
+            }
+        };
+        const uint32_t half = v.buffer / 2u;
+        for (uint32_t k = 0; k < v.fullBuffers; ++k)
+        {
+            chunk(static_cast<int8_t>(k + 1), half);
+            chunk(static_cast<int8_t>(-static_cast<int>(k + 1)), half);
+        }
+        if (v.tailPerChannel)
+        {
+            const int8_t k = static_cast<int8_t>(v.fullBuffers + 1);
+            chunk(k, v.tailPerChannel);
+            chunk(7, half - v.tailPerChannel);                     // padding
+            chunk(static_cast<int8_t>(-k), v.tailPerChannel);
+            chunk(7, half - v.tailPerChannel);                     // padding
+        }
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        std::fwrite(file.data(), 1, file.size(), fp);
+        std::fclose(fp);
+        return true;
+    }
+    // Render a stream to its end (or `cap` frames), returning the interleaved output.
+    std::vector<int16_t> renderStream(snd989::Mixer &mixer, uint32_t h, size_t cap = 200000)
+    {
+        std::vector<int16_t> out, buf(2 * 480);
+        while (mixer.isPlaying(h) && out.size() / 2 < cap)
+        {
+            mixer.pumpStreams();
+            mixer.render(buf.data(), 480);
+            out.insert(out.end(), buf.begin(), buf.end());
+        }
+        return out;
+    }
+
     // ---- the 989snd IOP module (modules/snd989.cpp) --------------------------------------------
     // Its model -- bank table, sound slots, VAG stream slots -- is only reachable over its RPC
     // server (SID 0x00123456, one command per call), so the cases below drive it the way the game
@@ -388,8 +460,8 @@ namespace
         auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(vpk.data(), " KPV", 4);
         put32(4, 0x800u);
-        put32(8, 0x800u);
-        put32(12, 0xB0u);
+        put32(8, 0xB0u);    // the header size: the data starts here
+        put32(12, 0x800u);  // the streaming buffer: a mono file's stride
         put32(16, 32000u);
         put32(20, 1u);
         for (int b = 0; b < 0x800 / 16; ++b)
@@ -1007,6 +1079,73 @@ void register_socom2_audio_tests()
         // and counted NOTHING. This is the instrument: every stream start, end and underrun is reported on the
         // mixer's own output-frame clock -- the clock the PS2X_AUDIO_DUMP WAV is written on -- so a boundary is a
         // WAV offset a person can open, and a starved stem is a number instead of a feeling.
+        tc.Run("Mixer: a VPK's audio starts at header word 2 (0x800), not word 3 (the buffer size)", [](TestCase &t)
+        {
+            // 2026-10-02: the mixer started at word 3 (0xb000 on the disc), 0xa800 bytes into the music: the first
+            // 1.12 s of every cue never played and each buffer's first sector came from the other channel and
+            // position -- the regular 1.2 s skips in the mission music, measured against the disc's own decode.
+            RealVpk v;
+            v.fullBuffers = 3;
+            const std::string path = tmpPath("socom2_vpk_start.vpk");
+            t.IsTrue(writeRealVpk(path, v), "a three-buffer VPK in the disc's layout");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000031u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "the stem plays");
+            const std::vector<int16_t> out = renderStream(mixer, h);
+            // the middle of buffer 0 and of buffer 1 on the 48 kHz clock: a buffer is (0x800 / 16 * 28) = 3584
+            // samples a channel at 32 kHz = 5376 output frames
+            const size_t f0 = 5376 / 2, f1 = 5376 + 5376 / 2;
+            t.IsTrue(out.size() / 2 > f1, "long enough to read two buffers");
+            const int l0 = out[f0 * 2], l1 = out[f1 * 2], r0 = out[f0 * 2 + 1];
+            t.IsTrue(l0 > 0 && r0 < 0, "the first frames are buffer 0: left positive, right negative");
+            t.IsTrue(l1 == 2 * l0, "and buffer 1 is twice buffer 0 on the left (" + std::to_string(l0) + ", " + std::to_string(l1) + ")");
+        });
+
+        tc.Run("Mixer: a VPK ends after exactly its data, and the final partial buffer's right channel is read at +half", [](TestCase &t)
+        {
+            // The last buffer keeps the left-then-right layout with rem/2 bytes a channel (L/R correlation 0.483
+            // over the disc's 188 cues with a partial buffer, against 0.001 for the equal-halves split the mixer
+            // read). Its right channel at +rem/2 played left-channel and padding bytes as the cue's last moments.
+            RealVpk v;
+            v.fullBuffers = 2;
+            v.tailPerChannel = 0x300;   // a partial buffer: 0x300 of 0x800 a channel
+            const std::string path = tmpPath("socom2_vpk_tail.vpk");
+            t.IsTrue(writeRealVpk(path, v), "two full buffers and a partial one, padded with a loud +7");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000032u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "the stem plays");
+            const std::vector<int16_t> out = renderStream(mixer, h);
+            const size_t expected = static_cast<size_t>(v.samples()) * 3u / 2u;   // 32 -> 48 kHz
+            size_t last = 0;
+            for (size_t f = 0; f < out.size() / 2; ++f)
+                if (out[f * 2] != 0 || out[f * 2 + 1] != 0)
+                    last = f;
+            t.IsTrue(last + 1 >= expected - 2 && last + 1 <= expected + 2,
+                     "the sound ends with its data: " + std::to_string(last + 1) + " frames for " + std::to_string(expected));
+            const size_t tail = last - 100;   // inside the partial buffer
+            const int l0 = out[(5376 / 2) * 2], r0 = out[(5376 / 2) * 2 + 1];
+            const int lt = out[tail * 2], rt = out[tail * 2 + 1];
+            t.IsTrue(lt == 3 * l0, "the partial buffer's left is level 3 (" + std::to_string(lt) + " vs " + std::to_string(3 * l0) + ")");
+            t.IsTrue(rt == 3 * r0, "and its right is level -3, read at +half -- not padding, not left (" + std::to_string(rt) + " vs " + std::to_string(3 * r0) + ")");
+        });
+
+        tc.Run("Mixer: a looping VPK wraps to its first buffer at word 2", [](TestCase &t)
+        {
+            // Issue #94's whole-file loop rewinds to the top of the DATA: the same base the start was read from,
+            // so it was wrong with it and is right with it -- this holds the wrap to the first buffer's level.
+            RealVpk v;
+            v.fullBuffers = 2;
+            const std::string path = tmpPath("socom2_vpk_loop.vpk");
+            t.IsTrue(writeRealVpk(path, v), "a two-buffer VPK");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000033u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u, false, true), "the stem plays, looping");
+            const std::vector<int16_t> out = renderStream(mixer, h, 5376 * 3);
+            const size_t f0 = 5376 / 2, wrap = 5376 * 2 + 5376 / 2;
+            t.IsTrue(out.size() / 2 > wrap, "it played past its end");
+            t.IsTrue(out[wrap * 2] == out[f0 * 2], "after the wrap the left is buffer 0's level again (" + std::to_string(out[wrap * 2]) + " vs " + std::to_string(out[f0 * 2]) + ")");
+        });
+
         tc.Run("Mixer: stream start, end and underrun are reported on the output-frame clock the dump is written on", [](TestCase &t)
         {
             const std::string two = tmpPath("socom2_audio_clock_a.vpk");
@@ -1292,8 +1431,8 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
             put32(4, 2u * 0x800u);
-            put32(8, 0x800u);
-            put32(12, 0xB0u);
+            put32(8, 0xB0u);    // the header size: the data starts here
+            put32(12, 0x800u);  // the streaming buffer
             put32(16, 32000u);
             put32(20, 1u);
             for (int c = 0; c < 2; ++c)
@@ -1368,7 +1507,7 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);   // the disc stores the magic as the little-endian word "VPK "
             put32(4, static_cast<uint32_t>(chunksPerChannel * 2 * 0x800));
-            put32(8, 0x800);
+            put32(8, 0x1000);   // the header size: this file's data starts at 0x1000
             put32(12, 0x1000);
             put32(16, 32000);
             put32(20, 2);
@@ -1923,8 +2062,8 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(vpk.data(), " KPV", 4);
             put32(4, 0x800u);
-            put32(8, 0x800u);
-            put32(12, 0xB0u);
+            put32(8, 0xB0u);    // the header size: the data starts here
+            put32(12, 0x800u);  // the streaming buffer
             put32(16, 32000u);
             put32(20, 1u);
             for (int b = 0; b < 0x800 / 16; ++b)
@@ -2013,8 +2152,8 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(vpk.data(), " KPV", 4);
             put32(4, 0x800u);
-            put32(8, 0x800u);
-            put32(12, 0xB0u);
+            put32(8, 0xB0u);    // the header size: the data starts here
+            put32(12, 0x800u);  // the streaming buffer
             put32(16, 32000u);
             put32(20, 1u);
             for (int b = 0; b < 0x800 / 16; ++b)
@@ -2178,7 +2317,7 @@ void register_socom2_audio_tests()
             std::memcpy(file.data(), " KPV", 4);
             const int chunkPairs = 4;
             put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
-            put32(8, 0x800);
+            put32(8, 0x1000);   // the header size: this file's data starts at 0x1000
             put32(12, 0x1000);
             put32(16, 48000);
             put32(20, 2);
@@ -2232,7 +2371,7 @@ void register_socom2_audio_tests()
         // with word 2 = 0x800, word 3 = 0xb000, channels 2 -- and the two channels are interleaved per streaming
         // BUFFER (word 3: the IRX's FUN_00013334 requires it to equal its stream buffer, and its per-channel stride
         // is `puVar12[3] >> 1`): each 0xb000-byte buffer holds 0x5800 bytes of L then 0x5800 of R, the last, partial
-        // buffer split in halves; 0x800 is only the streamer's refill grain. Ours read alternating 0x800 chunks as
+        // buffer the same with rem/2 a channel and padding; word 2 (0x800) is the header size, where the data starts. Ours read alternating 0x800 chunks as
         // L, R, L, R -- different music in the two channels (run 10: L/R correlation 0.05 at lag 0 against the
         // console's 0.3-0.6, "best" lags scattered at 61/136/674 ms). This file is authored in the real layout with
         // IDENTICAL data in both halves, so a correct decode renders L == R for every frame.
@@ -2240,8 +2379,8 @@ void register_socom2_audio_tests()
         {
             constexpr uint32_t kBuffer = 0xb000u, kHalf = kBuffer / 2u;
             const int fullBuffers = 6;                 // 7 chunk pairs with the tail: more than the ring's 4, so an underrun can be forced
-            const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer, split in halves
-            std::vector<uint8_t> file(kBuffer, 0u);    // the header block: 24 bytes of header, zero to word 3
+            const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer: 0x1000 a channel, left then right at +kHalf
+            std::vector<uint8_t> file(0x800, 0u);      // the header block: word 2 = 0x800, where the data starts (the disc's layout)
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
             put32(4, static_cast<uint32_t>(fullBuffers) * kBuffer + 2u * tailPerChannel);
@@ -2263,13 +2402,18 @@ void register_socom2_audio_tests()
                         const std::vector<uint8_t> blk = block(4, 0, 0x00, nib);   // shift 4: samples of +-1792
                         file.insert(file.end(), blk.begin(), blk.end());
                     }
+            // The final, partial buffer keeps the full ones' layout (macOS port, 2026-10-02: L/R correlation 0.483
+            // over the disc's 188 cues with one): each half holds the channel's tail, then padding to kHalf.
             for (int ch = 0; ch < 2; ++ch)
+            {
                 for (uint32_t k = 0; k < tailPerChannel / 16u; ++k)
                 {
                     pattern(static_cast<uint32_t>(fullBuffers) * (kHalf / 16u) + k, nib);
                     const std::vector<uint8_t> blk = block(4, 0, k == tailPerChannel / 16u - 1u ? 0x01 : 0x00, nib);
                     file.insert(file.end(), blk.begin(), blk.end());
                 }
+                file.insert(file.end(), kHalf - tailPerChannel, 0x5Au);   // padding: not silence, as on the disc
+            }
             const std::string path = tmpPath("socom2_audio_test_buffer_layout.vpk");
             if (FILE *fp = std::fopen(path.c_str(), "wb"))
             {
