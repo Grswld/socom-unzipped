@@ -1095,3 +1095,17 @@ git commit -m "docs: the macOS arm64 build (phase 1) and its result
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- docs/DEVELOPING.md docs/superpowers/plans/2026-10-01-macos-arm64-port.md
 ```
+
+## Log
+
+- 2026-10-01: phase 1 result. Title, menus (keyboard), intro movie (real MPEG-2 frames, FFmpeg 7.1.5 from source)
+  and a mission with sound: ok, owner-confirmed. Mission frame time about 30-32 ms (`PS2X_GS_STATS=1` histograms,
+  estimated from bucket midpoints; 25% of frames within 16.7 ms) against Windows' ~27 ms and the console's 16.7 --
+  the owner calls it "very choppy". Menus/intro about 19 ms. No crash, no audio underrun in a ~3-minute session.
+  Depth mode: Legacy (no glClipControl on GL 4.1). ps2x_tests 1161/1161 + the opt-in GL test (1162 with
+  PS2X_CONSOLE_REPLAY_GL=1); Python 3939 tests OK, 211 skipped; VU1 goldens 9/9, bit-exact; runner jobs 6 (no
+  swap on 16 GB). Recomp identical to Windows (14882 files, unhandled=114399).
+- Not verified: a pad (the owner plays by keyboard), a Retina (2x) display (this one is 1x), switching the audio
+  output mid-run.
+- Open items for phase 2, owner's priorities first: frame time in missions; mouse look / mouse menu navigation
+  (owner request: "controls are a bit weird"); the launcher on macOS; an app bundle; macOS CI; online.
