@@ -10,6 +10,8 @@
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_stall_coalescer.h"
 #include "runtime/gs/gs_gl_caps.h"
+#include "runtime/gs/gs_gl_flush_reasons.h"
+#include "runtime/gs/gs_gl_frame_stats.h"
 
 #include <array>
 #include <atomic>
@@ -288,17 +290,7 @@ private:
         uint64_t sourceHash = 0;   // R123: the shadow bytes this entry was decoded from
     };
 
-    struct DrawKey
-    {
-        GSContext context{};
-        GSPrimReg prim{};
-        GSTexaReg texa{};
-        GSTexClutReg texclut{};
-        bool pabe = false;
-        bool linearFilter = false;
-        uint16_t textureWidth = 0, textureHeight = 0;
-        uint8_t fogR = 0, fogG = 0, fogB = 0;
-    };
+    using DrawKey = GsGlFlushReasons::DrawKey;   // moved out so ps2x_tests can diff two of them
 
     uint8_t m_dbgBefore[4] = {0, 0, 0, 0};   // PS2X_GS_GL_DEBUG_PSM readback
     struct GlVertex
@@ -341,7 +333,7 @@ private:
     void executeClear(const GSContext &context, uint32_t rgba);
     void executePresent(const GSPresentationRequest &request);
     void executeReadback();
-    void flushBatch();
+    void flushBatch(GsGlFlushReasons::Cmd why = GsGlFlushReasons::Cmd::EndOfBuffer);
     bool ensureGl();
     // Task 1a: latch the verdict, publish it to the process, and print the one UNSUPPORTED line.
     void latchGlUnsupported(const GsGlCaps::Report &report);
@@ -476,6 +468,21 @@ private:
     std::vector<GlVertex> m_vertices;
     bool m_hasBatch = false;
     DrawKey m_batchKey{};
+    // macOS perf step 1 (gs_gl_frame_stats.h): the flush-reason counter and the frame-drop breakdown. All
+    // render-thread state; m_fsOn (PS2X_GS_FLUSH_REASONS or PS2X_GS_SLOW_FRAME_MS) gates every touch of it.
+    bool m_fsOn = false;
+    bool m_fsFlushLine = false;
+    uint32_t m_flushMask = 0u;   // the DrawKey fields that ended the batch flushBatch is about to draw
+    GsGlFlushReasons::Counter m_fsCounter;
+    GsGlFlushReasons::PipelineSet m_fsPipelines;
+    GsGlFrameStats::FrameCounts m_fsFrame{};
+    GsGlFrameStats::SlowFrameDetector m_fsSlow{0.0};
+    GsGlFrameStats::FrameTimeHistogram m_fsHist{};
+    GsGlFrameStats::IntervalRecord m_fsInterval{};
+    std::chrono::steady_clock::time_point m_fsLastPresent{}, m_fsIntervalStart{}, m_fsBusyMark{};
+    uint64_t m_fsPipelinesAtInterval = 0u, m_fsProgramsInterval = 0u, m_fsRtFeedbackInterval = 0u;
+    void fsBusyUntilNow();
+    void fsEndFrame();
     GSDrawState m_batchState{};
     RenderTarget *m_batchRt = nullptr;
 

@@ -15,6 +15,7 @@ void register_ps2_memory_tests();
 void register_ps2_vu1_tests();
 void register_vu1_native_tests();
 void register_vu1_ops_tests();   // Sprint 17 F C1
+void register_gs_gl_flush_reasons_tests();   // macOS perf step 1
 void register_ps2_vu_tests();
 void register_ps2_gs_tests();
 void register_gs_frame_backpressure_tests();
@@ -112,6 +113,7 @@ int main()
     register_ps2_vu1_tests();
     register_vu1_native_tests();
     register_vu1_ops_tests();
+    register_gs_gl_flush_reasons_tests();
     register_ps2_vu_tests();
     register_ps2_gs_tests();
     register_gs_frame_backpressure_tests();
