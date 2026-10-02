@@ -23,7 +23,13 @@ def endpoint_from_muis(text):
     """The one address every enabled universe in muis.json names; SystemExit when there is none, it is not a dotted
     quad, or two disagree. Universes is the server's Dictionary<int, UniverseInfo[]> ({"10472": [{...}], "0": [...]});
     a bare list of universe objects (and a single object in place of a list) is accepted too."""
-    universes = json.loads(text).get("Universes")
+    try:
+        doc = json.loads(text)
+    except ValueError as e:
+        sys.exit("socom-dns: muis.json is not valid JSON: %s" % (str(e).splitlines() or [""])[0])
+    if not isinstance(doc, dict):
+        sys.exit("socom-dns: muis.json is not a JSON object")
+    universes = doc.get("Universes")
     if isinstance(universes, dict):
         groups = sorted(universes.items(), key=lambda kv: kv[0] != SOCOM_APP_ID)   # 10472 first, else file order
     elif isinstance(universes, list):

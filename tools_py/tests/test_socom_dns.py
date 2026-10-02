@@ -126,6 +126,16 @@ class MuisEndpointTests(unittest.TestCase):
         self.assertEqual(socom_dns.endpoint_from_muis(self.muis({"10472": self.universe("3.143.65.100")})),
                          "3.143.65.100")
 
+    def test_malformed_json_exits_with_a_message_not_a_traceback(self):
+        with self.assertRaises(SystemExit) as cm:
+            socom_dns.endpoint_from_muis("{not json")
+        self.assertTrue(str(cm.exception.code).startswith("socom-dns: muis.json is not valid JSON: "), cm.exception.code)
+
+    def test_a_non_object_top_level_exits_with_a_message(self):
+        with self.assertRaises(SystemExit) as cm:
+            socom_dns.endpoint_from_muis("[]")
+        self.assertEqual(cm.exception.code, "socom-dns: muis.json is not a JSON object")
+
     def test_an_octet_over_255_is_refused(self):
         with self.assertRaises(SystemExit):
             socom_dns.endpoint_from_muis(self.muis({"10472": [self.universe("3.143.65.256")]}))
