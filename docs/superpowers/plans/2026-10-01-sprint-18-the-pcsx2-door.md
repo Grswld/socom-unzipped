@@ -66,7 +66,7 @@ Inputs the spec implies that a task's own tests must pin (each line names its ow
 | # | Task | Kind | Where | Verification | State |
 |---|---|---|---|---|---|
 | T0 | The spike: five PCSX2 questions on a fresh v2.8.2 (spec §3) | lock-bound (one PCSX2 boot, a window) | main tree, scratch folder under `logs/s18_spike/` | `docs/research/83-pcsx2-door-spike.md` answers 1-5 with the emulog lines | open | <!-- docmaint: future -->
-| T1 | The box's name service: `socom-dns.py`, its unit, `install.sh`/`horizon-ctl.sh`, 53/udp | lock-free; the owner's authority for the firewall (spec head) | `agent/s18-dns`; the box by `vm/lightsail/ssh.sh` | `python -m unittest tools_py.tests.test_socom_dns`; `nslookup socom2-prod.pdonline.scea.com 3.143.65.100` from this host answers 3.143.65.100 | open |
+| T1 | The box's name service: `socom-dns.py`, its unit, `install.sh`/`horizon-ctl.sh`, 53/udp | lock-free; the owner's authority for the firewall (spec head) | `agent/s18-dns`; the box by `vm/lightsail/ssh.sh` | `python -m unittest tools_py.tests.test_socom_dns`; `nslookup socom2-prod.pdonline.scea.com 3.143.65.100` from this host answers 3.143.65.100 | DONE (code) 6e68c7bf on `sprint-18` 2026-10-02; the deploy, firewall and `nslookup` owed |
 | T2 | The mode and the second config: `client_mode`, `pcsx2_config`, JSON, `kPresetComingSoonNote` | lock-free, pure | `agent/s18-config` | `ps2x_tests --filter pcsx2_config` and `client_mode` green; the launcher suite unchanged | open |
 | T3 | What the launcher writes for PCSX2: the ini merge, the pnach (embedded from the masters), the root, the DNS pick | lock-free, pure | `agent/s18-files` | `ps2x_tests --filter pcsx2_files`; `tools_py/tests/test_pcsx2_masters.py` extended to the embedded copy | open |
 | T4 | INSTALL: the release parse, the redirect-following download, `runAndWait`, `resolveIpv4`, adapters | lock-free; glue + pure | `agent/s18-install` | `ps2x_tests --filter pcsx2_install` with the loopback server; `--install-pcsx2 <dir>` headless on this host (one real download, 26 MB) | open |
@@ -97,6 +97,8 @@ subsection) once the scotho design system lands.
 rows left)
 
 ## Log (newest first)
+
+- **2026-10-02 08:10Z** — T1 DONE (code): `agent/s18-dns` (9f40f751 the service, the unit, the wrapper, the install and control-script edits, 13 tests; 6e68c7bf the review's findings: the rate cap prunes once a second, the wrapper binds the first dotted quad, `server/ops/health.sh` counts five units; reviews PASS WITH FINDINGS then PASS) merged into `sprint-18` by the main-tree controller (socom-pc-0f) as a plumbing merge commit, no checkout -- the main tree stays on `sprint-17` for its chain. Owed: the deploy to the box, the 53/udp firewall rule (the owner's authority), `nslookup` from this host (Steps 6-7), `server/README.md`'s hosting section and its 'four units' line; the changelog regenerates when the branches converge. Started beside Sprint 17's wind-down as lock-free work (the owner's word of 02:45Z: Sprint 18 follows it).
 
 - **2026-10-01 02:40Z** — OPEN. The owner approved the write-up ("excellent. write this up as a formal sprint 18"):
   the spec to APPROVED, rulings R339–R344 numbered (HANDOFF §2's counter bumped past them, `docs/RULINGS.md` regenerated),
