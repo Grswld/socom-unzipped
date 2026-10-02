@@ -4375,9 +4375,11 @@ void GSGlBackend::executeSubmit(const GSPrimitiveBatch &batch)
     key.fogR = state.fogR;
     key.fogG = state.fogG;
     key.fogB = state.fogB;
-    // PS2X_GS_BATCH_BY_VALUE (macOS perf): join batches whose keys are equal in value; unset keeps the byte compare,
-    // under which padding alone split 86.8 % of a mission's batches (gs_gl_flush_reasons.h).
-    static const bool s_batchByValue = ps2x::knobOn("PS2X_GS_BATCH_BY_VALUE");
+    // PS2X_GS_BATCH_BY_VALUE (macOS perf, default on since 2026-10-02): join batches whose keys are equal in value;
+    // 0 restores the byte compare, under which padding alone split 86.8 % of a mission's batches
+    // (gs_gl_flush_reasons.h). Adopted on a firefight recording -- 1,500/1,500 presents bit-identical, render thread
+    // 21.5 -> 11.0 ms a frame -- and a mission walk: draws a frame 4,156 -> 530, p50 19.5 -> 17.25 ms.
+    static const bool s_batchByValue = ps2x::knobOn("PS2X_GS_BATCH_BY_VALUE", true);   // knobs.h's "1" is documentation: knobOn takes its default here
     if (m_hasBatch && !GsGlFlushReasons::sameBatch(m_batchKey, key, s_batchByValue))
     {
         if (m_fsOn)

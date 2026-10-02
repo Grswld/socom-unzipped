@@ -67,7 +67,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_GIF_PRIORITY_SORT` | Flag | `0` | Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change). |
 | `PS2X_GIF_TRACE` | Int | `0` | Print the first n GIF submissions with their path and BITBLTBUF. |
 | `PS2X_GS_BACKEND` | Text | `gpu` | cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65). |
-| `PS2X_GS_BATCH_BY_VALUE` | Flag | unset | Join GL draw batches whose DrawKeys are equal in value (padding is not state); unset = byte compare. |
+| `PS2X_GS_BATCH_BY_VALUE` | Flag | `1` | 1 (default): join GL draw batches equal in value; 0: the byte compare, padding splits them. |
 | `PS2X_GS_DEPTH_LEGACY` | Int | `0` | 1 forces the legacy depth mapping instead of clip control. |
 | `PS2X_GS_DISABLE_EARLY_DEPTH` | Presence | unset | CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B). |
 | `PS2X_GS_DOUBLE_SWIZZLE` | Flag | `1` | 1 (default): tiles swizzled again into the shadow; 0: S17 F1 attempt 3's one swizzle, which froze the intro. |

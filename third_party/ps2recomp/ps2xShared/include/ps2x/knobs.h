@@ -78,7 +78,7 @@
     X("PS2X_GIF_PRIORITY_SORT", Dev, Flag, "0", "Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change).") \
     X("PS2X_GIF_TRACE", Dev, Int, "0", "Print the first n GIF submissions with their path and BITBLTBUF.") \
     X("PS2X_GS_BACKEND", Dev, Text, "gpu", "cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65).") \
-    X("PS2X_GS_BATCH_BY_VALUE", Dev, Flag, "", "Join GL draw batches whose DrawKeys are equal in value (padding is not state); unset = byte compare.") \
+    X("PS2X_GS_BATCH_BY_VALUE", Dev, Flag, "1", "1 (default): join GL draw batches equal in value; 0: the byte compare, padding splits them.") \
     X("PS2X_GS_DEPTH_LEGACY", Dev, Int, "0", "1 forces the legacy depth mapping instead of clip control.") \
     X("PS2X_GS_DISABLE_EARLY_DEPTH", Dev, Presence, "", "CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B).") \
     X("PS2X_GS_DOUBLE_SWIZZLE", Dev, Flag, "1", "1 (default): tiles swizzled again into the shadow; 0: S17 F1 attempt 3's one swizzle, which froze the intro.") \
