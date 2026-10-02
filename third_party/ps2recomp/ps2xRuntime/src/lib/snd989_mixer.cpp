@@ -473,7 +473,8 @@ namespace snd989
                 const uint32_t remaining = dataSize > consumed ? dataSize - consumed : 0u;
                 // research/36 item 10: `interleave` is the per-channel stride (a two-channel file: header word 3 /
                 // channels, half a streaming buffer -- see playStream). One buffer holds that many bytes of the left
-                // channel and then of the right; the last, partial buffer is split in equal halves (block-aligned).
+                // channel and then of the right; the last, partial buffer holds the same layout with rem/2 bytes in
+                // each half (block-aligned) and padding after them.
                 const size_t chunkBytes = static_cast<size_t>(interleave);
                 const size_t perChannel = channels > 1
                                               ? std::min<size_t>(chunkBytes, (static_cast<size_t>(remaining) / channels) & ~static_cast<size_t>(15))
@@ -491,7 +492,10 @@ namespace snd989
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * perChannel) != 0)
+                    // Each channel at its stride: the final, partial buffer keeps the left-then-right layout of the
+                    // full ones -- rem/2 bytes a channel, the right at +interleave, not at +rem/2 (L/R correlation
+                    // 0.483 over the disc's 188 cues with a partial buffer, against 0.001 for the +rem/2 read).
+                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * chunkBytes) != 0)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
@@ -2232,19 +2236,24 @@ namespace snd989
         }
         if (std::memcmp(header, " KPV", 4) == 0)
         {
-            st.dataSize = u32(4);
             st.rate = u32(16) ? u32(16) : 32000u;
             st.channels = std::clamp<uint32_t>(u32(20), 1u, 2u);
+            // Word 1 is the data size PER CHANNEL (macOS port, 2026-10-02): read as the total, every cue stopped
+            // at half its length, at full level, mid-music. On all 210 VPKs on the disc only channels x word 1
+            // ends each file within one streaming buffer of the next cue, and the bytes past the half are the rest
+            // of the track -- which fades to silence at that end (median RMS 1 over the last 100 ms).
+            st.dataSize = u32(4) * st.channels;
             // research/36 item 10 (2026-09-20): header word 3 is the streaming BUFFER the file was authored for
             // (0xb000 on every SOCOM stem; the IRX's FUN_00013334 refuses a file whose word 3 differs from its
-            // stream buffer) and the data starts there. A two-channel file is interleaved per buffer -- half of
-            // each buffer is the left channel, then half the right (the IRX's per-channel stride is
-            // `puVar12[3] >> 1`) -- so the per-channel stride is word 3 / channels, NOT word 2 (0x800, the
-            // streamer's refill grain). Reading 0x800 chunks as alternating channels put different music in the
-            // two channels: run 10's L/R correlation of 0.05 at lag 0 against the console's 0.3-0.6.
-            st.interleave = st.channels > 1 ? std::max<uint32_t>(16u, (u32(12) / st.channels) & ~15u)
-                                            : std::max<uint32_t>(16u, u32(8));
-            st.dataStart = byteOffset + u32(12);
+            // stream buffer). A two-channel file is interleaved per buffer -- half of each buffer is the left
+            // channel, then half the right (the IRX's per-channel stride is `puVar12[3] >> 1`) -- so the per-channel
+            // stride is word 3 / channels.
+            // Word 2 is the HEADER SIZE, and the data starts there (macOS port, 2026-10-02): all 210 VPKs on the disc
+            // say 0x800, and from 0x800 each decodes as valid ADPCM throughout, the bytes up to word 3 included.
+            // Starting at word 3 skipped 0xa800 bytes -- the first 1.12 s of every cue -- and made each buffer's
+            // first sector the other channel's (the regular 1.2 s skips in the mission music).
+            st.interleave = std::max<uint32_t>(16u, (u32(12) / st.channels) & ~15u);
+            st.dataStart = byteOffset + u32(8);
         }
         else if (std::memcmp(header, "VAGp", 4) == 0)
         {
